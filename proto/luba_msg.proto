@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+
+import "mctrl_driver.proto";
+import "mctrl_nav.proto";
+import "mctrl_sys.proto";
+import "esp_driver.proto";
+
+
+message MsgNull {
+} 
+
+message LubaMsg {
+  
+ 
+
+  enum LubaSubMsgCase {
+    LUBASUBMSG_NOT_SET = 0;
+    ESP = 8;
+    SYS = 10;
+    NAV = 11;
+    DRIVER = 12;
+    NULL = 14;
+  }
+
+  MsgCmdType msgtype = 1;
+  MsgDevice sender = 2;
+  MsgDevice rcver = 3;
+  MsgAttr msgattr = 4;
+  int32 seqs = 5;
+  int32 version = 6;
+  int32 subtype = 7;
+  int64 timestamp = 15;
+  
+  
+  oneof LubaSubMsg {
+    CommEsp esp = 8;
+    MctlSys sys = 10;
+    MctlNav nav = 11;
+    MctrlDriver driver = 12;
+    MsgNull null = 14;
+  }
+
+}
+
+enum MsgCmdType {
+  MSG_CMD_TYPE_START = 0;
+  MSG_CMD_TYPE_NAV = 240;
+  MSG_CMD_TYPE_LOCALIZATION = 241;
+  MSG_CMD_TYPE_PLANNING = 242;
+  MSG_CMD_TYPE_EMBED_DRIVER = 243;
+  MSG_CMD_TYPE_EMBED_SYS = 244;
+  MSG_CMD_TYPE_EMBED_MIDWARE = 245;
+  MSG_CMD_TYPE_EMBED_OTA = 246;
+  MSG_CMD_TYPE_APPLICATION = 247;
+  MSG_CMD_TYPE_ESP = 248;
+}
+
+enum MsgAttr {
+
+  MSG_ATTR_NONE = 0;
+  MSG_ATTR_REPORT = 3;
+  MSG_ATTR_REQ = 1;
+  MSG_ATTR_RESP = 2;
+
+}
+
+enum MsgDevice {
+  DEV_COMM_ESP = 0;
+  DEV_BASESTATION = 4;
+  DEV_BMS = 9;
+  DEV_IOTSERVER = 8;
+  DEV_LEFTMOTOR = 2;
+  DEV_MAINCTL = 1;
+  DEV_MOBILEAPP = 7;
+  DEV_RIGHTMOTOR = 3;
+  DEV_RTKCLI = 5;
+  DEV_USBHOST = 6;
+}

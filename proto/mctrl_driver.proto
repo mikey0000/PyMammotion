@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+
+
+
+message MctrlDriver {
+
+    message DrvMotionCtrl {
+        int32 SETANGULARSPEED_FIELD_NUMBER = 2;
+        int32 SETLINEARSPEED_FIELD_NUMBER = 1;
+    }
+
+
+}

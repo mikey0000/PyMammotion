@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+
+
+
+message CommEsp {
+
+    message DrvDevInfoReqId {
+        int32 id = 1;
+        int32 type = 2;
+    }
+
+    message DrvDevInfoReq {
+        repeated DrvDevInfoReqId req_ids = 1;
+    }
+
+    message DrvDevInfoResp {
+        repeated DrvDevInfoReqId req_ids = 1;
+    }
+}
