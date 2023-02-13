@@ -87,8 +87,12 @@ async def main(address, char_uuid_notification):
         print(f"Connected: {client.is_connected}")
         blufiClient = Blufi(client)
         # await blufiClient.requestDeviceStatus()
-        await blufiClient.getDeviceInfo()
-        await blufiClient.getDeviceVersionMain()
+        # await blufiClient.getDeviceInfo()
+        try:
+            blufiClient.getDeviceVersionMain()
+        except Exception as err:
+            print(err)
+
         await asyncio.sleep(5.0)
         await client.stop_notify(char_uuid_notification)
 

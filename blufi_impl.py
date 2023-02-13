@@ -79,7 +79,7 @@ class Blufi:
         pass
 
 
-    async def getDeviceVersionMain(self):
+    def getDeviceVersionMain(self):
         commEsp = proto.esp_driver_pb2.CommEsp()
         
         
@@ -87,7 +87,9 @@ class Blufi:
         infoReqId.id = 1
         infoReqId.type = 6
         infoReq = commEsp.DrvDevInfoReq()
-        infoReq = [infoReqId]
+        reqIdReq = infoReq.req_ids.add()
+        reqIdReq = [infoReqId]
+        # commEsp.DrvDevInfoReq = infoReq
         # drvDevInfoReq.addReqIds(drvDevInfoReqId);
         # EspDriver.DrvDevInfoReq devInfoReq = drvDevInfoReq.build();
         lubaMsg = proto.luba_msg_pb2.LubaMsg()
@@ -99,10 +101,11 @@ class Blufi:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.esp.CopyFrom(commEsp)
-
+        print(lubaMsg)
+        print(commEsp)
         bytes = lubaMsg.SerializeToString()
         # bytes = lubaMsg.toByteArray();
-        await self.postCustomDataBytes(bytes)
+        # await self.postCustomDataBytes(bytes)
     
 
 

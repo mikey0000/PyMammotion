@@ -15,6 +15,13 @@ message CommEsp {
     }
 
     message DrvDevInfoResp {
-        repeated DrvDevInfoReqId req_ids = 1;
+        repeated DrvDevInfoReqId resp_ids = 1;
     }
+
+    oneof EspSubType {
+        DrvDevInfoReq todev_devinfo_req = 11;
+        DrvDevInfoResp toapp_devinfo_resp = 12;
+    }
+
+    
 }
