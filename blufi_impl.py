@@ -9,7 +9,7 @@ import time
 
 from bleak import BleakClient
 
-from framectrldata import FrameCtrlData
+from blelibs.framectrldata import FrameCtrlData
 import proto.esp_driver_pb2
 import proto.luba_msg_pb2
 
@@ -190,8 +190,10 @@ class Blufi:
         dataIS = BytesIO(data)
         dataContent = BytesIO()
         i = 20
-            
-        return await self.gattWrite(data)
+        sequence = self.generateSendSequence()
+        postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, False, sequence, data)
+      
+        return await self.gattWrite(postBytes)
         # pkgLengthLimit = i
         # postDataLengthLimit2 = (pkgLengthLimit - 4) - 2
         # if (not checksum):
@@ -238,12 +240,12 @@ class Blufi:
     def getPostBytes(self, type: int,  encrypt: bool, checksum: bool,  requireAck: bool,  hasFrag: bool, sequence: int, data: bytearray) -> bytearray:
         data2 = data
         byteOS = BytesIO()
-        dataLength = (0 if data2 == None  else data2.length)
+        dataLength = (0 if data2 == None else len(data2))
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, requireAck, hasFrag)
-        byteOS.write(str(type).encode())
-        byteOS.write(str(frameCtrl).encode())
-        byteOS.write(str(sequence).encode())
-        byteOS.write(str(dataLength).encode())
+        byteOS.write(type.to_bytes(len(str(type)), 'big'))
+        byteOS.write(frameCtrl.to_bytes(len(str(frameCtrl)), 'big'))
+        byteOS.write(sequence.to_bytes(len(str(sequence)), 'big'))
+        byteOS.write(dataLength.to_bytes(len(str(dataLength)), 'big'))
         checksumBytes = None
         # if (checksum):
         #     byte[] willCheckBytes = {(byte) sequence, (byte) dataLength}
@@ -258,7 +260,7 @@ class Blufi:
         #     data2 = aes.encrypt(data2)
         # }
         if (data2 != None):
-            byteOS.write(data2, 0, data2.length)
+            byteOS.write(data2)
         
         if (checksumBytes != None):
             byteOS.write(checksumBytes[0])

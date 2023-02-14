@@ -4,6 +4,8 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 import codecs
 
 from blufi_impl import Blufi
+from blelibs.notifydata import BlufiNotifyData
+
 
 address = "90:38:0C:6E:EE:9E"
 MODEL_NBR_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
@@ -40,6 +42,7 @@ def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearra
     """Simple notification handler which prints the data received."""
     print(f"Response {characteristic.description}: {data}")
     print(data.decode("utf-8") )
+    # BlufiNotifyData
 
 def slashescape(err):
     """ codecs error handler. err is UnicodeDecode instance. return
@@ -66,6 +69,8 @@ async def main(address, char_uuid_notification):
         print(device)
         print(advertising_data)
         if device.address == '90:38:0C:6E:EE:9E':
+            stop_event.set()
+        if "Luba-" in advertising_data.local_name:
             stop_event.set()
 
     async with BleakScanner(callback) as scanner:
