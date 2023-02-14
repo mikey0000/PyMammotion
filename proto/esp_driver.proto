@@ -4,24 +4,29 @@ syntax = "proto3";
 
 
 message CommEsp {
-
-    message DrvDevInfoReqId {
-        int32 id = 1;
-        int32 type = 2;
-    }
-
-    message DrvDevInfoReq {
-        repeated DrvDevInfoReqId req_ids = 1;
-    }
-
-    message DrvDevInfoResp {
-        repeated DrvDevInfoReqId resp_ids = 1;
-    }
-
+    
     oneof EspSubType {
         DrvDevInfoReq todev_devinfo_req = 11;
         DrvDevInfoResp toapp_devinfo_resp = 12;
     }
+}
 
-    
+message DrvDevInfoReqId {
+        int32 id = 1;
+        int32 type = 2;
+}
+
+message DrvDevInfoRespId {
+    int32 id = 1;
+    int32 type = 2;
+    string info = 3;
+    int32 res = 4;
+}
+
+message DrvDevInfoReq {
+    repeated DrvDevInfoReqId req_ids = 1;
+}
+
+message DrvDevInfoResp {
+    repeated DrvDevInfoRespId resp_ids = 1;
 }

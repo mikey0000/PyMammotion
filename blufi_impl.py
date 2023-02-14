@@ -79,19 +79,13 @@ class Blufi:
         pass
 
 
-    def getDeviceVersionMain(self):
+    async def getDeviceVersionMain(self):
         commEsp = proto.esp_driver_pb2.CommEsp()
         
         
-        infoReqId = commEsp.DrvDevInfoReqId()
-        infoReqId.id = 1
-        infoReqId.type = 6
-        infoReq = commEsp.DrvDevInfoReq()
-        reqIdReq = infoReq.req_ids.add()
-        reqIdReq = [infoReqId]
-        # commEsp.DrvDevInfoReq = infoReq
-        # drvDevInfoReq.addReqIds(drvDevInfoReqId);
-        # EspDriver.DrvDevInfoReq devInfoReq = drvDevInfoReq.build();
+        reqIdReq = commEsp.todev_devinfo_req.req_ids.add()
+        reqIdReq.id = 1
+        reqIdReq.type = 6
         lubaMsg = proto.luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_ESP
         lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
@@ -102,10 +96,9 @@ class Blufi:
         lubaMsg.subtype = 1
         lubaMsg.esp.CopyFrom(commEsp)
         print(lubaMsg)
-        print(commEsp)
         bytes = lubaMsg.SerializeToString()
-        # bytes = lubaMsg.toByteArray();
-        # await self.postCustomDataBytes(bytes)
+        print(bytes)
+        await self.postCustomDataBytes(bytes)
     
 
 
@@ -150,7 +143,6 @@ class Blufi:
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
             print(suc)
-            print(data)
         except Exception as err:
             print(err)
 
@@ -181,7 +173,7 @@ class Blufi:
         return await self.postContainsData(encrypt, checksum, requireAck, type, data)
         
     async def gattWrite(self, data: bytearray) -> bool:
-        chunk_size = self.client.mtu_size - 3
+        chunk_size = self.client.mtu_size - 4
         for chunk in (
             data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
         ):
