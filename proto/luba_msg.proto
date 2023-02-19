@@ -11,17 +11,6 @@ message MsgNull {
 } 
 
 message LubaMsg {
-  
- 
-
-  enum LubaSubMsgCase {
-    LUBASUBMSG_NOT_SET = 0;
-    ESP = 8;
-    SYS = 10;
-    NAV = 11;
-    DRIVER = 12;
-    NULL = 14;
-  }
 
   MsgCmdType msgtype = 1;
   MsgDevice sender = 2;

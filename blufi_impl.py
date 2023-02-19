@@ -5,6 +5,7 @@ from io import BytesIO
 import itertools
 import json
 import queue
+import sys
 import time
 
 from bleak import BleakClient
@@ -326,33 +327,19 @@ class Blufi:
     
 
     def getPostBytes(self, type: int,  encrypt: bool, checksum: bool,  requireAck: bool,  hasFrag: bool, sequence: int, data: bytearray) -> bytearray:
-        data2 = data
+        
         byteOS = BytesIO()
-        dataLength = (0 if data2 == None else len(data2))
+        dataLength = (0 if data == None else len(data))
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, requireAck, hasFrag)
-        byteOS.write(type.to_bytes(len(str(type)), 'big'))
-        byteOS.write(frameCtrl.to_bytes(len(str(frameCtrl)), 'big'))
-        byteOS.write(sequence.to_bytes(len(str(sequence)), 'big'))
-        byteOS.write(dataLength.to_bytes(len(str(dataLength)), 'big'))
-        checksumBytes = None
-        # if (checksum):
-        #     byte[] willCheckBytes = {(byte) sequence, (byte) dataLength}
-        #     crc = BlufiCRC.calcCRC(0, willCheckBytes)
-        #     if (dataLength > 0) {
-        #         crc = BlufiCRC.calcCRC(crc, data2)
-        #     }
-        #     checksumBytes = new byte[]{(byte) (crc & 255), (byte) ((crc >> 8) & 255)}
+        byteOS.write(type.to_bytes(1,sys.byteorder))
+        byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
+        byteOS.write(sequence.to_bytes(1, sys.byteorder))
+        byteOS.write(dataLength.to_bytes(1, sys.byteorder))
         
-        # if (encrypt and data2 != null and data2.length > 0) {
-        #     BlufiAES aes = new BlufiAES(this.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence))
-        #     data2 = aes.encrypt(data2)
-        # }
-        if (data2 != None):
-            byteOS.write(data2)
+        if (data != None):
+            byteOS.write(data)
+
         
-        if (checksumBytes != None):
-            byteOS.write(checksumBytes[0])
-            byteOS.write(checksumBytes[1])
         print(byteOS.getvalue())
         return byteOS.getvalue()
     

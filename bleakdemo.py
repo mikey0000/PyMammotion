@@ -41,13 +41,13 @@ SERVICE_CHANGED_CHARACTERISTIC = "00002A05-0000-1000-8000-00805f9b34fb"
 def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
     """Simple notification handler which prints the data received."""
     print(f"Response {characteristic.description}: {data}")
-    print(data.decode("utf-8") )
+    # print(data.decode("utf-8") )
     # BlufiNotifyData
 
 def notification2_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
     """Simple notification handler which prints the data received."""
     print(f"Response 2 {characteristic.description}: {data}")
-    print(data.decode("utf-8") )
+    # print(data.decode("utf-8") )
     # BlufiNotifyData
 
 def slashescape(err):
@@ -112,11 +112,11 @@ async def main(address, char_uuid_notification):
 
 
 
-            # await blufiClient.transformSpeed(0.0, 0.0)
-            # await blufiClient.transformSpeed(90.0, 100.0)
-
+            await blufiClient.transformSpeed(0.0, 0.0)
+            await blufiClient.transformSpeed(90.0, 100.0)
+            await asyncio.sleep(1)
             # await blufiClient.transformSpeed(0.0, 100.0)
-            # await blufiClient.transformSpeed(0.0, 0.0)
+            await blufiClient.transformSpeed(0.0, 0.0)
  
         except Exception as err:
             print(err)
