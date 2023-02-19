@@ -44,6 +44,12 @@ def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearra
     print(data.decode("utf-8") )
     # BlufiNotifyData
 
+def notification2_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
+    """Simple notification handler which prints the data received."""
+    print(f"Response 2 {characteristic.description}: {data}")
+    print(data.decode("utf-8") )
+    # BlufiNotifyData
+
 def slashescape(err):
     """ codecs error handler. err is UnicodeDecode instance. return
     a tuple with a replacement for the unencodable part of the input
@@ -83,9 +89,9 @@ async def main(address, char_uuid_notification):
     async with BleakClient(address) as client:
 
         print(f"Connected: {client.is_connected}")
-        client._mtu_size = 200
 
         await client.start_notify(char_uuid_notification, notification_handler)
+        await client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, notification2_handler)
         
         # model_number = await client.read_gatt_char(GENERIC_ATTRIBUTE_SERVICE)
         # print("Model Number: {0}".format("".join(map(chr, model_number))))
@@ -95,8 +101,23 @@ async def main(address, char_uuid_notification):
         # await blufiClient.getDeviceInfo()
         try:
             # await blufiClient.getDeviceVersionMain()
-            while(True):
-                await blufiClient.transfromSpeed(90.0, 100.0)
+            # while(True):
+            # await blufiClient.setKnifeHight(35)
+
+            await blufiClient.sendTodevBleSync()
+            #TOAPP_WIFI_IOT_STATUS
+
+            # TOAPP_DEVINFO_RESP
+            # await blufiClient.getDeviceVersionMain()
+
+
+
+            # await blufiClient.transformSpeed(0.0, 0.0)
+            # await blufiClient.transformSpeed(90.0, 100.0)
+
+            # await blufiClient.transformSpeed(0.0, 100.0)
+            # await blufiClient.transformSpeed(0.0, 0.0)
+ 
         except Exception as err:
             print(err)
 

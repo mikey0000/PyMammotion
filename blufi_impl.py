@@ -87,7 +87,6 @@ class Blufi:
     async def getDeviceVersionMain(self):
         commEsp = proto.esp_driver_pb2.CommEsp()
         
-        
         reqIdReq = commEsp.todev_devinfo_req.req_ids.add()
         reqIdReq.id = 1
         reqIdReq.type = 6
@@ -104,7 +103,22 @@ class Blufi:
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
     
-
+    async def sendTodevBleSync(self):
+        commEsp = proto.esp_driver_pb2.CommEsp()
+        
+        commEsp.todev_ble_sync = 1
+        lubaMsg = proto.luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_ESP
+        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = proto.luba_msg_pb2.DEV_COMM_ESP
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.esp.CopyFrom(commEsp)
+        print(lubaMsg)
+        bytes = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(bytes)
+      
 
     async def getDeviceInfo(self):
         await self.postCustomData(Blufi.getJsonString(63))
@@ -137,12 +151,42 @@ class Blufi:
             print(err)
 
 
-    async def transfromSpeed(self, linear: float, angle: float):
+    async def setKnifeHight(self, height: int):
+        mctrlDriver = proto.mctrl_driver_pb2.MctrlDriver()
+        drvKnifeHeight = proto.mctrl_driver_pb2.DrvKnifeHeight()
+        drvKnifeHeight.knifeHeight = height
+        mctrlDriver.todev_knife_hight_set.CopyFrom(drvKnifeHeight)
+
+        lubaMsg = proto.luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
+        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = proto.luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = proto.luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.driver.CopyFrom(mctrlDriver)
+        print(lubaMsg)
+        bytes = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(bytes)
+
+    async def transformSpeed(self, linear: float, percent: float):
             
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, angle)
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
         if (transfrom3 != None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int) (transfrom3[1] * 4.5)
+            
+            await self.sendMovement(linearSpeed, angularSpeed)
+
+    async def transformBothSpeeds(self, linear: float, angular: float, percent: float):
+            
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
+        transform4 = RockerControlUtil.getInstance().transfrom3(angular, percent)
+        if (transfrom3 != None and len(transfrom3) > 0):
+            linearSpeed = transfrom3[0] * 10
+            angularSpeed = (int) (transform4[1] * 4.5)
+            
             await self.sendMovement(linearSpeed, angularSpeed)
     
 
@@ -182,7 +226,6 @@ class Blufi:
         lubaMsg.driver.CopyFrom(mctrlDriver)
         print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
-        print(bytes)
         await self.postCustomDataBytes(bytes)
   
         
@@ -249,20 +292,21 @@ class Blufi:
         # sequence = self.generateSendSequence()
         # postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, False, sequence, data)
         # await self.gattWrite(postBytes)
-        chunk_size = self.client.mtu_size - 3
-        print(len(data))
+        chunk_size = 200 -3  #self.client.mtu_size - 3
+
         chunks = list()
         for i in range(0, len(data), chunk_size):
             if(i + chunk_size > len(data)):
                 chunks.append(data[i: len(data)])
             else:
                 chunks.append(data[i : i + chunk_size])
-        print(chunks)
+    
         for index, chunk in enumerate(chunks):
             print("entered for loop")
             # frag = i < len(data)
             frag = index != len(chunks)-1
             sequence = self.generateSendSequence()
+            print(sequence)
             postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, frag, sequence, chunk)
             
             posted = await self.gattWrite(postBytes)
@@ -273,10 +317,10 @@ class Blufi:
                 print("not frag")
                 return not requireAck or self.receiveAck(sequence)
                 
-            if (requireAck and not self.receiveAck(sequence)):
-                return False
-            else:
-                await sleep(0.01)
+            # if (requireAck and not self.receiveAck(sequence)):
+            #     return False
+            # else:
+            await sleep(0.01)
 
         
     
