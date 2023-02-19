@@ -246,28 +246,37 @@ class Blufi:
 
 
     async def postContainsData(self, encrypt: bool,  checksum: bool,  requireAck: bool,  type: int, data: bytearray) -> bool:
-        
-        chunk_size = self.client.mtu_size - 4
-        for chunk, i in (
-            data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
-        ):
-            print(i)
-            print(len(data))
-            frag = i < len(data)
+        # sequence = self.generateSendSequence()
+        # postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, False, sequence, data)
+        # await self.gattWrite(postBytes)
+        chunk_size = self.client.mtu_size - 3
+        print(len(data))
+        chunks = list()
+        for i in range(0, len(data), chunk_size):
+            if(i + chunk_size > len(data)):
+                chunks.append(data[i: len(data)])
+            else:
+                chunks.append(data[i : i + chunk_size])
+        print(chunks)
+        for index, chunk in enumerate(chunks):
+            print("entered for loop")
+            # frag = i < len(data)
+            frag = index != len(chunks)-1
             sequence = self.generateSendSequence()
             postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, frag, sequence, chunk)
             
             posted = await self.gattWrite(postBytes)
-            if (not posted):
+            if (posted != None):
                 return False
             
             if (not frag):
+                print("not frag")
                 return not requireAck or self.receiveAck(sequence)
                 
             if (requireAck and not self.receiveAck(sequence)):
                 return False
-
-        await sleep(10)
+            else:
+                await sleep(0.01)
 
         
     
