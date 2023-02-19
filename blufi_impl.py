@@ -8,10 +8,15 @@ import queue
 import time
 
 from bleak import BleakClient
+from jsonic import serialize
 
 from blelibs.framectrldata import FrameCtrlData
 import proto.esp_driver_pb2
 import proto.luba_msg_pb2
+import proto.mctrl_driver_pb2
+
+from blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
+from utility.rocker_util import RockerControlUtil
 
 
 address = "90:38:0C:6E:EE:9E"
@@ -97,7 +102,6 @@ class Blufi:
         lubaMsg.esp.CopyFrom(commEsp)
         print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
-        print(bytes)
         await self.postCustomDataBytes(bytes)
     
 
@@ -131,6 +135,61 @@ class Blufi:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
             print(err)
+
+
+    async def transfromSpeed(self, linear: float, angle: float):
+            
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, angle)
+        if (transfrom3 != None and len(transfrom3) > 0):
+            linearSpeed = transfrom3[0] * 10
+            angularSpeed = (int) (transfrom3[1] * 4.5)
+            await self.sendMovement(linearSpeed, angularSpeed)
+    
+
+    
+    # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
+    #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
+    #         if (transfrom3 != null && transfrom3.size() > 0):
+    #             if (z):
+    #                 this.linearSpeed = transfrom3.get(0).intValue() * 10
+    #             else
+    #                 this.angularSpeed = (int) (transfrom3.get(1).intValue() * 4.5d)
+                
+            
+    #         if (this.countDownTask == null):
+    #             testSendControl()
+    
+
+
+
+    async def sendMovement(self, linearSpeed: int, angularSpeed: int):
+        mctrlDriver = proto.mctrl_driver_pb2.MctrlDriver()
+        
+        drvMotionCtrl = proto.mctrl_driver_pb2.DrvMotionCtrl()
+        drvMotionCtrl.setLinearSpeed = linearSpeed
+        drvMotionCtrl.setAngularSpeed = angularSpeed
+        mctrlDriver.todev_devmotion_ctrl.CopyFrom(drvMotionCtrl)
+        lubaMsg = proto.luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
+        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = proto.luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = proto.luba_msg_pb2.MSG_ATTR_NONE
+        lubaMsg.timestamp = self.current_milli_time()
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        
+        lubaMsg.driver.CopyFrom(mctrlDriver)
+        print(lubaMsg)
+        bytes = lubaMsg.SerializeToString()
+        print(bytes)
+        await self.postCustomDataBytes(bytes)
+  
+        
+
+    async def sendBorderPackage(self, executeBorder: ExecuteBorder):
+        await self.postCustomData(serialize(executeBorder))
+    
         
 
 
@@ -173,11 +232,11 @@ class Blufi:
         return await self.postContainsData(encrypt, checksum, requireAck, type, data)
         
     async def gattWrite(self, data: bytearray) -> bool:
-        chunk_size = self.client.mtu_size - 4
-        for chunk in (
-            data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
-        ):
-            await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, chunk, True)
+        # chunk_size = self.client.mtu_size - 4
+        # for chunk in (
+        #     data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
+        # ):
+        await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
     async def postNonData(self, encrypt: bool, checksum: bool, requireAck: bool, type: int) -> bool:
         sequence = self.generateSendSequence()
@@ -187,53 +246,29 @@ class Blufi:
 
 
     async def postContainsData(self, encrypt: bool,  checksum: bool,  requireAck: bool,  type: int, data: bytearray) -> bool:
-        dataIS = BytesIO(data)
-        dataContent = BytesIO()
-        i = 20
-        sequence = self.generateSendSequence()
-        postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, False, sequence, data)
-      
-        return await self.gattWrite(postBytes)
-        # pkgLengthLimit = i
-        # postDataLengthLimit2 = (pkgLengthLimit - 4) - 2
-        # if (not checksum):
-        #     postDataLengthLimit = postDataLengthLimit2
-        # else:
-        #     postDataLengthLimit = postDataLengthLimit2 - 2
         
-        # dataBuf = bytearray([postDataLengthLimit])
-        # while (True):
-        #     read = dataIS.read(dataBuf, 0, dataBuf.length)
-        #     if (read == -1):
-        #         return True
+        chunk_size = self.client.mtu_size - 4
+        for chunk, i in (
+            data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
+        ):
+            print(i)
+            print(len(data))
+            frag = i < len(data)
+            sequence = self.generateSendSequence()
+            postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, frag, sequence, chunk)
             
-        #     dataContent.write(dataBuf, 0, read)
-        #     if (dataIS.available() > 0 and dataIS.available() <= 2):
-        #         dataContent.write(dataBuf, 0, dataIS.read(dataBuf, 0, dataIS.available()))
+            posted = await self.gattWrite(postBytes)
+            if (not posted):
+                return False
             
-        #     frag = dataIS.available() > 0
-        #     sequence = self.generateSendSequence()
-        #     if (frag):
-        #         totalLen = dataContent.size() + dataIS.available()
-        #         tempData = dataContent.toByteArray()
-        #         dataContent.reset()
-        #         dataContent.write(totalLen & 255)
-        #         dataContent.write((totalLen >> 8) & 255)
-        #         dataContent.write(tempData, 0, tempData.length)
-            
-        #     postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, frag, sequence, dataContent.toByteArray())
-        #     dataContent.reset()
-        #     posted = await self.gattWrite(postBytes)
-        #     if (not posted):
-        #         return False
-            
-        #     if (not frag):
-        #         return not requireAck or self.receiveAck(sequence)
+            if (not frag):
+                return not requireAck or self.receiveAck(sequence)
                 
-        #     if (requireAck and not self.receiveAck(sequence)):
-        #         return False
-            
+            if (requireAck and not self.receiveAck(sequence)):
+                return False
+
         await sleep(10)
+
         
     
 
@@ -292,5 +327,9 @@ class Blufi:
         except Exception as err:
             
             return ""
+
+
+    def current_milli_time(self):
+        return round(time.time() * 1000)
         
     

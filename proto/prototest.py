@@ -23,4 +23,3 @@ lubaMsg.subtype = 1
 lubaMsg.esp.CopyFrom(commEsp)
 print(lubaMsg)
 bytes = lubaMsg.SerializeToString()
-print(str(bytes, 'utf-8'))

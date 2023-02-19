@@ -4,11 +4,26 @@ syntax = "proto3";
 
 
 message CommEsp {
+
+    int32 todev_ble_sync = 1;
+    int32 todev_ConfType = 2;
+    bool toapp_wifi_iot_status = 14;
+
     
     oneof EspSubType {
         DrvDevInfoReq todev_devinfo_req = 11;
         DrvDevInfoResp toapp_devinfo_resp = 12;
+        DrvListUpload toapp_ListUpload = 8;
+        
     }
+}
+
+message DrvListUpload {
+    int32 current = 2;
+    int32 sum = 1;
+    int32 rssi = 5;
+    int32 status = 3;
+    string memssid = 4;
 }
 
 message DrvDevInfoReqId {

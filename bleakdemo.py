@@ -94,7 +94,8 @@ async def main(address, char_uuid_notification):
         # await blufiClient.requestDeviceStatus()
         # await blufiClient.getDeviceInfo()
         try:
-            await blufiClient.getDeviceVersionMain()
+            # await blufiClient.getDeviceVersionMain()
+            await blufiClient.transfromSpeed(90.0, 100.0)
         except Exception as err:
             print(err)
 

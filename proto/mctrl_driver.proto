@@ -5,10 +5,35 @@ syntax = "proto3";
 
 message MctrlDriver {
 
-    message DrvMotionCtrl {
-        int32 SETANGULARSPEED_FIELD_NUMBER = 2;
-        int32 SETLINEARSPEED_FIELD_NUMBER = 1;
+
+    oneof SubDrvMsg {
+
+        DrvMotionCtrl todev_devmotion_ctrl = 1;
+        DrvKnifeHeight todev_knife_hight_set = 2;
+        DrvSrSpeed bidire_speed_read_set = 3;
+        DrvKnifeHeight bidire_knife_hight_report = 4;
+
+        DrvKnifeStatus toapp_knife_status = 5;
     }
 
+}
 
+
+message DrvMotionCtrl {
+    int32 setAngularSpeed = 2;
+    int32 setLinearSpeed = 1;
+}
+
+
+message DrvKnifeHeight {
+    int32 knifeHeight = 1;
+}
+
+message DrvSrSpeed {
+    int32 rw = 1;
+    float speed = 2;
+}
+
+message DrvKnifeStatus {
+    int32 knife_status = 1;
 }

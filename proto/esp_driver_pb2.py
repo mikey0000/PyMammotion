@@ -13,21 +13,23 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x65sp_driver.proto\"s\n\x07\x43ommEsp\x12+\n\x11todev_devinfo_req\x18\x0b \x01(\x0b\x32\x0e.DrvDevInfoReqH\x00\x12-\n\x12toapp_devinfo_resp\x18\x0c \x01(\x0b\x32\x0f.DrvDevInfoRespH\x00\x42\x0c\n\nEspSubType\"+\n\x0f\x44rvDevInfoReqId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\"G\n\x10\x44rvDevInfoRespId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\x12\x0c\n\x04info\x18\x03 \x01(\t\x12\x0b\n\x03res\x18\x04 \x01(\x05\"2\n\rDrvDevInfoReq\x12!\n\x07req_ids\x18\x01 \x03(\x0b\x32\x10.DrvDevInfoReqId\"5\n\x0e\x44rvDevInfoResp\x12#\n\x08resp_ids\x18\x01 \x03(\x0b\x32\x11.DrvDevInfoRespIdb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x65sp_driver.proto\"\xee\x01\n\x07\x43ommEsp\x12\x16\n\x0etodev_ble_sync\x18\x01 \x01(\x05\x12\x16\n\x0etodev_ConfType\x18\x02 \x01(\x05\x12\x1d\n\x15toapp_wifi_iot_status\x18\x0e \x01(\x08\x12+\n\x11todev_devinfo_req\x18\x0b \x01(\x0b\x32\x0e.DrvDevInfoReqH\x00\x12-\n\x12toapp_devinfo_resp\x18\x0c \x01(\x0b\x32\x0f.DrvDevInfoRespH\x00\x12*\n\x10toapp_ListUpload\x18\x08 \x01(\x0b\x32\x0e.DrvListUploadH\x00\x42\x0c\n\nEspSubType\"\\\n\rDrvListUpload\x12\x0f\n\x07\x63urrent\x18\x02 \x01(\x05\x12\x0b\n\x03sum\x18\x01 \x01(\x05\x12\x0c\n\x04rssi\x18\x05 \x01(\x05\x12\x0e\n\x06status\x18\x03 \x01(\x05\x12\x0f\n\x07memssid\x18\x04 \x01(\t\"+\n\x0f\x44rvDevInfoReqId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\"G\n\x10\x44rvDevInfoRespId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\x12\x0c\n\x04info\x18\x03 \x01(\t\x12\x0b\n\x03res\x18\x04 \x01(\x05\"2\n\rDrvDevInfoReq\x12!\n\x07req_ids\x18\x01 \x03(\x0b\x32\x10.DrvDevInfoReqId\"5\n\x0e\x44rvDevInfoResp\x12#\n\x08resp_ids\x18\x01 \x03(\x0b\x32\x11.DrvDevInfoRespIdb\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'esp_driver_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _COMMESP._serialized_start=20
-  _COMMESP._serialized_end=135
-  _DRVDEVINFOREQID._serialized_start=137
-  _DRVDEVINFOREQID._serialized_end=180
-  _DRVDEVINFORESPID._serialized_start=182
-  _DRVDEVINFORESPID._serialized_end=253
-  _DRVDEVINFOREQ._serialized_start=255
-  _DRVDEVINFOREQ._serialized_end=305
-  _DRVDEVINFORESP._serialized_start=307
-  _DRVDEVINFORESP._serialized_end=360
+  _COMMESP._serialized_start=21
+  _COMMESP._serialized_end=259
+  _DRVLISTUPLOAD._serialized_start=261
+  _DRVLISTUPLOAD._serialized_end=353
+  _DRVDEVINFOREQID._serialized_start=355
+  _DRVDEVINFOREQID._serialized_end=398
+  _DRVDEVINFORESPID._serialized_start=400
+  _DRVDEVINFORESPID._serialized_end=471
+  _DRVDEVINFOREQ._serialized_start=473
+  _DRVDEVINFOREQ._serialized_end=523
+  _DRVDEVINFORESP._serialized_start=525
+  _DRVDEVINFORESP._serialized_end=578
 # @@protoc_insertion_point(module_scope)
