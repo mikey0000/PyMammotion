@@ -18,7 +18,8 @@ requires-python = ">=3.10.0"
 dependencies    = [
         "bleak",
         "protobuf",
-        "jsonic"
+        "jsonic",
+        "pyjoystick"
     ]
 
 [tool.bumpver]
