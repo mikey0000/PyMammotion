@@ -5,4 +5,13 @@ syntax = "proto3";
 
 message MctlSys {
     
+
+    oneof subSysMsg {
+        SysKnifeControl todev_knife_ctrl = 22;
+    }
+}
+
+message SysKnifeControl {
+    int32 knifeStatus = 1;
+    int32 knifeHeight = 2;
 }

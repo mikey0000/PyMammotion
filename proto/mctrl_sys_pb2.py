@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0fmctrl_sys.proto\"\t\n\x07MctlSysb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0fmctrl_sys.proto\"D\n\x07MctlSys\x12,\n\x10todev_knife_ctrl\x18\x16 \x01(\x0b\x32\x10.SysKnifeControlH\x00\x42\x0b\n\tsubSysMsg\";\n\x0fSysKnifeControl\x12\x13\n\x0bknifeStatus\x18\x01 \x01(\x05\x12\x13\n\x0bknifeHeight\x18\x02 \x01(\x05\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'mctrl_sys_pb2', globals())
@@ -21,5 +21,7 @@ if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
   _MCTLSYS._serialized_start=19
-  _MCTLSYS._serialized_end=28
+  _MCTLSYS._serialized_end=87
+  _SYSKNIFECONTROL._serialized_start=89
+  _SYSKNIFECONTROL._serialized_end=148
 # @@protoc_insertion_point(module_scope)

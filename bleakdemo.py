@@ -104,6 +104,7 @@ async def main(address, char_uuid_notification):
             # while(True):
             # await blufiClient.setKnifeHight(35)
 
+# pretty sure this sends back all boundaries etc
             await blufiClient.sendTodevBleSync()
             #TOAPP_WIFI_IOT_STATUS
 
@@ -111,12 +112,15 @@ async def main(address, char_uuid_notification):
             # await blufiClient.getDeviceVersionMain()
 
 
-
             await blufiClient.transformSpeed(0.0, 0.0)
             await blufiClient.transformSpeed(90.0, 100.0)
             await asyncio.sleep(1)
             # await blufiClient.transformSpeed(0.0, 100.0)
             await blufiClient.transformSpeed(0.0, 0.0)
+            await blufiClient.setKnifeControl(1)
+
+            # await blufiClient.setKnifeControl(0)
+
  
         except Exception as err:
             print(err)

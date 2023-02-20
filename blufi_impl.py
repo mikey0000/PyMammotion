@@ -171,6 +171,25 @@ class Blufi:
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
+    async def setKnifeControl(self, onOff: int):
+        mctlsys = proto.mctrl_sys_pb2.MctlSys()
+        sysKnifeControl = proto.mctrl_sys_pb2.SysKnifeControl()
+        sysKnifeControl.knifeStatus = onOff
+        mctlsys.todev_knife_ctrl.CopyFrom(sysKnifeControl)
+
+        lubaMsg = proto.luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
+        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = proto.luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = proto.luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.sys.CopyFrom(mctlsys)
+        print(lubaMsg)
+        bytes = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(bytes)
+
     async def transformSpeed(self, linear: float, percent: float):
             
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
@@ -307,7 +326,6 @@ class Blufi:
             # frag = i < len(data)
             frag = index != len(chunks)-1
             sequence = self.generateSendSequence()
-            print(sequence)
             postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, frag, sequence, chunk)
             
             posted = await self.gattWrite(postBytes)
