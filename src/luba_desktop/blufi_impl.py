@@ -19,8 +19,6 @@ import proto.mctrl_driver_pb2
 from blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
 from utility.rocker_util import RockerControlUtil
 
-
-address = "90:38:0C:6E:EE:9E"
 MODEL_NBR_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
 
 UART_SERVICE_UUID = "0000ffff-0000-1000-8000-00805f9b34fb"
@@ -295,10 +293,6 @@ class Blufi:
         return await self.postContainsData(encrypt, checksum, requireAck, type, data)
         
     async def gattWrite(self, data: bytearray) -> bool:
-        # chunk_size = self.client.mtu_size - 4
-        # for chunk in (
-        #     data[i : i + chunk_size] for i in range(0, len(data), chunk_size)
-        # ):
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
     async def postNonData(self, encrypt: bool, checksum: bool, requireAck: bool, type: int) -> bool:
@@ -309,9 +303,6 @@ class Blufi:
 
 
     async def postContainsData(self, encrypt: bool,  checksum: bool,  requireAck: bool,  type: int, data: bytearray) -> bool:
-        # sequence = self.generateSendSequence()
-        # postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, False, sequence, data)
-        # await self.gattWrite(postBytes)
         chunk_size = 200 -3  #self.client.mtu_size - 3
 
         chunks = list()
@@ -336,7 +327,7 @@ class Blufi:
                 print("not frag")
                 return not requireAck or self.receiveAck(sequence)
                 
-            # if (requireAck and not self.receiveAck(sequence)):
+            # if (requireAck and not self.receiveAck(sequence)): TODO: 
             #     return False
             # else:
             await sleep(0.01)
