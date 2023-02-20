@@ -1,7 +1,6 @@
 import asyncio
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
-import codecs
 
 from blufi_impl import Blufi
 from blelibs.notifydata import BlufiNotifyData
