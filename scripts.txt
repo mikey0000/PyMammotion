@@ -1,0 +1,11 @@
+# bump version
+./bin/bumpver update --patch
+
+# build
+./bin/python3 -m build
+
+#test install 
+./bin/pip install --editable .
+
+#dev deps
+pip-tools build

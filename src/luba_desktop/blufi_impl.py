@@ -11,13 +11,11 @@ import time
 from bleak import BleakClient
 from jsonic import serialize
 
-from blelibs.framectrldata import FrameCtrlData
-import proto.esp_driver_pb2
-import proto.luba_msg_pb2
-import proto.mctrl_driver_pb2
+from luba_desktop.blelibs.framectrldata import FrameCtrlData
+from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2
 
-from blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
-from utility.rocker_util import RockerControlUtil
+from luba_desktop.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
+from luba_desktop.utility.rocker_util import RockerControlUtil
 
 MODEL_NBR_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
 
@@ -84,16 +82,16 @@ class Blufi:
 
 
     async def getDeviceVersionMain(self):
-        commEsp = proto.esp_driver_pb2.CommEsp()
+        commEsp = esp_driver_pb2.CommEsp()
         
         reqIdReq = commEsp.todev_devinfo_req.req_ids.add()
         reqIdReq.id = 1
         reqIdReq.type = 6
-        lubaMsg = proto.luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_ESP
-        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = proto.luba_msg_pb2.DEV_COMM_ESP
-        lubaMsg.msgattr = proto.luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_COMM_ESP
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
@@ -103,13 +101,13 @@ class Blufi:
         await self.postCustomDataBytes(bytes)
     
     async def sendTodevBleSync(self):
-        commEsp = proto.esp_driver_pb2.CommEsp()
+        commEsp = esp_driver_pb2.CommEsp()
         
         commEsp.todev_ble_sync = 1
-        lubaMsg = proto.luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_ESP
-        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = proto.luba_msg_pb2.DEV_COMM_ESP
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_COMM_ESP
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
@@ -151,16 +149,16 @@ class Blufi:
 
 
     async def setKnifeHight(self, height: int):
-        mctrlDriver = proto.mctrl_driver_pb2.MctrlDriver()
-        drvKnifeHeight = proto.mctrl_driver_pb2.DrvKnifeHeight()
+        mctrlDriver = mctrl_driver_pb2.MctrlDriver()
+        drvKnifeHeight = mctrl_driver_pb2.DrvKnifeHeight()
         drvKnifeHeight.knifeHeight = height
         mctrlDriver.todev_knife_hight_set.CopyFrom(drvKnifeHeight)
 
-        lubaMsg = proto.luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = proto.luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = proto.luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
@@ -170,16 +168,16 @@ class Blufi:
         await self.postCustomDataBytes(bytes)
 
     async def setKnifeControl(self, onOff: int):
-        mctlsys = proto.mctrl_sys_pb2.MctlSys()
-        sysKnifeControl = proto.mctrl_sys_pb2.SysKnifeControl()
+        mctlsys = mctrl_sys_pb2.MctlSys()
+        sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
         sysKnifeControl.knifeStatus = onOff
         mctlsys.todev_knife_ctrl.CopyFrom(sysKnifeControl)
 
-        lubaMsg = proto.luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = proto.luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = proto.luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
@@ -197,14 +195,20 @@ class Blufi:
             
             await self.sendMovement(linearSpeed, angularSpeed)
 
-    async def transformBothSpeeds(self, linear: float, angular: float, percent: float):
+    async def transformBothSpeeds(self, linear: float, angular: float, linearPercent: float, angularPercent: float):
             
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
-        transform4 = RockerControlUtil.getInstance().transfrom3(angular, percent)
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
+        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angularPercent)
+        print("angular")
+        print(angular, angularPercent)
+        print("linear")
+        print(linear, linearPercent)
+        print(transfrom3)
+        print(transform4)
         if (transfrom3 != None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int) (transform4[1] * 4.5)
-            
+            print(linearSpeed, angularSpeed)
             await self.sendMovement(linearSpeed, angularSpeed)
     
 
@@ -225,17 +229,17 @@ class Blufi:
 
 
     async def sendMovement(self, linearSpeed: int, angularSpeed: int):
-        mctrlDriver = proto.mctrl_driver_pb2.MctrlDriver()
+        mctrlDriver = mctrl_driver_pb2.MctrlDriver()
         
-        drvMotionCtrl = proto.mctrl_driver_pb2.DrvMotionCtrl()
+        drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
         drvMotionCtrl.setLinearSpeed = linearSpeed
         drvMotionCtrl.setAngularSpeed = angularSpeed
         mctrlDriver.todev_devmotion_ctrl.CopyFrom(drvMotionCtrl)
-        lubaMsg = proto.luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = proto.luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = proto.luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = proto.luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = proto.luba_msg_pb2.MSG_ATTR_NONE
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_NONE
         lubaMsg.timestamp = self.current_milli_time()
         lubaMsg.seqs = 1
         lubaMsg.version = 1

@@ -10,9 +10,11 @@ bleak==0.19.5
     # via luba-desktop (pyproject.toml)
 dbus-fast==1.84.1
     # via bleak
-jsonic==1.0.0
+nest-asyncio==1.5.6
     # via luba-desktop (pyproject.toml)
 protobuf==4.22.0
+    # via luba-desktop (pyproject.toml)
+py-jsonic==0.0.2
     # via luba-desktop (pyproject.toml)
 pyjoystick==1.2.4
     # via luba-desktop (pyproject.toml)
@@ -20,5 +22,3 @@ pysdl2==0.9.15
     # via pyjoystick
 resource-man==2.2.8
     # via pyjoystick
-six==1.16.0
-    # via jsonic
