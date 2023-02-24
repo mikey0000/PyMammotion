@@ -4,5 +4,5 @@
 __version__ = "0.0.1"
 
 from luba_desktop.bleakdemo import (
-    BleLubaConnection, controller
+    BleLubaConnection, JoystickControl
 )

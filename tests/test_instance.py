@@ -1,7 +1,7 @@
 import asyncio
 import sys
 from luba_desktop import BleLubaConnection
-from luba_desktop.bleakdemo import controller
+from luba_desktop.bleakdemo import JoystickControl
 from luba_desktop.blufi_impl import Blufi
 from luba_desktop.utility.event import Event
 
@@ -25,7 +25,7 @@ async def run():
     await bleLubaConn.notifications()
     client = bleLubaConn.getClient()
     blufiClient = Blufi(client)
-    await controller(blufiClient, moveEvt)
+    await JoystickControl().controller(blufiClient, moveEvt)
 	#await main(address, UUID_NOTIFICATION_CHARACTERISTIC,moveEvt)
 
 

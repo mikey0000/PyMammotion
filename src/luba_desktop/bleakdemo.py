@@ -10,6 +10,7 @@ from luba_desktop.blufi_impl import Blufi
 from luba_desktop.blelibs.notifydata import BlufiNotifyData
 
 import nest_asyncio
+
 nest_asyncio.apply()
 
 address = "90:38:0C:6E:EE:9E"
@@ -49,30 +50,32 @@ def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearra
     # print(data.decode("utf-8") )
     # BlufiNotifyData
 
+
 def notification2_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
     """Simple notification handler which prints the data received."""
     print(f"Response 2 {characteristic.description}: {data}")
     # print(data.decode("utf-8") )
     # BlufiNotifyData
 
+
 def slashescape(err):
-    """ codecs error handler. err is UnicodeDecode instance. return
+    """codecs error handler. err is UnicodeDecode instance. return
     a tuple with a replacement for the unencodable part of the input
     and a position where encoding should continue"""
-    #print err, dir(err), err.start, err.end, err.object[:err.start]
-    thebyte = err.object[err.start:err.end]
-    repl = u'\\x'+hex(ord(thebyte))[2:]
+    # print err, dir(err), err.start, err.end, err.object[:err.start]
+    thebyte = err.object[err.start : err.end]
+    repl = "\\x" + hex(ord(thebyte))[2:]
     return (repl, err.end)
 
-codecs.register_error('slashescape', slashescape)
+
+codecs.register_error("slashescape", slashescape)
 
 
-class BleLubaConnection():
+class BleLubaConnection:
     client: BleakClient
 
     def __init__(self):
         pass
-
 
     async def scanForLubaAndConnect(self):
         scanner = BleakScanner()
@@ -81,7 +84,7 @@ class BleLubaConnection():
             # TODO: do something with incoming data
             print(device)
             print(advertising_data)
-            if device.address == '90:38:0C:6E:EE:9E':
+            if device.address == "90:38:0C:6E:EE:9E":
                 return True
             if "Luba-" in advertising_data.local_name:
                 return True
@@ -89,16 +92,19 @@ class BleLubaConnection():
 
         device = await scanner.find_device_by_filter(scanCallback)
 
-
         self.client = BleakClient(device.address)
         try:
             await self.client.connect()
-        except Exception as e:
-            print(e)
+        except Exception as err:
+            print(err)
 
     async def notifications(self):
-        await self.client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, notification_handler)
-        await self.client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, notification2_handler)
+        await self.client.start_notify(
+            UUID_NOTIFICATION_CHARACTERISTIC, notification_handler
+        )
+        await self.client.start_notify(
+            SERVICE_CHANGED_CHARACTERISTIC, notification2_handler
+        )
 
     def getClient(self):
         return self.client
@@ -135,7 +141,7 @@ class BleLubaConnection():
 
 #         await client.start_notify(char_uuid_notification, notification_handler)
 #         await client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, notification2_handler)
-        
+
 #         # model_number = await client.read_gatt_char(GENERIC_ATTRIBUTE_SERVICE)
 #         # print("Model Number: {0}".format("".join(map(chr, model_number))))
 #         print(f"Connected: {client.is_connected}")
@@ -166,87 +172,81 @@ class BleLubaConnection():
 
 #             # await blufiClient.setKnifeControl(0)
 
-             
+
 #         except Exception as err:
 #             print(err)
 
 #         await asyncio.sleep(5.0)
 #         await client.stop_notify(char_uuid_notification)
 
+class JoystickControl:
+    """ Joystick class for controlling Luba with a joystick """
+    angular_percent = 0
+    linear_percent = 0
+    linear_speed = 0
+    angular_speed = 0
 
-async def controller(client: Blufi, moveEvt):
-    loop = asyncio.get_running_loop()
-    fut = loop.create_future()
-    
+    def __init__(self):
+        pass
 
-    def print_add(joy):
-        print('Added', joy)
+    async def controller(self, client: Blufi, moveEvt):
+        def print_add(joy):
+            print("Added", joy)
 
-    def print_remove(joy):
-        print('Removed', joy)
+        def print_remove(joy):
+            print("Removed", joy)
 
-    def key_received(key):
-        # case R.id.iv_rocker_botton /* 2131296681 */:
-        #     transfromSpeed(270.0f, 100.0f);
-        #     break;
-        # case R.id.iv_rocker_left /* 2131296682 */:
-        #     transfromSpeed(180.0f, 100.0f);
-        #     break;
-        # case R.id.iv_rocker_right /* 2131296683 */:
-        #     transfromSpeed(0.0f, 100.0f);
-        #     break;
-        # case R.id.iv_rocker_top /* 2131296684 */:
-        #     transfromSpeed(90.0f, 100.0f);
+        def key_received(key):
+            if key.keytype is Key.AXIS:
+                if key.value > 0.2 or key.value < -0.2:
+                    print(key, "-", key.keytype, "-", key.number, "-", key.value)
 
-        angularPercent = 0
-        linearPercent = 0
-        linearSpeed = 0
-        angularSpeed = 0
-        if(key.keytype is Key.AXIS):
-            if(key.value > 0.2 or key.value < -0.2):
-                print(key, '-', key.keytype, '-', key.number, '-', key.value)
+                    match key.number:
+                        case 1:  # left (up down)
+                            # take left right values and convert to linear movement
+                            # -1 is forward
+                            # 1 is back
 
-                match key.number:
-                    case 0: #left (left right)
-                        pass
-                    case 1: #left (up down)
-                        #take left right values and convert to linear movement 
-                        # -1 is forward
-                        # 1 is back
-                        
-                        # linearSpeed==1000
-                        # linearSpeed==-1000
-                        print("case 1")
-                        if(key.value > 0):
-                            linearSpeed = 270.0
-                            linearPercent = abs(key.value*100)
-                        else:
-                            linearSpeed = 90.0
-                            linearPercent = abs(key.value*100)
-                        
-                    case 2: # right  (left right)
-                        #take left right values and convert to angular movement 
-                        # -1 left
-                        # 1 is right
-                        # angularSpeed==-450
-                        # angularSpeed==450
-                        if(key.value > 0):
-                            angularSpeed = 360.0
-                            angularPercent = abs(key.value*100)
-                        else:
-                            # angle=180.0
-                            # linearSpeed=0//angularSpeed=-450
-                            angularSpeed = 180.0
-                            angularPercent = abs(key.value*100)
-                        
-                        
-                        pass
-                    case 3: #right (up down)
-                        pass
-                
-                asyncio.run(client.transformBothSpeeds(linearSpeed, angularSpeed, linearPercent, angularPercent))
-                # loop = asyncio.get_event_loop()
-                # loop.run_until_complete(client.transformBothSpeeds(angularSpeed, linearSpeed, angularPercent, linearPercent))
-                # await client.transformBothSpeeds(angularSpeed, linearSpeed, angularPercent, linearPercent)
+                            # linear_speed==1000
+                            # linear_speed==-1000
+                            print("case 1")
+                            if key.value > 0:
+                                self.linear_speed = 270.0
+                                self.linear_percent = abs(key.value * 100)
+                            else:
+                                self.linear_speed = 90.0
+                                self.linear_percent = abs(key.value * 100)
 
-    run_event_loop(print_add, print_remove, key_received)
+                        case 2:  # right  (left right)
+                            # take left right values and convert to angular movement
+                            # -1 left
+                            # 1 is right
+                            # angular_speed==-450
+                            # angular_speed==450
+                            if key.value > 0:
+                                self.angular_speed = 360.0
+                                self.angular_percent = abs(key.value * 100)
+                            else:
+                                # angle=180.0
+                                # linear_speed=0//angular_speed=-450
+                                self.angular_speed = 180.0
+                                self.angular_percent = abs(key.value * 100)
+
+                    asyncio.run(
+                        client.transformBothSpeeds(
+                            self.linear_speed,
+                            self.angular_speed,
+                            self.linear_percent,
+                            self.angular_percent,
+                        )
+                    )
+                else:
+                    match key.number:
+                        case 1:  # left (up down)
+                            self.linear_speed = 0.0
+                            self.linear_percent = 0
+                        case 2:  # right  (left right)
+                            self.angular_speed = 0.0
+                            self.angular_percent = 0
+                            
+        run_event_loop(print_add, print_remove, key_received)
