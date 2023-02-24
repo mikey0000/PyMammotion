@@ -177,6 +177,7 @@ class BleLubaConnection():
 async def controller(client: Blufi, moveEvt):
     loop = asyncio.get_running_loop()
     fut = loop.create_future()
+    
 
     def print_add(joy):
         print('Added', joy)
@@ -217,24 +218,33 @@ async def controller(client: Blufi, moveEvt):
                         # linearSpeed==-1000
                         print("case 1")
                         if(key.value > 0):
-                            linearSpeed = 0
+                            linearSpeed = 270.0
+                            linearPercent = abs(key.value*100)
                         else:
-                            linearSpeed = 180
+                            linearSpeed = 90.0
+                            linearPercent = abs(key.value*100)
                         
-                        linearPercent =  abs(key.value*100)
-                        angularPercent = abs(key.value*100)
-                        angularSpeed = 90
                     case 2: # right  (left right)
                         #take left right values and convert to angular movement 
                         # -1 left
                         # 1 is right
                         # angularSpeed==-450
                         # angularSpeed==450
+                        if(key.value > 0):
+                            angularSpeed = 360.0
+                            angularPercent = abs(key.value*100)
+                        else:
+                            # angle=180.0
+                            # linearSpeed=0//angularSpeed=-450
+                            angularSpeed = 180.0
+                            angularPercent = abs(key.value*100)
+                        
+                        
                         pass
                     case 3: #right (up down)
                         pass
                 
-                asyncio.run(client.transformBothSpeeds(linearSpeed, angularSpeed, linearPercent, angularPercent ))
+                asyncio.run(client.transformBothSpeeds(linearSpeed, angularSpeed, linearPercent, angularPercent))
                 # loop = asyncio.get_event_loop()
                 # loop.run_until_complete(client.transformBothSpeeds(angularSpeed, linearSpeed, angularPercent, linearPercent))
                 # await client.transformBothSpeeds(angularSpeed, linearSpeed, angularPercent, linearPercent)

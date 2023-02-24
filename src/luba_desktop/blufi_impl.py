@@ -196,15 +196,9 @@ class Blufi:
             await self.sendMovement(linearSpeed, angularSpeed)
 
     async def transformBothSpeeds(self, linear: float, angular: float, linearPercent: float, angularPercent: float):
-            
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
         transform4 = RockerControlUtil.getInstance().transfrom3(angular, angularPercent)
-        print("angular")
-        print(angular, angularPercent)
-        print("linear")
-        print(linear, linearPercent)
-        print(transfrom3)
-        print(transform4)
+        
         if (transfrom3 != None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int) (transform4[1] * 4.5)

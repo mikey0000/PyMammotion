@@ -1,4 +1,5 @@
 import math
+import copy
 
 
 class RockerControlUtil(object):
@@ -50,7 +51,7 @@ class RockerControlUtil(object):
         d = f2
         self.list_.append(int(((math.sin(radians) * d))))
         self.list_.append(int(((d * math.cos(radians)))))
-        return self.list_
+        return copy.copy(self.list_)
 
     def transfrom2(self, f, f2):
         """ generated source for method transfrom2 """
@@ -92,7 +93,7 @@ class RockerControlUtil(object):
         d = f2
         self.list_.append(int(((math.sin(radians) * d))))
         self.list_.append(int(((d * math.cos(radians)))))
-        return self.list_
+        return copy.copy(self.list_)
 
     def transfrom3(self, f, f2):
         """ generated source for method transfrom3 """
@@ -130,4 +131,4 @@ class RockerControlUtil(object):
         d = f2
         self.list_.append(int(((math.sin(radians) * d))))
         self.list_.append(int(((d * math.cos(radians)))))
-        return self.list_
+        return copy.copy(self.list_)
