@@ -4,5 +4,19 @@ syntax = "proto3";
 
 
 message MctlNav {
-    
+    int32 todev_one_touch_leave_pile = 26;
+    int32 todev_rechgcmd = 14;
+
+    oneof subNavMsg {
+        NavTaskCtrl todev_taskctrl = 37;
+    }
+}
+
+
+message NavTaskCtrl {
+
+    int32 type = 1;
+    int32 action = 2;
+    int32 result = 3;
+    int32 reserved = 4;
 }

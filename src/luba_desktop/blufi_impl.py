@@ -12,7 +12,7 @@ from bleak import BleakClient
 from jsonic import serialize
 
 from luba_desktop.blelibs.framectrldata import FrameCtrlData
-from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2
+from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2
 
 from luba_desktop.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
 from luba_desktop.utility.rocker_util import RockerControlUtil
@@ -146,6 +146,43 @@ class Blufi:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
             print(err)
+    
+    async def returnToDock(self):
+        mctrlNav = mctrl_nav_pb2.MctlNav()
+        navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
+        navTaskCtrl.type = 1
+        navTaskCtrl.action = 5
+        navTaskCtrl.result = 0
+        mctrlNav.todev_taskctrl.CopyFrom(navTaskCtrl)
+        
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.nav.CopyFrom(mctrlNav)
+        print(lubaMsg)
+        bytes = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(bytes)
+            
+    async def leaveDock(self):
+        mctrlNav = mctrl_nav_pb2.MctlNav()
+        mctrlNav.todev_one_touch_leave_pile = 1
+
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.nav.CopyFrom(mctrlNav)
+        print(lubaMsg)
+        bytes = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(bytes)
 
 
     async def setKnifeHight(self, height: int):

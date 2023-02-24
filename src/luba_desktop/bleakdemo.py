@@ -4,7 +4,7 @@ import math
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from pyjoystick.sdl2 import Key, Joystick, run_event_loop
-
+from timeit import default_timer as timer
 
 from luba_desktop.blufi_impl import Blufi
 from luba_desktop.blelibs.notifydata import BlufiNotifyData
@@ -76,7 +76,6 @@ class BleLubaConnection:
 
     def __init__(self):
         pass
-
     async def scanForLubaAndConnect(self):
         scanner = BleakScanner()
 
@@ -91,12 +90,12 @@ class BleLubaConnection:
             return False
 
         device = await scanner.find_device_by_filter(scanCallback)
-
-        self.client = BleakClient(device.address)
-        try:
-            await self.client.connect()
-        except Exception as err:
-            print(err)
+        if(device is not None):
+            self.client = BleakClient(device.address)
+            try:
+                await self.client.connect()
+            except Exception as err:
+                print(err)
 
     async def notifications(self):
         await self.client.start_notify(
@@ -139,9 +138,6 @@ class BleLubaConnection:
 
 #         print(f"Connected: {client.is_connected}")
 
-#         await client.start_notify(char_uuid_notification, notification_handler)
-#         await client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, notification2_handler)
-
 #         # model_number = await client.read_gatt_char(GENERIC_ATTRIBUTE_SERVICE)
 #         # print("Model Number: {0}".format("".join(map(chr, model_number))))
 #         print(f"Connected: {client.is_connected}")
@@ -156,18 +152,10 @@ class BleLubaConnection:
 # # pretty sure this sends back all boundaries etc
 #             await blufiClient.sendTodevBleSync()
 #             #TOAPP_WIFI_IOT_STATUS
-#             async def moveLuba(angularSpeed, linearSpeed, angularPercent, linearPercent):
-#                 await blufiClient.transformBothSpeeds(angularSpeed, linearSpeed, angularPercent, linearPercent)
 #             # TOAPP_DEVINFO_RESP
 #             moveEvt += moveLuba
 #             # await blufiClient.getDeviceVersionMain()
 
-
-#             # await blufiClient.transformSpeed(0.0, 0.0)
-#             # await blufiClient.transformSpeed(90.0, 100.0)
-#             # await asyncio.sleep(1)
-#             # await blufiClient.transformSpeed(0.0, 100.0)
-#             # await blufiClient.transformSpeed(0.0, 0.0)
 #             # await blufiClient.setKnifeControl(1)
 
 #             # await blufiClient.setKnifeControl(0)
@@ -187,7 +175,8 @@ class JoystickControl:
     angular_speed = 0
 
     def __init__(self):
-        pass
+        self._curr_time = timer()
+        self._first_run = True
 
     async def controller(self, client: Blufi, moveEvt):
         def print_add(joy):
@@ -197,8 +186,29 @@ class JoystickControl:
             print("Removed", joy)
 
         def key_received(key):
+            # add key to control await blufiClient.setKnifeControl(1) turn blade on/off
+            
+            # simple debouncer
+            
+            if key.keytype is Key.BUTTON:
+                print(key, "-", key.keytype, "-", key.number, "-", key.value)
+                if(key.number == 0): # x
+                    asyncio.run(client.returnToDock())
+                if(key.number == 1):
+                    asyncio.run(client.leaveDock())
+                if(key.number == 3):
+                    asyncio.run(client.setKnifeControl(1))
+                if(key.number == 2):
+                    asyncio.run(client.setKnifeControl(0))
+            
             if key.keytype is Key.AXIS:
-                if key.value > 0.2 or key.value < -0.2:
+                elapsed_time = timer()
+                if((elapsed_time - self._curr_time) < .5 and not self._first_run):
+                    return
+                else:
+                    self._curr_time = timer()
+                self._first_run = False
+                if key.value > 0.09 or key.value < -0.09:
                     print(key, "-", key.keytype, "-", key.number, "-", key.value)
 
                     match key.number:
