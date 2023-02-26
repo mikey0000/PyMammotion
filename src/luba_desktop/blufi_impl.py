@@ -12,7 +12,7 @@ from bleak import BleakClient
 from jsonic import serialize
 
 from luba_desktop.blelibs.framectrldata import FrameCtrlData
-from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2
+from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
 
 from luba_desktop.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
 from luba_desktop.utility.rocker_util import RockerControlUtil

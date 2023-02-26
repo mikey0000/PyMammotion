@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import Queue
 import codecs
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -182,7 +183,7 @@ class JoystickControl:
         self._curr_time = timer()
         self._first_run = True
 
-    async def controller(self, client: Blufi, moveEvt):
+    async def controller(self, client: Blufi, queue: Queue, moveEvt):
         def print_add(joy):
             print("Added", joy)
 
@@ -194,7 +195,7 @@ class JoystickControl:
 
             # simple debouncer
 
-            if key.keytype is Key.BUTTON:
+            if key.keytype is Key.BUTTON and key.value is 1:
                 print(key, "-", key.keytype, "-", key.number, "-", key.value)
                 if key.number == 0:  # x
                     asyncio.run(client.returnToDock())
@@ -204,6 +205,12 @@ class JoystickControl:
                     asyncio.run(client.setKnifeControl(1))
                 if key.number == 2:
                     asyncio.run(client.setKnifeControl(0))
+                if key.number == 9:
+                    # lower knife height
+                    pass
+                if key.number == 10:
+                    # raise knife height
+                    pass
 
             if key.keytype is Key.AXIS:
                 elapsed_time = timer()
@@ -254,6 +261,7 @@ class JoystickControl:
                             self.angular_percent,
                         )
                     )
+                    
                 else:
                     match key.number:
                         case 1:  # left (up down)
