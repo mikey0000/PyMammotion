@@ -183,7 +183,7 @@ class JoystickControl:
         self._curr_time = timer()
         self._first_run = True
 
-    async def controller(self, client: Blufi, queue: Queue, moveEvt):
+    def controller(self, client: Blufi, queue: Queue, moveEvt):
         def print_add(joy):
             print("Added", joy)
 
@@ -195,7 +195,7 @@ class JoystickControl:
 
             # simple debouncer
 
-            if key.keytype is Key.BUTTON and key.value is 1:
+            if key.keytype is Key.BUTTON and key.value == 1:
                 print(key, "-", key.keytype, "-", key.number, "-", key.value)
                 if key.number == 0:  # x
                     asyncio.run(client.returnToDock())

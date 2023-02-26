@@ -40,14 +40,14 @@ async def run():
     await bleLubaConn.notifications()
     client = bleLubaConn.getClient()
     blufi_client = Blufi(client)
-    # Run the ble heart beat in the background continuously
+    # Run the ble heart beat in the background continuously which still doesn't quite work
     loop_handler_bleheart = AsyncLoopThread()
     loop_handler_bleheart.start()
     asyncio.run_coroutine_threadsafe(ble_heartbeat(blufi_client), loop_handler_bleheart.loop)
     
     print("joystick code")
     in_queue = asyncio.Queue()
-    await JoystickControl().controller(blufi_client,in_queue, moveEvt)
+    JoystickControl().controller(blufi_client,in_queue, moveEvt)
     print("end run?")
 	#await main(address, UUID_NOTIFICATION_CHARACTERISTIC,moveEvt)
 
@@ -63,7 +63,7 @@ if __name__ ==  '__main__':
     event_loop.run_until_complete(run())
     
     # asyncio.ensure_future(function_2())
-    loop.run_forever()
+    # loop.run_forever()
     
 
 
