@@ -1,5 +1,5 @@
 import asyncio
-import sys
+from threading import Thread
 from luba_desktop import BleLubaConnection
 from luba_desktop.bleakdemo import JoystickControl
 from luba_desktop.blufi_impl import Blufi
@@ -19,25 +19,47 @@ SERVICE_CHANGED_CHARACTERISTIC = "00002A05-0000-1000-8000-00805f9b34fb"
 moveEvt = Event()
 
 
+async def ble_heartbeat(blufi_client):
+    while True:
+        await blufi_client.sendTodevBleSync()
+        # eventually send an event and update data from sync
+        await asyncio.sleep(5)
+
+class AsyncLoopThread(Thread):
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.loop = asyncio.new_event_loop()
+
+    def run(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
 async def run():
     bleLubaConn = BleLubaConnection()
     await bleLubaConn.scanForLubaAndConnect()
     await bleLubaConn.notifications()
     client = bleLubaConn.getClient()
-    blufiClient = Blufi(client)
-    await JoystickControl().controller(blufiClient, moveEvt)
+    blufi_client = Blufi(client)
+    # Run the ble heart beat in the background continuously
+    loop_handler_bleheart = AsyncLoopThread()
+    loop_handler_bleheart.start()
+    asyncio.run_coroutine_threadsafe(ble_heartbeat(blufi_client), loop_handler_bleheart.loop)
+    
+    print("joystick code")
+    await JoystickControl().controller(blufi_client, moveEvt)
+    print("end run?")
 	#await main(address, UUID_NOTIFICATION_CHARACTERISTIC,moveEvt)
 
 
 
 if __name__ ==  '__main__':
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(event_loop)
     # loop = asyncio.get_event_loop()
     # loop.run_until_complete(run())
     # 
     # asyncio.run(run())
-    asyncio.run(run())
+    event_loop.run_until_complete(run())
     
     # asyncio.ensure_future(function_2())
     loop.run_forever()

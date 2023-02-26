@@ -1,6 +1,5 @@
 import asyncio
 import codecs
-import math
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from pyjoystick.sdl2 import Key, Joystick, run_event_loop
@@ -8,6 +7,7 @@ from timeit import default_timer as timer
 
 from luba_desktop.blufi_impl import Blufi
 from luba_desktop.blelibs.notifydata import BlufiNotifyData
+from luba_desktop.utility.periodic import Periodic
 
 import nest_asyncio
 
@@ -76,6 +76,7 @@ class BleLubaConnection:
 
     def __init__(self):
         pass
+
     async def scanForLubaAndConnect(self):
         scanner = BleakScanner()
 
@@ -90,7 +91,7 @@ class BleLubaConnection:
             return False
 
         device = await scanner.find_device_by_filter(scanCallback)
-        if(device is not None):
+        if device is not None:
             self.client = BleakClient(device.address)
             try:
                 await self.client.connect()
@@ -98,12 +99,13 @@ class BleLubaConnection:
                 print(err)
 
     async def notifications(self):
-        await self.client.start_notify(
-            UUID_NOTIFICATION_CHARACTERISTIC, notification_handler
-        )
-        await self.client.start_notify(
-            SERVICE_CHANGED_CHARACTERISTIC, notification2_handler
-        )
+        if(self.client.is_connected):
+            await self.client.start_notify(
+                UUID_NOTIFICATION_CHARACTERISTIC, notification_handler
+            )
+            await self.client.start_notify(
+                SERVICE_CHANGED_CHARACTERISTIC, notification2_handler
+            )
 
     def getClient(self):
         return self.client
@@ -167,8 +169,10 @@ class BleLubaConnection:
 #         await asyncio.sleep(5.0)
 #         await client.stop_notify(char_uuid_notification)
 
+
 class JoystickControl:
-    """ Joystick class for controlling Luba with a joystick """
+    """Joystick class for controlling Luba with a joystick"""
+
     angular_percent = 0
     linear_percent = 0
     linear_speed = 0
@@ -187,23 +191,23 @@ class JoystickControl:
 
         def key_received(key):
             # add key to control await blufiClient.setKnifeControl(1) turn blade on/off
-            
+
             # simple debouncer
-            
+
             if key.keytype is Key.BUTTON:
                 print(key, "-", key.keytype, "-", key.number, "-", key.value)
-                if(key.number == 0): # x
+                if key.number == 0:  # x
                     asyncio.run(client.returnToDock())
-                if(key.number == 1):
+                if key.number == 1:
                     asyncio.run(client.leaveDock())
-                if(key.number == 3):
+                if key.number == 3:
                     asyncio.run(client.setKnifeControl(1))
-                if(key.number == 2):
+                if key.number == 2:
                     asyncio.run(client.setKnifeControl(0))
-            
+
             if key.keytype is Key.AXIS:
                 elapsed_time = timer()
-                if((elapsed_time - self._curr_time) < .5 and not self._first_run):
+                if (elapsed_time - self._curr_time) < 0.5 and not self._first_run:
                     return
                 else:
                     self._curr_time = timer()
@@ -258,5 +262,5 @@ class JoystickControl:
                         case 2:  # right  (left right)
                             self.angular_speed = 0.0
                             self.angular_percent = 0
-                            
+
         run_event_loop(print_add, print_remove, key_received)
