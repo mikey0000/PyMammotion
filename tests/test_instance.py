@@ -1,9 +1,11 @@
 import asyncio
 from threading import Thread
-from luba_desktop import BleLubaConnection
-from luba_desktop.bleakdemo import JoystickControl
+import threading
+from luba_desktop.ble_connection import BleLubaConnection
+from luba_desktop.control.joystick_control import JoystickControl
 from luba_desktop.blufi_impl import Blufi
-from luba_desktop.utility.event import Event
+from luba_desktop.blelibs.notifydata import BlufiNotifyData
+from luba_desktop.event.event import BleNotificationEvent, MoveEvent
 
 address = "90:38:0C:6E:EE:9E"
 UUID_SERVICE = "0000ffff-0000-1000-8000-00805f9b34fb"
@@ -16,7 +18,8 @@ BATTERY_SERVICE = "0000180F-0000-1000-8000-00805f9b34fb"
 BATTERY_LEVEL_CHARACTERISTIC = "00002A19-0000-1000-8000-00805f9b34fb"
 GENERIC_ATTRIBUTE_SERVICE = "00001801-0000-1000-8000-00805f9b34fb"
 SERVICE_CHANGED_CHARACTERISTIC = "00002A05-0000-1000-8000-00805f9b34fb"
-moveEvt = Event()
+moveEvt = MoveEvent()
+bleNotificationEvt = BleNotificationEvent()
 
 
 async def ble_heartbeat(blufi_client):
@@ -34,12 +37,21 @@ class AsyncLoopThread(Thread):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
+
 async def run():
-    bleLubaConn = BleLubaConnection()
+    bleLubaConn = BleLubaConnection(bleNotificationEvt)
     await bleLubaConn.scanForLubaAndConnect()
     await bleLubaConn.notifications()
     client = bleLubaConn.getClient()
-    blufi_client = Blufi(client)
+    blufi_client = Blufi(client, moveEvt)
+
+    def handleNotifications(data:bytearray):
+        notification = BlufiNotifyData()
+        result = blufi_client.parseNotification(data, notification)
+        print(result)
+        print(notification)
+
+    bleNotificationEvt.AddSubscribersForBleNotificationEvent(handleNotifications)
     # Run the ble heart beat in the background continuously which still doesn't quite work
     loop_handler_bleheart = AsyncLoopThread()
     loop_handler_bleheart.start()
@@ -47,7 +59,11 @@ async def run():
     
     print("joystick code")
     in_queue = asyncio.Queue()
-    JoystickControl().controller(blufi_client,in_queue, moveEvt)
+    joystick = JoystickControl().controller(blufi_client, moveEvt)
+    # no idea if this will work but might
+    joy_input_thread = threading.Thread(target=joystick.run_controller, args=(), daemon=True)
+    joy_input_thread.start()
+
     print("end run?")
 	#await main(address, UUID_NOTIFICATION_CHARACTERISTIC,moveEvt)
 

@@ -15,7 +15,10 @@ from luba_desktop.blelibs.framectrldata import FrameCtrlData
 from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
 
 from luba_desktop.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
+from luba_desktop.blelibs.notifydata import BlufiNotifyData
+from luba_desktop.blelibs.framectrldata import FrameCtrlData
 from luba_desktop.utility.rocker_util import RockerControlUtil
+from luba_desktop.event import MoveEvent
 
 MODEL_NBR_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
 
@@ -76,8 +79,9 @@ class Blufi:
     mReadSequence = itertools.count()
     mAck = queue.Queue()
 
-    def __init__(self, client: BleakClient):
+    def __init__(self, client: BleakClient, moveEvt: MoveEvent):
         self.client = client
+        self._moveEvt = moveEvt
         pass
 
 
@@ -280,6 +284,8 @@ class Blufi:
         print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
+        self._moveEvt.MoveFinished()
+
   
         
 
@@ -388,6 +394,120 @@ class Blufi:
         return byteOS.getvalue()
     
 
+    def parseNotification(self, response: bytearray, notification: BlufiNotifyData):
+        dataOffset = None
+        if (response is None):
+            #Log.w(TAG, "parseNotification null data");
+            return -1
+        
+        # if (this.mPrintDebug):
+        #     Log.d(TAG, "parseNotification Notification= " + Arrays.toString(response));
+        # }
+        if (len(response) >= 4):
+            sequence = response[2] # toInt
+            self.mReadSequence_1.incrementAndGet()
+            if (sequence != (self.mReadSequence.incrementAndGet() & 255)):
+                # Log.w(TAG, "parseNotification read sequence wrong")
+                self.mReadSequence.set(sequence)
+                # self.mReadSequence_2.incrementAndGet()
+            
+            # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
+            type = response[0] # toInt
+            pkgType = self._getPackageType(type)
+            subType = self._getSubType(type)
+            notification.setType(type)
+            notification.setPkgType(pkgType)
+            notification.setSubType(subType)
+            frameCtrl = response[1] # toInt
+            notification.setFrameCtrl(frameCtrl)
+            frameCtrlData = FrameCtrlData(frameCtrl)
+            dataLen = response[3] # toInt specifies length of data
+            dataBytes = BytesIO()
+
+            try:
+                dataBytes[4:dataLen] = response
+                # if (frameCtrlData.isEncrypted()) {
+                #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
+                #     dataBytes = aes.decrypt(dataBytes);
+                # }
+                # if (frameCtrlData.isChecksum()) {
+                #     int respChecksum1 = toInt(response[response.length - 1]);
+                #     int respChecksum2 = toInt(response[response.length - 2]);
+                #     int crc = BlufiCRC.calcCRC(BlufiCRC.calcCRC(0, new byte[]{(byte) sequence, (byte) dataLen}), dataBytes);
+                #     int calcChecksum1 = (crc >> 8) & 255;
+                #     int calcChecksum2 = crc & 255;
+                #     if (respChecksum1 != calcChecksum1 || respChecksum2 != calcChecksum2) {
+                #         Log.w(TAG, "parseNotification: read invalid checksum");
+                #         if (self.mPrintDebug) {
+                #             Log.d(TAG, "expect   checksum: " + respChecksum1 + ", " + respChecksum2);
+                #             Log.d(TAG, "received checksum: " + calcChecksum1 + ", " + calcChecksum2);
+                #             return -4;
+                #         }
+                #         return -4;
+                #     }
+                # }
+                if (frameCtrlData.hasFrag()):
+                    dataOffset = 2
+                else:
+                    dataOffset = 0
+                
+                notification.addData(dataBytes, dataOffset)
+                return 1 if frameCtrlData.hasFrag() else 0
+            except Exception as e:
+                # e.printStackTrace()
+                return -100
+            
+        
+        # Log.w(TAG, "parseNotification data length less than 4");
+        return -2
+    
+    
+    # def parseBlufiNotifyData(data: BlufiNotifyData):
+    #     int pkgType = data.getPkgType();
+    #     int subType = data.getSubType();
+    #     byte[] dataBytes = data.getDataArray();
+    #     if (this.mUserBlufiCallback != null):
+    #         boolean complete = this.mUserBlufiCallback.onGattNotification(this.mClient, pkgType, subType, dataBytes);
+    #         if (complete):
+    #             return;
+    #         }
+    #     }
+    #     if (pkgType == 0):
+    #         parseCtrlData(subType, dataBytes);
+    #     } else if (pkgType == 1):
+    #         parseDataData(subType, dataBytes);
+    #     }
+
+    # def _parseDataData(int subType, byte[] data) {
+    #     if (subType == 0) {
+    #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
+    #         return;
+    #     }
+    #     switch (subType) {
+    #         case 15:
+    #             parseWifiState(data);
+    #             return;
+    #         case 16:
+    #             parseVersion(data);
+    #             return;
+    #         case 17:
+    #             parseWifiScanList(data);
+    #             return;
+    #         case 18:
+    #             int errCode = data.length > 0 ? 255 & data[0] : 255;
+    #             onError(errCode);
+    #             return;
+    #         case 19:
+    #             # /home/michael/Downloads/Mammotion_1.2.4.4(release)/smali/com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
+    #             onReceiveCustomData(data); #parse to protobuf message
+    #             return;
+    #         default:
+    #             return;
+    #     }
+    # }
+    
+
+
     def receiveAck(self, expectAck: int) -> bool:
         try:
             ack = self.mAck.get()
@@ -415,5 +535,18 @@ class Blufi:
 
     def current_milli_time(self):
         return round(time.time() * 1000)
+    
+
+    def _getTypeValue(type: int, subtype: int):
+        return (subtype << 2) | type
+    
+
+    def _getPackageType(typeValue: int):
+        return typeValue & 3
+    
+
+    def _getSubType(typeValue: int):
+        return (typeValue & 252) >> 2
+    
         
     
