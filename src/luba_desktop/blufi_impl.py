@@ -189,7 +189,7 @@ class Blufi:
         await self.postCustomDataBytes(bytes)
 
 
-    async def setKnifeHight(self, height: int):
+    async def setbladeHeight(self, height: int):
         mctrlDriver = mctrl_driver_pb2.MctrlDriver()
         drvKnifeHeight = mctrl_driver_pb2.DrvKnifeHeight()
         drvKnifeHeight.knifeHeight = height
@@ -208,7 +208,7 @@ class Blufi:
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
-    async def setKnifeControl(self, onOff: int):
+    async def setbladeControl(self, onOff: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
         sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
         sysKnifeControl.knifeStatus = onOff

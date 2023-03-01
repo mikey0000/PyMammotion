@@ -48,9 +48,9 @@ class JoystickControl:
                 if key.number == 1:
                     asyncio.run(self._client.leaveDock())
                 if key.number == 3:
-                    asyncio.run(self._client.setKnifeControl(1))
+                    asyncio.run(self._client.setbladeControl(1))
                 if key.number == 2:
-                    asyncio.run(self._client.setKnifeControl(0))
+                    asyncio.run(self._client.setBladeControl(0))
                 if key.number == 9:
                     # lower knife height
                     pass
