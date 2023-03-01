@@ -40,31 +40,35 @@ class AsyncLoopThread(Thread):
 
 async def run():
     bleLubaConn = BleLubaConnection(bleNotificationEvt)
-    await bleLubaConn.scanForLubaAndConnect()
+    did_connect = await bleLubaConn.scanForLubaAndConnect()
+    if not did_connect:
+        return
     await bleLubaConn.notifications()
     client = bleLubaConn.getClient()
     blufi_client = Blufi(client, moveEvt)
 
-    def handleNotifications(data:bytearray):
+    def handle_notifications(data:bytearray):
         notification = BlufiNotifyData()
         result = blufi_client.parseNotification(data, notification)
         blufi_client.parseBlufiNotifyData(notification)
-        print(result)
-        print(notification)
+        # print(data)
+        # print(result)
+        # print(notification.getDataArray())
 
-    bleNotificationEvt.AddSubscribersForBleNotificationEvent(handleNotifications)
+    bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
     # Run the ble heart beat in the background continuously which still doesn't quite work
-    loop_handler_bleheart = AsyncLoopThread()
-    loop_handler_bleheart.start()
-    asyncio.run_coroutine_threadsafe(ble_heartbeat(blufi_client), loop_handler_bleheart.loop)
+    
+    # loop_handler_bleheart = threading.Thread(target=), args=(), daemon=True)
     
     print("joystick code")
     in_queue = asyncio.Queue()
-    joystick = JoystickControl().controller(blufi_client, moveEvt)
+    joystick = JoystickControl(blufi_client, moveEvt)
     # no idea if this will work but might
     joy_input_thread = threading.Thread(target=joystick.run_controller, args=(), daemon=True)
     joy_input_thread.start()
 
+    # loop_handler_bleheart.start()
+    asyncio.run(ble_heartbeat(blufi_client))
     print("end run?")
 	#await main(address, UUID_NOTIFICATION_CHARACTERISTIC,moveEvt)
 
@@ -75,9 +79,8 @@ if __name__ ==  '__main__':
     asyncio.set_event_loop(event_loop)
     # loop = asyncio.get_event_loop()
     # loop.run_until_complete(run())
-    # 
-    # asyncio.run(run())
-    event_loop.run_until_complete(run())
+    asyncio.run(run())
+    event_loop.run_forever()
     
     # asyncio.ensure_future(function_2())
     # loop.run_forever()

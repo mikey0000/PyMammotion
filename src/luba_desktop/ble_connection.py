@@ -36,9 +36,14 @@ BATTERY_LEVEL_CHARACTERISTIC = "00002A19-0000-1000-8000-00805f9b34fb"
 GENERIC_ATTRIBUTE_SERVICE = "00001801-0000-1000-8000-00805f9b34fb"
 SERVICE_CHANGED_CHARACTERISTIC = "00002A05-0000-1000-8000-00805f9b34fb"
 
-
-
-
+def slashescape(err):
+    """codecs error handler. err is UnicodeDecode instance. return
+    a tuple with a replacement for the unencodable part of the input
+    and a position where encoding should continue"""
+    # print err, dir(err), err.start, err.end, err.object[:err.start]
+    thebyte = err.object[err.start : err.end]
+    repl = "\\x" + hex(ord(thebyte))[2:]
+    return (repl, err.end)
 
 codecs.register_error("slashescape", slashescape)
 
@@ -49,7 +54,7 @@ class BleLubaConnection:
     def __init__(self, bleEvt: BleNotificationEvent):
         self._bleEvt = bleEvt
 
-    async def scanForLubaAndConnect(self):
+    async def scanForLubaAndConnect(self) -> bool:
         scanner = BleakScanner()
 
         def scanCallback(device, advertising_data):
@@ -65,31 +70,17 @@ class BleLubaConnection:
         device = await scanner.find_device_by_filter(scanCallback)
         if device is not None:
             self.client = BleakClient(device.address)
-            await self.connect()
+            return await self.connect()
     
-    async def connect(self):
-        try:
-            if(self.client is not None):
-                await self.client.connect()
-        except Exception as err:
-            print(err)
-
-
-    async def notifications(self):
-        if(self.client.is_connected):
-            await self.client.start_notify(
-                UUID_NOTIFICATION_CHARACTERISTIC, notification_handler
-            )
-            await self.client.start_notify(
-                SERVICE_CHANGED_CHARACTERISTIC, notification2_handler
-            )
-
-    def getClient(self):
-        return self.client
+    async def connect(self) -> bool:
     
+        if(self.client is not None):
+            return await self.client.connect()
+        
+            
     def notification_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Simple notification handler which prints the data received."""
-        print(f"Response {characteristic.description}: {data}")
+        # print(f"Response {characteristic.description}: {data}")
         # print(data.decode("utf-8") )
         # BlufiNotifyData
         # run an event handler back to somewhere
@@ -99,20 +90,25 @@ class BleLubaConnection:
 
     def notification2_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Simple notification handler which prints the data received."""
-        print(f"Response 2 {characteristic.description}: {data}")
+        # print(f"Response 2 {characteristic.description}: {data}")
         # print(data.decode("utf-8") )
         # BlufiNotifyData
         # run an event handler back to somewhere
 
 
+    async def notifications(self):
+        if(self.client.is_connected):
+            await self.client.start_notify(
+                UUID_NOTIFICATION_CHARACTERISTIC, self.notification_handler
+            )
+            await self.client.start_notify(
+                SERVICE_CHANGED_CHARACTERISTIC, self.notification2_handler
+            )
 
-    def slashescape(err):
-        """codecs error handler. err is UnicodeDecode instance. return
-        a tuple with a replacement for the unencodable part of the input
-        and a position where encoding should continue"""
-        # print err, dir(err), err.start, err.end, err.object[:err.start]
-        thebyte = err.object[err.start : err.end]
-        repl = "\\x" + hex(ord(thebyte))[2:]
-        return (repl, err.end)
+    def getClient(self):
+        return self.client
+
+
+
 
 

@@ -406,10 +406,11 @@ class Blufi:
         # }
         if (len(response) >= 4):
             sequence = response[2] # toInt
-            self.mReadSequence_1.incrementAndGet()
-            if (sequence != (self.mReadSequence.incrementAndGet() & 255)):
+            # self.mReadSequence_1.incrementAndGet()
+            if (sequence != (next(self.mReadSequence) & 255)):
                 # Log.w(TAG, "parseNotification read sequence wrong")
-                self.mReadSequence.set(sequence)
+                # this is questionable
+                self.mReadSequence = sequence
                 # self.mReadSequence_2.incrementAndGet()
             
             # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
@@ -423,10 +424,11 @@ class Blufi:
             notification.setFrameCtrl(frameCtrl)
             frameCtrlData = FrameCtrlData(frameCtrl)
             dataLen = response[3] # toInt specifies length of data
-            dataBytes = BytesIO()
+            dataBytes = None
 
             try:
-                dataBytes[4:dataLen] = response
+                
+                dataBytes = response[4:dataLen]
                 # if (frameCtrlData.isEncrypted()) {
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
@@ -455,7 +457,7 @@ class Blufi:
                 notification.addData(dataBytes, dataOffset)
                 return 1 if frameCtrlData.hasFrag() else 0
             except Exception as e:
-                # e.printStackTrace()
+                print(e)
                 return -100
             
         
@@ -473,13 +475,13 @@ class Blufi:
         #         return
             
         
-        if (pkgType == 0):
-            self._parseCtrlData(subType, dataBytes)
-        elif (pkgType == 1):
+        # if (pkgType == 0):
+            # self._parseCtrlData(subType, dataBytes)
+        if (pkgType == 1):
             self._parseDataData(subType, dataBytes)
         
 
-    def _parseDataData(subType: int, data: bytearray):
+    def _parseDataData(self, subType: int, data: bytearray):
     #     if (subType == 0) {
     #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
     #         return;
@@ -507,6 +509,15 @@ class Blufi:
     #     }
     # }
     
+    # private void parseCtrlData(int i, byte[] bArr) {
+    #     if (i == 0) {
+    #         parseAck(bArr);
+    #     }
+    # } 
+    
+    # private void parseAck(byte[] bArr) {
+    #     this.mAck.add(Integer.valueOf(bArr.length > 0 ? bArr[0] & 255 : 256));
+    # }   
 
 
     def receiveAck(self, expectAck: int) -> bool:
@@ -538,15 +549,15 @@ class Blufi:
         return round(time.time() * 1000)
     
 
-    def _getTypeValue(type: int, subtype: int):
+    def _getTypeValue(self, type: int, subtype: int):
         return (subtype << 2) | type
     
 
-    def _getPackageType(typeValue: int):
+    def _getPackageType(self, typeValue: int):
         return typeValue & 3
     
 
-    def _getSubType(typeValue: int):
+    def _getSubType(self, typeValue: int):
         return (typeValue & 252) >> 2
     
         

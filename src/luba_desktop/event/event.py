@@ -11,9 +11,9 @@ class Event(object):
         self.__eventhandlers.remove(handler)
         return self
  
-    async def __call__(self, *args, **keywargs):
+    def __call__(self, *args, **keywargs):
         for eventhandler in self.__eventhandlers:
-            await eventhandler(*args, **keywargs)
+            eventhandler(*args, **keywargs)
 
 
 class MoveEvent(object):
