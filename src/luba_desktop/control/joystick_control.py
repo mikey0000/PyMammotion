@@ -18,10 +18,12 @@ class JoystickControl:
     linear_speed = 0
     angular_speed = 0
     ignore_events = False
+    
 
     def __init__(self, client: Blufi, moveEvt: MoveEvent):
         self._client = client
         self._moveEvt = moveEvt
+        self._curr_time = timer()
 
         self._moveEvt.AddSubscribersForMoveFinishedEvent(self._movement_finished)
 
@@ -61,6 +63,12 @@ class JoystickControl:
         if key.keytype is Key.AXIS:
             if key.value > 0.09 or key.value < -0.09:
                 print(key, "-", key.keytype, "-", key.number, "-", key.value)
+                # ignore events for 200ms
+                elapsed_time = timer()
+                if((elapsed_time - self._curr_time) < .2 and not self._first_run):
+                    return
+                else:
+                    self._curr_time = timer()
 
                 match key.number:
                     case 1:  # left (up down)
@@ -94,23 +102,28 @@ class JoystickControl:
                             self.angular_percent = abs(key.value * 100)
 
 
-                if(not self.ignore_events):
-                    # changes on event from blufi
-                    self.ignore_events = True
-                    asyncio.run(
-                        self._client.transformBothSpeeds(
-                            self.linear_speed,
-                            self.angular_speed,
-                            self.linear_percent,
-                            self.angular_percent,
-                        )
+                
+                asyncio.run(
+                    self._client.transformBothSpeeds(
+                        self.linear_speed,
+                        self.angular_speed,
+                        self.linear_percent,
+                        self.angular_percent,
+                    )
                 )
                 
             else:
-                match key.number:
-                    case 1:  # left (up down)
-                        self.linear_speed = 0.0
-                        self.linear_percent = 0
-                    case 2:  # right  (left right)
-                        self.angular_speed = 0.0
-                        self.angular_percent = 0
+            
+                self.linear_speed = 0.0
+                self.linear_percent = 0
+                self.angular_speed = 0.0
+                self.angular_percent = 0
+
+                asyncio.run(
+                    self._client.transformBothSpeeds(
+                        self.linear_speed,
+                        self.angular_speed,
+                        self.linear_percent,
+                        self.angular_percent,
+                    )
+                )

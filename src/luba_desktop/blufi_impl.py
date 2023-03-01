@@ -522,7 +522,7 @@ class Blufi:
 
     def receiveAck(self, expectAck: int) -> bool:
         try:
-            ack = self.mAck.get()
+            ack = next(self.mAck)
             return ack == expectAck
         except Exception as err:
             print(err)

@@ -26,7 +26,9 @@ async def ble_heartbeat(blufi_client):
     while True:
         await blufi_client.sendTodevBleSync()
         # eventually send an event and update data from sync
-        await asyncio.sleep(15)
+        await asyncio.sleep(1)
+        await blufi_client.getDeviceVersionMain()
+        await asyncio.sleep(1.5)
 
 class AsyncLoopThread(Thread):
     def __init__(self):
