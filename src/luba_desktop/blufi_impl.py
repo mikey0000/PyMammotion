@@ -10,6 +10,7 @@ import time
 
 from bleak import BleakClient
 from jsonic import serialize
+from luba_desktop.blelibs.convert import parseCustomData
 
 from luba_desktop.blelibs.framectrldata import FrameCtrlData
 from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
@@ -462,28 +463,28 @@ class Blufi:
         return -2
     
     
-    # def parseBlufiNotifyData(data: BlufiNotifyData):
-    #     int pkgType = data.getPkgType();
-    #     int subType = data.getSubType();
-    #     byte[] dataBytes = data.getDataArray();
-    #     if (this.mUserBlufiCallback != null):
-    #         boolean complete = this.mUserBlufiCallback.onGattNotification(this.mClient, pkgType, subType, dataBytes);
-    #         if (complete):
-    #             return;
-    #         }
-    #     }
-    #     if (pkgType == 0):
-    #         parseCtrlData(subType, dataBytes);
-    #     } else if (pkgType == 1):
-    #         parseDataData(subType, dataBytes);
-    #     }
+    def parseBlufiNotifyData(self, data: BlufiNotifyData):
+        pkgType = data.getPkgType()
+        subType = data.getSubType()
+        dataBytes = data.getDataArray()
+        # if (self.mUserBlufiCallback is not None):
+        #     complete = self.mUserBlufiCallback.onGattNotification(self.mClient, pkgType, subType, dataBytes)
+        #     if (complete):
+        #         return
+            
+        
+        if (pkgType == 0):
+            self._parseCtrlData(subType, dataBytes)
+        elif (pkgType == 1):
+            self._parseDataData(subType, dataBytes)
+        
 
-    # def _parseDataData(int subType, byte[] data) {
+    def _parseDataData(subType: int, data: bytearray):
     #     if (subType == 0) {
     #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
     #         return;
     #     }
-    #     switch (subType) {
+        match subType:
     #         case 15:
     #             parseWifiState(data);
     #             return;
@@ -497,9 +498,9 @@ class Blufi:
     #             int errCode = data.length > 0 ? 255 & data[0] : 255;
     #             onError(errCode);
     #             return;
-    #         case 19:
+            case 19:
     #             # /home/michael/Downloads/Mammotion_1.2.4.4(release)/smali/com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
-    #             onReceiveCustomData(data); #parse to protobuf message
+                parseCustomData(data) #parse to protobuf message
     #             return;
     #         default:
     #             return;

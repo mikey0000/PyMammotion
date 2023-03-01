@@ -48,6 +48,7 @@ async def run():
     def handleNotifications(data:bytearray):
         notification = BlufiNotifyData()
         result = blufi_client.parseNotification(data, notification)
+        blufi_client.parseBlufiNotifyData(notification)
         print(result)
         print(notification)
 
