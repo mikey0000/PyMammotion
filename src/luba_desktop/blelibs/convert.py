@@ -2,4 +2,5 @@
 
 
 def parseCustomData(data: bytearray):
-    print(data)
+    pass
+    # print(data)

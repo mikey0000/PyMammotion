@@ -209,7 +209,7 @@ class Blufi:
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
-    async def setbladeControl(self, onOff: int):
+    async def setBladeControl(self, onOff: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
         sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
         sysKnifeControl.knifeStatus = onOff
@@ -408,9 +408,10 @@ class Blufi:
             sequence = response[2] # toInt
             # self.mReadSequence_1.incrementAndGet()
             if (sequence != (next(self.mReadSequence) & 255)):
+                pass
                 # Log.w(TAG, "parseNotification read sequence wrong")
                 # this is questionable
-                self.mReadSequence = sequence
+                # self.mReadSequence = sequence
                 # self.mReadSequence_2.incrementAndGet()
             
             # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);

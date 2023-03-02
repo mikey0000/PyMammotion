@@ -28,7 +28,7 @@ async def ble_heartbeat(blufi_client):
         # eventually send an event and update data from sync
         await asyncio.sleep(1)
         await blufi_client.getDeviceVersionMain()
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(10.5)
 
 class AsyncLoopThread(Thread):
     def __init__(self):
@@ -64,10 +64,11 @@ async def run():
     
     print("joystick code")
     in_queue = asyncio.Queue()
-    joystick = JoystickControl(blufi_client, moveEvt)
+    joystick = JoystickControl(blufi_client)
     # no idea if this will work but might
-    joy_input_thread = threading.Thread(target=joystick.run_controller, args=(), daemon=True)
-    joy_input_thread.start()
+    # joy_input_thread = threading.Thread(target=joystick.run_controller, args=(), daemon=True)
+    # joy_input_thread.start()
+    joystick.run_controller()
 
     # loop_handler_bleheart.start()
     asyncio.run(ble_heartbeat(blufi_client))
