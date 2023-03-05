@@ -3,6 +3,7 @@ import threading
 from luba_desktop.blufi_impl import Blufi
 import pyjoystick
 from pyjoystick.sdl2 import Key, Joystick, run_event_loop
+from pyjoystick.utils import PeriodicThread
 from timeit import default_timer as timer
 
 from luba_desktop.event.event import MoveEvent
@@ -64,7 +65,11 @@ class JoystickControl:
             button_repeater=repeater,
         )
         mngr.start()
-        threading.Timer(0.2, self.run_movement).start()
+
+        self.worker = PeriodicThread(0.2, self.run_movement, name='luba-process_movements')
+        self.worker.alive = mngr.alive  # stop when this event stops
+        self.worker.daemon = True
+        self.worker.start()
 
     def handle_key_recieved(self, key):
         if key.keytype is Key.BUTTON and key.value == 1:
@@ -114,7 +119,7 @@ class JoystickControl:
                             self.linear_speed = 90.0
                             self.linear_percent = abs(key.value * 100)
 
-                    case 2:  # right  (left right)
+                    case 3:  # right  (left right)
                         # take left right values and convert to angular movement
                         # -1 left
                         # 1 is right

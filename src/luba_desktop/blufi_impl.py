@@ -369,10 +369,10 @@ class Blufi:
                 print("not frag")
                 return not requireAck or self.receiveAck(sequence)
                 
-            # if (requireAck and not self.receiveAck(sequence)): TODO: 
-            #     return False
-            # else:
-            await sleep(0.01)
+            if (requireAck and not self.receiveAck(sequence)):
+                return False
+            else:
+                await sleep(0.01)
 
         
     
