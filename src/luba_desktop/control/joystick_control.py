@@ -119,7 +119,7 @@ class JoystickControl:
                             self.linear_speed = 90.0
                             self.linear_percent = abs(key.value * 100)
 
-                    case 3:  # right  (left right)
+                    case 2:  # right  (left right)
                         # take left right values and convert to angular movement
                         # -1 left
                         # 1 is right
