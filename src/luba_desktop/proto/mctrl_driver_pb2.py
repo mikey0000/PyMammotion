@@ -15,19 +15,20 @@ _sym_db = _symbol_database.Default()
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12mctrl_driver.proto\"\x8f\x02\n\x0bMctrlDriver\x12.\n\x14todev_devmotion_ctrl\x18\x01 \x01(\x0b\x32\x0e.DrvMotionCtrlH\x00\x12\x30\n\x15todev_knife_hight_set\x18\x02 \x01(\x0b\x32\x0f.DrvKnifeHeightH\x00\x12,\n\x15\x62idire_speed_read_set\x18\x03 \x01(\x0b\x32\x0b.DrvSrSpeedH\x00\x12\x34\n\x19\x62idire_knife_hight_report\x18\x04 \x01(\x0b\x32\x0f.DrvKnifeHeightH\x00\x12-\n\x12toapp_knife_status\x18\x05 \x01(\x0b\x32\x0f.DrvKnifeStatusH\x00\x42\x0b\n\tSubDrvMsg\"@\n\rDrvMotionCtrl\x12\x17\n\x0fsetAngularSpeed\x18\x02 \x01(\x05\x12\x16\n\x0esetLinearSpeed\x18\x01 \x01(\x05\"%\n\x0e\x44rvKnifeHeight\x12\x13\n\x0bknifeHeight\x18\x01 \x01(\x05\"\'\n\nDrvSrSpeed\x12\n\n\x02rw\x18\x01 \x01(\x05\x12\r\n\x05speed\x18\x02 \x01(\x02\"&\n\x0e\x44rvKnifeStatus\x12\x14\n\x0cknife_status\x18\x01 \x01(\x05\x62\x06proto3')
 
-_builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'mctrl_driver_pb2', globals())
+_globals = globals()
+_builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'mctrl_driver_pb2', _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _MCTRLDRIVER._serialized_start=23
-  _MCTRLDRIVER._serialized_end=294
-  _DRVMOTIONCTRL._serialized_start=296
-  _DRVMOTIONCTRL._serialized_end=360
-  _DRVKNIFEHEIGHT._serialized_start=362
-  _DRVKNIFEHEIGHT._serialized_end=399
-  _DRVSRSPEED._serialized_start=401
-  _DRVSRSPEED._serialized_end=440
-  _DRVKNIFESTATUS._serialized_start=442
-  _DRVKNIFESTATUS._serialized_end=480
+  _globals['_MCTRLDRIVER']._serialized_start=23
+  _globals['_MCTRLDRIVER']._serialized_end=294
+  _globals['_DRVMOTIONCTRL']._serialized_start=296
+  _globals['_DRVMOTIONCTRL']._serialized_end=360
+  _globals['_DRVKNIFEHEIGHT']._serialized_start=362
+  _globals['_DRVKNIFEHEIGHT']._serialized_end=399
+  _globals['_DRVSRSPEED']._serialized_start=401
+  _globals['_DRVSRSPEED']._serialized_end=440
+  _globals['_DRVKNIFESTATUS']._serialized_start=442
+  _globals['_DRVKNIFESTATUS']._serialized_end=480
 # @@protoc_insertion_point(module_scope)

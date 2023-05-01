@@ -50,18 +50,47 @@ async def run():
     blufi_client = Blufi(client, moveEvt)
 
     def handle_notifications(data:bytearray):
-        notification = BlufiNotifyData()
-        result = blufi_client.parseNotification(data, notification)
-        blufi_client.parseBlufiNotifyData(notification)
-        # print(data)
-        # print(result)
-        # print(notification.getDataArray())
+        result = blufi_client.parseNotification(data)
+        print(result)
+        if (result == 0):
+            blufi_client.parseBlufiNotifyData()
+            blufi_client.clearNotification()
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
     # Run the ble heart beat in the background continuously which still doesn't quite work
     
     # loop_handler_bleheart = threading.Thread(target=), args=(), daemon=True)
-    
+    await blufi_client.sendTodevBleSync()
+    await blufi_client.send_ble_alive()
+    # await blufi_client.getDeviceInfo()
+    # gets info about luba and some other stuff
+    # await blufi_client.get_all_boundary_hash_list(3)
+    # await blufi_client.get_all_boundary_hash_list(0)
+    """ dataCouple: 8656065632562971511
+    dataCouple: 5326333396143256633
+    dataCouple: 541647029314729441
+    dataCouple: 4870790062671685143
+    dataCouple: 6316048569363781876
+    dataCouple: 8693838767690150729
+    dataCouple: 5386431019338482578
+    dataCouple: 2719756689538040248
+    dataCouple: 52888279395493412
+    dataCouple: 3326491527753915659
+    dataCouple: 4337736833720920333
+    dataCouple: 1827638544161716385
+    dataCouple: 1577461315515955642
+    dataCouple: 6863400705154845420
+    dataCouple: 8809571020336040838
+    dataCouple: 1070358128924616908
+    dataCouple: 7279593094795908334
+    dataCouple: 989182222171962820
+    dataCouple: 5490038377814536159"""
+
+    # get map data off Luba
+    # await blufi_client.synchronize_hash_data(3326491527753915659)
+    # probably gets paths
+    await blufi_client.get_line_info(4)
+    # await blufi_client.get_hash_response(1, 1)
     print("joystick code")
     in_queue = asyncio.Queue()
     joystick = JoystickControl(blufi_client)

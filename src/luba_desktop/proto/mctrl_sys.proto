@@ -4,14 +4,234 @@ syntax = "proto3";
 
 
 message MctlSys {
-    
-
     oneof subSysMsg {
+        SysBatUp toapp_batinfo = 1;
+        SysWorkState toapp_work_state = 2;
+        SysSetTimeZone todev_time_zone = 3;
+        SysSetDateTime todev_data_time = 4;
+        SysBorder border = 15;
+        SysCommCmd bidire_comm_cmd = 12;
+        SysJobPlan job_plan = 6;
+        int64 plan_job_del = 14;
+        systemRapidStateTunnel_msg system_rapid_state_tunnel = 25;
+        systemTardStateTunnel_msg system_tard_state_tunnel = 26;
+        systemTmpCycleTx_msg system_tmp_cycle_tx = 29;
+        systemUpdateBuf_msg system_update_buf = 27;
+        device_fw_info toapp_dev_fw_info = 32;
+        SysDevErrCode toapp_err_code = 7;
+        LoraCfgRsp toapp_lora_cfg_rsp = 34;
+        SysMowInfo toapp_mow_info = 11;
+        SysPlanJobStatus toapp_plan_status = 18;
+        SysUploadFileProgress toapp_ul_fprogress = 19;
+        SysDelJobPlan todev_deljobplan = 20;
+        int32 todev_get_dev_fw_info = 31;
+        SysJobPlanTime todev_job_plan_time = 10;
         SysKnifeControl todev_knife_ctrl = 22;
+        LoraCfgReq todev_lora_cfg_req = 33;
+        int32 todev_mow_info_up = 21;
+        SysOffChipFlash todev_off_chip_flash = 30;
+        int32 todev_reset_system = 23;
+        SysResetSystemStatus todev_reset_system_status = 24;
+        TimeCtrlLight todev_time_ctrl_light = 28;
+        mow_to_app_info_t mow_to_app_info = 35;
     }
 }
 
 message SysKnifeControl {
     int32 knifeStatus = 1;
     int32 knifeHeight = 2;
+}
+
+enum Operation {
+    WRITE = 0;
+    READ = 1;
+    ERASE = 2;
+}
+
+enum OffPartId {
+    OFF_PART_DL_IMG = 0;
+    OFF_PART_UPDINFO_BACK = 1;
+    OFF_PART_UPDINFO = 2;
+    OFF_PART_NAKEDB = 3;
+    OFF_PART_FLASHDB = 4;
+    OFF_PART_UPD_APP_IMG = 5;
+    OFF_PART_UPD_BMS_IMG = 6;
+    OFF_PART_UPD_TMP_IMG = 7;
+    OFF_PART_DEV_INFO = 8;
+    OFF_PART_NAKEDB_BACK = 9;
+    OFF_PART_MAX = 10;
+}
+
+message SysBatUp {
+    int32 batVal = 1;
+}
+
+message SysWorkState {
+  int32 deviceState = 1;
+  int32 chargeState = 2;
+  int64 cmHash = 3;
+  int64 pathHash = 4;
+}
+
+message SysSetTimeZone {
+  int32 timeStamp = 1;
+  int32 timeArea = 2;
+}
+
+message SysSetDateTime {
+    int32 year = 1;
+    int32 month = 2;
+    int32 date = 3;
+    int32 week = 4;
+    int32 hours = 5;
+    int32 minutes = 6;
+    int32 seconds = 7;
+    int32 timezone = 8;
+    int32 daylight = 9;
+}
+
+message SysJobPlan {
+    int64 jobId = 1;
+    int32 jobMode = 2;
+    int32 rainTactics = 3;
+    int32 knifeHeight = 4;
+}
+
+message SysDevErrCode {
+    int32 errorCode = 1;
+}
+
+message SysBoardType {
+    int32 boardType = 1;
+}
+
+message SysSwVersion {
+    int32 boardType = 1;
+    int32 versionLen = 2;
+}
+
+message SysDelJobPlan {
+  string deviceId = 1;
+  string planId = 2;
+}
+
+message SysJobPlanTime {
+    int64 planId = 1;
+    int32 startJobTime = 2;
+    int32 endJobTime = 3;
+    int32 timeInDay = 4;
+    int32 jobPlanMode = 5;
+    int32 jobPlanEnable = 6;
+    SysJobPlan jobPlan = 10;
+    repeated int32 weekDay = 7;
+    int32 timeInWeekDay = 8;
+    int32 everyday = 9;
+}
+
+message SysMowInfo {
+    int32 deviceState = 1;
+    int32 batVal = 2;
+    int32 knifeHeight = 3;
+    int32 rTKstatus = 4;
+    int32 rTKstars = 5;
+}
+
+message SysOptiLineAck {
+    int32 currentFrame = 2;
+    int32 responesCmd = 1;
+}
+
+message SysCommCmd {
+  int32 rw = 1;
+  int32 id = 2;
+  int32 context = 3;
+}
+
+message SysUploadFileProgress {
+  string bizId = 1;
+  int32 result = 2;
+  int32 progress = 3;
+}
+
+message SysErrorCode {
+    int32 codeNo = 1;
+}
+
+message SysBorder {
+    int32 borderval = 1;
+}
+
+message SysPlanJobStatus {
+    int32 planjobStatus = 1;
+}
+
+message SysResetSystemStatus {
+    int32 resetStaus = 1;
+}
+
+message TimeCtrlLight {
+    int32 operate = 1;
+    int32 enable = 2;
+    int32 start_hour = 3;
+    int32 end_hour = 5;
+    int32 start_min = 4;
+    int32 end_min = 6;
+    int32 action = 7;
+}
+
+message systemRapidStateTunnel_msg {
+    int32 rapid_state_data = 1;
+}
+
+message systemTardStateTunnel_msg {
+  repeated int64 tard_state_data = 1;
+}
+
+message systemUpdateBuf_msg {
+    repeated int64 update_buf_data = 1;
+}
+
+message SysOffChipFlash {
+  int32 op = 1;
+  int32 id = 2;
+  int32 start_addr = 3;
+  int32 offset = 4;
+  int32 length = 5;
+  bytes data = 6;
+  int32 code = 7;
+  string msg = 8;
+}
+
+message systemTmpCycleTx_msg {
+    repeated int64 cycle_tx_data = 1;
+}
+
+message LoraCfgReq {
+    int32 op_ = 1;
+    string cfg = 2;
+}
+
+message LoraCfgRsp {
+    int32 result = 1;
+    int32 op = 2;
+    string cfg = 3;
+    string fac_cfg = 4;
+}
+
+message mod_fw_info {
+  int32 type = 1;
+  string identify = 2;
+  string version = 3;
+}
+
+message device_fw_info {
+  int32 result = 1;
+  string version = 2;
+  repeated mod_fw_info mod = 3;
+}
+
+message mow_to_app_info_t {
+    int32 type = 1;
+    int32 cmd = 2;
+    repeated int32 mow_data = 3;
 }

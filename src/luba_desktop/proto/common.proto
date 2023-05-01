@@ -1,0 +1,7 @@
+
+syntax = "proto3";
+
+message CommDataCouple {
+    float x = 1;
+    float y = 2;
+}

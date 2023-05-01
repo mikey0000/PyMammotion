@@ -1,8 +1,7 @@
-from io import BytesIO
-
+"""Notify data object"""
 class BlufiNotifyData(object):
     """ generated source for class BlufiNotifyData """
-    mDataOS = BytesIO()
+    mDataOS = b''
     mFrameCtrlValue = int()
     mPkgType = int()
     mSubType = int()
@@ -49,9 +48,11 @@ class BlufiNotifyData(object):
     #  JADX INFO: Access modifiers changed from: package-private 
     def addData(self, bArr, i):
         """ generated source for method addData """
-        self.mDataOS.write(bArr[i: len(bArr) - i])
+        self.mDataOS += bArr
 
     #  JADX INFO: Access modifiers changed from: package-private 
     def getDataArray(self):
         """ generated source for method getDataArray """
-        return self.mDataOS.getvalue()
+        print("data Array")
+        print(self.mDataOS)
+        return self.mDataOS

@@ -13,23 +13,40 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x65sp_driver.proto\"\xee\x01\n\x07\x43ommEsp\x12\x16\n\x0etodev_ble_sync\x18\x01 \x01(\x05\x12\x16\n\x0etodev_ConfType\x18\x02 \x01(\x05\x12\x1d\n\x15toapp_wifi_iot_status\x18\x0e \x01(\x08\x12+\n\x11todev_devinfo_req\x18\x0b \x01(\x0b\x32\x0e.DrvDevInfoReqH\x00\x12-\n\x12toapp_devinfo_resp\x18\x0c \x01(\x0b\x32\x0f.DrvDevInfoRespH\x00\x12*\n\x10toapp_ListUpload\x18\x08 \x01(\x0b\x32\x0e.DrvListUploadH\x00\x42\x0c\n\nEspSubType\"\\\n\rDrvListUpload\x12\x0f\n\x07\x63urrent\x18\x02 \x01(\x05\x12\x0b\n\x03sum\x18\x01 \x01(\x05\x12\x0c\n\x04rssi\x18\x05 \x01(\x05\x12\x0e\n\x06status\x18\x03 \x01(\x05\x12\x0f\n\x07memssid\x18\x04 \x01(\t\"+\n\x0f\x44rvDevInfoReqId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\"G\n\x10\x44rvDevInfoRespId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\x12\x0c\n\x04info\x18\x03 \x01(\t\x12\x0b\n\x03res\x18\x04 \x01(\x05\"2\n\rDrvDevInfoReq\x12!\n\x07req_ids\x18\x01 \x03(\x0b\x32\x10.DrvDevInfoReqId\"5\n\x0e\x44rvDevInfoResp\x12#\n\x08resp_ids\x18\x01 \x03(\x0b\x32\x11.DrvDevInfoRespIdb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x65sp_driver.proto\"\x89\x05\n\x07\x43ommEsp\x12\x1f\n\x15toapp_wifi_iot_status\x18\x0e \x01(\x08H\x00\x12\x1e\n\x14toapp_upgrade_report\x18\r \x01(\x05H\x00\x12\x1e\n\x14toapp_uploadfile_rsp\x18\x10 \x01(\x05H\x00\x12\x1f\n\x15toapp_networkinfo_rsp\x18\x12 \x01(\x05H\x00\x12-\n\x12toapp_devinfo_resp\x18\x0c \x01(\x0b\x32\x0f.DrvDevInfoRespH\x00\x12*\n\x10toapp_ListUpload\x18\x08 \x01(\x0b\x32\x0e.DrvListUploadH\x00\x12&\n\x0etoapp_WifiConf\x18\x07 \x01(\x0b\x32\x0c.DrvWifiConfH\x00\x12\x17\n\rtoapp_wifimsg\x18\x06 \x01(\x05H\x00\x12\x1f\n\x15todev_networkinfo_req\x18\x11 \x01(\x05H\x00\x12+\n\x11todev_devinfo_req\x18\x0b \x01(\x0b\x32\x0e.DrvDevInfoReqH\x00\x12\x1e\n\x14todev_uploadfile_req\x18\x0f \x01(\x05H\x00\x12\x1f\n\x15todev_log_data_cancel\x18\n \x01(\x05H\x00\x12\x1c\n\x12todev_req_log_info\x18\t \x01(\x05H\x00\x12\x1e\n\x14todev_wifilistupload\x18\x04 \x01(\x05H\x00\x12-\n\x13todev_wifimsgupload\x18\x03 \x01(\x0b\x32\x0e.DrvWifiUploadH\x00\x12\"\n\x18todev_wifi_configuration\x18\x05 \x01(\x05H\x00\x12\x18\n\x0etodev_ConfType\x18\x02 \x01(\x05H\x00\x12\x18\n\x0etodev_ble_sync\x18\x01 \x01(\x05H\x00\x42\x0c\n\nEspSubType\"\\\n\rDrvListUpload\x12\x0f\n\x07\x63urrent\x18\x02 \x01(\x05\x12\x0b\n\x03sum\x18\x01 \x01(\x05\x12\x0c\n\x04rssi\x18\x05 \x01(\x05\x12\x0e\n\x06status\x18\x03 \x01(\x05\x12\x0f\n\x07memssid\x18\x04 \x01(\t\"&\n\rDrvWifiUpload\x12\x15\n\rwifiMsgUpload\x18\x01 \x01(\x05\"$\n\x0b\x44rvWifiList\x12\x15\n\rnVSWifiUpload\x18\x01 \x01(\x05\"\x93\x01\n\nDrvWifiMsg\x12\x0f\n\x07status1\x18\x01 \x01(\t\x12\x0f\n\x07status2\x18\x02 \x01(\t\x12\n\n\x02iP\x18\x03 \x01(\t\x12\x0f\n\x07msgssid\x18\x04 \x01(\t\x12\x10\n\x08password\x18\x05 \x01(\t\x12\x0c\n\x04rssi\x18\x06 \x01(\x05\x12\x12\n\nproductkey\x18\x07 \x01(\t\x12\x12\n\ndevicename\x18\x08 \x01(\t\"3\n\nDrvWifiSet\x12\x13\n\x0b\x63onfigParam\x18\x01 \x01(\x05\x12\x10\n\x08\x63onfSsid\x18\x02 \x01(\t\"?\n\x0b\x44rvWifiConf\x12\x10\n\x08succFlag\x18\x01 \x01(\x08\x12\x0c\n\x04\x63ode\x18\x02 \x01(\x05\x12\x10\n\x08\x63onfssid\x18\x03 \x01(\t\"+\n\x0f\x44rvDevInfoReqId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\"G\n\x10\x44rvDevInfoRespId\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04type\x18\x02 \x01(\x05\x12\x0c\n\x04info\x18\x03 \x01(\t\x12\x0b\n\x03res\x18\x04 \x01(\x05\"2\n\rDrvDevInfoReq\x12!\n\x07req_ids\x18\x01 \x03(\x0b\x32\x10.DrvDevInfoReqId\"5\n\x0e\x44rvDevInfoResp\x12#\n\x08resp_ids\x18\x01 \x03(\x0b\x32\x11.DrvDevInfoRespId\"l\n\x13WifiIotStatusReport\x12\x16\n\x0ewifi_connected\x18\x01 \x01(\x08\x12\x15\n\riot_connected\x18\x02 \x01(\x08\x12\x12\n\nproductkey\x18\x03 \x01(\t\x12\x12\n\ndevicename\x18\x04 \x01(\t*\\\n\x0cWifiConfType\x12\x12\n\x0e\x44isconnectWifi\x10\x00\x12\x0e\n\nForgetWifi\x10\x01\x12\x15\n\x11\x44irectConnectWifi\x10\x02\x12\x11\n\rReconnectWifi\x10\x03*R\n\x10\x44rvDevInfoResult\x12\x13\n\x0f\x44RV_RESULT_FAIL\x10\x00\x12\x12\n\x0e\x44RV_RESULT_SUC\x10\x01\x12\x15\n\x11\x44RV_RESULT_NOTSUP\x10\x02\x62\x06proto3')
 
-_builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'esp_driver_pb2', globals())
+_globals = globals()
+_builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'esp_driver_pb2', _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _COMMESP._serialized_start=21
-  _COMMESP._serialized_end=259
-  _DRVLISTUPLOAD._serialized_start=261
-  _DRVLISTUPLOAD._serialized_end=353
-  _DRVDEVINFOREQID._serialized_start=355
-  _DRVDEVINFOREQID._serialized_end=398
-  _DRVDEVINFORESPID._serialized_start=400
-  _DRVDEVINFORESPID._serialized_end=471
-  _DRVDEVINFOREQ._serialized_start=473
-  _DRVDEVINFOREQ._serialized_end=523
-  _DRVDEVINFORESP._serialized_start=525
-  _DRVDEVINFORESP._serialized_end=578
+  _globals['_WIFICONFTYPE']._serialized_start=1447
+  _globals['_WIFICONFTYPE']._serialized_end=1539
+  _globals['_DRVDEVINFORESULT']._serialized_start=1541
+  _globals['_DRVDEVINFORESULT']._serialized_end=1623
+  _globals['_COMMESP']._serialized_start=21
+  _globals['_COMMESP']._serialized_end=670
+  _globals['_DRVLISTUPLOAD']._serialized_start=672
+  _globals['_DRVLISTUPLOAD']._serialized_end=764
+  _globals['_DRVWIFIUPLOAD']._serialized_start=766
+  _globals['_DRVWIFIUPLOAD']._serialized_end=804
+  _globals['_DRVWIFILIST']._serialized_start=806
+  _globals['_DRVWIFILIST']._serialized_end=842
+  _globals['_DRVWIFIMSG']._serialized_start=845
+  _globals['_DRVWIFIMSG']._serialized_end=992
+  _globals['_DRVWIFISET']._serialized_start=994
+  _globals['_DRVWIFISET']._serialized_end=1045
+  _globals['_DRVWIFICONF']._serialized_start=1047
+  _globals['_DRVWIFICONF']._serialized_end=1110
+  _globals['_DRVDEVINFOREQID']._serialized_start=1112
+  _globals['_DRVDEVINFOREQID']._serialized_end=1155
+  _globals['_DRVDEVINFORESPID']._serialized_start=1157
+  _globals['_DRVDEVINFORESPID']._serialized_end=1228
+  _globals['_DRVDEVINFOREQ']._serialized_start=1230
+  _globals['_DRVDEVINFOREQ']._serialized_end=1280
+  _globals['_DRVDEVINFORESP']._serialized_start=1282
+  _globals['_DRVDEVINFORESP']._serialized_end=1335
+  _globals['_WIFIIOTSTATUSREPORT']._serialized_start=1337
+  _globals['_WIFIIOTSTATUSREPORT']._serialized_end=1445
 # @@protoc_insertion_point(module_scope)

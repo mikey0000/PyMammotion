@@ -1,19 +1,39 @@
 syntax = "proto3";
 
+enum WifiConfType {
+    DisconnectWifi = 0;
+    ForgetWifi = 1;
+    DirectConnectWifi = 2;
+    ReconnectWifi = 3;
+}
+
+enum DrvDevInfoResult {
+  DRV_RESULT_FAIL = 0;
+  DRV_RESULT_SUC = 1;
+  DRV_RESULT_NOTSUP = 2;
+}
 
 
-
-message CommEsp {
-
-    int32 todev_ble_sync = 1;
-    int32 todev_ConfType = 2;
-    bool toapp_wifi_iot_status = 14;
-
-    
+message CommEsp { 
     oneof EspSubType {
-        DrvDevInfoReq todev_devinfo_req = 11;
+        bool toapp_wifi_iot_status = 14;
+        int32 toapp_upgrade_report = 13;
+        int32 toapp_uploadfile_rsp = 16;
+        int32 toapp_networkinfo_rsp = 18;
         DrvDevInfoResp toapp_devinfo_resp = 12;
         DrvListUpload toapp_ListUpload = 8;
+        DrvWifiConf toapp_WifiConf = 7;
+        int32 toapp_wifimsg = 6;
+        int32 todev_networkinfo_req = 17;
+        DrvDevInfoReq todev_devinfo_req = 11;
+        int32 todev_uploadfile_req = 15;
+        int32 todev_log_data_cancel = 10;
+        int32 todev_req_log_info = 9;
+        int32 todev_wifilistupload = 4;
+        DrvWifiUpload todev_wifimsgupload = 3;
+        int32 todev_wifi_configuration = 5;
+        int32 todev_ConfType = 2;
+        int32 todev_ble_sync = 1;
         
     }
 }
@@ -24,6 +44,36 @@ message DrvListUpload {
     int32 rssi = 5;
     int32 status = 3;
     string memssid = 4;
+}
+
+message DrvWifiUpload {
+    int32 wifiMsgUpload = 1;
+}
+
+message DrvWifiList {
+    int32 nVSWifiUpload = 1;
+}
+
+message DrvWifiMsg {
+    string status1 = 1;
+    string status2 = 2;
+    string iP = 3;
+    string msgssid = 4;
+    string password = 5;
+    int32 rssi = 6;
+    string productkey = 7;
+    string devicename = 8;
+}
+
+message DrvWifiSet {
+  int32 configParam = 1;
+  string confSsid = 2;
+}
+
+message DrvWifiConf {
+  bool succFlag = 1;
+  int32 code = 2;
+  string confssid = 3;
 }
 
 message DrvDevInfoReqId {
@@ -44,4 +94,11 @@ message DrvDevInfoReq {
 
 message DrvDevInfoResp {
     repeated DrvDevInfoRespId resp_ids = 1;
+}
+
+message WifiIotStatusReport {
+    bool wifi_connected = 1;
+    bool iot_connected = 2;
+    string productkey = 3;
+    string devicename = 4;
 }

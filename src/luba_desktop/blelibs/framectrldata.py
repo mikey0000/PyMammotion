@@ -16,6 +16,7 @@ class FrameCtrlData(object) :
     
     def  isChecksum(self) :
         return self.check(1)
+    
     def  isAckRequirement(self) :
         return self.check(3)
     

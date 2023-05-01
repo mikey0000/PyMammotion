@@ -7,6 +7,7 @@ import json
 import queue
 import sys
 import time
+from typing import Dict
 
 from bleak import BleakClient
 from jsonic import serialize
@@ -14,6 +15,8 @@ from luba_desktop.blelibs.convert import parseCustomData
 
 from luba_desktop.blelibs.framectrldata import FrameCtrlData
 from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
+from luba_desktop.utility.constant.device_constant import bleOrderCmd
+from luba_desktop.aliyun.tmp_constant import tmp_constant
 
 from luba_desktop.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
 from luba_desktop.blelibs.notifydata import BlufiNotifyData
@@ -79,6 +82,7 @@ class Blufi:
     mSendSequence = itertools.count()
     mReadSequence = itertools.count()
     mAck = queue.Queue()
+    notification = BlufiNotifyData()
 
     def __init__(self, client: BleakClient, moveEvt: MoveEvent):
         self.client = client
@@ -102,8 +106,8 @@ class Blufi:
         lubaMsg.subtype = 1
         lubaMsg.esp.CopyFrom(commEsp)
         print(lubaMsg)
-        bytes = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(bytes)
+        byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
     
     async def sendTodevBleSync(self):
         commEsp = esp_driver_pb2.CommEsp()
@@ -117,14 +121,166 @@ class Blufi:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.esp.CopyFrom(commEsp)
-        print(lubaMsg)
-        bytes = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(bytes)
+        byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
       
+    async def get_all_boundary_hash_list(self, i: int):
+        """.getAllBoundaryHashList(3);"""
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_NONE,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_gethash=mctrl_nav_pb2.NavGetHashList(
+                pver=1,
+                subCmd=i
+                )
+            )
+        )
+
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+        
+    async def get_line_info(self, i: int):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_zigzag_ack=mctrl_nav_pb2.NavUploadZigZagResultAck(
+                pver=1,
+                currentHash=i,
+                subCmd=0
+                )
+            ),
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+        
+    async def get_hash_response(self, totalFrame: int, currentFrame: int):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_gethash=mctrl_nav_pb2.NavGetHashList(
+                pver=1,
+                subCmd=2,
+                currentFrame=currentFrame,
+                totalFrame=totalFrame
+                )
+            )
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+        
+    async def synchronize_hash_data(self, l: int):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
+                pver=1,
+                action=8,
+                hash=l,
+                subCmd=1
+                )
+            )
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    async def get_task(self):
+        hash_map = {"pver": 1, "subCmd": 2, "result": 0}
+        await self.postCustomData(self.get_json_string(bleOrderCmd.task, hash_map))
+        
+    async def send_ble_alive(self):
+        hash_map = {"ctrl": 1}
+        await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))    
+    
+    
+    async def breakPointContinue(self):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                type=1,
+                action=7,
+                result=0
+                )
+            )
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    async def breakPointAnywhereContinue(self, refresh_loading: bool):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                type=1,
+                action=9,
+                result=0
+                )
+            )
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    
+    def clearNotification(self):
+        self.notification = None
+        self.notification = BlufiNotifyData()
 
     async def getDeviceInfo(self):
-        await self.postCustomData(Blufi.getJsonString(63))
+        await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
     
+    async def sendDeviceInfo(self):
+        """currently not called"""
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
+        seqs=1,
+        version=1,
+        subtype=1,
+        esp=esp_driver_pb2.CommEsp(
+            todevBleSync=1,
+            todevDevinfoReq=esp_driver_pb2.DrvDevInfoReq()
+            )
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
 
     async def requestDeviceStatus(self):
         request = False
@@ -231,7 +387,7 @@ class Blufi:
     async def transformSpeed(self, linear: float, percent: float):
             
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
-        if (transfrom3 != None and len(transfrom3) > 0):
+        if (transfrom3 is not None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int) (transfrom3[1] * 4.5)
             
@@ -395,7 +551,7 @@ class Blufi:
         return byteOS.getvalue()
     
 
-    def parseNotification(self, response: bytearray, notification: BlufiNotifyData):
+    def parseNotification(self, response: bytearray):
         dataOffset = None
         if (response is None):
             #Log.w(TAG, "parseNotification null data");
@@ -405,7 +561,7 @@ class Blufi:
         #     Log.d(TAG, "parseNotification Notification= " + Arrays.toString(response));
         # }
         if (len(response) >= 4):
-            sequence = response[2] # toInt
+            sequence = int(response[2]) # toInt
             # self.mReadSequence_1.incrementAndGet()
             if (sequence != (next(self.mReadSequence) & 255)):
                 pass
@@ -415,22 +571,26 @@ class Blufi:
                 # self.mReadSequence_2.incrementAndGet()
             
             # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
-            type = response[0] # toInt
-            pkgType = self._getPackageType(type)
-            subType = self._getSubType(type)
-            notification.setType(type)
-            notification.setPkgType(pkgType)
-            notification.setSubType(subType)
-            frameCtrl = response[1] # toInt
-            notification.setFrameCtrl(frameCtrl)
+            pkt_type = int(response[0]) # toInt
+            pkgType = self._getPackageType(pkt_type)
+            subType = self._getSubType(pkt_type)
+            self.notification.setType(pkt_type)
+            self.notification.setPkgType(pkgType)
+            self.notification.setSubType(subType)
+            frameCtrl = int(response[1]) # toInt
+            print("frame ctrl")
+            print(frameCtrl)
+            print(response)
+            self.notification.setFrameCtrl(frameCtrl)
             frameCtrlData = FrameCtrlData(frameCtrl)
-            dataLen = response[3] # toInt specifies length of data
+            dataLen = int(response[3]) # toInt specifies length of data
             dataBytes = None
 
             try:
                 
-                dataBytes = response[4:dataLen]
-                # if (frameCtrlData.isEncrypted()) {
+                dataBytes = response[4:dataLen+4]
+                if (frameCtrlData.isEncrypted()):
+                    print("is encypted")
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
                 # }
@@ -455,7 +615,7 @@ class Blufi:
                 else:
                     dataOffset = 0
                 
-                notification.addData(dataBytes, dataOffset)
+                self.notification.addData(dataBytes, dataOffset)
                 return 1 if frameCtrlData.hasFrag() else 0
             except Exception as e:
                 print(e)
@@ -466,21 +626,24 @@ class Blufi:
         return -2
     
     
-    def parseBlufiNotifyData(self, data: BlufiNotifyData):
-        pkgType = data.getPkgType()
-        subType = data.getSubType()
-        dataBytes = data.getDataArray()
+    def parseBlufiNotifyData(self):
+        pkgType = self.notification.getPkgType()
+        subType = self.notification.getSubType()
+        dataBytes = self.notification.getDataArray()
         # if (self.mUserBlufiCallback is not None):
         #     complete = self.mUserBlufiCallback.onGattNotification(self.mClient, pkgType, subType, dataBytes)
         #     if (complete):
         #         return
             
         
-        # if (pkgType == 0):
-            # self._parseCtrlData(subType, dataBytes)
+        if (pkgType == 0):
+            self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
             self._parseDataData(subType, dataBytes)
         
+    def _parseCtrlData(self, subType: int, data: bytearray):
+        pass
+        #self._parseAck(data)
 
     def _parseDataData(self, subType: int, data: bytearray):
     #     if (subType == 0) {
@@ -504,6 +667,7 @@ class Blufi:
             case 19:
     #             # /home/michael/Downloads/Mammotion_1.2.4.4(release)/smali/com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
                 parseCustomData(data) #parse to protobuf message
+                #onReceiveCustomData
     #             return;
     #         default:
     #             return;
@@ -534,16 +698,31 @@ class Blufi:
         return next(self.mSendSequence) & 255
 
 
-    def getJsonString(cmd: int) -> str:
-        
+    def getJsonString(self, cmd: int) -> str:
+        jSONObject = {}
         try:
-            return json.dumps({
-                "cmd": cmd,
-                "id": round(time.time() * 1000)
-            })
+            jSONObject["cmd"] = cmd
+            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
+            return json.dumps(jSONObject)
         except Exception as err:
             
             return ""
+        
+
+    def get_json_string(self, cmd: int, hash_map: Dict[str, object]) -> str:
+        jSONObject = {}
+        try:
+            jSONObject["cmd"] = cmd
+            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
+            jSONObject2 = {}
+            for key, value in hash_map.items():
+                jSONObject2[key] = value
+            jSONObject["params"] = jSONObject2
+            return json.dumps(jSONObject)
+        except Exception as e:
+            print(e)
+            return ""
+
 
 
     def current_milli_time(self):

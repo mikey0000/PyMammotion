@@ -84,6 +84,7 @@ class BleLubaConnection:
         # print(data.decode("utf-8") )
         # BlufiNotifyData
         # run an event handler back to somewhere
+        
         self._bleEvt.BleNotification(data)
         
 
