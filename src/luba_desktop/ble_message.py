@@ -20,41 +20,13 @@ from luba_desktop.aliyun.tmp_constant import tmp_constant
 
 from luba_desktop.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
 from luba_desktop.blelibs.notifydata import BlufiNotifyData
-from luba_desktop.blelibs.framectrldata import FrameCtrlData
 from luba_desktop.utility.rocker_util import RockerControlUtil
 from luba_desktop.event import MoveEvent
-
-MODEL_NBR_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
-
-UART_SERVICE_UUID = "0000ffff-0000-1000-8000-00805f9b34fb"
-UART_RX_CHAR_UUID = "0000ff01-0000-1000-8000-00805f9b34fb"
-UART_TX_CHAR_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
+from luba_desktop.const import UUID_WRITE_CHARACTERISTIC
 
 
-# 01-31 14:06:23.761 21981 22174 E EspBleUtil: ServiceName:00001801-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.761 21981 22174 E EspBleUtil: ---CharacterName:00002a05-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.761 21981 22174 E EspBleUtil: ServiceName:00001800-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.761 21981 22174 E EspBleUtil: ---CharacterName:00002a00-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.761 21981 22174 E EspBleUtil: ---CharacterName:00002a01-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.761 21981 22174 E EspBleUtil: ---CharacterName:00002aa6-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.761 21981 22174 E EspBleUtil: ServiceName:0000ffff-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.762 21981 22174 E EspBleUtil: ---CharacterName:0000ff01-0000-1000-8000-00805f9b34fb
-# 01-31 14:06:23.762 21981 22174 E EspBleUtil: ---CharacterName:0000ff02-0000-1000-8000-00805f9b34fb
-
-
-UUID_SERVICE = "0000ffff-0000-1000-8000-00805f9b34fb"
-UUID_WRITE_CHARACTERISTIC = "0000ff01-0000-1000-8000-00805f9b34fb"
-UUID_NOTIFICATION_CHARACTERISTIC = "0000ff02-0000-1000-8000-00805f9b34fb"
-UUID_NOTIFICATION_DESCRIPTOR = "00002902-0000-1000-8000-00805f9b34fb"
-
-CLIENT_CHARACTERISTIC_CONFIG_DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805f9b34fb"
-BATTERY_SERVICE = "0000180F-0000-1000-8000-00805f9b34fb"
-BATTERY_LEVEL_CHARACTERISTIC = "00002A19-0000-1000-8000-00805f9b34fb"
-GENERIC_ATTRIBUTE_SERVICE = "00001801-0000-1000-8000-00805f9b34fb"
-SERVICE_CHANGED_CHARACTERISTIC = "00002A05-0000-1000-8000-00805f9b34fb"
-
-
-class Blufi:
+class BleMessage:
+    """Class for sending and recieving messages from Luba"""
     AES_TRANSFORMATION = "AES/CFB/NoPadding"
     DEFAULT_PACKAGE_LENGTH = 20
     DH_G = "2"
@@ -87,7 +59,6 @@ class Blufi:
     def __init__(self, client: BleakClient, moveEvt: MoveEvent):
         self.client = client
         self._moveEvt = moveEvt
-        pass
 
 
     async def getDeviceVersionMain(self):
@@ -105,7 +76,6 @@ class Blufi:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.esp.CopyFrom(commEsp)
-        print(lubaMsg)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
     
@@ -125,7 +95,7 @@ class Blufi:
         await self.postCustomDataBytes(byte_arr)
       
     async def get_all_boundary_hash_list(self, i: int):
-        """.getAllBoundaryHashList(3);"""
+        """.getAllBoundaryHashList(3); 0"""
         luba_msg = luba_msg_pb2.LubaMsg(
         msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
         sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -216,6 +186,26 @@ class Blufi:
         hash_map = {"ctrl": 1}
         await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))    
     
+    # (2, 0);
+    async def read_plan(self, i: int, i2: int):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
+                sub_cmd=i,
+                plan_index=i2
+                )
+            )
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
     
     async def breakPointContinue(self):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -325,7 +315,6 @@ class Blufi:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
-        print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
             
@@ -341,7 +330,6 @@ class Blufi:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
-        print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
@@ -361,7 +349,6 @@ class Blufi:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.driver.CopyFrom(mctrlDriver)
-        print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
@@ -380,7 +367,6 @@ class Blufi:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctlsys)
-        print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
@@ -438,7 +424,6 @@ class Blufi:
         lubaMsg.subtype = 1
         
         lubaMsg.driver.CopyFrom(mctrlDriver)
-        print(lubaMsg)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
         self._moveEvt.MoveFinished()
@@ -484,23 +469,23 @@ class Blufi:
         return (subtype << 2) | type
     
 
-    async def post(self, encrypt: bool, checksum: bool, requireAck: bool, type: int, data: bytearray) -> bool:
-        if data == None:
-            return await self.postNonData(encrypt, checksum, requireAck, type)
+    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytearray) -> bool:
+        if data is None:
+            return await self.postNonData(encrypt, checksum, require_ack, type_of)
 
-        return await self.postContainsData(encrypt, checksum, requireAck, type, data)
+        return await self.postContainsData(encrypt, checksum, require_ack, type_of, data)
         
     async def gattWrite(self, data: bytearray) -> bool:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
-    async def postNonData(self, encrypt: bool, checksum: bool, requireAck: bool, type: int) -> bool:
+    async def postNonData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
         sequence = self.generateSendSequence()
-        postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, False, sequence, None)
+        postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
         posted = await self.gattWrite(postBytes)
-        return posted and (not requireAck or self.receiveAck(sequence))
+        return posted and (not require_ack or self.receiveAck(sequence))
 
 
-    async def postContainsData(self, encrypt: bool,  checksum: bool,  requireAck: bool,  type: int, data: bytearray) -> bool:
+    async def postContainsData(self, encrypt: bool,  checksum: bool,  require_ack: bool,  type_of: int, data: bytearray) -> bool:
         chunk_size = 200 -3  #self.client.mtu_size - 3
 
         chunks = list()
@@ -515,7 +500,7 @@ class Blufi:
             # frag = i < len(data)
             frag = index != len(chunks)-1
             sequence = self.generateSendSequence()
-            postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, frag, sequence, chunk)
+            postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
             
             posted = await self.gattWrite(postBytes)
             if (posted != None):
@@ -523,9 +508,9 @@ class Blufi:
             
             if (not frag):
                 print("not frag")
-                return not requireAck or self.receiveAck(sequence)
+                return not require_ack or self.receiveAck(sequence)
                 
-            if (requireAck and not self.receiveAck(sequence)):
+            if (require_ack and not self.receiveAck(sequence)):
                 return False
             else:
                 await sleep(0.01)
@@ -533,11 +518,11 @@ class Blufi:
         
     
 
-    def getPostBytes(self, type: int,  encrypt: bool, checksum: bool,  requireAck: bool,  hasFrag: bool, sequence: int, data: bytearray) -> bytearray:
+    def getPostBytes(self, type: int,  encrypt: bool, checksum: bool,  require_ack: bool,  hasFrag: bool, sequence: int, data: bytearray) -> bytearray:
         
         byteOS = BytesIO()
         dataLength = (0 if data == None else len(data))
-        frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, requireAck, hasFrag)
+        frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
         byteOS.write(type.to_bytes(1,sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
         byteOS.write(sequence.to_bytes(1, sys.byteorder))

@@ -120,7 +120,7 @@ message NavOptObsInfo {
     int32 obstacleId = 1;
     int32 allFrame = 2;
     int32 currentFrame = 3;
-    int32 borderDataLen = 4;
+    int32 obstacleDataLen = 4;
     repeated CommDataCouple dc = 5;
 }
 
@@ -176,11 +176,12 @@ message NavGetCommDataAck {
     int32 result = 3;
     int32 action = 4;
     int32 type = 5;
-    int64 paternalHashA = 6;
-    int64 paternalHashB = 7;
-    int32 totalFrame = 8;
-    int32 currentFrame = 9;
-    int64 dataHash = 10;
+    int64 hash = 6;
+    int64 paternalHashA = 7;
+    int64 paternalHashB = 8;
+    int32 totalFrame = 9;
+    int32 currentFrame = 10;
+    int64 dataHash = 11;
     int32 dataLen = 12;
     repeated CommDataCouple dataCouple = 13;
     string reserved = 14;
@@ -226,6 +227,7 @@ message NavUploadZigZagResult {
     int32 dataLen = 17;
     string reserved = 18;
     repeated CommDataCouple dataCouple = 19;
+    int32 subCmd = 20;
 }
 
 message NavUploadZigZagResultAck {

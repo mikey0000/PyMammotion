@@ -1,12 +1,10 @@
 import asyncio
 import threading
-from luba_desktop.blufi_impl import Blufi
+from luba_desktop.ble_message import BleMessage
 import pyjoystick
 from pyjoystick.sdl2 import Key, Joystick, run_event_loop
 from pyjoystick.utils import PeriodicThread
 from timeit import default_timer as timer
-
-from luba_desktop.event.event import MoveEvent
 
 import nest_asyncio
 
@@ -23,7 +21,7 @@ class JoystickControl:
     ignore_events = False
     blade_height = 25
 
-    def __init__(self, client: Blufi):
+    def __init__(self, client: BleMessage):
         self._client = client
         self._curr_time = timer()
 

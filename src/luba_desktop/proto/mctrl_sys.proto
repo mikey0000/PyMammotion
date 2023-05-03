@@ -9,23 +9,23 @@ message MctlSys {
         SysWorkState toapp_work_state = 2;
         SysSetTimeZone todev_time_zone = 3;
         SysSetDateTime todev_data_time = 4;
-        SysBorder border = 15;
-        SysCommCmd bidire_comm_cmd = 12;
         SysJobPlan job_plan = 6;
+        SysDevErrCode toapp_err_code = 7;
+        SysJobPlanTime todev_job_plan_time = 10;
+        SysMowInfo toapp_mow_info = 11;
+        SysCommCmd bidire_comm_cmd = 12;
         int64 plan_job_del = 14;
+        SysBorder border = 15;
         systemRapidStateTunnel_msg system_rapid_state_tunnel = 25;
         systemTardStateTunnel_msg system_tard_state_tunnel = 26;
         systemTmpCycleTx_msg system_tmp_cycle_tx = 29;
         systemUpdateBuf_msg system_update_buf = 27;
         device_fw_info toapp_dev_fw_info = 32;
-        SysDevErrCode toapp_err_code = 7;
         LoraCfgRsp toapp_lora_cfg_rsp = 34;
-        SysMowInfo toapp_mow_info = 11;
         SysPlanJobStatus toapp_plan_status = 18;
         SysUploadFileProgress toapp_ul_fprogress = 19;
         SysDelJobPlan todev_deljobplan = 20;
         int32 todev_get_dev_fw_info = 31;
-        SysJobPlanTime todev_job_plan_time = 10;
         SysKnifeControl todev_knife_ctrl = 22;
         LoraCfgReq todev_lora_cfg_req = 33;
         int32 todev_mow_info_up = 21;
@@ -180,7 +180,7 @@ message TimeCtrlLight {
 }
 
 message systemRapidStateTunnel_msg {
-    int32 rapid_state_data = 1;
+    repeated int64 rapid_state_data = 1;
 }
 
 message systemTardStateTunnel_msg {

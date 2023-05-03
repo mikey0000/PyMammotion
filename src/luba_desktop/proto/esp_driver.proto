@@ -16,22 +16,22 @@ enum DrvDevInfoResult {
 
 message CommEsp { 
     oneof EspSubType {
-        bool toapp_wifi_iot_status = 14;
+        WifiIotStatusReport toapp_wifi_iot_status = 14;
         int32 toapp_upgrade_report = 13;
         int32 toapp_uploadfile_rsp = 16;
-        int32 toapp_networkinfo_rsp = 18;
+        GetNetworkInfoRsp toapp_networkinfo_rsp = 18;
         DrvDevInfoResp toapp_devinfo_resp = 12;
         DrvListUpload toapp_ListUpload = 8;
         DrvWifiConf toapp_WifiConf = 7;
-        int32 toapp_wifimsg = 6;
-        int32 todev_networkinfo_req = 17;
+        DrvWifiMsg toapp_wifimsg = 6;
+        GetNetworkInfoReq todev_networkinfo_req = 17;
         DrvDevInfoReq todev_devinfo_req = 11;
-        int32 todev_uploadfile_req = 15;
-        int32 todev_log_data_cancel = 10;
+        DrvUploadFileToAppReq todev_uploadfile_req = 15;
+        DrvUploadFileCancel todev_log_data_cancel = 10;
         int32 todev_req_log_info = 9;
-        int32 todev_wifilistupload = 4;
+        DrvWifiSet todev_wifilistupload = 4;
         DrvWifiUpload todev_wifimsgupload = 3;
-        int32 todev_wifi_configuration = 5;
+        DrvWifiSet todev_wifi_configuration = 5;
         int32 todev_ConfType = 2;
         int32 todev_ble_sync = 1;
         
@@ -101,4 +101,31 @@ message WifiIotStatusReport {
     bool iot_connected = 2;
     string productkey = 3;
     string devicename = 4;
+}
+
+message DrvUploadFileToAppReq {
+    optional int32 bizId = 1;
+    optional int32 operation = 2;
+    optional int32 serverIp = 3;
+    optional int32 serverPort = 4;
+    optional int32 num = 5;
+    optional int32 type = 6;
+}
+
+message GetNetworkInfoReq {
+    int32 req_ids = 1;
+}
+
+message GetNetworkInfoRsp {
+    int32 req_ids = 1;
+    string wifi_ssid = 2;
+    string wifi_mac = 3;
+    int32 wifi_rssi = 4;
+    int32 ip = 5;
+    int32 mask = 6;
+    int32 gateway = 7;
+}
+
+message DrvUploadFileCancel {
+    int32 bizId = 1;
 }
