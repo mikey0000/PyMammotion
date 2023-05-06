@@ -170,7 +170,7 @@ class BleMessage:
             todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
                 pver=1,
                 action=8,
-                hash=l,
+                Hash=l,
                 subCmd=1
                 )
             )
@@ -276,7 +276,7 @@ class BleMessage:
         request = False
         type = self.getTypeValue(0, 5)
         try:
-            request = await self.post(Blufi.mEncrypted, Blufi.mChecksum, False, type, None)
+            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -291,7 +291,7 @@ class BleMessage:
         request = False
         type = self.getTypeValue(0, 7)
         try:
-            request = await self.post(Blufi.mEncrypted, Blufi.mChecksum, False, type, None)
+            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -440,9 +440,9 @@ class BleMessage:
     async def postCustomDataBytes(self, data: bytearray):
         if (data == None):
             return
-        type = self.getTypeValue(1, 19)
+        type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type, data)
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
             print(suc)
@@ -453,9 +453,9 @@ class BleMessage:
         data = dataStr.encode()
         if (data == None):
             return
-        type = self.getTypeValue(1, 19)
+        type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type, data)
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
             print(suc)
@@ -486,7 +486,9 @@ class BleMessage:
 
 
     async def postContainsData(self, encrypt: bool,  checksum: bool,  require_ack: bool,  type_of: int, data: bytearray) -> bool:
-        chunk_size = 200 -3  #self.client.mtu_size - 3
+        print("post contains data")
+        print(data)
+        chunk_size = 200 # self.client.mtu_size - 3
 
         chunks = list()
         for i in range(0, len(data), chunk_size):
@@ -494,7 +496,9 @@ class BleMessage:
                 chunks.append(data[i: len(data)])
             else:
                 chunks.append(data[i : i + chunk_size])
-    
+        print("chunks")
+        print(len(chunks))
+        print(chunks)
         for index, chunk in enumerate(chunks):
             print("entered for loop")
             # frag = i < len(data)
@@ -549,7 +553,8 @@ class BleMessage:
             sequence = int(response[2]) # toInt
             # self.mReadSequence_1.incrementAndGet()
             if (sequence != (next(self.mReadSequence) & 255)):
-                pass
+                print("parseNotification read sequence wrong")
+                self.mReadSequence = sequence
                 # Log.w(TAG, "parseNotification read sequence wrong")
                 # this is questionable
                 # self.mReadSequence = sequence
@@ -566,6 +571,7 @@ class BleMessage:
             print("frame ctrl")
             print(frameCtrl)
             print(response)
+            print(f"pktType {pkt_type} pkgType {pkgType} subType {subType}")
             self.notification.setFrameCtrl(frameCtrl)
             frameCtrlData = FrameCtrlData(frameCtrl)
             dataLen = int(response[3]) # toInt specifies length of data
@@ -573,13 +579,14 @@ class BleMessage:
 
             try:
                 
-                dataBytes = response[4:dataLen+4]
+                dataBytes = response[4:4+dataLen]
                 if (frameCtrlData.isEncrypted()):
                     print("is encypted")
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
                 # }
-                # if (frameCtrlData.isChecksum()) {
+                if (frameCtrlData.isChecksum()):
+                     print("checksum")
                 #     int respChecksum1 = toInt(response[response.length - 1]);
                 #     int respChecksum2 = toInt(response[response.length - 2]);
                 #     int crc = BlufiCRC.calcCRC(BlufiCRC.calcCRC(0, new byte[]{(byte) sequence, (byte) dataLen}), dataBytes);
@@ -615,6 +622,8 @@ class BleMessage:
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
+        print("parseBlufi")
+        print(dataBytes)
         # if (self.mUserBlufiCallback is not None):
         #     complete = self.mUserBlufiCallback.onGattNotification(self.mClient, pkgType, subType, dataBytes)
         #     if (complete):

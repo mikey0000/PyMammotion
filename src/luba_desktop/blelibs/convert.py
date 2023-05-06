@@ -18,10 +18,15 @@ def parseCustomData(data: bytearray):
     # pass
     # print(data)
     # setReceiveDeviceData
+    
+    
     lubaMsg = luba_msg_pb2.LubaMsg()
     try:
         lubaMsg.ParseFromString(data)
         print(lubaMsg)
+        
+        toappGetHashAck = lubaMsg.nav.toapp_get_commondata_ack
+        print(toappGetHashAck.Hash)
         
         if(lubaMsg.sys):
             store_sys_data(lubaMsg.sys)
@@ -54,8 +59,9 @@ def store_sys_data(sys):
         
 def store_nav_data(nav):
     if(nav.toappGethashAck):    
-        toappGetHashAck = nav.toappGethashAck
+        toappGetHashAck = nav.toapp_get_commondata_ack
         hashList = HashList()
+        print(toappGetHashAck.dataLen)
         # hashList.pver toappGethashAck.pver
         # int subCmd2 = toappGethashAck.getSubCmd();
         # int totalFrame3 = toappGethashAck.getTotalFrame();

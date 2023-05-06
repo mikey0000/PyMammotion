@@ -54,18 +54,20 @@ async def run():
     # await luba_client.getDeviceInfo()
     # gets info about luba and some other stuff
     # await luba_client.get_all_boundary_hash_list(3)
-    # await luba_client.get_all_boundary_hash_list(0)
+    await luba_client.get_all_boundary_hash_list(0)
 
     # get map data off Luba
+    #8656065632562971511
+    # await asyncio.sleep(1)
     await luba_client.synchronize_hash_data(8656065632562971511)
-    await asyncio.sleep(1)
     
-    await luba_client.send_ble_alive()
-    await asyncio.sleep(1)
-    
+    # problem one
+    # await asyncio.sleep(1)
     await luba_client.synchronize_hash_data(5326333396143256633)
-    await asyncio.sleep(1)
-    
+    # await asyncio.sleep(1)
+    # await luba_client.sendTodevBleSync()
+    # await luba_client.send_ble_alive()
+    await luba_client.synchronize_hash_data(6316048569363781876)    
     # probably gets paths
     # await luba_client.get_line_info(4)
     # await luba_client.get_hash_response(1, 1)
