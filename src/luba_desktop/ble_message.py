@@ -23,6 +23,7 @@ from luba_desktop.blelibs.notifydata import BlufiNotifyData
 from luba_desktop.utility.rocker_util import RockerControlUtil
 from luba_desktop.event import MoveEvent
 from luba_desktop.const import UUID_WRITE_CHARACTERISTIC
+from luba_desktop.data.model import Plan
 
 
 class BleMessage:
@@ -186,6 +187,31 @@ class BleMessage:
         hash_map = {"ctrl": 1}
         await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))    
     
+    async def start_job(self, blade_height):
+        self.setbladeHeight(blade_height)
+        #     EspBleUtil.getInstance().startJob(this.refreshLoading);
+            
+    
+    async def start_work_job(self):
+        byte_array = LubaMsgOuterClass.LubaMsg.newBuilder()
+            .setMsgtype(LubaMsgOuterClass.MsgCmdType.MSG_CMD_TYPE_NAV)
+            .setSender(LubaMsgOuterClass.MsgDevice.DEV_MOBILEAPP)
+            .setRcver(LubaMsgOuterClass.MsgDevice.DEV_MAINCTL)
+            .setMsgattr(LubaMsgOuterClass.MsgAttr.MSG_ATTR_REQ)
+            .setSeqs(1)
+            .setVersion(1)
+            .setSubtype(1)
+            .setNav(MctrlNav.MctlNav.newBuilder()
+                .setTodevTaskctrl(MctrlNav.NavTaskCtrl.newBuilder()
+                    .setType(1)
+                    .setAction(1)
+                    .setResult(0)
+                    .build())
+                .build())
+            .build()
+            .toByteArray()
+
+    
     # (2, 0);
     async def read_plan(self, i: int, i2: int):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -205,6 +231,133 @@ class BleMessage:
         )
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
+        
+    async def read_plan_unable_time(self, i):
+        build = mctrl_nav_pb2.NavUnableTimeSet()
+        build.sub_cmd = i
+
+        luba_msg = luba_msg_pb2.LubaMsg()
+        luba_msg.msg_type = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
+        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
+        luba_msg.msg_attr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
+        luba_msg.seqs = 1
+        luba_msg.version = 1
+        luba_msg.subtype = 1
+        luba_msg.nav.todev_unable_time_set.CopyFrom(build)
+
+    
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+        
+        
+    async def sendPlan2(self, plan: Plan):
+        navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
+        navPlanJobSet.pver = plan.pver
+        navPlanJobSet.subCmd = plan.subCmd
+        navPlanJobSet.area = plan.area
+        navPlanJobSet.deviceId = plan.deviceId
+        navPlanJobSet.workTime = plan.workTime
+        navPlanJobSet.version = plan.version
+        navPlanJobSet.id = plan.id
+        navPlanJobSet.userId = plan.userId
+        navPlanJobSet.planId = plan.planId
+        navPlanJobSet.taskId = plan.taskId
+        navPlanJobSet.jobId = plan.jobId
+        navPlanJobSet.startTime = plan.startTime
+        navPlanJobSet.endTime = plan.endTime
+        navPlanJobSet.week = plan.week
+        navPlanJobSet.knifeHeight = plan.knifeHeight
+        navPlanJobSet.model = plan.model
+        navPlanJobSet.edgeMode = plan.edgeMode
+        navPlanJobSet.requiredTime = plan.requiredTime
+        navPlanJobSet.routeAngle = plan.routeAngle
+        navPlanJobSet.routeModel = plan.routeModel
+        navPlanJobSet.routeSpacing = plan.routeSpacing
+        navPlanJobSet.ultrasonicBarrier = plan.ultrasonicBarrier
+        navPlanJobSet.totalPlanNum = plan.totalPlanNum
+        navPlanJobSet.planIndex = plan.planIndex
+        navPlanJobSet.result = plan.result
+        navPlanJobSet.speed = plan.speed
+        navPlanJobSet.taskName = plan.taskName
+        navPlanJobSet.jobName = plan.jobName
+        navPlanJobSet.zoneHashs.extend(plan.zoneHashs)
+        navPlanJobSet.reserved = plan.reserved
+
+        luba_msg = luba_msg_pb2.luba_msg()
+        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
+        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
+        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
+        luba_msg.seqs = 1
+        luba_msg.version = 1
+        luba_msg.subtype = 1
+        luba_msg.nav.todevPlanjobSet.CopyFrom(navPlanJobSet)
+
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+        
+    async def generate_route_information(self, generate_route_information):
+        
+        nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
+        nav_req_cover_path.pver = 1
+        nav_req_cover_path.sub_cmd = 0
+        nav_req_cover_path.zone_hashs.extend(generate_route_information.one_hashs)
+        nav_req_cover_path.job_mode = generate_route_information.job_mode
+        nav_req_cover_path.edge_mode = generate_route_information.rain_tactics
+        nav_req_cover_path.knife_height = generate_route_information.knife_height
+        nav_req_cover_path.speed = generate_route_information.speed
+        nav_req_cover_path.ultra_wave = generate_route_information.ultra_wave
+        nav_req_cover_path.channel_width = generate_route_information.channel_width
+        nav_req_cover_path.channel_mode = generate_route_information.channel_mode
+        nav_req_cover_path.toward = generate_route_information.toward
+
+       
+        luba_msg = luba_msg_pb2.LubaMsg()
+        luba_msg.msg_type = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
+        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
+        luba_msg.msg_attr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
+        luba_msg.seqs = 1
+        luba_msg.version = 1
+        luba_msg.subtype = 1
+
+        mctl_nav = mctrl_nav_pb2.MctlNav()
+        mctl_nav.bidire_reqconver_path.CopyFrom(nav_req_cover_path)
+        luba_msg.nav.CopyFrom(mctl_nav)
+
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+        
+        
+    async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave, channel_width, channel_mode):
+        luba_msg = luba_msg_pb2.LubaMsg()
+        luba_msg.msg_type = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
+        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
+        luba_msg.msg_attr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
+        luba_msg.seqs = 1
+        luba_msg.version = 1
+        luba_msg.subtype = 1
+
+        nav = mctrl_nav_pb2.MctlNav()
+        start_job = mctrl_nav_pb2.NavStartJob()
+        start_job.job_id = job_id
+        start_job.job_ver = job_ver
+        start_job.rain_tactics = rain_tactics
+        start_job.job_mode = job_mode
+        start_job.knife_height = knife_height
+        start_job.speed = speed
+        start_job.ultra_wave = ultra_wave
+        start_job.channel_width = channel_width
+        start_job.channel_mode = channel_mode
+
+        nav.todev_mow_task.CopyFrom(start_job)
+        luba_msg.nav.CopyFrom(nav)
+
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
 
     
     async def breakPointContinue(self):

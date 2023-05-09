@@ -1,0 +1,94 @@
+from typing import List
+
+
+class GenerateRouteInformation:
+    def __init__(self, one_hashs: List[int], job_mode: int, channel_width: int, speed: float, ultra_wave: int,
+                 channel_mode: int, rain_tactics: int, knife_height: int, toward: int):
+        self.one_hashs = one_hashs
+        self.rain_tactics = rain_tactics
+        self.job_mode = job_mode
+        self.knife_height = knife_height
+        self.speed = speed
+        self.ultra_wave = ultra_wave
+        self.channel_width = channel_width
+        self.channel_mode = channel_mode
+        self.toward = toward
+        self.edge_mode = rain_tactics
+        LogUtil.m4123e("模式航线指令参数", f"jobMode={job_mode}//channelWidth={channel_width}//speed={speed}//"
+                       f"UltraWave={ultra_wave}//channelMode={channel_mode}//edgeMode={rain_tactics}//"
+                       f"knifeHeight={knife_height}")
+
+    def set_speed(self, speed: float):
+        self.speed = speed
+
+    def get_job_id(self):
+        return self.job_id
+
+    def set_job_id(self, job_id: int):
+        self.job_id = job_id
+
+    def get_job_ver(self):
+        return self.job_ver
+
+    def set_job_ver(self, job_ver: int):
+        self.job_ver = job_ver
+
+    def get_rain_tactics(self):
+        return self.rain_tactics
+
+    def set_rain_tactics(self, rain_tactics: int):
+        self.rain_tactics = rain_tactics
+
+    def get_job_mode(self):
+        return self.job_mode
+
+    def set_job_mode(self, job_mode: int):
+        self.job_mode = job_mode
+
+    def get_knife_height(self):
+        return self.knife_height
+
+    def set_knife_height(self, knife_height: int):
+        self.knife_height = knife_height
+
+    def get_speed(self):
+        return self.speed
+
+    def set_speed(self, speed: float):
+        self.speed = speed
+
+    def get_ultra_wave(self):
+        return self.ultra_wave
+
+    def set_ultra_wave(self, ultra_wave: int):
+        self.ultra_wave = ultra_wave
+
+    def get_channel_width(self):
+        return self.channel_width
+
+    def set_channel_width(self, channel_width: int):
+        self.channel_width = channel_width
+
+    def get_channel_mode(self):
+        return self.channel_mode
+
+    def set_channel_mode(self, channel_mode: int):
+        self.channel_mode = channel_mode
+
+    def get_toward(self):
+        return self.toward
+
+    def set_toward(self, toward: int):
+        self.toward = toward
+
+    def get_one_hashs(self):
+        return self.one_hashs
+
+    def set_one_hashs(self, one_hashs: List[int]):
+        self.one_hashs = one_hashs
+
+    def __str__(self):
+        return f"GenerateRouteInformation{{oneHashs={self.one_hashs}, jobId={self.job_id}, jobVer={self.job_ver}, " \
+               f"rainTactics={self.rain_tactics}, jobMode={self.job_mode}, knifeHeight={self.knife_height}, " \
+               f"speed={self.speed}, UltraWave={self.ultra_wave}, channelWidth={self.channel_width}, " \
+               f"channelMode={self.channel_mode}, toward={self.toward}, edgeMode={self.edge_mode}}}"
