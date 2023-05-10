@@ -187,30 +187,27 @@ class BleMessage:
         hash_map = {"ctrl": 1}
         await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))    
     
-    async def start_job(self, blade_height):
-        self.setbladeHeight(blade_height)
-        #     EspBleUtil.getInstance().startJob(this.refreshLoading);
-            
     
     async def start_work_job(self):
-        byte_array = LubaMsgOuterClass.LubaMsg.newBuilder()
-            .setMsgtype(LubaMsgOuterClass.MsgCmdType.MSG_CMD_TYPE_NAV)
-            .setSender(LubaMsgOuterClass.MsgDevice.DEV_MOBILEAPP)
-            .setRcver(LubaMsgOuterClass.MsgDevice.DEV_MAINCTL)
-            .setMsgattr(LubaMsgOuterClass.MsgAttr.MSG_ATTR_REQ)
-            .setSeqs(1)
-            .setVersion(1)
-            .setSubtype(1)
-            .setNav(MctrlNav.MctlNav.newBuilder()
-                .setTodevTaskctrl(MctrlNav.NavTaskCtrl.newBuilder()
-                    .setType(1)
-                    .setAction(1)
-                    .setResult(0)
-                    .build())
-                .build())
-            .build()
-            .toByteArray()
-
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        nav=mctrl_nav_pb2.MctlNav(
+            todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                type=1,
+                action=1,
+                result=0
+                )
+            )
+        )
+        
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
     
     # (2, 0);
     async def read_plan(self, i: int, i2: int):
@@ -224,8 +221,8 @@ class BleMessage:
         subtype=1,
         nav=mctrl_nav_pb2.MctlNav(
             todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
-                sub_cmd=i,
-                plan_index=i2
+                subCmd=i,
+                planIndex=i2
                 )
             )
         )
@@ -234,13 +231,13 @@ class BleMessage:
         
     async def read_plan_unable_time(self, i):
         build = mctrl_nav_pb2.NavUnableTimeSet()
-        build.sub_cmd = i
+        build.subCmd = i
 
         luba_msg = luba_msg_pb2.LubaMsg()
-        luba_msg.msg_type = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
         luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
         luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        luba_msg.msg_attr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
+        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
         luba_msg.seqs = 1
         luba_msg.version = 1
         luba_msg.subtype = 1
@@ -296,28 +293,30 @@ class BleMessage:
 
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
+       
         
     async def generate_route_information(self, generate_route_information):
+        """how you start a manual job, then call startjob"""
         
         nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
         nav_req_cover_path.pver = 1
-        nav_req_cover_path.sub_cmd = 0
-        nav_req_cover_path.zone_hashs.extend(generate_route_information.one_hashs)
-        nav_req_cover_path.job_mode = generate_route_information.job_mode
-        nav_req_cover_path.edge_mode = generate_route_information.rain_tactics
-        nav_req_cover_path.knife_height = generate_route_information.knife_height
+        nav_req_cover_path.subCmd = 0
+        nav_req_cover_path.zoneHashs.extend(generate_route_information.one_hashs)
+        nav_req_cover_path.jobMode = generate_route_information.job_mode
+        nav_req_cover_path.edgeMode = generate_route_information.rain_tactics
+        nav_req_cover_path.knifeHeight = generate_route_information.knife_height
         nav_req_cover_path.speed = generate_route_information.speed
-        nav_req_cover_path.ultra_wave = generate_route_information.ultra_wave
-        nav_req_cover_path.channel_width = generate_route_information.channel_width
-        nav_req_cover_path.channel_mode = generate_route_information.channel_mode
+        nav_req_cover_path.ultraWave = generate_route_information.ultra_wave
+        nav_req_cover_path.channelWidth = generate_route_information.channel_width
+        nav_req_cover_path.channelMode = generate_route_information.channel_mode
         nav_req_cover_path.toward = generate_route_information.toward
 
        
         luba_msg = luba_msg_pb2.LubaMsg()
-        luba_msg.msg_type = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
         luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
         luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        luba_msg.msg_attr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
+        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
         luba_msg.seqs = 1
         luba_msg.version = 1
         luba_msg.subtype = 1
@@ -331,26 +330,27 @@ class BleMessage:
         
         
     async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave, channel_width, channel_mode):
+        """Pretty sure this starts a job too but isn't used"""
         luba_msg = luba_msg_pb2.LubaMsg()
-        luba_msg.msg_type = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
         luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
         luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        luba_msg.msg_attr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
+        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
         luba_msg.seqs = 1
         luba_msg.version = 1
         luba_msg.subtype = 1
 
         nav = mctrl_nav_pb2.MctlNav()
         start_job = mctrl_nav_pb2.NavStartJob()
-        start_job.job_id = job_id
-        start_job.job_ver = job_ver
-        start_job.rain_tactics = rain_tactics
-        start_job.job_mode = job_mode
-        start_job.knife_height = knife_height
+        start_job.jobId = job_id
+        start_job.jobVer = job_ver
+        start_job.rainTactics = rain_tactics
+        start_job.jobMode = job_mode
+        start_job.knifeHeight = knife_height
         start_job.speed = speed
-        start_job.ultra_wave = ultra_wave
-        start_job.channel_width = channel_width
-        start_job.channel_mode = channel_mode
+        start_job.ultraWave = ultra_wave
+        start_job.channelWidth = channel_width
+        start_job.channelMode = channel_mode
 
         nav.todev_mow_task.CopyFrom(start_job)
         luba_msg.nav.CopyFrom(nav)
@@ -522,6 +522,12 @@ class BleMessage:
         lubaMsg.sys.CopyFrom(mctlsys)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
+        
+        
+    async def start_job(self, blade_height):
+        """call after calling generate_route_information I think"""
+        await self.setbladeHeight(blade_height)
+        await self.start_work_job()
 
     async def transformSpeed(self, linear: float, percent: float):
             

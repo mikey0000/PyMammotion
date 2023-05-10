@@ -11,3 +11,7 @@ from .region_data import (
 from .plan import (
     Plan
 )
+
+from .generate_route_information import (
+    GenerateRouteInformation
+)

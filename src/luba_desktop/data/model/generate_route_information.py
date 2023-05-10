@@ -14,10 +14,7 @@ class GenerateRouteInformation:
         self.channel_mode = channel_mode
         self.toward = toward
         self.edge_mode = rain_tactics
-        LogUtil.m4123e("模式航线指令参数", f"jobMode={job_mode}//channelWidth={channel_width}//speed={speed}//"
-                       f"UltraWave={ultra_wave}//channelMode={channel_mode}//edgeMode={rain_tactics}//"
-                       f"knifeHeight={knife_height}")
-
+    
     def set_speed(self, speed: float):
         self.speed = speed
 
