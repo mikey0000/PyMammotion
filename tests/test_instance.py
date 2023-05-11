@@ -56,7 +56,7 @@ async def run():
     # await luba_client.getDeviceInfo()
     # gets info about luba and some other stuff
     # await luba_client.get_all_boundary_hash_list(3)
-    await luba_client.get_all_boundary_hash_list(0)
+    # await luba_client.get_all_boundary_hash_list(0)
 
     # get map data off Luba
     #8656065632562971511
@@ -84,19 +84,20 @@ async def run():
     private int rainTactics = 1;
     private int knifeHeight_task = 70;
     private int path_angler = 0;
-        
+    oneHashs=[8656065632562971511], jobId=null, jobVer=0, rainTactics=1, jobMode=3, knifeHeight=70, speed=0.3, UltraWave=2, channelWidth=25, channelMode=1, toward=0, edgeMode=1
     """
+    
     generate_route_information = GenerateRouteInformation(
-        one_hashs=[6316048569363781876],
+        one_hashs=[8656065632562971511],
         rain_tactics=1,
         speed=.3,
-        ultra_wave=1,
+        ultra_wave=2,
         toward=0, # is just angle
-        knife_height=30,
+        knife_height=70,
         channel_mode=0, # line mode is grid single double or single2
         channel_width=25,
-        job_mode=5 # taskMode
-        
+        job_mode=3, # taskMode
+        edge_mode=1 # oddly is set based on rain sensor 1 / 0
     )
     """arrayList.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_monday), 2, true, true));
         this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_tuesday), 3, false, true));
@@ -107,9 +108,10 @@ async def run():
         this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_sunday), 1, false, false));
         this.se"""
     
-    await luba_client.generate_route_information(generate_route_information)
+    # await luba_client.generate_route_information(generate_route_information)
     # probably need to wait for this to finish before hitting start
-    await luba_client.start_job(30)
+    # await luba_client.start_job(30)
+    await luba_client.setbladeHeight(70)
     print("joystick code")
     in_queue = asyncio.Queue()
     # joystick = JoystickControl(luba_client)

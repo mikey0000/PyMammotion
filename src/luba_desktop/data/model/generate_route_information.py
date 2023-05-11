@@ -3,7 +3,7 @@ from typing import List
 
 class GenerateRouteInformation:
     def __init__(self, one_hashs: List[int], job_mode: int, channel_width: int, speed: float, ultra_wave: int,
-                 channel_mode: int, rain_tactics: int, knife_height: int, toward: int):
+                 channel_mode: int, rain_tactics: int, knife_height: int, toward: int, edge_mode: int):
         self.one_hashs = one_hashs
         self.rain_tactics = rain_tactics
         self.job_mode = job_mode
@@ -13,7 +13,7 @@ class GenerateRouteInformation:
         self.channel_width = channel_width
         self.channel_mode = channel_mode
         self.toward = toward
-        self.edge_mode = rain_tactics
+        self.edge_mode = edge_mode
     
     def set_speed(self, speed: float):
         self.speed = speed
