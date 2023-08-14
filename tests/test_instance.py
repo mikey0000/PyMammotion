@@ -112,10 +112,6 @@ async def run():
     # probably need to wait for this to finish before hitting start
     # await luba_client.start_job(30)
     await luba_client.setbladeHeight(70)
-    print("joystick code")
-    in_queue = asyncio.Queue()
-    # joystick = JoystickControl(luba_client)
-    # joystick.run_controller()
 
     
     asyncio.run(ble_heartbeat(luba_client))

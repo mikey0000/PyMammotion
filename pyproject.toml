@@ -19,7 +19,6 @@ dependencies    = [
         "bleak",
         "protobuf",
         "py-jsonic",
-        "pyjoystick",
         "nest_asyncio"
     ]
 

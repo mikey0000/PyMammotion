@@ -16,9 +16,3 @@ protobuf==4.22.0
     # via luba-desktop (pyproject.toml)
 py-jsonic==0.0.2
     # via luba-desktop (pyproject.toml)
-pyjoystick==1.2.4
-    # via luba-desktop (pyproject.toml)
-pysdl2==0.9.15
-    # via pyjoystick
-resource-man==2.2.8
-    # via pyjoystick
