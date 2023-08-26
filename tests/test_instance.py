@@ -2,12 +2,12 @@ import asyncio
 from threading import Thread
 import threading
 
-from luba_desktop.data.model import GenerateRouteInformation
-from luba_desktop.ble_connection import BleLubaConnection
-from luba_desktop.control.joystick_control import JoystickControl
-from luba_desktop.ble_message import BleMessage
-from luba_desktop.blelibs.notifydata import BlufiNotifyData
-from luba_desktop.event.event import BleNotificationEvent, MoveEvent
+from luba.data.model import GenerateRouteInformation
+from luba.ble_connection import BleLubaConnection
+from luba.control.joystick_control import JoystickControl
+from luba.ble_message import BleMessage
+from luba.blelibs.notifydata import BlufiNotifyData
+from luba.event.event import BleNotificationEvent, MoveEvent
 
 moveEvt = MoveEvent()
 bleNotificationEvt = BleNotificationEvent()
@@ -49,7 +49,7 @@ async def run():
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
     # Run the ble heart beat in the background continuously which still doesn't quite work
-    
+
     # loop_handler_bleheart = threading.Thread(target=), args=(), daemon=True)
     await luba_client.sendTodevBleSync()
     await luba_client.send_ble_alive()
@@ -62,14 +62,14 @@ async def run():
     #8656065632562971511
     # await asyncio.sleep(1)
     # await luba_client.synchronize_hash_data(8656065632562971511)
-    
+
     # problem one
     # await asyncio.sleep(1)
     # await luba_client.synchronize_hash_data(5326333396143256633)
     # await asyncio.sleep(1)
     # await luba_client.sendTodevBleSync()
     # await luba_client.send_ble_alive()
-    # await luba_client.synchronize_hash_data(6316048569363781876)    
+    # await luba_client.synchronize_hash_data(6316048569363781876)
     # probably gets paths
     # await luba_client.get_line_info(4)
     # await luba_client.get_hash_response(1, 1)
@@ -86,7 +86,7 @@ async def run():
     private int path_angler = 0;
     oneHashs=[8656065632562971511], jobId=null, jobVer=0, rainTactics=1, jobMode=3, knifeHeight=70, speed=0.3, UltraWave=2, channelWidth=25, channelMode=1, toward=0, edgeMode=1
     """
-    
+
     generate_route_information = GenerateRouteInformation(
         one_hashs=[8656065632562971511],
         rain_tactics=1,
@@ -97,7 +97,10 @@ async def run():
         channel_mode=0, # line mode is grid single double or single2
         channel_width=25,
         job_mode=3, # taskMode
-        edge_mode=1 # oddly is set based on rain sensor 1 / 0
+        edge_mode=1, # border laps
+        path_order=0,
+        obstacle_laps=0
+
     )
     """arrayList.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_monday), 2, true, true));
         this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_tuesday), 3, false, true));
@@ -107,13 +110,13 @@ async def run():
         this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_saturday), 7, false, true));
         this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_sunday), 1, false, false));
         this.se"""
-    
+
     # await luba_client.generate_route_information(generate_route_information)
     # probably need to wait for this to finish before hitting start
     # await luba_client.start_job(30)
     await luba_client.setbladeHeight(70)
 
-    
+
     asyncio.run(ble_heartbeat(luba_client))
     print("end run?")
 
@@ -124,6 +127,6 @@ if __name__ ==  '__main__':
     asyncio.set_event_loop(event_loop)
     asyncio.run(run())
     event_loop.run_forever()
-    
+
 
 

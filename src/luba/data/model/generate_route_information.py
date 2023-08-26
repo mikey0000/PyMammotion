@@ -3,7 +3,8 @@ from typing import List
 
 class GenerateRouteInformation:
     def __init__(self, one_hashs: List[int], job_mode: int, channel_width: int, speed: float, ultra_wave: int,
-                 channel_mode: int, rain_tactics: int, knife_height: int, toward: int, edge_mode: int):
+                 channel_mode: int, rain_tactics: int, knife_height: int, toward: int, edge_mode: int, path_order: int,
+                 obstacle_laps: int):
         self.one_hashs = one_hashs
         self.rain_tactics = rain_tactics
         self.job_mode = job_mode
@@ -14,9 +15,8 @@ class GenerateRouteInformation:
         self.channel_mode = channel_mode
         self.toward = toward
         self.edge_mode = edge_mode
-    
-    def set_speed(self, speed: float):
-        self.speed = speed
+        self.path_order = path_order  # border or grid first
+        self.obstacle_laps = obstacle_laps
 
     def get_job_id(self):
         return self.job_id
@@ -77,6 +77,24 @@ class GenerateRouteInformation:
 
     def set_toward(self, toward: int):
         self.toward = toward
+
+    def get_edge_mode(self):
+        return self.edge_mode
+
+    def set_edge_mode(self, edge_mode: int):
+        self.edge_mode = edge_mode
+
+    def get_path_order(self):
+        return self.path_order
+
+    def set_path_order(self, path_order: int):
+        self.path_order = path_order
+
+    def get_obstacle_laps(self):
+        return self.obstacle_laps
+
+    def set_obstacle_laps(self, obstacle_laps: int):
+        self.obstacle_laps = obstacle_laps
 
     def get_one_hashs(self):
         return self.one_hashs

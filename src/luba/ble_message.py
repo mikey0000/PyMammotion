@@ -293,7 +293,11 @@ class BleMessage:
 
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-       
+
+
+    def get_reserved(self, generate_route_information):
+        return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
+
         
     async def generate_route_information(self, generate_route_information):
         """how you start a manual job, then call startjob"""
@@ -302,14 +306,15 @@ class BleMessage:
         nav_req_cover_path.pver = 1
         nav_req_cover_path.subCmd = 0
         nav_req_cover_path.zoneHashs.extend(generate_route_information.one_hashs)
-        nav_req_cover_path.jobMode = generate_route_information.job_mode
-        nav_req_cover_path.edgeMode = generate_route_information.rain_tactics
+        nav_req_cover_path.jobMode = generate_route_information.job_mode  # grid type
+        nav_req_cover_path.edgeMode = generate_route_information.edge_mode # border laps
         nav_req_cover_path.knifeHeight = generate_route_information.knife_height
         nav_req_cover_path.speed = generate_route_information.speed
         nav_req_cover_path.ultraWave = generate_route_information.ultra_wave
-        nav_req_cover_path.channelWidth = generate_route_information.channel_width
+        nav_req_cover_path.channelWidth = generate_route_information.channel_width  # mow width
         nav_req_cover_path.channelMode = generate_route_information.channel_mode
         nav_req_cover_path.toward = generate_route_information.toward
+        nav_req_cover_path.reserved = self.get_reserved(generate_route_information)  #grid or border first
 
        
         luba_msg = luba_msg_pb2.LubaMsg()
