@@ -57,6 +57,7 @@ async def run():
     # gets info about luba and some other stuff
     # await luba_client.get_all_boundary_hash_list(3)
     # await luba_client.get_all_boundary_hash_list(0)
+   
 
     # get map data off Luba
     #8656065632562971511
@@ -114,7 +115,11 @@ async def run():
     # await luba_client.generate_route_information(generate_route_information)
     # probably need to wait for this to finish before hitting start
     # await luba_client.start_job(30)
-    await luba_client.setbladeHeight(70)
+    # await luba_client.setbladeHeight(70)
+    print("joystick code")
+    in_queue = asyncio.Queue()
+    joystick = JoystickControl(luba_client)
+    joystick.run_controller()
 
 
     asyncio.run(ble_heartbeat(luba_client))

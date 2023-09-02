@@ -187,6 +187,25 @@ class BleMessage:
         hash_map = {"ctrl": 1}
         await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))    
     
+    async def set_speed(self, speed: float):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        driver=mctrl_driver_pb2.MctrlDriver(
+            bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(
+                speed=float(speed),
+                rw=1
+                )
+            )
+        )
+        
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
     
     async def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -435,7 +454,7 @@ class BleMessage:
         type = self.getTypeValue(0, 5)
         try:
             request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
-            print(request)
+            # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
@@ -450,7 +469,7 @@ class BleMessage:
         type = self.getTypeValue(0, 7)
         try:
             request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
-            print(request)
+            # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
