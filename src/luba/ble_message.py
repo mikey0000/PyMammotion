@@ -11,19 +11,18 @@ from typing import Dict
 
 from bleak import BleakClient
 from jsonic import serialize
-from luba_desktop.blelibs.convert import parseCustomData
+from luba.blelibs.convert import parseCustomData
 
-from luba_desktop.blelibs.framectrldata import FrameCtrlData
-from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
-from luba_desktop.utility.constant.device_constant import bleOrderCmd
-from luba_desktop.aliyun.tmp_constant import tmp_constant
+from luba.blelibs.framectrldata import FrameCtrlData
+from luba.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
+from luba.utility.constant.device_constant import bleOrderCmd
+from luba.aliyun.tmp_constant import tmp_constant
 
-from luba_desktop.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
-from luba_desktop.blelibs.notifydata import BlufiNotifyData
-from luba_desktop.utility.rocker_util import RockerControlUtil
-from luba_desktop.event import MoveEvent
-from luba_desktop.const import UUID_WRITE_CHARACTERISTIC
-from luba_desktop.data.model import Plan
+from luba.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
+from luba.blelibs.notifydata import BlufiNotifyData
+from luba.utility.rocker_util import RockerControlUtil
+from luba.const import UUID_WRITE_CHARACTERISTIC
+from luba.data.model import Plan
 
 
 class BleMessage:
@@ -57,9 +56,8 @@ class BleMessage:
     mAck = queue.Queue()
     notification = BlufiNotifyData()
 
-    def __init__(self, client: BleakClient, moveEvt: MoveEvent):
+    def __init__(self, client: BleakClient):
         self.client = client
-        self._moveEvt = moveEvt
 
 
     async def getDeviceVersionMain(self):
@@ -609,9 +607,6 @@ class BleMessage:
         lubaMsg.driver.CopyFrom(mctrlDriver)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
-        self._moveEvt.MoveFinished()
-
-  
         
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
@@ -806,7 +801,7 @@ class BleMessage:
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
         print("parseBlufi")
-        print(dataBytes)
+        # print(dataBytes)
         # if (self.mUserBlufiCallback is not None):
         #     complete = self.mUserBlufiCallback.onGattNotification(self.mClient, pkgType, subType, dataBytes)
         #     if (complete):
@@ -842,7 +837,7 @@ class BleMessage:
     #             onError(errCode);
     #             return;
             case 19:
-    #             # /home/michael/Downloads/Mammotion_1.2.4.4(release)/smali/com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
+    #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
                 parseCustomData(data) #parse to protobuf message
                 #onReceiveCustomData
     #             return;

@@ -9,7 +9,6 @@ from luba.ble_message import BleMessage
 from luba.blelibs.notifydata import BlufiNotifyData
 from luba.event.event import BleNotificationEvent, MoveEvent
 
-moveEvt = MoveEvent()
 bleNotificationEvt = BleNotificationEvent()
 
 
@@ -38,11 +37,11 @@ async def run():
         return
     await bleLubaConn.notifications()
     client = bleLubaConn.getClient()
-    luba_client = BleMessage(client, moveEvt)
+    luba_client = BleMessage(client)
 
     def handle_notifications(data:bytearray):
         result = luba_client.parseNotification(data)
-        print(result)
+        # print(result)
         if (result == 0):
             luba_client.parseBlufiNotifyData()
             luba_client.clearNotification()
@@ -53,7 +52,7 @@ async def run():
     # loop_handler_bleheart = threading.Thread(target=), args=(), daemon=True)
     await luba_client.sendTodevBleSync()
     await luba_client.send_ble_alive()
-    # await luba_client.getDeviceInfo()
+    await luba_client.getDeviceInfo()
     # gets info about luba and some other stuff
     # await luba_client.get_all_boundary_hash_list(3)
     # await luba_client.get_all_boundary_hash_list(0)

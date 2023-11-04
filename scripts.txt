@@ -9,3 +9,7 @@
 
 #dev deps
 pip-tools build
+
+
+# install pip-tools including pip-compile
+python -m pip install pip-tools

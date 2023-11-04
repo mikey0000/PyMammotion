@@ -39,8 +39,7 @@ class BleNotificationEvent(object):
         self.OnBleNotification = Event()
          
     def BleNotification(self, data: bytearray):
-        # This function will be executed once blufi finishes after a movement command and will
-        # raise an event
+        # This function will be executed when data is received.
         self.OnBleNotification(data)
          
     def AddSubscribersForBleNotificationEvent(self,objMethod):

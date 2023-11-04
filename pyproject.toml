@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name        = "luba-desktop"
+name        = "luba-api"
 version     = "0.0.1"
 license     = {text = "GNU-3.0"}
 description = ""
@@ -19,11 +19,12 @@ dependencies    = [
         "bleak",
         "protobuf",
         "py-jsonic",
-        "nest_asyncio"
+        "aliyun-python-sdk-iot",
+        "aliyun-iot-linkkit"
     ]
 
 [tool.setuptools]
-packages = ["luba_desktop"]
+packages = ["luba"]
 
 [tool.bumpver]
 current_version = "0.0.1"
@@ -36,7 +37,7 @@ push            = false
 
 [tool.bumpver.file_patterns]
 "pyproject.toml" = ['current_version = "{version}"', 'version     = "{version}"']
-"src/luba_desktop/__init__.py" = ["{version}"]
+"src/luba/__init__.py" = ["{version}"]
 "setup.cfg" = ["version = {version}"]
 "README.md" = ['\[SemVer {version}\]', 'img.shields.io/static/v1.svg?label=SemVer&message={version}&color=blue']
 

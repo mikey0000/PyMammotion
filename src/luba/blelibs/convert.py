@@ -1,8 +1,8 @@
 from typing import Dict
 
 from google.protobuf.message import DecodeError
-from luba_desktop.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
-from luba_desktop.data.model import HashList, RegionData
+from luba.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
+from luba.data.model import HashList, RegionData
 
 # until we have a proper store or send messages somewhere
 device_charge_map: Dict[str, int] = {}
@@ -14,10 +14,17 @@ device_state_map: Dict[str, int] = {}
 deviceBreakPointMap: Dict[str, int] = {}
 chargeStateTemp = -1
 
+
+'''Parse data packets back into their protobuf types.
+
+TODO allow for registering events to individual messages
+as trying to register for all would be a mess
+'''
 def parseCustomData(data: bytearray):
     # pass
     # print(data)
     # setReceiveDeviceData
+    
     
     
     luba_msg = luba_msg_pb2.LubaMsg()

@@ -1,5 +1,5 @@
 from jsonic import Serializable
-from luba_desktop.blelibs.model.ExcuteBoarderParams import ExecuteBorderParams
+from luba.blelibs.model.ExcuteBoarderParams import ExecuteBorderParams
 
 
 class ExecuteBorder(Serializable):

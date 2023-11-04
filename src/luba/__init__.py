@@ -1,8 +1,8 @@
 # __init__.py
 
-# version of Luba Desktop
+# version of Luba API
 __version__ = "0.0.1"
 
-from luba_desktop.ble_connection import (
+from luba.ble_connection import (
     BleLubaConnection
 )
