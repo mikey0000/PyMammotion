@@ -11,18 +11,18 @@ from typing import Dict
 
 from bleak import BleakClient
 from jsonic import serialize
-from luba.blelibs.convert import parseCustomData
+from pyluba.bluetooth.data.convert import parseCustomData
 
-from luba.blelibs.framectrldata import FrameCtrlData
-from luba.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
-from luba.utility.constant.device_constant import bleOrderCmd
-from luba.aliyun.tmp_constant import tmp_constant
+from pyluba.bluetooth.data.framectrldata import FrameCtrlData
+from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
+from pyluba.utility.constant.device_constant import bleOrderCmd
+from pyluba.aliyun.tmp_constant import tmp_constant
 
-from luba.blelibs.model.ExecuteBoarder import ExecuteBorder, ExecuteBorderParams
-from luba.blelibs.notifydata import BlufiNotifyData
-from luba.utility.rocker_util import RockerControlUtil
-from luba.const import UUID_WRITE_CHARACTERISTIC
-from luba.data.model import Plan
+from pyluba.bluetooth.data.model.ExecuteBoarder import ExecuteBorder
+from pyluba.bluetooth.data.notifydata import BlufiNotifyData
+from pyluba.utility.rocker_util import RockerControlUtil
+from pyluba.bluetooth.const import UUID_WRITE_CHARACTERISTIC
+from pyluba.data.model import Plan
 
 
 class BleMessage:
@@ -62,7 +62,7 @@ class BleMessage:
 
     async def getDeviceVersionMain(self):
         commEsp = esp_driver_pb2.CommEsp()
-        
+
         reqIdReq = commEsp.todev_devinfo_req.req_ids.add()
         reqIdReq.id = 1
         reqIdReq.type = 6
@@ -77,10 +77,10 @@ class BleMessage:
         lubaMsg.esp.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-    
+
     async def sendTodevBleSync(self):
         commEsp = esp_driver_pb2.CommEsp()
-        
+
         commEsp.todev_ble_sync = 1
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
@@ -92,7 +92,7 @@ class BleMessage:
         lubaMsg.esp.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-      
+
     async def get_all_boundary_hash_list(self, i: int):
         """.getAllBoundaryHashList(3); 0"""
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -113,7 +113,7 @@ class BleMessage:
 
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-        
+
     async def get_line_info(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
         msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -134,7 +134,7 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-        
+
     async def get_hash_response(self, totalFrame: int, currentFrame: int):
         luba_msg = luba_msg_pb2.LubaMsg(
         msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -155,7 +155,7 @@ class BleMessage:
         )
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-        
+
     async def synchronize_hash_data(self, l: int):
         luba_msg = luba_msg_pb2.LubaMsg(
         msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -180,11 +180,11 @@ class BleMessage:
     async def get_task(self):
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
         await self.postCustomData(self.get_json_string(bleOrderCmd.task, hash_map))
-        
+
     async def send_ble_alive(self):
         hash_map = {"ctrl": 1}
-        await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))    
-    
+        await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
+
     async def set_speed(self, speed: float):
         luba_msg = luba_msg_pb2.LubaMsg(
         msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
@@ -201,10 +201,10 @@ class BleMessage:
                 )
             )
         )
-        
+
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-    
+
     async def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
         msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -222,10 +222,10 @@ class BleMessage:
                 )
             )
         )
-        
+
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-    
+
     # (2, 0);
     async def read_plan(self, i: int, i2: int):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -245,7 +245,7 @@ class BleMessage:
         )
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-        
+
     async def read_plan_unable_time(self, i):
         build = mctrl_nav_pb2.NavUnableTimeSet()
         build.subCmd = i
@@ -260,11 +260,11 @@ class BleMessage:
         luba_msg.subtype = 1
         luba_msg.nav.todev_unable_time_set.CopyFrom(build)
 
-    
+
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-        
-        
+
+
     async def sendPlan2(self, plan: Plan):
         navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
         navPlanJobSet.pver = plan.pver
@@ -315,10 +315,10 @@ class BleMessage:
     def get_reserved(self, generate_route_information):
         return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
 
-        
+
     async def generate_route_information(self, generate_route_information):
         """how you start a manual job, then call startjob"""
-        
+
         nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
         nav_req_cover_path.pver = 1
         nav_req_cover_path.subCmd = 0
@@ -333,7 +333,7 @@ class BleMessage:
         nav_req_cover_path.toward = generate_route_information.toward
         nav_req_cover_path.reserved = self.get_reserved(generate_route_information)  #grid or border first
 
-       
+
         luba_msg = luba_msg_pb2.LubaMsg()
         luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
         luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
@@ -349,8 +349,8 @@ class BleMessage:
 
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-        
-        
+
+
     async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave, channel_width, channel_mode):
         """Pretty sure this starts a job too but isn't used"""
         luba_msg = luba_msg_pb2.LubaMsg()
@@ -381,7 +381,7 @@ class BleMessage:
         await self.postCustomDataBytes(byte_arr)
 
 
-    
+
     async def breakPointContinue(self):
         luba_msg = luba_msg_pb2.LubaMsg(
         msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -422,14 +422,14 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-    
+
     def clearNotification(self):
         self.notification = None
         self.notification = BlufiNotifyData()
 
     async def getDeviceInfo(self):
         await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
-    
+
     async def sendDeviceInfo(self):
         """currently not called"""
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -457,7 +457,7 @@ class BleMessage:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
             print(err)
-        
+
         # if not request:
         #     onStatusResponse(BlufiCallback.CODE_WRITE_DATA_FAILED, null)
 
@@ -472,7 +472,7 @@ class BleMessage:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
             print(err)
-    
+
     async def returnToDock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
@@ -480,7 +480,7 @@ class BleMessage:
         navTaskCtrl.action = 5
         navTaskCtrl.result = 0
         mctrlNav.todev_taskctrl.CopyFrom(navTaskCtrl)
-        
+
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
@@ -492,7 +492,7 @@ class BleMessage:
         lubaMsg.nav.CopyFrom(mctrlNav)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
-            
+
     async def leaveDock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         mctrlNav.todev_one_touch_leave_pile = 1
@@ -544,34 +544,34 @@ class BleMessage:
         lubaMsg.sys.CopyFrom(mctlsys)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
-        
-        
+
+
     async def start_job(self, blade_height):
         """call after calling generate_route_information I think"""
         await self.setbladeHeight(blade_height)
         await self.start_work_job()
 
     async def transformSpeed(self, linear: float, percent: float):
-            
+
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
         if (transfrom3 is not None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int) (transfrom3[1] * 4.5)
-            
+
             await self.sendMovement(linearSpeed, angularSpeed)
 
     async def transformBothSpeeds(self, linear: float, angular: float, linearPercent: float, angularPercent: float):
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
         transform4 = RockerControlUtil.getInstance().transfrom3(angular, angularPercent)
-        
+
         if (transfrom3 != None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int) (transform4[1] * 4.5)
             print(linearSpeed, angularSpeed)
             await self.sendMovement(linearSpeed, angularSpeed)
-    
 
-    
+
+
     # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
     #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
     #         if (transfrom3 != null && transfrom3.size() > 0):
@@ -579,17 +579,17 @@ class BleMessage:
     #                 this.linearSpeed = transfrom3.get(0).intValue() * 10
     #             else
     #                 this.angularSpeed = (int) (transfrom3.get(1).intValue() * 4.5d)
-                
-            
+
+
     #         if (this.countDownTask == null):
     #             testSendControl()
-    
+
 
 
 
     async def sendMovement(self, linearSpeed: int, angularSpeed: int):
         mctrlDriver = mctrl_driver_pb2.MctrlDriver()
-        
+
         drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
         drvMotionCtrl.setLinearSpeed = linearSpeed
         drvMotionCtrl.setAngularSpeed = angularSpeed
@@ -603,16 +603,16 @@ class BleMessage:
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
-        
+
         lubaMsg.driver.CopyFrom(mctrlDriver)
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
-        
+
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
         await self.postCustomData(serialize(executeBorder))
-    
-        
+
+
 
 
     async def postCustomDataBytes(self, data: bytearray):
@@ -640,19 +640,19 @@ class BleMessage:
             print(data)
         except Exception as err:
             print(err)
-        
-        
-    
+
+
+
     def getTypeValue(self, type: int, subtype: int):
         return (subtype << 2) | type
-    
+
 
     async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytearray) -> bool:
         if data is None:
             return await self.postNonData(encrypt, checksum, require_ack, type_of)
 
         return await self.postContainsData(encrypt, checksum, require_ack, type_of, data)
-        
+
     async def gattWrite(self, data: bytearray) -> bool:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
@@ -683,25 +683,25 @@ class BleMessage:
             frag = index != len(chunks)-1
             sequence = self.generateSendSequence()
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
-            
+
             posted = await self.gattWrite(postBytes)
             if (posted != None):
                 return False
-            
+
             if (not frag):
                 print("not frag")
                 return not require_ack or self.receiveAck(sequence)
-                
+
             if (require_ack and not self.receiveAck(sequence)):
                 return False
             else:
                 await sleep(0.01)
 
-        
-    
+
+
 
     def getPostBytes(self, type: int,  encrypt: bool, checksum: bool,  require_ack: bool,  hasFrag: bool, sequence: int, data: bytearray) -> bytearray:
-        
+
         byteOS = BytesIO()
         dataLength = (0 if data == None else len(data))
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
@@ -709,21 +709,21 @@ class BleMessage:
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
         byteOS.write(sequence.to_bytes(1, sys.byteorder))
         byteOS.write(dataLength.to_bytes(1, sys.byteorder))
-        
+
         if (data != None):
             byteOS.write(data)
 
-        
+
         print(byteOS.getvalue())
         return byteOS.getvalue()
-    
+
 
     def parseNotification(self, response: bytearray):
         dataOffset = None
         if (response is None):
             #Log.w(TAG, "parseNotification null data");
             return -1
-        
+
         # if (this.mPrintDebug):
         #     Log.d(TAG, "parseNotification Notification= " + Arrays.toString(response));
         # }
@@ -737,7 +737,7 @@ class BleMessage:
                 # this is questionable
                 # self.mReadSequence = sequence
                 # self.mReadSequence_2.incrementAndGet()
-            
+
             # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
             pkt_type = int(response[0]) # toInt
             pkgType = self._getPackageType(pkt_type)
@@ -756,7 +756,7 @@ class BleMessage:
             dataBytes = None
 
             try:
-                
+
                 dataBytes = response[4:4+dataLen]
                 if (frameCtrlData.isEncrypted()):
                     print("is encypted")
@@ -784,18 +784,18 @@ class BleMessage:
                     dataOffset = 2
                 else:
                     dataOffset = 0
-                
+
                 self.notification.addData(dataBytes, dataOffset)
                 return 1 if frameCtrlData.hasFrag() else 0
             except Exception as e:
                 print(e)
                 return -100
-            
-        
+
+
         # Log.w(TAG, "parseNotification data length less than 4");
         return -2
-    
-    
+
+
     def parseBlufiNotifyData(self):
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
@@ -806,13 +806,13 @@ class BleMessage:
         #     complete = self.mUserBlufiCallback.onGattNotification(self.mClient, pkgType, subType, dataBytes)
         #     if (complete):
         #         return
-            
-        
+
+
         if (pkgType == 0):
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
             self._parseDataData(subType, dataBytes)
-        
+
     def _parseCtrlData(self, subType: int, data: bytearray):
         pass
         #self._parseAck(data)
@@ -845,16 +845,16 @@ class BleMessage:
     #             return;
     #     }
     # }
-    
+
     # private void parseCtrlData(int i, byte[] bArr) {
     #     if (i == 0) {
     #         parseAck(bArr);
     #     }
-    # } 
-    
+    # }
+
     # private void parseAck(byte[] bArr) {
     #     this.mAck.add(Integer.valueOf(bArr.length > 0 ? bArr[0] & 255 : 256));
-    # }   
+    # }
 
 
     def receiveAck(self, expectAck: int) -> bool:
@@ -864,7 +864,7 @@ class BleMessage:
         except Exception as err:
             print(err)
             return False
-        
+
 
     def generateSendSequence(self):
         return next(self.mSendSequence) & 255
@@ -877,9 +877,9 @@ class BleMessage:
             jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
             return json.dumps(jSONObject)
         except Exception as err:
-            
+
             return ""
-        
+
 
     def get_json_string(self, cmd: int, hash_map: Dict[str, object]) -> str:
         jSONObject = {}
@@ -899,18 +899,18 @@ class BleMessage:
 
     def current_milli_time(self):
         return round(time.time() * 1000)
-    
+
 
     def _getTypeValue(self, type: int, subtype: int):
         return (subtype << 2) | type
-    
+
 
     def _getPackageType(self, typeValue: int):
         return typeValue & 3
-    
+
 
     def _getSubType(self, typeValue: int):
         return (typeValue & 252) >> 2
-    
-        
-    
+
+
+

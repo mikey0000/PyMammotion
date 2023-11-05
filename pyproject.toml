@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name        = "luba-api"
+name        = "pyluba"
 version     = "0.0.1"
 license     = {text = "GNU-3.0"}
 description = ""
 readme      = "README.md"
 authors     = [
-    {name = "Michael Arthur", email = "michael@jumblesoft.co.nz"}
+    {name = "Michael Arthur", email = "michael@jumblesoft.co.nz"},
+    {name = "Jan Dalheimer", email = "jan@dalheimer.de"}
 ]
 
 
@@ -19,12 +20,14 @@ dependencies    = [
         "bleak",
         "protobuf",
         "py-jsonic",
+        "pydantic",
         "aliyun-python-sdk-iot",
-        "aliyun-iot-linkkit"
+        "aliyun-iot-linkkit",
+        "aiohttp"
     ]
 
 [tool.setuptools]
-packages = ["luba"]
+packages = ["pyluba"]
 
 [tool.bumpver]
 current_version = "0.0.1"
@@ -37,7 +40,7 @@ push            = false
 
 [tool.bumpver.file_patterns]
 "pyproject.toml" = ['current_version = "{version}"', 'version     = "{version}"']
-"src/luba/__init__.py" = ["{version}"]
+"src/pyluba/__init__.py" = ["{version}"]
 "setup.cfg" = ["version = {version}"]
 "README.md" = ['\[SemVer {version}\]', 'img.shields.io/static/v1.svg?label=SemVer&message={version}&color=blue']
 

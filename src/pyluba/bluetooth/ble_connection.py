@@ -3,9 +3,9 @@ import codecs
 from bleak import BleakClient, BleakScanner, BLEDevice
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
-from luba.const import (SERVICE_CHANGED_CHARACTERISTIC,
-                        UUID_NOTIFICATION_CHARACTERISTIC)
-from luba.event.event import BleNotificationEvent
+from pyluba.bluetooth.const import (SERVICE_CHANGED_CHARACTERISTIC,
+                                    UUID_NOTIFICATION_CHARACTERISTIC)
+from pyluba.event.event import BleNotificationEvent
 
 address = "90:38:0C:6E:EE:9E"
 
@@ -44,13 +44,13 @@ class BleLubaConnection:
         device = await scanner.find_device_by_filter(scanCallback)
         if device is not None:
             return self.create_client(device)
-            
-    
+
+
     async def create_client(self, device: BLEDevice):
         self.client = BleakClient(device.address)
-        return await self.connect()     
-    
-    
+        return await self.connect()
+
+
     async def connect(self) -> bool:
         if(self.client is not None):
             return await self.client.connect()
@@ -58,12 +58,12 @@ class BleLubaConnection:
     async def disconnect(self) -> bool:
         if(self.client is not None):
             return await self.client.disconnect()
-        
-            
+
+
     def notification_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Simple notification handler which prints the data received."""
         self._bleEvt.BleNotification(data)
-        
+
 
 
     def service_changed_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):

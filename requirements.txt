@@ -4,31 +4,63 @@
 #
 #    pip-compile --output-file=requirements.txt pyproject.toml
 #
+aiohttp==3.8.6
+    # via pyluba (pyproject.toml)
+aiosignal==1.3.1
+    # via aiohttp
 aliyun-iot-linkkit==1.2.10
-    # via luba-api (pyproject.toml)
+    # via pyluba (pyproject.toml)
 aliyun-python-sdk-core==2.13.36
     # via aliyun-python-sdk-iot
 aliyun-python-sdk-iot==8.55.0
-    # via luba-api (pyproject.toml)
+    # via pyluba (pyproject.toml)
+annotated-types==0.6.0
+    # via pydantic
 async-timeout==4.0.2
-    # via bleak
+    # via
+    #   aiohttp
+    #   bleak
+attrs==23.1.0
+    # via aiohttp
 bleak==0.19.5
-    # via luba-api (pyproject.toml)
+    # via pyluba (pyproject.toml)
 cffi==1.15.1
     # via cryptography
+charset-normalizer==3.3.2
+    # via aiohttp
 crcmod==1.7
     # via aliyun-iot-linkkit
 cryptography==41.0.3
     # via aliyun-python-sdk-core
 dbus-fast==1.84.1
     # via bleak
+frozenlist==1.4.0
+    # via
+    #   aiohttp
+    #   aiosignal
+idna==3.4
+    # via yarl
 jmespath==0.10.0
     # via aliyun-python-sdk-core
+multidict==6.0.4
+    # via
+    #   aiohttp
+    #   yarl
 paho-mqtt==1.6.1
     # via aliyun-iot-linkkit
 protobuf==4.22.0
-    # via luba-api (pyproject.toml)
+    # via pyluba (pyproject.toml)
 py-jsonic==0.0.2
-    # via luba-api (pyproject.toml)
+    # via pyluba (pyproject.toml)
 pycparser==2.21
     # via cffi
+pydantic==2.4.2
+    # via pyluba (pyproject.toml)
+pydantic-core==2.10.1
+    # via pydantic
+typing-extensions==4.8.0
+    # via
+    #   pydantic
+    #   pydantic-core
+yarl==1.9.2
+    # via aiohttp

@@ -1,5 +1,5 @@
 from jsonic import Serializable
-from luba.blelibs.model.ExcuteBoarderParams import ExecuteBorderParams
+from .ExcuteBoarderParams import ExecuteBorderParams
 
 
 class ExecuteBorder(Serializable):
@@ -9,6 +9,7 @@ class ExecuteBorder(Serializable):
 
     def __init__(self, i, executeBorderParams: ExecuteBorderParams):
         """ generated source for method __init__ """
+        super().__init__()
         self.cmd = i
         self.params = executeBorderParams
 

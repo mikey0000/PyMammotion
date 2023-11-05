@@ -1,5 +1,6 @@
 import typing
 
+
 class HashList:
     def __init__(self):
         self.pver: int = 0
@@ -11,4 +12,4 @@ class HashList:
 
     def __str__(self) -> str:
         return f"HashBean{{pver={self.pver}, subCmd={self.subCmd}, totalFrame={self.totalFrame}, " + \
-               f"currentFrame={self.currentFrame}, dataHash={self.dataHash}, path={self.path}}}"
+            f"currentFrame={self.currentFrame}, dataHash={self.dataHash}, path={self.path}}}"
