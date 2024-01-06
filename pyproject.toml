@@ -26,9 +26,6 @@ dependencies    = [
         "aiohttp"
     ]
 
-[tool.setuptools]
-packages = ["pyluba"]
-
 [tool.bumpver]
 current_version = "0.0.1"
 version_pattern = "MAJOR.MINOR.PATCH"
@@ -44,3 +41,5 @@ push            = false
 "setup.cfg" = ["version = {version}"]
 "README.md" = ['\[SemVer {version}\]', 'img.shields.io/static/v1.svg?label=SemVer&message={version}&color=blue']
 
+[tool.setuptools.package-data]
+pyluba = ["py.typed"]

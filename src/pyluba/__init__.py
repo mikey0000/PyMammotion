@@ -7,3 +7,7 @@ __version__ = "0.0.1"
 from pyluba.bluetooth.ble_connection import (
     BleLubaConnection
 )
+
+from pyluba.mqtt.mqtt import (
+    LubaCloud
+)
