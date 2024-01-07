@@ -15,3 +15,7 @@ from .plan import (
 from .generate_route_information import (
     GenerateRouteInformation
 )
+
+from .rapid_state import (
+    RapidState, RTKStatus
+)

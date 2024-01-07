@@ -9,12 +9,12 @@ from typing import Optional, Callable, cast
 
 from paho.mqtt.client import Client, MQTTv311, MQTTMessage, connack_string
 
-from pyluba.base import BaseLuba
-from pyluba.data.luba_pb2 import Root
+from pyluba.luba.base import BaseLuba
+from pyluba.proto import luba_msg_pb2
 from pyluba.data.mqtt.event import ThingEventMessage
 from pyluba.data.mqtt.properties import ThingPropertiesMessage
 from pyluba.data.mqtt.status import ThingStatusMessage
-from pyluba.data.rapid_state import RapidState
+from pyluba.data.model import RapidState
 
 logger = getLogger(__name__)
 
@@ -103,7 +103,7 @@ class LubaCloud(BaseLuba):
             event = ThingEventMessage(**payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                content = cast(Root, params.value.content)
+                content = cast(luba_msg_pb2, params.value.content)
                 if content.WhichOneof("subMsg") == "sys" and content.sys.WhichOneof("subSysMsg") == "systemRapidState":
                     state = RapidState.from_raw(content.sys.systemRapidState.data)
                     self._set_rapid_state(state)

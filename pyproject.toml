@@ -1,30 +1,31 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-
-[project]
+[tool.poetry]
 name        = "pyluba"
 version     = "0.0.1"
-license     = {text = "GNU-3.0"}
+license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
 authors     = [
-    {name = "Michael Arthur", email = "michael@jumblesoft.co.nz"},
-    {name = "Jan Dalheimer", email = "jan@dalheimer.de"}
+    "Michael Arthur <michael@jumblesoft.co.nz>",
+    "Jan Dalheimer <jan@dalheimer.de>"
 ]
+packages = [{include = "pyluba"}]
 
 
-requires-python = ">=3.10.0"
-dependencies    = [
-        "bleak",
-        "protobuf",
-        "py-jsonic",
-        "pydantic",
-        "aliyun-python-sdk-iot",
-        "aliyun-iot-linkkit",
-        "aiohttp"
-    ]
+[tool.poetry.dependencies]
+python = "~3.11"
+bleak = "^0.21.1"
+protobuf = "^4.25.1"
+py-jsonic = "^0.0.2"
+pydantic = "^2.5.3"
+aliyun-python-sdk-iot = "^8.57.0"
+aliyun-iot-linkkit = "^1.2.12"
+aiohttp = "^3.9.1"
+paho-mqtt = "^1.6.1"
+
+[tool.poetry.group.dev.dependencies]
+types-protobuf = "^4.23.0.1"
+mypy-protobuf = "^3.4.0"
+
 
 [tool.bumpver]
 current_version = "0.0.1"

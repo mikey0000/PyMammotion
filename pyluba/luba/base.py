@@ -1,7 +1,7 @@
 from typing import Optional, Callable
 
 from pyluba.data.mqtt.status import StatusType
-from pyluba.data.rapid_state import RapidState, RTKStatus
+from pyluba.data.model.rapid_state import RapidState, RTKStatus
 
 
 class BaseLuba:
