@@ -8,7 +8,7 @@ from logging import getLogger
 from typing import Optional, Callable, cast
 
 from paho.mqtt.client import Client, MQTTv311, MQTTMessage, connack_string
-
+from linkkit.linkkit import LinkKit
 from pyluba.luba.base import BaseLuba
 from pyluba.proto import luba_msg_pb2
 from pyluba.data.mqtt.event import ThingEventMessage
@@ -35,6 +35,7 @@ class LubaCloud(BaseLuba):
         self._device_name = device_name
         self._device_secret = device_secret
         self._mqtt_username = f"{device_name}&{product_key}"
+        # linkkit provides the correct MQTT service for all of this and uses paho under the hood
         if client_id is None:
             client_id = f"python-{device_name}"
         self._mqtt_client_id = f"{client_id}|securemode=2,signmethod=hmacsha1|"
@@ -43,7 +44,12 @@ class LubaCloud(BaseLuba):
             device_secret.encode("utf-8"), sign_content.encode("utf-8"),
             hashlib.sha1
         ).hexdigest()
+        
+        self._linkkit_client = LinkKit(f"{self._product_key}.iot-as-mqtt.eu-central-1.aliyuncs.com", product_key, device_name, device_secret)
 
+        self._linkkit_client.on_connect = self._on_connect
+        self._linkkit_client.on_message = self._on_message
+        self._linkkit_client.on_disconnect = self._on_disconnect
         #        self._mqtt_host = "public.itls.eu-central-1.aliyuncs.com"
         self._mqtt_host = f"{self._product_key}.iot-as-mqtt.eu-central-1.aliyuncs.com"
 
@@ -61,16 +67,13 @@ class LubaCloud(BaseLuba):
 
     def connect_async(self):
         logger.info("Connecting...")
+        self._linkkit_client.connect_async()
         self._client.connect_async(host=self._mqtt_host)
         self._client.loop_start()
 
-    def connect(self):
-        logger.info("Connecting...")
-        self._client.connect(host=self._mqtt_host)
-        self._client.loop_forever()
-
     def disconnect(self):
         logger.info("Disconnecting...")
+        self._linkkit_client.disconnect()
         self._client.disconnect()
         self._client.loop_stop()
 

@@ -24,4 +24,4 @@ if __name__ == "__main__":
     DEVICE_NAME = os.environ.get("DEVICE_NAME")
     DEVICE_SECRET = os.environ.get("DEVICE_SECRET")
     luba = LubaCloud(product_key=PRODUCT_KEY, device_name=DEVICE_NAME, device_secret=DEVICE_SECRET, client_id="asdf")
-    luba.connect()
+    luba.connect_async()

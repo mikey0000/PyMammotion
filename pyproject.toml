@@ -21,6 +21,7 @@ aliyun-python-sdk-iot = "^8.57.0"
 aliyun-iot-linkkit = "^1.2.12"
 aiohttp = "^3.9.1"
 paho-mqtt = "^1.6.1"
+alicloud-gateway-iot = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 types-protobuf = "^4.23.0.1"

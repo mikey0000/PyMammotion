@@ -9,7 +9,7 @@ from aliyunsdkiot.request.v20180120.GetDeviceStatusRequest import GetDeviceStatu
 class CloudService():
     
     # com.aliyun.iot.aep.sdk
-    # https://domestic.mammotion.com/privacy/ - lists all alyun packages
+    # https://domestic.mammotion.com/privacy/ - lists all aliyun packages
     def __init__(self):
         self.selectDeviceIOTID = ""
         accessKeyId = '<your accessKey>'
@@ -65,5 +65,4 @@ class CloudService():
         request.set_DeviceName("DeviceName")
 
         response = self.clt.do_action_with_exception(request)
-        # python2:  print(response)
         print(response)
