@@ -1,3 +1,4 @@
+
 from jsonic import Serializable
 from typing import List
 
@@ -14,29 +15,29 @@ class ExecuteBorderParams(object):
         self.border = list_
         self.jobIndex = str_
 
-    def getCurrentFrame(self):
+    def get_current_frame(self):
         """ generated source for method getCurrentFrame """
         return self.currentFrame
 
-    def setCurrentFrame(self, i):
+    def set_current_frame(self, i):
         """ generated source for method setCurrentFrame """
         self.currentFrame = i
 
-    def getJobIndex(self):
+    def get_job_index(self):
         """ generated source for method getJobIndex """
         return self.jobIndex
 
-    def setJobIndex(self, str_):
+    def set_job_index(self, str_):
         """ generated source for method setJobIndex """
         self.jobIndex = str_
 
-    def getBorder(self):
+    def get_border(self):
         """ generated source for method getBorder """
         return self.border
 
-    def setBorder(self, list_):
+    def set_border(self, border_list):
         """ generated source for method setBorder """
-        self.border = list_
+        self.border = border_list
 
     def __str__(self):
         """ generated source for method toString """

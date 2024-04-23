@@ -1,8 +1,5 @@
 import base64
-import json
 from aliyunsdkcore import client
-from aliyunsdkcore.acs_exception.exceptions import ClientException
-from aliyunsdkcore.acs_exception.exceptions import ServerException
 from aliyunsdkiot.request.v20180120.InvokeThingServiceRequest import InvokeThingServiceRequest
 from aliyunsdkiot.request.v20180120.GetDeviceStatusRequest import GetDeviceStatusRequest
 

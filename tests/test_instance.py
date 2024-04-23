@@ -2,7 +2,7 @@ import asyncio
 from threading import Thread
 
 from pyluba.data.model import GenerateRouteInformation
-from pyluba.bluetooth.ble_connection import BleLubaConnection
+from pyluba.bluetooth.ble import LubaBLE
 from pyluba.bluetooth.ble_message import BleMessage
 from pyluba.event.event import BleNotificationEvent
 
@@ -28,7 +28,7 @@ class AsyncLoopThread(Thread):
 
 
 async def run():
-    bleLubaConn = BleLubaConnection(bleNotificationEvt)
+    bleLubaConn = LubaBLE(bleNotificationEvt)
     did_connect = await bleLubaConn.scanForLubaAndConnect()
     if not did_connect:
         return
@@ -113,7 +113,7 @@ async def run():
     # await luba_client.start_job(30)
     # await luba_client.setbladeHeight(70)
 
-    asyncio.run(ble_heartbeat(luba_client))
+    asyncio.run(await ble_heartbeat(luba_client))
     print("end run?")
 
 

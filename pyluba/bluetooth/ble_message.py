@@ -18,7 +18,7 @@ from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_n
 from pyluba.utility.constant.device_constant import bleOrderCmd
 from pyluba.aliyun.tmp_constant import tmp_constant
 
-from pyluba.bluetooth.data.model.ExecuteBoarder import ExecuteBorder
+from pyluba.data.model.execute_boarder import ExecuteBorder
 from pyluba.bluetooth.data.notifydata import BlufiNotifyData
 from pyluba.utility.rocker_util import RockerControlUtil
 from pyluba.bluetooth.const import UUID_WRITE_CHARACTERISTIC

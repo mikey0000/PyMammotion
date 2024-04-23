@@ -52,16 +52,18 @@ def parseCustomData(data: bytearray):
         
 def store_sys_data(sys):
     if(sys.HasField("system_tard_state_tunnel")):
-        tardStateDataList = sys.system_tard_state_tunnel.tard_state_data
-        longValue8 = tardStateDataList[0]
-        longValue9 = tardStateDataList[1]
+        tard_state_data_list = sys.system_tard_state_tunnel.tard_state_data
+        longValue8 = tard_state_data_list[0]
+        longValue9 = tard_state_data_list[1]
         print("Device status report,deviceState:", longValue8, ",deviceName:", "Luba...")
         chargeStateTemp = longValue9
-        longValue10 = tardStateDataList[6]
-        longValue11 = tardStateDataList[7]
+        longValue10 = tard_state_data_list[6]
+        longValue11 = tard_state_data_list[7]
 
         #device_state_map        
-
+    if sys.HasField("system_rapid_state_tunnel"):
+        rapid_state_data_list = sys.system_rapid_state_tunnel.rapid_state_data
+        print(rapid_state_data_list)
         
         
 def store_nav_data(nav):
@@ -90,17 +92,17 @@ def store_nav_data(nav):
         # luba.nav.toapp_get_commondata_ack.DESCRIPTOR.fields_by_name
         hash_list = HashList()
 
-        dataCoupleList = toapp_gethash_ack.dataCouple
+        data_couple_list = toapp_gethash_ack.dataCouple
         hash_list.pver = toapp_gethash_ack.pver
         hash_list.subCmd = toapp_gethash_ack.subCmd
         hash_list.currentFrame = toapp_gethash_ack.currentFrame
         hash_list.totalFrame = toapp_gethash_ack.totalFrame
         hash_list.dataHash = int(toapp_gethash_ack.dataHash)
-        hash_list.path = dataCoupleList
+        hash_list.path = data_couple_list
         print(hash_list)
         # use callback to provide hash list
     
 def store_esp_data(esp):
-    if(esp.toapp_wifi_iot_status):
+    if esp.toapp_wifi_iot_status:
         iot_status = esp.toapp_wifi_iot_status
         print(iot_status.devicename)

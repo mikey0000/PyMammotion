@@ -18,8 +18,9 @@ class LoginResponseUserInformation(BaseModel):
     areaCode: str
     domainAbbreviation: str
     email: str
-    gender: str
     userId: str
+    userAccount: str
+    authType: str
 
 
 class LoginResponseData(BaseModel):
@@ -41,7 +42,7 @@ class LubaHTTP:
         self._login = login
 
     @classmethod
-    async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
+    async def login(self, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
         async with session.post(
                 "/user-server/v1/user/oauth/token",
                 params=dict(

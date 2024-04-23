@@ -1,5 +1,5 @@
 from jsonic import Serializable
-from .ExcuteBoarderParams import ExecuteBorderParams
+from .excute_boarder_params import ExecuteBorderParams
 
 
 class ExecuteBorder(Serializable):
@@ -7,27 +7,27 @@ class ExecuteBorder(Serializable):
     cmd = int()
     params = ExecuteBorderParams(None, None, None)
 
-    def __init__(self, i, executeBorderParams: ExecuteBorderParams):
+    def __init__(self, i, execute_border_params: ExecuteBorderParams):
         """ generated source for method __init__ """
         super().__init__()
         self.cmd = i
-        self.params = executeBorderParams
+        self.params = execute_border_params
 
-    def getCmd(self):
+    def get_cmd(self):
         """ generated source for method getCmd """
         return self.cmd
 
-    def setCmd(self, i):
+    def set_cmd(self, i):
         """ generated source for method setCmd """
         self.cmd = i
 
-    def getParams(self):
+    def get_params(self):
         """ generated source for method getParams """
         return self.params
 
-    def setParams(self, executeBorderParams):
+    def set_params(self, execute_border_params):
         """ generated source for method setParams """
-        self.params = executeBorderParams
+        self.params = execute_border_params
 
     def __str__(self):
         """ generated source for method toString """

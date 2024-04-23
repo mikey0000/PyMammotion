@@ -24,7 +24,7 @@ def slashescape(err):
 codecs.register_error("slashescape", slashescape)
 
 
-class BleLubaConnection:
+class LubaBLE:
     client: BleakClient
 
     def __init__(self, bleEvt: BleNotificationEvent):
@@ -39,7 +39,7 @@ class BleLubaConnection:
             print(advertising_data)
             if device.address == "90:38:0C:6E:EE:9E":
                 return True
-            if "Luba-" in advertising_data.local_name:
+            if  advertising_data.local_name and "Luba-" in advertising_data.local_name:
                 return True
             return False
 

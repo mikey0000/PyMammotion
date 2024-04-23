@@ -1,8 +1,6 @@
 import hashlib
 import hmac
 import json
-import logging
-import os
 import sqlite3
 from logging import getLogger
 from typing import Optional, Callable, cast
@@ -23,7 +21,7 @@ with sqlite3.connect("messages.db") as conn:
     conn.execute("CREATE TABLE IF NOT EXISTS messages (topic TEXT, timestamp INTEGER, payload TEXT)")
 
 
-class LubaCloud(BaseLuba):
+class LubaMQTT(BaseLuba):
     def __init__(self, product_key: str, device_name: str, device_secret: str, client_id: Optional[str] = None):
         super().__init__()
 
