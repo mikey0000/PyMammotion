@@ -11,10 +11,11 @@ bleNotificationEvt = BleNotificationEvent()
 
 async def ble_heartbeat(luba_client):
     while True:
-        await luba_client.sendTodevBleSync()
+        # await luba_client.send_todev_ble_sync(1)
         # eventually send an event and update data from sync
-        await asyncio.sleep(1)
-        await luba_client.send_ble_alive()
+        await asyncio.sleep(2)
+        await luba_client.send_todev_ble_sync(1)
+        # await luba_client.send_ble_alive()
         await asyncio.sleep(10.5)
 
 class AsyncLoopThread(Thread):
@@ -47,9 +48,8 @@ async def run():
     # Run the ble heart beat in the background continuously which still doesn't quite work
 
     # loop_handler_bleheart = threading.Thread(target=), args=(), daemon=True)
-    await luba_client.sendTodevBleSync()
-    await luba_client.send_ble_alive()
-    await luba_client.getDeviceInfo()
+    # await luba_client.send_ble_alive()
+
     # gets info about luba and some other stuff
     # await luba_client.get_all_boundary_hash_list(3)
     # await luba_client.get_all_boundary_hash_list(0)
@@ -57,7 +57,10 @@ async def run():
 
     # get map data off Luba
     #8656065632562971511
-    # await asyncio.sleep(1)
+    await asyncio.sleep(1)
+    await luba_client.send_todev_ble_sync(1)
+    await luba_client.send_ble_alive()
+
     # await luba_client.synchronize_hash_data(8656065632562971511)
 
     # problem one
@@ -112,6 +115,13 @@ async def run():
     # probably need to wait for this to finish before hitting start
     # await luba_client.start_job(30)
     # await luba_client.setbladeHeight(70)
+    # await luba_client.send_todev_ble_sync()
+
+    # await luba_client.get_device_info()
+    # await luba_client.all_powerful_RW(0, 1, 1)
+    await asyncio.sleep(5)
+    # await luba_client.get_device_info()
+    await luba_client.send_device_info()
 
     asyncio.run(await ble_heartbeat(luba_client))
     print("end run?")

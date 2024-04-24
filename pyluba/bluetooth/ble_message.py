@@ -1,5 +1,3 @@
-
-
 from asyncio import sleep
 from io import BytesIO
 import itertools
@@ -59,13 +57,30 @@ class BleMessage:
     def __init__(self, client: BleakClient):
         self.client = client
 
+    async def all_powerful_RW(self, i: int, i2: int, i3: int):
+        mctrl_sys = mctrl_sys_pb2.MctlSys()
 
-    async def getDeviceVersionMain(self):
-        commEsp = esp_driver_pb2.CommEsp()
+        reqIdReq = mctrl_sys_pb2.SysCommCmd()
+        reqIdReq.id = i
+        reqIdReq.context = i2
+        reqIdReq.rw = i3
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.sys.CopyFrom(mctrl_sys)
+        byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
 
-        reqIdReq = commEsp.todev_devinfo_req.req_ids.add()
-        reqIdReq.id = 1
-        reqIdReq.type = 6
+    async def get_device_version_main(self):
+        commEsp = esp_driver_pb2.CommEsp(
+            todev_devinfo_req=esp_driver_pb2.DrvDevInfoReq()
+        )
+
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
@@ -78,10 +93,12 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-    async def sendTodevBleSync(self):
-        commEsp = esp_driver_pb2.CommEsp()
+    async def send_todev_ble_sync(self, sync_type: int):
+        commEsp = esp_driver_pb2.CommEsp(
+            todev_ble_sync=1
+        )
 
-        commEsp.todev_ble_sync = 1
+        commEsp.todev_ble_sync = sync_type
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
@@ -96,17 +113,17 @@ class BleMessage:
     async def get_all_boundary_hash_list(self, i: int):
         """.getAllBoundaryHashList(3); 0"""
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_NONE,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_gethash=mctrl_nav_pb2.NavGetHashList(
-                pver=1,
-                subCmd=i
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_NONE,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_gethash=mctrl_nav_pb2.NavGetHashList(
+                    pver=1,
+                    subCmd=i
                 )
             )
         )
@@ -116,40 +133,39 @@ class BleMessage:
 
     async def get_line_info(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_zigzag_ack=mctrl_nav_pb2.NavUploadZigZagResultAck(
-                pver=1,
-                currentHash=i,
-                subCmd=0
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_zigzag_ack=mctrl_nav_pb2.NavUploadZigZagResultAck(
+                    pver=1,
+                    currentHash=i,
+                    subCmd=0
                 )
             ),
         )
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-
     async def get_hash_response(self, totalFrame: int, currentFrame: int):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_gethash=mctrl_nav_pb2.NavGetHashList(
-                pver=1,
-                subCmd=2,
-                currentFrame=currentFrame,
-                totalFrame=totalFrame
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_gethash=mctrl_nav_pb2.NavGetHashList(
+                    pver=1,
+                    subCmd=2,
+                    currentFrame=currentFrame,
+                    totalFrame=totalFrame
                 )
             )
         )
@@ -158,19 +174,19 @@ class BleMessage:
 
     async def synchronize_hash_data(self, l: int):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
-                pver=1,
-                action=8,
-                Hash=l,
-                subCmd=1
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
+                    pver=1,
+                    action=8,
+                    Hash=l,
+                    subCmd=1
                 )
             )
         )
@@ -187,17 +203,17 @@ class BleMessage:
 
     async def set_speed(self, speed: float):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        driver=mctrl_driver_pb2.MctrlDriver(
-            bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(
-                speed=float(speed),
-                rw=1
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            driver=mctrl_driver_pb2.MctrlDriver(
+                bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(
+                    speed=float(speed),
+                    rw=1
                 )
             )
         )
@@ -207,18 +223,18 @@ class BleMessage:
 
     async def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                type=1,
-                action=1,
-                result=0
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                    type=1,
+                    action=1,
+                    result=0
                 )
             )
         )
@@ -229,17 +245,17 @@ class BleMessage:
     # (2, 0);
     async def read_plan(self, i: int, i2: int):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
-                subCmd=i,
-                planIndex=i2
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
+                    subCmd=i,
+                    planIndex=i2
                 )
             )
         )
@@ -260,10 +276,8 @@ class BleMessage:
         luba_msg.subtype = 1
         luba_msg.nav.todev_unable_time_set.CopyFrom(build)
 
-
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
-
 
     async def sendPlan2(self, plan: Plan):
         navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
@@ -311,10 +325,8 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-
     def get_reserved(self, generate_route_information):
         return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
-
 
     async def generate_route_information(self, generate_route_information):
         """how you start a manual job, then call startjob"""
@@ -324,15 +336,14 @@ class BleMessage:
         nav_req_cover_path.subCmd = 0
         nav_req_cover_path.zoneHashs.extend(generate_route_information.one_hashs)
         nav_req_cover_path.jobMode = generate_route_information.job_mode  # grid type
-        nav_req_cover_path.edgeMode = generate_route_information.edge_mode # border laps
+        nav_req_cover_path.edgeMode = generate_route_information.edge_mode  # border laps
         nav_req_cover_path.knifeHeight = generate_route_information.knife_height
         nav_req_cover_path.speed = generate_route_information.speed
         nav_req_cover_path.ultraWave = generate_route_information.ultra_wave
         nav_req_cover_path.channelWidth = generate_route_information.channel_width  # mow width
         nav_req_cover_path.channelMode = generate_route_information.channel_mode
         nav_req_cover_path.toward = generate_route_information.toward
-        nav_req_cover_path.reserved = self.get_reserved(generate_route_information)  #grid or border first
-
+        nav_req_cover_path.reserved = self.get_reserved(generate_route_information)  # grid or border first
 
         luba_msg = luba_msg_pb2.LubaMsg()
         luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
@@ -350,8 +361,8 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-
-    async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave, channel_width, channel_mode):
+    async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave,
+                               channel_width, channel_mode):
         """Pretty sure this starts a job too but isn't used"""
         luba_msg = luba_msg_pb2.LubaMsg()
         luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
@@ -380,22 +391,20 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-
-
     async def breakPointContinue(self):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                type=1,
-                action=7,
-                result=0
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                    type=1,
+                    action=7,
+                    result=0
                 )
             )
         )
@@ -404,44 +413,43 @@ class BleMessage:
 
     async def breakPointAnywhereContinue(self, refresh_loading: bool):
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-        seqs=1,
-        version=1,
-        subtype=1,
-        nav=mctrl_nav_pb2.MctlNav(
-            todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                type=1,
-                action=9,
-                result=0
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                    type=1,
+                    action=9,
+                    result=0
                 )
             )
         )
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-
     def clearNotification(self):
         self.notification = None
         self.notification = BlufiNotifyData()
 
-    async def getDeviceInfo(self):
+    async def get_device_info(self):
         await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
-    async def sendDeviceInfo(self):
+    async def send_device_info(self):
         """currently not called"""
         luba_msg = luba_msg_pb2.LubaMsg(
-        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
-        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-        rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
-        seqs=1,
-        version=1,
-        subtype=1,
-        esp=esp_driver_pb2.CommEsp(
-            todevBleSync=1,
-            todevDevinfoReq=esp_driver_pb2.DrvDevInfoReq()
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
+            seqs=1,
+            version=1,
+            subtype=1,
+            esp=esp_driver_pb2.CommEsp(
+                todev_ble_sync=1,
+                todev_devinfo_req=esp_driver_pb2.DrvDevInfoReq()
             )
         )
         byte_arr = luba_msg.SerializeToString()
@@ -460,7 +468,6 @@ class BleMessage:
 
         # if not request:
         #     onStatusResponse(BlufiCallback.CODE_WRITE_DATA_FAILED, null)
-
 
     async def requestDeviceVersion(self):
         request = False
@@ -508,7 +515,6 @@ class BleMessage:
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
-
     async def setbladeHeight(self, height: int):
         mctrlDriver = mctrl_driver_pb2.MctrlDriver()
         drvKnifeHeight = mctrl_driver_pb2.DrvKnifeHeight()
@@ -545,7 +551,6 @@ class BleMessage:
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
-
     async def start_job(self, blade_height):
         """call after calling generate_route_information I think"""
         await self.setbladeHeight(blade_height)
@@ -556,7 +561,7 @@ class BleMessage:
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
         if (transfrom3 is not None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
-            angularSpeed = (int) (transfrom3[1] * 4.5)
+            angularSpeed = (int)(transfrom3[1] * 4.5)
 
             await self.sendMovement(linearSpeed, angularSpeed)
 
@@ -566,11 +571,9 @@ class BleMessage:
 
         if (transfrom3 != None and len(transfrom3) > 0):
             linearSpeed = transfrom3[0] * 10
-            angularSpeed = (int) (transform4[1] * 4.5)
+            angularSpeed = (int)(transform4[1] * 4.5)
             print(linearSpeed, angularSpeed)
             await self.sendMovement(linearSpeed, angularSpeed)
-
-
 
     # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
     #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
@@ -580,12 +583,8 @@ class BleMessage:
     #             else
     #                 this.angularSpeed = (int) (transfrom3.get(1).intValue() * 4.5d)
 
-
     #         if (this.countDownTask == null):
     #             testSendControl()
-
-
-
 
     async def sendMovement(self, linearSpeed: int, angularSpeed: int):
         mctrlDriver = mctrl_driver_pb2.MctrlDriver()
@@ -608,12 +607,8 @@ class BleMessage:
         bytes = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(bytes)
 
-
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
         await self.postCustomData(serialize(executeBorder))
-
-
-
 
     async def postCustomDataBytes(self, data: bytearray):
         if (data == None):
@@ -641,11 +636,8 @@ class BleMessage:
         except Exception as err:
             print(err)
 
-
-
     def getTypeValue(self, type: int, subtype: int):
         return (subtype << 2) | type
-
 
     async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytearray) -> bool:
         if data is None:
@@ -662,25 +654,22 @@ class BleMessage:
         posted = await self.gattWrite(postBytes)
         return posted and (not require_ack or self.receiveAck(sequence))
 
-
-    async def postContainsData(self, encrypt: bool,  checksum: bool,  require_ack: bool,  type_of: int, data: bytearray) -> bool:
+    async def postContainsData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
+                               data: bytearray) -> bool:
         print("post contains data")
         print(data)
-        chunk_size = 200 # self.client.mtu_size - 3
+        chunk_size = 200  # self.client.mtu_size - 3
 
         chunks = list()
         for i in range(0, len(data), chunk_size):
-            if(i + chunk_size > len(data)):
+            if (i + chunk_size > len(data)):
                 chunks.append(data[i: len(data)])
             else:
-                chunks.append(data[i : i + chunk_size])
-        print("chunks")
-        print(len(chunks))
-        print(chunks)
+                chunks.append(data[i: i + chunk_size])
         for index, chunk in enumerate(chunks):
             print("entered for loop")
             # frag = i < len(data)
-            frag = index != len(chunks)-1
+            frag = index != len(chunks) - 1
             sequence = self.generateSendSequence()
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
 
@@ -697,15 +686,13 @@ class BleMessage:
             else:
                 await sleep(0.01)
 
-
-
-
-    def getPostBytes(self, type: int,  encrypt: bool, checksum: bool,  require_ack: bool,  hasFrag: bool, sequence: int, data: bytearray) -> bytearray:
+    def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
+                     data: bytearray) -> bytearray:
 
         byteOS = BytesIO()
         dataLength = (0 if data == None else len(data))
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
-        byteOS.write(type.to_bytes(1,sys.byteorder))
+        byteOS.write(type.to_bytes(1, sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
         byteOS.write(sequence.to_bytes(1, sys.byteorder))
         byteOS.write(dataLength.to_bytes(1, sys.byteorder))
@@ -713,22 +700,20 @@ class BleMessage:
         if (data != None):
             byteOS.write(data)
 
-
         print(byteOS.getvalue())
         return byteOS.getvalue()
-
 
     def parseNotification(self, response: bytearray):
         dataOffset = None
         if (response is None):
-            #Log.w(TAG, "parseNotification null data");
+            # Log.w(TAG, "parseNotification null data");
             return -1
 
         # if (this.mPrintDebug):
         #     Log.d(TAG, "parseNotification Notification= " + Arrays.toString(response));
         # }
         if (len(response) >= 4):
-            sequence = int(response[2]) # toInt
+            sequence = int(response[2])  # toInt
             # self.mReadSequence_1.incrementAndGet()
             if (sequence != (next(self.mReadSequence) & 255)):
                 print("parseNotification read sequence wrong")
@@ -739,32 +724,32 @@ class BleMessage:
                 # self.mReadSequence_2.incrementAndGet()
 
             # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
-            pkt_type = int(response[0]) # toInt
+            pkt_type = int(response[0])  # toInt
             pkgType = self._getPackageType(pkt_type)
             subType = self._getSubType(pkt_type)
             self.notification.setType(pkt_type)
             self.notification.setPkgType(pkgType)
             self.notification.setSubType(subType)
-            frameCtrl = int(response[1]) # toInt
+            frameCtrl = int(response[1])  # toInt
             print("frame ctrl")
             print(frameCtrl)
             print(response)
             print(f"pktType {pkt_type} pkgType {pkgType} subType {subType}")
             self.notification.setFrameCtrl(frameCtrl)
             frameCtrlData = FrameCtrlData(frameCtrl)
-            dataLen = int(response[3]) # toInt specifies length of data
+            dataLen = int(response[3])  # toInt specifies length of data
             dataBytes = None
 
             try:
 
-                dataBytes = response[4:4+dataLen]
+                dataBytes = response[4: 4 + dataLen]
                 if (frameCtrlData.isEncrypted()):
                     print("is encypted")
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
                 # }
                 if (frameCtrlData.isChecksum()):
-                     print("checksum")
+                    print("checksum")
                 #     int respChecksum1 = toInt(response[response.length - 1]);
                 #     int respChecksum2 = toInt(response[response.length - 2]);
                 #     int crc = BlufiCRC.calcCRC(BlufiCRC.calcCRC(0, new byte[]{(byte) sequence, (byte) dataLen}), dataBytes);
@@ -791,10 +776,8 @@ class BleMessage:
                 print(e)
                 return -100
 
-
         # Log.w(TAG, "parseNotification data length less than 4");
         return -2
-
 
     def parseBlufiNotifyData(self):
         pkgType = self.notification.getPkgType()
@@ -807,7 +790,6 @@ class BleMessage:
         #     if (complete):
         #         return
 
-
         if (pkgType == 0):
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
@@ -815,31 +797,34 @@ class BleMessage:
 
     def _parseCtrlData(self, subType: int, data: bytearray):
         pass
-        #self._parseAck(data)
+        # self._parseAck(data)
 
     def _parseDataData(self, subType: int, data: bytearray):
-    #     if (subType == 0) {
-    #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
-    #         return;
-    #     }
+        #     if (subType == 0) {
+        #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
+        #         return;
+        #     }
+        print(subType)
+        print(bytearray)
         match subType:
-    #         case 15:
-    #             parseWifiState(data);
-    #             return;
-    #         case 16:
-    #             parseVersion(data);
-    #             return;
-    #         case 17:
-    #             parseWifiScanList(data);
-    #             return;
-    #         case 18:
-    #             int errCode = data.length > 0 ? 255 & data[0] : 255;
-    #             onError(errCode);
-    #             return;
+            #         case 15:
+            #             parseWifiState(data);
+            #             return;
+            #         case 16:
+            #             parseVersion(data);
+            #             return;
+            #         case 17:
+            #             parseWifiScanList(data);
+            #             return;
+            #         case 18:
+            #             int errCode = data.length > 0 ? 255 & data[0] : 255;
+            #             onError(errCode);
+            #             return;
             case 19:
-    #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
-                parseCustomData(data) #parse to protobuf message
-                #onReceiveCustomData
+                #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
+                parseCustomData(data)  # parse to protobuf message
+
+    # onReceiveCustomData
     #             return;
     #         default:
     #             return;
@@ -856,7 +841,6 @@ class BleMessage:
     #     this.mAck.add(Integer.valueOf(bArr.length > 0 ? bArr[0] & 255 : 256));
     # }
 
-
     def receiveAck(self, expectAck: int) -> bool:
         try:
             ack = next(self.mAck)
@@ -865,10 +849,8 @@ class BleMessage:
             print(err)
             return False
 
-
     def generateSendSequence(self):
         return next(self.mSendSequence) & 255
-
 
     def getJsonString(self, cmd: int) -> str:
         jSONObject = {}
@@ -879,7 +861,6 @@ class BleMessage:
         except Exception as err:
 
             return ""
-
 
     def get_json_string(self, cmd: int, hash_map: Dict[str, object]) -> str:
         jSONObject = {}
@@ -895,22 +876,14 @@ class BleMessage:
             print(e)
             return ""
 
-
-
     def current_milli_time(self):
         return round(time.time() * 1000)
-
 
     def _getTypeValue(self, type: int, subtype: int):
         return (subtype << 2) | type
 
-
     def _getPackageType(self, typeValue: int):
         return typeValue & 3
 
-
     def _getSubType(self, typeValue: int):
         return (typeValue & 252) >> 2
-
-
-

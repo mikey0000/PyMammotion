@@ -30,7 +30,7 @@ def parseCustomData(data: bytearray):
     luba_msg = luba_msg_pb2.LubaMsg()
     try:
         luba_msg.ParseFromString(data)
-        # print(luba_msg)
+        print(luba_msg)
         
         # toappGetHashAck = luba_msg.nav.toapp_get_commondata_ack
         # print(toappGetHashAck.Hash)
@@ -64,6 +64,10 @@ def store_sys_data(sys):
     if sys.HasField("system_rapid_state_tunnel"):
         rapid_state_data_list = sys.system_rapid_state_tunnel.rapid_state_data
         print(rapid_state_data_list)
+
+    if sys.HasField("toapp_batinfo"):
+        battery_info = sys.toapp_batinfo
+        print(battery_info)
         
         
 def store_nav_data(nav):

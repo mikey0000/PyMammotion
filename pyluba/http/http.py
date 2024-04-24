@@ -54,6 +54,7 @@ class LubaHTTP:
                 )
         ) as resp:
             data = await resp.json()
+            print(data)
             return Response[LoginResponseData](**data)
 
 
