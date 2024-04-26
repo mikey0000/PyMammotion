@@ -1,10 +1,10 @@
 syntax = "proto3";
 
 
-import "mctrl_driver.proto";
-import "mctrl_nav.proto";
-import "mctrl_sys.proto";
-import "esp_driver.proto";
+import "pyluba/proto/mctrl_driver.proto";
+import "pyluba/proto/mctrl_nav.proto";
+import "pyluba/proto/mctrl_sys.proto";
+import "pyluba/proto/dev_net.proto";
 
 
 message MsgNull {
@@ -23,7 +23,7 @@ message LubaMsg {
   
   
   oneof LubaSubMsg {
-    CommEsp esp = 8;
+    DevNet net = 8;
     MctlSys sys = 10;
     MctlNav nav = 11;
     MctrlDriver driver = 12;

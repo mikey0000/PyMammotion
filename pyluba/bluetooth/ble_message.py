@@ -9,10 +9,10 @@ from typing import Dict
 
 from bleak import BleakClient
 from jsonic import serialize
-from pyluba.bluetooth.data.convert import parseCustomData
+from pyluba.bluetooth.data.convert import parse_custom_data
 
 from pyluba.bluetooth.data.framectrldata import FrameCtrlData
-from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, esp_driver_pb2, mctrl_nav_pb2, mctrl_sys_pb2
+from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2
 from pyluba.utility.constant.device_constant import bleOrderCmd
 from pyluba.aliyun.tmp_constant import tmp_constant
 
@@ -58,12 +58,14 @@ class BleMessage:
         self.client = client
 
     async def all_powerful_RW(self, i: int, i2: int, i3: int):
-        mctrl_sys = mctrl_sys_pb2.MctlSys()
+        mctrl_sys = mctrl_sys_pb2.MctlSys(
+            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
+                id=i,
+                context=i2,
+                rw=i3
+            )
+        )
 
-        reqIdReq = mctrl_sys_pb2.SysCommCmd()
-        reqIdReq.id = i
-        reqIdReq.context = i2
-        reqIdReq.rw = i3
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
@@ -77,8 +79,8 @@ class BleMessage:
         await self.postCustomDataBytes(byte_arr)
 
     async def get_device_version_main(self):
-        commEsp = esp_driver_pb2.CommEsp(
-            todev_devinfo_req=esp_driver_pb2.DrvDevInfoReq()
+        commEsp = dev_net_pb2.DevNet(
+            todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
         )
 
         lubaMsg = luba_msg_pb2.LubaMsg()
@@ -89,16 +91,15 @@ class BleMessage:
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
-        lubaMsg.esp.CopyFrom(commEsp)
+        lubaMsg.net.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
     async def send_todev_ble_sync(self, sync_type: int):
-        commEsp = esp_driver_pb2.CommEsp(
-            todev_ble_sync=1
+        commEsp = dev_net_pb2.DevNet(
+            todev_ble_sync=sync_type
         )
 
-        commEsp.todev_ble_sync = sync_type
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
@@ -106,7 +107,27 @@ class BleMessage:
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
-        lubaMsg.esp.CopyFrom(commEsp)
+        lubaMsg.net.CopyFrom(commEsp)
+        byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    async def set_data_synchronization(self, type: int):
+        mctrl_nav = mctrl_nav_pb2.MctlNav(
+                todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
+                    pver=1,
+                    action=12,
+                    type=type
+                )
+        )
+
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
+        lubaMsg.sender = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.rcver = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.nav.CopyFrom(mctrl_nav)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -444,12 +465,13 @@ class BleMessage:
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
             rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
             seqs=1,
             version=1,
             subtype=1,
-            esp=esp_driver_pb2.CommEsp(
+            esp=dev_net_pb2.DevNet(
                 todev_ble_sync=1,
-                todev_devinfo_req=esp_driver_pb2.DrvDevInfoReq()
+                todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
             )
         )
         byte_arr = luba_msg.SerializeToString()
@@ -822,7 +844,7 @@ class BleMessage:
             #             return;
             case 19:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
-                parseCustomData(data)  # parse to protobuf message
+                parse_custom_data(data)  # parse to protobuf message
 
     # onReceiveCustomData
     #             return;

@@ -67,4 +67,8 @@ single_hash_result = b'\x00\x01\x08\xf0\x01\x10\x01\x18\x07(\xe8\xda\x0c0\x01Z\x
 sys_rapid_state_tunnel = b'\x08\xf4\x01\x10\x01\x18\x07(\xfc\xed\x0e0\x01R&\xca\x01#\n!\x04\x02+\xb4\xbf\x01IL\x1b\xea\xbe\xf6\xff\xff\xff\xff\xff\xff\x01\x9a$\xfe\x96\xda\xff\xff\xff\xff\xff\xff\x01\x05\x00'
 
 
+# 08f0011001180728c5e61530015a81018a027e08012008280131e135f3771a5184073939346bf000f0ea494801500160406a0a0d59c6a6c1156f5d40406a0a0d5c54a5c115d3101e406a0a0d8bdda7c115db5f02406a0a0d9d34aac1159889fe3f6a0a0d985eadc115ed8315406a0a0d5cc4acc1153b9e2d406a0a0d558ca9c115c6e238406a0a0d59c6a6c1156f5d4040 | xxd -r -p | protoc --decode_raw
+
+# how to generate the python proto files
+# protoc -I=. --python_out=./ ./pyluba/proto/luba_msg.proto
 # need output from datahash and figure out types for listing zones

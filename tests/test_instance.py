@@ -14,8 +14,8 @@ async def ble_heartbeat(luba_client):
         # await luba_client.send_todev_ble_sync(1)
         # eventually send an event and update data from sync
         await asyncio.sleep(2)
-        await luba_client.send_todev_ble_sync(1)
-        # await luba_client.send_ble_alive()
+        # await luba_client.send_todev_ble_sync(1)
+        await luba_client.send_ble_alive()
         await asyncio.sleep(10.5)
 
 class AsyncLoopThread(Thread):
@@ -58,7 +58,7 @@ async def run():
     # get map data off Luba
     #8656065632562971511
     await asyncio.sleep(1)
-    await luba_client.send_todev_ble_sync(1)
+    # await luba_client.send_todev_ble_sync(1)
     await luba_client.send_ble_alive()
 
     # await luba_client.synchronize_hash_data(8656065632562971511)
@@ -72,7 +72,6 @@ async def run():
     # await luba_client.synchronize_hash_data(6316048569363781876)
     # probably gets paths
     # await luba_client.get_line_info(4)
-    # await luba_client.get_hash_response(1, 1)
     """
         private final int knifeHeight = 70;
     private int pKnifeHeight = 0;
@@ -117,11 +116,24 @@ async def run():
     # await luba_client.setbladeHeight(70)
     # await luba_client.send_todev_ble_sync()
 
+    await asyncio.sleep(2)
+    await luba_client.send_todev_ble_sync(1)
+
+    await asyncio.sleep(2)
+    await luba_client.send_todev_ble_sync(2)
+
     # await luba_client.get_device_info()
-    # await luba_client.all_powerful_RW(0, 1, 1)
-    await asyncio.sleep(5)
+    await luba_client.all_powerful_RW(1, 1, 1)
+
+    await asyncio.sleep(2)
+    # await luba_client.send_todev_ble_sync(1)
     # await luba_client.get_device_info()
-    await luba_client.send_device_info()
+    await luba_client.get_hash_response(1, 1)
+
+    # await luba_client.send_device_info()
+    await asyncio.sleep(2)
+    # await luba_client.get_device_version_main()
+    # await luba_client.send_todev_ble_sync(1)
 
     asyncio.run(await ble_heartbeat(luba_client))
     print("end run?")

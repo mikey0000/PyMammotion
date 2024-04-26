@@ -14,26 +14,26 @@ enum DrvDevInfoResult {
 }
 
 
-message CommEsp {
-    oneof EspSubType {
+message DevNet {
+    oneof NetSubType {
         int32 todev_ble_sync = 1;
         int32 todev_ConfType = 2;
         DrvWifiUpload todev_wifimsgupload = 3;
-        DrvWifiSet todev_wifi_configuration = 4;
-        DrvWifiSet todev_wifilistupload = 5;
-        int32 todev_req_log_info = 6;
-        DrvUploadFileCancel todev_log_data_cancel = 7;
-        DrvDevInfoReq todev_devinfo_req = 8;
-        DrvDevInfoResp toapp_devinfo_resp = 9;
-        int32 toapp_upgrade_report = 10;
-        int32 todev_uploadfile_req = 11;
-        DrvListUpload toapp_ListUpload = 12;
-        DrvWifiConf toapp_WifiConf = 13;
-        DrvWifiMsg toapp_wifimsg = 14;
-        int32 toapp_uploadfile_rsp = 15;
-        GetNetworkInfoReq todev_networkinfo_req = 16;
-        GetNetworkInfoRsp toapp_networkinfo_rsp = 17;
-        WifiIotStatusReport toapp_wifi_iot_status = 18;
+        DrvWifiSet todev_wifilistupload = 4;
+        DrvWifiSet todev_wifi_configuration = 5;
+        DrvWifiMsg toapp_wifimsg = 6;
+        DrvWifiConf toapp_WifiConf = 7;
+        DrvListUpload toapp_ListUpload = 8;
+        int32 todev_req_log_info = 9;
+        DrvUploadFileCancel todev_log_data_cancel = 10;
+        DrvDevInfoReq todev_devinfo_req = 11;
+        DrvDevInfoResp toapp_devinfo_resp = 12;
+        int32 toapp_upgrade_report = 13;
+        WifiIotStatusReport toapp_wifi_iot_status = 14;
+        int32 todev_uploadfile_req = 15;
+        int32 toapp_uploadfile_rsp = 16;
+        GetNetworkInfoReq todev_networkinfo_req = 17;
+        GetNetworkInfoRsp toapp_networkinfo_rsp = 18;
     }
 }
 
