@@ -1,5 +1,6 @@
 import asyncio
 from threading import Thread
+from threading import Timer
 
 from pyluba.data.model import GenerateRouteInformation
 from pyluba.bluetooth.ble import LubaBLE
@@ -13,10 +14,9 @@ async def ble_heartbeat(luba_client):
     while True:
         # await luba_client.send_todev_ble_sync(1)
         # eventually send an event and update data from sync
-        await asyncio.sleep(2)
-        # await luba_client.send_todev_ble_sync(1)
-        await luba_client.send_ble_alive()
-        await asyncio.sleep(10.5)
+        # await asyncio.sleep(1)
+        await asyncio.sleep(0.01)
+
 
 class AsyncLoopThread(Thread):
     def __init__(self):
@@ -37,15 +37,27 @@ async def run():
     client = bleLubaConn.getClient()
     luba_client = BleMessage(client)
 
-    def handle_notifications(data:bytearray):
+    async def handle_notifications(data:bytearray):
+        print("got ble message", data)
         result = luba_client.parseNotification(data)
         # print(result)
         if (result == 0):
-            luba_client.parseBlufiNotifyData()
+            await luba_client.parseBlufiNotifyData()
             luba_client.clearNotification()
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
     # Run the ble heart beat in the background continuously which still doesn't quite work
+    await luba_client.send_todev_ble_sync(1)
+
+    # await luba_client.send_ble_alive()
+
+    # asyncio.sleep(2)
+
+    # delay call for at least a few seconds
+    # await luba_client.get_device_version_main() working
+
+    # t = Timer(3, luba_client.get_device_version_main, args=[])
+    # t.start()
 
     # loop_handler_bleheart = threading.Thread(target=), args=(), daemon=True)
     # await luba_client.send_ble_alive()
@@ -54,12 +66,9 @@ async def run():
     # await luba_client.get_all_boundary_hash_list(3)
     # await luba_client.get_all_boundary_hash_list(0)
 
-
     # get map data off Luba
     #8656065632562971511
-    await asyncio.sleep(1)
-    # await luba_client.send_todev_ble_sync(1)
-    await luba_client.send_ble_alive()
+    #
 
     # await luba_client.synchronize_hash_data(8656065632562971511)
 
@@ -116,22 +125,27 @@ async def run():
     # await luba_client.setbladeHeight(70)
     # await luba_client.send_todev_ble_sync()
 
-    await asyncio.sleep(2)
-    await luba_client.send_todev_ble_sync(1)
 
-    await asyncio.sleep(2)
-    await luba_client.send_todev_ble_sync(2)
+    # await asyncio.sleep(2)
+    # await luba_client.send_device_info()
 
     # await luba_client.get_device_info()
     await luba_client.all_powerful_RW(1, 1, 1)
 
-    await asyncio.sleep(2)
+    await asyncio.sleep(0.5)
+    # await luba_client.get_area_tobe_transferred()
+   # await luba_client.send_todev_ble_sync(1)
+   #  await asyncio.sleep(2)
+
+    # await luba_client.get_hash()
+
+
     # await luba_client.send_todev_ble_sync(1)
     # await luba_client.get_device_info()
-    await luba_client.get_hash_response(1, 1)
+    # await luba_client.get_hash_response(1, 1)
 
     # await luba_client.send_device_info()
-    await asyncio.sleep(2)
+    # await asyncio.sleep(2)
     # await luba_client.get_device_version_main()
     # await luba_client.send_todev_ble_sync(1)
 

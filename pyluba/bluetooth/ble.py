@@ -4,7 +4,7 @@ from bleak import BleakClient, BleakScanner, BLEDevice
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
 from pyluba.bluetooth.const import (SERVICE_CHANGED_CHARACTERISTIC,
-                   UUID_NOTIFICATION_CHARACTERISTIC)
+                                    UUID_NOTIFICATION_CHARACTERISTIC, BATTERY_LEVEL_CHARACTERISTIC)
 from pyluba.event.event import BleNotificationEvent
 
 # TODO setup for each Luba
@@ -59,16 +59,21 @@ class LubaBLE:
         if self.client is not None:
             return await self.client.disconnect()
 
-    def notification_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
+    async def notification_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Simple notification handler which prints the data received."""
-        self._bleEvt.BleNotification(data)
+        print(characteristic.description)
+        print(characteristic.descriptors)
+        await self._bleEvt.BleNotification(data)
 
     def service_changed_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Simple notification handler which prints the data received."""
-        # print(f"Response 2 {characteristic.description}: {data}")
-        # print(data.decode("utf-8") )
+        print(f"Response 2 {characteristic.description}: {data}")
+        print(data.decode("utf-8") )
         # BlufiNotifyData
         # run an event handler back to somewhere
+    def battery_level_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
+        print(f"Response 2 {characteristic.description}: {data}")
+        print(data.decode("utf-8"))
 
     async def notifications(self):
         if self.client.is_connected:

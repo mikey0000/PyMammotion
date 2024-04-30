@@ -1,3 +1,4 @@
+import asyncio
 from asyncio import sleep
 from io import BytesIO
 import itertools
@@ -60,9 +61,9 @@ class BleMessage:
     async def all_powerful_RW(self, i: int, i2: int, i3: int):
         mctrl_sys = mctrl_sys_pb2.MctlSys(
             bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
+                rw=i3,
                 id=i,
                 context=i2,
-                rw=i3
             )
         )
 
@@ -75,6 +76,7 @@ class BleMessage:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctrl_sys)
+        print(lubaMsg)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -83,15 +85,19 @@ class BleMessage:
             todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
         )
 
+        reqIdReq = commEsp.todev_devinfo_req.req_ids.add()
+        reqIdReq.id = 1
+        reqIdReq.type = 6
+
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_COMM_ESP
         lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
+        print(lubaMsg)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -103,7 +109,6 @@ class BleMessage:
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_COMM_ESP
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
@@ -129,6 +134,26 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrl_nav)
         byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    async def get_hash(self):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_NONE,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_gethash=mctrl_nav_pb2.NavGetHashList(
+                    pver=1,
+                )
+            )
+        )
+
+        print(luba_msg)
+        byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
     async def get_all_boundary_hash_list(self, i: int):
@@ -193,7 +218,14 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-    async def synchronize_hash_data(self, l: int):
+    async def get_area_tobe_transferred(self):
+        commondata = mctrl_nav_pb2.NavGetCommData(
+            pver=1,
+            subCmd=1,
+            action=8,
+            type=3
+        )
+
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -203,12 +235,30 @@ class BleMessage:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
+                todev_get_commondata=commondata
+            )
+        )
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    async def synchronize_hash_data(self, hash_int: int):
+        commondata = mctrl_nav_pb2.NavGetCommData(
                     pver=1,
+                    subCmd=1,
                     action=8,
-                    Hash=l,
-                    subCmd=1
+                    Hash=hash_int
                 )
+
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_get_commondata=commondata
             )
         )
         byte_arr = luba_msg.SerializeToString()
@@ -456,8 +506,8 @@ class BleMessage:
         self.notification = None
         self.notification = BlufiNotifyData()
 
-    async def get_device_info(self):
-        await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
+    # async def get_device_info(self):
+    #     await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
     async def send_device_info(self):
         """currently not called"""
@@ -680,7 +730,7 @@ class BleMessage:
                                data: bytearray) -> bool:
         print("post contains data")
         print(data)
-        chunk_size = 200  # self.client.mtu_size - 3
+        chunk_size = 517  # self.client.mtu_size - 3
 
         chunks = list()
         for i in range(0, len(data), chunk_size):
@@ -689,13 +739,13 @@ class BleMessage:
             else:
                 chunks.append(data[i: i + chunk_size])
         for index, chunk in enumerate(chunks):
-            print("entered for loop")
             # frag = i < len(data)
             frag = index != len(chunks) - 1
             sequence = self.generateSendSequence()
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
 
             posted = await self.gattWrite(postBytes)
+            print("posted", posted)
             if (posted != None):
                 return False
 
@@ -706,6 +756,7 @@ class BleMessage:
             if (require_ack and not self.receiveAck(sequence)):
                 return False
             else:
+                print("sleeping 0.01")
                 await sleep(0.01)
 
     def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
@@ -801,7 +852,7 @@ class BleMessage:
         # Log.w(TAG, "parseNotification data length less than 4");
         return -2
 
-    def parseBlufiNotifyData(self):
+    async def parseBlufiNotifyData(self):
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
@@ -815,19 +866,18 @@ class BleMessage:
         if (pkgType == 0):
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
-            self._parseDataData(subType, dataBytes)
+            await self._parseDataData(subType, dataBytes)
 
     def _parseCtrlData(self, subType: int, data: bytearray):
         pass
         # self._parseAck(data)
 
-    def _parseDataData(self, subType: int, data: bytearray):
+    async def _parseDataData(self, subType: int, data: bytearray):
         #     if (subType == 0) {
         #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
         #         return;
         #     }
         print(subType)
-        print(bytearray)
         match subType:
             #         case 15:
             #             parseWifiState(data);
@@ -844,7 +894,11 @@ class BleMessage:
             #             return;
             case 19:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
-                parse_custom_data(data)  # parse to protobuf message
+                luba_msg = parse_custom_data(data)  # parse to protobuf message
+                if luba_msg.HasField('net'):
+                    if luba_msg.net.HasField('toapp_wifi_iot_status'):
+                        # await sleep(1.5)
+                        await self.send_todev_ble_sync(1)
 
     # onReceiveCustomData
     #             return;

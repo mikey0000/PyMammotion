@@ -69,6 +69,134 @@ sys_rapid_state_tunnel = b'\x08\xf4\x01\x10\x01\x18\x07(\xfc\xed\x0e0\x01R&\xca\
 
 # 08f0011001180728c5e61530015a81018a027e08012008280131e135f3771a5184073939346bf000f0ea494801500160406a0a0d59c6a6c1156f5d40406a0a0d5c54a5c115d3101e406a0a0d8bdda7c115db5f02406a0a0d9d34aac1159889fe3f6a0a0d985eadc115ed8315406a0a0d5cc4acc1153b9e2d406a0a0d558ca9c115c6e238406a0a0d59c6a6c1156f5d4040 | xxd -r -p | protoc --decode_raw
 
+
+# remove these 4d04273f
+
+# 08f0011001180728858d1630015a30122e0dc95864be159920c83d180420c3ffffffffffffffff01282b35000080403d5057f43b456cf7f33b481d50046002
+
+
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  todev_get_commondata {
+    pver: 1
+    subCmd: 2
+    action: 8
+    type: 3
+    totalFrame: 1
+    currentFrame: 1
+  }
+}
+
+# gets position of Luba
+
+#  echo 08f0011001180728858d1630015a30122e0dc95864be159920c83d180420c3ffffffffffffffff01282b35000080403d5057f43b456cf7f33b481d50046002 | xxd -r -p | protoc --proto_path=/home/michael/git/pyluba/ --decode LubaMsg pyluba/proto/luba_msg.proto
+
+msgtype: MSG_CMD_TYPE_ESP
+sender: DEV_MOBILEAPP
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+net {
+  todev_devinfo_req {
+    req_ids {
+      id: 1
+      type: 6
+    }
+  }
+}
+
+
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+sys {
+  todev_data_time {
+    year: 2023
+    month: 2
+    date: 5
+    week: 1
+    hours: 9
+    minutes: 14
+    seconds: 40
+    timezone: 720
+    daylight: 60
+  }
+}
+
+
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+sys {
+  bidire_comm_cmd {
+    rw: 1
+    id: 1
+    context: 1
+  }
+}
+
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  todev_gethash {
+    pver: 1
+  }
+}
+
+
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  todev_get_commondata {
+    pver: 1
+    subCmd: 1
+    action: 8
+    type: 3
+  }
+}
+
+
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  todev_gethash {
+    pver: 1
+  }
+}
+
+
+
+
 # how to generate the python proto files
 # protoc -I=. --python_out=./ ./pyluba/proto/luba_msg.proto
 # need output from datahash and figure out types for listing zones
+
+

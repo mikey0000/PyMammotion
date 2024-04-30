@@ -1,3 +1,6 @@
+import asyncio
+
+
 class Event(object):
  
     def __init__(self):
@@ -11,9 +14,8 @@ class Event(object):
         self.__eventhandlers.remove(handler)
         return self
  
-    def __call__(self, *args, **keywargs):
-        for eventhandler in self.__eventhandlers:
-            eventhandler(*args, **keywargs)
+    async def __call__(self, *args, **kwargs):
+        await asyncio.gather(*[handler(*args, **kwargs) for handler in self.__eventhandlers])
 
 
 class MoveEvent(object):
@@ -21,10 +23,10 @@ class MoveEvent(object):
     def __init__(self):
         self.OnMoveFinished = Event()
          
-    def MoveFinished(self):
+    async def MoveFinished(self):
         # This function will be executed once blufi finishes after a movement command and will
         # raise an event
-        self.OnMoveFinished()
+        await self.OnMoveFinished()
          
     def AddSubscribersForMoveFinishedEvent(self,objMethod):
         self.OnMoveFinished += objMethod
@@ -38,9 +40,9 @@ class BleNotificationEvent(object):
     def __init__(self):
         self.OnBleNotification = Event()
          
-    def BleNotification(self, data: bytearray):
+    async def BleNotification(self, data: bytearray):
         # This function will be executed when data is received.
-        self.OnBleNotification(data)
+        await self.OnBleNotification(data)
          
     def AddSubscribersForBleNotificationEvent(self,objMethod):
         self.OnBleNotification += objMethod
