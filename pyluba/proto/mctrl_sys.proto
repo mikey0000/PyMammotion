@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "pyluba/proto/dev_net.proto";
+
 message MctlSys {
   oneof subSysMsg {
     SysBatUp toapp_batinfo = 1;
@@ -31,7 +33,18 @@ message MctlSys {
     LoraCfgReq todev_lora_cfg_req = 33;
     LoraCfgRsp toapp_lora_cfg_rsp = 34;
     mow_to_app_info_t mow_to_app_info = 35;
+    DeviceProductTypeInfo device_product_type_info = 36;
+    MowToAppQCToolsInfo mow_to_app_qctools_info = 37;
+    ReportInfoCfg todev_report_cfg = 38;
+    ReportInfoData toapp_report_data = 39;
+    MCtrlSimulationCmdData simulation_cmd = 42;
   }
+}
+
+message MCtrlSimulationCmdData {
+  int32 subCmd = 1;
+  int32 paramId = 2;
+  repeated int32 paramValue = 3;
 }
 
 message SysKnifeControl {
@@ -231,4 +244,179 @@ message mow_to_app_info_t {
     int32 type = 1;
     int32 cmd = 2;
     repeated int32 mow_data = 3;
+}
+
+message RptConnectStatus {
+  int32 connect_type = 1;
+  int32 ble_rssi = 2;
+  int32 wifi_rssi = 3;
+  int32 link_type = 4;
+  int32 mnet_rssi = 5;
+  int32 mnet_inet = 6;
+  int32 used_net = 7;
+}
+
+message RptWork {
+  int32 plan = 1;
+  int64 path_hash = 2;
+  int32 progress = 3;
+  int32 area = 4;
+  int32 bp_info = 5;
+  int64 bp_hash = 6;
+  int32 bp_pos_x = 7;
+  int32 bp_pos_y = 8;
+  int64 real_path_num = 9;
+  int32 path_pos_x = 10;
+  int32 path_pos_y = 11;
+  int64 ub_zone_hash = 12;
+  int64 ub_path_hash = 13;
+  int64 init_cfg_hash = 14;
+  int64 ub_ecode_hash = 15;
+  int32 nav_run_mode = 16;
+  int64 test_mode_status = 17;
+  int32 man_run_speed = 18;
+  int32 nav_edit_status = 19;
+  int32 knife_height = 20;
+}
+
+message RptMaintain {
+  int64 mileage = 1;
+  int32 work_time = 2;
+  int32 bat_cycles = 3;
+}
+
+message RptDevLocation {
+  int64 real_pos_x = 1;
+  int64 real_pos_y = 2;
+  int32 real_toward = 3;
+  int32 pos_type = 4;
+  int64 zone_hash = 5;
+  int64 bol_hash = 6;
+}
+
+message CollectorStatus {
+  int32 collector_installation_status = 1;
+}
+
+message VioSurvivalInfo {
+  float vio_survival_distance = 1;
+}
+
+message RptDevStatus {
+  int32 sys_status = 1;
+  int32 charge_state = 2;
+  int32 battery_val = 3;
+  int32 sensor_status = 4;
+  int32 last_status = 5;
+  int64 sys_time_stamp = 6;
+  int32 vslam_status = 7;
+  MnetInfo mnet_info = 8;
+  CollectorStatus collector_status = 10;
+  VioSurvivalInfo vio_survival_info = 9;
+}
+
+message RptLora {
+  int32 pair_code_scan = 1;
+  int32 pair_code_channel = 2;
+  int32 pair_code_locid = 3;
+  int32 pair_code_netid = 4;
+  int32 lora_connection_status = 5;
+}
+
+message RptRtk {
+  int32 status = 1;
+  int32 pos_level = 2;
+  int32 gps_stars = 3;
+  int32 age = 4;
+  int32 lat_std = 5;
+  int32 lon_std = 6;
+  int32 l2_stars = 7;
+  int64 dis_status = 8;
+  int32 top4_total_mean = 9;
+  int32 co_view_stars = 10;
+  int32 reset = 11;
+  RptLora lora_info = 12;
+}
+
+message VioToAppInfoMsg {
+  double x = 1;
+  double y = 2;
+  double heading = 3;
+  int32 vio_state = 4;
+  int32 brightness = 5;
+  int32 detect_feature_num = 6;
+  int32 track_feature_num = 7;
+}
+
+
+message VisionPointMsg {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message VisionPointInfoMsg {
+  int32 label = 1;
+  int32 num = 2;
+  repeated VisionPointMsg vision_point = 3;
+}
+
+message VisionStatisticMsg {
+    float mean = 1;
+    float var = 2;
+}
+
+message VisionStatisticInfoMsg {
+  double timestamp = 1;
+  int32 num = 2;
+  repeated VisionStatisticMsg vision_statistics = 3;
+}
+
+message ReportInfoData {
+  RptConnectStatus connect = 1;
+  RptDevStatus dev = 2;
+  device_fw_info fw_info = 6;
+  repeated RptDevLocation locations = 4;
+  RptMaintain maintain = 7;
+  RptRtk rtk = 3;
+  VioToAppInfoMsg vio_to_app_info = 9;
+  repeated VisionPointInfoMsg vision_point_info = 8;
+  VisionStatisticInfoMsg vision_statistic_info = 10;
+  RptWork work = 5;
+}
+
+message DeviceProductTypeInfo {
+  int32 result = 1;
+  string main_product_type = 2;
+  string sub_product_type = 3;
+}
+
+message ReportInfoCfg {
+  int32 act = 1;
+  int32 timeout = 2;
+  int32 period = 3;
+  int32 no_change_period = 4;
+  int32 count = 5;
+  repeated int32 sub = 6;
+}
+
+message MowToAppQCToolsInfo {
+  int32 type = 1;
+  int32 time_of_duration = 2;
+  int32 result = 3;
+  string result_details = 4;
+  repeated QCAppTestExcept except = 5;
+}
+
+message QCAppTestExcept {
+  string except_type = 1;
+  repeated QCAppTestConditions conditions = 2;
+}
+
+message QCAppTestConditions {
+  string cond_type = 1;
+  int32 int_val = 2;
+  float float_val = 3;
+  double double_val = 4;
+  string string_val = 5;
 }

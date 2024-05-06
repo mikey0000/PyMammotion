@@ -128,3 +128,21 @@ message GetNetworkInfoRsp {
 message DrvUploadFileCancel {
     int32 bizId = 1;
 }
+
+message MnetInetStatus {
+  bool connect = 1;
+  int32 ip = 2;
+  int32 mask = 3;
+  int32 gateway = 4;
+}
+
+message MnetInfo {
+  string model = 1;
+  string revision = 2;
+  string imei = 3;
+  int32 sim = 4;
+  string imsi = 5;
+  int32 link_type = 6;
+  int32 rssi = 7;
+  MnetInetStatus inet = 8;
+}

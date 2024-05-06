@@ -10,7 +10,7 @@ from pyluba.data.mqtt.event import ThingEventMessage
 
 PRODUCT_KEY = os.environ.get("PRODUCT_KEY")
 DEVICE_NAME = os.environ.get("DEVICE_NAME")
-DEVICE_SECRET = os.environ.get("DEVICE_SECRET")
+DEVICE_SECRET = os.environ.get("DEVICE_SECRET") #iotId?
 
 
 def on_message(client, userdata, message: MQTTMessage):
