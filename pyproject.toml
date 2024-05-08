@@ -14,7 +14,7 @@ packages = [{include = "pyluba"}]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 bleak = "^0.21.1"
-protobuf = "^4.25.1"
+protobuf = "^5.26.1"
 py-jsonic = "^0.0.2"
 pydantic = "^2.5.3"
 aliyun-python-sdk-iot = "^8.57.0"
@@ -26,6 +26,9 @@ alibabacloud-apigateway-util = "^0.0.2"
 alibabacloud-iot-api-gateway = "^0.0.4"
 twine = "^5.0.0"
 frida-tools = "^12.3.0"
+protobuf-to-pydantic = {version = "^0.2.6.2", extras = ["mypy-protobuf"]}
+grpcio-tools = "^1.63.0"
+bleak-retry-connector = "^3.5.0"
 
 [tool.poetry.group.dev.dependencies]
 types-protobuf = "^4.23.0.1"

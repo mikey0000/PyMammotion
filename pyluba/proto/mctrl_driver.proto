@@ -9,9 +9,9 @@ message MctrlDriver {
     oneof SubDrvMsg {
 
         DrvMotionCtrl todev_devmotion_ctrl = 1;
-        DrvKnifeHeight todev_knife_hight_set = 2;
+        DrvKnifeHeight todev_knife_height_set = 2;
         DrvSrSpeed bidire_speed_read_set = 3;
-        DrvKnifeHeight bidire_knife_hight_report = 4;
+        DrvKnifeHeight bidire_knife_height_report = 4;
         DrvKnifeStatus toapp_knife_status = 5;
     }
 

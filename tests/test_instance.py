@@ -47,11 +47,11 @@ async def run():
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
     # Run the ble heart beat in the background continuously which still doesn't quite work
-    await luba_client.send_todev_ble_sync(1)
 
     # await luba_client.send_ble_alive()
 
-    # asyncio.sleep(2)
+    await asyncio.sleep(2)
+    await luba_client.send_todev_ble_sync(1)
 
     # delay call for at least a few seconds
     # await luba_client.get_device_version_main() working
@@ -130,9 +130,9 @@ async def run():
     # await luba_client.send_device_info()
 
     # await luba_client.get_device_info()
-    await luba_client.all_powerful_RW(1, 1, 1)
+    # await luba_client.all_powerful_RW(1, 1, 1)
 
-    await asyncio.sleep(0.5)
+    # await asyncio.sleep(0.5)
     # await luba_client.get_area_tobe_transferred()
    # await luba_client.send_todev_ble_sync(1)
    #  await asyncio.sleep(2)

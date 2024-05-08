@@ -74,25 +74,6 @@ sys_rapid_state_tunnel = b'\x08\xf4\x01\x10\x01\x18\x07(\xfc\xed\x0e0\x01R&\xca\
 
 # 08f0011001180728858d1630015a30122e0dc95864be159920c83d180420c3ffffffffffffffff01282b35000080403d5057f43b456cf7f33b481d50046002
 
-
-msgtype: MSG_CMD_TYPE_NAV
-sender: DEV_MOBILEAPP
-rcver: DEV_MAINCTL
-msgattr: MSG_ATTR_REQ
-seqs: 1
-version: 1
-subtype: 1
-nav {
-  todev_get_commondata {
-    pver: 1
-    subCmd: 2
-    action: 8
-    type: 3
-    totalFrame: 1
-    currentFrame: 1
-  }
-}
-
 # gets position of Luba
 
 #  echo 08f0011001180728858d1630015a30122e0dc95864be159920c83d180420c3ffffffffffffffff01282b35000080403d5057f43b456cf7f33b481d50046002 | xxd -r -p | protoc --proto_path=/home/michael/git/pyluba/ --decode LubaMsg pyluba/proto/luba_msg.proto
@@ -179,20 +160,26 @@ nav {
   }
 }
 
-
 msgtype: MSG_CMD_TYPE_NAV
 sender: DEV_MOBILEAPP
 rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
 seqs: 1
 version: 1
 subtype: 1
 nav {
-  todev_gethash {
+  todev_get_commondata {
     pver: 1
+    subCmd: 2
+    action: 8
+    type: 3
+    totalFrame: 1
+    currentFrame: 1
   }
 }
 
-
+# just have to call ble sync and get all this data back :)
+toapp_report_data = '\x08\xf4\x01\x10\x01\x18\x07(\xc170\x01R\xb8\x01\xba\x02\xb4\x01\n\x18\x08\x01\x10\xb8\xff\xff\xff\xff\xff\xff\xff\xff\x01\x18\xcf\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x0e\x08\x0b\x10\x02\x18d(\x0e0\x95\xaf\xe5\xb1\x06\x1a\x13\x08\x04\x10\x02\x18 @\x80\x80\xb4\xf9\x91\x80\x80\x80\x03P\x980"-\x08\xa0\xab\xf7\xff\xff\xff\xff\xff\xff\x01\x10\xe4\xe0\xfc\xff\xff\xff\xff\xff\xff\x01\x18\xe7\xc8\xf8\xff\xff\xff\xff\xff\xff\x01 \x050\xe5\xa7\xe3\xd2\x93\xd2\xd5\x98**D\x10\xcf\xd6\xfa\xf5\xb5\xc1\xef\x9eC\x18\xd6\x80\xd8\x02 n0\xf0\xe0\x81\xc0\xa4\xe5\x81\xc5G8\x84\xa4\x07@\xfd\xf6\x07`\x99\xf0\x9b\xe0\xce\x88\xe2\x96Gp\xe2\xa5\xde\xf0\xe3\xbc\xaf\x8aQx\xfc\xb5\xf4\xf2\x8d\xa5\x80\xe7q\xa0\x01<'
 
 
 # how to generate the python proto files

@@ -16,3 +16,5 @@
 API to control Luba via MQTT, Cloud and bluetooth.
 
 See wiki for progress and issues for ways you can help in the effort.
+
+protobuf and protobuf models are generated using protobuf_to_pydantic and protoc

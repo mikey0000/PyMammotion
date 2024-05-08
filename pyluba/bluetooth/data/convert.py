@@ -4,6 +4,7 @@ from typing import Dict
 from google.protobuf.message import DecodeError
 
 from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2
+from pyluba.proto import luba_msg_p2p
 from pyluba.data.model import HashList, RegionData
 
 # until we have a proper store or send messages somewhere
@@ -33,6 +34,9 @@ def parse_custom_data(data: bytearray):
     try:
         luba_msg.ParseFromString(data)
         print(luba_msg)
+        luba_message = luba_msg_p2p.LubaMsg(luba_msg)
+        
+        print(luba_message)
         
         # toappGetHashAck = luba_msg.nav.toapp_get_commondata_ack
         # print(toappGetHashAck.Hash)

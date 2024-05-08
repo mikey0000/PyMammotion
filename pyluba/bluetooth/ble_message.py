@@ -34,14 +34,6 @@ class BleMessage:
     NEG_SECURITY_SET_ALL_DATA = 1
     NEG_SECURITY_SET_TOTAL_LENGTH = 0
     PACKAGE_HEADER_LENGTH = 4
-    # TAG = "BlufiClientImpl"
-    # BluetoothDevice mDevice
-    # BluetoothGatt mGatt
-    # BluetoothGattCharacteristic mNotifyChar
-    # BlufiNotifyData mNotifyData
-    # BlufiCallback mUserBlufiCallback
-    # BluetoothGattCallback mUserGattCallback
-    # BluetoothGattCharacteristic mWriteChar
     mPrintDebug = False
     mWriteTimeout = -1
     mPackageLengthLimit = -1
@@ -591,7 +583,7 @@ class BleMessage:
         mctrlDriver = mctrl_driver_pb2.MctrlDriver()
         drvKnifeHeight = mctrl_driver_pb2.DrvKnifeHeight()
         drvKnifeHeight.knifeHeight = height
-        mctrlDriver.todev_knife_hight_set.CopyFrom(drvKnifeHeight)
+        mctrlDriver.todev_knife_height_set.CopyFrom(drvKnifeHeight)
 
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
@@ -804,10 +796,10 @@ class BleMessage:
             self.notification.setPkgType(pkgType)
             self.notification.setSubType(subType)
             frameCtrl = int(response[1])  # toInt
-            print("frame ctrl")
-            print(frameCtrl)
-            print(response)
-            print(f"pktType {pkt_type} pkgType {pkgType} subType {subType}")
+            # print("frame ctrl")
+            # print(frameCtrl)
+            # print(response)
+            # print(f"pktType {pkt_type} pkgType {pkgType} subType {subType}")
             self.notification.setFrameCtrl(frameCtrl)
             frameCtrlData = FrameCtrlData(frameCtrl)
             dataLen = int(response[3])  # toInt specifies length of data
@@ -817,7 +809,7 @@ class BleMessage:
 
                 dataBytes = response[4: 4 + dataLen]
                 if (frameCtrlData.isEncrypted()):
-                    print("is encypted")
+                    print("is encrypted")
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
                 # }
@@ -896,8 +888,8 @@ class BleMessage:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
                 luba_msg = parse_custom_data(data)  # parse to protobuf message
                 if luba_msg.HasField('net'):
-                    if luba_msg.net.HasField('toapp_wifi_iot_status'):
-                        # await sleep(1.5)
+                    if luba_msg.net.HasField('send_todev_ble_sync'):
+                        await sleep(1.5)
                         await self.send_todev_ble_sync(1)
 
     # onReceiveCustomData
