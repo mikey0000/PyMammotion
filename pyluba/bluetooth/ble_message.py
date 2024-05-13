@@ -93,6 +93,76 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
+
+    async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
+        mctlsys = mctrl_sys_pb2.MctlSys()
+        mctlsys.todev_report_cfg(
+            timeout=timeout,
+            period=period,
+            no_change_period=no_change_period
+        )
+
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_CONNECT
+        )
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_RTK
+        )
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_DEV_LOCAL
+        )
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_WORK
+        )
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_DEV_STA
+        )
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_VISION_POINT
+        )
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_VIO
+        )
+        mctlsys.todev_report_cfg.sub.add(
+            mctrl_sys_pb2.RptInfoType.RIT_VISION_STATISTIC
+        )
+
+
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_SYS
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.sys.CopyFrom()
+        print(lubaMsg)
+        byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    async def get_device_base_info(self):
+        commEsp = dev_net_pb2.DevNet(
+            todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
+        )
+
+        commEsp.todev_devinfo_req.req_ids.add(
+            id=1,
+            type=6
+        )
+
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.net.CopyFrom(commEsp)
+        print(lubaMsg)
+        byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
     async def get_device_version_main(self):
         commEsp = dev_net_pb2.DevNet(
             todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
@@ -231,6 +301,8 @@ class BleMessage:
                 todev_gethash=mctrl_nav_pb2.NavGetHashList(
                     pver=1,
                     subCmd=2,
+                    action=8,
+                    type=3,
                     currentFrame=currentFrame,
                     totalFrame=totalFrame
                 )
@@ -331,6 +403,24 @@ class BleMessage:
             )
         )
 
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    async def read_plan(self, i: int):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
+                    subCmd=i,
+                )
+            )
+        )
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 

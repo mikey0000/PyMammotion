@@ -305,8 +305,42 @@ class chargePileType(BaseModel):
     x: float = Field(default=0.0) 
     y: float = Field(default=0.0) 
 
+class AppRequestCoverPaths(BaseModel):
+    pver: int = Field(default=0) 
+    subCmd: int = Field(default=0) 
+    totalFrame: int = Field(default=0) 
+    currentFrame: int = Field(default=0) 
+    dataHash: float = Field(default=0.0) 
+    transactionId: int = Field(default=0) 
+    reserved: typing.List[int] = Field(default_factory=list) 
+    hashList: typing.List[int] = Field(default_factory=list) 
+
+class CoverPathPacket(BaseModel):
+    pathHash: float = Field(default=0.0) 
+    pathType: int = Field(default=0) 
+    pathTotal: int = Field(default=0) 
+    pathCur: int = Field(default=0) 
+    zoneHash: float = Field(default=0.0) 
+    dataCouple: typing.List[CommDataCouple] = Field(default_factory=list) 
+
+class CoverPathUpload(BaseModel):
+    pver: int = Field(default=0) 
+    result: int = Field(default=0) 
+    subCmd: int = Field(default=0) 
+    area: int = Field(default=0) 
+    time: int = Field(default=0) 
+    totalFrame: int = Field(default=0) 
+    currentFrame: int = Field(default=0) 
+    totalPathNum: int = Field(default=0) 
+    validPathNum: int = Field(default=0) 
+    dataHash: float = Field(default=0.0) 
+    transactionId: int = Field(default=0) 
+    reserved: typing.List[int] = Field(default_factory=list) 
+    dataLen: int = Field(default=0) 
+    pathPackets: typing.List[CoverPathPacket] = Field(default_factory=list) 
+
 class MctlNav(BaseModel):
-    _one_of_dict = {"MctlNav.SubNavMsg": {"fields": {"bidire_reqconver_path", "bidire_taskid", "simulation_cmd", "toapp_bp", "toapp_bstate", "toapp_chgpileto", "toapp_get_commondata_ack", "toapp_gethash_ack", "toapp_lat_up", "toapp_opt_border_info", "toapp_opt_line_up", "toapp_opt_obs_info", "toapp_pos_up", "toapp_task_info", "toapp_work_report_ack", "toapp_work_report_update_ack", "toapp_zigzag", "todev_cancel_draw_cmd", "todev_cancel_suscmd", "todev_chl_line", "todev_chl_line_data", "todev_chl_line_end", "todev_draw_border", "todev_draw_border_end", "todev_draw_obs", "todev_draw_obs_end", "todev_edgecmd", "todev_get_commondata", "todev_gethash", "todev_lat_up_ack", "todev_mow_task", "todev_one_touch_leave_pile", "todev_opt_border_info_ack", "todev_opt_line_up_ack", "todev_opt_obs_info_ack", "todev_planjob_set", "todev_rechgcmd", "todev_reset_chg_pile", "todev_save_task", "todev_sustask", "todev_task_info_ack", "todev_taskctrl", "todev_unable_time_set", "todev_work_report_cmd", "todev_work_report_update_cmd", "todev_zigzag_ack"}}}
+    _one_of_dict = {"MctlNav.SubNavMsg": {"fields": {"app_request_cover_paths_t", "bidire_reqconver_path", "bidire_taskid", "cover_path_upload_t", "simulation_cmd", "toapp_bp", "toapp_bstate", "toapp_chgpileto", "toapp_get_commondata_ack", "toapp_gethash_ack", "toapp_lat_up", "toapp_opt_border_info", "toapp_opt_line_up", "toapp_opt_obs_info", "toapp_pos_up", "toapp_task_info", "toapp_work_report_ack", "toapp_work_report_update_ack", "toapp_work_report_upload", "toapp_zigzag", "todev_cancel_draw_cmd", "todev_cancel_suscmd", "todev_chl_line", "todev_chl_line_data", "todev_chl_line_end", "todev_draw_border", "todev_draw_border_end", "todev_draw_obs", "todev_draw_obs_end", "todev_edgecmd", "todev_get_commondata", "todev_gethash", "todev_lat_up_ack", "todev_mow_task", "todev_one_touch_leave_pile", "todev_opt_border_info_ack", "todev_opt_line_up_ack", "todev_opt_obs_info_ack", "todev_planjob_set", "todev_rechgcmd", "todev_reset_chg_pile", "todev_save_task", "todev_sustask", "todev_task_info_ack", "todev_taskctrl", "todev_unable_time_set", "todev_work_report_cmd", "todev_work_report_update_cmd", "todev_zigzag_ack"}}}
     one_of_validator = model_validator(mode="before")(check_one_of)
     toapp_lat_up: NavLatLonUp = Field() 
     toapp_pos_up: NavPosUp = Field() 
@@ -354,3 +388,6 @@ class MctlNav(BaseModel):
     toapp_work_report_update_ack: WorkReportUpdateAck = Field() 
     todev_work_report_cmd: WorkReportCmdData = Field() 
     toapp_work_report_ack: WorkReportInfoAck = Field() 
+    toapp_work_report_upload: WorkReportInfoAck = Field() 
+    app_request_cover_paths_t: AppRequestCoverPaths = Field() 
+    cover_path_upload_t: CoverPathUpload = Field() 

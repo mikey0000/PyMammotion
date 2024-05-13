@@ -391,13 +391,27 @@ message DeviceProductTypeInfo {
   string sub_product_type = 3;
 }
 
+enum RptInfoType {
+    RIT_CONNECT = 0;
+    RIT_DEV_STA = 1;
+    RIT_RTK = 2;
+    RIT_DEV_LOCAL = 3;
+    RIT_WORK = 4;
+    RIT_FW_INFO = 5;
+    RIT_MAINTAIN = 6;
+    RIT_VISION_POINT = 7;
+    RIT_VIO = 8;
+    RIT_VISION_STATISTIC = 9;
+        // Define your enum values here
+    }
+
 message ReportInfoCfg {
   int32 act = 1;
   int32 timeout = 2;
   int32 period = 3;
   int32 no_change_period = 4;
   int32 count = 5;
-  repeated int32 sub = 6;
+  repeated RptInfoType sub = 6;
 }
 
 message MowToAppQCToolsInfo {

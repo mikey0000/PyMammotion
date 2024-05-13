@@ -64,8 +64,8 @@ class DrvDevInfoReq(BaseModel):
 class DrvDevInfoRespId(BaseModel):
     id: int = Field(default=0) 
     type: int = Field(default=0) 
-    info: str = Field(default="") 
     res: int = Field(default=0) 
+    info: str = Field(default="") 
 
 class DrvDevInfoResp(BaseModel):
     resp_ids: typing.List[DrvDevInfoRespId] = Field(default_factory=list) 

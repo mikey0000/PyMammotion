@@ -28,7 +28,7 @@ message ToAppGetInfoRsp {
   }
 
   int32 result = 1;
-  int32 type = 2;
+  InfoCase type = 2;
   oneof info {
     BaseInfo base = 3;
     OtaInfo ota = 4;
