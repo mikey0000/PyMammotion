@@ -15,23 +15,24 @@ from pyluba.proto import mctrl_driver_pb2 as pyluba_dot_proto_dot_mctrl__driver_
 from pyluba.proto import mctrl_nav_pb2 as pyluba_dot_proto_dot_mctrl__nav__pb2
 from pyluba.proto import mctrl_sys_pb2 as pyluba_dot_proto_dot_mctrl__sys__pb2
 from pyluba.proto import dev_net_pb2 as pyluba_dot_proto_dot_dev__net__pb2
+from pyluba.proto import mctrl_ota_pb2 as pyluba_dot_proto_dot_mctrl__ota__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bpyluba/proto/luba_msg.proto\x1a\x1fpyluba/proto/mctrl_driver.proto\x1a\x1cpyluba/proto/mctrl_nav.proto\x1a\x1cpyluba/proto/mctrl_sys.proto\x1a\x1apyluba/proto/dev_net.proto\"\t\n\x07MsgNull\"\xce\x02\n\x07LubaMsg\x12\x1c\n\x07msgtype\x18\x01 \x01(\x0e\x32\x0b.MsgCmdType\x12\x1a\n\x06sender\x18\x02 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x05rcver\x18\x03 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x07msgattr\x18\x04 \x01(\x0e\x32\x08.MsgAttr\x12\x0c\n\x04seqs\x18\x05 \x01(\x05\x12\x0f\n\x07version\x18\x06 \x01(\x05\x12\x0f\n\x07subtype\x18\x07 \x01(\x05\x12\x11\n\ttimestamp\x18\x0f \x01(\x03\x12\x16\n\x03net\x18\x08 \x01(\x0b\x32\x07.DevNetH\x00\x12\x17\n\x03sys\x18\n \x01(\x0b\x32\x08.MctlSysH\x00\x12\x17\n\x03nav\x18\x0b \x01(\x0b\x32\x08.MctlNavH\x00\x12\x1e\n\x06\x64river\x18\x0c \x01(\x0b\x32\x0c.MctrlDriverH\x00\x12\x18\n\x04null\x18\x0e \x01(\x0b\x32\x08.MsgNullH\x00\x42\x0c\n\nLubaSubMsg*\xa8\x02\n\nMsgCmdType\x12\x16\n\x12MSG_CMD_TYPE_START\x10\x00\x12\x15\n\x10MSG_CMD_TYPE_NAV\x10\xf0\x01\x12\x1e\n\x19MSG_CMD_TYPE_LOCALIZATION\x10\xf1\x01\x12\x1a\n\x15MSG_CMD_TYPE_PLANNING\x10\xf2\x01\x12\x1e\n\x19MSG_CMD_TYPE_EMBED_DRIVER\x10\xf3\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_SYS\x10\xf4\x01\x12\x1f\n\x1aMSG_CMD_TYPE_EMBED_MIDWARE\x10\xf5\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_OTA\x10\xf6\x01\x12\x1d\n\x18MSG_CMD_TYPE_APPLICATION\x10\xf7\x01\x12\x15\n\x10MSG_CMD_TYPE_ESP\x10\xf8\x01*V\n\x07MsgAttr\x12\x11\n\rMSG_ATTR_NONE\x10\x00\x12\x13\n\x0fMSG_ATTR_REPORT\x10\x03\x12\x10\n\x0cMSG_ATTR_REQ\x10\x01\x12\x11\n\rMSG_ATTR_RESP\x10\x02*\xbe\x01\n\tMsgDevice\x12\x10\n\x0c\x44\x45V_COMM_ESP\x10\x00\x12\x13\n\x0f\x44\x45V_BASESTATION\x10\x04\x12\x0b\n\x07\x44\x45V_BMS\x10\t\x12\x11\n\rDEV_IOTSERVER\x10\x08\x12\x11\n\rDEV_LEFTMOTOR\x10\x02\x12\x0f\n\x0b\x44\x45V_MAINCTL\x10\x01\x12\x11\n\rDEV_MOBILEAPP\x10\x07\x12\x12\n\x0e\x44\x45V_RIGHTMOTOR\x10\x03\x12\x0e\n\nDEV_RTKCLI\x10\x05\x12\x0f\n\x0b\x44\x45V_USBHOST\x10\x06\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bpyluba/proto/luba_msg.proto\x1a\x1fpyluba/proto/mctrl_driver.proto\x1a\x1cpyluba/proto/mctrl_nav.proto\x1a\x1cpyluba/proto/mctrl_sys.proto\x1a\x1apyluba/proto/dev_net.proto\x1a\x1cpyluba/proto/mctrl_ota.proto\"\t\n\x07MsgNull\"\xe8\x02\n\x07LubaMsg\x12\x1c\n\x07msgtype\x18\x01 \x01(\x0e\x32\x0b.MsgCmdType\x12\x1a\n\x06sender\x18\x02 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x05rcver\x18\x03 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x07msgattr\x18\x04 \x01(\x0e\x32\x08.MsgAttr\x12\x0c\n\x04seqs\x18\x05 \x01(\x05\x12\x0f\n\x07version\x18\x06 \x01(\x05\x12\x0f\n\x07subtype\x18\x07 \x01(\x05\x12\x11\n\ttimestamp\x18\x0f \x01(\x03\x12\x16\n\x03net\x18\x08 \x01(\x0b\x32\x07.DevNetH\x00\x12\x17\n\x03sys\x18\n \x01(\x0b\x32\x08.MctlSysH\x00\x12\x17\n\x03nav\x18\x0b \x01(\x0b\x32\x08.MctlNavH\x00\x12\x1e\n\x06\x64river\x18\x0c \x01(\x0b\x32\x0c.MctrlDriverH\x00\x12\x18\n\x03ota\x18\r \x01(\x0b\x32\t.MctrlOtaH\x00\x12\x18\n\x04null\x18\x0e \x01(\x0b\x32\x08.MsgNullH\x00\x42\x0c\n\nLubaSubMsg*\xa8\x02\n\nMsgCmdType\x12\x16\n\x12MSG_CMD_TYPE_START\x10\x00\x12\x15\n\x10MSG_CMD_TYPE_NAV\x10\xf0\x01\x12\x1e\n\x19MSG_CMD_TYPE_LOCALIZATION\x10\xf1\x01\x12\x1a\n\x15MSG_CMD_TYPE_PLANNING\x10\xf2\x01\x12\x1e\n\x19MSG_CMD_TYPE_EMBED_DRIVER\x10\xf3\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_SYS\x10\xf4\x01\x12\x1f\n\x1aMSG_CMD_TYPE_EMBED_MIDWARE\x10\xf5\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_OTA\x10\xf6\x01\x12\x1d\n\x18MSG_CMD_TYPE_APPLICATION\x10\xf7\x01\x12\x15\n\x10MSG_CMD_TYPE_ESP\x10\xf8\x01*V\n\x07MsgAttr\x12\x11\n\rMSG_ATTR_NONE\x10\x00\x12\x13\n\x0fMSG_ATTR_REPORT\x10\x03\x12\x10\n\x0cMSG_ATTR_REQ\x10\x01\x12\x11\n\rMSG_ATTR_RESP\x10\x02*\xbe\x01\n\tMsgDevice\x12\x10\n\x0c\x44\x45V_COMM_ESP\x10\x00\x12\x13\n\x0f\x44\x45V_BASESTATION\x10\x04\x12\x0b\n\x07\x44\x45V_BMS\x10\t\x12\x11\n\rDEV_IOTSERVER\x10\x08\x12\x11\n\rDEV_LEFTMOTOR\x10\x02\x12\x0f\n\x0b\x44\x45V_MAINCTL\x10\x01\x12\x11\n\rDEV_MOBILEAPP\x10\x07\x12\x12\n\x0e\x44\x45V_RIGHTMOTOR\x10\x03\x12\x0e\n\nDEV_RTKCLI\x10\x05\x12\x0f\n\x0b\x44\x45V_USBHOST\x10\x06\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'pyluba.proto.luba_msg_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _MSGCMDTYPE._serialized_start=501
-  _MSGCMDTYPE._serialized_end=797
-  _MSGATTR._serialized_start=799
-  _MSGATTR._serialized_end=885
-  _MSGDEVICE._serialized_start=888
-  _MSGDEVICE._serialized_end=1078
-  _MSGNULL._serialized_start=152
-  _MSGNULL._serialized_end=161
-  _LUBAMSG._serialized_start=164
-  _LUBAMSG._serialized_end=498
+  _MSGCMDTYPE._serialized_start=557
+  _MSGCMDTYPE._serialized_end=853
+  _MSGATTR._serialized_start=855
+  _MSGATTR._serialized_end=941
+  _MSGDEVICE._serialized_start=944
+  _MSGDEVICE._serialized_end=1134
+  _MSGNULL._serialized_start=182
+  _MSGNULL._serialized_end=191
+  _LUBAMSG._serialized_start=194
+  _LUBAMSG._serialized_end=554
 # @@protoc_insertion_point(module_scope)

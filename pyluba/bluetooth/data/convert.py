@@ -34,9 +34,9 @@ def parse_custom_data(data: bytearray):
     try:
         luba_msg.ParseFromString(data)
         print(luba_msg)
-        luba_message = luba_msg_p2p.LubaMsg(luba_msg)
-        
-        print(luba_message)
+        # luba_message = luba_msg_p2p.LubaMsg(net=luba_msg.net)
+
+        # print(luba_message)
         
         # toappGetHashAck = luba_msg.nav.toapp_get_commondata_ack
         # print(toappGetHashAck.Hash)

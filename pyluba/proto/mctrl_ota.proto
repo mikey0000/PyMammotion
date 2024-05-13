@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+message BaseInfo {
+  string devVersion = 1;
+  int32 devStatus = 2;
+  int32 battVal = 3;
+  int32 initStatus = 4;
+  int32 isTilt = 5;
+}
+
+message OtaInfo {
+  string otaid = 1;
+  string version = 2;
+  int32 progress = 3;
+  int32 result = 4;
+  string message = 5;
+}
+
+message ToDevGetInfoReq {
+  int32 type = 1;
+}
+
+message ToAppGetInfoRsp {
+  enum InfoCase {
+    BASE = 0;
+    OTA = 1;
+    INFO_NOT_SET = 2;
+  }
+
+  int32 result = 1;
+  int32 type = 2;
+  oneof info {
+    BaseInfo base = 3;
+    OtaInfo ota = 4;
+  }
+}
+
+
+
+message MctrlOta {
+    oneof SubOtaMsg {
+        ToDevGetInfoReq to_dev_get_info_req = 1;
+        ToAppGetInfoRsp to_app_get_info_rsp = 2;
+    }
+}

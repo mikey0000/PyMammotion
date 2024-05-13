@@ -336,6 +336,45 @@ message chargePileType {
   float y = 3;
 }
 
+message AppRequestCoverPaths {
+  int32 pver = 1;
+  int32 subCmd = 2;
+  int32 totalFrame = 3;
+  int32 currentFrame = 4;
+  fixed64 dataHash = 5;
+  int64 transactionId = 6;
+  repeated int64 reserved = 7;
+  repeated int64 hashList = 8;
+}
+
+message CoverPathPacket {
+  fixed64 pathHash = 1;
+  int32 pathType = 2;
+  int32 pathTotal = 3;
+  int32 pathCur = 4;
+  fixed64 zoneHash = 5;
+  repeated CommDataCouple dataCouple = 6;
+}
+
+message CoverPathUpload {
+  int32 pver = 1;
+  int32 result = 2;
+  int32 subCmd = 3;
+  int32 area = 4;
+  int32 time = 5;
+  int32 totalFrame = 6;
+  int32 currentFrame = 7;
+  int32 totalPathNum = 8;
+  int32 validPathNum = 9;
+  fixed64 dataHash = 10;
+  int64 transactionId = 11;
+  repeated int64 reserved = 12;
+  int32 dataLen = 13;
+  repeated CoverPathPacket pathPackets = 14;
+}
+
+
+
 
 message MctlNav {
     oneof SubNavMsg {
@@ -385,5 +424,13 @@ message MctlNav {
         WorkReportUpdateAck toapp_work_report_update_ack = 44;
         WorkReportCmdData todev_work_report_cmd = 45;
         WorkReportInfoAck toapp_work_report_ack = 46;
+        WorkReportInfoAck toapp_work_report_upload = 47;
+        AppRequestCoverPaths app_request_cover_paths_t = 48;
+        CoverPathUpload cover_path_upload_t = 49;
+        // 50 zone_start_precent_t
+        // 51 vision_ctrl_msg
+        // 52 nav_sys_param_msg
+        // 53 nav_plan_task_execute
+        // 54 costmap_t
     }
 }

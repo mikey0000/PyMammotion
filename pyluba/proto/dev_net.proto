@@ -24,16 +24,26 @@ message DevNet {
         DrvWifiMsg toapp_wifimsg = 6;
         DrvWifiConf toapp_WifiConf = 7;
         DrvListUpload toapp_ListUpload = 8;
-        int32 todev_req_log_info = 9;
+        int32 todev_req_log_info = 9; // DrvUploadFileReq
         DrvUploadFileCancel todev_log_data_cancel = 10;
         DrvDevInfoReq todev_devinfo_req = 11;
         DrvDevInfoResp toapp_devinfo_resp = 12;
-        int32 toapp_upgrade_report = 13;
+        int32 toapp_upgrade_report = 13; // DrvUpgradeReport
         WifiIotStatusReport toapp_wifi_iot_status = 14;
-        int32 todev_uploadfile_req = 15;
-        int32 toapp_uploadfile_rsp = 16;
+        int32 todev_uploadfile_req = 15; //DrvUploadFileToAppReq
+        int32 toapp_uploadfile_rsp = 16; //DrvUploadFileToAppRsp
         GetNetworkInfoReq todev_networkinfo_req = 17;
         GetNetworkInfoRsp toapp_networkinfo_rsp = 18;
+        // 19 BleTestBytes
+        // 20 GetMnetInfoReq
+        // 21 GetMnetInfoRsp
+        // 22 GetMnetCfgReq
+        // 23 GetMnetCfgRsp
+        // 24 SetMnetCfgReq
+        // 25 SetMnetCfgRsp
+        // 26 DrvDebugDdsZmq
+        // 27 SetDrvBleMTU
+
     }
 }
 
@@ -83,8 +93,8 @@ message DrvDevInfoReqId {
 message DrvDevInfoRespId {
     int32 id = 1;
     int32 type = 2;
-    string info = 3;
-    int32 res = 4;
+    int32 res = 3;
+    string info = 4;
 }
 
 message DrvDevInfoReq {

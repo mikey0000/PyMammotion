@@ -54,7 +54,11 @@ async def run():
     await luba_client.send_todev_ble_sync(1)
 
     # delay call for at least a few seconds
-    # await luba_client.get_device_version_main() working
+    ### first call is get device version main
+    ###
+    ###
+
+    await luba_client.get_device_version_main()
 
     # t = Timer(3, luba_client.get_device_version_main, args=[])
     # t.start()
@@ -126,19 +130,27 @@ async def run():
     # await luba_client.send_todev_ble_sync()
 
 
-    # await asyncio.sleep(2)
+    await asyncio.sleep(2)
     # await luba_client.send_device_info()
 
     # await luba_client.get_device_info()
-    # await luba_client.all_powerful_RW(1, 1, 1)
+    # initialisation hash??
 
-    # await asyncio.sleep(0.5)
+    await asyncio.sleep(0.5)
     # await luba_client.get_area_tobe_transferred()
-   # await luba_client.send_todev_ble_sync(1)
-   #  await asyncio.sleep(2)
+    await luba_client.send_todev_ble_sync(2)
+    await asyncio.sleep(2)
+    await luba_client.all_powerful_RW(5, 1, 1)
 
-    # await luba_client.get_hash()
 
+    # gives us battery status and devStatus!!!!!! finally!
+    await luba_client.send_order_msg_ota(0)
+    await asyncio.sleep(1)
+
+
+    await luba_client.all_powerful_RW(5, 2, 1)
+
+    # await luba_client.send_device_info()
 
     # await luba_client.send_todev_ble_sync(1)
     # await luba_client.get_device_info()

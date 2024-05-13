@@ -13,7 +13,7 @@ from jsonic import serialize
 from pyluba.bluetooth.data.convert import parse_custom_data
 
 from pyluba.bluetooth.data.framectrldata import FrameCtrlData
-from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2
+from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2, mctrl_ota_pb2
 from pyluba.utility.constant.device_constant import bleOrderCmd
 from pyluba.aliyun.tmp_constant import tmp_constant
 
@@ -50,12 +50,12 @@ class BleMessage:
     def __init__(self, client: BleakClient):
         self.client = client
 
-    async def all_powerful_RW(self, i: int, i2: int, i3: int):
+    async def all_powerful_RW(self, id: int, context: int, rw: int):
         mctrl_sys = mctrl_sys_pb2.MctlSys(
             bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
-                rw=i3,
-                id=i,
-                context=i2,
+                rw=rw,
+                id=id,
+                context=context,
             )
         )
 
@@ -72,14 +72,42 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
+
+    async def send_order_msg_ota(self, type: int):
+        mctrl_ota = mctrl_ota_pb2.MctrlOta(
+            to_dev_get_info_req=mctrl_ota_pb2.ToDevGetInfoReq(
+                type=type
+            )
+        )
+
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_OTA
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.ota.CopyFrom(mctrl_ota)
+        print(lubaMsg)
+        byte_arr = lubaMsg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
     async def get_device_version_main(self):
         commEsp = dev_net_pb2.DevNet(
             todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
         )
 
-        reqIdReq = commEsp.todev_devinfo_req.req_ids.add()
-        reqIdReq.id = 1
-        reqIdReq.type = 6
+        for i in range(1, 8):
+            if (i == 1):
+                commEsp.todev_devinfo_req.req_ids.add(
+                    id=i,
+                    type=6
+                )
+            commEsp.todev_devinfo_req.req_ids.add(
+            id=i,
+            type=3
+            )
 
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
@@ -101,6 +129,7 @@ class BleMessage:
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
@@ -342,7 +371,7 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-    async def sendPlan2(self, plan: Plan):
+    async def send_plan2(self, plan: Plan):
         navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
         navPlanJobSet.pver = plan.pver
         navPlanJobSet.subCmd = plan.subCmd
@@ -511,7 +540,7 @@ class BleMessage:
             seqs=1,
             version=1,
             subtype=1,
-            esp=dev_net_pb2.DevNet(
+            net=dev_net_pb2.DevNet(
                 todev_ble_sync=1,
                 todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
             )
@@ -849,16 +878,12 @@ class BleMessage:
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
         print("parseBlufi")
-        # print(dataBytes)
-        # if (self.mUserBlufiCallback is not None):
-        #     complete = self.mUserBlufiCallback.onGattNotification(self.mClient, pkgType, subType, dataBytes)
-        #     if (complete):
-        #         return
-
         if (pkgType == 0):
+            # never seem to get these..
+            print("control data")
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
-            await self._parseDataData(subType, dataBytes)
+            return await self._parseDataData(subType, dataBytes)
 
     def _parseCtrlData(self, subType: int, data: bytearray):
         pass
@@ -887,10 +912,13 @@ class BleMessage:
             case 19:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
                 luba_msg = parse_custom_data(data)  # parse to protobuf message
+                # really need some sort of callback
                 if luba_msg.HasField('net'):
-                    if luba_msg.net.HasField('send_todev_ble_sync'):
-                        await sleep(1.5)
+                    if luba_msg.net.HasField('toapp_wifi_iot_status'):
+                        # await sleep(1.5)
                         await self.send_todev_ble_sync(1)
+                return luba_msg
+
 
     # onReceiveCustomData
     #             return;

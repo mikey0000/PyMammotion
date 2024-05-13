@@ -5,6 +5,7 @@ import "pyluba/proto/mctrl_driver.proto";
 import "pyluba/proto/mctrl_nav.proto";
 import "pyluba/proto/mctrl_sys.proto";
 import "pyluba/proto/dev_net.proto";
+import "pyluba/proto/mctrl_ota.proto";
 
 
 message MsgNull {
@@ -27,6 +28,7 @@ message LubaMsg {
     MctlSys sys = 10;
     MctlNav nav = 11;
     MctrlDriver driver = 12;
+    MctrlOta ota = 13;
     MsgNull null = 14;
   }
 
