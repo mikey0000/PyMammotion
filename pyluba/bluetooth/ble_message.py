@@ -8,7 +8,7 @@ import time
 from typing import Dict
 
 from bleak import BleakClient
-from jsonic import serialize
+from jsonic.serializable import serialize
 from pyluba.bluetooth.data.convert import parse_custom_data
 
 from pyluba.bluetooth.data.framectrldata import FrameCtrlData

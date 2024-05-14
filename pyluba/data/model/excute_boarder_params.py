@@ -1,5 +1,5 @@
 
-from jsonic import Serializable
+from jsonic.serializable import serialize
 from typing import List
 
 
