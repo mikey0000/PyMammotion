@@ -1,3 +1,3 @@
-from luba import (
+from .luba import (
     MammotionBaseBLEDevice
 )
