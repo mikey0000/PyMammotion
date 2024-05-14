@@ -1,6 +1,6 @@
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.3"
+version     = "0.0.4"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
@@ -29,6 +29,7 @@ frida-tools = "^12.3.0"
 protobuf-to-pydantic = {version = "^0.2.6.2", extras = ["mypy-protobuf"]}
 grpcio-tools = "^1.63.0"
 bleak-retry-connector = "^3.5.0"
+jsonic = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 types-protobuf = "^4.23.0.1"

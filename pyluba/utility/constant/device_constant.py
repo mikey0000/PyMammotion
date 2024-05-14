@@ -183,3 +183,16 @@ class SystemTardStateTunnel:
     UB_REAL_PATH_HASH_INDEX = 18
     UB_ZONE_STATE_HASH_INDEX = 17
 
+
+def device_mode(value):
+    modes = {
+        10: "MODE_INITIALIZATION",
+        11: "MODE_READY",
+        12: "MODE_UNCONNECTED",
+        13: "MODE_WORKING",
+        14: "MODE_RETURNING",
+        15: "MODE_CHARGING",
+        16: "MODE_UPDATING",
+        17: "MODE_LOCK"
+    }
+    return modes.get(value, "Invalid mode")

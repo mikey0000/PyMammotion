@@ -142,7 +142,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-
         raise RuntimeError("Unreachable")
 
     async def start_sync(self, key: str, retry: int):
@@ -225,7 +224,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         """Send command to device and read response."""
         await self._ensure_connected()
         try:
-            print("here")
             return await self._execute_command_locked(key, command)
         except BleakDBusError as ex:
             # Disconnect so we can reset state and try again
@@ -278,11 +276,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         assert self._read_char is not None
         assert self._write_char is not None
         self._notify_future = self.loop.create_future()
-        client = self._client
 
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         # TODO work on sending commands to here to fire off
-        await self._message.all_powerful_RW(1, 1, 1)
+        await self._message.get_report_cfg(10000, 1000, 2000)
 
 
         timeout = 20

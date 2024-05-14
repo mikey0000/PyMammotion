@@ -2,10 +2,16 @@
 
 # version of Luba API
 # TODO export the three interface types
-__version__ = "0.0.1"
+__version__ = "0.0.4"
 
+# works outside HA on its own
 from pyluba.bluetooth.ble import (
     LubaBLE
+)
+
+# TODO make a working device that will work outside HA too.
+from pyluba.mammotion.devices import (
+    MammotionBaseBLEDevice
 )
 
 from pyluba.mqtt.mqtt import (

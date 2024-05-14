@@ -24,16 +24,10 @@ TODO allow for registering events to individual messages
 as trying to register for all would be a mess
 '''
 def parse_custom_data(data: bytearray):
-    # pass
-    # print(data)
-    # setReceiveDeviceData
-    
-    
-    
     luba_msg = luba_msg_pb2.LubaMsg()
     try:
         luba_msg.ParseFromString(data)
-        print(luba_msg)
+        # print(luba_msg)
         # luba_message = luba_msg_p2p.LubaMsg(net=luba_msg.net)
 
         # print(luba_message)
@@ -107,7 +101,6 @@ def store_nav_data(nav):
     
     if(nav.HasField('toapp_gethash_ack')):
         toapp_gethash_ack = nav.toapp_gethash_ack
-        # luba.nav.toapp_get_commondata_ack.DESCRIPTOR.fields_by_name
         hash_list = HashList()
 
         data_couple_list = toapp_gethash_ack.dataCouple

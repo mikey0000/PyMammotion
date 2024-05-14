@@ -148,8 +148,8 @@ async def run():
     await asyncio.sleep(1)
 
 
-    await luba_client.all_powerful_RW(5, 2, 1)
-
+    # await luba_client.all_powerful_RW(5, 2, 1)
+    await luba_client.get_report_cfg(10000, 1000, 2000)
     # await luba_client.send_device_info()
 
     # await luba_client.send_todev_ble_sync(1)

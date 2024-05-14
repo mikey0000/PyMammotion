@@ -1,4 +1,3 @@
-import asyncio
 from asyncio import sleep
 from io import BytesIO
 import itertools
@@ -68,7 +67,6 @@ class BleMessage:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctrl_sys)
-        print(lubaMsg)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -89,55 +87,56 @@ class BleMessage:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.ota.CopyFrom(mctrl_ota)
-        print(lubaMsg)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
 
     async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
-        mctlsys = mctrl_sys_pb2.MctlSys()
-        mctlsys.todev_report_cfg(
-            timeout=timeout,
-            period=period,
-            no_change_period=no_change_period
+
+
+        mctlsys = mctrl_sys_pb2.MctlSys(
+            todev_report_cfg=mctrl_sys_pb2.ReportInfoCfg(
+                timeout=timeout,
+                period=period,
+                no_change_period=no_change_period,
+                count=1
+            )
         )
 
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_CONNECT
         )
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_RTK
         )
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_DEV_LOCAL
         )
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_WORK
         )
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_DEV_STA
         )
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_VISION_POINT
         )
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_VIO
         )
-        mctlsys.todev_report_cfg.sub.add(
+        mctlsys.todev_report_cfg.sub.append(
             mctrl_sys_pb2.RptInfoType.RIT_VISION_STATISTIC
         )
 
-
         lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_SYS
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
         lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
         lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom()
-        print(lubaMsg)
+        lubaMsg.sys.CopyFrom(mctlsys)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -159,7 +158,6 @@ class BleMessage:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
-        print(lubaMsg)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -187,7 +185,6 @@ class BleMessage:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
-        print(lubaMsg)
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -243,7 +240,6 @@ class BleMessage:
             )
         )
 
-        print(luba_msg)
         byte_arr = luba_msg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
@@ -801,7 +797,6 @@ class BleMessage:
             suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
-            print(suc)
         except Exception as err:
             print(err)
 
@@ -814,8 +809,6 @@ class BleMessage:
             suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
-            print(suc)
-            print(data)
         except Exception as err:
             print(err)
 
@@ -839,8 +832,6 @@ class BleMessage:
 
     async def postContainsData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
                                data: bytearray) -> bool:
-        print("post contains data")
-        print(data)
         chunk_size = 517  # self.client.mtu_size - 3
 
         chunks = list()
@@ -856,12 +847,10 @@ class BleMessage:
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
 
             posted = await self.gattWrite(postBytes)
-            print("posted", posted)
             if (posted != None):
                 return False
 
             if (not frag):
-                print("not frag")
                 return not require_ack or self.receiveAck(sequence)
 
             if (require_ack and not self.receiveAck(sequence)):
@@ -967,7 +956,6 @@ class BleMessage:
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
-        print("parseBlufi")
         if (pkgType == 0):
             # never seem to get these..
             print("control data")
@@ -1006,16 +994,8 @@ class BleMessage:
                 if luba_msg.HasField('net'):
                     if luba_msg.net.HasField('toapp_wifi_iot_status'):
                         # await sleep(1.5)
-                        await self.send_todev_ble_sync(1)
+                        await self.send_todev_ble_sync(2)
                 return luba_msg
-
-
-    # onReceiveCustomData
-    #             return;
-    #         default:
-    #             return;
-    #     }
-    # }
 
     # private void parseCtrlData(int i, byte[] bArr) {
     #     if (i == 0) {
