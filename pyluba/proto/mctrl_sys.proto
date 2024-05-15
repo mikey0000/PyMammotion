@@ -1,8 +1,6 @@
 syntax = "proto3";
 
-package com.agilexrobotics.proto;
-
-import "dev_net.proto";
+import "pyluba/proto/dev_net.proto";
 
 message SysBatUp {
   int32 batVal = 1;

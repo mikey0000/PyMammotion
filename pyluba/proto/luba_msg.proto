@@ -1,14 +1,12 @@
 syntax = "proto3";
 
-package com.agilexrobotics.proto;
-
-import "mctrl_driver.proto";
-import "mctrl_nav.proto";
-import "mctrl_sys.proto";
-import "dev_net.proto";
-import "mctrl_ota.proto";
-import "Luba_mul.proto";
-import "mctrl_pept.proto";
+import "pyluba/proto/mctrl_driver.proto";
+import "pyluba/proto/mctrl_nav.proto";
+import "pyluba/proto/mctrl_sys.proto";
+import "pyluba/proto/dev_net.proto";
+import "pyluba/proto/mctrl_ota.proto";
+import "pyluba/proto/Luba_mul.proto";
+import "pyluba/proto/mctrl_pept.proto";
 
 message MsgNull {
 }

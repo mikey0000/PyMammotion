@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+message perception_obstacles_t {
+  int32 label = 1;
+  int32 num = 2;
+  repeated int32 points_x = 3;
+  repeated int32 points_y = 4;
+}
+
+message perception_obstacles_visualization_t {
+  int32 is_heart_beat = 1;
+  int32 num = 2;
+  repeated perception_obstacles_t obstacles = 3;
+  double timestamp = 4;
+  float scale = 5;
+}
+
+message perception_universal_buff_t {
+  int32 perception_type = 1;
+  int32 perception_len = 2;
+  repeated int64 universal_buff = 3;
+}
+
+message MctlPept {
+  oneof SubPeptMsg {
+    perception_obstacles_visualization_t perception_obstacles_visualization = 1;
+    perception_universal_buff_t perception_universal_buff = 2;
+  }
+}
