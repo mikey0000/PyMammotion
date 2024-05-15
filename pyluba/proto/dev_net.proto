@@ -1,10 +1,259 @@
 syntax = "proto3";
 
+message DrvWifiUpload {
+  int32 Wifi_Msg_Upload = 1;
+}
+
+message DrvWifiList {
+  int32 NVS_Wifi_Upload = 1;
+}
+
+message DrvWifiSet {
+  int32 configParam = 1;
+  string Confssid = 2;
+  bool wifi_enable = 3;
+}
+
+message DrvWifiMsg {
+  bool status1 = 1;
+  bool status2 = 2;
+  string IP = 3;
+  string Msgssid = 4;
+  string password = 5;
+  int32 rssi = 6;
+  string productkey = 7;
+  string devicename = 8;
+  bool wifi_enable = 9;
+}
+
+message DrvWifiConf {
+  bool succFlag = 1;
+  int32 code = 2;
+  string Confssid = 3;
+}
+
+message DrvListUpload {
+  int32 sum = 1;
+  int32 current = 2;
+  int32 status = 3;
+  string Memssid = 4;
+  int32 rssi = 5;
+}
+
+message DrvUploadFileReq {
+  string bizId = 1;
+  string url = 2;
+  string userId = 3;
+  int32 num = 4;
+  int32 type = 5;
+}
+
+message DrvUploadFileCancel {
+  string bizId = 1;
+}
+
+message DrvUploadFileToAppReq {
+  string bizId = 1;
+  int32 operation = 2;
+  fixed32 serverIp = 3;
+  int32 serverPort = 4;
+  int32 num = 5;
+  int32 type = 6;
+}
+
+message DrvUploadFileToAppRsp {
+  string bizId = 1;
+  int32 operation = 2;
+  int32 result = 3;
+}
+
+message DrvDevInfoReqId {
+  int32 id = 1;
+  int32 type = 2;
+}
+
+message DrvDevInfoRespId {
+  int32 id = 1;
+  int32 type = 2;
+  DrvDevInfoResult res = 3;
+  string info = 4;
+}
+
+message DrvDevInfoReq {
+  repeated DrvDevInfoReqId req_ids = 1;
+}
+
+message DrvDevInfoResp {
+  repeated DrvDevInfoRespId resp_ids = 1;
+}
+
+message DrvUpgradeReport {
+  string devname = 1;
+  string otaid = 2;
+  string version = 3;
+  int32 progress = 4;
+  int32 result = 5;
+  string message = 6;
+  string properties = 7;
+}
+
+message WifiIotStatusReport {
+  bool wifi_connected = 1;
+  bool iot_connected = 2;
+  string productkey = 3;
+  string devicename = 4;
+}
+
+message BleTestBytes {
+  int32 seqs = 1;
+  repeated fixed32 data = 2;
+}
+
+message GetNetworkInfoReq {
+  int32 req_ids = 1;
+}
+
+message GetNetworkInfoRsp {
+  int32 req_ids = 1;
+  string wifi_ssid = 2;
+  string wifi_mac = 3;
+  int32 wifi_rssi = 4;
+  fixed32 ip = 5;
+  fixed32 mask = 6;
+  fixed32 gateway = 7;
+}
+
+message mnet_inet_status {
+  bool connect = 1;
+  fixed32 ip = 2;
+  fixed32 mask = 3;
+  fixed32 gateway = 4;
+}
+
+message MnetInfo {
+  string model = 1;
+  string revision = 2;
+  string imei = 3;
+  sim_card_sta sim = 4;
+  string imsi = 5;
+  mnet_link_type link_type = 6;
+  int32 rssi = 7;
+  mnet_inet_status inet = 8;
+}
+
+message GetMnetInfoReq {
+  int32 req_ids = 1;
+}
+
+message GetMnetInfoRsp {
+  int32 req_ids = 1;
+  int32 result = 2;
+  MnetInfo mnet = 3;
+}
+
+message MnetApn {
+  int32 cid = 1;
+  string apn_alias = 2;
+  string apn_name = 3;
+  apn_auth_type auth = 4;
+  string username = 5;
+  string password = 6;
+}
+
+message MnetApnCfg {
+  int32 apn_used_idx = 1;
+  repeated MnetApn apn = 2;
+}
+
+message MnetApnSetCfg {
+  bool use_default = 1;
+  MnetApnCfg cfg = 2;
+}
+
+message MnetCfg {
+  bool mnet_enable = 1;
+  bool inet_enable = 2;
+  net_type type = 3;
+  MnetApnSetCfg apn = 4;
+  bool auto_select = 5;
+}
+
+message GetMnetCfgReq {
+  int32 req_ids = 1;
+}
+
+message GetMnetCfgRsp {
+  int32 req_ids = 1;
+  int32 result = 2;
+  MnetCfg cfg = 3;
+}
+
+message SetMnetCfgReq {
+  int32 req_ids = 1;
+  MnetCfg cfg = 2;
+}
+
+message SetMnetCfgRsp {
+  int32 req_ids = 1;
+  int32 result = 2;
+}
+
+message DrvDebugDdsZmq {
+  bool is_enable = 1;
+  string rx_topic_name = 2;
+  string tx_zmq_url = 3;
+}
+
+message SetDrvBleMTU {
+  int32 mtu_count = 1;
+}
+
+message DevNet {
+  oneof NetSubType {
+    int32 todev_ble_sync = 1;
+    WifiConfType todev_ConfType = 2;
+    DrvWifiUpload todev_WifiMsgUpload = 3;
+    DrvWifiList todev_WifiListUpload = 4;
+    DrvWifiSet todev_Wifi_Configuration = 5;
+    DrvWifiMsg toapp_WifiMsg = 6;
+    DrvWifiConf toapp_WifiConf = 7;
+    DrvListUpload toapp_ListUpload = 8;
+    DrvUploadFileReq todev_req_log_info = 9;
+    DrvUploadFileCancel todev_log_data_cancel = 10;
+    DrvDevInfoReq todev_devinfo_req = 11;
+    DrvDevInfoResp toapp_devinfo_resp = 12;
+    DrvUpgradeReport toapp_upgrade_report = 13;
+    WifiIotStatusReport toapp_wifi_iot_status = 14;
+    DrvUploadFileToAppReq todev_uploadfile_req = 15;
+    DrvUploadFileToAppRsp toapp_uploadfile_rsp = 16;
+    GetNetworkInfoReq todev_networkinfo_req = 17;
+    GetNetworkInfoRsp toapp_networkinfo_rsp = 18;
+    BleTestBytes bir_testdata = 19;
+    GetMnetInfoReq todev_mnet_info_req = 20;
+    GetMnetInfoRsp toapp_mnet_info_rsp = 21;
+    GetMnetCfgReq todev_get_mnet_cfg_req = 22;
+    GetMnetCfgRsp toapp_get_mnet_cfg_rsp = 23;
+    SetMnetCfgReq todev_set_mnet_cfg_req = 24;
+    SetMnetCfgRsp toapp_set_mnet_cfg_rsp = 25;
+    DrvDebugDdsZmq todev_set_dds2zmq = 26;
+    SetDrvBleMTU todev_set_ble_mtu = 27;
+    iot_conctrl_type todev_set_iot_offline_req = 28;
+  }
+}
+
 enum WifiConfType {
-    DisconnectWifi = 0;
-    ForgetWifi = 1;
-    DirectConnectWifi = 2;
-    ReconnectWifi = 3;
+  DisconnectWifi = 0;
+  ForgetWifi = 1;
+  DirectConnectWifi = 2;
+  ReconnectWifi = 3;
+  set_enable = 4;
+}
+
+enum DrvUploadFileFileType {
+  FILE_TYPE_ALL = 0;
+  FILE_TYPE_SYSLOG = 1;
+  FILE_TYPE_NAVLOG = 2;
+  FILE_TYPE_RTKLOG = 3;
 }
 
 enum DrvDevInfoResult {
@@ -13,146 +262,36 @@ enum DrvDevInfoResult {
   DRV_RESULT_NOTSUP = 2;
 }
 
-
-message DevNet {
-    oneof NetSubType {
-        int32 todev_ble_sync = 1;
-        int32 todev_ConfType = 2;
-        DrvWifiUpload todev_wifimsgupload = 3;
-        DrvWifiSet todev_wifilistupload = 4;
-        DrvWifiSet todev_wifi_configuration = 5;
-        DrvWifiMsg toapp_wifimsg = 6;
-        DrvWifiConf toapp_WifiConf = 7;
-        DrvListUpload toapp_ListUpload = 8;
-        int32 todev_req_log_info = 9; // DrvUploadFileReq
-        DrvUploadFileCancel todev_log_data_cancel = 10;
-        DrvDevInfoReq todev_devinfo_req = 11;
-        DrvDevInfoResp toapp_devinfo_resp = 12;
-        int32 toapp_upgrade_report = 13; // DrvUpgradeReport
-        WifiIotStatusReport toapp_wifi_iot_status = 14;
-        int32 todev_uploadfile_req = 15; //DrvUploadFileToAppReq
-        int32 toapp_uploadfile_rsp = 16; //DrvUploadFileToAppRsp
-        GetNetworkInfoReq todev_networkinfo_req = 17;
-        GetNetworkInfoRsp toapp_networkinfo_rsp = 18;
-        // 19 BleTestBytes
-        // 20 GetMnetInfoReq
-        // 21 GetMnetInfoRsp
-        // 22 GetMnetCfgReq
-        // 23 GetMnetCfgRsp
-        // 24 SetMnetCfgReq
-        // 25 SetMnetCfgRsp
-        // 26 DrvDebugDdsZmq
-        // 27 SetDrvBleMTU
-
-    }
+enum sim_card_sta {
+  SIM_NONE = 0;
+  SIM_NO_CARD = 1;
+  SIM_INVALID = 2;
+  SIM_INPUT_PIN = 3;
+  SIM_INPUT_PUK = 4;
+  SIM_OK = 5;
 }
 
-message DrvListUpload {
-    int32 current = 2;
-    int32 sum = 1;
-    int32 rssi = 5;
-    int32 status = 3;
-    string memssid = 4;
+enum mnet_link_type {
+  MNET_LINK_NONE = 0;
+  MNET_LINK_2G = 1;
+  MNET_LINK_3G = 2;
+  MNET_LINK_4G = 3;
 }
 
-message DrvWifiUpload {
-    int32 wifiMsgUpload = 1;
+enum apn_auth_type {
+  APN_AUTH_NONE = 0;
+  APN_AUTH_PAP = 1;
+  APN_AUTH_CHAP = 2;
+  APN_AUTH_PAP_CHAP = 3;
 }
 
-message DrvWifiList {
-    int32 nVSWifiUpload = 1;
+enum net_type {
+  NET_TYPE_WIFI = 0;
+  NET_TYPE_MNET = 1;
 }
 
-message DrvWifiMsg {
-    string status1 = 1;
-    string status2 = 2;
-    string iP = 3;
-    string msgssid = 4;
-    string password = 5;
-    int32 rssi = 6;
-    string productkey = 7;
-    string devicename = 8;
-}
-
-message DrvWifiSet {
-  int32 configParam = 1;
-  string confSsid = 2;
-}
-
-message DrvWifiConf {
-  bool succFlag = 1;
-  int32 code = 2;
-  string confssid = 3;
-}
-
-message DrvDevInfoReqId {
-        int32 id = 1;
-        int32 type = 2;
-}
-
-message DrvDevInfoRespId {
-    int32 id = 1;
-    int32 type = 2;
-    int32 res = 3;
-    string info = 4;
-}
-
-message DrvDevInfoReq {
-    repeated DrvDevInfoReqId req_ids = 1;
-}
-
-message DrvDevInfoResp {
-    repeated DrvDevInfoRespId resp_ids = 1;
-}
-
-message WifiIotStatusReport {
-    bool wifi_connected = 1;
-    bool iot_connected = 2;
-    string productkey = 3;
-    string devicename = 4;
-}
-
-message DrvUploadFileToAppReq {
-    optional int32 bizId = 1;
-    optional int32 operation = 2;
-    optional int32 serverIp = 3;
-    optional int32 serverPort = 4;
-    optional int32 num = 5;
-    optional int32 type = 6;
-}
-
-message GetNetworkInfoReq {
-    int32 req_ids = 1;
-}
-
-message GetNetworkInfoRsp {
-    int32 req_ids = 1;
-    string wifi_ssid = 2;
-    string wifi_mac = 3;
-    int32 wifi_rssi = 4;
-    int32 ip = 5;
-    int32 mask = 6;
-    int32 gateway = 7;
-}
-
-message DrvUploadFileCancel {
-    int32 bizId = 1;
-}
-
-message MnetInetStatus {
-  bool connect = 1;
-  int32 ip = 2;
-  int32 mask = 3;
-  int32 gateway = 4;
-}
-
-message MnetInfo {
-  string model = 1;
-  string revision = 2;
-  string imei = 3;
-  int32 sim = 4;
-  string imsi = 5;
-  int32 link_type = 6;
-  int32 rssi = 7;
-  MnetInetStatus inet = 8;
+enum iot_conctrl_type {
+  IOT_TYPE_OFFLINE = 0;
+  IOT_TYPE_ONLINE = 1;
+  IOT_TYPE_RESET = 2;
 }
