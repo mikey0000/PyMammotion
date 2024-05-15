@@ -59,8 +59,8 @@ def parse_custom_data(data: bytearray):
         
         
 def store_sys_data(sys):
-    if(sys.HasField("system_tard_state_tunnel")):
-        tard_state_data_list = sys.system_tard_state_tunnel.tard_state_data
+    if(sys.HasField("systemTardStateTunnel")):
+        tard_state_data_list = sys.systemTardStateTunnel.tard_state_data
         longValue8 = tard_state_data_list[0]
         longValue9 = tard_state_data_list[1]
         print("Device status report,deviceState:", longValue8, ",deviceName:", "Luba...")
@@ -69,8 +69,8 @@ def store_sys_data(sys):
         longValue11 = tard_state_data_list[7]
 
         #device_state_map        
-    if sys.HasField("system_rapid_state_tunnel"):
-        rapid_state_data_list = sys.system_rapid_state_tunnel.rapid_state_data
+    if sys.HasField("systemRapidStateTunnel"):
+        rapid_state_data_list = sys.systemRapidStateTunnel.rapid_state_data
         print(rapid_state_data_list)
 
     if sys.HasField("toapp_batinfo"):
