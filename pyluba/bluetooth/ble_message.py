@@ -73,7 +73,7 @@ class BleMessage:
 
     async def send_order_msg_ota(self, type: int):
         mctrl_ota = mctrl_ota_pb2.MctlOta(
-            to_dev_get_info_req=mctrl_ota_pb2.ToDevGetInfoReq(
+            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
                 type=type
             )
         )
