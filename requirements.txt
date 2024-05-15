@@ -67,3 +67,6 @@ yarl==1.9.2
 
 pyluba~=0.0.1
 alibabacloud_apigateway_util~=0.0.2
+jsonic~=1.0.0
+alibabacloud_iot_api_gateway~=0.0.4
+alibabacloud_tea_util~=0.3.11

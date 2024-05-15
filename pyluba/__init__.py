@@ -2,7 +2,7 @@
 
 # version of Luba API
 # TODO export the three interface types
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 
 # works outside HA on its own
 from pyluba.bluetooth.ble import (
