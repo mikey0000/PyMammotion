@@ -95,7 +95,7 @@ class BleMessage:
 
 
         mctlsys = mctrl_sys_pb2.MctlSys(
-            todev_report_cfg=mctrl_sys_pb2.ReportInfoCfg(
+            todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
                 timeout=timeout,
                 period=period,
                 no_change_period=no_change_period,
@@ -104,28 +104,28 @@ class BleMessage:
         )
 
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_CONNECT
+            mctrl_sys_pb2.rpt_info_type.RIT_CONNECT
         )
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_RTK
+            mctrl_sys_pb2.rpt_info_type.RIT_RTK
         )
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_DEV_LOCAL
+            mctrl_sys_pb2.rpt_info_type.RIT_DEV_LOCAL
         )
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_WORK
+            mctrl_sys_pb2.rpt_info_type.RIT_WORK
         )
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_DEV_STA
+            mctrl_sys_pb2.rpt_info_type.RIT_DEV_STA
         )
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_VISION_POINT
+            mctrl_sys_pb2.rpt_info_type.RIT_VISION_POINT
         )
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_VIO
+            mctrl_sys_pb2.rpt_info_type.RIT_VIO
         )
         mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.RptInfoType.RIT_VISION_STATISTIC
+            mctrl_sys_pb2.rpt_info_type.RIT_VISION_STATISTIC
         )
 
         lubaMsg = luba_msg_pb2.LubaMsg()
