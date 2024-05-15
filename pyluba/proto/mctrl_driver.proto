@@ -1,38 +1,67 @@
 syntax = "proto3";
 
-
-
-
-message MctrlDriver {
-
-
-    oneof SubDrvMsg {
-
-        DrvMotionCtrl todev_devmotion_ctrl = 1;
-        DrvKnifeHeight todev_knife_height_set = 2;
-        DrvSrSpeed bidire_speed_read_set = 3;
-        DrvKnifeHeight bidire_knife_height_report = 4;
-        DrvKnifeStatus toapp_knife_status = 5;
-    }
-
-}
-
-
 message DrvMotionCtrl {
-    int32 setAngularSpeed = 2;
-    int32 setLinearSpeed = 1;
+  int32 setLinearSpeed = 1;
+  int32 setAngularSpeed = 2;
 }
-
 
 message DrvKnifeHeight {
-    int32 knifeHeight = 1;
+  int32 knifeHeight = 1;
 }
 
 message DrvSrSpeed {
-    int32 rw = 1;
-    float speed = 2;
+  int32 rw = 1;
+  float speed = 2;
 }
 
 message DrvKnifeStatus {
-    int32 knife_status = 1;
+  int32 knife_status = 1;
+}
+
+message DrvKnifeChangeReport {
+  int32 is_start = 1;
+  int32 start_high = 2;
+  int32 end_high = 3;
+}
+
+message DrvMowCtrlByHand {
+  int32 main_ctrl = 1;
+  int32 cut_knife_ctrl = 2;
+  int32 cut_knife_height = 3;
+  float max_run_Speed = 4;
+}
+
+message rtk_cfg_req_t {
+  int32 cmd_length = 1;
+  string cmd_req = 2;
+}
+
+message rtk_cfg_req_ack_t {
+  int32 cmd_length = 1;
+  string cmd_response = 2;
+}
+
+message rtk_sys_mask_query_t {
+  uint32 sat_system = 1;
+}
+
+message rtk_sys_mask_query_ack_t {
+  uint32 sat_system = 1;
+  repeated uint32 system_mask_bits = 2;
+}
+
+message MctlDriver {
+  oneof SubDrvMsg {
+    DrvMotionCtrl todev_devmotion_ctrl = 1;
+    DrvKnifeHeight todev_knife_hight_set = 2;
+    DrvSrSpeed bidire_speed_read_set = 3;
+    DrvKnifeHeight bidire_knife_hight_report = 4;
+    DrvKnifeStatus toapp_knife_status = 5;
+    DrvMowCtrlByHand mow_ctrl_by_hand = 6;
+    rtk_cfg_req_t rtk_cfg_req = 7;
+    rtk_cfg_req_ack_t rtk_cfg_req_ack = 8;
+    rtk_sys_mask_query_t rtk_sys_mask_query = 9;
+    rtk_sys_mask_query_ack_t rtk_sys_mask_query_ack = 10;
+    DrvKnifeChangeReport toapp_knife_status_change = 11;
+  }
 }

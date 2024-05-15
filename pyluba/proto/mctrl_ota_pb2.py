@@ -13,23 +13,23 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1cpyluba/proto/mctrl_ota.proto\"f\n\x08\x42\x61seInfo\x12\x12\n\ndevVersion\x18\x01 \x01(\t\x12\x11\n\tdevStatus\x18\x02 \x01(\x05\x12\x0f\n\x07\x62\x61ttVal\x18\x03 \x01(\x05\x12\x12\n\ninitStatus\x18\x04 \x01(\x05\x12\x0e\n\x06isTilt\x18\x05 \x01(\x05\"\\\n\x07OtaInfo\x12\r\n\x05otaid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x10\n\x08progress\x18\x03 \x01(\x05\x12\x0e\n\x06result\x18\x04 \x01(\x05\x12\x0f\n\x07message\x18\x05 \x01(\t\"\x1f\n\x0fToDevGetInfoReq\x12\x0c\n\x04type\x18\x01 \x01(\x05\"\xb7\x01\n\x0fToAppGetInfoRsp\x12\x0e\n\x06result\x18\x01 \x01(\x05\x12\'\n\x04type\x18\x02 \x01(\x0e\x32\x19.ToAppGetInfoRsp.InfoCase\x12\x19\n\x04\x62\x61se\x18\x03 \x01(\x0b\x32\t.BaseInfoH\x00\x12\x17\n\x03ota\x18\x04 \x01(\x0b\x32\x08.OtaInfoH\x00\"/\n\x08InfoCase\x12\x08\n\x04\x42\x41SE\x10\x00\x12\x07\n\x03OTA\x10\x01\x12\x10\n\x0cINFO_NOT_SET\x10\x02\x42\x06\n\x04info\"y\n\x08MctrlOta\x12/\n\x13to_dev_get_info_req\x18\x01 \x01(\x0b\x32\x10.ToDevGetInfoReqH\x00\x12/\n\x13to_app_get_info_rsp\x18\x02 \x01(\x0b\x32\x10.ToAppGetInfoRspH\x00\x42\x0b\n\tSubOtaMsgb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1cpyluba/proto/mctrl_ota.proto\"k\n\x08\x62\x61seInfo\x12\x13\n\x0b\x64\x65v_version\x18\x01 \x01(\t\x12\x12\n\ndev_status\x18\x02 \x01(\x05\x12\x10\n\x08\x62\x61tt_val\x18\x03 \x01(\x05\x12\x13\n\x0binit_status\x18\x04 \x01(\x05\x12\x0f\n\x07is_tilt\x18\x05 \x01(\x05\"\\\n\x07otaInfo\x12\r\n\x05otaid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x10\n\x08progress\x18\x03 \x01(\x05\x12\x0e\n\x06result\x18\x04 \x01(\x05\x12\x0f\n\x07message\x18\x05 \x01(\t\"%\n\ngetInfoReq\x12\x17\n\x04type\x18\x01 \x01(\x0e\x32\t.infoType\"q\n\ngetInfoRsp\x12\x0e\n\x06result\x18\x01 \x01(\x05\x12\x17\n\x04type\x18\x02 \x01(\x0e\x32\t.infoType\x12\x19\n\x04\x62\x61se\x18\x03 \x01(\x0b\x32\t.baseInfoH\x00\x12\x17\n\x03ota\x18\x04 \x01(\x0b\x32\x08.otaInfoH\x00\x42\x06\n\x04info\"l\n\x07MctlOta\x12)\n\x12todev_get_info_req\x18\x01 \x01(\x0b\x32\x0b.getInfoReqH\x00\x12)\n\x12toapp_get_info_rsp\x18\x02 \x01(\x0b\x32\x0b.getInfoRspH\x00\x42\x0b\n\tSubOtaMsg*#\n\x08infoType\x12\x0b\n\x07IT_BASE\x10\x00\x12\n\n\x06IT_OTA\x10\x01\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'pyluba.proto.mctrl_ota_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
+  _INFOTYPE._serialized_start=499
+  _INFOTYPE._serialized_end=534
   _BASEINFO._serialized_start=32
-  _BASEINFO._serialized_end=134
-  _OTAINFO._serialized_start=136
-  _OTAINFO._serialized_end=228
-  _TODEVGETINFOREQ._serialized_start=230
-  _TODEVGETINFOREQ._serialized_end=261
-  _TOAPPGETINFORSP._serialized_start=264
-  _TOAPPGETINFORSP._serialized_end=447
-  _TOAPPGETINFORSP_INFOCASE._serialized_start=392
-  _TOAPPGETINFORSP_INFOCASE._serialized_end=439
-  _MCTRLOTA._serialized_start=449
-  _MCTRLOTA._serialized_end=570
+  _BASEINFO._serialized_end=139
+  _OTAINFO._serialized_start=141
+  _OTAINFO._serialized_end=233
+  _GETINFOREQ._serialized_start=235
+  _GETINFOREQ._serialized_end=272
+  _GETINFORSP._serialized_start=274
+  _GETINFORSP._serialized_end=387
+  _MCTLOTA._serialized_start=389
+  _MCTLOTA._serialized_end=497
 # @@protoc_insertion_point(module_scope)
