@@ -1,18 +1,17 @@
 syntax = "proto3";
 
-
 import "pyluba/proto/mctrl_driver.proto";
 import "pyluba/proto/mctrl_nav.proto";
 import "pyluba/proto/mctrl_sys.proto";
 import "pyluba/proto/dev_net.proto";
 import "pyluba/proto/mctrl_ota.proto";
-
+import "pyluba/proto/luba_mul.proto";
+import "pyluba/proto/mctrl_pept.proto";
 
 message MsgNull {
-} 
+}
 
 message LubaMsg {
-
   MsgCmdType msgtype = 1;
   MsgDevice sender = 2;
   MsgDevice rcver = 3;
@@ -20,18 +19,17 @@ message LubaMsg {
   int32 seqs = 5;
   int32 version = 6;
   int32 subtype = 7;
-  int64 timestamp = 15;
-  
-  
   oneof LubaSubMsg {
     DevNet net = 8;
     MctlSys sys = 10;
     MctlNav nav = 11;
-    MctrlDriver driver = 12;
-    MctrlOta ota = 13;
-    MsgNull null = 14;
+    MctlDriver driver = 12;
+    MctlOta ota = 13;
+    SocMul mul = 14;
+    MsgNull null = 16;
+    MctlPept pept = 17;
   }
-
+  uint64 timestamp = 15;
 }
 
 enum MsgCmdType {
@@ -45,26 +43,31 @@ enum MsgCmdType {
   MSG_CMD_TYPE_EMBED_OTA = 246;
   MSG_CMD_TYPE_APPLICATION = 247;
   MSG_CMD_TYPE_ESP = 248;
+  MSG_CMD_TYPE_MUL = 249;
+  MSG_CMD_TYPE_PEPT = 250;
 }
 
 enum MsgAttr {
-
   MSG_ATTR_NONE = 0;
-  MSG_ATTR_REPORT = 3;
   MSG_ATTR_REQ = 1;
   MSG_ATTR_RESP = 2;
-
+  MSG_ATTR_REPORT = 3;
 }
 
 enum MsgDevice {
   DEV_COMM_ESP = 0;
-  DEV_BASESTATION = 4;
-  DEV_BMS = 9;
-  DEV_IOTSERVER = 8;
-  DEV_LEFTMOTOR = 2;
   DEV_MAINCTL = 1;
-  DEV_MOBILEAPP = 7;
+  DEV_LEFTMOTOR = 2;
   DEV_RIGHTMOTOR = 3;
+  DEV_BASESTATION = 4;
   DEV_RTKCLI = 5;
   DEV_USBHOST = 6;
+  DEV_MOBILEAPP = 7;
+  DEV_IOTSERVER = 8;
+  DEV_BMS = 9;
+  DEV_NAVIGATION = 17;
+  DEV_LOCALIZATION = 18;
+  DEV_PERCEPTION = 19;
+  SOC_MODULE_MULTIMEDIA = 21;
+  DEV_IOTCTRL = 25;
 }

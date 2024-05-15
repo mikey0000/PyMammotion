@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+enum MUL_LANGUAGE {
+  ENGLISH = 0;
+  GERMAN = 1;
+}
+
+enum MUL_CAMERA_POSITION {
+  LEFT = 0;
+  RIGHT = 1;
+  REAR = 2;
+  ALL = 3;
+}
+
+enum MUL_VIDEO_ERROR_CODE {
+  SUCCESS = 0;
+  ACTIVATION_FAILED = 1;
+  NETWORK_NOT_AVAILABLE = 2;
+  CREATE_CHANNEL_FAILED = 3;
+  PARAM_INVAILD = 4;
+  CELLULAR_RESTRICTION = 5;
+}
+
+enum MUL_WIPER_ERROR_CODE {
+  SET_SUCCESS = 0;
+  HW_ERROR = 1;
+  NAVIGATION_WORK_FORBID = 2;
+}
+
+message MulSetAudio {
+  oneof AudioCfg_u {
+    int32 at_switch = 1;
+    MUL_LANGUAGE au_language = 2;
+  }
+}
+
+message MulSetVideo {
+  MUL_CAMERA_POSITION position = 1;
+  int32 vi_switch = 2;
+}
+
+message MulSetVideoAck {
+  MUL_VIDEO_ERROR_CODE error_code = 1;
+}
+
+message MulAudioCfg {
+  int32 au_switch = 1;
+  MUL_LANGUAGE au_language = 2;
+}
+
+message MulSetWiper {
+  int32 round = 1;
+}
+
+message MulSetWiperAck {
+  MUL_WIPER_ERROR_CODE error_code = 1;
+}
+
+message SocMul {
+  oneof SubMul {
+    MulSetAudio set_audio = 1;
+    MulAudioCfg audio_cfg = 2;
+    MulSetVideo set_video = 3;
+    MulSetVideoAck set_video_ack = 4;
+    MulSetWiper set_wiper = 5;
+    MulSetWiperAck set_wiper_ack = 6;
+  }
+}

@@ -2,78 +2,8 @@ syntax = "proto3";
 
 import "pyluba/proto/dev_net.proto";
 
-message MctlSys {
-  oneof subSysMsg {
-    SysBatUp toapp_batinfo = 1;
-    SysWorkState toapp_work_state = 2;
-    SysSetTimeZone todev_time_zone = 3;
-    SysSetDateTime todev_data_time = 4;
-    SysJobPlan job_plan = 6;
-    SysDevErrCode toapp_err_code = 7;
-    SysJobPlanTime todev_job_plan_time = 10;
-    SysMowInfo toapp_mow_info = 11;
-    SysCommCmd bidire_comm_cmd = 12;
-    int64 plan_job_del = 14;
-    SysBorder border = 15;
-    SysPlanJobStatus toapp_plan_status = 18;
-    SysUploadFileProgress toapp_ul_fprogress = 19;
-    SysDelJobPlan todev_deljobplan = 20;
-    int32 todev_mow_info_up = 21;
-    SysKnifeControl todev_knife_ctrl = 22;
-    int32 todev_reset_system = 23;
-    SysResetSystemStatus todev_reset_system_status = 24;
-    systemRapidStateTunnel_msg system_rapid_state_tunnel = 25;
-    systemTardStateTunnel_msg system_tard_state_tunnel = 26;
-    systemUpdateBuf_msg system_update_buf = 27;
-    TimeCtrlLight todev_time_ctrl_light = 28;
-    systemTmpCycleTx_msg system_tmp_cycle_tx = 29;
-    SysOffChipFlash todev_off_chip_flash = 30;
-    int32 todev_get_dev_fw_info = 31;
-    device_fw_info toapp_dev_fw_info = 32;
-    LoraCfgReq todev_lora_cfg_req = 33;
-    LoraCfgRsp toapp_lora_cfg_rsp = 34;
-    mow_to_app_info_t mow_to_app_info = 35;
-    DeviceProductTypeInfo device_product_type_info = 36;
-    MowToAppQCToolsInfo mow_to_app_qctools_info = 37;
-    ReportInfoCfg todev_report_cfg = 38;
-    ReportInfoData toapp_report_data = 39;
-    MCtrlSimulationCmdData simulation_cmd = 42;
-  }
-}
-
-message MCtrlSimulationCmdData {
-  int32 subCmd = 1;
-  int32 paramId = 2;
-  repeated int32 paramValue = 3;
-}
-
-message SysKnifeControl {
-    int32 knifeStatus = 1;
-    int32 knifeHeight = 2;
-}
-
-enum Operation {
-    WRITE = 0;
-    READ = 1;
-    ERASE = 2;
-}
-
-enum OffPartId {
-    OFF_PART_DL_IMG = 0;
-    OFF_PART_UPDINFO_BACK = 1;
-    OFF_PART_UPDINFO = 2;
-    OFF_PART_NAKEDB = 3;
-    OFF_PART_FLASHDB = 4;
-    OFF_PART_UPD_APP_IMG = 5;
-    OFF_PART_UPD_BMS_IMG = 6;
-    OFF_PART_UPD_TMP_IMG = 7;
-    OFF_PART_DEV_INFO = 8;
-    OFF_PART_NAKEDB_BACK = 9;
-    OFF_PART_MAX = 10;
-}
-
 message SysBatUp {
-    int32 batVal = 1;
+  int32 batVal = 1;
 }
 
 message SysWorkState {
@@ -89,35 +19,35 @@ message SysSetTimeZone {
 }
 
 message SysSetDateTime {
-    int32 year = 1;
-    int32 month = 2;
-    int32 date = 3;
-    int32 week = 4;
-    int32 hours = 5;
-    int32 minutes = 6;
-    int32 seconds = 7;
-    int32 timezone = 8;
-    int32 daylight = 9;
+  int32 Year = 1;
+  int32 Month = 2;
+  int32 Date = 3;
+  int32 Week = 4;
+  int32 Hours = 5;
+  int32 Minutes = 6;
+  int32 Seconds = 7;
+  int32 timeZone = 8;
+  int32 daylight = 9;
 }
 
 message SysJobPlan {
-    int64 jobId = 1;
-    int32 jobMode = 2;
-    int32 rainTactics = 3;
-    int32 knifeHeight = 4;
+  int64 jobId = 1;
+  int32 jobMode = 2;
+  int32 rainTactics = 3;
+  int32 knifeHeight = 4;
 }
 
 message SysDevErrCode {
-    int32 errorCode = 1;
+  int32 errorCode = 1;
 }
 
 message SysBoardType {
-    int32 boardType = 1;
+  int32 boardType = 1;
 }
 
 message SysSwVersion {
-    int32 boardType = 1;
-    int32 versionLen = 2;
+  int32 boardType = 1;
+  int32 versionLen = 2;
 }
 
 message SysDelJobPlan {
@@ -126,29 +56,29 @@ message SysDelJobPlan {
 }
 
 message SysJobPlanTime {
-    int64 planId = 1;
-    int32 startJobTime = 2;
-    int32 endJobTime = 3;
-    int32 timeInDay = 4;
-    int32 jobPlanMode = 5;
-    int32 jobPlanEnable = 6;
-    SysJobPlan jobPlan = 10;
-    repeated int32 weekDay = 7;
-    int32 timeInWeekDay = 8;
-    int32 everyday = 9;
+  int64 planId = 1;
+  int32 start_job_time = 2;
+  int32 end_job_time = 3;
+  int32 time_in_day = 4;
+  int32 job_plan_mode = 5;
+  int32 job_plan_enable = 6;
+  repeated int32 weekDay = 7;
+  repeated int32 timeInWeekDay = 8;
+  int32 everyDay = 9;
+  SysJobPlan job_plan = 10;
 }
 
 message SysMowInfo {
-    int32 deviceState = 1;
-    int32 batVal = 2;
-    int32 knifeHeight = 3;
-    int32 rTKstatus = 4;
-    int32 rTKstars = 5;
+  int32 deviceState = 1;
+  int32 batVal = 2;
+  int32 knifeHeight = 3;
+  int32 RTKstatus = 4;
+  int32 RTKstars = 5;
 }
 
 message SysOptiLineAck {
-    int32 currentFrame = 2;
-    int32 responesCmd = 1;
+  int32 responesCmd = 1;
+  int32 currentFrame = 2;
 }
 
 message SysCommCmd {
@@ -164,33 +94,74 @@ message SysUploadFileProgress {
 }
 
 message SysErrorCode {
-    int32 codeNo = 1;
+  int32 code_no = 1;
 }
 
 message SysBorder {
-    int32 borderval = 1;
+  int32 borderval = 1;
 }
 
 message SysPlanJobStatus {
-    int32 planjobStatus = 1;
+  int32 planjob_status = 1;
+}
+
+message SysKnifeControl {
+  int32 knife_status = 1;
+  int32 knife_height = 2;
 }
 
 message SysResetSystemStatus {
-    int32 resetStaus = 1;
+  int32 reset_staus = 1;
 }
 
 message TimeCtrlLight {
-    int32 operate = 1;
-    int32 enable = 2;
-    int32 start_hour = 3;
-    int32 end_hour = 5;
-    int32 start_min = 4;
-    int32 end_min = 6;
-    int32 action = 7;
+  int32 operate = 1;
+  int32 enable = 2;
+  int32 start_hour = 3;
+  int32 start_min = 4;
+  int32 end_hour = 5;
+  int32 end_min = 6;
+  int32 action = 7;
+}
+
+message vision_point_msg {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message vision_point_info_msg {
+  int32 lable = 1;
+  int32 num = 2;
+  repeated vision_point_msg vision_point = 3;
+}
+
+message vio_to_app_info_msg {
+  double x = 1;
+  double y = 2;
+  double heading = 3;
+  int32 vio_state = 4;
+  int32 brightness = 5;
+  int32 detect_feature_num = 6;
+  int32 track_feature_num = 7;
+}
+
+message vision_statistic_msg {
+  float mean = 1;
+  float var = 2;
+}
+
+message vision_statistic_info_msg {
+  double timestamp = 1;
+  int32 num = 2;
+  repeated vision_statistic_msg vision_statistics = 3;
 }
 
 message systemRapidStateTunnel_msg {
-    repeated int64 rapid_state_data = 1;
+  repeated int64 rapid_state_data = 1;
+  repeated vision_point_info_msg vision_point_info = 2;
+  vio_to_app_info_msg vio_to_app_info = 3;
+  vision_statistic_info_msg vision_statistic_info = 4;
 }
 
 message systemTardStateTunnel_msg {
@@ -198,14 +169,14 @@ message systemTardStateTunnel_msg {
 }
 
 message systemUpdateBuf_msg {
-    repeated int64 update_buf_data = 1;
+  repeated int64 update_buf_data = 1;
 }
 
 message SysOffChipFlash {
-  int32 op = 1;
-  int32 id = 2;
-  int32 start_addr = 3;
-  int32 offset = 4;
+  Operation op = 1;
+  OffPartId id = 2;
+  uint32 start_addr = 3;
+  uint32 offset = 4;
   int32 length = 5;
   bytes data = 6;
   int32 code = 7;
@@ -213,19 +184,19 @@ message SysOffChipFlash {
 }
 
 message systemTmpCycleTx_msg {
-    repeated int64 cycle_tx_data = 1;
+  repeated int64 cycle_tx_data = 1;
 }
 
 message LoraCfgReq {
-    int32 op_ = 1;
-    string cfg = 2;
+  int32 op = 1;
+  string cfg = 2;
 }
 
 message LoraCfgRsp {
-    int32 result = 1;
-    int32 op = 2;
-    string cfg = 3;
-    string fac_cfg = 4;
+  int32 result = 1;
+  int32 op = 2;
+  string cfg = 3;
+  string fac_cfg = 4;
 }
 
 message mod_fw_info {
@@ -241,22 +212,113 @@ message device_fw_info {
 }
 
 message mow_to_app_info_t {
-    int32 type = 1;
-    int32 cmd = 2;
-    repeated int32 mow_data = 3;
+  int32 type = 1;
+  int32 cmd = 2;
+  repeated int32 mow_data = 3;
 }
 
-message RptConnectStatus {
+message device_product_type_info_t {
+  int32 result = 1;
+  string main_product_type = 2;
+  string sub_product_type = 3;
+}
+
+message QCAppTestExcept {
+  string except_type = 1;
+  repeated QCAppTestConditions conditions = 2;
+}
+
+message QCAppTestConditions {
+  string cond_type = 1;
+  int32 int_val = 2;
+  float float_val = 3;
+  double double_val = 4;
+  string string_val = 5;
+}
+
+message mow_to_app_qctools_info_t {
+  QCAppTestId type = 1;
+  int32 timeOfDuration = 2;
+  int32 result = 3;
+  string result_details = 4;
+  repeated QCAppTestExcept except = 5;
+}
+
+message mCtrlSimulationCmdData {
+  int32 subCmd = 1;
+  int32 param_id = 2;
+  repeated int32 param_value = 3;
+}
+
+message rpt_lora {
+  int32 pair_code_scan = 1;
+  int32 pair_code_channel = 2;
+  int32 pair_code_locid = 3;
+  int32 pair_code_netid = 4;
+  int32 lora_connection_status = 5;
+}
+
+message rpt_rtk {
+  int32 status = 1;
+  int32 pos_level = 2;
+  int32 gps_stars = 3;
+  int32 age = 4;
+  int32 lat_std = 5;
+  int32 lon_std = 6;
+  int32 l2_stars = 7;
+  int64 dis_status = 8;
+  int64 top4_total_mean = 9;
+  int32 co_view_stars = 10;
+  int32 reset = 11;
+  rpt_lora lora_info = 12;
+}
+
+message rpt_dev_location {
+  int32 real_pos_x = 1;
+  int32 real_pos_y = 2;
+  int32 real_toward = 3;
+  int32 pos_type = 4;
+  int64 zone_hash = 5;
+  int64 bol_hash = 6;
+}
+
+message vio_survival_info_t {
+  float vio_survival_distance = 1;
+}
+
+message collector_status_t {
+  int32 collector_installation_status = 1;
+}
+
+message lock_state_t {
+  uint32 lock_state = 1;
+}
+
+message rpt_dev_status {
+  int32 sys_status = 1;
+  int32 charge_state = 2;
+  int32 battery_val = 3;
+  int32 sensor_status = 4;
+  int32 last_status = 5;
+  int64 sys_time_stamp = 6;
+  int32 vslam_status = 7;
+  MnetInfo mnet_info = 8;
+  vio_survival_info_t vio_survival_info = 9;
+  collector_status_t collector_status = 10;
+  lock_state_t lock_state = 11;
+}
+
+message rpt_connect_status {
   int32 connect_type = 1;
   int32 ble_rssi = 2;
   int32 wifi_rssi = 3;
   int32 link_type = 4;
   int32 mnet_rssi = 5;
   int32 mnet_inet = 6;
-  int32 used_net = 7;
+  net_used_type used_net = 7;
 }
 
-message RptWork {
+message rpt_work {
   int32 plan = 1;
   int64 path_hash = 2;
   int32 progress = 3;
@@ -276,161 +338,150 @@ message RptWork {
   int64 test_mode_status = 17;
   int32 man_run_speed = 18;
   int32 nav_edit_status = 19;
-  int32 knife_height = 20;
+  int32 knife_hight = 20;
 }
 
-message RptMaintain {
+message rpt_maintain {
   int64 mileage = 1;
   int32 work_time = 2;
   int32 bat_cycles = 3;
 }
 
-message RptDevLocation {
-  int64 real_pos_x = 1;
-  int64 real_pos_y = 2;
-  int32 real_toward = 3;
-  int32 pos_type = 4;
-  int64 zone_hash = 5;
-  int64 bol_hash = 6;
-}
-
-message CollectorStatus {
-  int32 collector_installation_status = 1;
-}
-
-message VioSurvivalInfo {
-  float vio_survival_distance = 1;
-}
-
-message RptDevStatus {
-  int32 sys_status = 1;
-  int32 charge_state = 2;
-  int32 battery_val = 3;
-  int32 sensor_status = 4;
-  int32 last_status = 5;
-  int64 sys_time_stamp = 6;
-  int32 vslam_status = 7;
-  MnetInfo mnet_info = 8;
-  CollectorStatus collector_status = 10;
-  VioSurvivalInfo vio_survival_info = 9;
-}
-
-message RptLora {
-  int32 pair_code_scan = 1;
-  int32 pair_code_channel = 2;
-  int32 pair_code_locid = 3;
-  int32 pair_code_netid = 4;
-  int32 lora_connection_status = 5;
-}
-
-message RptRtk {
-  int32 status = 1;
-  int32 pos_level = 2;
-  int32 gps_stars = 3;
-  int32 age = 4;
-  int32 lat_std = 5;
-  int32 lon_std = 6;
-  int32 l2_stars = 7;
-  int64 dis_status = 8;
-  int32 top4_total_mean = 9;
-  int32 co_view_stars = 10;
-  int32 reset = 11;
-  RptLora lora_info = 12;
-}
-
-message VioToAppInfoMsg {
-  double x = 1;
-  double y = 2;
-  double heading = 3;
-  int32 vio_state = 4;
-  int32 brightness = 5;
-  int32 detect_feature_num = 6;
-  int32 track_feature_num = 7;
-}
-
-
-message VisionPointMsg {
-  float x = 1;
-  float y = 2;
-  float z = 3;
-}
-
-message VisionPointInfoMsg {
-  int32 label = 1;
-  int32 num = 2;
-  repeated VisionPointMsg vision_point = 3;
-}
-
-message VisionStatisticMsg {
-    float mean = 1;
-    float var = 2;
-}
-
-message VisionStatisticInfoMsg {
-  double timestamp = 1;
-  int32 num = 2;
-  repeated VisionStatisticMsg vision_statistics = 3;
-}
-
-message ReportInfoData {
-  RptConnectStatus connect = 1;
-  RptDevStatus dev = 2;
-  device_fw_info fw_info = 6;
-  repeated RptDevLocation locations = 4;
-  RptMaintain maintain = 7;
-  RptRtk rtk = 3;
-  VioToAppInfoMsg vio_to_app_info = 9;
-  repeated VisionPointInfoMsg vision_point_info = 8;
-  VisionStatisticInfoMsg vision_statistic_info = 10;
-  RptWork work = 5;
-}
-
-message DeviceProductTypeInfo {
-  int32 result = 1;
-  string main_product_type = 2;
-  string sub_product_type = 3;
-}
-
-enum RptInfoType {
-    RIT_CONNECT = 0;
-    RIT_DEV_STA = 1;
-    RIT_RTK = 2;
-    RIT_DEV_LOCAL = 3;
-    RIT_WORK = 4;
-    RIT_FW_INFO = 5;
-    RIT_MAINTAIN = 6;
-    RIT_VISION_POINT = 7;
-    RIT_VIO = 8;
-    RIT_VISION_STATISTIC = 9;
-        // Define your enum values here
-    }
-
-message ReportInfoCfg {
-  int32 act = 1;
+message report_info_cfg {
+  rpt_act act = 1;
   int32 timeout = 2;
   int32 period = 3;
   int32 no_change_period = 4;
   int32 count = 5;
-  repeated RptInfoType sub = 6;
+  repeated rpt_info_type sub = 6;
 }
 
-message MowToAppQCToolsInfo {
-  int32 type = 1;
-  int32 time_of_duration = 2;
-  int32 result = 3;
-  string result_details = 4;
-  repeated QCAppTestExcept except = 5;
+message report_info_data {
+  rpt_connect_status connect = 1;
+  rpt_dev_status dev = 2;
+  rpt_rtk rtk = 3;
+  repeated rpt_dev_location locations = 4;
+  rpt_work work = 5;
+  device_fw_info fw_info = 6;
+  rpt_maintain maintain = 7;
+  repeated vision_point_info_msg vision_point_info = 8;
+  vio_to_app_info_msg vio_to_app_info = 9;
+  vision_statistic_info_msg vision_statistic_info = 10;
 }
 
-message QCAppTestExcept {
-  string except_type = 1;
-  repeated QCAppTestConditions conditions = 2;
+message MctlSys {
+  oneof SubSysMsg {
+    SysBatUp toapp_batinfo = 1;
+    SysWorkState toapp_work_state = 2;
+    SysSetTimeZone todev_time_zone = 3;
+    SysSetDateTime todev_data_time = 4;
+    SysJobPlan job_plan = 6;
+    SysDevErrCode toapp_err_code = 7;
+    SysJobPlanTime todev_job_plan_time = 10;
+    SysMowInfo toapp_mow_info = 11;
+    SysCommCmd bidire_comm_cmd = 12;
+    int64 plan_job_del = 14;
+    SysBorder border = 15;
+    SysPlanJobStatus toapp_plan_status = 18;
+    SysUploadFileProgress toapp_ul_fprogress = 19;
+    SysDelJobPlan todev_deljobplan = 20;
+    int32 todev_mow_info_up = 21;
+    SysKnifeControl todev_knife_ctrl = 22;
+    int32 todev_reset_system = 23;
+    SysResetSystemStatus todev_reset_system_status = 24;
+    systemRapidStateTunnel_msg systemRapidStateTunnel = 25;
+    systemTardStateTunnel_msg systemTardStateTunnel = 26;
+    systemUpdateBuf_msg systemUpdateBuf = 27;
+    TimeCtrlLight todev_time_ctrl_light = 28;
+    systemTmpCycleTx_msg systemTmpCycleTx = 29;
+    SysOffChipFlash todev_off_chip_flash = 30;
+    int32 todev_get_dev_fw_info = 31;
+    device_fw_info toapp_dev_fw_info = 32;
+    LoraCfgReq todev_lora_cfg_req = 33;
+    LoraCfgRsp toapp_lora_cfg_rsp = 34;
+    mow_to_app_info_t mow_to_app_info = 35;
+    device_product_type_info_t device_product_type_info = 36;
+    mow_to_app_qctools_info_t mow_to_app_qctools_info = 37;
+    report_info_cfg todev_report_cfg = 38;
+    report_info_data toapp_report_data = 39;
+    mCtrlSimulationCmdData simulation_cmd = 42;
+  }
 }
 
-message QCAppTestConditions {
-  string cond_type = 1;
-  int32 int_val = 2;
-  float float_val = 3;
-  double double_val = 4;
-  string string_val = 5;
+enum Operation {
+  WRITE = 0;
+  READ = 1;
+  ERASE = 2;
+}
+
+enum OffPartId {
+  OFF_PART_DL_IMG = 0;
+  OFF_PART_UPDINFO_BACK = 1;
+  OFF_PART_UPDINFO = 2;
+  OFF_PART_NAKEDB = 3;
+  OFF_PART_FLASHDB = 4;
+  OFF_PART_UPD_APP_IMG = 5;
+  OFF_PART_UPD_BMS_IMG = 6;
+  OFF_PART_UPD_TMP_IMG = 7;
+  OFF_PART_DEV_INFO = 8;
+  OFF_PART_NAKEDB_BACK = 9;
+  OFF_PART_MAX = 10;
+}
+
+enum QCAppTestId {
+  QC_APP_ITEM_ON_CHARGESATSTION = 0;
+  QC_APP_TEST_X3_SPEAKER = 1;
+  QC_APP_TEST_STATIC_OBSTACLE_DETECTION = 2;
+  QC_APP_TEST_CHARGESTATION_TEMP = 3;
+  QC_APP_ITEM_KEY = 4;
+  QC_APP_TEST_BUMPER_FRONTLEFT = 5;
+  QC_APP_TEST_BUMPER_FRONTRIGHT = 6;
+  QC_APP_TEST_STOP = 7;
+  QC_APP_TEST_UNLOCK = 8;
+  QC_APP_TEST_BUZZ = 9;
+  QC_APP_TEST_LIFT = 10;
+  QC_APP_ITEM_SENEOR = 11;
+  QC_APP_TEST_ROLL_LEFT = 12;
+  QC_APP_TEST_ROLL_RIGHT = 13;
+  QC_APP_TEST_ULTRA_UNCOVER = 14;
+  QC_APP_TEST_ULTRA0_COVER = 15;
+  QC_APP_TEST_ULTRA1_COVER = 16;
+  QC_APP_TEST_ULTRA2_COVER = 17;
+  QC_APP_TEST_RAIN = 18;
+  QC_APP_ITEM_SQ = 19;
+  QC_APP_TEST_BLE_RSSI = 20;
+  QC_APP_TEST_SATELLITES_ROVER = 21;
+  QC_APP_TEST_SATELLITES_REF_STATION_L1 = 22;
+  QC_APP_TEST_SATELLITES_REF_STATION_L2 = 23;
+  QC_APP_TEST_SATELLITES_COMMON_VIEW = 24;
+  QC_APP_TEST_CNO_ROVER = 25;
+  QC_APP_TEST_CNO_REF_STATION = 26;
+  QC_APP_TEST_REF_STATION_LINK_STATUS = 27;
+  QC_APP_TEST_LOCATION_STATE = 28;
+  QC_APP_TEST_MAX = 29;
+}
+
+enum net_used_type {
+  NET_USED_TYPE_NONE = 0;
+  NET_USED_TYPE_WIFI = 1;
+  NET_USED_TYPE_MNET = 2;
+}
+
+enum rpt_info_type {
+  RIT_CONNECT = 0;
+  RIT_DEV_STA = 1;
+  RIT_RTK = 2;
+  RIT_DEV_LOCAL = 3;
+  RIT_WORK = 4;
+  RIT_FW_INFO = 5;
+  RIT_MAINTAIN = 6;
+  RIT_VISION_POINT = 7;
+  RIT_VIO = 8;
+  RIT_VISION_STATISTIC = 9;
+}
+
+enum rpt_act {
+  RPT_START = 0;
+  RPT_STOP = 1;
+  RPT_KEEP = 2;
 }
