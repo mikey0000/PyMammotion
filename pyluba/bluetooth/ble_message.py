@@ -1066,3 +1066,8 @@ class BleMessage:
         )
         AppLogUtils.get_instance().append_log("发送指令--设置视觉ZMQ开启")
         send_order_msg_net(build, 97, True)
+        
+    def get_4g_module_info(self):
+        build = DevNetOuterClass.DevNet(todev_get_mnet_cfg_req=DevNetOuterClass.DevNet.TodevGetMnetCfgReq())
+        AppLogUtils.get_instance().append_log("发送指令--获取设备4G网络模块信息")
+        self.send_order_msg_net(build, 96, True)
