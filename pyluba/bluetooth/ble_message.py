@@ -70,7 +70,6 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-
     async def send_order_msg_ota(self, type: int):
         mctrl_ota = mctrl_ota_pb2.MctlOta(
             todev_get_info_req=mctrl_ota_pb2.getInfoReq(
@@ -90,9 +89,7 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.postCustomDataBytes(byte_arr)
 
-
     async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
-
 
         mctlsys = mctrl_sys_pb2.MctlSys(
             todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
@@ -173,8 +170,8 @@ class BleMessage:
                     type=6
                 )
             commEsp.todev_devinfo_req.req_ids.add(
-            id=i,
-            type=3
+                id=i,
+                type=3
             )
 
         lubaMsg = luba_msg_pb2.LubaMsg()
@@ -206,11 +203,11 @@ class BleMessage:
 
     async def set_data_synchronization(self, type: int):
         mctrl_nav = mctrl_nav_pb2.MctlNav(
-                todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
-                    pver=1,
-                    action=12,
-                    type=type
-                )
+            todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
+                pver=1,
+                action=12,
+                type=type
+            )
         )
 
         lubaMsg = luba_msg_pb2.LubaMsg()
@@ -332,11 +329,11 @@ class BleMessage:
 
     async def synchronize_hash_data(self, hash_int: int):
         commondata = mctrl_nav_pb2.NavGetCommData(
-                    pver=1,
-                    subCmd=1,
-                    action=8,
-                    Hash=hash_int
-                )
+            pver=1,
+            subCmd=1,
+            action=8,
+            Hash=hash_int
+        )
 
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -512,7 +509,8 @@ class BleMessage:
         nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
         nav_req_cover_path.pver = 1
         nav_req_cover_path.subCmd = 0
-        nav_req_cover_path.zoneHashs.extend(generate_route_information.one_hashs)
+        nav_req_cover_path.zoneHashs.extend(
+            generate_route_information.one_hashs)
         nav_req_cover_path.jobMode = generate_route_information.job_mode  # grid type
         nav_req_cover_path.edgeMode = generate_route_information.edge_mode  # border laps
         nav_req_cover_path.knifeHeight = generate_route_information.knife_height
@@ -521,7 +519,8 @@ class BleMessage:
         nav_req_cover_path.channelWidth = generate_route_information.channel_width  # mow width
         nav_req_cover_path.channelMode = generate_route_information.channel_mode
         nav_req_cover_path.toward = generate_route_information.toward
-        nav_req_cover_path.reserved = self.get_reserved(generate_route_information)  # grid or border first
+        nav_req_cover_path.reserved = self.get_reserved(
+            generate_route_information)  # grid or border first
 
         luba_msg = luba_msg_pb2.LubaMsg()
         luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
@@ -826,7 +825,8 @@ class BleMessage:
 
     async def postNonData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
         sequence = self.generateSendSequence()
-        postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
+        postBytes = self.getPostBytes(
+            type_of, encrypt, checksum, require_ack, False, sequence, None)
         posted = await self.gattWrite(postBytes)
         return posted and (not require_ack or self.receiveAck(sequence))
 
@@ -844,7 +844,8 @@ class BleMessage:
             # frag = i < len(data)
             frag = index != len(chunks) - 1
             sequence = self.generateSendSequence()
-            postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
+            postBytes = self.getPostBytes(
+                type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
 
             posted = await self.gattWrite(postBytes)
             if (posted != None):
@@ -864,7 +865,8 @@ class BleMessage:
 
         byteOS = BytesIO()
         dataLength = (0 if data == None else len(data))
-        frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
+        frameCtrl = FrameCtrlData.getFrameCTRLValue(
+            encrypt, checksum, 0, require_ack, hasFrag)
         byteOS.write(type.to_bytes(1, sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
         byteOS.write(sequence.to_bytes(1, sys.byteorder))
@@ -1053,3 +1055,14 @@ class BleMessage:
 
     def _getSubType(self, typeValue: int):
         return (typeValue & 252) >> 2
+
+    def set_zmq_enable(self):
+        build = DevNet(
+            todev_set_dds2_zmq=DevNet.DrvDebugDdsZmq(
+                is_enable=True,
+                rx_topic_name="perception_post_result",
+                tx_zmq_url="tcp://0.0.0.0:5555"
+            )
+        )
+        AppLogUtils.get_instance().append_log("发送指令--设置视觉ZMQ开启")
+        send_order_msg_net(build, 97, True)
