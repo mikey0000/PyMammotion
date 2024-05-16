@@ -1056,18 +1056,48 @@ class BleMessage:
     def _getSubType(self, typeValue: int):
         return (typeValue & 252) >> 2
 
+# ==================================================================
+
+    async def send_order_msg_net(self, build):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            net=build)
+
+        byte_arr = luba_msg.SerializeToString()
+        await self.postCustomDataBytes(byte_arr)
+
+    def get_4g_module_info(self):
+        build = dev_net_pb2.DevNet(
+            todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req)
+        print("Send command -- Get device 4G network module information")
+        self.send_order_msg_net(build, 96, True)
+
+    # def get_4g_module_info(self):
+    #     build = dev_net_pb2.DevNet(
+    #         todev_get_mnet_cfg_req=dev_net_pb2.DevNet.TodevGetMnetCfgReq())
+    #     self.send_order_msg_net(build)
+
+    # ---------------------------
+
+    def get_4g_info(self):
+        build = dev_net_pb2.DevNet(
+            TodevMnetInfoReq=dev_net_pb2.DevNet().TodevMnetInfoReq)
+        print("Send command -- Get device 4G network information")
+        self.send_order_msg_net(build, 95, True)
+
     def set_zmq_enable(self):
-        build = DevNet(
-            todev_set_dds2_zmq=DevNet.DrvDebugDdsZmq(
+        build = dev_net_pb2.DevNet(
+            todev_set_dds2_zmq=dev_net_pb2.DrvDebugDdsZmq(
                 is_enable=True,
                 rx_topic_name="perception_post_result",
                 tx_zmq_url="tcp://0.0.0.0:5555"
             )
         )
-        AppLogUtils.get_instance().append_log("发送指令--设置视觉ZMQ开启")
-        send_order_msg_net(build, 97, True)
-        
-    def get_4g_module_info(self):
-        build = DevNetOuterClass.DevNet(todev_get_mnet_cfg_req=DevNetOuterClass.DevNet.TodevGetMnetCfgReq())
-        AppLogUtils.get_instance().append_log("发送指令--获取设备4G网络模块信息")
-        self.send_order_msg_net(build, 96, True)
+        print("Send command -- Set vision ZMQ to enable")
+        self.send_order_msg_net(build, 97, True)
