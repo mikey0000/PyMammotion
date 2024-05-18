@@ -4,30 +4,50 @@ from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
+IT_BASE: infoType
+IT_OTA: infoType
 
-class BaseInfo(_message.Message):
-    __slots__ = ["battVal", "devStatus", "devVersion", "initStatus", "isTilt"]
-    BATTVAL_FIELD_NUMBER: _ClassVar[int]
-    DEVSTATUS_FIELD_NUMBER: _ClassVar[int]
-    DEVVERSION_FIELD_NUMBER: _ClassVar[int]
-    INITSTATUS_FIELD_NUMBER: _ClassVar[int]
-    ISTILT_FIELD_NUMBER: _ClassVar[int]
-    battVal: int
-    devStatus: int
-    devVersion: str
-    initStatus: int
-    isTilt: int
-    def __init__(self, devVersion: _Optional[str] = ..., devStatus: _Optional[int] = ..., battVal: _Optional[int] = ..., initStatus: _Optional[int] = ..., isTilt: _Optional[int] = ...) -> None: ...
+class MctlOta(_message.Message):
+    __slots__ = ["toapp_get_info_rsp", "todev_get_info_req"]
+    TOAPP_GET_INFO_RSP_FIELD_NUMBER: _ClassVar[int]
+    TODEV_GET_INFO_REQ_FIELD_NUMBER: _ClassVar[int]
+    toapp_get_info_rsp: getInfoRsp
+    todev_get_info_req: getInfoReq
+    def __init__(self, todev_get_info_req: _Optional[_Union[getInfoReq, _Mapping]] = ..., toapp_get_info_rsp: _Optional[_Union[getInfoRsp, _Mapping]] = ...) -> None: ...
 
-class MctrlOta(_message.Message):
-    __slots__ = ["to_app_get_info_rsp", "to_dev_get_info_req"]
-    TO_APP_GET_INFO_RSP_FIELD_NUMBER: _ClassVar[int]
-    TO_DEV_GET_INFO_REQ_FIELD_NUMBER: _ClassVar[int]
-    to_app_get_info_rsp: ToAppGetInfoRsp
-    to_dev_get_info_req: ToDevGetInfoReq
-    def __init__(self, to_dev_get_info_req: _Optional[_Union[ToDevGetInfoReq, _Mapping]] = ..., to_app_get_info_rsp: _Optional[_Union[ToAppGetInfoRsp, _Mapping]] = ...) -> None: ...
+class baseInfo(_message.Message):
+    __slots__ = ["batt_val", "dev_status", "dev_version", "init_status", "is_tilt"]
+    BATT_VAL_FIELD_NUMBER: _ClassVar[int]
+    DEV_STATUS_FIELD_NUMBER: _ClassVar[int]
+    DEV_VERSION_FIELD_NUMBER: _ClassVar[int]
+    INIT_STATUS_FIELD_NUMBER: _ClassVar[int]
+    IS_TILT_FIELD_NUMBER: _ClassVar[int]
+    batt_val: int
+    dev_status: int
+    dev_version: str
+    init_status: int
+    is_tilt: int
+    def __init__(self, dev_version: _Optional[str] = ..., dev_status: _Optional[int] = ..., batt_val: _Optional[int] = ..., init_status: _Optional[int] = ..., is_tilt: _Optional[int] = ...) -> None: ...
 
-class OtaInfo(_message.Message):
+class getInfoReq(_message.Message):
+    __slots__ = ["type"]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    type: infoType
+    def __init__(self, type: _Optional[_Union[infoType, str]] = ...) -> None: ...
+
+class getInfoRsp(_message.Message):
+    __slots__ = ["base", "ota", "result", "type"]
+    BASE_FIELD_NUMBER: _ClassVar[int]
+    OTA_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    base: baseInfo
+    ota: otaInfo
+    result: int
+    type: infoType
+    def __init__(self, result: _Optional[int] = ..., type: _Optional[_Union[infoType, str]] = ..., base: _Optional[_Union[baseInfo, _Mapping]] = ..., ota: _Optional[_Union[otaInfo, _Mapping]] = ...) -> None: ...
+
+class otaInfo(_message.Message):
     __slots__ = ["message", "otaid", "progress", "result", "version"]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     OTAID_FIELD_NUMBER: _ClassVar[int]
@@ -41,25 +61,5 @@ class OtaInfo(_message.Message):
     version: str
     def __init__(self, otaid: _Optional[str] = ..., version: _Optional[str] = ..., progress: _Optional[int] = ..., result: _Optional[int] = ..., message: _Optional[str] = ...) -> None: ...
 
-class ToAppGetInfoRsp(_message.Message):
-    __slots__ = ["base", "ota", "result", "type"]
-    class InfoCase(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-        __slots__ = []
-    BASE: ToAppGetInfoRsp.InfoCase
-    BASE_FIELD_NUMBER: _ClassVar[int]
-    INFO_NOT_SET: ToAppGetInfoRsp.InfoCase
-    OTA: ToAppGetInfoRsp.InfoCase
-    OTA_FIELD_NUMBER: _ClassVar[int]
-    RESULT_FIELD_NUMBER: _ClassVar[int]
-    TYPE_FIELD_NUMBER: _ClassVar[int]
-    base: BaseInfo
-    ota: OtaInfo
-    result: int
-    type: ToAppGetInfoRsp.InfoCase
-    def __init__(self, result: _Optional[int] = ..., type: _Optional[_Union[ToAppGetInfoRsp.InfoCase, str]] = ..., base: _Optional[_Union[BaseInfo, _Mapping]] = ..., ota: _Optional[_Union[OtaInfo, _Mapping]] = ...) -> None: ...
-
-class ToDevGetInfoReq(_message.Message):
-    __slots__ = ["type"]
-    TYPE_FIELD_NUMBER: _ClassVar[int]
-    type: int
-    def __init__(self, type: _Optional[int] = ...) -> None: ...
+class infoType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []

@@ -4,7 +4,6 @@ from typing import Dict
 from google.protobuf.message import DecodeError
 
 from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2
-from pyluba.proto import luba_msg_p2p
 from pyluba.data.model import HashList, RegionData
 
 # until we have a proper store or send messages somewhere
