@@ -16,7 +16,6 @@ python = ">=3.11,<3.13"
 bleak = "^0.21.1"
 protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
-pydantic = "^2.7.1"
 aliyun-python-sdk-iot = "^8.57.0"
 aliyun-iot-linkkit = "^1.2.12"
 aiohttp = "^3.9.1"
@@ -26,6 +25,8 @@ alibabacloud-apigateway-util = "^0.0.2"
 alibabacloud-iot-api-gateway = "^0.0.4"
 bleak-retry-connector = "^3.5.0"
 jsonic = "^1.0.0"
+mashumaro = "^3.13"
+orjson = "^3.10.3"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -35,7 +36,6 @@ twine = "^5.0.0"
 bumpver = "^2023.1129"
 frida-tools = "^12.3.0"
 grpcio-tools = "^1.63.0"
-protobuf-to-pydantic = {version = "^0.2.6.2", extras = ["mypy-protobuf"]}
 
 
 [tool.bumpver]

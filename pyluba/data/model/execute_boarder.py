@@ -1,4 +1,4 @@
-from jsonic.serializable import serialize, Serializable
+from jsonic.serializable import Serializable
 from .excute_boarder_params import ExecuteBorderParams
 
 

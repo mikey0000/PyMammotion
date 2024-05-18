@@ -1,10 +1,10 @@
 from base64 import b64decode
+from dataclasses import dataclass
 from typing import Literal, Any, Union
-
-from pydantic import BaseModel
 
 from pyluba.proto import luba_msg_pb2
 
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 class Base64EncodedProtobuf:
     @classmethod
@@ -20,18 +20,18 @@ class Base64EncodedProtobuf:
         data.ParseFromString(binary)
         return data
 
-
-class DeviceProtobufMsgEventValue(BaseModel):
+@dataclass
+class DeviceProtobufMsgEventValue(DataClassORJSONMixin):
     content: Base64EncodedProtobuf
 
-
-class DeviceWarningEventValue(BaseModel):
+@dataclass
+class DeviceWarningEventValue(DataClassORJSONMixin):
     # TODO: enum for error codes
     # (see resources/res/values-en-rUS/strings.xml in APK)
     code: int
 
 
-class GeneralParams(BaseModel):
+class GeneralParams(DataClassORJSONMixin):
     identifier: str
     groupIdList: list[str]
     groupId: str
@@ -63,8 +63,8 @@ class DeviceWarningEventParams(GeneralParams):
     type: Literal["alert"]
     value: DeviceWarningEventValue
 
-
-class ThingEventMessage(BaseModel):
+@dataclass
+class ThingEventMessage(DataClassORJSONMixin):
     method: Literal["thing.events"]
     id: str
     params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams]

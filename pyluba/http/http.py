@@ -1,20 +1,20 @@
+from dataclasses import dataclass
 from typing import TypeVar, Generic, Literal
 
 from aiohttp import ClientSession
-from pydantic import BaseModel
-from pydantic.generics import GenericModel
-
+from mashumaro import DataClassDictMixin
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 DataT = TypeVar("DataT")
 
 
-class Response(GenericModel, Generic[DataT]):
+class Response(DataClassDictMixin, Generic[DataT]):
     data: DataT
     code: int
     msg: str
 
-
-class LoginResponseUserInformation(BaseModel):
+@dataclass
+class LoginResponseUserInformation(DataClassORJSONMixin):
     areaCode: str
     domainAbbreviation: str
     email: str
@@ -22,8 +22,8 @@ class LoginResponseUserInformation(BaseModel):
     userAccount: str
     authType: str
 
-
-class LoginResponseData(BaseModel):
+@dataclass
+class LoginResponseData(DataClassORJSONMixin):
     access_token: str
     token_type: Literal["bearer"]
     refresh_token: str
