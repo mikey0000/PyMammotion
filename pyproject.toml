@@ -1,6 +1,6 @@
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.5"
+version     = "0.0.7"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
@@ -14,7 +14,7 @@ packages = [{include = "pyluba"}]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 bleak = "^0.21.1"
-protobuf = "^5.26.1"
+protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
 pydantic = "^2.7.1"
 aliyun-python-sdk-iot = "^8.57.0"
@@ -24,7 +24,6 @@ paho-mqtt = "^1.6.1"
 alicloud-gateway-iot = "^1.0.0"
 alibabacloud-apigateway-util = "^0.0.2"
 alibabacloud-iot-api-gateway = "^0.0.4"
-grpcio-tools = "^1.63.0"
 bleak-retry-connector = "^3.5.0"
 jsonic = "^1.0.0"
 
@@ -35,6 +34,7 @@ mypy-protobuf = "^3.4.0"
 twine = "^5.0.0"
 bumpver = "^2023.1129"
 frida-tools = "^12.3.0"
+grpcio-tools = "^1.63.0"
 protobuf-to-pydantic = {version = "^0.2.6.2", extras = ["mypy-protobuf"]}
 
 
