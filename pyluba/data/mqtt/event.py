@@ -2,11 +2,24 @@ from base64 import b64decode
 from dataclasses import dataclass
 from typing import Literal, Any, Union
 
+from google.protobuf import json_format
+from mashumaro.types import SerializableType
+
 from pyluba.proto import luba_msg_pb2
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-class Base64EncodedProtobuf:
+class Base64EncodedProtobuf(SerializableType):
+    def __init__(self, proto: str):
+        self.proto = proto
+
+    def _serialize(self):
+        return self.proto
+
+    @classmethod
+    def _deserialize(cls, value):
+        return cls(*value)
+
     @classmethod
     def __get_validators__(cls):
         yield cls.validate
@@ -18,7 +31,9 @@ class Base64EncodedProtobuf:
         binary = b64decode(v, validate=True)
         data = luba_msg_pb2.LubaMsg()
         data.ParseFromString(binary)
-        return data
+        return json_format.MessageToDict(data)
+
+
 
 @dataclass
 class DeviceProtobufMsgEventValue(DataClassORJSONMixin):
@@ -30,7 +45,7 @@ class DeviceWarningEventValue(DataClassORJSONMixin):
     # (see resources/res/values-en-rUS/strings.xml in APK)
     code: int
 
-
+@dataclass
 class GeneralParams(DataClassORJSONMixin):
     identifier: str
     groupIdList: list[str]
@@ -51,13 +66,13 @@ class GeneralParams(DataClassORJSONMixin):
     tenantInstanceId: str
     value: Any
 
-
+@dataclass
 class DeviceProtobufMsgEventParams(GeneralParams):
     identifier: Literal["device_protobuf_msg_event"]
     type: Literal["info"]
     value: DeviceProtobufMsgEventValue
 
-
+@dataclass
 class DeviceWarningEventParams(GeneralParams):
     identifier: Literal["device_warning_event"]
     type: Literal["alert"]
