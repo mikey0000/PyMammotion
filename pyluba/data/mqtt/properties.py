@@ -1,77 +1,78 @@
+from dataclasses import dataclass
 from typing import Literal, TypeVar, Generic, Union
 
-from pydantic import BaseModel
-from pydantic.generics import GenericModel
+from mashumaro import DataClassDictMixin
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 DataT = TypeVar("DataT")
 
-
-class Item(GenericModel, Generic[DataT]):
+@dataclass
+class Item(DataClassDictMixin, Generic[DataT]):
     time: int
     value: DataT
 
-
-class BatteryPercentageItems(BaseModel):
+@dataclass
+class BatteryPercentageItems(DataClassORJSONMixin):
     batteryPercentage: Item[int]
 
-
-class BMSHardwareVersionItems(BaseModel):
+@dataclass
+class BMSHardwareVersionItems(DataClassORJSONMixin):
     bmsHardwareVersion: Item[str]
 
-
-class CoordinateItems(BaseModel):
+@dataclass
+class CoordinateItems(DataClassORJSONMixin):
     coordinate: Item[str]  # '{"lon":0.303903,"lat":1.051868}'
 
-
-class DeviceStateItems(BaseModel):
+@dataclass
+class DeviceStateItems(DataClassORJSONMixin):
     deviceState: Item[int]
 
-
-class DeviceVersionItems(BaseModel):
+@dataclass
+class DeviceVersionItems(DataClassORJSONMixin):
     deviceVersion: Item[str]
 
-
-class DeviceVersionInfoItems(BaseModel):
+@dataclass
+class DeviceVersionInfoItems(DataClassORJSONMixin):
     deviceVersionInfo: Item[str]
 
-
-class ESP32VersionItems(BaseModel):
+@dataclass
+class ESP32VersionItems(DataClassORJSONMixin):
     esp32Version: Item[str]
 
-
-class LeftMotorBootVersionItems(BaseModel):
+@dataclass
+class LeftMotorBootVersionItems(DataClassORJSONMixin):
     leftMotorBootVersion: Item[str]
 
-
-class LeftMotorVersionItems(BaseModel):
+@dataclass
+class LeftMotorVersionItems(DataClassORJSONMixin):
     leftMotorVersion: Item[str]
 
-
-class MCBootVersionItems(BaseModel):
+@dataclass
+class MCBootVersionItems(DataClassORJSONMixin):
     mcBootVersion: Item[str]
 
-
-class NetworkInfoItems(BaseModel):
+@dataclass
+class NetworkInfoItems(DataClassORJSONMixin):
     networkInfo: Item[str]
 
-
-class RightMotorBootVersionItems(BaseModel):
+@dataclass
+class RightMotorBootVersionItems(DataClassORJSONMixin):
     rightMotorBootVersion: Item[str]
 
-
-class RightMotorVersionItems(BaseModel):
+@dataclass
+class RightMotorVersionItems(DataClassORJSONMixin):
     rightMotorVersion: Item[str]
 
-
-class RTKVersionItems(BaseModel):
+@dataclass
+class RTKVersionItems(DataClassORJSONMixin):
     rtkVersion: Item[str]
 
-
-class StationRTKVersionItems(BaseModel):
+@dataclass
+class StationRTKVersionItems(DataClassORJSONMixin):
     stationRtkVersion: Item[str]
 
-
-class STM32H7VersionItems(BaseModel):
+@dataclass
+class STM32H7VersionItems(DataClassORJSONMixin):
     stm32H7Version: Item[str]
 
 
@@ -94,8 +95,8 @@ Items = Union[
     STM32H7VersionItems
 ]
 
-
-class Params(BaseModel):
+@dataclass
+class Params(DataClassORJSONMixin):
     checkFailedData: dict
     groupIdList: list[str]
     groupId: str
@@ -112,8 +113,8 @@ class Params(BaseModel):
     items: Items
     tenantInstanceId: str
 
-
-class ThingPropertiesMessage(BaseModel):
+@dataclass
+class ThingPropertiesMessage(DataClassORJSONMixin):
     method: Literal["thing.properties"]
     id: str
     params: Params
