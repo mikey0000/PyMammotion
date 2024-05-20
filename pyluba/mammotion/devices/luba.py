@@ -142,7 +142,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        raise RuntimeError("Unreachable")
+        # raise RuntimeError("Unreachable")
 
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)

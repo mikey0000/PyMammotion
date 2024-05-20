@@ -1,6 +1,6 @@
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.8"
+version     = "0.0.10"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
@@ -26,7 +26,7 @@ alibabacloud-iot-api-gateway = "^0.0.4"
 bleak-retry-connector = "^3.5.0"
 jsonic = "^1.0.0"
 mashumaro = "^3.13"
-orjson = "^3.10.3"
+orjson = "^3.9.15"
 
 
 [tool.poetry.group.dev.dependencies]
