@@ -1117,7 +1117,7 @@ class BleMessage:
         print("Send Bluetooth heartbeat==sendTodevBleSync==type:2")
         self.send_order_msg_net(build, 39, False)
 
-    def send_to_dev_ble_sync(self, current_client, type):
+    def send_to_dev_ble_sync(self, current_client, type: int):
         is_support_iot = self.is_support_iot()
         if type == 1 and is_support_iot:
             return
