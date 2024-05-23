@@ -1,3 +1,4 @@
+from enum import Enum
 
 
 class bleOrderCmd:
@@ -184,15 +185,55 @@ class SystemTardStateTunnel:
     UB_ZONE_STATE_HASH_INDEX = 17
 
 
+class work_mode(Enum):
+    MODE_BOUNDARY_JUMP = 38
+    MODE_CHANNEL_DRAW = 34
+    MODE_CHARGING = 15
+    MODE_DISABLE = 8
+    MODE_EDIT_BOUNDARY = 36
+    MODE_ERASER_DRAW = 35
+    MODE_INITIALIZATION = 10
+    MODE_JOB_DRAW = 31
+    MODE_LOCATION_ERROR = 37
+    MODE_LOCK = 17
+    MODE_MANUAL_MOWING = 20
+    MODE_NOT_ACTIVE = 0
+    MODE_OBSTACLE_DRAW = 32
+    MODE_OFFLINE = 2
+    MODE_ONLINE = 1
+    MODE_OTA_UPGRADE_FAIL = 23
+    MODE_PATH_MODIFICATION = 35
+    MODE_PAUSE = 19
+    MODE_READY = 11
+    MODE_RETURNING = 14
+    MODE_SECOND_EDIT = 36
+    MODE_UPDATE_SUCCESS = 22
+    MODE_UPDATING = 16
+    MODE_WORKING = 13
+
 def device_mode(value):
     modes = {
+        0: "MODE_NOT_ACTIVE",
+        1: "MODE_ONLINE",
+        2: "MODE_OFFLINE",
+        8: "MODE_DISABLE",
         10: "MODE_INITIALIZATION",
         11: "MODE_READY",
-        12: "MODE_UNCONNECTED",
         13: "MODE_WORKING",
         14: "MODE_RETURNING",
         15: "MODE_CHARGING",
         16: "MODE_UPDATING",
-        17: "MODE_LOCK"
+        17: "MODE_LOCK",
+        19: "MODE_PAUSE",
+        20: "MODE_MANUAL_MOWING",
+        22: "MODE_UPDATE_SUCCESS",
+        23: "MODE_OTA_UPGRADE_FAIL",
+        31: "MODE_JOB_DRAW",
+        32: "MODE_OBSTACLE_DRAW",
+        34: "MODE_CHANNEL_DRAW",
+        35: "MODE_ERASER_DRAW",
+        36: "MODE_EDIT_BOUNDARY",
+        37: "MODE_LOCATION_ERROR",
+        38: "MODE_BOUNDARY_JUMP"
     }
     return modes.get(value, "Invalid mode")
