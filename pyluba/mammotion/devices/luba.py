@@ -48,7 +48,7 @@ WRITE_CHAR_UUID = _sb_uuid(comms_type="tx")
 
 DBUS_ERROR_BACKOFF_TIME = 0.25
 
-DISCONNECT_DELAY = 8.5
+DISCONNECT_DELAY = 3
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        raise RuntimeError("Unreachable")
+        # raise RuntimeError("Unreachable")
 
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)
@@ -282,7 +282,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         await self._message.get_report_cfg(10000, 1000, 2000)
 
 
-        timeout = 20
+        timeout = 2
         timeout_handle = self.loop.call_at(
             self.loop.time() + timeout, _handle_timeout, self._notify_future
         )

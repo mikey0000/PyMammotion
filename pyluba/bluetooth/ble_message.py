@@ -891,9 +891,8 @@ class BleMessage:
             sequence = int(response[2])  # toInt
             # self.mReadSequence_1.incrementAndGet()
             if (sequence != (next(self.mReadSequence) & 255)):
-                print("parseNotification read sequence wrong")
-                self.mReadSequence = sequence
-                # Log.w(TAG, "parseNotification read sequence wrong")
+                print("parseNotification read sequence wrong", sequence, self.mReadSequence)
+                self.mReadSequence = itertools.count(start=sequence)
                 # this is questionable
                 # self.mReadSequence = sequence
                 # self.mReadSequence_2.incrementAndGet()
