@@ -13,3 +13,6 @@ pip-tools build
 
 # install pip-tools including pip-compile
 python -m pip install pip-tools
+
+# generate models from protobuf
+poetry run protoc -I=. --python_out=. --python_betterproto_out=. ./pyluba/proto/*.proto

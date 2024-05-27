@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import codecs
-from typing import Any
+from abc import abstractmethod
+from enum import Enum
+from typing import Any, Dict
 from uuid import UUID
 
 from bleak.backends.device import BLEDevice
@@ -48,7 +50,7 @@ WRITE_CHAR_UUID = _sb_uuid(comms_type="tx")
 
 DBUS_ERROR_BACKOFF_TIME = 0.25
 
-DISCONNECT_DELAY = 3
+DISCONNECT_DELAY = 10
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +73,26 @@ def _handle_timeout(fut: asyncio.Future[None]) -> None:
     if not fut.done():
         fut.set_exception(asyncio.TimeoutError)
 
+
+
+class ConnectionPreference(Enum):
+    EITHER = 0
+    WIFI = 1
+    BLUETOOTH = 2
+
+class MammotionDevice:
+    _ble_device: MammotionBaseBLEDevice | None = None
+
+    def __init__(self, ble_device: BLEDevice, preference: ConnectionPreference = ConnectionPreference.EITHER) -> None:
+        if ble_device:
+            self._ble_device = MammotionBaseBLEDevice(ble_device)
+            self._preference = preference
+
+    async def send_command(self, preference: ConnectionPreference = ConnectionPreference.EITHER):
+        if preference == ConnectionPreference.EITHER:
+            return await self._ble_device.start_sync("thing", 0)
+
+
 class MammotionBaseDevice:
 
     def __init__(self) -> None:
@@ -85,12 +107,12 @@ class MammotionBaseDevice:
         self._raw_data = merged
 
     @property
-    def raw_data(self) -> luba_msg_pb2.LubaMsg:
+    def raw_data(self) -> dict[str, Any]:
         return self._raw_data
 
+    @abstractmethod
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
-        pass
 
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)
@@ -195,7 +217,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             _LOGGER.debug("%s: Connected; RSSI: %s", self.name, self.rssi)
             self._client = client
             self._message = BleMessage(client)
-            await self._message.send_todev_ble_sync(1)
+            await self._message.send_todev_ble_sync(2)
 
             try:
                 self._resolve_characteristics(client.services)
@@ -249,7 +271,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         """Handle notification responses."""
         print("got ble message", data)
         result = self._message.parseNotification(data)
-        if (result == 0):
+        if result == 0:
             data = await self._message.parseBlufiNotifyData()
             self._update_raw_data(data)
             self._message.clearNotification()
@@ -280,7 +302,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         # TODO work on sending commands to here to fire off
         await self._message.get_report_cfg(10000, 1000, 2000)
-
 
         timeout = 2
         timeout_handle = self.loop.call_at(
