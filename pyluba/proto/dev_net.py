@@ -64,12 +64,12 @@ class IotConctrlType(betterproto.Enum):
 
 @dataclass
 class DrvWifiUpload(betterproto.Message):
-    wifi__msg__upload: int = betterproto.int32_field(1)
+    wifi_msg_upload: int = betterproto.int32_field(1)
 
 
 @dataclass
 class DrvWifiList(betterproto.Message):
-    n_v_s__wifi__upload: int = betterproto.int32_field(1)
+    nvs_wifi_upload: int = betterproto.int32_field(1)
 
 
 @dataclass
@@ -83,7 +83,7 @@ class DrvWifiSet(betterproto.Message):
 class DrvWifiMsg(betterproto.Message):
     status1: bool = betterproto.bool_field(1)
     status2: bool = betterproto.bool_field(2)
-    i_p: str = betterproto.string_field(3)
+    ip: str = betterproto.string_field(3)
     msgssid: str = betterproto.string_field(4)
     password: str = betterproto.string_field(5)
     rssi: int = betterproto.int32_field(6)
@@ -149,7 +149,7 @@ class DrvDevInfoReqId(betterproto.Message):
 class DrvDevInfoRespId(betterproto.Message):
     id: int = betterproto.int32_field(1)
     type: int = betterproto.int32_field(2)
-    res: "DrvDevInfoResult" = betterproto.enum_field(3)
+    res: DrvDevInfoResult = betterproto.enum_field(3)
     info: str = betterproto.string_field(4)
 
 
@@ -233,7 +233,7 @@ class GetMnetInfoReq(betterproto.Message):
 class GetMnetInfoRsp(betterproto.Message):
     req_ids: int = betterproto.int32_field(1)
     result: int = betterproto.int32_field(2)
-    mnet: "MnetInfo" = betterproto.message_field(3)
+    mnet: MnetInfo = betterproto.message_field(3)
 
 
 @dataclass

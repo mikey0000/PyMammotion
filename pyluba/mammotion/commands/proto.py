@@ -12,4 +12,4 @@ async def send_order_msg_net(self, build):
         subtype=1,
         net=build)
 
-    byte_arr = luba_msg.SerializeToString()
+    return luba_msg.SerializeToString()

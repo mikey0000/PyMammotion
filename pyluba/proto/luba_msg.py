@@ -3,6 +3,15 @@
 # plugin: python-betterproto
 from dataclasses import dataclass
 
+from .dev_net import *
+from .common import *
+from .luba_mul import *
+from .mctrl_pept import *
+from .mctrl_driver import *
+from .mctrl_sys import *
+from .mctrl_nav import *
+from .mctrl_ota import *
+
 import betterproto
 
 

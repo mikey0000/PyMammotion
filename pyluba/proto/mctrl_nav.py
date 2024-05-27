@@ -4,6 +4,8 @@
 from dataclasses import dataclass
 from typing import List
 
+from .common import *
+
 import betterproto
 
 
