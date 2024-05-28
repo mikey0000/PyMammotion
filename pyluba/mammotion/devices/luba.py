@@ -178,7 +178,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        # raise RuntimeError("Unreachable")
+        raise RuntimeError("Unreachable")
 
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)
@@ -292,7 +292,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
-            if new_msg.net.todev_ble_sync != 0 or betterproto.serialized_on_wire(new_msg.net.toapp_wifi_iot_status):
+            if new_msg.net.todev_ble_sync != 0 or new_msg.net.toapp_wifi_iot_status is not None:
                 return
 
         if self._notify_future and not self._notify_future.done():
@@ -316,7 +316,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         # TODO work on sending commands to here to fire off
         await self._message.post_custom_data_bytes(command)
 
-        timeout = 2
+        timeout = 5
         timeout_handle = self.loop.call_at(
             self.loop.time() + timeout, _handle_timeout, self._notify_future
         )

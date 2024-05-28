@@ -62,7 +62,7 @@ class LubaCommandProtoMQTT:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctlsys)
-        byte_arr = lubaMsg.SerializeToString()
+        return lubaMsg.SerializeToString()
 
 
 """BLE inherits MQTT because BLE has BLE only commands."""
