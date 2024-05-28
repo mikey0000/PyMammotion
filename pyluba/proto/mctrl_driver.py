@@ -72,13 +72,13 @@ class MctlDriver(betterproto.Message):
     todev_devmotion_ctrl: "DrvMotionCtrl" = betterproto.message_field(
         1, group="SubDrvMsg"
     )
-    todev_knife_hight_set: "DrvKnifeHeight" = betterproto.message_field(
+    todev_knife_height_set: "DrvKnifeHeight" = betterproto.message_field(
         2, group="SubDrvMsg"
     )
     bidire_speed_read_set: "DrvSrSpeed" = betterproto.message_field(
         3, group="SubDrvMsg"
     )
-    bidire_knife_hight_report: "DrvKnifeHeight" = betterproto.message_field(
+    bidire_knife_height_report: "DrvKnifeHeight" = betterproto.message_field(
         4, group="SubDrvMsg"
     )
     toapp_knife_status: "DrvKnifeStatus" = betterproto.message_field(

@@ -633,14 +633,14 @@ class rpt_rtk(_message.Message):
     def __init__(self, status: _Optional[int] = ..., pos_level: _Optional[int] = ..., gps_stars: _Optional[int] = ..., age: _Optional[int] = ..., lat_std: _Optional[int] = ..., lon_std: _Optional[int] = ..., l2_stars: _Optional[int] = ..., dis_status: _Optional[int] = ..., top4_total_mean: _Optional[int] = ..., co_view_stars: _Optional[int] = ..., reset: _Optional[int] = ..., lora_info: _Optional[_Union[rpt_lora, _Mapping]] = ...) -> None: ...
 
 class rpt_work(_message.Message):
-    __slots__ = ["area", "bp_hash", "bp_info", "bp_pos_x", "bp_pos_y", "init_cfg_hash", "knife_hight", "man_run_speed", "nav_edit_status", "nav_run_mode", "path_hash", "path_pos_x", "path_pos_y", "plan", "progress", "real_path_num", "test_mode_status", "ub_ecode_hash", "ub_path_hash", "ub_zone_hash"]
+    __slots__ = ["area", "bp_hash", "bp_info", "bp_pos_x", "bp_pos_y", "init_cfg_hash", "knife_height", "man_run_speed", "nav_edit_status", "nav_run_mode", "path_hash", "path_pos_x", "path_pos_y", "plan", "progress", "real_path_num", "test_mode_status", "ub_ecode_hash", "ub_path_hash", "ub_zone_hash"]
     AREA_FIELD_NUMBER: _ClassVar[int]
     BP_HASH_FIELD_NUMBER: _ClassVar[int]
     BP_INFO_FIELD_NUMBER: _ClassVar[int]
     BP_POS_X_FIELD_NUMBER: _ClassVar[int]
     BP_POS_Y_FIELD_NUMBER: _ClassVar[int]
     INIT_CFG_HASH_FIELD_NUMBER: _ClassVar[int]
-    KNIFE_HIGHT_FIELD_NUMBER: _ClassVar[int]
+    KNIFE_HEIGHT_FIELD_NUMBER: _ClassVar[int]
     MAN_RUN_SPEED_FIELD_NUMBER: _ClassVar[int]
     NAV_EDIT_STATUS_FIELD_NUMBER: _ClassVar[int]
     NAV_RUN_MODE_FIELD_NUMBER: _ClassVar[int]
@@ -660,7 +660,7 @@ class rpt_work(_message.Message):
     bp_pos_x: int
     bp_pos_y: int
     init_cfg_hash: int
-    knife_hight: int
+    knife_height: int
     man_run_speed: int
     nav_edit_status: int
     nav_run_mode: int
@@ -674,7 +674,7 @@ class rpt_work(_message.Message):
     ub_ecode_hash: int
     ub_path_hash: int
     ub_zone_hash: int
-    def __init__(self, plan: _Optional[int] = ..., path_hash: _Optional[int] = ..., progress: _Optional[int] = ..., area: _Optional[int] = ..., bp_info: _Optional[int] = ..., bp_hash: _Optional[int] = ..., bp_pos_x: _Optional[int] = ..., bp_pos_y: _Optional[int] = ..., real_path_num: _Optional[int] = ..., path_pos_x: _Optional[int] = ..., path_pos_y: _Optional[int] = ..., ub_zone_hash: _Optional[int] = ..., ub_path_hash: _Optional[int] = ..., init_cfg_hash: _Optional[int] = ..., ub_ecode_hash: _Optional[int] = ..., nav_run_mode: _Optional[int] = ..., test_mode_status: _Optional[int] = ..., man_run_speed: _Optional[int] = ..., nav_edit_status: _Optional[int] = ..., knife_hight: _Optional[int] = ...) -> None: ...
+    def __init__(self, plan: _Optional[int] = ..., path_hash: _Optional[int] = ..., progress: _Optional[int] = ..., area: _Optional[int] = ..., bp_info: _Optional[int] = ..., bp_hash: _Optional[int] = ..., bp_pos_x: _Optional[int] = ..., bp_pos_y: _Optional[int] = ..., real_path_num: _Optional[int] = ..., path_pos_x: _Optional[int] = ..., path_pos_y: _Optional[int] = ..., ub_zone_hash: _Optional[int] = ..., ub_path_hash: _Optional[int] = ..., init_cfg_hash: _Optional[int] = ..., ub_ecode_hash: _Optional[int] = ..., nav_run_mode: _Optional[int] = ..., test_mode_status: _Optional[int] = ..., man_run_speed: _Optional[int] = ..., nav_edit_status: _Optional[int] = ..., knife_height: _Optional[int] = ...) -> None: ...
 
 class systemRapidStateTunnel_msg(_message.Message):
     __slots__ = ["rapid_state_data", "vio_to_app_info", "vision_point_info", "vision_statistic_info"]

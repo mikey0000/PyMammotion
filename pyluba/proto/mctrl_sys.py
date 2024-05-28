@@ -472,7 +472,7 @@ class RptWork(betterproto.Message):
     test_mode_status: int = betterproto.int64_field(17)
     man_run_speed: int = betterproto.int32_field(18)
     nav_edit_status: int = betterproto.int32_field(19)
-    knife_hight: int = betterproto.int32_field(20)
+    knife_height: int = betterproto.int32_field(20)
 
 
 @dataclass

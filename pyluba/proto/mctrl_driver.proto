@@ -53,9 +53,9 @@ message rtk_sys_mask_query_ack_t {
 message MctlDriver {
   oneof SubDrvMsg {
     DrvMotionCtrl todev_devmotion_ctrl = 1;
-    DrvKnifeHeight todev_knife_hight_set = 2;
+    DrvKnifeHeight todev_knife_height_set = 2;
     DrvSrSpeed bidire_speed_read_set = 3;
-    DrvKnifeHeight bidire_knife_hight_report = 4;
+    DrvKnifeHeight bidire_knife_height_report = 4;
     DrvKnifeStatus toapp_knife_status = 5;
     DrvMowCtrlByHand mow_ctrl_by_hand = 6;
     rtk_cfg_req_t rtk_cfg_req = 7;
