@@ -185,7 +185,7 @@ class SystemTardStateTunnel:
     UB_ZONE_STATE_HASH_INDEX = 17
 
 
-class work_mode(Enum):
+class WorkMode:
     MODE_BOUNDARY_JUMP = 38
     MODE_CHANNEL_DRAW = 34
     MODE_CHARGING = 15

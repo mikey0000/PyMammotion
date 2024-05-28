@@ -1,6 +1,6 @@
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.14"
+version     = "0.0.15"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"

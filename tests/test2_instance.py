@@ -65,7 +65,6 @@ async def run():
 
     await asyncio.sleep(2)
     await luba_ble.start_sync("get_report_cfg", 0)
-
     await asyncio.sleep(2)
     print(luba_ble.raw_data)
     print(has_field(luba_ble.luba_msg.sys.toapp_report_data.dev))
