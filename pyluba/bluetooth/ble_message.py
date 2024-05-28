@@ -41,13 +41,17 @@ class BleMessage:
     mChecksum = False
     mRequireAck = False
     mConnectState = 0
-    mSendSequence = itertools.count()
-    mReadSequence = itertools.count()
-    mAck = queue.Queue()
-    notification = BlufiNotifyData()
+    mSendSequence: iter
+    mReadSequence: iter
+    mAck: queue
+    notification: BlufiNotifyData
 
     def __init__(self, client: BleakClient):
         self.client = client
+        self.mSendSequence = itertools.count()
+        self.mReadSequence = itertools.count()
+        self.mAck = queue.Queue()
+        self.notification = BlufiNotifyData()
 
     async def all_powerful_RW(self, id: int, context: int, rw: int):
         mctrl_sys = mctrl_sys_pb2.MctlSys(
@@ -797,6 +801,7 @@ class BleMessage:
             suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
+            # print(suc)
         except Exception as err:
             print(err)
 
@@ -841,11 +846,11 @@ class BleMessage:
             else:
                 chunks.append(data[i: i + chunk_size])
         for index, chunk in enumerate(chunks):
-            # frag = i < len(data)
             frag = index != len(chunks) - 1
             sequence = self.generateSendSequence()
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
-
+            # print("sequence")
+            # print(sequence)
             posted = await self.gatt_write(postBytes)
             if (posted != None):
                 return False

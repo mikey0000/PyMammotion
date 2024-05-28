@@ -145,6 +145,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._expected_disconnect = False
         self._connect_lock = asyncio.Lock()
         self._operation_lock = asyncio.Lock()
+        self._key: str | None = None
+
+    def update_device(self, device: BLEDevice) -> None:
+        self._device = device
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
@@ -231,7 +235,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             _LOGGER.debug("%s: Connected; RSSI: %s", self.name, self.rssi)
             self._client = client
             self._message = BleMessage(client)
-            await self._message.send_todev_ble_sync(2)
 
             try:
                 self._resolve_characteristics(client.services)
@@ -255,6 +258,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
+
+            command_bytes = self._commands.send_todev_ble_sync(2)
+            await self._message.post_custom_data_bytes( command_bytes)
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
@@ -283,6 +289,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
+        _LOGGER.debug("%s: Received notification: %s", self.name, data)
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
@@ -297,8 +304,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)
-
-        _LOGGER.debug("%s: Received notification: %s", self.name, data)
+            return
 
     async def _start_notify(self) -> None:
         """Start notification."""
@@ -311,7 +317,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         assert self._read_char is not None
         assert self._write_char is not None
         self._notify_future = self.loop.create_future()
-
+        self._key = key
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         # TODO work on sending commands to here to fire off
         await self._message.post_custom_data_bytes(command)
@@ -423,14 +429,13 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return
         client = self._client
         self._expected_disconnect = True
-        self._client = None
-        self._read_char = None
-        self._write_char = None
+
         if not client:
             _LOGGER.debug("%s: Already disconnected", self.name)
             return
         _LOGGER.debug("%s: Disconnecting", self.name)
         try:
+            await client.stop_notify(self._read_char)
             await client.disconnect()
         except BLEAK_RETRY_EXCEPTIONS as ex:
             _LOGGER.warning(
@@ -441,6 +446,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
         else:
             _LOGGER.debug("%s: Disconnect completed successfully", self.name)
+        self._client = None
 
     async def _disconnect(self) -> bool:
         if self._client is not None:

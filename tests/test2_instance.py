@@ -69,6 +69,10 @@ async def run():
     print(luba_ble.raw_data)
     print(has_field(luba_ble.luba_msg.sys.toapp_report_data.dev))
     print(luba_ble.luba_msg.sys.toapp_report_data.dev.battery_val)
+    await asyncio.sleep(10)
+
+    await luba_ble.start_sync("get_report_cfg", 0)
+
 
     asyncio.run(await ble_heartbeat(luba_ble))
     print("end run?")
