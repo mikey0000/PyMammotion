@@ -211,6 +211,7 @@ class WorkMode:
     MODE_UPDATING = 16
     MODE_WORKING = 13
 
+
 def device_mode(value):
     modes = {
         0: "MODE_NOT_ACTIVE",
