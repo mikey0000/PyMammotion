@@ -951,7 +951,7 @@ class BleMessage:
         # Log.w(TAG, "parseNotification data length less than 4");
         return -2
 
-    async def parseBlufiNotifyData(self):
+    async def parseBlufiNotifyData(self, return_bytes: bool = False):
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
@@ -960,13 +960,14 @@ class BleMessage:
             print("control data")
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
+            if return_bytes: return dataBytes
             return await self._parseDataData(subType, dataBytes)
 
-    def _parseCtrlData(self, subType: int, data: bytearray):
+    def _parseCtrlData(self, subType: int, data: bytes):
         pass
         # self._parseAck(data)
 
-    async def _parseDataData(self, subType: int, data: bytearray):
+    async def _parseDataData(self, subType: int, data: bytes):
         #     if (subType == 0) {
         #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
         #         return;

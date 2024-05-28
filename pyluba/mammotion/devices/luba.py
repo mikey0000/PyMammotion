@@ -7,6 +7,9 @@ from enum import Enum
 from typing import Any, Dict
 from uuid import UUID
 
+import betterproto
+
+from pyluba.proto.luba_msg import LubaMsg
 from bleak.backends.device import BLEDevice
 from bleak import BleakClient
 from bleak.backends.service import BleakGATTCharacteristic, BleakGATTServiceCollection
@@ -97,18 +100,23 @@ class MammotionBaseDevice:
 
     def __init__(self) -> None:
         self.loop = asyncio.get_event_loop()
-        self._raw_data = json_format.MessageToDict(luba_msg_pb2.LubaMsg())
-        self._notify_future: asyncio.Future[bytearray] | None = None
+        self._raw_data = dict()
+        self._luba_msg = LubaMsg()
+        self._notify_future: asyncio.Future[bytes] | None = None
 
-    def _update_raw_data(self, data: luba_msg_pb2.LubaMsg):
-        merged = dict()
-        merged.update(self._raw_data)
-        merged.update(json_format.MessageToDict(data))
-        self._raw_data = merged
+    def _update_raw_data(self, data: bytes):
+        protoLuba = luba_msg_pb2.LubaMsg()
+        protoLuba.ParseFromString(data)
+        self._raw_data.update(json_format.MessageToDict(protoLuba))
+        self._luba_msg.from_dict(self._raw_data)
 
     @property
     def raw_data(self) -> dict[str, Any]:
         return self._raw_data
+
+    @property
+    def luba_msg(self) -> LubaMsg:
+        return self._luba_msg
 
     @abstractmethod
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
@@ -272,14 +280,14 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         print("got ble message", data)
         result = self._message.parseNotification(data)
         if result == 0:
-            data = await self._message.parseBlufiNotifyData()
+            data = await self._message.parseBlufiNotifyData(True)
             self._update_raw_data(data)
             self._message.clearNotification()
         else:
             return
-
-        if data.HasField('net'):
-            if data.net.HasField('todev_ble_sync') or data.net.HasField('toapp_wifi_iot_status'):
+        new_msg = LubaMsg().parse(data)
+        if betterproto.serialized_on_wire(new_msg.net):
+            if new_msg.net.todev_ble_sync != 0 or betterproto.serialized_on_wire(new_msg.net.toapp_wifi_iot_status):
                 return
 
         if self._notify_future and not self._notify_future.done():
