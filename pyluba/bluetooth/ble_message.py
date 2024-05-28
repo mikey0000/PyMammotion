@@ -789,7 +789,7 @@ class BleMessage:
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
         await self.post_custom_data(serialize(executeBorder))
 
-    async def post_custom_data_bytes(self, data: bytearray):
+    async def post_custom_data_bytes(self, data: bytes):
         if (data == None):
             return
         type_val = self.getTypeValue(1, 19)
@@ -815,23 +815,23 @@ class BleMessage:
     def getTypeValue(self, type: int, subtype: int):
         return (subtype << 2) | type
 
-    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytearray) -> bool:
+    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytes) -> bool:
         if data is None:
-            return await self.postNonData(encrypt, checksum, require_ack, type_of)
+            return await self.post_non_data(encrypt, checksum, require_ack, type_of)
 
-        return await self.postContainsData(encrypt, checksum, require_ack, type_of, data)
+        return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
 
-    async def gattWrite(self, data: bytearray) -> bool:
+    async def gatt_write(self, data: bytes) -> None:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
-    async def postNonData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
+    async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
         sequence = self.generateSendSequence()
         postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
-        posted = await self.gattWrite(postBytes)
+        posted = await self.gatt_write(postBytes)
         return posted and (not require_ack or self.receiveAck(sequence))
 
-    async def postContainsData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
-                               data: bytearray) -> bool:
+    async def post_contains_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
+                                 data: bytes) -> bool:
         chunk_size = 517  # self.client.mtu_size - 3
 
         chunks = list()
@@ -846,7 +846,7 @@ class BleMessage:
             sequence = self.generateSendSequence()
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
 
-            posted = await self.gattWrite(postBytes)
+            posted = await self.gatt_write(postBytes)
             if (posted != None):
                 return False
 
@@ -860,7 +860,7 @@ class BleMessage:
                 await sleep(0.01)
 
     def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
-                     data: bytearray) -> bytearray:
+                     data: bytes) -> bytes:
 
         byteOS = BytesIO()
         dataLength = (0 if data == None else len(data))
@@ -887,8 +887,7 @@ class BleMessage:
         # }
         if (len(response) >= 4):
             sequence = int(response[2])  # toInt
-            # self.mReadSequence_1.incrementAndGet()
-            if (sequence != (next(self.mReadSequence) & 255)):
+            if sequence != next(self.mReadSequence):
                 print("parseNotification read sequence wrong", sequence, self.mReadSequence)
                 self.mReadSequence = itertools.count(start=sequence)
                 # this is questionable
@@ -910,12 +909,10 @@ class BleMessage:
             self.notification.setFrameCtrl(frameCtrl)
             frameCtrlData = FrameCtrlData(frameCtrl)
             dataLen = int(response[3])  # toInt specifies length of data
-            dataBytes = None
 
             try:
-
                 dataBytes = response[4: 4 + dataLen]
-                if (frameCtrlData.isEncrypted()):
+                if frameCtrlData.isEncrypted():
                     print("is encrypted")
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
@@ -957,7 +954,6 @@ class BleMessage:
         dataBytes = self.notification.getDataArray()
         if (pkgType == 0):
             # never seem to get these..
-            print("control data")
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
             if return_bytes: return dataBytes

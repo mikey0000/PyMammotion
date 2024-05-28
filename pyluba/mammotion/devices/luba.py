@@ -9,6 +9,7 @@ from uuid import UUID
 
 import betterproto
 
+from pyluba.mammotion.commands.proto import LubaCommandProtoBLE
 from pyluba.proto.luba_msg import LubaMsg
 from bleak.backends.device import BLEDevice
 from bleak import BleakClient
@@ -91,9 +92,12 @@ class MammotionDevice:
             self._ble_device = MammotionBaseBLEDevice(ble_device)
             self._preference = preference
 
-    async def send_command(self, preference: ConnectionPreference = ConnectionPreference.EITHER):
-        if preference == ConnectionPreference.EITHER:
-            return await self._ble_device.start_sync("thing", 0)
+    async def send_command(self, key: str, args):
+        return await self._ble_device.start_sync(key, 0)
+
+
+def has_field(message: betterproto.Message) -> bool:
+    return betterproto.serialized_on_wire(message)
 
 
 class MammotionBaseDevice:
@@ -105,9 +109,9 @@ class MammotionBaseDevice:
         self._notify_future: asyncio.Future[bytes] | None = None
 
     def _update_raw_data(self, data: bytes):
-        protoLuba = luba_msg_pb2.LubaMsg()
-        protoLuba.ParseFromString(data)
-        self._raw_data.update(json_format.MessageToDict(protoLuba))
+        proto_luba = luba_msg_pb2.LubaMsg()
+        proto_luba.ParseFromString(data)
+        self._raw_data.update(json_format.MessageToDict(proto_luba))
         self._luba_msg.from_dict(self._raw_data)
 
     @property
@@ -137,6 +141,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._write_char: BleakGATTCharacteristic | UUID_WRITE_CHARACTERISTIC
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
+        self._commands: LubaCommandProtoBLE = LubaCommandProtoBLE()
         self._expected_disconnect = False
         self._connect_lock = asyncio.Lock()
         self._operation_lock = asyncio.Lock()
@@ -151,7 +156,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
         async with self._operation_lock:
             try:
-                return await self._send_command_locked(key, b'\x08\xf0\x01\x10\x01\x18\x07')
+                command_bytes = getattr(self._commands, key)()
+                return await self._send_command_locked(key, command_bytes)
             except BleakNotFoundError:
                 _LOGGER.error(
                     "%s: device not found, no longer in range, or poor RSSI: %s",
@@ -172,7 +178,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        # raise RuntimeError("Unreachable")
+        raise RuntimeError("Unreachable")
 
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)
@@ -277,7 +283,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
-        print("got ble message", data)
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
@@ -309,7 +314,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         # TODO work on sending commands to here to fire off
-        await self._message.get_report_cfg(10000, 1000, 2000)
+        await self._message.post_custom_data_bytes(command)
 
         timeout = 2
         timeout_handle = self.loop.call_at(
