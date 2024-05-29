@@ -185,7 +185,7 @@ class SystemTardStateTunnel:
     UB_ZONE_STATE_HASH_INDEX = 17
 
 
-class work_mode(Enum):
+class WorkMode:
     MODE_BOUNDARY_JUMP = 38
     MODE_CHANNEL_DRAW = 34
     MODE_CHARGING = 15
@@ -210,6 +210,7 @@ class work_mode(Enum):
     MODE_UPDATE_SUCCESS = 22
     MODE_UPDATING = 16
     MODE_WORKING = 13
+
 
 def device_mode(value):
     modes = {

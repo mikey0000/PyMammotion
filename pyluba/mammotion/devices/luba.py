@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import codecs
-from typing import Any
+from abc import abstractmethod
+from enum import Enum
+from typing import Any, Dict
 from uuid import UUID
 
+import betterproto
+
+from pyluba.mammotion.commands.proto import LubaCommandProtoBLE
+from pyluba.proto.luba_msg import LubaMsg
 from bleak.backends.device import BLEDevice
 from bleak import BleakClient
 from bleak.backends.service import BleakGATTCharacteristic, BleakGATTServiceCollection
@@ -48,7 +54,7 @@ WRITE_CHAR_UUID = _sb_uuid(comms_type="tx")
 
 DBUS_ERROR_BACKOFF_TIME = 0.25
 
-DISCONNECT_DELAY = 3
+DISCONNECT_DELAY = 10
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,26 +77,54 @@ def _handle_timeout(fut: asyncio.Future[None]) -> None:
     if not fut.done():
         fut.set_exception(asyncio.TimeoutError)
 
+
+
+class ConnectionPreference(Enum):
+    EITHER = 0
+    WIFI = 1
+    BLUETOOTH = 2
+
+class MammotionDevice:
+    _ble_device: MammotionBaseBLEDevice | None = None
+
+    def __init__(self, ble_device: BLEDevice, preference: ConnectionPreference = ConnectionPreference.EITHER) -> None:
+        if ble_device:
+            self._ble_device = MammotionBaseBLEDevice(ble_device)
+            self._preference = preference
+
+    async def send_command(self, key: str, args):
+        return await self._ble_device.start_sync(key, 0)
+
+
+def has_field(message: betterproto.Message) -> bool:
+    return betterproto.serialized_on_wire(message)
+
+
 class MammotionBaseDevice:
 
     def __init__(self) -> None:
         self.loop = asyncio.get_event_loop()
-        self._raw_data = json_format.MessageToDict(luba_msg_pb2.LubaMsg())
-        self._notify_future: asyncio.Future[bytearray] | None = None
+        self._raw_data = dict()
+        self._luba_msg = LubaMsg()
+        self._notify_future: asyncio.Future[bytes] | None = None
 
-    def _update_raw_data(self, data: luba_msg_pb2.LubaMsg):
-        merged = dict()
-        merged.update(self._raw_data)
-        merged.update(json_format.MessageToDict(data))
-        self._raw_data = merged
+    def _update_raw_data(self, data: bytes):
+        proto_luba = luba_msg_pb2.LubaMsg()
+        proto_luba.ParseFromString(data)
+        self._raw_data.update(json_format.MessageToDict(proto_luba))
+        self._luba_msg.from_dict(self._raw_data)
 
     @property
-    def raw_data(self) -> luba_msg_pb2.LubaMsg:
+    def raw_data(self) -> dict[str, Any]:
         return self._raw_data
 
+    @property
+    def luba_msg(self) -> LubaMsg:
+        return self._luba_msg
+
+    @abstractmethod
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
-        pass
 
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)
@@ -107,9 +141,14 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._write_char: BleakGATTCharacteristic | UUID_WRITE_CHARACTERISTIC
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
+        self._commands: LubaCommandProtoBLE = LubaCommandProtoBLE()
         self._expected_disconnect = False
         self._connect_lock = asyncio.Lock()
         self._operation_lock = asyncio.Lock()
+        self._key: str | None = None
+
+    def update_device(self, device: BLEDevice) -> None:
+        self._device = device
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
@@ -121,7 +160,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
         async with self._operation_lock:
             try:
-                return await self._send_command_locked(key, b'\x08\xf0\x01\x10\x01\x18\x07')
+                command_bytes = getattr(self._commands, key)()
+                return await self._send_command_locked(key, command_bytes)
             except BleakNotFoundError:
                 _LOGGER.error(
                     "%s: device not found, no longer in range, or poor RSSI: %s",
@@ -142,7 +182,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        # raise RuntimeError("Unreachable")
+        raise RuntimeError("Unreachable")
 
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)
@@ -195,7 +235,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             _LOGGER.debug("%s: Connected; RSSI: %s", self.name, self.rssi)
             self._client = client
             self._message = BleMessage(client)
-            await self._message.send_todev_ble_sync(1)
 
             try:
                 self._resolve_characteristics(client.services)
@@ -219,6 +258,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
+
+            command_bytes = self._commands.send_todev_ble_sync(2)
+            await self._message.post_custom_data_bytes( command_bytes)
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
@@ -247,23 +289,22 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
-        print("got ble message", data)
+        _LOGGER.debug("%s: Received notification: %s", self.name, data)
         result = self._message.parseNotification(data)
-        if (result == 0):
-            data = await self._message.parseBlufiNotifyData()
+        if result == 0:
+            data = await self._message.parseBlufiNotifyData(True)
             self._update_raw_data(data)
             self._message.clearNotification()
         else:
             return
-
-        if data.HasField('net'):
-            if data.net.HasField('todev_ble_sync') or data.net.HasField('toapp_wifi_iot_status'):
+        new_msg = LubaMsg().parse(data)
+        if betterproto.serialized_on_wire(new_msg.net):
+            if new_msg.net.todev_ble_sync != 0 or new_msg.net.toapp_wifi_iot_status is not None:
                 return
 
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)
-
-        _LOGGER.debug("%s: Received notification: %s", self.name, data)
+            return
 
     async def _start_notify(self) -> None:
         """Start notification."""
@@ -276,13 +317,12 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         assert self._read_char is not None
         assert self._write_char is not None
         self._notify_future = self.loop.create_future()
-
+        self._key = key
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         # TODO work on sending commands to here to fire off
-        await self._message.get_report_cfg(10000, 1000, 2000)
+        await self._message.post_custom_data_bytes(command)
 
-
-        timeout = 2
+        timeout = 5
         timeout_handle = self.loop.call_at(
             self.loop.time() + timeout, _handle_timeout, self._notify_future
         )
@@ -389,14 +429,13 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return
         client = self._client
         self._expected_disconnect = True
-        self._client = None
-        self._read_char = None
-        self._write_char = None
+
         if not client:
             _LOGGER.debug("%s: Already disconnected", self.name)
             return
         _LOGGER.debug("%s: Disconnecting", self.name)
         try:
+            await client.stop_notify(self._read_char)
             await client.disconnect()
         except BLEAK_RETRY_EXCEPTIONS as ex:
             _LOGGER.warning(
@@ -407,6 +446,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
         else:
             _LOGGER.debug("%s: Disconnect completed successfully", self.name)
+        self._client = None
 
     async def _disconnect(self) -> bool:
         if self._client is not None:

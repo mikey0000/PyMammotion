@@ -338,7 +338,7 @@ message rpt_work {
   int64 test_mode_status = 17;
   int32 man_run_speed = 18;
   int32 nav_edit_status = 19;
-  int32 knife_hight = 20;
+  int32 knife_height = 20;
 }
 
 message rpt_maintain {

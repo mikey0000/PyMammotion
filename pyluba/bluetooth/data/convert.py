@@ -22,7 +22,7 @@ chargeStateTemp = -1
 TODO allow for registering events to individual messages
 as trying to register for all would be a mess
 '''
-def parse_custom_data(data: bytearray):
+def parse_custom_data(data: bytes):
     luba_msg = luba_msg_pb2.LubaMsg()
     try:
         luba_msg.ParseFromString(data)

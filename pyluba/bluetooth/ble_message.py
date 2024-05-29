@@ -41,13 +41,17 @@ class BleMessage:
     mChecksum = False
     mRequireAck = False
     mConnectState = 0
-    mSendSequence = itertools.count()
-    mReadSequence = itertools.count()
-    mAck = queue.Queue()
-    notification = BlufiNotifyData()
+    mSendSequence: iter
+    mReadSequence: iter
+    mAck: queue
+    notification: BlufiNotifyData
 
     def __init__(self, client: BleakClient):
         self.client = client
+        self.mSendSequence = itertools.count()
+        self.mReadSequence = itertools.count()
+        self.mAck = queue.Queue()
+        self.notification = BlufiNotifyData()
 
     async def all_powerful_RW(self, id: int, context: int, rw: int):
         mctrl_sys = mctrl_sys_pb2.MctlSys(
@@ -68,7 +72,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctrl_sys)
         byte_arr = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def send_order_msg_ota(self, type: int):
         mctrl_ota = mctrl_ota_pb2.MctlOta(
@@ -87,7 +91,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.ota.CopyFrom(mctrl_ota)
         byte_arr = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
 
@@ -135,7 +139,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctlsys)
         byte_arr = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_device_base_info(self):
         commEsp = dev_net_pb2.DevNet(
@@ -156,7 +160,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_device_version_main(self):
         commEsp = dev_net_pb2.DevNet(
@@ -183,7 +187,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def send_todev_ble_sync(self, sync_type: int):
         commEsp = dev_net_pb2.DevNet(
@@ -199,7 +203,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def set_data_synchronization(self, type: int):
         mctrl_nav = mctrl_nav_pb2.MctlNav(
@@ -219,7 +223,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrl_nav)
         byte_arr = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_hash(self):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -238,7 +242,7 @@ class BleMessage:
         )
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_all_boundary_hash_list(self, i: int):
         """.getAllBoundaryHashList(3); 0"""
@@ -259,7 +263,7 @@ class BleMessage:
         )
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_line_info(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -279,7 +283,7 @@ class BleMessage:
             ),
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_hash_response(self, totalFrame: int, currentFrame: int):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -302,7 +306,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_area_tobe_transferred(self):
         commondata = mctrl_nav_pb2.NavGetCommData(
@@ -325,7 +329,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def synchronize_hash_data(self, hash_int: int):
         commondata = mctrl_nav_pb2.NavGetCommData(
@@ -348,15 +352,15 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_task(self):
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
-        await self.postCustomData(self.get_json_string(bleOrderCmd.task, hash_map))
+        await self.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
 
     async def send_ble_alive(self):
         hash_map = {"ctrl": 1}
-        await self.postCustomData(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
+        await self.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
 
     async def set_speed(self, speed: float):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -376,7 +380,7 @@ class BleMessage:
         )
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -397,7 +401,7 @@ class BleMessage:
         )
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def read_plan(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -415,7 +419,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     # (2, 0);
     async def read_plan(self, i: int, i2: int):
@@ -435,7 +439,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def read_plan_unable_time(self, i):
         build = mctrl_nav_pb2.NavUnableTimeSet()
@@ -452,7 +456,7 @@ class BleMessage:
         luba_msg.nav.todev_unable_time_set.CopyFrom(build)
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def send_plan2(self, plan: Plan):
         navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
@@ -498,7 +502,7 @@ class BleMessage:
         luba_msg.nav.todevPlanjobSet.CopyFrom(navPlanJobSet)
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     def get_reserved(self, generate_route_information):
         return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
@@ -536,7 +540,7 @@ class BleMessage:
         luba_msg.nav.CopyFrom(mctl_nav)
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave,
                                channel_width, channel_mode):
@@ -566,7 +570,7 @@ class BleMessage:
         luba_msg.nav.CopyFrom(nav)
 
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def breakPointContinue(self):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -586,7 +590,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def breakPointAnywhereContinue(self, refresh_loading: bool):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -606,7 +610,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     def clearNotification(self):
         self.notification = None
@@ -631,7 +635,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def requestDeviceStatus(self):
         request = False
@@ -676,7 +680,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
         bytes = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(bytes)
+        await self.post_custom_data_bytes(bytes)
 
     async def leaveDock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
@@ -691,7 +695,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
         bytes = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(bytes)
+        await self.post_custom_data_bytes(bytes)
 
     async def setbladeHeight(self, height: int):
         mctrlDriver = mctrl_driver_pb2.MctrlDriver()
@@ -709,7 +713,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.driver.CopyFrom(mctrlDriver)
         bytes = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(bytes)
+        await self.post_custom_data_bytes(bytes)
 
     async def setBladeControl(self, onOff: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
@@ -727,7 +731,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctlsys)
         bytes = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(bytes)
+        await self.post_custom_data_bytes(bytes)
 
     async def start_job(self, blade_height):
         """call after calling generate_route_information I think"""
@@ -783,12 +787,12 @@ class BleMessage:
 
         lubaMsg.driver.CopyFrom(mctrlDriver)
         bytes = lubaMsg.SerializeToString()
-        await self.postCustomDataBytes(bytes)
+        await self.post_custom_data_bytes(bytes)
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
-        await self.postCustomData(serialize(executeBorder))
+        await self.post_custom_data(serialize(executeBorder))
 
-    async def postCustomDataBytes(self, data: bytearray):
+    async def post_custom_data_bytes(self, data: bytes):
         if (data == None):
             return
         type_val = self.getTypeValue(1, 19)
@@ -796,11 +800,12 @@ class BleMessage:
             suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
+            # print(suc)
         except Exception as err:
             print(err)
 
-    async def postCustomData(self, dataStr: str):
-        data = dataStr.encode()
+    async def post_custom_data(self, data_str: str):
+        data = data_str.encode()
         if (data == None):
             return
         type_val = self.getTypeValue(1, 19)
@@ -814,24 +819,23 @@ class BleMessage:
     def getTypeValue(self, type: int, subtype: int):
         return (subtype << 2) | type
 
-    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytearray) -> bool:
+    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytes) -> bool:
         if data is None:
-            return await self.postNonData(encrypt, checksum, require_ack, type_of)
+            return await self.post_non_data(encrypt, checksum, require_ack, type_of)
 
-        return await self.postContainsData(encrypt, checksum, require_ack, type_of, data)
+        return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
 
-    async def gattWrite(self, data: bytearray) -> bool:
+    async def gatt_write(self, data: bytes) -> None:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
-    async def postNonData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
+    async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
         sequence = self.generateSendSequence()
-        postBytes = self.getPostBytes(
-            type_of, encrypt, checksum, require_ack, False, sequence, None)
-        posted = await self.gattWrite(postBytes)
+        postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
+        posted = await self.gatt_write(postBytes)
         return posted and (not require_ack or self.receiveAck(sequence))
 
-    async def postContainsData(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
-                               data: bytearray) -> bool:
+    async def post_contains_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
+                                 data: bytes) -> bool:
         chunk_size = 517  # self.client.mtu_size - 3
 
         chunks = list()
@@ -841,13 +845,12 @@ class BleMessage:
             else:
                 chunks.append(data[i: i + chunk_size])
         for index, chunk in enumerate(chunks):
-            # frag = i < len(data)
             frag = index != len(chunks) - 1
             sequence = self.generateSendSequence()
-            postBytes = self.getPostBytes(
-                type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
-
-            posted = await self.gattWrite(postBytes)
+            postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
+            # print("sequence")
+            # print(sequence)
+            posted = await self.gatt_write(postBytes)
             if (posted != None):
                 return False
 
@@ -861,7 +864,7 @@ class BleMessage:
                 await sleep(0.01)
 
     def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
-                     data: bytearray) -> bytearray:
+                     data: bytes) -> bytes:
 
         byteOS = BytesIO()
         dataLength = (0 if data == None else len(data))
@@ -889,8 +892,7 @@ class BleMessage:
         # }
         if (len(response) >= 4):
             sequence = int(response[2])  # toInt
-            # self.mReadSequence_1.incrementAndGet()
-            if (sequence != (next(self.mReadSequence) & 255)):
+            if sequence != next(self.mReadSequence):
                 print("parseNotification read sequence wrong", sequence, self.mReadSequence)
                 self.mReadSequence = itertools.count(start=sequence)
                 # this is questionable
@@ -912,12 +914,10 @@ class BleMessage:
             self.notification.setFrameCtrl(frameCtrl)
             frameCtrlData = FrameCtrlData(frameCtrl)
             dataLen = int(response[3])  # toInt specifies length of data
-            dataBytes = None
 
             try:
-
                 dataBytes = response[4: 4 + dataLen]
-                if (frameCtrlData.isEncrypted()):
+                if frameCtrlData.isEncrypted():
                     print("is encrypted")
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
@@ -953,22 +953,22 @@ class BleMessage:
         # Log.w(TAG, "parseNotification data length less than 4");
         return -2
 
-    async def parseBlufiNotifyData(self):
+    async def parseBlufiNotifyData(self, return_bytes: bool = False):
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
         if (pkgType == 0):
             # never seem to get these..
-            print("control data")
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
+            if return_bytes: return dataBytes
             return await self._parseDataData(subType, dataBytes)
 
-    def _parseCtrlData(self, subType: int, data: bytearray):
+    def _parseCtrlData(self, subType: int, data: bytes):
         pass
         # self._parseAck(data)
 
-    async def _parseDataData(self, subType: int, data: bytearray):
+    async def _parseDataData(self, subType: int, data: bytes):
         #     if (subType == 0) {
         #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
         #         return;

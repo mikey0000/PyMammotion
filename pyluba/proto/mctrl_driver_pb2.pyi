@@ -56,8 +56,8 @@ class DrvSrSpeed(_message.Message):
     def __init__(self, rw: _Optional[int] = ..., speed: _Optional[float] = ...) -> None: ...
 
 class MctlDriver(_message.Message):
-    __slots__ = ["bidire_knife_hight_report", "bidire_speed_read_set", "mow_ctrl_by_hand", "rtk_cfg_req", "rtk_cfg_req_ack", "rtk_sys_mask_query", "rtk_sys_mask_query_ack", "toapp_knife_status", "toapp_knife_status_change", "todev_devmotion_ctrl", "todev_knife_hight_set"]
-    BIDIRE_KNIFE_HIGHT_REPORT_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ["bidire_knife_height_report", "bidire_speed_read_set", "mow_ctrl_by_hand", "rtk_cfg_req", "rtk_cfg_req_ack", "rtk_sys_mask_query", "rtk_sys_mask_query_ack", "toapp_knife_status", "toapp_knife_status_change", "todev_devmotion_ctrl", "todev_knife_height_set"]
+    BIDIRE_KNIFE_HEIGHT_REPORT_FIELD_NUMBER: _ClassVar[int]
     BIDIRE_SPEED_READ_SET_FIELD_NUMBER: _ClassVar[int]
     MOW_CTRL_BY_HAND_FIELD_NUMBER: _ClassVar[int]
     RTK_CFG_REQ_ACK_FIELD_NUMBER: _ClassVar[int]
@@ -67,8 +67,8 @@ class MctlDriver(_message.Message):
     TOAPP_KNIFE_STATUS_CHANGE_FIELD_NUMBER: _ClassVar[int]
     TOAPP_KNIFE_STATUS_FIELD_NUMBER: _ClassVar[int]
     TODEV_DEVMOTION_CTRL_FIELD_NUMBER: _ClassVar[int]
-    TODEV_KNIFE_HIGHT_SET_FIELD_NUMBER: _ClassVar[int]
-    bidire_knife_hight_report: DrvKnifeHeight
+    TODEV_KNIFE_HEIGHT_SET_FIELD_NUMBER: _ClassVar[int]
+    bidire_knife_height_report: DrvKnifeHeight
     bidire_speed_read_set: DrvSrSpeed
     mow_ctrl_by_hand: DrvMowCtrlByHand
     rtk_cfg_req: rtk_cfg_req_t
@@ -78,8 +78,8 @@ class MctlDriver(_message.Message):
     toapp_knife_status: DrvKnifeStatus
     toapp_knife_status_change: DrvKnifeChangeReport
     todev_devmotion_ctrl: DrvMotionCtrl
-    todev_knife_hight_set: DrvKnifeHeight
-    def __init__(self, todev_devmotion_ctrl: _Optional[_Union[DrvMotionCtrl, _Mapping]] = ..., todev_knife_hight_set: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., bidire_speed_read_set: _Optional[_Union[DrvSrSpeed, _Mapping]] = ..., bidire_knife_hight_report: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., toapp_knife_status: _Optional[_Union[DrvKnifeStatus, _Mapping]] = ..., mow_ctrl_by_hand: _Optional[_Union[DrvMowCtrlByHand, _Mapping]] = ..., rtk_cfg_req: _Optional[_Union[rtk_cfg_req_t, _Mapping]] = ..., rtk_cfg_req_ack: _Optional[_Union[rtk_cfg_req_ack_t, _Mapping]] = ..., rtk_sys_mask_query: _Optional[_Union[rtk_sys_mask_query_t, _Mapping]] = ..., rtk_sys_mask_query_ack: _Optional[_Union[rtk_sys_mask_query_ack_t, _Mapping]] = ..., toapp_knife_status_change: _Optional[_Union[DrvKnifeChangeReport, _Mapping]] = ...) -> None: ...
+    todev_knife_height_set: DrvKnifeHeight
+    def __init__(self, todev_devmotion_ctrl: _Optional[_Union[DrvMotionCtrl, _Mapping]] = ..., todev_knife_height_set: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., bidire_speed_read_set: _Optional[_Union[DrvSrSpeed, _Mapping]] = ..., bidire_knife_height_report: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., toapp_knife_status: _Optional[_Union[DrvKnifeStatus, _Mapping]] = ..., mow_ctrl_by_hand: _Optional[_Union[DrvMowCtrlByHand, _Mapping]] = ..., rtk_cfg_req: _Optional[_Union[rtk_cfg_req_t, _Mapping]] = ..., rtk_cfg_req_ack: _Optional[_Union[rtk_cfg_req_ack_t, _Mapping]] = ..., rtk_sys_mask_query: _Optional[_Union[rtk_sys_mask_query_t, _Mapping]] = ..., rtk_sys_mask_query_ack: _Optional[_Union[rtk_sys_mask_query_ack_t, _Mapping]] = ..., toapp_knife_status_change: _Optional[_Union[DrvKnifeChangeReport, _Mapping]] = ...) -> None: ...
 
 class rtk_cfg_req_ack_t(_message.Message):
     __slots__ = ["cmd_length", "cmd_response"]
