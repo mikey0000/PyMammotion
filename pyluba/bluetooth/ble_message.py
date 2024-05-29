@@ -190,19 +190,11 @@ class BleMessage:
         await self.post_custom_data_bytes(byte_arr)
 
     async def send_todev_ble_sync(self, sync_type: int):
-        commEsp = dev_net_pb2.DevNet(
+        net = dev_net_pb2.DevNet(
             todev_ble_sync=sync_type
         )
 
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.net.CopyFrom(commEsp)
-        byte_arr = lubaMsg.SerializeToString()
+        byte_arr = self.send_order_msg_net(net)
         await self.post_custom_data_bytes(byte_arr)
 
     async def set_data_synchronization(self, type: int):
@@ -1057,11 +1049,6 @@ class BleMessage:
 
 # ==================================================================
 
-    # def send_order_msg_net(self, dev_net, logtype, is_iotable):
-    #     proto_buf_builder_set = self.get_proto_buf_builder_set(dev_net_pb2.MsgCmdType.MSG_CMD_TYPE_ESP, dev_net_pb2.MsgDevice.DEV_COMM_ESP, dev_net_pb2.MsgAttr.MSG_ATTR_REQ)
-    #     proto_buf_builder_set.net.CopyFrom(dev_net)
-    #     self.send_msg(proto_buf_builder_set, logtype, is_iotable)
-
     async def send_order_msg_net(self, build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
@@ -1073,27 +1060,20 @@ class BleMessage:
             subtype=1,
             net=build)
 
-        byte_arr = luba_msg.SerializeToString()
-        await self.postCustomDataBytes(byte_arr)
+        return luba_msg.SerializeToString()
 
     def get_4g_module_info(self):
         build = dev_net_pb2.DevNet(
             todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req)
         print("Send command -- Get device 4G network module information")
-        self.send_order_msg_net(build, 96, True)
+        self.send_order_msg_net(build)
 
-    # def get_4g_module_info(self):
-    #     build = dev_net_pb2.DevNet(
-    #         todev_get_mnet_cfg_req=dev_net_pb2.DevNet.TodevGetMnetCfgReq())
-    #     self.send_order_msg_net(build)
-
-    # ---------------------------
 
     def get_4g_info(self):
         build = dev_net_pb2.DevNet(
             TodevMnetInfoReq=dev_net_pb2.DevNet().TodevMnetInfoReq)
         print("Send command -- Get device 4G network information")
-        self.send_order_msg_net(build, 95, True)
+        self.send_order_msg_net(build)
 
     def set_zmq_enable(self):
         build = dev_net_pb2.DevNet(
@@ -1104,26 +1084,12 @@ class BleMessage:
             )
         )
         print("Send command -- Set vision ZMQ to enable")
-        self.send_order_msg_net(build, 97, True)
+        self.send_order_msg_net(build)
 
     def set_iot_setting(self, iot_conctrl_type: dev_net_pb2.iot_conctrl_type):
         build = dev_net_pb2.DevNet(TodevSetIotOfflineReq=iot_conctrl_type)
         print("Send command -- Device re-online")
-        self.send_order_msg_net(build, 961, True)
-
-    def send_to_dev_ble_sync(self):
-        build = dev_net_pb2.DevNet(todev_ble_sync=2)
-        print("Send Bluetooth heartbeat==sendTodevBleSync==type:2")
-        self.send_order_msg_net(build, 39, False)
-
-    def send_to_dev_ble_sync(self, current_client, type: int):
-        is_support_iot = self.is_support_iot()
-        if type == 1 and is_support_iot:
-            return
-        print("Send Bluetooth heartbeat==AAAAAAAAAA===Type:2 isSupportIot:" +
-              str(is_support_iot))
-        self.send_order_msg_net(
-            dev_net_pb2.DevNet(to_dev_ble_sync=2), 40, False)
+        self.send_order_msg_net(build)
 
     def set_device_log_upload(self, request_id: str, operation: int, server_ip: int, server_port: int, number: int, type: int):
         build = dev_net_pb2.DrvUploadFileToAppReq(
@@ -1137,9 +1103,10 @@ class BleMessage:
         print(
             f"Send log====Feedback====Command======requestID:{request_id} operation:{operation} serverIp:{server_ip} type:{type}")
         self.send_order_msg_net(dev_net_pb2.DevNet(
-            todev_ble_sync=1, todev_uploadfile_req=build), 1, True)
+            todev_ble_sync=1, todev_uploadfile_req=build))
 
     def set_device_socket_request(self, request_id: str, operation: int, server_ip: int, server_port: int, number: int, type: int) -> None:
+        """set device socket request (bluetooth only)."""
         build = dev_net_pb2.DrvUploadFileToAppReq(
             biz_id=request_id,
             operation=operation,
@@ -1151,9 +1118,10 @@ class BleMessage:
         print(
             f"Send log====Feedback====Command======requestID:{request_id}  operation:{operation} serverIp:{server_ip}  type:{type}")
         self.send_order_msg_net(dev_net_pb2.DevNet(
-            todev_ble_sync=1, todev_uploadfile_req=build), 2, False)
+            todev_ble_sync=1, todev_uploadfile_req=build))
 
     def get_device_log_info(self, biz_id: str, type: int, log_url: str) -> None:
+        """get device log info (bluetooth only)."""
         self.send_order_msg_net(
             dev_net_pb2.DevNet(
                 todev_ble_sync=1,
@@ -1162,22 +1130,21 @@ class BleMessage:
                     type=type,
                     url=log_url,
                     num=0,
-                    user_id=AgilexDBHelper.get_instance().get_user_id()
+                    user_id="" # TODO supply user id
                 )
-            ),
-            3,
-            False
+            )
         )
 
     def cancel_log_update(self, biz_id: str):
+        """cancel log update (bluetooth only)."""
         self.send_order_msg_net(dev_net_pb2.DevNet(
-            todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(biz_id=biz_id)), 4, False)
+            todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(biz_id=biz_id)))
 
     def get_device_network_info(self):
         build = dev_net_pb2.DevNet(
             todev_networkinfo_req=dev_net_pb2.GetNetworkInfoReq(req_ids=1))
         print("Send command - get device network information")
-        self.send_order_msg_net(build, 84, True)
+        self.send_order_msg_net(build)
 
     def set_device_4g_enable_status(self, new_4g_status: bool):
         build = dev_net_pb2.DevNet(
@@ -1190,7 +1157,7 @@ class BleMessage:
                 )
             )
         )
-        self.send_order_msg_net(build, 85, True)
+        self.send_order_msg_net(build)
         print(
             f"Send command - set 4G (on/off status). newWifiStatus={new_4g_status}")
 
@@ -1202,15 +1169,10 @@ class BleMessage:
                 wifi_enable=new_wifi_status
             )
         )
-        self.send_order_msg_net(build, 86, True)
+        self.send_order_msg_net(build)
         print(
             f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
 
-    def set_mtu_value(self, mtu: int):
-        build = dev_net_pb2.DevNet(
-            todev_set_ble_mtu=dev_net_pb2.SetDrvBleMTU(mtu_count=mtu))
-        self.send_order_msg_net(build, 123, True)
-        print(f"Send MTU setting switch. mtu={mtu}")
 
     def wifi_connectinfo_update(self, device_name: str, is_binary: bool):
         print(
@@ -1220,7 +1182,7 @@ class BleMessage:
                 todev_ble_sync=1, todev_wifi_msg_upload=dev_net_pb2.DrvWifiUpload(wifi_msg_upload=1))
             print("Send command - get Wifi connection information")
             print("Send command - get Wifi connection information")
-            self.send_order_msg_net(build, 5, True)
+            self.send_order_msg_net(build)
             return
         self.wifi_connectinfo_update2()
 
@@ -1234,38 +1196,13 @@ class BleMessage:
             build = dev_net_pb2.DevNet(
                 todev_ble_sync=1, todev_wifi_list_upload=dev_net_pb2.DrvWifiList())
             print("Send command - get memorized WiFi list upload command")
-            self.send_order_msg_net(build, 6, True)
+            self.send_order_msg_net(build)
             return
         self.get_record_wifi_list2()
 
     def get_record_wifi_list2(self):
         self.post_custom_data(self.get_json_string(69))
 
-    def send_blue_tooth_device_sync(self, link_type: int, device_name_temp: str, log_type: int):
-        build = dev_net_pb2.DevNet(todev_ble_sync=link_type)
-        print(
-            f"Send Bluetooth heartbeat======sendBleSync=======:{link_type}  connectDeviceName:{device_name_temp}  logType:{log_type}")
-        print("Send heartbeat print---send Bluetooth heartbeat")
-        self.send_order_msg_net(build, 7, False)
-
-    def get_device_version_main(self, device_name: str) -> None:
-        new_builder = dev_net_pb2.DrvDevInfoReq.Builder()
-        new_builder.add_req_ids(
-            dev_net_pb2.DrvDevInfoReqId.Builder().set_id(1).set_type(6).build())
-        build = dev_net_pb2.DevNet.Builder().set_todev_devinfo_req(
-            new_builder.build()).build()
-        print("Send command -- Get main version number")
-        self.send_order_msg_net(build, 41, True)
-
-    def get_device_version_main2(self):
-        new_builder = dev_net_pb2.DrvDevInfoReq.Builder()
-        new_builder.add_req_ids(
-            dev_net_pb2.DrvDevInfoReqId.Builder().set_id(1).set_type(6).build())
-        build = dev_net_pb2.DevNet.Builder().set_todev_devinfo_req(
-            new_builder.build()).build()
-        print("Send command -- Get main version number")
-        print("Send command -- Get main version number:")
-        self.send_order_msg_net(build, 41, True)
 
     def close_clear_connect_current_wifi(self, ssid: str, status: int, is_binary: bool):
         if is_binary:
@@ -1278,7 +1215,7 @@ class BleMessage:
             )
             print(
                 f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})")
-            self.send_order_msg_net(build, 7, True)
+            self.send_order_msg_net(build)
             return
         self.close_clear_connect_current_wifi2(ssid, status)
 
@@ -1287,5 +1224,5 @@ class BleMessage:
             "ssid": ssid,
             "getMsgCmd": get_msg_cmd
         }
-        self.send_raw_data_callback.send_data(
-            self.get_json_string(77, data).encode())
+        self.post_custom_data(
+            self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
