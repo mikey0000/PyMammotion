@@ -78,11 +78,11 @@ def _handle_timeout(fut: asyncio.Future[None]) -> None:
         fut.set_exception(asyncio.TimeoutError)
 
 
-
 class ConnectionPreference(Enum):
     EITHER = 0
     WIFI = 1
     BLUETOOTH = 2
+
 
 class MammotionDevice:
     _ble_device: MammotionBaseBLEDevice | None = None
@@ -126,8 +126,16 @@ class MammotionBaseDevice:
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
 
+    @abstractmethod
+    async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
+        """Send command to device and read response."""
+
     async def start_sync(self, key: str, retry: int):
         return await self._send_command(key, retry)
+
+    async def command(self, key: str, **kwargs):
+
+        return await self._send_command_with_args(key, kwargs=kwargs)
 
 
 class MammotionBaseBLEDevice(MammotionBaseDevice):
@@ -149,6 +157,40 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     def update_device(self, device: BLEDevice) -> None:
         self._device = device
+
+    async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
+        """Send command to device and read response."""
+        if self._operation_lock.locked():
+            _LOGGER.debug(
+                "%s: Operation already in progress, waiting for it to complete; RSSI: %s",
+                self.name,
+                self.rssi,
+            )
+        async with self._operation_lock:
+            try:
+                command_bytes = getattr(self._commands, key)(kwargs=kwargs)
+                return await self._send_command_locked(key, command_bytes)
+            except BleakNotFoundError:
+                _LOGGER.error(
+                    "%s: device not found, no longer in range, or poor RSSI: %s",
+                    self.name,
+                    self.rssi,
+                    exc_info=True,
+                )
+                raise
+            except CharacteristicMissingError as ex:
+                _LOGGER.debug(
+                    "%s: characteristic missing: %s; RSSI: %s",
+                    self.name,
+                    ex,
+                    self.rssi,
+                    exc_info=True,
+                )
+            except BLEAK_RETRY_EXCEPTIONS:
+                _LOGGER.debug(
+                    "%s: communication failed with:", self.name, exc_info=True
+                )
+        raise RuntimeError("Unreachable")
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
@@ -183,9 +225,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                     "%s: communication failed with:", self.name, exc_info=True
                 )
         raise RuntimeError("Unreachable")
-
-    async def start_sync(self, key: str, retry: int):
-        return await self._send_command(key, retry)
 
     @property
     def name(self) -> str:
@@ -260,7 +299,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             await self._start_notify()
 
             command_bytes = self._commands.send_todev_ble_sync(2)
-            await self._message.post_custom_data_bytes( command_bytes)
+            await self._message.post_custom_data_bytes(command_bytes)
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""

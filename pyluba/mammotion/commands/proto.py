@@ -5,7 +5,7 @@ from pyluba.proto.mctrl_sys import RptInfoType
 class LubaCommandProtoMQTT:
     """MQTT commands for Luba."""
 
-    async def send_order_msg_net(self, build) -> bytes:
+    def send_order_msg_net(self, build) -> bytes:
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -19,7 +19,7 @@ class LubaCommandProtoMQTT:
         return luba_msg.SerializeToString()
 
 
-    async def start_work_job(self):
+    def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -79,7 +79,7 @@ class LubaCommandProtoMQTT:
 
         return luba_msg.SerializeToString()
 
-    async def return_to_dock(self):
+    def return_to_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
         navTaskCtrl.type = 1
