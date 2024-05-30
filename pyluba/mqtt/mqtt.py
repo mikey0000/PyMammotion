@@ -3,16 +3,17 @@ import hmac
 import json
 import sqlite3
 from logging import getLogger
-from typing import Optional, Callable, cast
+from typing import Callable, Optional, cast
 
-from paho.mqtt.client import Client, MQTTv311, MQTTMessage, connack_string
 from linkkit.linkkit import LinkKit
-from pyluba.luba.base import BaseLuba
-from pyluba.proto import luba_msg_pb2
+from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
+
+from pyluba.data.model import RapidState
 from pyluba.data.mqtt.event import ThingEventMessage
 from pyluba.data.mqtt.properties import ThingPropertiesMessage
 from pyluba.data.mqtt.status import ThingStatusMessage
-from pyluba.data.model import RapidState
+from pyluba.luba.base import BaseLuba
+from pyluba.proto import luba_msg_pb2
 
 logger = getLogger(__name__)
 
@@ -42,7 +43,7 @@ class LubaMQTT(BaseLuba):
             device_secret.encode("utf-8"), sign_content.encode("utf-8"),
             hashlib.sha1
         ).hexdigest()
-        
+
         self._linkkit_client = LinkKit(f"{self._product_key}.iot-as-mqtt.eu-central-1.aliyuncs.com", product_key, device_name, device_secret)
 
         self._linkkit_client.on_connect = self._on_connect

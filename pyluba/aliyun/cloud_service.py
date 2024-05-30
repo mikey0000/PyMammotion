@@ -1,10 +1,14 @@
 import base64
-from aliyunsdkcore import client
-from aliyunsdkiot.request.v20180120.InvokeThingServiceRequest import InvokeThingServiceRequest
-from aliyunsdkiot.request.v20180120.GetDeviceStatusRequest import GetDeviceStatusRequest
 
-class CloudService():
-    
+from aliyunsdkcore import client
+from aliyunsdkiot.request.v20180120.GetDeviceStatusRequest import GetDeviceStatusRequest
+from aliyunsdkiot.request.v20180120.InvokeThingServiceRequest import (
+    InvokeThingServiceRequest,
+)
+
+
+class CloudService:
+
     # com.aliyun.iot.aep.sdk
     # https://domestic.mammotion.com/privacy/ - lists all aliyun packages
     def __init__(self):
@@ -28,7 +32,7 @@ class CloudService():
     
     """
     def invoke_thing_service(self, data: bytearray):
-        
+
         base64_encoded = base64.b64encode(data).decode('utf-8')
 
         # Create a dictionary structure
@@ -51,8 +55,8 @@ class CloudService():
         response = self.clt.do_action_with_exception(request)
         # python2:  print(response)
         print(response)
-        
-        
+
+
     def get_device_status(self):
         request = GetDeviceStatusRequest()
         request.set_accept_format('json')

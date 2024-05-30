@@ -1,13 +1,13 @@
 from base64 import b64decode
 from dataclasses import dataclass
-from typing import Literal, Any, Union
+from typing import Any, Literal, Union
 
 from google.protobuf import json_format
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import SerializableType
 
 from pyluba.proto import luba_msg_pb2
 
-from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 class Base64EncodedProtobuf(SerializableType):
     def __init__(self, proto: str):

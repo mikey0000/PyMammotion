@@ -1,10 +1,9 @@
-import asyncio
 from typing import Dict
 
 from google.protobuf.message import DecodeError
 
-from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2
 from pyluba.data.model import HashList, RegionData
+from pyluba.proto import luba_msg_pb2
 
 # until we have a proper store or send messages somewhere
 device_charge_map: Dict[str, int] = {}
@@ -30,10 +29,10 @@ def parse_custom_data(data: bytes):
         # luba_message = luba_msg_p2p.LubaMsg(net=luba_msg.net)
 
         # print(luba_message)
-        
+
         # toappGetHashAck = luba_msg.nav.toapp_get_commondata_ack
         # print(toappGetHashAck.Hash)
-        
+
         if luba_msg.HasField('sys'):
             store_sys_data(luba_msg.sys)
         elif luba_msg.HasField('net'):
@@ -52,11 +51,11 @@ def parse_custom_data(data: bytes):
             pass
 
         return luba_msg
-        
+
     except DecodeError as err:
         print(err)
-        
-        
+
+
 def store_sys_data(sys):
     if(sys.HasField("systemTardStateTunnel")):
         tard_state_data_list = sys.systemTardStateTunnel.tard_state_data
@@ -67,7 +66,7 @@ def store_sys_data(sys):
         longValue10 = tard_state_data_list[6]
         longValue11 = tard_state_data_list[7]
 
-        #device_state_map        
+        #device_state_map
     if sys.HasField("systemRapidStateTunnel"):
         rapid_state_data_list = sys.systemRapidStateTunnel.rapid_state_data
         print(rapid_state_data_list)
@@ -75,11 +74,11 @@ def store_sys_data(sys):
     if sys.HasField("toapp_batinfo"):
         battery_info = sys.toapp_batinfo
         print(battery_info)
-        
-        
+
+
 def store_nav_data(nav):
     if(nav.HasField('toapp_get_commondata_ack')):
-        """has data about paths and zones"""   
+        """has data about paths and zones"""
         toapp_get_commondata_ack = nav.toapp_get_commondata_ack
         region_data = RegionData()
         region_data.result = toapp_get_commondata_ack.result
@@ -97,7 +96,7 @@ def store_nav_data(nav):
         region_data.pver = toapp_get_commondata_ack.pver
         print(region_data)
 
-    
+
     if(nav.HasField('toapp_gethash_ack')):
         toapp_gethash_ack = nav.toapp_gethash_ack
         hash_list = HashList()
@@ -111,7 +110,7 @@ def store_nav_data(nav):
         hash_list.path = data_couple_list
         print(hash_list)
         # use callback to provide hash list
-    
+
 def store_net_data(net):
     if net.toapp_wifi_iot_status:
         iot_status = net.toapp_wifi_iot_status

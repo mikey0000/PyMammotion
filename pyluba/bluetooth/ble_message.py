@@ -1,30 +1,37 @@
-from asyncio import sleep
-from io import BytesIO
 import itertools
 import json
 import queue
 import sys
 import time
+from asyncio import sleep
+from io import BytesIO
 from typing import Dict
 
 from bleak import BleakClient
 from jsonic.serializable import serialize
-from pyluba.bluetooth.data.convert import parse_custom_data
 
-from pyluba.bluetooth.data.framectrldata import FrameCtrlData
-from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2, mctrl_ota_pb2
-from pyluba.utility.constant.device_constant import bleOrderCmd
 from pyluba.aliyun.tmp_constant import tmp_constant
-
-from pyluba.data.model.execute_boarder import ExecuteBorder
-from pyluba.bluetooth.data.notifydata import BlufiNotifyData
-from pyluba.utility.rocker_util import RockerControlUtil
 from pyluba.bluetooth.const import UUID_WRITE_CHARACTERISTIC
+from pyluba.bluetooth.data.convert import parse_custom_data
+from pyluba.bluetooth.data.framectrldata import FrameCtrlData
+from pyluba.bluetooth.data.notifydata import BlufiNotifyData
 from pyluba.data.model import Plan
+from pyluba.data.model.execute_boarder import ExecuteBorder
+from pyluba.proto import (
+    dev_net_pb2,
+    luba_msg_pb2,
+    mctrl_driver_pb2,
+    mctrl_nav_pb2,
+    mctrl_ota_pb2,
+    mctrl_sys_pb2,
+)
+from pyluba.utility.constant.device_constant import bleOrderCmd
+from pyluba.utility.rocker_util import RockerControlUtil
 
 
 class BleMessage:
     """Class for sending and recieving messages from Luba"""
+
     AES_TRANSFORMATION = "AES/CFB/NoPadding"
     DEFAULT_PACKAGE_LENGTH = 20
     DH_G = "2"
@@ -500,7 +507,7 @@ class BleMessage:
         return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
 
     async def generate_route_information(self, generate_route_information):
-        """how you start a manual job, then call startjob"""
+        """How you start a manual job, then call startjob"""
 
         nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
         nav_req_cover_path.pver = 1
@@ -612,7 +619,7 @@ class BleMessage:
     #     await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
     async def send_device_info(self):
-        """currently not called"""
+        """Currently not called"""
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -746,7 +753,7 @@ class BleMessage:
         await self.post_custom_data_bytes(bytes)
 
     async def start_job(self, blade_height):
-        """call after calling generate_route_information I think"""
+        """Call after calling generate_route_information I think"""
         await self.setbladeHeight(blade_height)
         await self.start_work_job()
 
@@ -1037,7 +1044,7 @@ class BleMessage:
             jSONObject["cmd"] = cmd
             jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
             return json.dumps(jSONObject)
-        except Exception as err:
+        except Exception:
 
             return ""
 
@@ -1126,7 +1133,7 @@ class BleMessage:
             todev_ble_sync=1, todev_uploadfile_req=build))
 
     def set_device_socket_request(self, request_id: str, operation: int, server_ip: int, server_port: int, number: int, type: int) -> None:
-        """set device socket request (bluetooth only)."""
+        """Set device socket request (bluetooth only)."""
         build = dev_net_pb2.DrvUploadFileToAppReq(
             biz_id=request_id,
             operation=operation,
@@ -1141,7 +1148,7 @@ class BleMessage:
             todev_ble_sync=1, todev_uploadfile_req=build))
 
     def get_device_log_info(self, biz_id: str, type: int, log_url: str) -> None:
-        """get device log info (bluetooth only)."""
+        """Get device log info (bluetooth only)."""
         self.send_order_msg_net(
             dev_net_pb2.DevNet(
                 todev_ble_sync=1,
@@ -1156,7 +1163,7 @@ class BleMessage:
         )
 
     def cancel_log_update(self, biz_id: str):
-        """cancel log update (bluetooth only)."""
+        """Cancel log update (bluetooth only)."""
         self.send_order_msg_net(dev_net_pb2.DevNet(
             todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(biz_id=biz_id)))
 

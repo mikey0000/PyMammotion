@@ -27,8 +27,8 @@ class Periodic:
         while True:
             await asyncio.sleep(self.time)
             await self.func()
-            
-            
+
+
 def periodic(period):
     def scheduler(fcn):
 

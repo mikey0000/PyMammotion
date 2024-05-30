@@ -1,3 +1,1 @@
-from .ble_message import (
-    BleMessage
-)
+from .ble_message import BleMessage

@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+
 class RegionData:
     def __init__(self):
         self.Hash: Optional[int] = None

@@ -1,4 +1,1 @@
-from .luba import (
-    MammotionBaseBLEDevice,
-    has_field
-)
+from .luba import MammotionBaseBLEDevice, has_field

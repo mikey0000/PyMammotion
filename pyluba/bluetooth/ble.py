@@ -1,10 +1,11 @@
-import codecs
 
 from bleak import BleakClient, BleakScanner, BLEDevice
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
-from pyluba.bluetooth.const import (SERVICE_CHANGED_CHARACTERISTIC,
-                                    UUID_NOTIFICATION_CHARACTERISTIC)
+from pyluba.bluetooth.const import (
+    SERVICE_CHANGED_CHARACTERISTIC,
+    UUID_NOTIFICATION_CHARACTERISTIC,
+)
 from pyluba.event.event import BleNotificationEvent
 
 # TODO setup for each Luba

@@ -2,36 +2,34 @@ from __future__ import annotations
 
 import asyncio
 import codecs
+import logging
 from abc import abstractmethod
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 from uuid import UUID
 
 import betterproto
-
-from pyluba.mammotion.commands.proto import LubaCommandProtoBLE
-from pyluba.proto.luba_msg import LubaMsg
 from bleak.backends.device import BLEDevice
-from bleak import BleakClient
 from bleak.backends.service import BleakGATTCharacteristic, BleakGATTServiceCollection
-import logging
-
 from bleak.exc import BleakDBusError
-from google.protobuf import json_format
-
-from pyluba.bluetooth import BleMessage
-from pyluba.proto import mctrl_driver_pb2, luba_msg_pb2, dev_net_pb2, mctrl_nav_pb2, mctrl_sys_pb2
-
-from pyluba.bluetooth.const import (SERVICE_CHANGED_CHARACTERISTIC,
-                                    UUID_NOTIFICATION_CHARACTERISTIC, UUID_WRITE_CHARACTERISTIC)
-
 from bleak_retry_connector import (
     BLEAK_RETRY_EXCEPTIONS,
     BleakClientWithServiceCache,
     BleakNotFoundError,
-    ble_device_has_changed,
     establish_connection,
 )
+from google.protobuf import json_format
+
+from pyluba.bluetooth import BleMessage
+from pyluba.bluetooth.const import (
+    UUID_NOTIFICATION_CHARACTERISTIC,
+    UUID_WRITE_CHARACTERISTIC,
+)
+from pyluba.mammotion.commands.proto import LubaCommandProtoBLE
+from pyluba.proto import (
+    luba_msg_pb2,
+)
+from pyluba.proto.luba_msg import LubaMsg
 
 
 class CharacteristicMissingError(Exception):
@@ -60,9 +58,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def slashescape(err):
-    """codecs error handler. err is UnicodeDecode instance. return
+    """Codecs error handler. err is UnicodeDecode instance. return
     a tuple with a replacement for the unencodable part of the input
-    and a position where encoding should continue"""
+    and a position where encoding should continue
+    """
     # print err, dir(err), err.start, err.end, err.object[:err.start]
     thebyte = err.object[err.start: err.end]
     repl = "\\x" + hex(ord(thebyte))[2:]

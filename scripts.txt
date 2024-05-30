@@ -10,9 +10,18 @@
 #dev deps
 pip-tools build
 
-
 # install pip-tools including pip-compile
 python -m pip install pip-tools
 
 # generate models from protobuf
 poetry run protoc -I=. --python_out=. --python_betterproto_out=. ./pyluba/proto/*.proto
+
+# generate python proto from protobuf
+poetry run protoc -I=. --python_out=. --python_out=. ./pyluba/proto/*.proto
+
+# generate typehints from protobuf
+poetry run protoc -I=. --python_out=. --pyi_out=. ./pyluba/proto/*.proto
+
+poetry run ruff check --fix
+poetry run pylint
+poetry run mypy {filename}

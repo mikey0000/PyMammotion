@@ -4,9 +4,9 @@
 from dataclasses import dataclass
 from typing import List
 
-from .dev_net import *
-
 import betterproto
+
+from .dev_net import *
 
 
 class Operation(betterproto.Enum):

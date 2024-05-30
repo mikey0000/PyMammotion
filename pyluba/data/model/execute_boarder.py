@@ -1,34 +1,36 @@
 from jsonic.serializable import Serializable
+
 from .excute_boarder_params import ExecuteBorderParams
 
 
 class ExecuteBorder(Serializable):
-    """ generated source for class ExecuteBorderBean """
-    cmd = int()
+    """generated source for class ExecuteBorderBean"""
+
+    cmd = 0
     params = ExecuteBorderParams(None, None, None)
 
     def __init__(self, i, execute_border_params: ExecuteBorderParams):
-        """ generated source for method __init__ """
+        """Generated source for method __init__"""
         super().__init__()
         self.cmd = i
         self.params = execute_border_params
 
     def get_cmd(self):
-        """ generated source for method getCmd """
+        """Generated source for method getCmd"""
         return self.cmd
 
     def set_cmd(self, i):
-        """ generated source for method setCmd """
+        """Generated source for method setCmd"""
         self.cmd = i
 
     def get_params(self):
-        """ generated source for method getParams """
+        """Generated source for method getParams"""
         return self.params
 
     def set_params(self, execute_border_params):
-        """ generated source for method setParams """
+        """Generated source for method setParams"""
         self.params = execute_border_params
 
     def __str__(self):
-        """ generated source for method toString """
+        """Generated source for method toString"""
         return "ExecuteBean{cmd=" + self.cmd + ", params=" + self.params + '}'

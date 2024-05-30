@@ -1,3 +1,1 @@
-from .device_constant import (
-    WorkMode
-)
+from .device_constant import WorkMode

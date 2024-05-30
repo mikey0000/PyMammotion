@@ -3,16 +3,16 @@
 # plugin: python-betterproto
 from dataclasses import dataclass
 
-from .dev_net import *
+import betterproto
+
 from .common import *
+from .dev_net import *
 from .luba_mul import *
-from .mctrl_pept import *
 from .mctrl_driver import *
-from .mctrl_sys import *
 from .mctrl_nav import *
 from .mctrl_ota import *
-
-import betterproto
+from .mctrl_pept import *
+from .mctrl_sys import *
 
 
 class MsgCmdType(betterproto.Enum):

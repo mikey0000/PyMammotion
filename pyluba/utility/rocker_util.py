@@ -1,9 +1,10 @@
-import math
 import copy
+import math
 
 
-class RockerControlUtil(object):
-    """ generated source for class RockerControlUtil """
+class RockerControlUtil:
+    """generated source for class RockerControlUtil"""
+
     instance_ = None
     list_ = []
     thresholdValue_1 = 30
@@ -11,18 +12,18 @@ class RockerControlUtil(object):
     thresholdValue_3 = 15
 
     def __init__(self):
-        """ generated source for method __init__ """
+        """Generated source for method __init__"""
 
     @classmethod
     def getInstance(cls):
-        """ generated source for method getInstance """
+        """Generated source for method getInstance"""
         if cls.instance_ == None:
             cls.instance_ = RockerControlUtil()
         return cls.instance_
 
     def transfrom(self, f, f2):
-        """ generated source for method transfrom """
-        radians = float()
+        """Generated source for method transfrom"""
+        radians = 0.0
         self.list_.clear()
         i = self.thresholdValue_2
         if f > 90 - i and f < i + 90:
@@ -49,13 +50,13 @@ class RockerControlUtil(object):
             else:
                 radians = math.radians(f)
         d = f2
-        self.list_.append(int(((math.sin(radians) * d))))
-        self.list_.append(int(((d * math.cos(radians)))))
+        self.list_.append(int(math.sin(radians) * d))
+        self.list_.append(int(d * math.cos(radians)))
         return copy.copy(self.list_)
 
     def transfrom2(self, f, f2):
-        """ generated source for method transfrom2 """
-        radians = float()
+        """Generated source for method transfrom2"""
+        radians = 0.0
         self.list_.clear()
         i = self.thresholdValue_2
         if f > 90 - i and f < i + 90:
@@ -91,13 +92,13 @@ class RockerControlUtil(object):
                 else:
                     radians = math.radians(f)
         d = f2
-        self.list_.append(int(((math.sin(radians) * d))))
-        self.list_.append(int(((d * math.cos(radians)))))
+        self.list_.append(int(math.sin(radians) * d))
+        self.list_.append(int(d * math.cos(radians)))
         return copy.copy(self.list_)
 
     def transfrom3(self, f, f2):
-        """ generated source for method transfrom3 """
-        radians = float()
+        """Generated source for method transfrom3"""
+        radians = 0.0
         self.list_.clear()
         i = self.thresholdValue_2
         if f > 90 - i and f < i + 90:
@@ -129,6 +130,6 @@ class RockerControlUtil(object):
                 else:
                     radians = math.radians(f)
         d = f2
-        self.list_.append(int(((math.sin(radians) * d))))
-        self.list_.append(int(((d * math.cos(radians)))))
+        self.list_.append(int(math.sin(radians) * d))
+        self.list_.append(int(d * math.cos(radians)))
         return copy.copy(self.list_)
