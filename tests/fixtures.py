@@ -78,6 +78,12 @@ sys_rapid_state_tunnel = b'\x08\xf4\x01\x10\x01\x18\x07(\xfc\xed\x0e0\x01R&\xca\
 
 #  echo 08f0011001180728858d1630015a30122e0dc95864be159920c83d180420c3ffffffffffffffff01282b35000080403d5057f43b456cf7f33b481d50046002 | xxd -r -p | protoc --proto_path=/home/michael/git/pyluba/ --decode LubaMsg pyluba/proto/luba_msg.proto
 
+
+b'M\x04\x00\xdf\x08\xf8\x01\x10\x01\x18\x07 \x02(\x010\x018\x80\x80 B\xcb\x01b\xc8\x01\n\x12\x08\x01\x10\x06\x18\x01"\n1.10.5.237\n\x1e\x08\x01\x10\x03\x18\x01"\x161.6.22.2040 (3be066bf)\n\x1c\x08\x02\x10\x03\x18\x01"\x141.1.1.622 (a993d995)\n\x1b\x08\x03\x10\x03\x18\x01"\x132.2.0.150 (2cf62fc)\n\x1b\x08\x04\x10\x03\x18\x01"\x132.2.0.150 (2cf62fc)\n\x0c\x08\x05\x10\x03\x18\x01"\x047361\n\x1e\x08\x06\x10\x03\x18\x01"\x161.6.22.2040 (3be066bf)\n\x0c\x08\x07\x10\x03\x18\x01"\x041.28'
+
+# order of calls
+
+# get device version main
 msgtype: MSG_CMD_TYPE_ESP
 sender: DEV_MOBILEAPP
 msgattr: MSG_ATTR_REQ
@@ -92,6 +98,34 @@ net {
     }
   }
 }
+
+# ???
+msgtype: MSG_CMD_TYPE_EMBED_OTA
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+13 {
+  1 {
+    1: 1 # ota 0 baseInfo which has battery and devStatus woop woop
+  }
+}
+
+
+# sync 2
+
+msgtype: MSG_CMD_TYPE_ESP
+sender: DEV_MOBILEAPP
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+net {
+  todev_ble_sync: 2
+}
+
 
 
 msgtype: MSG_CMD_TYPE_EMBED_SYS
@@ -116,6 +150,85 @@ sys {
 }
 
 
+msgtype: MSG_CMD_TYPE_ESP
+sender: DEV_MOBILEAPP
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+net {
+  todev_devinfo_req {
+    req_ids {
+      id: 1
+      type: 6
+    }
+  }
+}
+
+msgtype: MSG_CMD_TYPE_ESP
+sender: DEV_MOBILEAPP
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+net {
+  todev_ble_sync: 2
+}
+
+# read_plan
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  todev_planjob_set {
+    subCmd: 2
+  }
+}
+
+# requestMapLocationData
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+sys {
+  todev_report_cfg {
+    timeout: 10000
+    period: 1000
+    no_change_period: 2000
+    sub: 0
+    sub: 2
+    sub: 3
+    sub: 4
+    sub: 1
+    sub: 7
+    sub: 8
+    sub: 9
+  }
+}
+
+# get_all_boundary_hash_list 3
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  todev_gethash {
+    pver: 1
+    subCmd: 3
+  }
+}
+
+# all powerful RW //allpowerfullRWAdapterX3 for yuka
 msgtype: MSG_CMD_TYPE_EMBED_SYS
 sender: DEV_MOBILEAPP
 rcver: DEV_MAINCTL
@@ -126,23 +239,89 @@ subtype: 1
 sys {
   bidire_comm_cmd {
     rw: 1
-    id: 1
+    id: 5
     context: 1
   }
 }
 
+# returns update buf
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+sys {
+  bidire_comm_cmd {
+    rw: 1
+    id: 5
+    context: 2
+  }
+}
+
+# more update buf data
+
+system_update_buf {
+    update_buf_data: 2
+    update_buf_data: 23
+    update_buf_data: 390610
+    update_buf_data: -1005
+    update_buf_data: 1715406110
+    update_buf_data: -2700
+    update_buf_data: 1715406095
+    update_buf_data: -323
+    update_buf_data: 1715404514
+    update_buf_data: -1303
+    update_buf_data: 1715404045
+    update_buf_data: -1300
+    update_buf_data: 1715403959
+    update_buf_data: -1005
+    update_buf_data: 1715395357
+    update_buf_data: -2700
+    update_buf_data: 1715395343
+    update_buf_data: -1303
+    update_buf_data: 1714996794
+    update_buf_data: -2801
+    update_buf_data: 1714878351
+    update_buf_data: -2800
+    update_buf_data: 1714878350
+  }
+
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+sys {
+  bidire_comm_cmd {
+    rw: 1
+    id: 5
+    context: 3
+  }
+}
+
+
+# get hash total frame
 msgtype: MSG_CMD_TYPE_NAV
 sender: DEV_MOBILEAPP
 rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
 seqs: 1
 version: 1
 subtype: 1
 nav {
   todev_gethash {
     pver: 1
+    subCmd: 2
+    totalFrame: 2
+    currentFrame: 1
   }
 }
 
+# synchronize_hash_data 3 or get_area_tobe_transferred
 
 msgtype: MSG_CMD_TYPE_NAV
 sender: DEV_MOBILEAPP
@@ -159,6 +338,29 @@ nav {
     type: 3
   }
 }
+
+# get_hash_response total 2 current 2
+
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  todev_gethash {
+    pver: 1
+    subCmd: 2
+    totalFrame: 2
+    currentFrame: 2
+  }
+}
+
+# unknown large thing
+
+
+# get_hash_response total 1 current 1
 
 msgtype: MSG_CMD_TYPE_NAV
 sender: DEV_MOBILEAPP
@@ -179,8 +381,145 @@ nav {
 }
 
 
-toapp_report_data = '\x08\xf4\x01\x10\x01\x18\x07(\xc170\x01R\xb8\x01\xba\x02\xb4\x01\n\x18\x08\x01\x10\xb8\xff\xff\xff\xff\xff\xff\xff\xff\x01\x18\xcf\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x0e\x08\x0b\x10\x02\x18d(\x0e0\x95\xaf\xe5\xb1\x06\x1a\x13\x08\x04\x10\x02\x18 @\x80\x80\xb4\xf9\x91\x80\x80\x80\x03P\x980"-\x08\xa0\xab\xf7\xff\xff\xff\xff\xff\xff\x01\x10\xe4\xe0\xfc\xff\xff\xff\xff\xff\xff\x01\x18\xe7\xc8\xf8\xff\xff\xff\xff\xff\xff\x01 \x050\xe5\xa7\xe3\xd2\x93\xd2\xd5\x98**D\x10\xcf\xd6\xfa\xf5\xb5\xc1\xef\x9eC\x18\xd6\x80\xd8\x02 n0\xf0\xe0\x81\xc0\xa4\xe5\x81\xc5G8\x84\xa4\x07@\xfd\xf6\x07`\x99\xf0\x9b\xe0\xce\x88\xe2\x96Gp\xe2\xa5\xde\xf0\xe3\xbc\xaf\x8aQx\xfc\xb5\xf4\xf2\x8d\xa5\x80\xe7q\xa0\x01<'
+# get all the hash data
 
+msgtype: MSG_CMD_TYPE_NAV
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+nav {
+  app_request_cover_paths_t {
+    pver: 1
+    transactionId: 1715508229679
+    hashList: 49
+    hashList: 13650
+    hashList: 90
+    hashList: 3800
+    hashList: 487
+    hashList: 31692476
+    hashList: 7
+    hashList: 1172515
+    hashList: 31
+    hashList: 1524214
+    hashList: 6807
+    hashList: 47
+    hashList: 1106636
+    hashList: 23
+    hashList: 9
+    hashList: 40
+    hashList: 6026
+    hashList: 49
+    hashList: 3451
+    hashList: 128014
+    hashList: 22
+    hashList: 126
+    hashList: 34
+    hashList: 215001602
+    hashList: 9192
+    hashList: 116
+    hashList: 55
+    hashList: 2529
+    hashList: 13113
+    hashList: 78
+    hashList: 4139
+  }
+}
+
+
+# all powerful rw
+
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+sys {
+  bidire_comm_cmd {
+    rw: 1
+    id: 5
+    context: 3
+  }
+}
+
+# ??
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MAINCTL
+rcver: DEV_MOBILEAPP
+seqs: 8167
+version: 1
+sys {
+  system_update_buf {
+    update_buf_data: 3
+    update_buf_data: 8
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+    update_buf_data: 0
+  }
+}
+
+
+msgtype: MSG_CMD_TYPE_EMBED_SYS
+sender: DEV_MOBILEAPP
+rcver: DEV_MAINCTL
+msgattr: MSG_ATTR_REQ
+seqs: 1
+version: 1
+subtype: 1
+sys {
+  bidire_comm_cmd {
+    rw: 1
+    id: 5
+    context: 3
+  }
+}
+
+
+
+# just have to call ble sync and get all this data back :)
+toapp_report_data = '\x08\xf4\x01\x10\x01\x18\x07(\xc170\x01R\xb8\x01\xba\x02\xb4\x01\n\x18\x08\x01\x10\xb8\xff\xff\xff\xff\xff\xff\xff\xff\x01\x18\xcf\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x0e\x08\x0b\x10\x02\x18d(\x0e0\x95\xaf\xe5\xb1\x06\x1a\x13\x08\x04\x10\x02\x18 @\x80\x80\xb4\xf9\x91\x80\x80\x80\x03P\x980"-\x08\xa0\xab\xf7\xff\xff\xff\xff\xff\xff\x01\x10\xe4\xe0\xfc\xff\xff\xff\xff\xff\xff\x01\x18\xe7\xc8\xf8\xff\xff\xff\xff\xff\xff\x01 \x050\xe5\xa7\xe3\xd2\x93\xd2\xd5\x98**D\x10\xcf\xd6\xfa\xf5\xb5\xc1\xef\x9eC\x18\xd6\x80\xd8\x02 n0\xf0\xe0\x81\xc0\xa4\xe5\x81\xc5G8\x84\xa4\x07@\xfd\xf6\x07`\x99\xf0\x9b\xe0\xce\x88\xe2\x96Gp\xe2\xa5\xde\xf0\xe3\xbc\xaf\x8aQx\xfc\xb5\xf4\xf2\x8d\xa5\x80\xe7q\xa0\x01<'
 
 # how to generate the python proto files
 # protoc -I=. --python_out=./ ./pyluba/proto/luba_msg.proto

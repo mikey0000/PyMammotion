@@ -1,4 +1,3 @@
-from enum import Enum
 
 
 class bleOrderCmd:
@@ -220,6 +219,7 @@ def device_mode(value):
         8: "MODE_DISABLE",
         10: "MODE_INITIALIZATION",
         11: "MODE_READY",
+        12: "MODE_UNCONNECTED",
         13: "MODE_WORKING",
         14: "MODE_RETURNING",
         15: "MODE_CHARGING",

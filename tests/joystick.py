@@ -48,7 +48,7 @@ class JoystickControl:
             print("Removed", joy)
 
         def key_received(key):
-            self.handle_key_recieved(key)
+            self.handle_key_received(key)
 
         # run_event_loop(print_add, print_remove, key_received)
         repeater = pyjoystick.HatRepeater(
@@ -69,13 +69,13 @@ class JoystickControl:
         self.worker.daemon = True
         self.worker.start()
 
-    def handle_key_recieved(self, key):
+    def handle_key_received(self, key):
         if key.keytype is Key.BUTTON and key.value == 1:
             print(key, "-", key.keytype, "-", key.number, "-", key.value)
             if key.number == 0:  # x
-                asyncio.run(self._client.returnToDock())
+                asyncio.run(self._client.return_to_dock())
             if key.number == 1:
-                asyncio.run(self._client.leaveDock())
+                asyncio.run(self._client.leave_dock())
             if key.number == 3:
                 asyncio.run(self._client.setBladeControl(1))
             if key.number == 2:

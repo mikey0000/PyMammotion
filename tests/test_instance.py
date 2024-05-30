@@ -40,7 +40,7 @@ async def run():
     async def handle_notifications(data:bytearray):
         print("got ble message", data)
         result = luba_client.parseNotification(data)
-        # print(result)
+        print(result)
         if (result == 0):
             await luba_client.parseBlufiNotifyData()
             luba_client.clearNotification()

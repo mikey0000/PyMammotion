@@ -654,7 +654,27 @@ class BleMessage:
             request = False
             print(err)
 
-    async def returnToDock(self):
+    def pause_execute_task(self):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                    type=1,
+                    action=2,
+                    result=0
+                )
+            )
+        )
+
+        byte_array = luba_msg.SerializeToString()
+
+    async def return_to_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
         navTaskCtrl.type = 1
@@ -663,10 +683,10 @@ class BleMessage:
         mctrlNav.todev_taskctrl.CopyFrom(navTaskCtrl)
 
         lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
+        lubaMsg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
@@ -674,12 +694,12 @@ class BleMessage:
         bytes = lubaMsg.SerializeToString()
         await self.post_custom_data_bytes(bytes)
 
-    async def leaveDock(self):
+    async def leave_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         mctrlNav.todev_one_touch_leave_pile = 1
 
         lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
+        lubaMsg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
         lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
         lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
         lubaMsg.seqs = 1

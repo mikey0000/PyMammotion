@@ -5,11 +5,7 @@ from bleak.backends.device import BLEDevice
 from pyluba.mammotion.devices.luba import MammotionBaseBLEDevice, has_field
 import asyncio
 from threading import Thread
-from threading import Timer
 
-from pyluba.data.model import GenerateRouteInformation
-from pyluba.bluetooth.ble import LubaBLE
-from pyluba.bluetooth.ble_message import BleMessage
 from pyluba.event.event import BleNotificationEvent
 
 bleNotificationEvt = BleNotificationEvent()
@@ -53,7 +49,7 @@ async def scan_for_luba() -> BLEDevice:
         return device
 
 
-async def run():
+async def run(loop):
     luba_device = await scan_for_luba()
     if luba_device is None:
         print("failed to find a Luba")
@@ -74,12 +70,12 @@ async def run():
     await luba_ble.start_sync("get_report_cfg", 0)
 
 
-    asyncio.run(await ble_heartbeat(luba_ble))
+    # asyncio.run(await ble_heartbeat(luba_ble))
     print("end run?")
 
 
 if __name__ == '__main__':
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
-    asyncio.run(run())
+    asyncio.run(run(event_loop))
     event_loop.run_forever()
