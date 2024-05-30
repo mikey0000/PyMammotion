@@ -62,6 +62,13 @@ async def run(loop):
     await asyncio.sleep(2)
     await luba_ble.start_sync(0)
     await asyncio.sleep(2)
+    # if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
+    #     dev = luba_ble.luba_msg.sys.toapp_report_data.dev
+    #     if dev.sys_status == 11 and dev.charge_state != 0:
+    #         await luba_ble.command("start_work_job")
+    #     if dev.sys_status == 11:
+    await luba_ble.command("return_to_dock")
+
     #print(luba_ble.raw_data) # unreliable
     # print(has_field(luba_ble.luba_msg.sys.toapp_report_data.dev))
     # print(luba_ble.luba_msg.sys.toapp_report_data.dev.battery_val)

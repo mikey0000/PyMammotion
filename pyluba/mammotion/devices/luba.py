@@ -145,9 +145,8 @@ class MammotionBaseDevice:
         # RW_proto.ParseFromString(RW)
         # print(json_format.MessageToDict(RW_proto))
 
-
     async def command(self, key: str, **kwargs):
-        return await self._send_command_with_args(key, kwargs=kwargs)
+        return await self._send_command_with_args(key, **kwargs)
 
 
 class MammotionBaseBLEDevice(MammotionBaseDevice):
