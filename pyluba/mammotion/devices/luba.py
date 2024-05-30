@@ -91,8 +91,8 @@ class MammotionDevice:
             self._ble_device = MammotionBaseBLEDevice(ble_device)
             self._preference = preference
 
-    async def send_command(self, key: str, args):
-        return await self._ble_device.start_sync(key, 0)
+    async def send_command(self, key: str):
+        return await self._ble_device.command(key)
 
 
 def has_field(message: betterproto.Message) -> bool:
@@ -107,7 +107,8 @@ class MammotionBaseDevice:
         self._luba_msg = LubaMsg()
         self._notify_future: asyncio.Future[bytes] | None = None
 
-    def _update_raw_data(self, data: bytes):
+    def _update_raw_data(self, data: bytes) -> None:
+        """Update raw and model data from notifications."""
         proto_luba = luba_msg_pb2.LubaMsg()
         proto_luba.ParseFromString(data)
         self._raw_data.update(json_format.MessageToDict(proto_luba))
@@ -156,8 +157,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._interface = f"hci{interface}"
         self._device = device
         self._client: BleakClientWithServiceCache | None = None
-        self._read_char: BleakGATTCharacteristic | UUID_NOTIFICATION_CHARACTERISTIC
-        self._write_char: BleakGATTCharacteristic | UUID_WRITE_CHARACTERISTIC
+        self._read_char: BleakGATTCharacteristic | None = None
+        self._write_char: BleakGATTCharacteristic | None = None
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
         self._commands: LubaCommandProtoBLE = LubaCommandProtoBLE()

@@ -4,13 +4,16 @@
 # TODO export the three interface types
 __version__ = "0.0.5"
 
+import logging
+import os
+
 # works outside HA on its own
 from pyluba.bluetooth.ble import LubaBLE
 from pyluba.http.http import LubaHTTP, connect_http
 
 # TODO make a working device that will work outside HA too.
 from pyluba.mammotion.devices import MammotionBaseBLEDevice
-from pyluba.mqtt.mqtt import LubaMQTT
+from pyluba.mqtt.mqtt import LubaMQTT, logger
 
 # TODO provide interface to pick between mqtt/cloud/bluetooth
 

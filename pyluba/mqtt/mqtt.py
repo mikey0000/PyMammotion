@@ -18,8 +18,8 @@ from pyluba.proto import luba_msg_pb2
 logger = getLogger(__name__)
 
 
-with sqlite3.connect("messages.db") as conn:
-    conn.execute("CREATE TABLE IF NOT EXISTS messages (topic TEXT, timestamp INTEGER, payload TEXT)")
+# with sqlite3.connect("messages.db") as conn:
+#     conn.execute("CREATE TABLE IF NOT EXISTS messages (topic TEXT, timestamp INTEGER, payload TEXT)")
 
 
 class LubaMQTT(BaseLuba):
@@ -96,9 +96,9 @@ class LubaMQTT(BaseLuba):
 
     def _on_message(self, _client, _userdata, message: MQTTMessage):
         logger.info("Message on topic %s", message.topic)
-        with sqlite3.connect("messages.db") as conn:
-            conn.execute("INSERT INTO messages (topic, timestamp, payload) VALUES (?, ?, ?)",
-                         (message.topic, int(message.timestamp), message.payload.decode("utf-8")))
+        # with sqlite3.connect("messages.db") as conn:
+        #     conn.execute("INSERT INTO messages (topic, timestamp, payload) VALUES (?, ?, ?)",
+        #                  (message.topic, int(message.timestamp), message.payload.decode("utf-8")))
 
         payload = json.loads(message.payload)
         if message.topic.endswith("/app/down/thing/events"):
