@@ -133,17 +133,17 @@ class MammotionBaseDevice:
     async def start_sync(self, retry: int):
         await self._send_command("get_device_base_info", retry)
         cfg = await self._send_command("get_report_cfg", retry)
-        cfg_proto = luba_msg_pb2.LubaMsg()
-        cfg_proto.ParseFromString(cfg)
-        print(json_format.MessageToDict(cfg_proto))
+        # cfg_proto = luba_msg_pb2.LubaMsg()
+        # cfg_proto.ParseFromString(cfg)
+        # print(json_format.MessageToDict(cfg_proto))
         plan = await self._send_command_with_args("read_plan", **{'id': 2})
-        plan_proto = luba_msg_pb2.LubaMsg()
-        plan_proto.ParseFromString(plan)
-        print(json_format.MessageToDict(plan_proto))
+        # plan_proto = luba_msg_pb2.LubaMsg()
+        # plan_proto.ParseFromString(plan)
+        # print(json_format.MessageToDict(plan_proto))
         RW = await self._send_command_with_args("all_powerful_RW", **{'id': 5, 'context': 1, 'rw': 1})
-        RW_proto = luba_msg_pb2.LubaMsg()
-        RW_proto.ParseFromString(RW)
-        print(json_format.MessageToDict(RW_proto))
+        # RW_proto = luba_msg_pb2.LubaMsg()
+        # RW_proto.ParseFromString(RW)
+        # print(json_format.MessageToDict(RW_proto))
 
 
     async def command(self, key: str, **kwargs):
