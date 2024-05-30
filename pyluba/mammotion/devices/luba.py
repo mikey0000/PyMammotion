@@ -126,14 +126,26 @@ class MammotionBaseDevice:
         """Send command to device and read response."""
 
     @abstractmethod
-    async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
+    async def _send_command_with_args(self, key: str, **kwargs: dict[str, Any]) -> bytes | None:
         """Send command to device and read response."""
 
-    async def start_sync(self, key: str, retry: int):
-        return await self._send_command(key, retry)
+    async def start_sync(self, retry: int):
+        await self._send_command("get_device_base_info", retry)
+        cfg = await self._send_command("get_report_cfg", retry)
+        cfg_proto = luba_msg_pb2.LubaMsg()
+        cfg_proto.ParseFromString(cfg)
+        print(json_format.MessageToDict(cfg_proto))
+        plan = await self._send_command_with_args("read_plan", **{'id': 2})
+        plan_proto = luba_msg_pb2.LubaMsg()
+        plan_proto.ParseFromString(plan)
+        print(json_format.MessageToDict(plan_proto))
+        RW = await self._send_command_with_args("all_powerful_RW", **{'id': 5, 'context': 1, 'rw': 1})
+        RW_proto = luba_msg_pb2.LubaMsg()
+        RW_proto.ParseFromString(RW)
+        print(json_format.MessageToDict(RW_proto))
+
 
     async def command(self, key: str, **kwargs):
-
         return await self._send_command_with_args(key, kwargs=kwargs)
 
 
@@ -167,7 +179,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
         async with self._operation_lock:
             try:
-                command_bytes = getattr(self._commands, key)(kwargs=kwargs)
+                command_bytes = getattr(self._commands, key)(**kwargs)
                 return await self._send_command_locked(key, command_bytes)
             except BleakNotFoundError:
                 _LOGGER.error(
@@ -337,7 +349,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
-            if new_msg.net.todev_ble_sync != 0 or new_msg.net.toapp_wifi_iot_status is not None:
+            if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 return
 
         if self._notify_future and not self._notify_future.done():

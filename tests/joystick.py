@@ -1,12 +1,12 @@
 import asyncio
-import threading
-from pyluba.bluetooth.ble_message import BleMessage
-import pyjoystick
-from pyjoystick.sdl2 import Key, Joystick, run_event_loop
-from pyjoystick.utils import PeriodicThread
 from timeit import default_timer as timer
 
 import nest_asyncio
+import pyjoystick
+from pyjoystick.sdl2 import Key, run_event_loop
+from pyjoystick.utils import PeriodicThread
+
+from pyluba.bluetooth.ble_message import BleMessage
 
 nest_asyncio.apply()
 
@@ -132,19 +132,17 @@ class JoystickControl:
                             self.angular_speed = 180.0
                             self.angular_percent = abs(key.value * 100)
 
-            else:
+            elif self.linear_speed != 0 or self.angular_speed != 0:
+                self.linear_speed = 0.0
+                self.linear_percent = 0
+                self.angular_speed = 0.0
+                self.angular_percent = 0
 
-                if self.linear_speed != 0 or self.angular_speed != 0:
-                    self.linear_speed = 0.0
-                    self.linear_percent = 0
-                    self.angular_speed = 0.0
-                    self.angular_percent = 0
-
-                    asyncio.run(
-                        self._client.transformBothSpeeds(
-                            self.linear_speed,
-                            self.angular_speed,
-                            self.linear_percent,
-                            self.angular_percent,
-                        )
+                asyncio.run(
+                    self._client.transformBothSpeeds(
+                        self.linear_speed,
+                        self.angular_speed,
+                        self.linear_percent,
+                        self.angular_percent,
                     )
+                )

@@ -5,6 +5,55 @@ from pyluba.proto.mctrl_sys import RptInfoType
 class LubaCommandProtoMQTT:
     """MQTT commands for Luba."""
 
+    def get_device_base_info(self):
+        net = dev_net_pb2.DevNet(
+            todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
+        )
+        net.todev_devinfo_req.req_ids.add(
+            id=1,
+            type=6
+        )
+
+        return self.send_order_msg_net(net)
+
+    def all_powerful_RW(self, id: int, context: int, rw: int):
+        mctrl_sys = mctrl_sys_pb2.MctlSys(
+            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
+                rw=rw,
+                id=id,
+                context=context,
+            )
+        )
+
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
+        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
+        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.sys.CopyFrom(mctrl_sys)
+        return lubaMsg.SerializeToString()
+
+    def read_plan(self, id: int):
+        """Read jobs off luba."""
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
+                    subCmd=id,
+                )
+            )
+        )
+        return luba_msg.SerializeToString()
+
     def send_order_msg_net(self, build) -> bytes:
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
@@ -17,7 +66,6 @@ class LubaCommandProtoMQTT:
             net=build)
 
         return luba_msg.SerializeToString()
-
 
     def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -57,7 +105,6 @@ class LubaCommandProtoMQTT:
         )
 
         return luba_msg.SerializeToString()
-
 
     def resume_execute_task(self):
         luba_msg = luba_msg_pb2.LubaMsg(

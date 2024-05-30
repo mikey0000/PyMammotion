@@ -149,11 +149,10 @@ class BleMessage:
         await self.post_custom_data_bytes(byte_arr)
 
     async def get_device_base_info(self):
-        commEsp = dev_net_pb2.DevNet(
+        net = dev_net_pb2.DevNet(
             todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
         )
-
-        commEsp.todev_devinfo_req.req_ids.add(
+        net.todev_devinfo_req.req_ids.add(
             id=1,
             type=6
         )
@@ -165,7 +164,7 @@ class BleMessage:
         lubaMsg.seqs = 1
         lubaMsg.version = 1
         lubaMsg.subtype = 1
-        lubaMsg.net.CopyFrom(commEsp)
+        lubaMsg.net.CopyFrom(net)
         byte_arr = lubaMsg.SerializeToString()
         await self.post_custom_data_bytes(byte_arr)
 

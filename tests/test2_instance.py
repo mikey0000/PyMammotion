@@ -1,12 +1,12 @@
-import logging
-
-from bleak import BleakScanner, BleakClient
-from bleak.backends.device import BLEDevice
-from pyluba.mammotion.devices.luba import MammotionBaseBLEDevice, has_field
 import asyncio
+import logging
 from threading import Thread
 
+from bleak import BleakScanner
+from bleak.backends.device import BLEDevice
+
 from pyluba.event.event import BleNotificationEvent
+from pyluba.mammotion.devices.luba import MammotionBaseBLEDevice, has_field
 
 bleNotificationEvt = BleNotificationEvent()
 
@@ -60,14 +60,14 @@ async def run(loop):
     )
 
     await asyncio.sleep(2)
-    await luba_ble.start_sync("get_report_cfg", 0)
+    await luba_ble.start_sync(0)
     await asyncio.sleep(2)
-    print(luba_ble.raw_data)
-    print(has_field(luba_ble.luba_msg.sys.toapp_report_data.dev))
-    print(luba_ble.luba_msg.sys.toapp_report_data.dev.battery_val)
+    #print(luba_ble.raw_data) # unreliable
+    # print(has_field(luba_ble.luba_msg.sys.toapp_report_data.dev))
+    # print(luba_ble.luba_msg.sys.toapp_report_data.dev.battery_val)
     await asyncio.sleep(10)
 
-    await luba_ble.start_sync("get_report_cfg", 0)
+    # await luba_ble.start_sync("resume_execute_task", 0)
 
 
     # asyncio.run(await ble_heartbeat(luba_ble))

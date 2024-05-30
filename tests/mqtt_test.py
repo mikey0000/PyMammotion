@@ -3,8 +3,7 @@ import hmac
 import json
 import os
 
-from linkkit.linkkit import LinkKit
-from paho.mqtt.client import Client, MQTTv311, MQTTMessage, connack_string
+from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
 
 from pyluba.data.mqtt.event import ThingEventMessage
 

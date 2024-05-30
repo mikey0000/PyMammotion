@@ -1,10 +1,9 @@
 import asyncio
 from threading import Thread
-from threading import Timer
 
-from pyluba.data.model import GenerateRouteInformation
 from pyluba.bluetooth.ble import LubaBLE
 from pyluba.bluetooth.ble_message import BleMessage
+from pyluba.data.model import GenerateRouteInformation
 from pyluba.event.event import BleNotificationEvent
 
 bleNotificationEvt = BleNotificationEvent()
@@ -143,8 +142,7 @@ async def run():
     await luba_client.all_powerful_RW(5, 1, 1)
 
 
-    # gives us battery status and devStatus!!!!!! finally!
-    await luba_client.send_order_msg_ota(0)
+    # await luba_client.send_order_msg_ota(0)
     await asyncio.sleep(1)
 
 
