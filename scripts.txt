@@ -23,5 +23,5 @@ poetry run protoc -I=. --python_out=. --python_out=. ./pyluba/proto/*.proto
 poetry run protoc -I=. --python_out=. --pyi_out=. ./pyluba/proto/*.proto
 
 poetry run ruff check --fix
-poetry run pylint
 poetry run mypy {filename}
+poetry run pylint pyluba

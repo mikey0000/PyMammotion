@@ -65,6 +65,11 @@ pyluba = ["py.typed"]
 [tool.pylint.MAIN]
 py-version = "3.12"
 
+load-plugins = [
+    "pylint.extensions.code_style",
+    "pylint.extensions.typing"
+    ]
+
 [tool.pylint.BASIC]
 class-const-naming-style = "any"
 
