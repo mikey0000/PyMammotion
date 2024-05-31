@@ -1,6 +1,6 @@
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.27"
+version     = "0.0.28"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
@@ -13,7 +13,7 @@ packages = [{include = "pyluba"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
-bleak = "=0.21.0"
+bleak = ">=0.21.0"
 protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
 aliyun-python-sdk-iot = "^8.57.0"
