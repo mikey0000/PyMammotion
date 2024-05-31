@@ -29,7 +29,11 @@ from pyluba.mammotion.commands.proto import LubaCommandProtoBLE
 from pyluba.proto import (
     luba_msg_pb2,
 )
+from pyluba.proto.dev_net import DevNet
 from pyluba.proto.luba_msg import LubaMsg
+from pyluba.proto.luba_mul import SocMul
+from pyluba.proto.mctrl_ota import MctlOta
+from pyluba.proto.mctrl_sys import MctlSys
 
 
 class CharacteristicMissingError(Exception):
@@ -112,7 +116,43 @@ class MammotionBaseDevice:
         proto_luba = luba_msg_pb2.LubaMsg()
         proto_luba.ParseFromString(data)
         self._raw_data.update(json_format.MessageToDict(proto_luba))
-        self._luba_msg.from_dict(self._raw_data)
+        tmp_msg = LubaMsg.FromString(data)
+        tmp_msg.from_dict(json_format.MessageToDict(proto_luba))
+        res = betterproto.which_one_of(tmp_msg, "LubaSubMsg")
+        match res[0]:
+            case 'nav':
+                nav_sub_msg = betterproto.which_one_of(tmp_msg.nav, 'SubNavMsg')
+                setattr(self._luba_msg.nav, nav_sub_msg[0], nav_sub_msg[1])
+            case 'sys':
+                sys_sub_msg = betterproto.which_one_of(tmp_msg.sys, 'SubSysMsg')
+                sys_dict = self._luba_msg.sys.to_dict(casing=betterproto.Casing.SNAKE)
+                self._luba_msg.sys = MctlSys()
+                sys_dict[sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                self._luba_msg.sys.from_dict(sys_dict)
+            case 'net':
+                net_sub_msg = betterproto.which_one_of(tmp_msg.net, 'SubNetMsg')
+                net_dict = self._luba_msg.net.to_dict(casing=betterproto.Casing.SNAKE)
+                self._luba_msg.net = DevNet()
+                if net_sub_msg[1] is None:
+                    self._luba_msg.net.todev_ble_sync = 1
+                else:
+                    net_dict[net_sub_msg[0]] = net_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                    self._luba_msg.net.from_dict(net_dict)
+            case 'mul':
+                mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, 'SubMulMsg')
+                mul_dict = self._luba_msg.mul.to_dict(casing=betterproto.Casing.SNAKE)
+                self._luba_msg.mul = SocMul()
+                mul_dict[mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                self._luba_msg.mul.from_dict(mul_dict)
+            case 'ota':
+                ota_sub_msg = betterproto.which_one_of(tmp_msg.ota, 'SubOtaMsg')
+                ota_dict = self._luba_msg.ota.to_dict(casing=betterproto.Casing.SNAKE)
+                self._luba_msg.ota = MctlOta()
+                ota_dict[ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                self._luba_msg.ota.from_dict(ota_dict)
+            case _:
+                self._luba_msg.from_dict(self._raw_data)
+
 
     @property
     def raw_data(self) -> dict[str, Any]:
@@ -350,6 +390,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
+                # TODO occasionally respond with ble sync
                 return
 
         if self._notify_future and not self._notify_future.done():
@@ -369,7 +410,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._notify_future = self.loop.create_future()
         self._key = key
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
-        # TODO work on sending commands to here to fire off
         await self._message.post_custom_data_bytes(command)
 
         timeout = 5

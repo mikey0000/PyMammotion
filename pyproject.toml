@@ -1,6 +1,6 @@
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.25"
+version     = "0.0.27"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
@@ -13,7 +13,7 @@ packages = [{include = "pyluba"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
-bleak = "^0.21.1"
+bleak = "=0.21.0"
 protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
 aliyun-python-sdk-iot = "^8.57.0"
@@ -28,9 +28,6 @@ jsonic = "^1.0.0"
 mashumaro = "^3.13"
 orjson = "^3.9.15"
 betterproto = "^1.2.5"
-pylint = "^3.2.2"
-ruff = "^0.4.6"
-mypy = "^1.10.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -41,6 +38,9 @@ bumpver = "^2023.1129"
 frida-tools = "^12.3.0"
 grpcio-tools = "^1.63.0"
 betterproto = {extras = ["compiler"], version = "^1.2.5"}
+pylint = "^3.2.2"
+ruff = "^0.4.6"
+mypy = "^1.10.0"
 
 
 [tool.bumpver]

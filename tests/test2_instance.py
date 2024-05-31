@@ -62,18 +62,26 @@ async def run(loop):
     await asyncio.sleep(2)
     await luba_ble.start_sync(0)
     await asyncio.sleep(2)
-    # if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
-    #     dev = luba_ble.luba_msg.sys.toapp_report_data.dev
-    #     if dev.sys_status == 11 and dev.charge_state != 0:
-    #         await luba_ble.command("start_work_job")
-    #     if dev.sys_status == 11:
-    await luba_ble.command("return_to_dock")
+    print(luba_ble.luba_msg.sys.toapp_report_data.dev)
+    if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
+        dev = luba_ble.luba_msg.sys.toapp_report_data.dev
+        if dev.sys_status == 11:
+            await luba_ble.command("start_work_job")
+    await luba_ble.command("get_report_cfg")
 
+    print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
+    await asyncio.sleep(5)
+    await luba_ble.command("get_report_cfg")
+    await asyncio.sleep(2)
+    print(luba_ble.luba_msg.sys.toapp_report_data)
+    print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
+    # await luba_ble.command("send_todev_ble_sync", **{'sync_type': 2})
     #print(luba_ble.raw_data) # unreliable
     # print(has_field(luba_ble.luba_msg.sys.toapp_report_data.dev))
     # print(luba_ble.luba_msg.sys.toapp_report_data.dev.battery_val)
-    await asyncio.sleep(10)
-
+    await asyncio.sleep(5)
+    print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
+    await luba_ble.command("return_to_dock")
     # await luba_ble.start_sync("resume_execute_task", 0)
 
 
