@@ -107,51 +107,61 @@ class MammotionBaseDevice:
 
     def __init__(self) -> None:
         self.loop = asyncio.get_event_loop()
-        self._raw_data = dict()
+        self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
         self._luba_msg = LubaMsg()
         self._notify_future: asyncio.Future[bytes] | None = None
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
-        proto_luba = luba_msg_pb2.LubaMsg()
-        proto_luba.ParseFromString(data)
-        self._raw_data.update(json_format.MessageToDict(proto_luba))
+        # proto_luba = luba_msg_pb2.LubaMsg()
+        # proto_luba.ParseFromString(data)
         tmp_msg = LubaMsg.FromString(data)
-        tmp_msg.from_dict(json_format.MessageToDict(proto_luba))
         res = betterproto.which_one_of(tmp_msg, "LubaSubMsg")
         match res[0]:
             case 'nav':
                 nav_sub_msg = betterproto.which_one_of(tmp_msg.nav, 'SubNavMsg')
-                setattr(self._luba_msg.nav, nav_sub_msg[0], nav_sub_msg[1])
+                nav = self._raw_data.get('nav')
+                if nav is None:
+                    self._raw_data['nav'] = {}
+                if isinstance(nav_sub_msg[1], int):
+                    self._raw_data['net'][nav_sub_msg[0]] = nav_sub_msg[1]
+                else:
+                    self._raw_data['nav'][nav_sub_msg[0]] = nav_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
             case 'sys':
                 sys_sub_msg = betterproto.which_one_of(tmp_msg.sys, 'SubSysMsg')
-                sys_dict = self._luba_msg.sys.to_dict(casing=betterproto.Casing.SNAKE)
-                self._luba_msg.sys = MctlSys()
-                sys_dict[sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
-                self._luba_msg.sys.from_dict(sys_dict)
+                sys = self._raw_data.get('sys')
+                if sys is None:
+                    self._raw_data['sys'] = {}
+                self._raw_data['sys'][sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+            case 'driver':
+                drv_sub_msg = betterproto.which_one_of(tmp_msg.driver, 'SubDrvMsg')
+                drv = self._raw_data.get('driver')
+                if drv is None:
+                    self._raw_data['driver'] = {}
+                self._raw_data['driver'][drv_sub_msg[0]] = drv_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
             case 'net':
-                net_sub_msg = betterproto.which_one_of(tmp_msg.net, 'SubNetMsg')
-                net_dict = self._luba_msg.net.to_dict(casing=betterproto.Casing.SNAKE)
-                self._luba_msg.net = DevNet()
-                if net_sub_msg[1] is None:
-                    self._luba_msg.net.todev_ble_sync = 1
+                net_sub_msg = betterproto.which_one_of(tmp_msg.net, 'NetSubType')
+                net = self._raw_data.get('net')
+                if net is None:
+                    self._raw_data['net'] = {}
+                if isinstance(net_sub_msg[1], int):
+                    self._raw_data['net'][net_sub_msg[0]] = net_sub_msg[1]
                 else:
-                    net_dict[net_sub_msg[0]] = net_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
-                    self._luba_msg.net.from_dict(net_dict)
+                    self._raw_data['net'][net_sub_msg[0]] = net_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
             case 'mul':
-                mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, 'SubMulMsg')
-                mul_dict = self._luba_msg.mul.to_dict(casing=betterproto.Casing.SNAKE)
-                self._luba_msg.mul = SocMul()
-                mul_dict[mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
-                self._luba_msg.mul.from_dict(mul_dict)
+                mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, 'SubMul')
+                mul = self._raw_data.get('mul')
+                if mul is None:
+                    self._raw_data['mul'] = {}
+                self._raw_data['mul'][mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
             case 'ota':
                 ota_sub_msg = betterproto.which_one_of(tmp_msg.ota, 'SubOtaMsg')
-                ota_dict = self._luba_msg.ota.to_dict(casing=betterproto.Casing.SNAKE)
-                self._luba_msg.ota = MctlOta()
-                ota_dict[ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
-                self._luba_msg.ota.from_dict(ota_dict)
-            case _:
-                self._luba_msg.from_dict(self._raw_data)
+                ota = self._raw_data.get('ota')
+                if ota is None:
+                    self._raw_data['ota'] = {}
+                self._raw_data['ota'][ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+
+        self._luba_msg = LubaMsg().from_dict(self._raw_data)
 
 
     @property
