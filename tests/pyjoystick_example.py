@@ -176,6 +176,7 @@ async def run():
             luba_client.clearNotification()
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
+    await luba_client.send_todev_ble_sync(2)
     return luba_client
 
 if __name__ ==  '__main__':
