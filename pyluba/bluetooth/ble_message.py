@@ -716,7 +716,7 @@ class BleMessage:
         await self.post_custom_data_bytes(bytes)
 
     async def setbladeHeight(self, height: int):
-        mctrlDriver = mctrl_driver_pb2.MctrlDriver()
+        mctrlDriver = mctrl_driver_pb2.MctlDriver()
         drvKnifeHeight = mctrl_driver_pb2.DrvKnifeHeight()
         drvKnifeHeight.knifeHeight = height
         mctrlDriver.todev_knife_height_set.CopyFrom(drvKnifeHeight)
@@ -736,7 +736,7 @@ class BleMessage:
     async def setBladeControl(self, onOff: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
         sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
-        sysKnifeControl.knifeStatus = onOff
+        sysKnifeControl.knife_status = onOff
         mctlsys.todev_knife_ctrl.CopyFrom(sysKnifeControl)
 
         lubaMsg = luba_msg_pb2.LubaMsg()
@@ -769,25 +769,14 @@ class BleMessage:
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
         transform4 = RockerControlUtil.getInstance().transfrom3(angular, angularPercent)
 
-        if (transfrom3 != None and len(transfrom3) > 0):
+        if transfrom3 is not None and len(transfrom3) > 0:
             linearSpeed = transfrom3[0] * 10
-            angularSpeed = (int)(transform4[1] * 4.5)
+            angularSpeed = int(transform4[1] * 4.5)
             print(linearSpeed, angularSpeed)
             await self.sendMovement(linearSpeed, angularSpeed)
 
-    # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
-    #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
-    #         if (transfrom3 != null && transfrom3.size() > 0):
-    #             if (z):
-    #                 this.linearSpeed = transfrom3.get(0).intValue() * 10
-    #             else
-    #                 this.angularSpeed = (int) (transfrom3.get(1).intValue() * 4.5d)
-
-    #         if (this.countDownTask == null):
-    #             testSendControl()
-
     async def sendMovement(self, linearSpeed: int, angularSpeed: int):
-        mctrlDriver = mctrl_driver_pb2.MctrlDriver()
+        mctrlDriver = mctrl_driver_pb2.MctlDriver()
 
         drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
         drvMotionCtrl.setLinearSpeed = linearSpeed
@@ -804,8 +793,7 @@ class BleMessage:
         lubaMsg.subtype = 1
 
         lubaMsg.driver.CopyFrom(mctrlDriver)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
+        await self.post_custom_data_bytes(lubaMsg.SerializeToString())
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
         await self.post_custom_data(serialize(executeBorder))
