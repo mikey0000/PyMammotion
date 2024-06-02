@@ -12,7 +12,8 @@ from pyluba.event.event import BleNotificationEvent
 
 bleNotificationEvt = BleNotificationEvent()
 
-
+import nest_asyncio
+nest_asyncio.apply()
 class JoystickControl:
     """Joystick class for controlling Luba with a joystick"""
 

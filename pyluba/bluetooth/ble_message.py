@@ -793,6 +793,7 @@ class BleMessage:
         lubaMsg.subtype = 1
 
         lubaMsg.driver.CopyFrom(mctrlDriver)
+        print(lubaMsg)
         await self.post_custom_data_bytes(lubaMsg.SerializeToString())
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
@@ -1001,7 +1002,8 @@ class BleMessage:
                 if luba_msg.HasField('net'):
                     if luba_msg.net.HasField('toapp_wifi_iot_status'):
                         # await sleep(1.5)
-                        await self.send_todev_ble_sync(2)
+                        print("sending ble sync")
+                        # await self.send_todev_ble_sync(2)
                 return luba_msg
 
     # private void parseCtrlData(int i, byte[] bArr) {
@@ -1063,7 +1065,7 @@ class BleMessage:
 
 # ==================================================================
 
-    async def send_order_msg_net(self, build):
+    def send_order_msg_net(self, build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
