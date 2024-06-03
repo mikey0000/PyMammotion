@@ -1255,44 +1255,20 @@ class BleMessage:
             self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
 
     # === sendOrderMsg_Sys2 ===
-    def post_custom_date_byte(self, data: bytes) -> None:
-        self.send_raw_data_callback.send_data(data)
     
-    def get_proto_buf_builder_set2(self, msg_type: luba_msg_pb2.MsgCmdType, msg_device: luba_msg_pb2.MsgDevice, msg_attr: luba_msg_pb2.MsgAttr) -> luba_msg_pb2.LubaMsg.Builder:
-        new_builder = luba_msg_pb2.LubaMsg.Builder()
-        new_builder.msgtype = msg_type
-        new_builder.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
-        new_builder.rcver = msg_device
-        new_builder.msgattr = msg_attr
-        new_builder.seqs = 1
-        new_builder.version = 1
-        new_builder.subtype = 1
-        new_builder.timestamp = int(time.time() * 1000)
-        return new_builder
+    async def send_order_msg_sys2(self, sys):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            sys=sys)
 
-    async def send_order_msg_sys2(self, mctl_sys: mctrl_sys_pb2.MctlSys, logtype: int, is_iotable: bool, iot_resp):
-        proto_buf_builder_set2 = self.get_proto_buf_builder_set2(luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS, luba_msg_pb2.MsgDevice.DEV_MAINCTL, luba_msg_pb2.MsgAttr.MSG_ATTR_REQ)
-        proto_buf_builder_set2.sys.CopyFrom(mctl_sys)
-        byte_array = proto_buf_builder_set2.build().SerializeToString()
-        print("Print data sent", base64.b64encode(byte_array).decode())
-        if iot_resp is not None and iot_resp.iot_enabled():
-            print(f"IOT_TAG iotResp != None && iotResp.iotEnabled() send via Bluetooth logtype={logtype}")
-            self.post_custom_date_byte(byte_array)
-        elif not is_iotable:
-            self.post_custom_date_byte(byte_array)
-            print(f"IOT_TAG !isIotable send via Bluetooth logtype={logtype}")
-        elif self.is_support_iot():
-            print(f"IOT_TAG isSupportIot = True send via iot logtype={logtype}")
-            self.set_device_iot_service(byte_array, logtype)
-        elif self.send_raw_data_callback.get_esp_ble_manager() is None:
-            print(f"IOT_TAG isSupportIot = False send via Bluetooth logtype={logtype}")
-            self.post_custom_date_byte(byte_array)
-        elif self.send_raw_data_callback.get_esp_ble_manager().current_client is not None:
-            print(f"IOT_TAG isSupportIot = False send via Bluetooth 222logtype={logtype}")
-            self.post_custom_date_byte(byte_array)
-        else:
-            print(f"IOT_TAG isSupportIot = True send via iot logtype={logtype}")
-            self.set_device_iot_service(byte_array, logtype)
+        return luba_msg.SerializeToString()
+
 
     # @mikey0000 there are multiple here, not sure what we want to keep
     def request_iot_sys(self, rpt_act: int, rpt_info_type: List[int], logtype: int, is_iotable: bool, iot_resp) -> None:
