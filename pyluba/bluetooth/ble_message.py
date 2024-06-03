@@ -1196,7 +1196,7 @@ class BleMessage:
 
     # === sendOrderMsg_Driver ===
 
-    async def send_order_msg_driver(self, build):
+    async def send_order_msg_driver(self, driver):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -1205,7 +1205,7 @@ class BleMessage:
             seqs=1,
             version=1,
             subtype=1,
-            net=build)
+            driver=driver)
 
         return luba_msg.SerializeToString()
 
