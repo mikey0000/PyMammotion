@@ -1279,6 +1279,15 @@ class BleMessage:
         print(f"Send read and write base station configuration quality op:{op}, cgf:{cgf}")
         self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)))
 
+    def allpowerfull_rw_adapter_x3(self, id: int, context: int, rw: int) -> None:
+        build = mctrl_nav_pb2.MctlNav(
+            nav_sys_param_cmd=mctrl_nav_pb2.nav_sys_param_msg(
+                id=id, context=context, rw=rw
+            )
+        )
+        print(f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
+        self.send_order_msg_nav(build)
+        
     def allpowerfull_rw(self, id: int, context: int, rw: int):
         if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_pro(self.get_device_name()):
             self.allpowerfull_rw_adapter_x3(id, context, rw)
@@ -1362,3 +1371,18 @@ class BleMessage:
 
     def get_device_version_info(self):
         self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_get_dev_fw_info=1))
+        
+    # === sendOrderMsg_Nav ===
+    
+    async def send_order_msg_nav(self, build):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            net=build)
+
+        return luba_msg.SerializeToString()
