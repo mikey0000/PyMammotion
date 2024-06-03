@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import json
 import queue
@@ -5,7 +6,7 @@ import sys
 import time
 from asyncio import sleep
 from io import BytesIO
-from typing import Dict
+from typing import Dict, List
 
 from bleak import BleakClient
 from jsonic.serializable import serialize
@@ -27,6 +28,7 @@ from pyluba.proto import (
     mctrl_sys_pb2,
 )
 from pyluba.utility.constant.device_constant import bleOrderCmd
+from pyluba.utility.device_type import DeviceType
 from pyluba.utility.rocker_util import RockerControlUtil
 
 
@@ -60,27 +62,6 @@ class BleMessage:
         self.mReadSequence = itertools.count()
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
-
-    async def all_powerful_RW(self, id: int, context: int, rw: int):
-        mctrl_sys = mctrl_sys_pb2.MctlSys(
-            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
-                rw=rw,
-                id=id,
-                context=context,
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctrl_sys)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
 
     async def send_order_msg_ota(self, type: int):
         mctrl_ota = mctrl_ota_pb2.MctlOta(
@@ -360,26 +341,6 @@ class BleMessage:
     async def send_ble_alive(self):
         hash_map = {"ctrl": 1}
         await self.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
-
-    async def set_speed(self, speed: float):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            driver=mctrl_driver_pb2.MctrlDriver(
-                bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(
-                    speed=float(speed),
-                    rw=1
-                )
-            )
-        )
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
 
     async def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -716,24 +677,6 @@ class BleMessage:
         bytes = lubaMsg.SerializeToString()
         await self.post_custom_data_bytes(bytes)
 
-    async def setbladeHeight(self, height: int):
-        mctrlDriver = mctrl_driver_pb2.MctrlDriver()
-        drvKnifeHeight = mctrl_driver_pb2.DrvKnifeHeight()
-        drvKnifeHeight.knifeHeight = height
-        mctrlDriver.todev_knife_height_set.CopyFrom(drvKnifeHeight)
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.driver.CopyFrom(mctrlDriver)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
-
     async def setBladeControl(self, onOff: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
         sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
@@ -754,7 +697,7 @@ class BleMessage:
 
     async def start_job(self, blade_height):
         """Call after calling generate_route_information I think"""
-        await self.setbladeHeight(blade_height)
+        await self.set_knife_height(blade_height)
         await self.start_work_job()
 
     async def transformSpeed(self, linear: float, percent: float):
@@ -764,7 +707,7 @@ class BleMessage:
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int)(transfrom3[1] * 4.5)
 
-            await self.sendMovement(linearSpeed, angularSpeed)
+            await self.send_control(linearSpeed, angularSpeed)
 
     async def transformBothSpeeds(self, linear: float, angular: float, linearPercent: float, angularPercent: float):
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
@@ -774,7 +717,7 @@ class BleMessage:
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int)(transform4[1] * 4.5)
             print(linearSpeed, angularSpeed)
-            await self.sendMovement(linearSpeed, angularSpeed)
+            await self.send_control(linearSpeed, angularSpeed)
 
     # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
     #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
@@ -786,27 +729,6 @@ class BleMessage:
 
     #         if (this.countDownTask == null):
     #             testSendControl()
-
-    async def sendMovement(self, linearSpeed: int, angularSpeed: int):
-        mctrlDriver = mctrl_driver_pb2.MctrlDriver()
-
-        drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
-        drvMotionCtrl.setLinearSpeed = linearSpeed
-        drvMotionCtrl.setAngularSpeed = angularSpeed
-        mctrlDriver.todev_devmotion_ctrl.CopyFrom(drvMotionCtrl)
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_NONE
-        lubaMsg.timestamp = self.current_milli_time()
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-
-        lubaMsg.driver.CopyFrom(mctrlDriver)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
         await self.post_custom_data(serialize(executeBorder))
@@ -1074,9 +996,9 @@ class BleMessage:
     def _getSubType(self, typeValue: int):
         return (typeValue & 252) >> 2
 
-# ==================================================================
+    # === sendOrderMsg_Net  ===
 
-    async def send_order_msg_net(self, build):
+    def send_order_msg_net(self, build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -1254,9 +1176,211 @@ class BleMessage:
         self.post_custom_data(
             self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
 
-    # === sendOrderMsg_Media ===
+
+    # === sendOrderMsg_Driver ===
+
+    def send_order_msg_driver(self, driver):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            driver=driver)
+
+        return luba_msg.SerializeToString()
+
+    def set_knife_height(self, height: int):
+        print(f"Send knife height height={height}")
+        build = mctrl_driver_pb2.MctlDriver(todev_knife_hight_set=mctrl_driver_pb2.DrvKnifeHeight(knife_height=height))
+        print(f"Send command--Knife motor height setting height={height}")
+        self.send_order_msg_driver(build)
+
+    def set_speed(self, speed: float):
+        print(f"{self.get_device_name()} set speed, {speed}")
+        build = mctrl_driver_pb2.MctlDriver(bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(speed=speed, rw=1))
+        print(f"Send command--Speed setting speed={speed}")
+        self.send_order_msg_driver(build)
+
+    def syn_nav_star_point_data(self, sat_system: int):
+        build = mctrl_driver_pb2.MctlDriver(rtk_sys_mask_query=mctrl_driver_pb2.rtk_sys_mask_query_t(sat_system=sat_system))
+        print(f"Send command--Navigation satellite frequency point synchronization={sat_system}")
+        self.send_order_msg_driver(build)
+
+    def set_nav_star_point(self, cmd_req: str):
+        build = mctrl_driver_pb2.MctlDriver(rtk_cfg_req=mctrl_driver_pb2.rtk_cfg_req_t(cmd_req=cmd_req, cmd_length=len(cmd_req) - 1))
+        print(f"Send command--Navigation satellite frequency point setting={cmd_req}")
+        print(f"Navigation satellite setting, Send command--Navigation satellite frequency point setting={cmd_req}")
+        self.send_order_msg_driver(build)
+
+    def get_speed(self):
+        build = mctrl_driver_pb2.MctlDriver(bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(rw=0))
+        print("Send command--Get speed value")
+        self.send_order_msg_driver(build)
+
+    def operate_on_device(self, main_ctrl: int, cut_knife_ctrl: int, cut_knife_height: int, max_run_speed: float):
+        build = mctrl_driver_pb2.MctlDriver(mow_ctrl_by_hand=mctrl_driver_pb2.DrvMowCtrlByHand(main_ctrl=main_ctrl, cut_knife_ctrl=cut_knife_ctrl, cut_knife_height=cut_knife_height, max_run_speed=max_run_speed))
+        print(f"Send command--Manual mowing command, main_ctrl:{main_ctrl}, cut_knife_ctrl:{cut_knife_ctrl}, cut_knife_height:{cut_knife_height}, max_run_speed:{max_run_speed}")
+        self.send_order_msg_driver(build)
+
+    def send_control(self, linear_speed: int, angular_speed: int):
+        print(f"Control command print, linearSpeed={linear_speed} // angularSpeed={angular_speed}")
+        self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)))
+    # === sendOrderMsg_Sys ===
     
-    async def send_order_msg_media(self, mul):
+    def send_order_msg_sys(self, sys):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            sys=sys
+        )
+
+        return luba_msg.SerializeToString()
+
+    def reset_system(self):
+        build = mctrl_sys_pb2.MctlSys(todev_reset_system=1)
+        print("Send command - send factory reset")
+        self.send_order_msg_sys(build)
+
+    def get_device_product_model(self):
+        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()), 12, True)
+
+    def read_and_set_sidelight(self, is_sidelight: bool, operate: int):
+        if is_sidelight:
+            build = mctrl_sys_pb2.TimeCtrlLight(operate=operate, enable=0, action=0, start_hour=0, start_min=0, end_hour=0, end_min=0)
+        else:
+            build = mctrl_sys_pb2.TimeCtrlLight(operate=operate, enable=1, action=0, start_hour=0, start_min=0, end_hour=0, end_min=0)
+        print(f"Send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}")
+        build2 = mctrl_sys_pb2.MctlSys(todev_time_ctrl_light=build)
+        print(f"Send command - send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
+        self.send_order_msg_sys(build2)
+
+    def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: List[int]):
+        build = mctrl_sys_pb2.mCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
+        print(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
+        build2 = mctrl_sys_pb2.MctlSys(simulation_cmd=build)
+        print(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
+        self.send_order_msg_sys(build2)
+
+    def read_and_set_rt_k_paring_code(self, op: int, cgf: str):
+        print(f"Send read and write base station configuration quality op:{op}, cgf:{cgf}")
+        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)))
+
+    def allpowerfull_rw_adapter_x3(self, id: int, context: int, rw: int) -> None:
+        build = mctrl_nav_pb2.MctlNav(
+            nav_sys_param_cmd=mctrl_nav_pb2.nav_sys_param_msg(
+                id=id, context=context, rw=rw
+            )
+        )
+        print(f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
+        self.send_order_msg_nav(build)
+        
+    def allpowerfull_rw(self, id: int, context: int, rw: int):
+        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_pro(self.get_device_name()):
+            self.allpowerfull_rw_adapter_x3(id, context, rw)
+            return
+        build = mctrl_sys_pb2.MctlSys(bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(id=id, context=context, rw=rw))
+        print(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
+        if id == 5:
+            # This logic doesnt make snese, but its what they had so..
+            self.send_order_msg_sys(build)
+            return
+        self.send_order_msg_sys(build)        
+        
+    def factory_test_order(self, test_id: int, test_duration: int, expect: str):
+        new_builder = mctrl_sys_pb2.mow_to_app_qctools_info_t.Builder()
+        print(f"Factory tool print, expect={expect}")
+        if not expect:
+            build = new_builder.set_type_value(test_id).set_time_of_duration(test_duration).build()
+        else:
+            try:
+                json_array = json.loads(expect)
+                z2 = True
+                for i in range(len(json_array)):
+                    new_builder2 = mctrl_sys_pb2.QCAppTestExcept.Builder()
+                    json_object = json_array[i]
+                    if "except_type" in json_object:
+                        string = json_object["except_type"]
+                        if "conditions" in json_object:
+                            json_array2 = json_object["conditions"]
+                            for i2 in range(len(json_array2)):
+                                json_object2 = json_array2[i2]
+                                new_builder3 = mctrl_sys_pb2.QCAppTestConditions.Builder()
+                                if "cond_type" in json_object2:
+                                    new_builder3.set_cond_type(json_object2["cond_type"])
+                                else:
+                                    z2 = False
+                                if "value" in json_object2:
+                                    obj = json_object2["value"]
+                                    if string == "int":
+                                        new_builder3.set_int_val(int(obj))
+                                    elif string == "float":
+                                        new_builder3.set_float_val(float(obj))
+                                    elif string == "double":
+                                        new_builder3.set_double_val(float(obj))
+                                    elif string == "string":
+                                        new_builder3.set_string_val(str(obj))
+                                    else:
+                                        z2 = False
+                                    new_builder2.add_conditions(new_builder3)
+                                else:
+                                    z2 = False
+                        new_builder2.set_except_type(string)
+                        new_builder.add_except(new_builder2)
+                        new_builder2.clear()
+                z = z2
+            except json.JSONDecodeError:
+                z = False
+            if z:
+                build = new_builder.set_type_value(test_id).set_time_of_duration(test_duration).build()
+            else:
+                build = new_builder.set_type_value(test_id).set_time_of_duration(test_duration).build()
+        print(f"Factory tool print, mow_to_app_qctools_info_t={build.except_count}, mow_to_app_qctools_info_t22={build.except_list}")
+        build2 = mctrl_sys_pb2.MctlSys(mow_to_app_qctools_info=build)
+        print(f"Send command - factory tool test command testId={test_id}, testDuration={test_duration}", "Factory tool print222", True)
+        self.send_order_msg_sys(build2)
+
+    def send_sys_set_date_time(self):
+        calendar = datetime.now()
+        i = calendar.year
+        i2 = calendar.month
+        i3 = calendar.day
+        i4 = calendar.isoweekday()
+        i5 = calendar.hour
+        i6 = calendar.minute
+        i7 = calendar.second
+        i8 = calendar.utcoffset().total_seconds() // 60 if calendar.utcoffset() else 0
+        i9 = 1 if calendar.dst() else 0
+        print(f"Print time zone, time zone={i8}, daylight saving time={i9} week={i4}")
+        build = mctrl_sys_pb2.MctlSys(todev_data_time=mctrl_sys_pb2.SysSetDateTime(year=i, month=i2, date=i3, week=i4, hours=i5, minutes=i6, seconds=i7, time_zone=i8, daylight=i9))
+        print(f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{i3}, month:{i2}, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}", "Time synchronization", True)
+        self.send_order_msg_sys(build)
+
+    def get_device_version_info(self):
+        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_get_dev_fw_info=1))
+        
+    # === sendOrderMsg_Nav ===
+    
+    def send_order_msg_nav(self, build):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            net=build)
+
+        return luba_msg.SerializeToString()
+
+      
+                    # === sendOrderMsg_Media ===
+    
+    def send_order_msg_media(self, mul):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_MUL,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
