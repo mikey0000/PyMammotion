@@ -1257,7 +1257,7 @@ class BleMessage:
 
     # === sendOrderMsg_Sys ===
     
-    async def send_order_msg_sys(self, mctl_sys, logtype, is_iotable):
+    async def send_order_msg_sys(self, mctl_sys):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -1269,14 +1269,12 @@ class BleMessage:
             sys=mctl_sys
         )
 
-        # await self.send_msg(luba_msg.SerializeToString(), logtype, is_iotable)
         return luba_msg.SerializeToString()
 
     def reset_system(self):
         build = mctrl_sys_pb2.MctlSys(todev_reset_system=1)
         print("Send command - send factory reset")
-        # public static final int IOT_PARAM_DISPLAY = 1123;
-        self.send_order_msg_sys(build, 1123, True)
+        self.send_order_msg_sys(build)
 
     def get_device_product_model(self):
         self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()), 12, True)
@@ -1289,18 +1287,18 @@ class BleMessage:
         print(f"Send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}")
         build2 = mctrl_sys_pb2.MctlSys(todev_time_ctrl_light=build)
         print(f"Send command - send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
-        self.send_order_msg_sys(build2, 10, True)
+        self.send_order_msg_sys(build2)
 
     def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: List[int]):
         build = mctrl_sys_pb2.mCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
         print(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
         build2 = mctrl_sys_pb2.MctlSys(simulation_cmd=build)
         print(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
-        self.send_order_msg_sys(build2, 101, True)
+        self.send_order_msg_sys(build2)
 
     def read_and_set_rt_k_paring_code(self, op: int, cgf: str):
         print(f"Send read and write base station configuration quality op:{op}, cgf:{cgf}")
-        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)), 11, True)
+        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)))
 
     def allpowerfull_rw(self, id: int, context: int, rw: int):
         if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_pro(self.get_device_name()):
@@ -1313,7 +1311,7 @@ class BleMessage:
             proto_buf_builder_set.sys.CopyFrom(build)
             self.send_msg(proto_buf_builder_set, 122, True)
             return
-        self.send_order_msg_sys(build, 38, True)
+        self.send_order_msg_sys(build)
 
     def factory_test_order(self, test_id: int, test_duration: int, expect: str):
         new_builder = mctrl_sys_pb2.mow_to_app_qctools_info_t.Builder()
@@ -1366,7 +1364,7 @@ class BleMessage:
         print(f"Factory tool print, mow_to_app_qctools_info_t={build.except_count}, mow_to_app_qctools_info_t22={build.except_list}")
         build2 = mctrl_sys_pb2.MctlSys(mow_to_app_qctools_info=build)
         print(f"Send command - factory tool test command testId={test_id}, testDuration={test_duration}", "Factory tool print222", True)
-        self.send_order_msg_sys(build2, 381, True)
+        self.send_order_msg_sys(build2)
 
     def send_sys_set_date_time(self):
         calendar = datetime.now()
@@ -1382,7 +1380,7 @@ class BleMessage:
         print(f"Print time zone, time zone={i8}, daylight saving time={i9} week={i4}")
         build = mctrl_sys_pb2.MctlSys(todev_data_time=mctrl_sys_pb2.SysSetDateTime(year=i, month=i2, date=i3, week=i4, hours=i5, minutes=i6, seconds=i7, time_zone=i8, daylight=i9))
         print(f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{i3}, month:{i2}, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}", "Time synchronization", True)
-        self.send_order_msg_sys(build, 96, True)
+        self.send_order_msg_sys(build)
 
     def get_device_version_info(self):
-        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_get_dev_fw_info=1), 97, True)
+        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_get_dev_fw_info=1))
