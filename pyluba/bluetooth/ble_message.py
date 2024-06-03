@@ -20,6 +20,7 @@ from pyluba.data.model.execute_boarder import ExecuteBorder
 from pyluba.proto import (
     dev_net_pb2,
     luba_msg_pb2,
+    luba_mul_pb2,
     mctrl_driver_pb2,
     mctrl_nav_pb2,
     mctrl_ota_pb2,
@@ -1252,3 +1253,27 @@ class BleMessage:
         }
         self.post_custom_data(
             self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
+
+    # === sendOrderMsg_Media ===
+    
+    async def send_order_msg_media(self, mul):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_MUL,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.SOC_MODULE_MULTIMEDIA,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            mul=mul)
+
+        return luba_msg.SerializeToString()
+
+    def set_car_volume(self, volume: int):
+        self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_switch=volume)))
+
+    def set_car_voice_language(self, language_type: int):
+        self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_language_value=language_type)))
+
+    def set_car_wiper(self, round: int):
+        self.send_order_msg_media(luba_mul_pb2.SocMul(set_wiper=luba_mul_pb2.MulSetWiper(round=round)))
