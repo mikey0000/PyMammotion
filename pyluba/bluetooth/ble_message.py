@@ -62,27 +62,6 @@ class BleMessage:
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
 
-    async def all_powerful_RW(self, id: int, context: int, rw: int):
-        mctrl_sys = mctrl_sys_pb2.MctlSys(
-            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
-                rw=rw,
-                id=id,
-                context=context,
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctrl_sys)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
     async def send_order_msg_ota(self, type: int):
         mctrl_ota = mctrl_ota_pb2.MctlOta(
             todev_get_info_req=mctrl_ota_pb2.getInfoReq(
@@ -1307,12 +1286,11 @@ class BleMessage:
         build = mctrl_sys_pb2.MctlSys(bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(id=id, context=context, rw=rw))
         print(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
         if id == 5:
-            proto_buf_builder_set = self.get_proto_buf_builder_set(mctrl_sys_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS, mctrl_sys_pb2.MsgDevice.DEV_MAINCTL, mctrl_sys_pb2.MsgAttr.MSG_ATTR_REQ)
-            proto_buf_builder_set.sys.CopyFrom(build)
-            self.send_msg(proto_buf_builder_set, 122, True)
+            # This logic doesnt make snese, but its what they had so..
+            self.send_order_msg_sys(build)
             return
-        self.send_order_msg_sys(build)
-
+        self.send_order_msg_sys(build)        
+        
     def factory_test_order(self, test_id: int, test_duration: int, expect: str):
         new_builder = mctrl_sys_pb2.mow_to_app_qctools_info_t.Builder()
         print(f"Factory tool print, expect={expect}")
