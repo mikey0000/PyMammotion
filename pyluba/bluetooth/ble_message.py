@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import json
 import queue
@@ -5,7 +6,7 @@ import sys
 import time
 from asyncio import sleep
 from io import BytesIO
-from typing import Dict
+from typing import Dict, List
 
 from bleak import BleakClient
 from jsonic.serializable import serialize
@@ -26,6 +27,7 @@ from pyluba.proto import (
     mctrl_sys_pb2,
 )
 from pyluba.utility.constant.device_constant import bleOrderCmd
+from pyluba.utility.device_type import DeviceType
 from pyluba.utility.rocker_util import RockerControlUtil
 
 
