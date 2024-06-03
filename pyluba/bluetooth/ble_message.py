@@ -1236,7 +1236,7 @@ class BleMessage:
 
     # === sendOrderMsg_Sys ===
     
-    async def send_order_msg_sys(self, mctl_sys):
+    async def send_order_msg_sys(self, sys):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -1245,7 +1245,7 @@ class BleMessage:
             seqs=1,
             version=1,
             subtype=1,
-            sys=mctl_sys
+            sys=sys
         )
 
         return luba_msg.SerializeToString()
