@@ -125,7 +125,7 @@ async def run():
     # await luba_client.generate_route_information(generate_route_information)
     # probably need to wait for this to finish before hitting start
     # await luba_client.start_job(30)
-    # await luba_client.setbladeHeight(70)
+    # await luba_client.set_knife_height(70)
     # await luba_client.send_todev_ble_sync()
 
 

@@ -84,12 +84,12 @@ class JoystickControl:
                 # lower knife height
                 if self.blade_height > 25:
                     self.blade_height -= 5
-                    asyncio.run(self._client.setbladeHeight(self.blade_height))
+                    asyncio.run(self._client.set_knife_height(self.blade_height))
             if key.number == 10:
                 # raise knife height
                 if self.blade_height < 60:
                     self.blade_height += 5
-                    asyncio.run(self._client.setbladeHeight(self.blade_height))
+                    asyncio.run(self._client.set_knife_height(self.blade_height))
 
         if key.keytype is Key.AXIS:
             if key.value > 0.09 or key.value < -0.09:
