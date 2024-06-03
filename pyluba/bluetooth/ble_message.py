@@ -360,26 +360,6 @@ class BleMessage:
         hash_map = {"ctrl": 1}
         await self.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
 
-    async def set_speed(self, speed: float):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            driver=mctrl_driver_pb2.MctrlDriver(
-                bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(
-                    speed=float(speed),
-                    rw=1
-                )
-            )
-        )
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
     async def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -745,7 +725,7 @@ class BleMessage:
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int)(transfrom3[1] * 4.5)
 
-            await self.sendMovement(linearSpeed, angularSpeed)
+            await self.send_control(linearSpeed, angularSpeed)
 
     async def transformBothSpeeds(self, linear: float, angular: float, linearPercent: float, angularPercent: float):
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
@@ -755,7 +735,7 @@ class BleMessage:
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int)(transform4[1] * 4.5)
             print(linearSpeed, angularSpeed)
-            await self.sendMovement(linearSpeed, angularSpeed)
+            await self.send_control(linearSpeed, angularSpeed)
 
     # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
     #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
@@ -767,27 +747,6 @@ class BleMessage:
 
     #         if (this.countDownTask == null):
     #             testSendControl()
-
-    async def sendMovement(self, linearSpeed: int, angularSpeed: int):
-        mctrlDriver = mctrl_driver_pb2.MctrlDriver()
-
-        drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
-        drvMotionCtrl.setLinearSpeed = linearSpeed
-        drvMotionCtrl.setAngularSpeed = angularSpeed
-        mctrlDriver.todev_devmotion_ctrl.CopyFrom(drvMotionCtrl)
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_NONE
-        lubaMsg.timestamp = self.current_milli_time()
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-
-        lubaMsg.driver.CopyFrom(mctrlDriver)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
         await self.post_custom_data(serialize(executeBorder))
