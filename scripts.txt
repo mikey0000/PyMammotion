@@ -2,16 +2,13 @@
 ./bin/bumpver update --patch
 
 # build
-./bin/python3 -m build
+poetry build
 
-#test install 
-./bin/pip install --editable .
+#install (this also does the editable install so its ready to roll after this point)
+poetry install
 
-#dev deps
-pip-tools build
-
-# install pip-tools including pip-compile
-python -m pip install pip-tools
+# run a test
+poetry run python tests/test2_instance.py
 
 # generate models from protobuf
 poetry run protoc -I=. --python_out=. --python_betterproto_out=. ./pyluba/proto/*.proto
