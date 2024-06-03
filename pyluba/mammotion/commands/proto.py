@@ -16,7 +16,7 @@ class LubaCommandProtoMQTT:
 
         return self.send_order_msg_net(net)
 
-    def all_powerful_RW(self, id: int, context: int, rw: int):
+    def allpowerfull_rw(self, id: int, context: int, rw: int):
         mctrl_sys = mctrl_sys_pb2.MctlSys(
             bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
                 rw=rw,
