@@ -103,22 +103,19 @@ class DeviceType(Enum):
     def contain_rtk_product_key(product_key):
         if not product_key:
             return False
-        # Replace with actual RTK product keys
-        return product_key in ["RTK_PRODUCT_KEY_1", "RTK_PRODUCT_KEY_2"]
+        return product_key in ["a1qXkZ5P39W", "a1Nc68bGZzX"]
 
     @staticmethod
     def contain_luba_product_key(product_key):
         if not product_key:
             return False
-        # Replace with actual Luba product keys
-        return product_key in ["LUBA_PRODUCT_KEY_1", "LUBA_PRODUCT_KEY_2"]
+        return product_key in ["a1UBFdq6nNz", "a1x0zHD3Xop", "a1pvCnb3PPu", "a1kweSOPylG", "a1JFpmAV5Ur", "a1BmXWlsdbA", "a1jOhAYOIG8", "a1K4Ki2L5rK", "a1ae1QnXZGf", "a1nf9kRBWoH", "a1ZU6bdGjaM"]
 
     @staticmethod
     def contain_luba_v_product_key(product_key):
         if not product_key:
             return False
-        # Replace with actual Luba-V product keys
-        return product_key in ["LUBA_V_PRODUCT_KEY_1", "LUBA_V_PRODUCT_KEY_2"]
+        return product_key in ["a1iMygIwxFC", "a1LLmy1zc0j", "a1LLmy1zc0j"]
 
     def is_support_video(self):
         return self == DeviceType.LUBA_YUKA
