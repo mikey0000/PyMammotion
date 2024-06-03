@@ -21,6 +21,7 @@ from pyluba.data.model.execute_boarder import ExecuteBorder
 from pyluba.proto import (
     dev_net_pb2,
     luba_msg_pb2,
+    luba_mul_pb2,
     mctrl_driver_pb2,
     mctrl_nav_pb2,
     mctrl_ota_pb2,
@@ -997,7 +998,7 @@ class BleMessage:
 
     # === sendOrderMsg_Net  ===
 
-    async def send_order_msg_net(self, build):
+    def send_order_msg_net(self, build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -1178,7 +1179,7 @@ class BleMessage:
 
     # === sendOrderMsg_Driver ===
 
-    async def send_order_msg_driver(self, driver):
+    def send_order_msg_driver(self, driver):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -1229,15 +1230,11 @@ class BleMessage:
         self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)))
     # === sendOrderMsg_Sys ===
     
-    async def send_order_msg_sys(self, sys):
+    def send_order_msg_sys(self, sys):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
             rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
             sys=sys
         )
 
@@ -1367,7 +1364,7 @@ class BleMessage:
         
     # === sendOrderMsg_Nav ===
     
-    async def send_order_msg_nav(self, build):
+    def send_order_msg_nav(self, build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -1379,3 +1376,28 @@ class BleMessage:
             net=build)
 
         return luba_msg.SerializeToString()
+
+      
+                    # === sendOrderMsg_Media ===
+    
+    def send_order_msg_media(self, mul):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_MUL,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.SOC_MODULE_MULTIMEDIA,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            mul=mul)
+
+        return luba_msg.SerializeToString()
+
+    def set_car_volume(self, volume: int):
+        self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_switch=volume)))
+
+    def set_car_voice_language(self, language_type: int):
+        self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_language_value=language_type)))
+
+    def set_car_wiper(self, round: int):
+        self.send_order_msg_media(luba_mul_pb2.SocMul(set_wiper=luba_mul_pb2.MulSetWiper(round=round)))
