@@ -1,11 +1,10 @@
 # === sendOrderMsg_Video ===
+from pyluba.mammotion.commands.abstract_message import AbstractMessage
 from pyluba.proto import luba_msg_pb2, luba_mul_pb2
 from pyluba.utility.device_type import DeviceType
 
-# ToDo: We are missing self.get_device_name()
 
-
-class MessageVideo:
+class MessageVideo(AbstractMessage):
     async def send_order_msg_video(self, mul):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_MUL,

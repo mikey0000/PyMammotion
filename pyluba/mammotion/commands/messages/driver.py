@@ -1,10 +1,9 @@
 # === sendOrderMsg_Driver ===
+from pyluba.mammotion.commands.abstract_message import AbstractMessage
 from pyluba.proto import luba_msg_pb2, mctrl_driver_pb2
 
-# ToDo: We are missing self.get_device_name()
 
-
-class MessageDriver:
+class MessageDriver(AbstractMessage):
     def send_order_msg_driver(self, driver):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER,

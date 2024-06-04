@@ -1,14 +1,13 @@
 # === sendOrderMsg_Sys ===
 import datetime
 from typing import List
+from pyluba.mammotion.commands.abstract_message import AbstractMessage
 from pyluba.mammotion.commands.messages.navigation import MessageNavigation
 from pyluba.proto import luba_msg_pb2, mctrl_sys_pb2
 from pyluba.utility.device_type import DeviceType
 
-# ToDo: We are missing self.get_device_name()
 
-
-class MessageSystem:
+class MessageSystem(AbstractMessage):
     messageNavigation: MessageNavigation = MessageNavigation()
 
     def send_order_msg_sys(self, sys):
