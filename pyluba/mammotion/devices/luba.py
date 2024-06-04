@@ -25,6 +25,7 @@ from pyluba.bluetooth.const import (
     UUID_NOTIFICATION_CHARACTERISTIC,
     UUID_WRITE_CHARACTERISTIC,
 )
+from pyluba.mammotion.commands.messages.navigation import post_custom_data_bytes
 from pyluba.mammotion.commands.proto import LubaCommandProtoBLE
 from pyluba.proto import (
     luba_msg_pb2,
@@ -360,7 +361,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             await self._start_notify()
 
             command_bytes = self._commands.send_todev_ble_sync(2)
-            await self._message.post_custom_data_bytes(command_bytes)
+            await post_custom_data_bytes(command_bytes)
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
