@@ -1016,14 +1016,14 @@ class BleMessage:
         build = dev_net_pb2.DevNet(
             todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req)
         print("Send command -- Get device 4G network module information")
-        self.send_order_msg_net(build)
+        return self.send_order_msg_net(build)
 
 
     def get_4g_info(self):
         build = dev_net_pb2.DevNet(
             TodevMnetInfoReq=dev_net_pb2.DevNet().TodevMnetInfoReq)
         print("Send command -- Get device 4G network information")
-        self.send_order_msg_net(build)
+        return self.send_order_msg_net(build)
 
     def set_zmq_enable(self):
         build = dev_net_pb2.DevNet(
@@ -1034,12 +1034,12 @@ class BleMessage:
             )
         )
         print("Send command -- Set vision ZMQ to enable")
-        self.send_order_msg_net(build)
+        return self.send_order_msg_net(build)
 
     def set_iot_setting(self, iot_conctrl_type: dev_net_pb2.iot_conctrl_type):
         build = dev_net_pb2.DevNet(TodevSetIotOfflineReq=iot_conctrl_type)
         print("Send command -- Device re-online")
-        self.send_order_msg_net(build)
+        return self.send_order_msg_net(build)
 
     def set_device_log_upload(self, request_id: str, operation: int, server_ip: int, server_port: int, number: int, type: int):
         build = dev_net_pb2.DrvUploadFileToAppReq(
@@ -1052,7 +1052,7 @@ class BleMessage:
         )
         print(
             f"Send log====Feedback====Command======requestID:{request_id} operation:{operation} serverIp:{server_ip} type:{type}")
-        self.send_order_msg_net(dev_net_pb2.DevNet(
+        return self.send_order_msg_net(dev_net_pb2.DevNet(
             todev_ble_sync=1, todev_uploadfile_req=build))
 
     def set_device_socket_request(self, request_id: str, operation: int, server_ip: int, server_port: int, number: int, type: int) -> None:
@@ -1067,12 +1067,12 @@ class BleMessage:
         )
         print(
             f"Send log====Feedback====Command======requestID:{request_id}  operation:{operation} serverIp:{server_ip}  type:{type}")
-        self.send_order_msg_net(dev_net_pb2.DevNet(
+        return self.send_order_msg_net(dev_net_pb2.DevNet(
             todev_ble_sync=1, todev_uploadfile_req=build))
 
     def get_device_log_info(self, biz_id: str, type: int, log_url: str) -> None:
         """Get device log info (bluetooth only)."""
-        self.send_order_msg_net(
+        return self.send_order_msg_net(
             dev_net_pb2.DevNet(
                 todev_ble_sync=1,
                 todev_req_log_info=dev_net_pb2.DrvUploadFileReq(
@@ -1087,14 +1087,14 @@ class BleMessage:
 
     def cancel_log_update(self, biz_id: str):
         """Cancel log update (bluetooth only)."""
-        self.send_order_msg_net(dev_net_pb2.DevNet(
+        return self.send_order_msg_net(dev_net_pb2.DevNet(
             todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(biz_id=biz_id)))
 
     def get_device_network_info(self):
         build = dev_net_pb2.DevNet(
             todev_networkinfo_req=dev_net_pb2.GetNetworkInfoReq(req_ids=1))
         print("Send command - get device network information")
-        self.send_order_msg_net(build)
+        return self.send_order_msg_net(build)
 
     def set_device_4g_enable_status(self, new_4g_status: bool):
         build = dev_net_pb2.DevNet(
@@ -1107,7 +1107,7 @@ class BleMessage:
                 )
             )
         )
-        self.send_order_msg_net(build)
+        return self.send_order_msg_net(build)
         print(
             f"Send command - set 4G (on/off status). newWifiStatus={new_4g_status}")
 
@@ -1119,9 +1119,9 @@ class BleMessage:
                 wifi_enable=new_wifi_status
             )
         )
-        self.send_order_msg_net(build)
         print(
             f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
+        return self.send_order_msg_net(build)
 
 
     def wifi_connectinfo_update(self, device_name: str, is_binary: bool):
@@ -1132,8 +1132,7 @@ class BleMessage:
                 todev_ble_sync=1, todev_wifi_msg_upload=dev_net_pb2.DrvWifiUpload(wifi_msg_upload=1))
             print("Send command - get Wifi connection information")
             print("Send command - get Wifi connection information")
-            self.send_order_msg_net(build)
-            return
+            return self.send_order_msg_net(build)
         self.wifi_connectinfo_update2()
 
     def wifi_connectinfo_update2(self):
@@ -1146,8 +1145,7 @@ class BleMessage:
             build = dev_net_pb2.DevNet(
                 todev_ble_sync=1, todev_wifi_list_upload=dev_net_pb2.DrvWifiList())
             print("Send command - get memorized WiFi list upload command")
-            self.send_order_msg_net(build)
-            return
+            return self.send_order_msg_net(build)
         self.get_record_wifi_list2()
 
     def get_record_wifi_list2(self):
@@ -1165,8 +1163,7 @@ class BleMessage:
             )
             print(
                 f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})")
-            self.send_order_msg_net(build)
-            return
+            return self.send_order_msg_net(build)
         self.close_clear_connect_current_wifi2(ssid, status)
 
     def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int):
@@ -1197,38 +1194,38 @@ class BleMessage:
         print(f"Send knife height height={height}")
         build = mctrl_driver_pb2.MctlDriver(todev_knife_hight_set=mctrl_driver_pb2.DrvKnifeHeight(knife_height=height))
         print(f"Send command--Knife motor height setting height={height}")
-        self.send_order_msg_driver(build)
+        return self.send_order_msg_driver(build)
 
     def set_speed(self, speed: float):
         print(f"{self.get_device_name()} set speed, {speed}")
         build = mctrl_driver_pb2.MctlDriver(bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(speed=speed, rw=1))
         print(f"Send command--Speed setting speed={speed}")
-        self.send_order_msg_driver(build)
+        return self.send_order_msg_driver(build)
 
     def syn_nav_star_point_data(self, sat_system: int):
         build = mctrl_driver_pb2.MctlDriver(rtk_sys_mask_query=mctrl_driver_pb2.rtk_sys_mask_query_t(sat_system=sat_system))
         print(f"Send command--Navigation satellite frequency point synchronization={sat_system}")
-        self.send_order_msg_driver(build)
+        return self.send_order_msg_driver(build)
 
     def set_nav_star_point(self, cmd_req: str):
         build = mctrl_driver_pb2.MctlDriver(rtk_cfg_req=mctrl_driver_pb2.rtk_cfg_req_t(cmd_req=cmd_req, cmd_length=len(cmd_req) - 1))
         print(f"Send command--Navigation satellite frequency point setting={cmd_req}")
         print(f"Navigation satellite setting, Send command--Navigation satellite frequency point setting={cmd_req}")
-        self.send_order_msg_driver(build)
+        return self.send_order_msg_driver(build)
 
     def get_speed(self):
         build = mctrl_driver_pb2.MctlDriver(bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(rw=0))
         print("Send command--Get speed value")
-        self.send_order_msg_driver(build)
+        return self.send_order_msg_driver(build)
 
     def operate_on_device(self, main_ctrl: int, cut_knife_ctrl: int, cut_knife_height: int, max_run_speed: float):
         build = mctrl_driver_pb2.MctlDriver(mow_ctrl_by_hand=mctrl_driver_pb2.DrvMowCtrlByHand(main_ctrl=main_ctrl, cut_knife_ctrl=cut_knife_ctrl, cut_knife_height=cut_knife_height, max_run_speed=max_run_speed))
         print(f"Send command--Manual mowing command, main_ctrl:{main_ctrl}, cut_knife_ctrl:{cut_knife_ctrl}, cut_knife_height:{cut_knife_height}, max_run_speed:{max_run_speed}")
-        self.send_order_msg_driver(build)
+        return self.send_order_msg_driver(build)
 
     def send_control(self, linear_speed: int, angular_speed: int):
         print(f"Control command print, linearSpeed={linear_speed} // angularSpeed={angular_speed}")
-        self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)))
+        return self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)))
     
     # === sendOrderMsg_Sys ===
     
@@ -1245,10 +1242,10 @@ class BleMessage:
     def reset_system(self):
         build = mctrl_sys_pb2.MctlSys(todev_reset_system=1)
         print("Send command - send factory reset")
-        self.send_order_msg_sys(build)
+        return self.send_order_msg_sys(build)
 
     def get_device_product_model(self):
-        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()), 12, True)
+        return self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()), 12, True)
 
     def read_and_set_sidelight(self, is_sidelight: bool, operate: int):
         if is_sidelight:
@@ -1258,18 +1255,18 @@ class BleMessage:
         print(f"Send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}")
         build2 = mctrl_sys_pb2.MctlSys(todev_time_ctrl_light=build)
         print(f"Send command - send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
-        self.send_order_msg_sys(build2)
+        return self.send_order_msg_sys(build2)
 
     def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: List[int]):
         build = mctrl_sys_pb2.mCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
         print(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
         build2 = mctrl_sys_pb2.MctlSys(simulation_cmd=build)
         print(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
-        self.send_order_msg_sys(build2)
+        return self.send_order_msg_sys(build2)
 
     def read_and_set_rt_k_paring_code(self, op: int, cgf: str):
         print(f"Send read and write base station configuration quality op:{op}, cgf:{cgf}")
-        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)))
+        return self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)))
 
     def allpowerfull_rw_adapter_x3(self, id: int, context: int, rw: int) -> None:
         build = mctrl_nav_pb2.MctlNav(
@@ -1278,7 +1275,7 @@ class BleMessage:
             )
         )
         print(f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
-        self.send_order_msg_nav(build)
+        return self.send_order_msg_nav(build)
         
     def allpowerfull_rw(self, id: int, context: int, rw: int):
         if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_pro(self.get_device_name()):
@@ -1288,9 +1285,8 @@ class BleMessage:
         print(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
         if id == 5:
             # This logic doesnt make snese, but its what they had so..
-            self.send_order_msg_sys(build)
-            return
-        self.send_order_msg_sys(build)        
+            return self.send_order_msg_sys(build)
+        return self.send_order_msg_sys(build)        
         
     def factory_test_order(self, test_id: int, test_duration: int, expect: str):
         new_builder = mctrl_sys_pb2.mow_to_app_qctools_info_t.Builder()
@@ -1343,7 +1339,7 @@ class BleMessage:
         print(f"Factory tool print, mow_to_app_qctools_info_t={build.except_count}, mow_to_app_qctools_info_t22={build.except_list}")
         build2 = mctrl_sys_pb2.MctlSys(mow_to_app_qctools_info=build)
         print(f"Send command - factory tool test command testId={test_id}, testDuration={test_duration}", "Factory tool print222", True)
-        self.send_order_msg_sys(build2)
+        return self.send_order_msg_sys(build2)
 
     def send_sys_set_date_time(self):
         calendar = datetime.now()
@@ -1359,7 +1355,7 @@ class BleMessage:
         print(f"Print time zone, time zone={i8}, daylight saving time={i9} week={i4}")
         build = mctrl_sys_pb2.MctlSys(todev_data_time=mctrl_sys_pb2.SysSetDateTime(year=i, month=i2, date=i3, week=i4, hours=i5, minutes=i6, seconds=i7, time_zone=i8, daylight=i9))
         print(f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{i3}, month:{i2}, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}", "Time synchronization", True)
-        self.send_order_msg_sys(build)
+        return self.send_order_msg_sys(build)
 
     def get_device_version_info(self):
         return self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_get_dev_fw_info=1))
@@ -1375,9 +1371,8 @@ class BleMessage:
                 no_change_period=no_change_period,
                 count=count
             ))
-        
-        self.send_order_msg_sys(build)
         print(f"Send command==== IOT slim data Act {build.todev_report_cfg.act} {build}")
+        return self.send_order_msg_sys(build)
         
     # === sendOrderMsg_Nav ===
     
@@ -1411,10 +1406,10 @@ class BleMessage:
         return luba_msg.SerializeToString()
 
     def set_car_volume(self, volume: int):
-        self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_switch=volume)))
+        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_switch=volume)))
 
     def set_car_voice_language(self, language_type: int):
-        self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_language_value=language_type)))
+        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_language_value=language_type)))
 
     def set_car_wiper(self, round: int):
-        self.send_order_msg_media(luba_mul_pb2.SocMul(set_wiper=luba_mul_pb2.MulSetWiper(round=round)))
+        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_wiper=luba_mul_pb2.MulSetWiper(round=round)))
