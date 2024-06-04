@@ -1366,26 +1366,10 @@ class BleMessage:
         
     # === sendOrderMsg_Sys2 ===
 
-    # @mikey0000 there are multiple here, not sure what we want to keep
-    def request_iot_sys(self, rpt_act: int, rpt_info_type: List[int], logtype: int, is_iotable: bool, iot_resp) -> None:
-        count = mctrl_sys_pb2.report_info_cfg.Builder().set_act(mctrl_sys_pb2.rpt_act.Value(rpt_act)).set_timeout(5000).set_period(1000).set_no_change_period(2000).set_count(0)
-        for num in rpt_info_type:
-            count.add_sub_value(num)
-        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_report_cfg=count.build()))
-        print("Send command-- IOT slim data")
-
-    def request_iot_sys(self, rpt_act: mctrl_sys_pb2.rpt_act, rpt_info_type: List[int], timeout: int, period: int, no_change_period: int, count: int, logtype: int, is_iotable: bool, iot_resp) -> None:
+    def request_iot_sys(self, rpt_act: mctrl_sys_pb2.rpt_act, rpt_info_type: List[int], timeout: int, period: int, no_change_period: int, count: int) -> None:
         build = mctrl_sys_pb2.MctlSys(todev_report_cfg=self.get_mctrl_sys_builder(rpt_act, rpt_info_type, timeout, period, no_change_period, count).build())
-        self.send_order_msg_sys(build, logtype, is_iotable, iot_resp)
-        print(f"Send command-- IOT slim data logtype={logtype} isIotable={is_iotable}")
-        print(f"Send command==== IOT slim data Act {build.todev_report_cfg.act} {build} {logtype}")
-
-    def request_iot_sys(self, builder: mctrl_sys_pb2.report_info_cfg.Builder, logtype: int, is_iotable: bool, iot_resp) -> None:
-        build = mctrl_sys_pb2.MctlSys(todev_report_cfg=builder.build())
-        self.send_order_msg_sys(build, logtype, is_iotable, iot_resp)
-        print(f"Send command-- IOT slim data logtype={logtype} isIotable={is_iotable}")
-        print(f"Send command==== IOT slim data Act {build.todev_report_cfg.act} {build} {logtype}")
-        print(f"IOT_TAG Send command==== IOT slim data Act {build.todev_report_cfg.act} {build} {logtype}")
+        self.send_order_msg_sys(build)
+        print(f"Send command==== IOT slim data Act {build.todev_report_cfg.act} {build}")
         
     # === sendOrderMsg_Nav ===
     
