@@ -190,7 +190,7 @@ class MammotionBaseDevice:
         # plan_proto = luba_msg_pb2.LubaMsg()
         # plan_proto.ParseFromString(plan)
         # print(json_format.MessageToDict(plan_proto))
-        # RW = await self._send_command_with_args("all_powerful_RW", **{'id': 5, 'context': 1, 'rw': 1})
+        # RW = await self._send_command_with_args("allpowerfull_rw", **{'id': 5, 'context': 1, 'rw': 1})
         # RW_proto = luba_msg_pb2.LubaMsg()
         # RW_proto.ParseFromString(RW)
         # print(json_format.MessageToDict(RW_proto))
