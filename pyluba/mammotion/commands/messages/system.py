@@ -1,8 +1,7 @@
 # === sendOrderMsg_Sys ===
 import datetime
-import json
 from typing import List
-from pyluba.mammotion.commands.messages.navigation import allpowerfull_rw_adapter_x3
+from pyluba.mammotion.commands.messages.navigation import MessageNavigation
 from pyluba.proto import luba_msg_pb2, mctrl_sys_pb2
 from pyluba.utility.device_type import DeviceType
 
@@ -10,11 +9,13 @@ from pyluba.utility.device_type import DeviceType
 
 
 class MessageSystem:
+    messageNavigation: MessageNavigation = MessageNavigation()
+
     def send_order_msg_sys(self, sys):
         luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgtype=luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS,
+            sender=luba_msg_pb2.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.DEV_MAINCTL,
             sys=sys
         )
 
@@ -59,7 +60,7 @@ class MessageSystem:
 
     def allpowerfull_rw(self, id: int, context: int, rw: int):
         if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_pro(self.get_device_name()):
-            allpowerfull_rw_adapter_x3(id, context, rw)
+            self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
             return
         build = mctrl_sys_pb2.MctlSys(
             bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(id=id, context=context, rw=rw))

@@ -5,10 +5,10 @@ from pyluba.proto import luba_msg_pb2, mctrl_ota_pb2
 class MessageOta:
     def send_order_msg_ota(self, ota):
         luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_OTA,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            msgtype=luba_msg_pb2.MSG_CMD_TYPE_EMBED_OTA,
+            sender=luba_msg_pb2.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MSG_ATTR_REQ,
             seqs=1,
             version=1,
             subtype=1,

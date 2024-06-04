@@ -8,9 +8,9 @@ from pyluba.utility.device_type import DeviceType
 class MessageVideo:
     async def send_order_msg_video(self, mul):
         luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_MUL,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.SOC_MODULE_MULTIMEDIA,
+            msgtype=luba_msg_pb2.MSG_CMD_TYPE_MUL,
+            sender=luba_msg_pb2.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.SOC_MODULE_MULTIMEDIA,
             mul=mul)
 
         return luba_msg.SerializeToString()
