@@ -6,6 +6,8 @@ from pyluba.mammotion.commands.messages.navigation import allpowerfull_rw_adapte
 from pyluba.proto import luba_msg_pb2, mctrl_sys_pb2
 from pyluba.utility.device_type import DeviceType
 
+# ToDo: We are missing self.get_device_name()
+
 
 class MessageSystem:
     def send_order_msg_sys(self, sys):

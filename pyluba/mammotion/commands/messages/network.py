@@ -3,11 +3,14 @@ import json
 import time
 from typing import Dict
 from pyluba.aliyun.tmp_constant import tmp_constant
+from pyluba.mammotion.commands.messages.navigation import MessageNavigation
 from pyluba.proto import dev_net_pb2, luba_msg_pb2
 from pyluba.utility.constant.device_constant import bleOrderCmd
 
 
 class MessageNetwork:
+    messageNavigation: MessageNavigation = MessageNavigation()
+
     def send_order_msg_net(self, build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
@@ -145,7 +148,8 @@ class MessageNetwork:
 
     def wifi_connectinfo_update2(self):
         hash_map = {"getMsgCmd": 1}
-        self.post_custom_data(self.get_json_string(68, hash_map)) # ToDo: Fix this
+        self.messageNavigation.post_custom_data(self.get_json_string(
+            68, hash_map))  # ToDo: Fix this
 
     def get_record_wifi_list(self, is_binary: bool):
         print(f"getRecordWifiList().isBinary={is_binary}")
@@ -157,7 +161,8 @@ class MessageNetwork:
         self.get_record_wifi_list2()
 
     def get_record_wifi_list2(self):
-        self.post_custom_data(self.get_json_string(69)) # ToDo: Fix this
+        self.messageNavigation.post_custom_data(
+            self.get_json_string(69))  # ToDo: Fix this
 
     def close_clear_connect_current_wifi(self, ssid: str, status: int, is_binary: bool):
         if is_binary:
@@ -178,8 +183,9 @@ class MessageNetwork:
             "ssid": ssid,
             "getMsgCmd": get_msg_cmd
         }
-        self.post_custom_data(
-            self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode()) # ToDo: Fix this
+        self.messageNavigation.post_custom_data(
+            # ToDo: Fix this
+            self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
 
     def get_json_string(self, cmd: int, hash_map: Dict[str, object]) -> str:
         jSONObject = {}
