@@ -1,3 +1,8 @@
+# === sendOrderMsg_Video ===
+from pyluba.proto import luba_msg_pb2, luba_mul_pb2
+from pyluba.utility.device_type import DeviceType
+
+
 async def send_order_msg_video(self, mul):
     luba_msg = luba_msg_pb2.LubaMsg(
         msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_MUL,
@@ -6,6 +11,7 @@ async def send_order_msg_video(self, mul):
         mul=mul)
 
     return luba_msg.SerializeToString()
+
 
 def device_agora_join_channel_with_position(self, enter_state: int):
     position = luba_mul_pb2.MUL_CAMERA_POSITION.ALL if DeviceType.is_yu_ka(
