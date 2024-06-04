@@ -1367,7 +1367,15 @@ class BleMessage:
     # === sendOrderMsg_Sys2 ===
 
     def request_iot_sys(self, rpt_act: mctrl_sys_pb2.rpt_act, rpt_info_type: List[int], timeout: int, period: int, no_change_period: int, count: int) -> None:
-        build = mctrl_sys_pb2.MctlSys(todev_report_cfg=self.get_mctrl_sys_builder(rpt_act, rpt_info_type, timeout, period, no_change_period, count).build())
+        build = mctrl_sys_pb2.MctlSys(mctrl_sys_pb2.report_info_cfg(
+                rpt_act=rpt_act,
+                rpt_info_type=rpt_info_type,
+                timeout=timeout,
+                period=period,
+                no_change_period=no_change_period,
+                count=count
+            ))
+        
         self.send_order_msg_sys(build)
         print(f"Send command==== IOT slim data Act {build.todev_report_cfg.act} {build}")
         
