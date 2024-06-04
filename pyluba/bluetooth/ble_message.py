@@ -1362,7 +1362,7 @@ class BleMessage:
         self.send_order_msg_sys(build)
 
     def get_device_version_info(self):
-        self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_get_dev_fw_info=1))
+        return self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_get_dev_fw_info=1))
         
     # === sendOrderMsg_Sys2 ===
 
