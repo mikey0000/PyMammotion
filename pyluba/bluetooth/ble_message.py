@@ -4,6 +4,7 @@ import json
 import queue
 import sys
 import time
+import logging
 from asyncio import sleep
 from io import BytesIO
 from typing import Dict, List
@@ -30,6 +31,8 @@ from pyluba.proto import (
 from pyluba.utility.constant.device_constant import bleOrderCmd
 from pyluba.utility.device_type import DeviceType
 from pyluba.utility.rocker_util import RockerControlUtil
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class BleMessage:
@@ -62,25 +65,7 @@ class BleMessage:
         self.mReadSequence = itertools.count()
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
-
-    async def send_order_msg_ota(self, type: int):
-        mctrl_ota = mctrl_ota_pb2.MctlOta(
-            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
-                type=type
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_OTA
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.ota.CopyFrom(mctrl_ota)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
+        
 
     async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
 
@@ -1418,13 +1403,22 @@ class BleMessage:
         return luba_msg.SerializeToString()
     
 
-    # @mikey0000 need some help here with getting these to work
-    def get_device_ota_info(self, log_type: int):        
-        todev_get_info_req = mctrl_ota_pb2.MctlOta.Builder().todev_get_info_req.CopyFrom(mctrl_ota_pb2.getInfoReq.Builder().type = mctrl_ota_pb2.IT_OTA)
+    def get_device_ota_info(self, log_type: int):
+        todev_get_info_req = mctrl_ota_pb2.MctlOta(
+            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
+                type=mctrl_ota_pb2.IT_OTA
+            )
+        )
+
         print("===Send command to get upgrade details===logType:" + str(log_type))
-        self.send_order_msg_ota(todev_get_info_req)
+        return self.send_order_msg_ota(todev_get_info_req)
 
     def get_device_info_new(self):
-        todev_get_info_req = mctrl_ota_pb2.MctlOta.Builder().todev_get_info_req.CopyFrom(mctrl_ota_pb2.getInfoReq.Builder().type = mctrl_ota_pb2.IT_BASE)
+        """New device call for OTA upgrade information."""
+        todev_get_info_req = mctrl_ota_pb2.MctlOta(
+            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
+                type=mctrl_ota_pb2.IT_BASE
+            )
+        )
         print("Send to get OTA upgrade information", "Get device information")
-        self.send_order_msg_ota(todev_get_info_req)
+        return self.send_order_msg_ota(todev_get_info_req)
