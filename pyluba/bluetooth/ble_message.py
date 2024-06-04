@@ -4,6 +4,7 @@ import json
 import queue
 import sys
 import time
+import logging
 from asyncio import sleep
 from io import BytesIO
 from typing import Dict, List
@@ -30,6 +31,8 @@ from pyluba.proto import (
 from pyluba.utility.constant.device_constant import bleOrderCmd
 from pyluba.utility.device_type import DeviceType
 from pyluba.utility.rocker_util import RockerControlUtil
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class BleMessage:
@@ -62,25 +65,7 @@ class BleMessage:
         self.mReadSequence = itertools.count()
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
-
-    async def send_order_msg_ota(self, type: int):
-        mctrl_ota = mctrl_ota_pb2.MctlOta(
-            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
-                type=type
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_OTA
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.ota.CopyFrom(mctrl_ota)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
+        
 
     async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
 
@@ -1378,7 +1363,7 @@ class BleMessage:
         return luba_msg.SerializeToString()
 
       
-                    # === sendOrderMsg_Media ===
+    # === sendOrderMsg_Media ===
     
     def send_order_msg_media(self, mul):
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -1402,6 +1387,7 @@ class BleMessage:
     def set_car_wiper(self, round: int):
         self.send_order_msg_media(luba_mul_pb2.SocMul(set_wiper=luba_mul_pb2.MulSetWiper(round=round)))
 
+
     # === sendOrderMsg_Video ===
     
     async def send_order_msg_video(self, mul):
@@ -1409,10 +1395,6 @@ class BleMessage:
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_MUL,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
             rcver=luba_msg_pb2.MsgDevice.SOC_MODULE_MULTIMEDIA,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
             mul=mul)
 
         return luba_msg.SerializeToString()
@@ -1421,3 +1403,41 @@ class BleMessage:
         position = luba_mul_pb2.MUL_CAMERA_POSITION.ALL if DeviceType.is_yu_ka(self.get_device_name()) else luba_mul_pb2.MUL_CAMERA_POSITION.LEFT
         mctl_sys = luba_mul_pb2.SocMul(set_video=luba_mul_pb2.MulSetVideo(position=position, vi_switch=enter_state))
         self.send_order_msg_video(mctl_sys)
+
+    
+    # === sendOrderMsg_Ota ===
+    
+
+    def send_order_msg_ota(self, ota):
+        luba_msg = luba_msg_pb2.LubaMsg(
+        msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_OTA,
+        sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+        rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+        msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        seqs=1,
+        version=1,
+        subtype=1,
+        ota=ota)
+
+        return luba_msg.SerializeToString()
+    
+
+    def get_device_ota_info(self, log_type: int):
+        todev_get_info_req = mctrl_ota_pb2.MctlOta(
+            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
+                type=mctrl_ota_pb2.IT_OTA
+            )
+        )
+
+        print("===Send command to get upgrade details===logType:" + str(log_type))
+        return self.send_order_msg_ota(todev_get_info_req)
+
+    def get_device_info_new(self):
+        """New device call for OTA upgrade information."""
+        todev_get_info_req = mctrl_ota_pb2.MctlOta(
+            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
+                type=mctrl_ota_pb2.IT_BASE
+            )
+        )
+        print("Send to get OTA upgrade information", "Get device information")
+        return self.send_order_msg_ota(todev_get_info_req)
