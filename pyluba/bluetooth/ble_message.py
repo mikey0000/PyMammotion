@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 import base64
-=======
 import datetime
->>>>>>> main
 import itertools
 import json
 import queue
