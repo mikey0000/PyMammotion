@@ -136,52 +136,6 @@ class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, Message
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
         return lubaMsg.SerializeToString()
-
-    def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
-        mctlsys = mctrl_sys_pb2.MctlSys(
-            todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
-                timeout=timeout,
-                period=period,
-                no_change_period=no_change_period,
-                count=1
-            )
-        )
-
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_CONNECT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_RTK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_LOCAL.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_WORK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_STA.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_POINT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VIO.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_STATISTIC.value
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctlsys)
-        return lubaMsg.SerializeToString()
     
         """BLE commands for Luba."""
 

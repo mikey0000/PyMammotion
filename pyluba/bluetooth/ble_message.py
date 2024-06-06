@@ -28,7 +28,6 @@ from pyluba.proto import (
     mctrl_sys_pb2,
 )
 from pyluba.utility.constant.device_constant import bleOrderCmd
-from pyluba.utility.device_type import DeviceType
 from pyluba.utility.rocker_util import RockerControlUtil
 
 _LOGGER = logging.getLogger(__name__)
@@ -453,3 +452,102 @@ class BleMessage:
 
     def _getSubType(self, typeValue: int):
         return (typeValue & 252) >> 2
+
+    def getTypeValue(self, type: int, subtype: int):
+        return (subtype << 2) | type
+
+    def receiveAck(self, expectAck: int) -> bool:
+        try:
+            ack = next(self.mAck)
+            return ack == expectAck
+        except Exception as err:
+            print(err)
+            return False
+
+    def generateSendSequence(self):
+        return next(self.mSendSequence) & 255
+
+    async def post_custom_data_bytes(self, data: bytes):
+        if (data == None):
+            return
+        type_val = self.getTypeValue(1, 19)
+        try:
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
+            # onPostCustomDataResult(status, data)
+            # print(suc)
+        except Exception as err:
+            print(err)
+
+    async def post_custom_data(self, data_str: str):
+        data = data_str.encode()
+        if (data == None):
+            return
+        type_val = self.getTypeValue(1, 19)
+        try:
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
+            # onPostCustomDataResult(status, data)
+        except Exception as err:
+            print(err)
+
+    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytes) -> bool:
+        if data is None:
+            return await self.post_non_data(encrypt, checksum, require_ack, type_of)
+
+        return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
+
+    async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
+        sequence = self.generateSendSequence()
+        postBytes = self.getPostBytes(
+            type_of, encrypt, checksum, require_ack, False, sequence, None)
+        posted = await self.gatt_write(postBytes)
+        return posted and (not require_ack or self.receiveAck(sequence))
+
+    async def post_contains_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
+                                 data: bytes) -> bool:
+        chunk_size = 517  # self.client.mtu_size - 3
+
+        chunks = list()
+        for i in range(0, len(data), chunk_size):
+            if (i + chunk_size > len(data)):
+                chunks.append(data[i: len(data)])
+            else:
+                chunks.append(data[i: i + chunk_size])
+        for index, chunk in enumerate(chunks):
+            frag = index != len(chunks) - 1
+            sequence = self.generateSendSequence()
+            postBytes = self.getPostBytes(
+                type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
+            # print("sequence")
+            # print(sequence)
+            posted = await self.gatt_write(postBytes)
+            if (posted != None):
+                return False
+
+            if (not frag):
+                return not require_ack or self.receiveAck(sequence)
+
+            if (require_ack and not self.receiveAck(sequence)):
+                return False
+            else:
+                print("sleeping 0.01")
+                await sleep(0.01)
+
+    def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
+                     data: bytes) -> bytes:
+
+        byteOS = BytesIO()
+        dataLength = (0 if data == None else len(data))
+        frameCtrl = FrameCtrlData.getFrameCTRLValue(
+            encrypt, checksum, 0, require_ack, hasFrag)
+        byteOS.write(type.to_bytes(1, sys.byteorder))
+        byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
+        byteOS.write(sequence.to_bytes(1, sys.byteorder))
+        byteOS.write(dataLength.to_bytes(1, sys.byteorder))
+
+        if (data != None):
+            byteOS.write(data)
+
+        print(byteOS.getvalue())
+        return byteOS.getvalue()

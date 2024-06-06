@@ -8,21 +8,21 @@ class DeviceType(Enum):
     LUBA_2 = (2, "Luba-VS")
     LUBA_YUKA = (3, "Yuka-")
 
-    def __init__(self, value, name):
-        self.value = value
-        self.name = name
+    def __init__(self, value: int, name: str):
+        self._value = value
+        self._name = name
 
     def get_name(self):
-        return self.name
+        return self._name
 
     def get_value(self):
-        return self.value
+        return self._value
 
     def get_value_str(self):
-        return str(self.value)
+        return str(self._value)
 
     def set_value(self, value):
-        self.value = value
+        self._value = value
 
     @staticmethod
     def valueof(value):
