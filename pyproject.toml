@@ -1,3 +1,6 @@
+[project]
+name = "pyluba"
+
 [tool.poetry]
 name        = "pyluba"
 version     = "0.0.31"
