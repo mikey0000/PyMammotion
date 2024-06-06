@@ -25,9 +25,10 @@ class JoystickControl:
     blade_height = 25
     worker = None
 
-    def __init__(self, client: BleMessage):
-        self._client = client
+    def __init__(self, ble_message: BleMessage):
+        self._client = ble_message
         self._curr_time = timer()
+        self.stopped = False
         
         repeater = pyjoystick.HatRepeater(
             first_repeat_timeout=0.2, repeat_timeout=0.03, check_timeout=0.01
@@ -49,11 +50,12 @@ class JoystickControl:
         self.ignore_events = False
 
     def run_movement(self):
-
-        # print(self.linear_speed,
-        #         self.angular_speed,
-        #         self.linear_percent,
-        #         self.angular_percent)
+        if (self.linear_percent == 0.0 and self.angular_percent == 0.0):
+            if self.stopped:
+                return
+            self.stopped = True
+        self.stopped = False
+            
         asyncio.run(
             self._client.transformBothSpeeds(
                 self.linear_speed,
@@ -142,30 +144,13 @@ class JoystickControl:
                             self.angular_percent = self.get_percent(abs(key.value * 100))
 
             else:
-                print("else")
                 match key.number:
                     case 1:  # left (up down)
                         self.linear_speed = 0.0
                         self.linear_percent = 0.0
-                
-
                     case 2:  # right  (left right)
                         self.angular_speed = 0.0
                         self.angular_percent = 0.0
-                        
-                    # self.linear_speed = 0.0
-                    # self.linear_percent = 0
-                    # self.angular_speed = 0.0
-                    # self.angular_percent = 0
-
-                    # asyncio.run(
-                    #     self._client.transformBothSpeeds(
-                    #         self.linear_speed,
-                    #         self.angular_speed,
-                    #         self.linear_percent,
-                    #         self.angular_percent,
-                    #     )
-                    # )
 
 async def run():
     bleLubaConn = LubaBLE(bleNotificationEvt)
