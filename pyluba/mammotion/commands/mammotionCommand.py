@@ -1,9 +1,21 @@
+from pyluba.mammotion.commands.messages.navigation import MessageNavigation
+from pyluba.mammotion.commands.messages.network import MessageNetwork
+from pyluba.mammotion.commands.messages.ota import MessageOta
+from pyluba.mammotion.commands.messages.system import MessageSystem
+from pyluba.mammotion.commands.messages.video import MessageVideo
 from pyluba.proto import dev_net_pb2, luba_msg_pb2, mctrl_nav_pb2, mctrl_sys_pb2
 from pyluba.proto.mctrl_sys import RptInfoType
 
 
-class LubaCommandProtoMQTT:
+class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo):
     """MQTT commands for Luba."""
+
+    def __init__(self, device_name: str) -> None:
+        self._device_name = device_name
+
+    def get_device_name(self) -> str:
+        """Get device name."""
+        return self._device_name
 
     def get_device_base_info(self):
         net = dev_net_pb2.DevNet(
@@ -15,26 +27,6 @@ class LubaCommandProtoMQTT:
         )
 
         return self.send_order_msg_net(net)
-
-    def allpowerfull_rw(self, id: int, context: int, rw: int):
-        mctrl_sys = mctrl_sys_pb2.MctlSys(
-            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
-                rw=rw,
-                id=id,
-                context=context,
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctrl_sys)
-        return lubaMsg.SerializeToString()
 
     def read_plan(self, id: int):
         """Read jobs off luba."""
@@ -144,59 +136,8 @@ class LubaCommandProtoMQTT:
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
         return lubaMsg.SerializeToString()
-
-    def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
-        mctlsys = mctrl_sys_pb2.MctlSys(
-            todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
-                timeout=timeout,
-                period=period,
-                no_change_period=no_change_period,
-                count=1
-            )
-        )
-
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_CONNECT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_RTK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_LOCAL.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_WORK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_STA.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_POINT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VIO.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_STATISTIC.value
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctlsys)
-        return lubaMsg.SerializeToString()
-
-
-"""BLE inherits MQTT because BLE has BLE only commands."""
-
-
-class LubaCommandProtoBLE(LubaCommandProtoMQTT):
-    """BLE commands for Luba."""
+    
+        """BLE commands for Luba."""
 
     def send_todev_ble_sync(self, sync_type: int) -> bytes:
         commEsp = dev_net_pb2.DevNet(
