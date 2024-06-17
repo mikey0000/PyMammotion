@@ -215,7 +215,7 @@ class LubaCommandProtoMQTT:
 class LubaCommandProtoBLE(LubaCommandProtoMQTT):
     """BLE commands for Luba."""
 
-    async def transform_both_speeds(self, linear: float, angular: float, linear_percent: float, angular_percent: float):
+    def transform_both_speeds(self, linear: float, angular: float, linear_percent: float, angular_percent: float):
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
         transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
 
@@ -223,7 +223,7 @@ class LubaCommandProtoBLE(LubaCommandProtoMQTT):
             linearSpeed = transfrom3[0] * 10
             angularSpeed = int(transform4[1] * 4.5)
             print(linearSpeed, angularSpeed)
-            return await self.sendMovement(linearSpeed, angularSpeed)
+            return self.sendMovement(linearSpeed, angularSpeed)
 
     def current_milli_time(self):
         return round(time.time() * 1000)

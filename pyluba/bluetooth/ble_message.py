@@ -765,22 +765,22 @@ class BleMessage:
 
             await self.sendMovement(linearSpeed, angularSpeed)
 
-    async def transformBothSpeeds(self, linear: float, angular: float, linearPercent: float, angularPercent: float):
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
-        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angularPercent)
+    async def transformBothSpeeds(self, linear: float, angular: float, linear_percent: float, angular_percent: float):
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
+        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
 
         if transfrom3 is not None and len(transfrom3) > 0:
-            linearSpeed = transfrom3[0] * 10
-            angularSpeed = int(transform4[1] * 4.5)
-            print(linearSpeed, angularSpeed)
-            await self.sendMovement(linearSpeed, angularSpeed)
+            linear_speed = transfrom3[0] * 10
+            angular_speed = int(transform4[1] * 4.5)
+            print(linear_speed, angular_speed)
+            await self.sendMovement(linear_speed, angular_speed)
 
-    async def sendMovement(self, linearSpeed: int, angularSpeed: int):
+    async def sendMovement(self, linear_speed: int, angular_speed: int):
         mctrlDriver = mctrl_driver_pb2.MctlDriver()
 
         drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
-        drvMotionCtrl.setLinearSpeed = linearSpeed
-        drvMotionCtrl.setAngularSpeed = angularSpeed
+        drvMotionCtrl.setLinearSpeed = linear_speed
+        drvMotionCtrl.setAngularSpeed = angular_speed
         mctrlDriver.todev_devmotion_ctrl.CopyFrom(drvMotionCtrl)
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
