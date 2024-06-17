@@ -44,13 +44,13 @@ class LubaMQTT(BaseLuba):
             hashlib.sha1
         ).hexdigest()
 
-        self._linkkit_client = LinkKit(f"{self._product_key}.iot-as-mqtt.eu-central-1.aliyuncs.com", product_key, device_name, device_secret)
+        self._linkkit_client = LinkKit(f"{self._product_key}.iot-as-mqtt.ap-southeast-1.aliyuncs.com", product_key, device_name, device_secret, password=self._mqtt_password, username=self._mqtt_username)
 
         self._linkkit_client.on_connect = self._on_connect
         self._linkkit_client.on_message = self._on_message
         self._linkkit_client.on_disconnect = self._on_disconnect
         #        self._mqtt_host = "public.itls.eu-central-1.aliyuncs.com"
-        self._mqtt_host = f"{self._product_key}.iot-as-mqtt.eu-central-1.aliyuncs.com"
+        self._mqtt_host = f"{self._product_key}.iot-as-mqtt.ap-southeast-1.aliyuncs.com"
 
         self._client = Client(
             client_id=self._mqtt_client_id,
@@ -63,13 +63,16 @@ class LubaMQTT(BaseLuba):
         self._client.enable_logger(logger.getChild("paho"))
 
     # region Connection handling
-
+    def connect(self):
+        logger.info("Connecting...")
+        self._client.connect(host=self._mqtt_host)
+        self._client.loop_forever()
     def connect_async(self):
         logger.info("Connecting...")
         self._linkkit_client.connect_async()
-        self._client.connect_async(host=self._mqtt_host)
-        self._client.loop_start()
-
+        # self._client.connect_async(host=self._mqtt_host)
+        # self._client.loop_start()
+        self._linkkit_client.start_worker_loop()
     def disconnect(self):
         logger.info("Disconnecting...")
         self._linkkit_client.disconnect()
