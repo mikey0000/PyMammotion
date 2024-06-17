@@ -125,7 +125,7 @@ async def run():
     # await luba_client.generate_route_information(generate_route_information)
     # probably need to wait for this to finish before hitting start
     # await luba_client.start_job(30)
-    # await luba_client.setbladeHeight(70)
+    # await luba_client.set_knife_height(70)
     # await luba_client.send_todev_ble_sync()
 
 
@@ -139,14 +139,14 @@ async def run():
     # await luba_client.get_area_tobe_transferred()
     await luba_client.send_todev_ble_sync(2)
     await asyncio.sleep(2)
-    await luba_client.all_powerful_RW(5, 1, 1)
+    await luba_client.allpowerfull_rw(5, 1, 1)
 
 
     # await luba_client.send_order_msg_ota(0)
     await asyncio.sleep(1)
 
 
-    # await luba_client.all_powerful_RW(5, 2, 1)
+    # await luba_client.allpowerfull_rw(5, 2, 1)
     await luba_client.get_report_cfg(10000, 1000, 2000)
     # await luba_client.send_device_info()
 

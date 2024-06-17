@@ -25,7 +25,8 @@ from pyluba.bluetooth.const import (
     UUID_NOTIFICATION_CHARACTERISTIC,
     UUID_WRITE_CHARACTERISTIC,
 )
-from pyluba.mammotion.commands.proto import LubaCommandProtoBLE
+
+from pyluba.mammotion.commands.mammotionCommand import MammotionCommand
 from pyluba.proto import (
     luba_msg_pb2,
 )
@@ -41,7 +42,7 @@ class CharacteristicMissingError(Exception):
 
 
 def _sb_uuid(comms_type: str = "service") -> UUID | str:
-    """Return Switchbot UUID."""
+    """Return Mammotion UUID."""
 
     _uuid = {"tx": "ff01", "rx": "ff02", "service": "2A05"}
 
@@ -119,50 +120,60 @@ class MammotionBaseDevice:
         res = betterproto.which_one_of(tmp_msg, "LubaSubMsg")
         match res[0]:
             case 'nav':
-                nav_sub_msg = betterproto.which_one_of(tmp_msg.nav, 'SubNavMsg')
+                nav_sub_msg = betterproto.which_one_of(
+                    tmp_msg.nav, 'SubNavMsg')
                 nav = self._raw_data.get('nav')
                 if nav is None:
                     self._raw_data['nav'] = {}
                 if isinstance(nav_sub_msg[1], int):
                     self._raw_data['net'][nav_sub_msg[0]] = nav_sub_msg[1]
                 else:
-                    self._raw_data['nav'][nav_sub_msg[0]] = nav_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                    self._raw_data['nav'][nav_sub_msg[0]] = nav_sub_msg[1].to_dict(
+                        casing=betterproto.Casing.SNAKE)
             case 'sys':
-                sys_sub_msg = betterproto.which_one_of(tmp_msg.sys, 'SubSysMsg')
+                sys_sub_msg = betterproto.which_one_of(
+                    tmp_msg.sys, 'SubSysMsg')
                 sys = self._raw_data.get('sys')
                 if sys is None:
                     self._raw_data['sys'] = {}
-                self._raw_data['sys'][sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                self._raw_data['sys'][sys_sub_msg[0]] = sys_sub_msg[1].to_dict(
+                    casing=betterproto.Casing.SNAKE)
             case 'driver':
-                drv_sub_msg = betterproto.which_one_of(tmp_msg.driver, 'SubDrvMsg')
+                drv_sub_msg = betterproto.which_one_of(
+                    tmp_msg.driver, 'SubDrvMsg')
                 drv = self._raw_data.get('driver')
                 if drv is None:
                     self._raw_data['driver'] = {}
-                self._raw_data['driver'][drv_sub_msg[0]] = drv_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                self._raw_data['driver'][drv_sub_msg[0]] = drv_sub_msg[1].to_dict(
+                    casing=betterproto.Casing.SNAKE)
             case 'net':
-                net_sub_msg = betterproto.which_one_of(tmp_msg.net, 'NetSubType')
+                net_sub_msg = betterproto.which_one_of(
+                    tmp_msg.net, 'NetSubType')
                 net = self._raw_data.get('net')
                 if net is None:
                     self._raw_data['net'] = {}
                 if isinstance(net_sub_msg[1], int):
                     self._raw_data['net'][net_sub_msg[0]] = net_sub_msg[1]
                 else:
-                    self._raw_data['net'][net_sub_msg[0]] = net_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                    self._raw_data['net'][net_sub_msg[0]] = net_sub_msg[1].to_dict(
+                        casing=betterproto.Casing.SNAKE)
             case 'mul':
                 mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, 'SubMul')
                 mul = self._raw_data.get('mul')
                 if mul is None:
                     self._raw_data['mul'] = {}
-                self._raw_data['mul'][mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                self._raw_data['mul'][mul_sub_msg[0]] = mul_sub_msg[1].to_dict(
+                    casing=betterproto.Casing.SNAKE)
             case 'ota':
-                ota_sub_msg = betterproto.which_one_of(tmp_msg.ota, 'SubOtaMsg')
+                ota_sub_msg = betterproto.which_one_of(
+                    tmp_msg.ota, 'SubOtaMsg')
                 ota = self._raw_data.get('ota')
                 if ota is None:
                     self._raw_data['ota'] = {}
-                self._raw_data['ota'][ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+                self._raw_data['ota'][ota_sub_msg[0]] = ota_sub_msg[1].to_dict(
+                    casing=betterproto.Casing.SNAKE)
 
         self._luba_msg = LubaMsg().from_dict(self._raw_data)
-
 
     @property
     def raw_data(self) -> dict[str, Any]:
@@ -186,11 +197,13 @@ class MammotionBaseDevice:
         # cfg_proto = luba_msg_pb2.LubaMsg()
         # cfg_proto.ParseFromString(cfg)
         # print(json_format.MessageToDict(cfg_proto))
+
         plan = await self._send_command_with_args("read_plan", **{'id': 2})
         # plan_proto = luba_msg_pb2.LubaMsg()
         # plan_proto.ParseFromString(plan)
         # print(json_format.MessageToDict(plan_proto))
-        RW = await self._send_command_with_args("all_powerful_RW", **{'id': 5, 'context': 1, 'rw': 1})
+
+        RW = await self._send_command_with_args("allpowerfull_rw", **{'id': 5, 'context': 1, 'rw': 1})
         # RW_proto = luba_msg_pb2.LubaMsg()
         # RW_proto.ParseFromString(RW)
         # print(json_format.MessageToDict(RW_proto))
@@ -210,7 +223,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._write_char: BleakGATTCharacteristic | None = None
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
-        self._commands: LubaCommandProtoBLE = LubaCommandProtoBLE()
+        self._commands: MammotionCommand = MammotionCommand(device.name)
         self._expected_disconnect = False
         self._connect_lock = asyncio.Lock()
         self._operation_lock = asyncio.Lock()
@@ -409,7 +422,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _start_notify(self) -> None:
         """Start notification."""
-        _LOGGER.debug("%s: Subscribe to notifications; RSSI: %s", self.name, self.rssi)
+        _LOGGER.debug("%s: Subscribe to notifications; RSSI: %s",
+                      self.name, self.rssi)
         await self._client.start_notify(self._read_char, self._notification_handler)
 
     async def _execute_command_locked(self, key: str, command: bytes) -> bytes:
@@ -437,7 +451,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 timeout_handle.cancel()
             self._notify_future = None
 
-        _LOGGER.debug("%s: Notification received: %s", self.name, notify_msg.hex())
+        _LOGGER.debug("%s: Notification received: %s",
+                      self.name, notify_msg.hex())
         return notify_msg
 
     def get_address(self) -> str:

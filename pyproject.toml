@@ -1,12 +1,13 @@
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.30"
+version     = "0.0.31"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
 authors     = [
     "Michael Arthur <michael@jumblesoft.co.nz>",
-    "Jan Dalheimer <jan@dalheimer.de>"
+    "Jan Dalheimer <jan@dalheimer.de>",
+    "jLynx <@jlynx>"
 ]
 packages = [{include = "pyluba"}]
 

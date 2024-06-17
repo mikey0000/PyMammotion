@@ -1,11 +1,14 @@
+import base64
+import datetime
 import itertools
 import json
 import queue
 import sys
 import time
+import logging
 from asyncio import sleep
 from io import BytesIO
-from typing import Dict
+from typing import Dict, List
 
 from bleak import BleakClient
 from jsonic.serializable import serialize
@@ -17,16 +20,17 @@ from pyluba.bluetooth.data.framectrldata import FrameCtrlData
 from pyluba.bluetooth.data.notifydata import BlufiNotifyData
 from pyluba.data.model import Plan
 from pyluba.data.model.execute_boarder import ExecuteBorder
+from pyluba.mammotion.commands.messages.navigation import MessageNavigation
 from pyluba.proto import (
     dev_net_pb2,
     luba_msg_pb2,
-    mctrl_driver_pb2,
     mctrl_nav_pb2,
-    mctrl_ota_pb2,
     mctrl_sys_pb2,
 )
 from pyluba.utility.constant.device_constant import bleOrderCmd
 from pyluba.utility.rocker_util import RockerControlUtil
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class BleMessage:
@@ -52,6 +56,7 @@ class BleMessage:
     mReadSequence: iter
     mAck: queue
     notification: BlufiNotifyData
+    messageNavigation:MessageNavigation = MessageNavigation()
 
     def __init__(self, client: BleakClient):
         self.client = client
@@ -59,46 +64,6 @@ class BleMessage:
         self.mReadSequence = itertools.count()
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
-
-    async def all_powerful_RW(self, id: int, context: int, rw: int):
-        mctrl_sys = mctrl_sys_pb2.MctlSys(
-            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
-                rw=rw,
-                id=id,
-                context=context,
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctrl_sys)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def send_order_msg_ota(self, type: int):
-        mctrl_ota = mctrl_ota_pb2.MctlOta(
-            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
-                type=type
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_OTA
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.ota.CopyFrom(mctrl_ota)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
 
     async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
 
@@ -146,7 +111,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.sys.CopyFrom(mctlsys)
         byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
+        await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
     async def get_device_base_info(self):
         net = dev_net_pb2.DevNet(
@@ -166,7 +131,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(net)
         byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
+        await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
     async def get_device_version_main(self):
         commEsp = dev_net_pb2.DevNet(
@@ -193,7 +158,7 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
+        await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
     async def send_todev_ble_sync(self, sync_type: int):
         net = dev_net_pb2.DevNet(
@@ -201,7 +166,7 @@ class BleMessage:
         )
 
         byte_arr = self.send_order_msg_net(net)
-        await self.post_custom_data_bytes(byte_arr)
+        await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
     async def set_data_synchronization(self, type: int):
         mctrl_nav = mctrl_nav_pb2.MctlNav(
@@ -221,394 +186,15 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrl_nav)
         byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def get_hash(self):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_NONE,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_gethash=mctrl_nav_pb2.NavGetHashList(
-                    pver=1,
-                )
-            )
-        )
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def get_all_boundary_hash_list(self, i: int):
-        """.getAllBoundaryHashList(3); 0"""
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_NONE,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_gethash=mctrl_nav_pb2.NavGetHashList(
-                    pver=1,
-                    subCmd=i
-                )
-            )
-        )
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def get_line_info(self, i: int):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_zigzag_ack=mctrl_nav_pb2.NavUploadZigZagResultAck(
-                    pver=1,
-                    currentHash=i,
-                    subCmd=0
-                )
-            ),
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def get_hash_response(self, totalFrame: int, currentFrame: int):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_gethash=mctrl_nav_pb2.NavGetHashList(
-                    pver=1,
-                    subCmd=2,
-                    action=8,
-                    type=3,
-                    currentFrame=currentFrame,
-                    totalFrame=totalFrame
-                )
-            )
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def get_area_tobe_transferred(self):
-        commondata = mctrl_nav_pb2.NavGetCommData(
-            pver=1,
-            subCmd=1,
-            action=8,
-            type=3
-        )
-
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_get_commondata=commondata
-            )
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def synchronize_hash_data(self, hash_int: int):
-        commondata = mctrl_nav_pb2.NavGetCommData(
-            pver=1,
-            subCmd=1,
-            action=8,
-            Hash=hash_int
-        )
-
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_get_commondata=commondata
-            )
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
+        await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
     async def get_task(self):
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
-        await self.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
+        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
 
     async def send_ble_alive(self):
         hash_map = {"ctrl": 1}
-        await self.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
-
-    async def set_speed(self, speed: float):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            driver=mctrl_driver_pb2.MctrlDriver(
-                bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(
-                    speed=float(speed),
-                    rw=1
-                )
-            )
-        )
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def start_work_job(self):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=1,
-                    result=0
-                )
-            )
-        )
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def read_plan(self, i: int):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
-                    subCmd=i,
-                )
-            )
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    # (2, 0);
-    async def read_plan(self, i: int, i2: int):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
-                    subCmd=i,
-                    planIndex=i2
-                )
-            )
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def read_plan_unable_time(self, i):
-        build = mctrl_nav_pb2.NavUnableTimeSet()
-        build.subCmd = i
-
-        luba_msg = luba_msg_pb2.LubaMsg()
-        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
-        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
-        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
-        luba_msg.seqs = 1
-        luba_msg.version = 1
-        luba_msg.subtype = 1
-        luba_msg.nav.todev_unable_time_set.CopyFrom(build)
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def send_plan2(self, plan: Plan):
-        navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
-        navPlanJobSet.pver = plan.pver
-        navPlanJobSet.subCmd = plan.subCmd
-        navPlanJobSet.area = plan.area
-        navPlanJobSet.deviceId = plan.deviceId
-        navPlanJobSet.workTime = plan.workTime
-        navPlanJobSet.version = plan.version
-        navPlanJobSet.id = plan.id
-        navPlanJobSet.userId = plan.userId
-        navPlanJobSet.planId = plan.planId
-        navPlanJobSet.taskId = plan.taskId
-        navPlanJobSet.jobId = plan.jobId
-        navPlanJobSet.startTime = plan.startTime
-        navPlanJobSet.endTime = plan.endTime
-        navPlanJobSet.week = plan.week
-        navPlanJobSet.knifeHeight = plan.knifeHeight
-        navPlanJobSet.model = plan.model
-        navPlanJobSet.edgeMode = plan.edgeMode
-        navPlanJobSet.requiredTime = plan.requiredTime
-        navPlanJobSet.routeAngle = plan.routeAngle
-        navPlanJobSet.routeModel = plan.routeModel
-        navPlanJobSet.routeSpacing = plan.routeSpacing
-        navPlanJobSet.ultrasonicBarrier = plan.ultrasonicBarrier
-        navPlanJobSet.totalPlanNum = plan.totalPlanNum
-        navPlanJobSet.planIndex = plan.planIndex
-        navPlanJobSet.result = plan.result
-        navPlanJobSet.speed = plan.speed
-        navPlanJobSet.taskName = plan.taskName
-        navPlanJobSet.jobName = plan.jobName
-        navPlanJobSet.zoneHashs.extend(plan.zoneHashs)
-        navPlanJobSet.reserved = plan.reserved
-
-        luba_msg = luba_msg_pb2.luba_msg()
-        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
-        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
-        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
-        luba_msg.seqs = 1
-        luba_msg.version = 1
-        luba_msg.subtype = 1
-        luba_msg.nav.todevPlanjobSet.CopyFrom(navPlanJobSet)
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    def get_reserved(self, generate_route_information):
-        return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
-
-    async def generate_route_information(self, generate_route_information):
-        """How you start a manual job, then call startjob"""
-
-        nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
-        nav_req_cover_path.pver = 1
-        nav_req_cover_path.subCmd = 0
-        nav_req_cover_path.zoneHashs.extend(
-            generate_route_information.one_hashs)
-        nav_req_cover_path.jobMode = generate_route_information.job_mode  # grid type
-        nav_req_cover_path.edgeMode = generate_route_information.edge_mode  # border laps
-        nav_req_cover_path.knifeHeight = generate_route_information.knife_height
-        nav_req_cover_path.speed = generate_route_information.speed
-        nav_req_cover_path.ultraWave = generate_route_information.ultra_wave
-        nav_req_cover_path.channelWidth = generate_route_information.channel_width  # mow width
-        nav_req_cover_path.channelMode = generate_route_information.channel_mode
-        nav_req_cover_path.toward = generate_route_information.toward
-        nav_req_cover_path.reserved = self.get_reserved(
-            generate_route_information)  # grid or border first
-
-        luba_msg = luba_msg_pb2.LubaMsg()
-        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
-        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
-        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
-        luba_msg.seqs = 1
-        luba_msg.version = 1
-        luba_msg.subtype = 1
-
-        mctl_nav = mctrl_nav_pb2.MctlNav()
-        mctl_nav.bidire_reqconver_path.CopyFrom(nav_req_cover_path)
-        luba_msg.nav.CopyFrom(mctl_nav)
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave,
-                               channel_width, channel_mode):
-        """Pretty sure this starts a job too but isn't used"""
-        luba_msg = luba_msg_pb2.LubaMsg()
-        luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
-        luba_msg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
-        luba_msg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        luba_msg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
-        luba_msg.seqs = 1
-        luba_msg.version = 1
-        luba_msg.subtype = 1
-
-        nav = mctrl_nav_pb2.MctlNav()
-        start_job = mctrl_nav_pb2.NavStartJob()
-        start_job.jobId = job_id
-        start_job.jobVer = job_ver
-        start_job.rainTactics = rain_tactics
-        start_job.jobMode = job_mode
-        start_job.knifeHeight = knife_height
-        start_job.speed = speed
-        start_job.ultraWave = ultra_wave
-        start_job.channelWidth = channel_width
-        start_job.channelMode = channel_mode
-
-        nav.todev_mow_task.CopyFrom(start_job)
-        luba_msg.nav.CopyFrom(nav)
-
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def breakPointContinue(self):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=7,
-                    result=0
-                )
-            )
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
-    async def breakPointAnywhereContinue(self, refresh_loading: bool):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=9,
-                    result=0
-                )
-            )
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
+        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
 
     def clearNotification(self):
         self.notification = None
@@ -637,9 +223,9 @@ class BleMessage:
 
     async def requestDeviceStatus(self):
         request = False
-        type = self.getTypeValue(0, 5)
+        type = self.messageNavigation.getTypeValue(0, 5)
         try:
-            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
+            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -651,109 +237,18 @@ class BleMessage:
 
     async def requestDeviceVersion(self):
         request = False
-        type = self.getTypeValue(0, 7)
+        type = self.messageNavigation.getTypeValue(0, 7)
         try:
-            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
+            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
             print(err)
 
-    def pause_execute_task(self):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=2,
-                    result=0
-                )
-            )
-        )
-
-        byte_array = luba_msg.SerializeToString()
-
-    async def return_to_dock(self):
-        mctrlNav = mctrl_nav_pb2.MctlNav()
-        navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
-        navTaskCtrl.type = 1
-        navTaskCtrl.action = 5
-        navTaskCtrl.result = 0
-        mctrlNav.todev_taskctrl.CopyFrom(navTaskCtrl)
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
-        lubaMsg.sender = luba_msg_pb2.MsgDevice.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.MsgDevice.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MsgAttr.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.nav.CopyFrom(mctrlNav)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
-
-    async def leave_dock(self):
-        mctrlNav = mctrl_nav_pb2.MctlNav()
-        mctrlNav.todev_one_touch_leave_pile = 1
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.nav.CopyFrom(mctrlNav)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
-
-    async def setbladeHeight(self, height: int):
-        mctrlDriver = mctrl_driver_pb2.MctlDriver()
-        drvKnifeHeight = mctrl_driver_pb2.DrvKnifeHeight()
-        drvKnifeHeight.knifeHeight = height
-        mctrlDriver.todev_knife_height_set.CopyFrom(drvKnifeHeight)
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.driver.CopyFrom(mctrlDriver)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
-
-    async def setBladeControl(self, onOff: int):
-        mctlsys = mctrl_sys_pb2.MctlSys()
-        sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
-        sysKnifeControl.knife_status = onOff
-        mctlsys.todev_knife_ctrl.CopyFrom(sysKnifeControl)
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctlsys)
-        bytes = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(bytes)
-
     async def start_job(self, blade_height):
         """Call after calling generate_route_information I think"""
-        await self.setbladeHeight(blade_height)
+        await self.set_knife_height(blade_height)
         await self.start_work_job()
 
     async def transformSpeed(self, linear: float, percent: float):
@@ -763,7 +258,7 @@ class BleMessage:
             linearSpeed = transfrom3[0] * 10
             angularSpeed = (int)(transfrom3[1] * 4.5)
 
-            await self.sendMovement(linearSpeed, angularSpeed)
+            await self.send_control(linearSpeed, angularSpeed)
 
     async def transformBothSpeeds(self, linear: float, angular: float, linear_percent: float, angular_percent: float):
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
@@ -775,118 +270,22 @@ class BleMessage:
             print(linear_speed, angular_speed)
             await self.sendMovement(linear_speed, angular_speed)
 
-    async def sendMovement(self, linear_speed: int, angular_speed: int):
-        mctrlDriver = mctrl_driver_pb2.MctlDriver()
+    # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
+    #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
+    #         if (transfrom3 != null && transfrom3.size() > 0):
+    #             if (z):
+    #                 this.linearSpeed = transfrom3.get(0).intValue() * 10
+    #             else
+    #                 this.angularSpeed = (int) (transfrom3.get(1).intValue() * 4.5d)
 
-        drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
-        drvMotionCtrl.setLinearSpeed = linear_speed
-        drvMotionCtrl.setAngularSpeed = angular_speed
-        mctrlDriver.todev_devmotion_ctrl.CopyFrom(drvMotionCtrl)
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_NONE
-        lubaMsg.timestamp = self.current_milli_time()
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-
-        lubaMsg.driver.CopyFrom(mctrlDriver)
-        print(lubaMsg)
-        await self.post_custom_data_bytes(lubaMsg.SerializeToString())
+    #         if (this.countDownTask == null):
+    #             testSendControl()
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
-        await self.post_custom_data(serialize(executeBorder))
-
-    async def post_custom_data_bytes(self, data: bytes):
-        if (data == None):
-            return
-        type_val = self.getTypeValue(1, 19)
-        try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
-            # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
-            # onPostCustomDataResult(status, data)
-            # print(suc)
-        except Exception as err:
-            print(err)
-
-    async def post_custom_data(self, data_str: str):
-        data = data_str.encode()
-        if (data == None):
-            return
-        type_val = self.getTypeValue(1, 19)
-        try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
-            # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
-            # onPostCustomDataResult(status, data)
-        except Exception as err:
-            print(err)
-
-    def getTypeValue(self, type: int, subtype: int):
-        return (subtype << 2) | type
-
-    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytes) -> bool:
-        if data is None:
-            return await self.post_non_data(encrypt, checksum, require_ack, type_of)
-
-        return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
+        await self.messageNavigation.post_custom_data(serialize(executeBorder))
 
     async def gatt_write(self, data: bytes) -> None:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
-
-    async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
-        sequence = self.generateSendSequence()
-        postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
-        posted = await self.gatt_write(postBytes)
-        return posted and (not require_ack or self.receiveAck(sequence))
-
-    async def post_contains_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
-                                 data: bytes) -> bool:
-        chunk_size = 517  # self.client.mtu_size - 3
-
-        chunks = list()
-        for i in range(0, len(data), chunk_size):
-            if (i + chunk_size > len(data)):
-                chunks.append(data[i: len(data)])
-            else:
-                chunks.append(data[i: i + chunk_size])
-        for index, chunk in enumerate(chunks):
-            frag = index != len(chunks) - 1
-            sequence = self.generateSendSequence()
-            postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
-            # print("sequence")
-            # print(sequence)
-            posted = await self.gatt_write(postBytes)
-            if (posted != None):
-                return False
-
-            if (not frag):
-                return not require_ack or self.receiveAck(sequence)
-
-            if (require_ack and not self.receiveAck(sequence)):
-                return False
-            else:
-                print("sleeping 0.01")
-                await sleep(0.01)
-
-    def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
-                     data: bytes) -> bytes:
-
-        byteOS = BytesIO()
-        dataLength = (0 if data == None else len(data))
-        frameCtrl = FrameCtrlData.getFrameCTRLValue(
-            encrypt, checksum, 0, require_ack, hasFrag)
-        byteOS.write(type.to_bytes(1, sys.byteorder))
-        byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
-        byteOS.write(sequence.to_bytes(1, sys.byteorder))
-        byteOS.write(dataLength.to_bytes(1, sys.byteorder))
-
-        if (data != None):
-            byteOS.write(data)
-
-        print(byteOS.getvalue())
-        return byteOS.getvalue()
 
     def parseNotification(self, response: bytearray):
         dataOffset = None
@@ -900,7 +299,8 @@ class BleMessage:
         if (len(response) >= 4):
             sequence = int(response[2])  # toInt
             if sequence != next(self.mReadSequence):
-                print("parseNotification read sequence wrong", sequence, self.mReadSequence)
+                print("parseNotification read sequence wrong",
+                      sequence, self.mReadSequence)
                 self.mReadSequence = itertools.count(start=sequence)
                 # this is questionable
                 # self.mReadSequence = sequence
@@ -968,7 +368,8 @@ class BleMessage:
             # never seem to get these..
             self._parseCtrlData(subType, dataBytes)
         if (pkgType == 1):
-            if return_bytes: return dataBytes
+            if return_bytes:
+                return dataBytes
             return await self._parseDataData(subType, dataBytes)
 
     def _parseCtrlData(self, subType: int, data: bytes):
@@ -1016,6 +417,28 @@ class BleMessage:
     #     this.mAck.add(Integer.valueOf(bArr.length > 0 ? bArr[0] & 255 : 256));
     # }
 
+    def getJsonString(self, cmd: int) -> str:
+        jSONObject = {}
+        try:
+            jSONObject["cmd"] = cmd
+            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
+            return json.dumps(jSONObject)
+        except Exception:
+
+            return ""
+
+    def current_milli_time(self):
+        return round(time.time() * 1000)
+
+    def _getPackageType(self, typeValue: int):
+        return typeValue & 3
+
+    def _getSubType(self, typeValue: int):
+        return (typeValue & 252) >> 2
+
+    def getTypeValue(self, type: int, subtype: int):
+        return (subtype << 2) | type
+
     def receiveAck(self, expectAck: int) -> bool:
         try:
             ack = next(self.mAck)
@@ -1027,218 +450,87 @@ class BleMessage:
     def generateSendSequence(self):
         return next(self.mSendSequence) & 255
 
-    def getJsonString(self, cmd: int) -> str:
-        jSONObject = {}
+    async def post_custom_data_bytes(self, data: bytes):
+        if (data == None):
+            return
+        type_val = self.getTypeValue(1, 19)
         try:
-            jSONObject["cmd"] = cmd
-            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
-            return json.dumps(jSONObject)
-        except Exception:
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
+            # onPostCustomDataResult(status, data)
+            # print(suc)
+        except Exception as err:
+            print(err)
 
-            return ""
-
-    def get_json_string(self, cmd: int, hash_map: Dict[str, object]) -> str:
-        jSONObject = {}
+    async def post_custom_data(self, data_str: str):
+        data = data_str.encode()
+        if (data == None):
+            return
+        type_val = self.getTypeValue(1, 19)
         try:
-            jSONObject["cmd"] = cmd
-            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
-            jSONObject2 = {}
-            for key, value in hash_map.items():
-                jSONObject2[key] = value
-            jSONObject["params"] = jSONObject2
-            return json.dumps(jSONObject)
-        except Exception as e:
-            print(e)
-            return ""
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
+            # onPostCustomDataResult(status, data)
+        except Exception as err:
+            print(err)
 
-    def current_milli_time(self):
-        return round(time.time() * 1000)
+    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytes) -> bool:
+        if data is None:
+            return await self.post_non_data(encrypt, checksum, require_ack, type_of)
 
-    def _getTypeValue(self, type: int, subtype: int):
-        return (subtype << 2) | type
+        return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
 
-    def _getPackageType(self, typeValue: int):
-        return typeValue & 3
+    async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
+        sequence = self.generateSendSequence()
+        postBytes = self.getPostBytes(
+            type_of, encrypt, checksum, require_ack, False, sequence, None)
+        posted = await self.gatt_write(postBytes)
+        return posted and (not require_ack or self.receiveAck(sequence))
 
-    def _getSubType(self, typeValue: int):
-        return (typeValue & 252) >> 2
+    async def post_contains_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
+                                 data: bytes) -> bool:
+        chunk_size = 517  # self.client.mtu_size - 3
 
-# ==================================================================
+        chunks = list()
+        for i in range(0, len(data), chunk_size):
+            if (i + chunk_size > len(data)):
+                chunks.append(data[i: len(data)])
+            else:
+                chunks.append(data[i: i + chunk_size])
+        for index, chunk in enumerate(chunks):
+            frag = index != len(chunks) - 1
+            sequence = self.generateSendSequence()
+            postBytes = self.getPostBytes(
+                type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
+            # print("sequence")
+            # print(sequence)
+            posted = await self.gatt_write(postBytes)
+            if (posted != None):
+                return False
 
-    def send_order_msg_net(self, build):
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            net=build)
+            if (not frag):
+                return not require_ack or self.receiveAck(sequence)
 
-        return luba_msg.SerializeToString()
+            if (require_ack and not self.receiveAck(sequence)):
+                return False
+            else:
+                print("sleeping 0.01")
+                await sleep(0.01)
 
-    def get_4g_module_info(self):
-        build = dev_net_pb2.DevNet(
-            todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req)
-        print("Send command -- Get device 4G network module information")
-        self.send_order_msg_net(build)
+    def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
+                     data: bytes) -> bytes:
 
+        byteOS = BytesIO()
+        dataLength = (0 if data == None else len(data))
+        frameCtrl = FrameCtrlData.getFrameCTRLValue(
+            encrypt, checksum, 0, require_ack, hasFrag)
+        byteOS.write(type.to_bytes(1, sys.byteorder))
+        byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
+        byteOS.write(sequence.to_bytes(1, sys.byteorder))
+        byteOS.write(dataLength.to_bytes(1, sys.byteorder))
 
-    def get_4g_info(self):
-        build = dev_net_pb2.DevNet(
-            TodevMnetInfoReq=dev_net_pb2.DevNet().TodevMnetInfoReq)
-        print("Send command -- Get device 4G network information")
-        self.send_order_msg_net(build)
+        if (data != None):
+            byteOS.write(data)
 
-    def set_zmq_enable(self):
-        build = dev_net_pb2.DevNet(
-            todev_set_dds2_zmq=dev_net_pb2.DrvDebugDdsZmq(
-                is_enable=True,
-                rx_topic_name="perception_post_result",
-                tx_zmq_url="tcp://0.0.0.0:5555"
-            )
-        )
-        print("Send command -- Set vision ZMQ to enable")
-        self.send_order_msg_net(build)
-
-    def set_iot_setting(self, iot_conctrl_type: dev_net_pb2.iot_conctrl_type):
-        build = dev_net_pb2.DevNet(TodevSetIotOfflineReq=iot_conctrl_type)
-        print("Send command -- Device re-online")
-        self.send_order_msg_net(build)
-
-    def set_device_log_upload(self, request_id: str, operation: int, server_ip: int, server_port: int, number: int, type: int):
-        build = dev_net_pb2.DrvUploadFileToAppReq(
-            biz_id=request_id,
-            operation=operation,
-            server_ip=server_ip,
-            server_port=server_port,
-            num=number,
-            type=type
-        )
-        print(
-            f"Send log====Feedback====Command======requestID:{request_id} operation:{operation} serverIp:{server_ip} type:{type}")
-        self.send_order_msg_net(dev_net_pb2.DevNet(
-            todev_ble_sync=1, todev_uploadfile_req=build))
-
-    def set_device_socket_request(self, request_id: str, operation: int, server_ip: int, server_port: int, number: int, type: int) -> None:
-        """Set device socket request (bluetooth only)."""
-        build = dev_net_pb2.DrvUploadFileToAppReq(
-            biz_id=request_id,
-            operation=operation,
-            server_ip=server_ip,
-            server_port=server_port,
-            num=number,
-            type=type
-        )
-        print(
-            f"Send log====Feedback====Command======requestID:{request_id}  operation:{operation} serverIp:{server_ip}  type:{type}")
-        self.send_order_msg_net(dev_net_pb2.DevNet(
-            todev_ble_sync=1, todev_uploadfile_req=build))
-
-    def get_device_log_info(self, biz_id: str, type: int, log_url: str) -> None:
-        """Get device log info (bluetooth only)."""
-        self.send_order_msg_net(
-            dev_net_pb2.DevNet(
-                todev_ble_sync=1,
-                todev_req_log_info=dev_net_pb2.DrvUploadFileReq(
-                    biz_id=biz_id,
-                    type=type,
-                    url=log_url,
-                    num=0,
-                    user_id="" # TODO supply user id
-                )
-            )
-        )
-
-    def cancel_log_update(self, biz_id: str):
-        """Cancel log update (bluetooth only)."""
-        self.send_order_msg_net(dev_net_pb2.DevNet(
-            todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(biz_id=biz_id)))
-
-    def get_device_network_info(self):
-        build = dev_net_pb2.DevNet(
-            todev_networkinfo_req=dev_net_pb2.GetNetworkInfoReq(req_ids=1))
-        print("Send command - get device network information")
-        self.send_order_msg_net(build)
-
-    def set_device_4g_enable_status(self, new_4g_status: bool):
-        build = dev_net_pb2.DevNet(
-            todev_ble_sync=1,
-            todev_set_mnet_cfg_req=dev_net_pb2.SetMnetCfgReq(
-                cfg=dev_net_pb2.MnetCfg(
-                    type=dev_net_pb2.NET_TYPE_WIFI,
-                    inet_enable=new_4g_status,
-                    mnet_enable=new_4g_status
-                )
-            )
-        )
-        self.send_order_msg_net(build)
-        print(
-            f"Send command - set 4G (on/off status). newWifiStatus={new_4g_status}")
-
-    def set_device_wifi_enable_status(self, new_wifi_status: bool):
-        build = dev_net_pb2.DevNet(
-            todev_ble_sync=1,
-            todev_wifi_configuration=dev_net_pb2.DrvWifiSet(
-                config_param=4,
-                wifi_enable=new_wifi_status
-            )
-        )
-        self.send_order_msg_net(build)
-        print(
-            f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
-
-
-    def wifi_connectinfo_update(self, device_name: str, is_binary: bool):
-        print(
-            f"Send command - get Wifi connection information.wifiConnectinfoUpdate().deviceName={device_name}.isBinary={is_binary}")
-        if is_binary:
-            build = dev_net_pb2.DevNet(
-                todev_ble_sync=1, todev_wifi_msg_upload=dev_net_pb2.DrvWifiUpload(wifi_msg_upload=1))
-            print("Send command - get Wifi connection information")
-            print("Send command - get Wifi connection information")
-            self.send_order_msg_net(build)
-            return
-        self.wifi_connectinfo_update2()
-
-    def wifi_connectinfo_update2(self):
-        hash_map = {"getMsgCmd": 1}
-        self.post_custom_data(self.get_json_string(68, hash_map))
-
-    def get_record_wifi_list(self, is_binary: bool):
-        print(f"getRecordWifiList().isBinary={is_binary}")
-        if is_binary:
-            build = dev_net_pb2.DevNet(
-                todev_ble_sync=1, todev_wifi_list_upload=dev_net_pb2.DrvWifiList())
-            print("Send command - get memorized WiFi list upload command")
-            self.send_order_msg_net(build)
-            return
-        self.get_record_wifi_list2()
-
-    def get_record_wifi_list2(self):
-        self.post_custom_data(self.get_json_string(69))
-
-
-    def close_clear_connect_current_wifi(self, ssid: str, status: int, is_binary: bool):
-        if is_binary:
-            build = dev_net_pb2.DevNet(
-                todev_ble_sync=1,
-                todev_wifi_configuration=dev_net_pb2.DrvWifiSet(
-                    config_param=status,
-                    confssid=ssid
-                )
-            )
-            print(
-                f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})")
-            self.send_order_msg_net(build)
-            return
-        self.close_clear_connect_current_wifi2(ssid, status)
-
-    def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int):
-        data = {
-            "ssid": ssid,
-            "getMsgCmd": get_msg_cmd
-        }
-        self.post_custom_data(
-            self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
+        print(byteOS.getvalue())
+        return byteOS.getvalue()

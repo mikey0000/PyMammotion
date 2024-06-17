@@ -1,12 +1,21 @@
-import time
-
-from pyluba.proto import dev_net_pb2, luba_msg_pb2, mctrl_nav_pb2, mctrl_sys_pb2, mctrl_driver_pb2
+from pyluba.mammotion.commands.messages.navigation import MessageNavigation
+from pyluba.mammotion.commands.messages.network import MessageNetwork
+from pyluba.mammotion.commands.messages.ota import MessageOta
+from pyluba.mammotion.commands.messages.system import MessageSystem
+from pyluba.mammotion.commands.messages.video import MessageVideo
+from pyluba.proto import dev_net_pb2, luba_msg_pb2, mctrl_nav_pb2, mctrl_sys_pb2
 from pyluba.proto.mctrl_sys import RptInfoType
-from pyluba.utility.rocker_util import RockerControlUtil
 
 
-class LubaCommandProtoMQTT:
+class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo):
     """MQTT commands for Luba."""
+
+    def __init__(self, device_name: str) -> None:
+        self._device_name = device_name
+
+    def get_device_name(self) -> str:
+        """Get device name."""
+        return self._device_name
 
     def get_device_base_info(self):
         net = dev_net_pb2.DevNet(
@@ -18,26 +27,6 @@ class LubaCommandProtoMQTT:
         )
 
         return self.send_order_msg_net(net)
-
-    def all_powerful_RW(self, id: int, context: int, rw: int):
-        mctrl_sys = mctrl_sys_pb2.MctlSys(
-            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(
-                rw=rw,
-                id=id,
-                context=context,
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctrl_sys)
-        return lubaMsg.SerializeToString()
 
     def read_plan(self, id: int):
         """Read jobs off luba."""
@@ -129,20 +118,6 @@ class LubaCommandProtoMQTT:
 
         return luba_msg.SerializeToString()
 
-    async def leave_dock(self):
-        mctrlNav = mctrl_nav_pb2.MctlNav()
-        mctrlNav.todev_one_touch_leave_pile = 1
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.nav.CopyFrom(mctrlNav)
-        return lubaMsg.SerializeToString()
-
     def return_to_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
@@ -161,92 +136,8 @@ class LubaCommandProtoMQTT:
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
         return lubaMsg.SerializeToString()
-
-    def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
-        mctlsys = mctrl_sys_pb2.MctlSys(
-            todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
-                timeout=timeout,
-                period=period,
-                no_change_period=no_change_period,
-                count=1
-            )
-        )
-
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_CONNECT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_RTK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_LOCAL.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_WORK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_STA.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_POINT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VIO.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_STATISTIC.value
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctlsys)
-        return lubaMsg.SerializeToString()
-
-
-"""BLE inherits MQTT because BLE has BLE only commands."""
-
-
-class LubaCommandProtoBLE(LubaCommandProtoMQTT):
-    """BLE commands for Luba."""
-
-    def transform_both_speeds(self, linear: float, angular: float, linear_percent: float, angular_percent: float):
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
-        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
-
-        if transfrom3 is not None and len(transfrom3) > 0:
-            linearSpeed = transfrom3[0] * 10
-            angularSpeed = int(transform4[1] * 4.5)
-            print(linearSpeed, angularSpeed)
-            return self.sendMovement(linearSpeed, angularSpeed)
-
-    def current_milli_time(self):
-        return round(time.time() * 1000)
-
-    async def sendMovement(self, linearSpeed: int, angularSpeed: int):
-        mctrlDriver = mctrl_driver_pb2.MctlDriver()
-
-        drvMotionCtrl = mctrl_driver_pb2.DrvMotionCtrl()
-        drvMotionCtrl.setLinearSpeed = linearSpeed
-        drvMotionCtrl.setAngularSpeed = angularSpeed
-        mctrlDriver.todev_devmotion_ctrl.CopyFrom(drvMotionCtrl)
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_DRIVER
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_NONE
-        lubaMsg.timestamp = self.current_milli_time()
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-
-        lubaMsg.driver.CopyFrom(mctrlDriver)
-        return lubaMsg.SerializeToString()
+    
+        """BLE commands for Luba."""
 
     def send_todev_ble_sync(self, sync_type: int) -> bytes:
         commEsp = dev_net_pb2.DevNet(
