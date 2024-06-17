@@ -13,9 +13,9 @@ async def run():
 
     cloud_client = CloudIOTGateway()
 
-    aep_result = cloud_client.aep_handle()
+   # aep_result = cloud_client.aep_handle()
     # gives us a device secret / key etc
-    connect_result = cloud_client.connect()
+   # connect_result = cloud_client.connect()
     # returns the vid used with loginbyoauth
 
     async with ClientSession("https://domestic.mammotion.com") as session:
@@ -23,31 +23,18 @@ async def run():
         # print(lubaHttp.data)
         countryCode = lubaHttp.data.userInformation.domainAbbreviation
 # countryCode, lubaHttp.authorization_code
+        print("CountryCode: " + countryCode)
+        print("AuthCode: " + lubaHttp.data.authorization_code)
         cloud_client.get_region(countryCode, lubaHttp.data.authorization_code)
-
-        cloud_client.login_by_oauth()
-
-        cloud_client.aep_handle()
-        # should return new device secrete / key etc
-        # try MQTT
+        await cloud_client.connect()
+        await cloud_client.login_by_oauth(countryCode, lubaHttp.data.authorization_code)
 
         cloud_client.session_by_auth_code()
-        # returns iot token
 
-        # https://ap-southeast-1.api-iot.aliyuncs.com/uc/listBindingByAccount
-        # {
-        #   "id": "05088c01-c103-4f85-913b-c2e0ec3888d9",
-        #   "params": {
-        #     "pageSize": 100,
-        #     "pageNo": 1
-        #   },
-        #   "request": {
-        #     "apiVer": "1.0.8",
-        #     "language": "en-US",
-        #     "iotToken": "3faaadf229cb77de687e8085470e0b97"
-        #   },
-        #   "version": "1.0"
-        # }
+        cloud_client.list_binding_by_account()
+        #cloud_client.aep_handle()
+        # should return new device secrete / key etc
+
         # gives us devices and iotId for querying APIs
 
 
