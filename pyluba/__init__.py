@@ -4,6 +4,7 @@
 # TODO export the three interface types
 __version__ = "0.0.5"
 
+import asyncio
 import logging
 import os
 
@@ -25,3 +26,6 @@ if __name__ == "__main__":
     DEVICE_SECRET = os.environ.get("DEVICE_SECRET")
     luba = LubaMQTT(product_key=PRODUCT_KEY, device_name=DEVICE_NAME, device_secret=DEVICE_SECRET, client_id="asdf")
     luba.connect_async()
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(event_loop)
+    event_loop.run_forever()
