@@ -10,6 +10,7 @@ class MessageDriver(AbstractMessage):
             sender=luba_msg_pb2.DEV_MOBILEAPP,
             rcver=luba_msg_pb2.DEV_MAINCTL,
             msgattr=luba_msg_pb2.MSG_ATTR_REQ,
+            timestamp = self.current_milli_time()
             seqs=1,
             version=1,
             subtype=1,
@@ -17,7 +18,7 @@ class MessageDriver(AbstractMessage):
 
         return luba_msg.SerializeToString()
 
-    def set_knife_height(self, height: int):
+    def set_blade_height(self, height: int):
         print(f"Send knife height height={height}")
         build = mctrl_driver_pb2.MctlDriver(
             todev_knife_hight_set=mctrl_driver_pb2.DrvKnifeHeight(knife_height=height))
@@ -60,7 +61,15 @@ class MessageDriver(AbstractMessage):
               cut_knife_ctrl}, cut_knife_height:{cut_knife_height}, max_run_speed:{max_run_speed}")
         return self.send_order_msg_driver(build)
 
-    def send_control(self, linear_speed: int, angular_speed: int):
+
+    def send_movement(self, linear_speed: int, angular_speed: int):
         print(f"Control command print, linearSpeed={
             linear_speed} // angularSpeed={angular_speed}")
-        return self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)))
+        return self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(
+            set_linear_speed=linear_speed, 
+            set_angular_speed=angular_speed))
+
+
+
+    def current_milli_time(self):
+        return round(time.time() * 1000)

@@ -219,7 +219,7 @@ class BleMessage:
             )
         )
         byte_arr = luba_msg.SerializeToString()
-        await self.messageNavigation.post_custom_data_bytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def requestDeviceStatus(self):
         request = False
@@ -246,24 +246,6 @@ class BleMessage:
             request = False
             print(err)
 
-    async def setBladeControl(self, onOff: int):
-        mctlsys = mctrl_sys_pb2.MctlSys()
-        sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
-        sysKnifeControl.knifeStatus = onOff
-        mctlsys.todev_knife_ctrl.CopyFrom(sysKnifeControl)
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctlsys)
-        bytes = lubaMsg.SerializeToString()
-        await self.messageNavigation.post_custom_data_bytes(bytes)
-
     async def start_job(self, blade_height):
         """Call after calling generate_route_information I think"""
         await self.set_knife_height(blade_height)
@@ -278,15 +260,15 @@ class BleMessage:
 
             await self.send_control(linearSpeed, angularSpeed)
 
-    async def transformBothSpeeds(self, linear: float, angular: float, linearPercent: float, angularPercent: float):
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linearPercent)
-        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angularPercent)
+    async def transformBothSpeeds(self, linear: float, angular: float, linear_percent: float, angular_percent: float):
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
+        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
 
-        if (transfrom3 != None and len(transfrom3) > 0):
-            linearSpeed = transfrom3[0] * 10
-            angularSpeed = (int)(transform4[1] * 4.5)
-            print(linearSpeed, angularSpeed)
-            await self.send_control(linearSpeed, angularSpeed)
+        if transfrom3 is not None and len(transfrom3) > 0:
+            linear_speed = transfrom3[0] * 10
+            angular_speed = int(transform4[1] * 4.5)
+            print(linear_speed, angular_speed)
+            await self.sendMovement(linear_speed, angular_speed)
 
     # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
     #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
@@ -421,7 +403,8 @@ class BleMessage:
                 if luba_msg.HasField('net'):
                     if luba_msg.net.HasField('toapp_wifi_iot_status'):
                         # await sleep(1.5)
-                        await self.send_todev_ble_sync(2)
+                        print("sending ble sync")
+                        # await self.send_todev_ble_sync(2)
                 return luba_msg
 
     # private void parseCtrlData(int i, byte[] bArr) {
