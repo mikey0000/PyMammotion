@@ -192,7 +192,7 @@ class MessageNavigation:
 
     # (2, 0);
 
-    async def read_plan(self, i: int, i2: int):
+    async def read_plan_index(self, i: int, i2: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -388,6 +388,26 @@ class MessageNavigation:
                 todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
                     type=1,
                     action=2,
+                    result=0
+                )
+            )
+        )
+
+        return luba_msg.SerializeToString()
+
+    def resume_execute_task(self):
+        luba_msg = luba_msg_pb2.LubaMsg(
+            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
+            rcver=luba_msg_pb2.MsgDevice.DEV_MAINCTL,
+            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            nav=mctrl_nav_pb2.MctlNav(
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
+                    type=1,
+                    action=3,
                     result=0
                 )
             )
