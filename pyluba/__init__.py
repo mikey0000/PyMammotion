@@ -24,8 +24,10 @@ if __name__ == "__main__":
     PRODUCT_KEY = os.environ.get("PRODUCT_KEY")
     DEVICE_NAME = os.environ.get("DEVICE_NAME")
     DEVICE_SECRET = os.environ.get("DEVICE_SECRET")
-    luba = LubaMQTT(product_key=PRODUCT_KEY, device_name=DEVICE_NAME, device_secret=DEVICE_SECRET, client_id="T9FnuqRC")
+    luba = LubaMQTT(region_id="ap-southeast-1", product_key=PRODUCT_KEY, device_name=DEVICE_NAME, device_secret=DEVICE_SECRET, client_id="AOJWO39j")
     luba.connect()
+
+
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
     event_loop.run_forever()

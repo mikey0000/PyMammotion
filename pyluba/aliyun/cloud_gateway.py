@@ -17,6 +17,8 @@ from alibabacloud_tea_util.client import Client as UtilClient
 
 import base64
 
+from pyluba.utility.datatype_converter import DatatypeConverter
+
 # init client
 
 
@@ -43,10 +45,13 @@ class CloudIOTGateway:
     _sid = ""
     _vid = ""
 
-    _iotCredentials = ""
+    _mqtt_credentials = {}
+
+    _iotCredentials = {}
+    converter = DatatypeConverter()
 
     def __init__(self):
-        self._region = None
+        self._region = {}
         self._app_key = "34231230"
         self._app_secret = "1ba85698bb10e19c6437413b61ba3445"
         self.domain = 'api.link.aliyun.com'
@@ -127,11 +132,15 @@ class CloudIOTGateway:
     def aep_handle(self):
 
         # https://api.link.aliyun.com/app/aepauth/handle
+        aep_domain = self.domain
+
+        if self._region.get('apiGatewayEndpoint') is not None:
+            aep_domain = self._region['apiGatewayEndpoint']
 
         config = Config(
             app_key=self._app_key,  # correct
             app_secret=self._app_secret,
-            domain=self.domain
+            domain=aep_domain
         )
         client = Client(config)
 
@@ -177,6 +186,8 @@ class CloudIOTGateway:
         response_body_str = response.body.decode('utf-8')
 
         response_body_dict = json.loads(response_body_str)
+
+        self._mqtt_credentials = response_body_dict.get('data')
 
         print(response_body_dict)
 
@@ -431,3 +442,91 @@ class CloudIOTGateway:
 
         # Carica la stringa JSON in un dizionario
         response_body_dict = json.loads(response_body_str)
+
+        self._devices = response_body_dict.get('data')
+
+
+    def bind_account(self):
+
+        config = Config(
+            app_key=self._app_key,  # correct
+            app_secret=self._app_secret,
+            domain=self._region['apiGatewayEndpoint']
+        )
+        client = Client(config)
+
+        # build request
+        request = CommonParams(api_ver='1.0', language='en-US', iot_token=self._iotCredentials['iotToken'])
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params=
+            {
+                "clientId": self._client_id,
+            },
+            request=request,
+            version='1.0'
+        )
+
+        # send request
+        # possibly need to do this ourselves
+        response = client.do_request(
+            f"/sys/{self._mqtt_credentials['productKey']}/${self._mqtt_credentials['deviceName']}/app/up/account/bind",
+            'https',
+            'POST',
+            None,
+            body,
+            RuntimeOptions()
+        )
+        print(response.status_message)
+        print(response.headers)
+        print(response.status_code)
+        print(response.body)
+
+    def send_cloud_command(self, command: bytes):
+        config = Config(
+            app_key=self._app_key,  # correct
+            app_secret=self._app_secret,
+            domain=self._region['apiGatewayEndpoint']
+        )
+
+        client = Client(config)
+
+        # build request
+        request = CommonParams(api_ver='1.0.5', language='en-US', iot_token=self._iotCredentials['iotToken'])
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params=
+            {
+                "args": {
+                    "content":self.converter.printBase64Binary(command)
+                },
+                "identifier": "device_protobuf_sync_service",
+                "iotId": "MbXcDE2X63CENA0lPGIo000000" # TODO get iotId from listbybinding request
+            },
+            request=request,
+            version='1.0'
+        )
+
+        # send request
+        # possibly need to do this ourselves
+        response = client.do_request(
+            '/thing/service/invoke',
+            'https',
+            'POST',
+            None,
+            body,
+            RuntimeOptions()
+        )
+        print(response.status_message)
+        print(response.headers)
+        print(response.status_code)
+        print(response.body)
+
+        # self._region = response.body.data
+        # Decodifica il corpo della risposta
+        response_body_str = response.body.decode('utf-8')
+
+        # Carica la stringa JSON in un dizionario
+        response_body_dict = json.loads(response_body_str)
+
+
