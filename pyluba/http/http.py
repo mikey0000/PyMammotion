@@ -54,6 +54,7 @@ class LubaHTTP:
         ) as resp:
             data = await resp.json()
             print(data)
+            # TODO catch errors from mismatch user / password
             # Assuming the data format matches the expected structure
             login_response_data = LoginResponseData.from_dict(data["data"])
             return Response(data=login_response_data, code=data["code"], msg=data["msg"])
