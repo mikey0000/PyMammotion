@@ -26,7 +26,7 @@ from pyluba.bluetooth.const import (
     UUID_WRITE_CHARACTERISTIC,
 )
 
-from pyluba.mammotion.commands.mammotionCommand import MammotionCommand
+from pyluba.mammotion.commands.mammotion_command import MammotionCommand
 from pyluba.proto import (
     luba_msg_pb2,
 )

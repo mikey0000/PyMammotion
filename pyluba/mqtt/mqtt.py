@@ -23,7 +23,7 @@ logger = getLogger(__name__)
 
 
 class LubaMQTT(BaseLuba):
-    def __init__(self, product_key: str, device_name: str, device_secret: str, client_id: Optional[str] = None):
+    def __init__(self, region_id: str, product_key: str, device_name: str, device_secret: str, client_id: Optional[str] = None):
         super().__init__()
 
         self.on_connected: Optional[Callable[[], None]] = None
@@ -44,13 +44,13 @@ class LubaMQTT(BaseLuba):
             hashlib.sha1
         ).hexdigest()
 
-        self._linkkit_client = LinkKit(f"{self._product_key}.iot-as-mqtt.ap-southeast-1.aliyuncs.com", product_key, device_name, device_secret, password=self._mqtt_password, username=self._mqtt_username)
+        self._linkkit_client = LinkKit(f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com", product_key, device_name, device_secret, password=self._mqtt_password, username=self._mqtt_username)
 
         self._linkkit_client.on_connect = self._on_connect
         self._linkkit_client.on_message = self._on_message
         self._linkkit_client.on_disconnect = self._on_disconnect
         #        self._mqtt_host = "public.itls.eu-central-1.aliyuncs.com"
-        self._mqtt_host = f"{self._product_key}.iot-as-mqtt.ap-southeast-1.aliyuncs.com"
+        self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
 
         self._client = Client(
             client_id=self._mqtt_client_id,

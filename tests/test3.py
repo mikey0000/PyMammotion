@@ -1,4 +1,4 @@
-from pyluba.mammotion.commands.mammotionCommand import LubaCommandProtoBLE, MammotionCommand
+from pyluba.mammotion.commands.mammotion_command import LubaCommandProtoBLE, MammotionCommand
 from pyluba.proto.luba_msg import LubaMsg
 from pyluba.utility.constant.device_constant import WorkMode, device_mode
 
