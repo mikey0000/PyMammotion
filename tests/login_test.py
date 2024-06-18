@@ -36,7 +36,6 @@ async def run():
         cloud_client.session_by_auth_code()
 
         cloud_client.list_binding_by_account()
-        # cloud_client.bind_account()
         return cloud_client
 
 
@@ -56,7 +55,7 @@ if __name__ ==  '__main__':
     luba = LubaMQTT(region_id=cloud_client._region.get('regionId'),
                     product_key=cloud_client._mqtt_credentials['productKey'],
                     device_name=cloud_client._mqtt_credentials['deviceName'],
-                    device_secret=cloud_client._mqtt_credentials['deviceSecret'], client_id=cloud_client._client_id)
+                    device_secret=cloud_client._mqtt_credentials['deviceSecret'], iot_token=cloud_client._iotCredentials['iotToken'], client_id=cloud_client._client_id)
 
     command = MammotionCommand(device_name="Luba")
     cloud_client.send_cloud_command(command.get_report_cfg())
