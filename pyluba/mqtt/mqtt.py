@@ -23,7 +23,7 @@ logger = getLogger(__name__)
 
 
 class LubaMQTT(BaseLuba):
-    def __init__(self, region_id: str, product_key: str, device_name: str, device_secret: str, client_id: Optional[str] = None):
+    def __init__(self, region_id: str, product_key: str, device_name: str, device_secret: str, iot_token: str,  client_id: Optional[str] = None):
         super().__init__()
 
         self.on_connected: Optional[Callable[[], None]] = None
@@ -33,6 +33,7 @@ class LubaMQTT(BaseLuba):
         self._product_key = product_key
         self._device_name = device_name
         self._device_secret = device_secret
+        self._iot_token = iot_token
         self._mqtt_username = f"{device_name}&{product_key}"
         # linkkit provides the correct MQTT service for all of this and uses paho under the hood
         if client_id is None:
@@ -43,6 +44,8 @@ class LubaMQTT(BaseLuba):
             device_secret.encode("utf-8"), sign_content.encode("utf-8"),
             hashlib.sha1
         ).hexdigest()
+
+        self._client_id = client_id
 
         self._linkkit_client = LinkKit(f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com", product_key, device_name, device_secret, password=self._mqtt_password, username=self._mqtt_username)
 
@@ -83,6 +86,20 @@ class LubaMQTT(BaseLuba):
         if rc == 0:
             logger.info("Connected")
             self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/#")
+
+            self._client.publish(f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
+                                 json.dumps({
+                                     "id": "msgid1",
+                                     "version": "1.0",
+                                     "request": {
+                                         "clientId": self._mqtt_username
+                                     },
+                                     "params": {
+                                         "iotToken": self._iot_token
+                                     }
+                                 })
+                                 )
+
             if self.on_connected:
                 self.on_connected()
         else:
