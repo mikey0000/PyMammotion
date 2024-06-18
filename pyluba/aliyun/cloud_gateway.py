@@ -1,6 +1,8 @@
 import hashlib
 import hmac
 import os
+import random
+import string
 import time
 import uuid
 import json
@@ -51,9 +53,15 @@ class CloudIOTGateway:
         self.domain = 'api.link.aliyun.com'
 
         uuid1 = str(uuid.uuid1()) # 128 chatarrers
-        self._client_id = uuid1[:8] # First 8 charatters
-        self._device_sn = uuid1.replace("-", "")[9:32] # 32 Charatters
+        self._client_id = self.generate_random_string(8) # First 8 charatters
+        self._device_sn = self.generate_random_string(32) # 32 Charatters
 
+
+    @staticmethod
+    def generate_random_string(length):
+        characters = string.ascii_letters + string.digits
+        random_string = ''.join(random.choice(characters) for _ in range(length))
+        return random_string
 
     def sign(self, data):
         keys = ["appKey", "clientId", "deviceSn", "timestamp"]
@@ -129,7 +137,7 @@ class CloudIOTGateway:
         client = Client(config)
 
         request = CommonParams(api_ver='1.0.0', language='en-US')
-
+        print("client id ", self._client_id)
         time_now = time.time()
         data_to_sign = {
             'appKey': self._app_key,
@@ -167,6 +175,14 @@ class CloudIOTGateway:
         print(response.headers)
         print(response.status_code)
         print(response.body)
+
+        response_body_str = response.body.decode('utf-8')
+
+        response_body_dict = json.loads(response_body_str)
+
+        print(response_body_dict)
+
+        return response.body
 
 
     async def connect(self):

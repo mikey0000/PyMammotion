@@ -92,6 +92,7 @@ class LubaMQTT(BaseLuba):
 
     def _on_disconnect(self, _client, _userdata, rc: int):
         logger.info("Disconnected")
+        logger.debug(rc)
         if self.on_disconnected:
             self.on_disconnected()
 

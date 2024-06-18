@@ -17,6 +17,7 @@ async def run():
     # gives us a device secret / key etc
    # connect_result = cloud_client.connect()
     # returns the vid used with loginbyoauth
+    cloud_client.aep_handle()
 
     async with ClientSession("https://domestic.mammotion.com") as session:
         lubaHttp = await LubaHTTP.login(session, EMAIL, PASSWORD)
@@ -32,7 +33,7 @@ async def run():
         cloud_client.session_by_auth_code()
 
         cloud_client.list_binding_by_account()
-        #cloud_client.aep_handle()
+        cloud_client.aep_handle()
         # should return new device secrete / key etc
 
         # gives us devices and iotId for querying APIs
