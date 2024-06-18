@@ -29,11 +29,10 @@ async def run():
         cloud_client.get_region(countryCode, lubaHttp.data.authorization_code)
         await cloud_client.connect()
         await cloud_client.login_by_oauth(countryCode, lubaHttp.data.authorization_code)
-
+        cloud_client.aep_handle()
         cloud_client.session_by_auth_code()
 
         cloud_client.list_binding_by_account()
-        cloud_client.aep_handle()
         # should return new device secrete / key etc
 
         # gives us devices and iotId for querying APIs

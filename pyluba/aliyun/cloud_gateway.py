@@ -33,13 +33,12 @@ MOVE_HEADERS = (
 )
 
 
-
 class CloudIOTGateway:
-
     _app_secret = ""
 
     _client_id = ""
     _device_sn = ""
+    _utdid = ""
 
     _sid = ""
     _vid = ""
@@ -52,10 +51,10 @@ class CloudIOTGateway:
         self._app_secret = "1ba85698bb10e19c6437413b61ba3445"
         self.domain = 'api.link.aliyun.com'
 
-        uuid1 = str(uuid.uuid1()) # 128 chatarrers
-        self._client_id = self.generate_random_string(8) # First 8 charatters
-        self._device_sn = self.generate_random_string(32) # 32 Charatters
-
+        uuid1 = str(uuid.uuid1())  # 128 chatarrers
+        self._client_id = self.generate_random_string(8)  # First 8 Characters
+        self._device_sn = self.generate_random_string(32)  # 32 Characters
+        self._utdid = self.generate_random_string(32)  # 32 Characters
 
     @staticmethod
     def generate_random_string(length):
@@ -114,7 +113,7 @@ class CloudIOTGateway:
         print(response.headers)
         print(response.status_code)
         print(response.body)
-        
+
         # Decodifica il corpo della risposta
         response_body_str = response.body.decode('utf-8')
 
@@ -141,22 +140,21 @@ class CloudIOTGateway:
         time_now = time.time()
         data_to_sign = {
             'appKey': self._app_key,
-            "clientId": self._client_id, # needs to be unique to device
-            "deviceSn": self._device_sn, # same here
+            "clientId": self._client_id,  # needs to be unique to device
+            "deviceSn": self._device_sn,  # same here
             "timestamp": str(time_now)
         }
-
 
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
             params={
                 "authInfo": {
-                  "clientId": self._client_id,
-                  "sign": self.sign(data_to_sign),
-                  "deviceSn": self._device_sn,
-                  "timestamp": str(time_now)
+                    "clientId": self._client_id,
+                    "sign": self.sign(data_to_sign),
+                    "deviceSn": self._device_sn,
+                    "timestamp": str(time_now)
                 }
-              },
+            },
             request=request,
             version='1.0'
         )
@@ -184,6 +182,7 @@ class CloudIOTGateway:
 
         return response.body
 
+    # returns vid
 
     async def connect(self):
         region_url = "sdk.openaccount.aliyun.com"
@@ -201,61 +200,62 @@ class CloudIOTGateway:
 
             _bodyParam = {
 
-                    "context": 
+                "context":
                     {
                         "sdkVersion": "3.4.2",
                         "platformName": "android",
                         "netType": "wifi",
                         "appKey": self._app_key,
                         "yunOSId": "",
-                        "appVersion":"1.11.188",
-                        "appAuthToken":"Zm3NMBdFNwgDAJC1s3eoQErU", #???
-                        "securityToken":"Zm3NMBdFNwgDAJC1s3eoQErU"#???
+                        "appVersion": "1.11.188",
+                        "utDid": self._utdid,
+                        "appAuthToken": self._utdid,  # ???
+                        "securityToken": self._utdid  # ???
                     },
-                    "config":{
-                        "version":0,
-                        "lastModify":0
-                    },
-                    "device":{
-                        "model":"sdk_gphone_x86_arm",
-                        "brand":"goldfish_x86",
-                        "platformVersion":"30"
-                    }
-                
+                "config": {
+                    "version": 0,
+                    "lastModify": 0
+                },
+                "device": {
+                    "model": "sdk_gphone_x86_arm",
+                    "brand": "goldfish_x86",
+                    "platformVersion": "30"
+                }
+
             }
 
             # Get sign header
             dic = headers.copy()
             for key in MOVE_HEADERS:
                 dic.pop(key, None)
-            
+
             keys = sorted(dic.keys())
             sign_headers = ','.join(keys)
             header = ''.join(f'{k}:{dic[k]}\n' for k in keys).strip()
 
             headers['x-ca-signature-headers'] = sign_headers
             string_to_sign = 'POST\n{}\n\n{}\n{}\n{}\n/api/prd/connect.json?request={}'.format(
-                headers['accept'], 
-                headers['content-type'], 
-                headers['date'], 
-                header, 
+                headers['accept'],
+                headers['content-type'],
+                headers['date'],
+                header,
                 json.dumps(_bodyParam, separators=(',', ':'))
             )
 
-            hash_val = hmac.new(self._app_secret.encode('utf-8'), string_to_sign.encode('utf-8'), hashlib.sha256).digest()
+            hash_val = hmac.new(self._app_secret.encode('utf-8'), string_to_sign.encode('utf-8'),
+                                hashlib.sha256).digest()
             signature = base64.b64encode(hash_val).decode('utf-8')
             headers['x-ca-signature'] = signature
 
             async with session.post(f'https://{region_url}/api/prd/connect.json',
-                headers=headers,
-                params=dict(
-                    request=json.dumps(_bodyParam, separators=(',', ':'))
-                )
-            ) as resp:
-                
+                                    headers=headers,
+                                    params=dict(
+                                        request=json.dumps(_bodyParam, separators=(',', ':'))
+                                    )
+                                    ) as resp:
                 data = await resp.json()
-                print (data)
-                
+                print(data)
+
                 self._vid = data['data']['vid']
                 print("VID: " + self._vid)
 
@@ -263,7 +263,7 @@ class CloudIOTGateway:
         """loginbyoauth.json."""
 
         region_url = self._region['oaApiGatewayEndpoint']
-        
+
         async with ClientSession() as session:
             headers = {
                 'host': region_url,
@@ -282,8 +282,14 @@ class CloudIOTGateway:
                 "authCode": authCode,
                 "oauthPlateform": "23",
                 "oauthAppKey": self._app_key,
+                "appAuthToken": self._device_sn,
                 "riskControlInfo": {
-                    "signType": "RSA"
+                    "appID": "com.agilexrobotics",
+                    "signType": "RSA",
+                    "utdid": self._utdid,
+                    "umidToken": self._utdid,
+                    "USE_OA_PWD_ENCRYPT": "true",
+                    "USE_H5_NC": "true"
                 }
             }
 
@@ -291,45 +297,41 @@ class CloudIOTGateway:
             dic = headers.copy()
             for key in MOVE_HEADERS:
                 dic.pop(key, None)
-            
+
             keys = sorted(dic.keys())
             sign_headers = ','.join(keys)
             header = ''.join(f'{k}:{dic[k]}\n' for k in keys).strip()
 
             headers['x-ca-signature-headers'] = sign_headers
             string_to_sign = 'POST\n{}\n\n{}\n{}\n{}\n/api/prd/loginbyoauth.json?loginByOauthRequest={}'.format(
-                headers['accept'], 
-                headers['content-type'], 
-                headers['date'], 
-                header, 
+                headers['accept'],
+                headers['content-type'],
+                headers['date'],
+                header,
                 json.dumps(_bodyParam, separators=(',', ':'))
             )
 
-            hash_val = hmac.new(self._app_secret.encode('utf-8'), string_to_sign.encode('utf-8'), hashlib.sha256).digest()
+            hash_val = hmac.new(self._app_secret.encode('utf-8'), string_to_sign.encode('utf-8'),
+                                hashlib.sha256).digest()
             signature = base64.b64encode(hash_val).decode('utf-8')
             headers['x-ca-signature'] = signature
 
             async with session.post(f'https://{region_url}/api/prd/loginbyoauth.json',
-                headers=headers,
-                params=dict(
-                    loginByOauthRequest=json.dumps(_bodyParam, separators=(',', ':'))
-                )
-            ) as resp:
+                                    headers=headers,
+                                    params=dict(
+                                        loginByOauthRequest=json.dumps(_bodyParam, separators=(',', ':'))
+                                    )
+                                    ) as resp:
                 data = await resp.json()
                 print(data)
                 self._sid = data['data']['data']['loginSuccessResult']['sid']
                 print("SID: " + self._sid)
 
+        # self._region = response.body.data
 
+        # return response.body
 
-
-        
-
-        #self._region = response.body.data
-
-        #return response.body
-
-        # headers require sid vid
+        # headers require sid vid or at a minimuim vid which comes from prd/connect.json
 
     def session_by_auth_code(self):
 
@@ -351,9 +353,9 @@ class CloudIOTGateway:
             {
                 "request":
                     {
-                        "authCode":self._sid,
-                        "accountType":"OA_SESSION",
-                        "appKey":self._app_key
+                        "authCode": self._sid,
+                        "accountType": "OA_SESSION",
+                        "appKey": self._app_key
                     }
             },
             request=request,
@@ -375,7 +377,7 @@ class CloudIOTGateway:
         print(response.status_code)
         print(response.body)
 
-        #self._region = response.body.data
+        # self._region = response.body.data
         # Decodifica il corpo della risposta
         response_body_str = response.body.decode('utf-8')
 
@@ -385,7 +387,7 @@ class CloudIOTGateway:
         self._iotCredentials = response_body_dict.get('data')
 
         return response.body
-    
+
     def list_binding_by_account(self):
         config = Config(
             app_key=self._app_key,  # correct
@@ -423,7 +425,7 @@ class CloudIOTGateway:
         print(response.status_code)
         print(response.body)
 
-        #self._region = response.body.data
+        # self._region = response.body.data
         # Decodifica il corpo della risposta
         response_body_str = response.body.decode('utf-8')
 
