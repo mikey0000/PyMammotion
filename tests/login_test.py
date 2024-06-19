@@ -57,9 +57,8 @@ if __name__ ==  '__main__':
                     device_name=cloud_client._mqtt_credentials['deviceName'],
                     device_secret=cloud_client._mqtt_credentials['deviceSecret'], iot_token=cloud_client._iotCredentials['iotToken'], client_id=cloud_client._client_id)
 
-    command = MammotionCommand(device_name="Luba")
-    cloud_client.send_cloud_command(command.get_report_cfg())
+    luba._cloud_client = cloud_client
     # luba.connect() blocks further calls
-    luba.connect()
+    luba.connect_async()
 
     event_loop.run_forever()
