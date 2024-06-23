@@ -134,7 +134,7 @@ class LubaMQTT(BaseLuba):
         if rc == 0:
             logger.info("Connected")
             self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/#")
-            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind_reply")
+            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply")
 
             self._client.publish(f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
                                  json.dumps({

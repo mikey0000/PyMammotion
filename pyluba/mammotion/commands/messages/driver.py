@@ -2,6 +2,7 @@
 from pyluba.mammotion.commands.abstract_message import AbstractMessage
 from pyluba.proto import luba_msg_pb2, mctrl_driver_pb2
 
+import time
 
 class MessageDriver(AbstractMessage):
     def send_order_msg_driver(self, driver):
@@ -10,7 +11,7 @@ class MessageDriver(AbstractMessage):
             sender=luba_msg_pb2.DEV_MOBILEAPP,
             rcver=luba_msg_pb2.DEV_MAINCTL,
             msgattr=luba_msg_pb2.MSG_ATTR_REQ,
-            timestamp = self.current_milli_time()
+            timestamp = self.current_milli_time(),
             seqs=1,
             version=1,
             subtype=1,
@@ -67,7 +68,7 @@ class MessageDriver(AbstractMessage):
             linear_speed} // angularSpeed={angular_speed}")
         return self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(
             set_linear_speed=linear_speed, 
-            set_angular_speed=angular_speed))
+            set_angular_speed=angular_speed)))
 
 
 
