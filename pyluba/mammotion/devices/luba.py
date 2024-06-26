@@ -42,7 +42,7 @@ class CharacteristicMissingError(Exception):
 
 
 def _sb_uuid(comms_type: str = "service") -> UUID | str:
-    """Return Switchbot UUID."""
+    """Return Mammotion UUID."""
 
     _uuid = {"tx": "ff01", "rx": "ff02", "service": "2A05"}
 
