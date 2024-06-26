@@ -9,6 +9,8 @@ from pyluba.aliyun.cloud_gateway import CloudIOTGateway
 from pyluba.mammotion.commands.mammotion_command import MammotionCommand
 from pyluba.mqtt.mqtt import LubaMQTT, logger
 
+logger = logging.getLogger(__name__)
+
 
 async def run():
     EMAIL = os.environ.get("EMAIL")
@@ -18,13 +20,13 @@ async def run():
     
 
     async with ClientSession("https://domestic.mammotion.com") as session:
-        lubaHttp = await LubaHTTP.login(session, EMAIL, PASSWORD)
-        countryCode = lubaHttp.data.userInformation.domainAbbreviation
-        print("CountryCode: " + countryCode)
-        print("AuthCode: " + lubaHttp.data.authorization_code)
-        cloud_client.get_region(countryCode, lubaHttp.data.authorization_code)
+        luba_http = await LubaHTTP.login(session, EMAIL, PASSWORD)
+        country_code = luba_http.data.userInformation.domainAbbreviation
+        logger.debug("CountryCode: " + country_code)
+        logger.debug("AuthCode: " + luba_http.data.authorization_code)
+        cloud_client.get_region(country_code, luba_http.data.authorization_code)
         await cloud_client.connect()
-        await cloud_client.login_by_oauth(countryCode, lubaHttp.data.authorization_code)
+        await cloud_client.login_by_oauth(country_code, luba_http.data.authorization_code)
         cloud_client.aep_handle()
         cloud_client.session_by_auth_code()
 
@@ -40,9 +42,9 @@ if __name__ ==  '__main__':
     logger.getChild("paho").setLevel(logging.WARNING)
 
     luba = LubaMQTT(region_id=cloud_client._region.data.regionId,
-                    product_key=cloud_client._aepResponse.data.productKey,
-                    device_name=cloud_client._aepResponse.data.deviceName,
-                    device_secret=cloud_client._aepResponse.data.deviceSecret, iot_token=cloud_client._sessionByAuthCodeResponse.data.iotToken, client_id=cloud_client._client_id)
+                    product_key=cloud_client._aep_response.data.productKey,
+                    device_name=cloud_client._aep_response.data.deviceName,
+                    device_secret=cloud_client._aep_response.data.deviceSecret, iot_token=cloud_client._session_by_authcode_response.data.iotToken, client_id=cloud_client._client_id)
 
     luba._cloud_client = cloud_client
     #luba.connect() blocks further calls
