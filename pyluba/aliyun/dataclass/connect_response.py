@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar, Optional
 
-from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+
 
 @dataclass
 class DeviceData(DataClassORJSONMixin):
     deviceId: str
+
 
 @dataclass
 class Device(DataClassORJSONMixin):
@@ -17,6 +17,7 @@ class Device(DataClassORJSONMixin):
     message: str
     successful: str
 
+
 @dataclass
 class Config(DataClassORJSONMixin):
     traceId: str
@@ -25,10 +26,12 @@ class Config(DataClassORJSONMixin):
     message: str
     successful: str
 
+
 @dataclass
 class DataContent(DataClassORJSONMixin):
     device: Device
     config: Config
+
 
 @dataclass
 class InnerData(DataClassORJSONMixin):
@@ -39,6 +42,7 @@ class InnerData(DataClassORJSONMixin):
     subCode: int
     message: str
     successful: str
+
 
 @dataclass
 class ConnectResponse(DataClassORJSONMixin):

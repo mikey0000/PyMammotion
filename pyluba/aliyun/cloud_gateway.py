@@ -20,12 +20,12 @@ import base64
 from pyluba.utility.datatype_converter import DatatypeConverter
 
 
-from pyluba.aliyun.dataclass.regionsResponse import RegionResponse
-from pyluba.aliyun.dataclass.connectResponse import ConnectResponse
-from pyluba.aliyun.dataclass.loginByOAuthResponse import LoginByOAuthResponse
-from pyluba.aliyun.dataclass.aepResponse import AepResponse
-from pyluba.aliyun.dataclass.sessionByAuthCodeResponse import SessionByAuthCodeResponse
-from pyluba.aliyun.dataclass.listingDevByAccountResponse import ListingDevByAccountResponse
+from pyluba.aliyun.dataclass.regions_response import RegionResponse
+from pyluba.aliyun.dataclass.connect_response import ConnectResponse
+from pyluba.aliyun.dataclass.login_by_oauth_response import LoginByOAuthResponse
+from pyluba.aliyun.dataclass.aep_response import AepResponse
+from pyluba.aliyun.dataclass.session_by_authcode_response import SessionByAuthCodeResponse
+from pyluba.aliyun.dataclass.dev_by_account_response import ListingDevByAccountResponse
 
 from pyluba.aliyun.constant import Constant
 

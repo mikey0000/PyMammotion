@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar, Optional
+from typing import Optional
 
-from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+
 
 @dataclass
 class DeviceData(DataClassORJSONMixin):
@@ -10,8 +10,9 @@ class DeviceData(DataClassORJSONMixin):
     productKey: str
     deviceName: str
 
+
 @dataclass
 class AepResponse(DataClassORJSONMixin):
     code: int
     data: DeviceData
-    id: Optional[str] = None  # id optional
+    id: Optional[str] = None

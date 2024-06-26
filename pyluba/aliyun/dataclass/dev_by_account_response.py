@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+
 
 @dataclass
 class Device(DataClassORJSONMixin):
@@ -27,6 +27,7 @@ class Device(DataClassORJSONMixin):
     productImage: Optional[str] = None
     categoryImage: Optional[str] = None
 
+
 @dataclass
 class Data(DataClassORJSONMixin):
     total: int
@@ -34,8 +35,9 @@ class Data(DataClassORJSONMixin):
     pageNo: int
     pageSize: int
 
+
 @dataclass
 class ListingDevByAccountResponse(DataClassORJSONMixin):
     code: int
-    data: Optional[Data]  # Può essere `None` se non ci sono prodotti
-    id: Optional[str] = None  # id è opzionale
+    data: Optional[Data]
+    id: Optional[str] = None

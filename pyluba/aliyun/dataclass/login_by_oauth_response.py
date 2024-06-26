@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar, Optional
+from typing import Optional
 
-from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+
 @dataclass
-class OpenAccount(DataClassORJSONMixin):  
+class OpenAccount(DataClassORJSONMixin):
     displayName: str
     openId: str
     hasPassword: str
@@ -20,9 +20,11 @@ class OpenAccount(DataClassORJSONMixin):
     status: int
     country: Optional[str] = None
 
+
 @dataclass
 class OauthOtherInfo(DataClassORJSONMixin):
     SidExpiredTime: int
+
 
 @dataclass
 class LoginSuccessResult(DataClassORJSONMixin):
@@ -36,10 +38,12 @@ class LoginSuccessResult(DataClassORJSONMixin):
     sid: str
     token: str
 
+
 @dataclass
 class InnerDataContent(DataClassORJSONMixin):
     loginSuccessResult: LoginSuccessResult
     mobileBindRequired: str
+
 
 @dataclass
 class InnerData(DataClassORJSONMixin):
@@ -51,6 +55,7 @@ class InnerData(DataClassORJSONMixin):
     message: str
     deviceId: str
     successful: str
+
 
 @dataclass
 class LoginByOAuthResponse(DataClassORJSONMixin):

@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar, Optional
+from typing import TypeVar, Optional
 
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 DataT = TypeVar("DataT")
+
 
 @dataclass
 class RegionResponseData(DataClassORJSONMixin):
@@ -15,6 +16,7 @@ class RegionResponseData(DataClassORJSONMixin):
     pushChannelEndpoint: str
     regionEnglishName: str
     apiGatewayEndpoint: str
+
 
 @dataclass
 class RegionResponse(DataClassDictMixin):
