@@ -1,10 +1,10 @@
 [project]
 name = "pyluba"
-version     = "0.0.31"
+version     = "0.0.32"
 
 [tool.poetry]
 name        = "pyluba"
-version     = "0.0.31"
+version     = "0.0.32"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
