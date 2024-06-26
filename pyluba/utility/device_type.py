@@ -2,18 +2,22 @@ from enum import Enum
 
 
 class DeviceType(Enum):
-    UNKNOWN = (-1, "UNKNOWN")
-    RTK = (0, "RTK")
-    LUBA = (1, "Luba 1")
-    LUBA_2 = (2, "Luba 2")
-    LUBA_YUKA = (3, "Yuka")
+    UNKNOWN = (-1, "UNKNOWN", "Unknown")
+    RTK = (0, "RTK", "RTK")
+    LUBA = (1, "Luba", "Luba 1")
+    LUBA_2 = (2, "Luba-VS", "Luba 2")
+    LUBA_YUKA = (3, "Yuka-", "Yuka")
 
-    def __init__(self, value: int, name: str):
+    def __init__(self, value: int, name: str, model: str):
         self._value = value
         self._name = name
+        self._model = model
 
     def get_name(self):
         return self._name
+    
+    def get_model(self):
+        return self._model
 
     def get_value(self):
         return self._value
@@ -48,7 +52,7 @@ class DeviceType(Enum):
 
             if DeviceType.RTK.name in substring or DeviceType.contain_rtk_product_key(product_key):
                 return DeviceType.RTK
-            elif DeviceType.LUBA_2.name in substring2 or DeviceType.contain_luba_v_product_key(product_key):
+            elif DeviceType.LUBA_2.name in substring2 or DeviceType.contain_luba_2_product_key(product_key):
                 return DeviceType.LUBA_2
             elif DeviceType.LUBA_YUKA.name in substring2:
                 return DeviceType.LUBA_YUKA
@@ -112,7 +116,7 @@ class DeviceType(Enum):
         return product_key in ["a1UBFdq6nNz", "a1x0zHD3Xop", "a1pvCnb3PPu", "a1kweSOPylG", "a1JFpmAV5Ur", "a1BmXWlsdbA", "a1jOhAYOIG8", "a1K4Ki2L5rK", "a1ae1QnXZGf", "a1nf9kRBWoH", "a1ZU6bdGjaM"]
 
     @staticmethod
-    def contain_luba_v_product_key(product_key):
+    def contain_luba_2_product_key(product_key):
         if not product_key:
             return False
         return product_key in ["a1iMygIwxFC", "a1LLmy1zc0j", "a1LLmy1zc0j"]
