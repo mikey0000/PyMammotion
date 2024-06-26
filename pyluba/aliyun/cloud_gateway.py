@@ -51,7 +51,7 @@ class CloudIOTGateway:
     converter = DatatypeConverter()
 
     _regions_file_path = 'regions.json'
-    _iotCredentials_file_path = 'iotCredentials.json'
+    _iotCredentials_file_path = 'iot_credentials.json'
     _mqtt_credentials_file_path = '_mqtt_credentials.json'
 
     def __init__(self):
