@@ -193,4 +193,4 @@ class LubaMQTT(BaseLuba):
             properties = ThingPropertiesMessage(**payload)
         else:
             logger.info("Unhandled topic: %s", message.topic)
-            logger.info(payload)
+            logger.debug(payload)
