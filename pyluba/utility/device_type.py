@@ -48,7 +48,7 @@ class DeviceType(Enum):
 
             if DeviceType.RTK.name in substring or DeviceType.contain_rtk_product_key(product_key):
                 return DeviceType.RTK
-            elif DeviceType.LUBA_2.name in substring2 or DeviceType.contain_luba_v_product_key(product_key):
+            elif DeviceType.LUBA_2.name in substring2 or DeviceType.contain_luba_2_product_key(product_key):
                 return DeviceType.LUBA_2
             elif DeviceType.LUBA_YUKA.name in substring2:
                 return DeviceType.LUBA_YUKA
@@ -112,7 +112,7 @@ class DeviceType(Enum):
         return product_key in ["a1UBFdq6nNz", "a1x0zHD3Xop", "a1pvCnb3PPu", "a1kweSOPylG", "a1JFpmAV5Ur", "a1BmXWlsdbA", "a1jOhAYOIG8", "a1K4Ki2L5rK", "a1ae1QnXZGf", "a1nf9kRBWoH", "a1ZU6bdGjaM"]
 
     @staticmethod
-    def contain_luba_v_product_key(product_key):
+    def contain_luba_2_product_key(product_key):
         if not product_key:
             return False
         return product_key in ["a1iMygIwxFC", "a1LLmy1zc0j", "a1LLmy1zc0j"]
