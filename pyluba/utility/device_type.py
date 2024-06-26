@@ -4,9 +4,9 @@ from enum import Enum
 class DeviceType(Enum):
     UNKNOWN = (-1, "UNKNOWN")
     RTK = (0, "RTK")
-    LUBA = (1, "Luba")
-    LUBA_2 = (2, "Luba-VS")
-    LUBA_YUKA = (3, "Yuka-")
+    LUBA = (1, "Luba 1")
+    LUBA_2 = (2, "Luba 2")
+    LUBA_YUKA = (3, "Yuka")
 
     def __init__(self, value: int, name: str):
         self._value = value
@@ -46,13 +46,13 @@ class DeviceType(Enum):
             substring = device_name[:3]
             substring2 = device_name[:7]
 
-            if substring.contains(DeviceType.RTK.name) or DeviceType.contain_rtk_product_key(product_key):
+            if DeviceType.RTK.name in substring or DeviceType.contain_rtk_product_key(product_key):
                 return DeviceType.RTK
-            elif substring2.contains(DeviceType.LUBA_2.name) or DeviceType.contain_luba_v_product_key(product_key):
+            elif DeviceType.LUBA_2.name in substring2 or DeviceType.contain_luba_v_product_key(product_key):
                 return DeviceType.LUBA_2
-            elif substring2.contains(DeviceType.LUBA_YUKA.name):
+            elif DeviceType.LUBA_YUKA.name in substring2:
                 return DeviceType.LUBA_YUKA
-            elif substring2.contains(DeviceType.LUBA.name) or DeviceType.contain_luba_product_key(product_key):
+            elif DeviceType.LUBA.name in substring2 or DeviceType.contain_luba_product_key(product_key):
                 return DeviceType.LUBA
             else:
                 return DeviceType.UNKNOWN
@@ -78,7 +78,7 @@ class DeviceType(Enum):
         return device_type.get_value() == DeviceType.LUBA.get_value()
 
     @staticmethod
-    def is_luba_pro(device_name, product_key=""):
+    def is_luba_2(device_name, product_key=""):
         if not product_key:
             device_type = DeviceType.value_of_str(device_name)
         else:
