@@ -65,73 +65,6 @@ class BleMessage:
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
 
-    async def get_report_cfg(self, timeout: int, period: int, no_change_period: int):
-
-        mctlsys = mctrl_sys_pb2.MctlSys(
-            todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
-                timeout=timeout,
-                period=period,
-                no_change_period=no_change_period,
-                count=1
-            )
-        )
-
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_CONNECT
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_RTK
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_DEV_LOCAL
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_WORK
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_DEV_STA
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_VISION_POINT
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_VIO
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            mctrl_sys_pb2.rpt_info_type.RIT_VISION_STATISTIC
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.rcver = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys.CopyFrom(mctlsys)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.messageNavigation.post_custom_data_bytes(byte_arr)
-
-    async def get_device_base_info(self):
-        net = dev_net_pb2.DevNet(
-            todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
-        )
-        net.todev_devinfo_req.req_ids.add(
-            id=1,
-            type=6
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.net.CopyFrom(net)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
     async def get_device_version_main(self):
         commEsp = dev_net_pb2.DevNet(
@@ -160,33 +93,6 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
-    async def send_todev_ble_sync(self, sync_type: int):
-        net = dev_net_pb2.DevNet(
-            todev_ble_sync=sync_type
-        )
-
-        byte_arr = self.send_order_msg_net(net)
-        await self.messageNavigation.post_custom_data_bytes(byte_arr)
-
-    async def set_data_synchronization(self, type: int):
-        mctrl_nav = mctrl_nav_pb2.MctlNav(
-            todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
-                pver=1,
-                action=12,
-                type=type
-            )
-        )
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
-        lubaMsg.sender = luba_msg_pb2.DEV_MAINCTL
-        lubaMsg.rcver = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.nav.CopyFrom(mctrl_nav)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
     async def get_task(self):
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
@@ -245,41 +151,6 @@ class BleMessage:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
             print(err)
-
-    async def start_job(self, blade_height):
-        """Call after calling generate_route_information I think"""
-        await self.set_knife_height(blade_height)
-        await self.start_work_job()
-
-    async def transformSpeed(self, linear: float, percent: float):
-
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, percent)
-        if (transfrom3 is not None and len(transfrom3) > 0):
-            linearSpeed = transfrom3[0] * 10
-            angularSpeed = (int)(transfrom3[1] * 4.5)
-
-            await self.send_control(linearSpeed, angularSpeed)
-
-    async def transformBothSpeeds(self, linear: float, angular: float, linear_percent: float, angular_percent: float):
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
-        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
-
-        if transfrom3 is not None and len(transfrom3) > 0:
-            linear_speed = transfrom3[0] * 10
-            angular_speed = int(transform4[1] * 4.5)
-            print(linear_speed, angular_speed)
-            await self.sendMovement(linear_speed, angular_speed)
-
-    # asnyc def transfromDoubleRockerSpeed(float f, float f2, boolean z):
-    #         transfrom3 = RockerControlUtil.getInstance().transfrom3(f, f2)
-    #         if (transfrom3 != null && transfrom3.size() > 0):
-    #             if (z):
-    #                 this.linearSpeed = transfrom3.get(0).intValue() * 10
-    #             else
-    #                 this.angularSpeed = (int) (transfrom3.get(1).intValue() * 4.5d)
-
-    #         if (this.countDownTask == null):
-    #             testSendControl()
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder):
         await self.messageNavigation.post_custom_data(serialize(executeBorder))

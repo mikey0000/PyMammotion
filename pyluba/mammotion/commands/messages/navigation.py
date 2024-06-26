@@ -1,4 +1,5 @@
 # === sendOrderMsg_Nav ===
+from pyluba.data.model import GenerateRouteInformation
 from pyluba.data.model.plan import Plan
 from pyluba.proto import luba_msg_pb2, mctrl_nav_pb2
 
@@ -29,7 +30,7 @@ class MessageNavigation:
 
  # === Below are the previous functions. These are going to be updated ===
 
-    async def get_hash(self):
+    def get_hash(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -47,7 +48,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    async def get_all_boundary_hash_list(self, i: int):
+    def get_all_boundary_hash_list(self, i: int):
         """.getAllBoundaryHashList(3); 0"""
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -67,7 +68,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    async def get_line_info(self, i: int):
+    def get_line_info(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -86,7 +87,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
-    async def get_hash_response(self, totalFrame: int, currentFrame: int):
+    def get_hash_response(self, totalFrame: int, currentFrame: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -109,7 +110,7 @@ class MessageNavigation:
         return luba_msg.SerializeToString()
 
 
-    async def get_area_tobe_transferred(self):
+    def get_area_tobe_transferred(self):
         commondata = mctrl_nav_pb2.NavGetCommData(
             pver=1,
             subCmd=1,
@@ -131,7 +132,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
-    async def synchronize_hash_data(self, hash_int: int):
+    def synchronize_hash_data(self, hash_int: int):
         commondata = mctrl_nav_pb2.NavGetCommData(
             pver=1,
             subCmd=1,
@@ -153,7 +154,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
-    async def start_work_job(self):
+    def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -173,7 +174,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    async def read_plan(self, i: int):
+    def read_plan(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -192,7 +193,7 @@ class MessageNavigation:
 
     # (2, 0);
 
-    async def read_plan_index(self, i: int, i2: int):
+    def read_plan_index(self, i: int, i2: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -210,7 +211,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
-    async def read_plan_unable_time(self, i):
+    def read_plan_unable_time(self, i):
         build = mctrl_nav_pb2.NavUnableTimeSet()
         build.subCmd = i
 
@@ -226,7 +227,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    async def send_plan2(self, plan: Plan):
+    def send_plan2(self, plan: Plan):
         navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
         navPlanJobSet.pver = plan.pver
         navPlanJobSet.subCmd = plan.subCmd
@@ -274,7 +275,7 @@ class MessageNavigation:
     def get_reserved(self, generate_route_information):
         return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
 
-    async def generate_route_information(self, generate_route_information):
+    def generate_route_information(self, generate_route_information: GenerateRouteInformation):
         """How you start a manual job, then call startjob"""
 
         nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
@@ -308,7 +309,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    async def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave,
+    def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave,
                                channel_width, channel_mode):
         """Pretty sure this starts a job too but isn't used"""
         luba_msg = luba_msg_pb2.LubaMsg()
@@ -337,7 +338,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    async def breakPointContinue(self):
+    def breakPointContinue(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -356,7 +357,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
-    async def breakPointAnywhereContinue(self, refresh_loading: bool):
+    def breakPointAnywhereContinue(self, refresh_loading: bool):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
             sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
@@ -415,7 +416,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    async def return_to_dock(self):
+    def return_to_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
         navTaskCtrl.type = 1
@@ -434,7 +435,7 @@ class MessageNavigation:
         lubaMsg.nav.CopyFrom(mctrlNav)
         return lubaMsg.SerializeToString()
 
-    async def leave_dock(self):
+    def leave_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         mctrlNav.todev_one_touch_leave_pile = 1
 
@@ -446,4 +447,23 @@ class MessageNavigation:
         lubaMsg.version = 1
         lubaMsg.subtype = 1
         lubaMsg.nav.CopyFrom(mctrlNav)
+        return lubaMsg.SerializeToString()
+
+    def set_data_synchronization(self, type: int):
+        mctrl_nav = mctrl_nav_pb2.MctlNav(
+            todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
+                pver=1,
+                action=12,
+                type=type
+            )
+        )
+
+        lubaMsg = luba_msg_pb2.LubaMsg()
+        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_NAV
+        lubaMsg.sender = luba_msg_pb2.DEV_MAINCTL
+        lubaMsg.rcver = luba_msg_pb2.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.nav.CopyFrom(mctrl_nav)
         return lubaMsg.SerializeToString()
