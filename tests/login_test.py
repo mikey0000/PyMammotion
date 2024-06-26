@@ -26,7 +26,6 @@ async def run():
     if cloud_client.check_or_refresh_session() == False:
         async with ClientSession("https://domestic.mammotion.com") as session:
             lubaHttp = await LubaHTTP.login(session, EMAIL, PASSWORD)
-            # print(lubaHttp.data)
             countryCode = lubaHttp.data.userInformation.domainAbbreviation
     # countryCode, lubaHttp.authorization_code
             print("CountryCode: " + countryCode)
