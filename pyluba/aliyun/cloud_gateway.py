@@ -27,6 +27,8 @@ from pyluba.aliyun.dataclass.aepResponse import AepResponse
 from pyluba.aliyun.dataclass.sessionByAuthCodeResponse import SessionByAuthCodeResponse
 from pyluba.aliyun.dataclass.listingDevByAccountResponse import ListingDevByAccountResponse
 
+from pyluba.aliyun.constant import Constant
+
 # init client
 
 
@@ -44,7 +46,6 @@ MOVE_HEADERS = (
 
 
 class CloudIOTGateway:
-    _app_secret = ""
 
     _client_id = ""
     _device_sn = ""
@@ -60,8 +61,8 @@ class CloudIOTGateway:
     converter = DatatypeConverter()
 
     def __init__(self):
-        self._app_key = "34231230"
-        self._app_secret = "1ba85698bb10e19c6437413b61ba3445"
+        self._app_key = Constant.APP_KEY
+        self._app_secret = Constant.APP_SECRET
         self.domain = 'api.link.aliyun.com'
 
         uuid1 = str(uuid.uuid1())  # 128 chatarrers
