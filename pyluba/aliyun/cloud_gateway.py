@@ -207,7 +207,7 @@ class CloudIOTGateway:
         else:
             self._aepResponse = AepResponse.from_dict(response_body_dict)
 
-        print(response_body_dict)
+        logger.debug(response_body_dict)
 
         return response.body
 
