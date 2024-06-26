@@ -2,17 +2,16 @@ from enum import Enum
 
 
 class DeviceType(Enum):
-    # ToDo: Return nice names here
-    # UNKNOWN = (-1, "UNKNOWN")
-    # RTK = (0, "RTK")
-    # LUBA = (1, "Luba 1")
-    # LUBA_2 = (2, "Luba 2")
-    # LUBA_YUKA = (3, "Yuka")
-    UNKNOWN = (-1, "UNKNOWN")
-    RTK = (0, "RTK")
-    LUBA = (1, "Luba")
-    LUBA_2 = (2, "Luba-VS")
-    LUBA_YUKA = (3, "Yuka-")
+    UNKNOWN = (-1, "UNKNOWN", "Unknown")
+    RTK = (0, "RTK", "RTK")
+    LUBA = (1, "Luba", "Luba 1")
+    LUBA_2 = (2, "Luba-VS", "Luba 2")
+    LUBA_YUKA = (3, "Yuka-", "Yuka")
+
+    def __init__(self, value: int, name: str, model: str):
+        self._value = value
+        self._name = name
+        self._model = model
 
     def __init__(self, value: int, name: str):
         self._value = value
@@ -20,6 +19,9 @@ class DeviceType(Enum):
 
     def get_name(self):
         return self._name
+    
+    def get_model(self):
+        return self._model
 
     def get_value(self):
         return self._value
