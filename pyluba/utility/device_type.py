@@ -13,10 +13,6 @@ class DeviceType(Enum):
         self._name = name
         self._model = model
 
-    def __init__(self, value: int, name: str):
-        self._value = value
-        self._name = name
-
     def get_name(self):
         return self._name
     
