@@ -1,4 +1,6 @@
 # === sendOrderMsg_Driver ===
+import time
+
 from pyluba.mammotion.commands.abstract_message import AbstractMessage
 from pyluba.proto import luba_msg_pb2, mctrl_driver_pb2
 
@@ -10,7 +12,7 @@ class MessageDriver(AbstractMessage):
             sender=luba_msg_pb2.DEV_MOBILEAPP,
             rcver=luba_msg_pb2.DEV_MAINCTL,
             msgattr=luba_msg_pb2.MSG_ATTR_REQ,
-            timestamp = self.current_milli_time()
+            timestamp = self.current_milli_time(),
             seqs=1,
             version=1,
             subtype=1,
@@ -21,7 +23,7 @@ class MessageDriver(AbstractMessage):
     def set_blade_height(self, height: int):
         print(f"Send knife height height={height}")
         build = mctrl_driver_pb2.MctlDriver(
-            todev_knife_hight_set=mctrl_driver_pb2.DrvKnifeHeight(knife_height=height))
+            todev_knife_height_set=mctrl_driver_pb2.DrvKnifeHeight(knifeHeight=height))
         print(f"Send command--Knife motor height setting height={height}")
         return self.send_order_msg_driver(build)
 
@@ -56,7 +58,7 @@ class MessageDriver(AbstractMessage):
 
     def operate_on_device(self, main_ctrl: int, cut_knife_ctrl: int, cut_knife_height: int, max_run_speed: float):
         build = mctrl_driver_pb2.MctlDriver(mow_ctrl_by_hand=mctrl_driver_pb2.DrvMowCtrlByHand(
-            main_ctrl=main_ctrl, cut_knife_ctrl=cut_knife_ctrl, cut_knife_height=cut_knife_height, max_run_speed=max_run_speed))
+            main_ctrl=main_ctrl, cut_knife_ctrl=cut_knife_ctrl, cut_knife_height=cut_knife_height, max_run_Speed=max_run_speed))
         print(f"Send command--Manual mowing command, main_ctrl:{main_ctrl}, cut_knife_ctrl:{
               cut_knife_ctrl}, cut_knife_height:{cut_knife_height}, max_run_speed:{max_run_speed}")
         return self.send_order_msg_driver(build)
@@ -66,8 +68,8 @@ class MessageDriver(AbstractMessage):
         print(f"Control command print, linearSpeed={
             linear_speed} // angularSpeed={angular_speed}")
         return self.send_order_msg_driver(mctrl_driver_pb2.MctlDriver(todev_devmotion_ctrl=mctrl_driver_pb2.DrvMotionCtrl(
-            set_linear_speed=linear_speed, 
-            set_angular_speed=angular_speed))
+            setLinearSpeed=linear_speed,
+            setAngularSpeed=angular_speed)))
 
 
 
