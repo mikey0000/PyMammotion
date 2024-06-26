@@ -68,7 +68,7 @@ class MessageSystem(AbstractMessage):
         return self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)))
 
     def allpowerfull_rw(self, id: int, context: int, rw: int):
-        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_pro(self.get_device_name()):
+        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_2(self.get_device_name()):
             self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
             return
         build = mctrl_sys_pb2.MctlSys(
