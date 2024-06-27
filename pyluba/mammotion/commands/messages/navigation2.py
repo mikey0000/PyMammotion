@@ -1,5 +1,8 @@
 # === sendOrderMsg_Nav ===
-from typing import List
+from typing import List, Dict
+import json
+import time
+    
 from pyluba.data.model import GenerateRouteInformation
 from pyluba.data.model.plan import Plan
 from pyluba.proto import luba_msg_pb2, mctrl_nav_pb2
@@ -680,3 +683,24 @@ class MessageNavigation:
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=3, action=1, result=0))
         print("Send command - Reset charging pile, base station position")
         return self.send_order_msg_nav(build)
+
+# ToDo: Fix this
+    def is_support_iot(self) -> bool:
+        device_link_status: Any = self.send_raw_data_callback.get_device_link_status()
+        print(f"Current link status linkStatus: {device_link_status}")
+        return device_link_status == MALinkManager.LinkType.LinkType_IOT
+   
+# ToDo: Fix this
+    def post_custom_data(self, data_str: str) -> None:
+        self.send_raw_data_callback.post_custom_date_byte(data_str.encode(), 1)
+
+    def get_json_string(self, cmd: int) -> str:
+        try:
+            json_object: Dict[str, int] = {
+                "cmd": cmd,
+                "id": int(time.time())
+            }
+            return json.dumps(json_object)
+        except json.JSONDecodeError as e:
+            print(f"Error: {e}")
+            return ""
