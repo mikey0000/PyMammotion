@@ -30,6 +30,7 @@ class MessageNavigation:
 
  # === Below are the previous functions. These are going to be updated ===
 
+    # NOT REPLACED!!!
     def get_hash(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -48,6 +49,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+    # Replaced \w: get_all_boundary_hash_list(self, sub_cmd: int, log_type: int):
     def get_all_boundary_hash_list(self, i: int):
         """.getAllBoundaryHashList(3); 0"""
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -68,6 +70,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+    # Replaced \w: get_line_info(self, hash: int) -> None:
     def get_line_info(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -87,6 +90,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
+    # Replaced \w: get_hash_response(self, total_frame: int, current_frame: int):
     def get_hash_response(self, totalFrame: int, currentFrame: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -109,7 +113,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
-
+    # Replaced \w: get_area_to_be_transferred(self):
     def get_area_tobe_transferred(self):
         commondata = mctrl_nav_pb2.NavGetCommData(
             pver=1,
@@ -132,6 +136,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
+    # Replaced \w: synchronize_hash_data(self, hash: int):
     def synchronize_hash_data(self, hash_int: int):
         commondata = mctrl_nav_pb2.NavGetCommData(
             pver=1,
@@ -154,6 +159,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
+    # Replaced \w: start_job(self) -> None:
     def start_work_job(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -174,6 +180,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+    # Replaced \w: read_plan_unable_time(self, sub_cmd: int) -> None:
     def read_plan(self, i: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -193,6 +200,7 @@ class MessageNavigation:
 
     # (2, 0);
 
+    # Replaced \w: read_plan(self, sub_cmd: int, plan_index: int, log_type: int) -> None:
     def read_plan_index(self, i: int, i2: int):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -211,6 +219,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
+    # Replaced \w: read_plan_unable_time(self, sub_cmd: int) -> None:
     def read_plan_unable_time(self, i):
         build = mctrl_nav_pb2.NavUnableTimeSet()
         build.subCmd = i
@@ -227,6 +236,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+    # Replaced \w: send_plan2(self, plan_bean: Plan) -> None:
     def send_plan2(self, plan: Plan):
         navPlanJobSet = luba_msg_pb2.NavPlanJobSet()
         navPlanJobSet.pver = plan.pver
@@ -275,6 +285,7 @@ class MessageNavigation:
     def get_reserved(self, generate_route_information):
         return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
 
+    # Replaced \w: generate_route_information(self, generate_route_information: GenerateRouteInformation):
     def generate_route_information(self, generate_route_information: GenerateRouteInformation):
         """How you start a manual job, then call startjob"""
 
@@ -309,6 +320,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+# =============== ToDo: What is this replaced with? ===============
     def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave,
                                channel_width, channel_mode):
         """Pretty sure this starts a job too but isn't used"""
@@ -338,6 +350,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+    # Replaced \w: break_point_continue(self):
     def breakPointContinue(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -357,6 +370,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
+    # Replaced \w: break_point_anywhere_continue(self):
     def breakPointAnywhereContinue(self, refresh_loading: bool):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -376,6 +390,7 @@ class MessageNavigation:
         )
         return luba_msg.SerializeToString()
 
+    # Replaced \w: pause_execute_task(self):
     def pause_execute_task(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -396,6 +411,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+    # Replaced \w: cancel_pause_execute_task(self):
     def resume_execute_task(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -416,6 +432,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
+    # Replaced \w: return_charge(self):
     def return_to_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
@@ -435,6 +452,7 @@ class MessageNavigation:
         lubaMsg.nav.CopyFrom(mctrlNav)
         return lubaMsg.SerializeToString()
 
+# =============== ToDo: What is this replaced with? ===============
     def leave_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         mctrlNav.todev_one_touch_leave_pile = 1
@@ -449,6 +467,7 @@ class MessageNavigation:
         lubaMsg.nav.CopyFrom(mctrlNav)
         return lubaMsg.SerializeToString()
 
+    # Replaced \w: set_data_synchronization(self, type: int):
     def set_data_synchronization(self, type: int):
         mctrl_nav = mctrl_nav_pb2.MctlNav(
             todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
