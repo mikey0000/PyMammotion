@@ -17,6 +17,8 @@ from alibabacloud_tea_util.client import Client as UtilClient
 
 import base64
 
+from aliyunsdkiot.request.v20180120.InvokeThingServiceRequest import InvokeThingServiceRequest
+
 from pyluba.utility.datatype_converter import DatatypeConverter
 
 
@@ -526,12 +528,14 @@ class CloudIOTGateway:
 
         # build request
         request = CommonParams(api_ver='1.0.5', language='en-US', iot_token=self._session_by_authcode_response.data.iotToken)
+
+        # TODO move to using  InvokeThingServiceRequest()
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
             params=
             {
                 "args": {
-                    "content":self.converter.logger.debugBase64Binary(command)
+                    "content":self.converter.printBase64Binary(command)
                 },
                 "identifier": "device_protobuf_sync_service",
                 "iotId": "MbXcDE2X63CENA0lPGIo000000" # TODO get iotId from listbybinding request
