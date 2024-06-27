@@ -1,102 +1,98 @@
 from typing import List, Optional
 
-
 class RegionData:
     def __init__(self):
-        self.Hash: Optional[int] = None
+        self.hash: Optional[int] = None
         self.action: int = 0
-        self.currentFrame: int = 0
-        self.dataHash: Optional[int] = None
-        self.dataLen: int = 0
-        self.pHashA: Optional[int] = None
-        self.pHashB: Optional[int] = None
-        self.path: List[List[float]] = []
+        self.current_frame: int = 0
+        self.data_hash: Optional[int] = None
+        self.data_len: int = 0
+        self.p_hash_a: Optional[int] = None
+        self.p_hash_b: Optional[int] = None
+        self.path: Optional[List[List[float]]] = None
         self.pver: int = 0
         self.result: int = 0
-        self.subCmd: int = 0
-        self.totalFrame: int = 0
+        self.sub_cmd: int = 0
+        self.total_frame: int = 0
         self.type: int = 0
 
-    def setHash(self, l: int) -> None:
-        self.Hash = l
+    def set_hash(self, hash: int) -> None:
+        self.hash = hash
 
-    def getDataLen(self) -> int:
-        return self.dataLen
+    def get_data_len(self) -> int:
+        return self.data_len
 
-    def setDataLen(self, i: int) -> None:
-        self.dataLen = i
+    def set_data_len(self, data_len: int) -> None:
+        self.data_len = data_len
 
-    def getPver(self) -> int:
+    def get_pver(self) -> int:
         return self.pver
 
-    def setPver(self, i: int) -> None:
-        self.pver = i
+    def set_pver(self, pver: int) -> None:
+        self.pver = pver
 
-    def getSubCmd(self) -> int:
-        return self.subCmd
+    def get_sub_cmd(self) -> int:
+        return self.sub_cmd
 
-    def setSubCmd(self, i: int) -> None:
-        self.subCmd = i
+    def set_sub_cmd(self, sub_cmd: int) -> None:
+        self.sub_cmd = sub_cmd
 
-    def getResult(self) -> int:
+    def get_result(self) -> int:
         return self.result
 
-    def setResult(self, i: int) -> None:
-        self.result = i
+    def set_result(self, result: int) -> None:
+        self.result = result
 
-    def getAction(self) -> int:
+    def get_action(self) -> int:
         return self.action
 
-    def setAction(self, i: int) -> None:
-        self.action = i
+    def set_action(self, action: int) -> None:
+        self.action = action
 
-    def getType(self) -> int:
+    def get_type(self) -> int:
         return self.type
 
-    def setType(self, i: int) -> None:
-        self.type = i
+    def set_type(self, type: int) -> None:
+        self.type = type
 
-    def getTotalFrame(self) -> int:
-        return self.totalFrame
+    def get_total_frame(self) -> int:
+        return self.total_frame
 
-    def setTotalFrame(self, i: int) -> None:
-        self.totalFrame = i
+    def set_total_frame(self, total_frame: int) -> None:
+        self.total_frame = total_frame
 
-    def getCurrentFrame(self) -> int:
-        return self.currentFrame
+    def get_current_frame(self) -> int:
+        return self.current_frame
 
-    def setCurrentFrame(self, i: int) -> None:
-        self.currentFrame = i
+    def set_current_frame(self, current_frame: int) -> None:
+        self.current_frame = current_frame
 
-    def getPath(self) -> List[List[float]]:
+    def get_path(self) -> Optional[List[List[float]]]:
         return self.path
 
-    def setPath(self, lst: List[List[float]]) -> None:
-        self.path = lst
+    def set_path(self, path: List[List[float]]) -> None:
+        self.path = path
 
-    def getHash(self) -> Optional[int]:
-        return self.Hash
+    def get_hash(self) -> Optional[int]:
+        return self.hash
 
-    def setHash(self, j: int) -> None:
-        self.Hash = j
+    def set_data_hash(self, data_hash: int) -> None:
+        self.data_hash = data_hash
 
-    def getDataHash(self) -> Optional[int]:
-        return self.dataHash
+    def get_data_hash(self) -> Optional[int]:
+        return self.data_hash
 
-    def setDataHash(self, j: int) -> None:
-        self.dataHash = j
+    def set_p_hash_a(self, p_hash_a: int) -> None:
+        self.p_hash_a = p_hash_a
 
-    def getpHashA(self) -> Optional[int]:
-        return self.pHashA
+    def get_p_hash_a(self) -> Optional[int]:
+        return self.p_hash_a
 
-    def setpHashA(self, j: int) -> None:
-        self.pHashA = j
+    def set_p_hash_b(self, p_hash_b: int) -> None:
+        self.p_hash_b = p_hash_b
 
-    def getpHashB(self) -> Optional[int]:
-        return self.pHashB
-
-    def setpHashB(self, j: int) -> None:
-        self.pHashB = j
+    def get_p_hash_b(self) -> Optional[int]:
+        return self.p_hash_b
 
     def __str__(self) -> str:
-        return "RegionalDataBean{pver=" + str(self.pver) + ", subCmd=" + str(self.subCmd) + ", result=" + str(self.result) + ", action=" + str(self.action) + ", type=" + str(self.type) + ", Hash=" + str(self.Hash) + ", totalFrame=" + str(self.totalFrame) + ", currentFrame=" + str(self.currentFrame) + ", path="+ str(self.path) + ", dataHash=" + str(self.dataHash) + ", pHashA=" + str(self.pHashA) + ", pHashB=" + str(self.pHashB)
+        return f"RegionData{{pver={self.pver}, sub_cmd={self.sub_cmd}, result={self.result}, action={self.action}, type={self.type}, Hash={self.hash}, total_frame={self.total_frame}, current_frame={self.current_frame}, data_hash={self.data_hash}, p_hash_a={self.p_hash_a}, p_hash_b={self.p_hash_b}, data_len={self.data_len}, path={self.path}}}"

@@ -2,13 +2,15 @@
 from typing import List, Dict
 import json
 import time
-    
+
 from pyluba.data.model import GenerateRouteInformation
 from pyluba.data.model.plan import Plan
+from pyluba.data.model.region_data import RegionData
+from pyluba.mammotion.commands.abstract_message import AbstractMessage
 from pyluba.proto import luba_msg_pb2, mctrl_nav_pb2
 
 
-class MessageNavigation:
+class MessageNavigation(AbstractMessage):
     def send_order_msg_nav(self, build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_NAV,
@@ -346,7 +348,6 @@ class MessageNavigation:
             f"Send command--Send delete job plan command cmd={sub_cmd} planId = {plan_id}")
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
     def set_plan_unable_time(self, sub_cmd: int, device_id: str, unable_end_time: str, unable_start_time: str) -> None:
         build = mctrl_nav_pb2.NavUnableTimeSet(
             sub_cmd=sub_cmd,
@@ -419,8 +420,7 @@ class MessageNavigation:
         print("Send command--Get transfer area before charging pile")
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def get_regional_data(self, regional_data_bean):
+    def get_regional_data(self, regional_data_bean: RegionData):
         build = mctrl_nav_pb2.MctlNav(
             todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
                 pver=1, action=regional_data_bean.action, type=regional_data_bean.type,
@@ -502,7 +502,6 @@ class MessageNavigation:
         print("Send command--Clear job data")
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
     def generate_route_information(self, generate_route_information: GenerateRouteInformation):
         print(f"Generate route data source:{generate_route_information}")
         build = mctrl_nav_pb2.NavReqCoverPath(
@@ -519,7 +518,6 @@ class MessageNavigation:
               generate_route_information}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(bidire_reqconver_path=build))
 
-# ToDo: Fix this
     def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation):
         print(f"Generate route data source: {generate_route_information}")
         build = mctrl_nav_pb2.NavReqCoverPath(
@@ -541,7 +539,6 @@ class MessageNavigation:
               generate_route_information}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(bidire_reqconver_path=build))
 
-# ToDo: Fix this
     def end_generate_route_information(self):
         build = mctrl_nav_pb2.NavReqCoverPath(pver=1, sub_cmd=9)
         print(f"{self.get_device_name()} Generate route ===== {build}")
@@ -550,7 +547,6 @@ class MessageNavigation:
             "Send command -- End generating route information generate_route_information=")
         return self.send_order_msg_nav(build2)
 
-# ToDo: Fix this
     def query_generate_route_information(self):
         build = mctrl_nav_pb2.NavReqCoverPath(pver=1, sub_cmd=2)
         print(f"{self.get_device_name(
@@ -654,7 +650,7 @@ class MessageNavigation:
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=3, action=1, result=0))
         print("Send command - Reset charging pile, base station position")
         return self.send_order_msg_nav(build)
-   
+
 # ToDo: Fix this
     def post_custom_data(self, data_str: str) -> None:
         self.send_raw_data_callback.post_custom_date_byte(data_str.encode(), 1)
