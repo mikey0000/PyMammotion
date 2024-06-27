@@ -91,9 +91,9 @@ class JoystickControl:
         if key.keytype is Key.BUTTON and key.value == 1:
             # print(key, "-", key.keytype, "-", key.number, "-", key.value)
             if key.number == 0:  # x
-                asyncio.run(self._client.return_to_dock())
+                asyncio.run(self._client.return_charge())
             if key.number == 1:
-                asyncio.run(self._client.leave_dock())
+                asyncio.run(self._client.auto_under_pile())
             if key.number == 3:
                 asyncio.run(self._client.setBladeControl(1))
             if key.number == 2:

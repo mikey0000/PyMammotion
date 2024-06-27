@@ -30,7 +30,7 @@ class MessageNavigation:
 
  # === Below are the previous functions. These are going to be updated ===
 
-    # NOT REPLACED!!!
+    # NOT REPLACED!!! - But also doesnt seem to be used
     def get_hash(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -49,7 +49,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    # Replaced \w: get_all_boundary_hash_list(self, sub_cmd: int, log_type: int):
+    # Replaced \w: get_all_boundary_hash_list(self, sub_cmd: int):
     def get_all_boundary_hash_list(self, i: int):
         """.getAllBoundaryHashList(3); 0"""
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -221,6 +221,7 @@ class MessageNavigation:
 
     # Replaced \w: read_plan_unable_time(self, sub_cmd: int) -> None:
     def read_plan_unable_time(self, i):
+        # Note: This function is a dupe of read_plan(..) above
         build = mctrl_nav_pb2.NavUnableTimeSet()
         build.subCmd = i
 

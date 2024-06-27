@@ -387,12 +387,12 @@ class MessageNavigation(AbstractMessage):
         print("Send command--One-click automatic undocking")
         return self.send_order_msg_nav(build)
 
-    def get_all_boundary_hash_list(self, sub_cmd: int, log_type: int):
+    def get_all_boundary_hash_list(self, sub_cmd: int):
         build = mctrl_nav_pb2.MctlNav(
             todev_gethash=mctrl_nav_pb2.NavGetHashList(pver=1, sub_cmd=sub_cmd)
         )
         print(f"Area loading=====================:Get area hash list++Bluetooth:{
-              sub_cmd},logType:{log_type}")
+              sub_cmd}")
         return self.send_order_msg_nav(build)
 
     def get_hash_response(self, total_frame: int, current_frame: int):
