@@ -26,7 +26,7 @@ from pyluba.bluetooth.const import (
     UUID_WRITE_CHARACTERISTIC,
 )
 
-from pyluba.mammotion.commands.mammotionCommand import MammotionCommand
+from pyluba.mammotion.commands.mammotion_command import MammotionCommand
 from pyluba.proto import (
     luba_msg_pb2,
 )
@@ -298,7 +298,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        raise RuntimeError("Unreachable")
+        # raise RuntimeError("Unreachable")
 
     @property
     def name(self) -> str:

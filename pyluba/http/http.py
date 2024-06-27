@@ -5,9 +5,11 @@ from aiohttp import ClientSession
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pyluba.const import MAMMOTION_DOMAIN, MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET
+
 DataT = TypeVar("DataT")
 
-
+@dataclass
 class Response(DataClassDictMixin, Generic[DataT]):
     data: DataT
     code: int
@@ -34,7 +36,6 @@ class LoginResponseData(DataClassORJSONMixin):
     userInformation: LoginResponseUserInformation
     jti: str
 
-
 class LubaHTTP:
     def __init__(self, session: ClientSession, login: LoginResponseData):
         self._session = session
@@ -42,23 +43,25 @@ class LubaHTTP:
         self._login = login
 
     @classmethod
-    async def login(self, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
+    async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
         async with session.post(
                 "/user-server/v1/user/oauth/token",
                 params=dict(
                     username=username,
                     password=password,
-                    client_id="MADKALUBAS",
-                    client_secret="GshzGRZJjuMUgd2sYHM7",
+                    client_id=MAMMOTION_CLIENT_ID,
+                    client_secret=MAMMOTION_CLIENT_SECRET,
                     grant_type="password"
                 )
         ) as resp:
             data = await resp.json()
             print(data)
-            return Response[LoginResponseData](**data)
-
+            # TODO catch errors from mismatch user / password
+            # Assuming the data format matches the expected structure
+            login_response_data = LoginResponseData.from_dict(data["data"])
+            return Response(data=login_response_data, code=data["code"], msg=data["msg"])
 
 async def connect_http(username: str, password: str) -> LubaHTTP:
-    async with ClientSession("https://domestic.mammotion.com") as session:
-        login = await LubaHTTP.login(session, username, password)
-        yield LubaHTTP(session, login.data)
+    async with ClientSession(MAMMOTION_DOMAIN) as session:
+        login_response = await LubaHTTP.login(session, username, password)
+        return LubaHTTP(session, login_response.data)
