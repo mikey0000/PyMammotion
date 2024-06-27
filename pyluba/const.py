@@ -7,4 +7,4 @@ MAMMOTION_DOMAIN = 'https://domestic.mammotion.com'
 MAMMOTION_CLIENT_ID="MADKALUBAS"
 MAMMOTION_CLIENT_SECRET="GshzGRZJjuMUgd2sYHM7"
 
-    
+

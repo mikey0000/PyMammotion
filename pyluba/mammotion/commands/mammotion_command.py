@@ -3,8 +3,7 @@ from pyluba.mammotion.commands.messages.network import MessageNetwork
 from pyluba.mammotion.commands.messages.ota import MessageOta
 from pyluba.mammotion.commands.messages.system import MessageSystem
 from pyluba.mammotion.commands.messages.video import MessageVideo
-from pyluba.proto import dev_net_pb2, luba_msg_pb2, mctrl_nav_pb2, mctrl_sys_pb2
-from pyluba.proto.mctrl_sys import RptInfoType
+from pyluba.proto import dev_net_pb2, luba_msg_pb2
 
 
 class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo):

@@ -2,7 +2,6 @@ import hashlib
 import hmac
 import json
 import logging
-import sqlite3
 from logging import getLogger
 from typing import Callable, Optional, cast
 

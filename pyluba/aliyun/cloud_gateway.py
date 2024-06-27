@@ -1,35 +1,29 @@
+import base64
 import hashlib
 import hmac
+import json
 import random
 import string
 import time
 import uuid
-import json
 from logging import getLogger
 
 from aiohttp import ClientSession
-
-from alibabacloud_iot_api_gateway.models import Config, IoTApiRequest, CommonParams
 from alibabacloud_iot_api_gateway.client import Client
+from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
+from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
 
-from alibabacloud_tea_util.client import Client as UtilClient
-
-import base64
-
-from aliyunsdkiot.request.v20180120.InvokeThingServiceRequest import InvokeThingServiceRequest
-
-from pyluba.utility.datatype_converter import DatatypeConverter
-
-
-from pyluba.aliyun.dataclass.regions_response import RegionResponse
-from pyluba.aliyun.dataclass.connect_response import ConnectResponse
-from pyluba.aliyun.dataclass.login_by_oauth_response import LoginByOAuthResponse
 from pyluba.aliyun.dataclass.aep_response import AepResponse
-from pyluba.aliyun.dataclass.session_by_authcode_response import SessionByAuthCodeResponse
+from pyluba.aliyun.dataclass.connect_response import ConnectResponse
 from pyluba.aliyun.dataclass.dev_by_account_response import ListingDevByAccountResponse
-
-from pyluba.const import APP_KEY, APP_SECRET, ALIYUN_DOMAIN, APP_VERSION
+from pyluba.aliyun.dataclass.login_by_oauth_response import LoginByOAuthResponse
+from pyluba.aliyun.dataclass.regions_response import RegionResponse
+from pyluba.aliyun.dataclass.session_by_authcode_response import (
+    SessionByAuthCodeResponse,
+)
+from pyluba.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
+from pyluba.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
 
@@ -141,10 +135,10 @@ class CloudIOTGateway:
         if int(response_body_dict.get('code')) != 200:
             raise Exception ('Error in getting regions: ' + response_body_dict["msg"])
         else:
-            self._region = RegionResponse.from_dict(response_body_dict) 
+            self._region = RegionResponse.from_dict(response_body_dict)
             logger.debug("Endpoint : " + self._region.data.mqttEndpoint)
-    
-        
+
+
 
         return response.body
 
@@ -205,7 +199,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode('utf-8')
 
         response_body_dict = json.loads(response_body_str)
-        
+
         if int(response_body_dict.get('code')) != 200:
             raise Exception ('Error in getting mqtt credentials: ' + response_body_dict["msg"])
         else:
@@ -417,7 +411,7 @@ class CloudIOTGateway:
             self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
 
         return response.body
-    
+
     def check_or_refresh_session(self):
         if self.load_saved_params() == False:
             return False
@@ -465,7 +459,7 @@ class CloudIOTGateway:
 
         # Carica la stringa JSON in un dizionario
         response_body_dict = json.loads(response_body_str)
-            
+
 
     def list_binding_by_account(self):
         config = Config(

@@ -18,23 +18,10 @@ from bleak_retry_connector import (
     BleakNotFoundError,
     establish_connection,
 )
-from google.protobuf import json_format
 
 from pyluba.bluetooth import BleMessage
-from pyluba.bluetooth.const import (
-    UUID_NOTIFICATION_CHARACTERISTIC,
-    UUID_WRITE_CHARACTERISTIC,
-)
-
 from pyluba.mammotion.commands.mammotion_command import MammotionCommand
-from pyluba.proto import (
-    luba_msg_pb2,
-)
-from pyluba.proto.dev_net import DevNet
 from pyluba.proto.luba_msg import LubaMsg
-from pyluba.proto.luba_mul import SocMul
-from pyluba.proto.mctrl_ota import MctlOta
-from pyluba.proto.mctrl_sys import MctlSys
 
 
 class CharacteristicMissingError(Exception):
@@ -198,12 +185,12 @@ class MammotionBaseDevice:
         # cfg_proto.ParseFromString(cfg)
         # print(json_format.MessageToDict(cfg_proto))
 
-        plan = await self._send_command_with_args("read_plan", **{'id': 2})
+        plan = await self._send_command_with_args("read_plan", id=2)
         # plan_proto = luba_msg_pb2.LubaMsg()
         # plan_proto.ParseFromString(plan)
         # print(json_format.MessageToDict(plan_proto))
 
-        RW = await self._send_command_with_args("allpowerfull_rw", **{'id': 5, 'context': 1, 'rw': 1})
+        RW = await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
         # RW_proto = luba_msg_pb2.LubaMsg()
         # RW_proto.ParseFromString(RW)
         # print(json_format.MessageToDict(RW_proto))

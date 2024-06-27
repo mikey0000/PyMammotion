@@ -12,7 +12,6 @@ from pyluba.utility.rocker_util import RockerControlUtil
 
 bleNotificationEvt = BleNotificationEvent()
 
-import nest_asyncio
 nest_asyncio.apply()
 
 class JoystickControl:
@@ -30,7 +29,7 @@ class JoystickControl:
         self._client = luba_ble
         self._curr_time = timer()
         self.stopped = False
-        
+
         repeater = pyjoystick.HatRepeater(
             first_repeat_timeout=0.2, repeat_timeout=0.03, check_timeout=0.01
         )
@@ -42,7 +41,7 @@ class JoystickControl:
             remove_joystick=self.print_remove,
             button_repeater=repeater,
         )
-        
+
         self.worker = PeriodicThread(0.2, self.run_movement, name='luba-process_movements')
         self.worker.alive = self.mngr.alive  # stop when this event stops
         self.worker.daemon = True
@@ -63,9 +62,9 @@ class JoystickControl:
                 self.angular_percent,
             )
         asyncio.run(
-            self._client.command("send_movement", **{'linear_speed': linear_speed, 'angular_speed': angular_speed})
+            self._client.command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
         )
-            
+
     def print_add(self, joy):
         print("Added", joy)
 
@@ -99,7 +98,7 @@ class JoystickControl:
 
     def handle_key_received(self, key):
         # print(key, "-", key.keytype, "-", key.number, "-", key.value)
-        
+
         if key.keytype is Key.BUTTON and key.value == 1:
             # print(key, "-", key.keytype, "-", key.number, "-", key.value)
             if key.number == 0:  # x
@@ -107,19 +106,19 @@ class JoystickControl:
             if key.number == 1:
                 asyncio.run(self._client.command('leave_dock'))
             if key.number == 3:
-                asyncio.run(self._client.command('set_blade_control', **{'on_off': 1}))
+                asyncio.run(self._client.command('set_blade_control', on_off=1))
             if key.number == 2:
-                asyncio.run(self._client.command('set_blade_control', **{'on_off': 0}))
+                asyncio.run(self._client.command('set_blade_control', on_off=0))
             if key.number == 9:
                 # lower knife height
                 if self._blade_height > 25:
                     self._blade_height -= 5
-                    asyncio.run(self._client.command('set_blade_height',**{'height': self._blade_height}))
+                    asyncio.run(self._client.command('set_blade_height',height=self._blade_height))
             if key.number == 10:
                 # raise knife height
                 if self._blade_height < 60:
                     self._blade_height += 5
-                    asyncio.run(self._client.command('set_blade_height',**{'height': self._blade_height}))
+                    asyncio.run(self._client.command('set_blade_height',height=self._blade_height))
 
         if key.keytype is Key.AXIS:
             # print(key, "-", key.keytype, "-", key.number, "-", key.value)

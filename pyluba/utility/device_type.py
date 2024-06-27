@@ -15,7 +15,7 @@ class DeviceType(Enum):
 
     def get_name(self):
         return self._name
-    
+
     def get_model(self):
         return self._model
 

@@ -16,10 +16,12 @@ class StatusType(Enum):
     CONNECTED = 1
     DISCONNECTED = 3
 
+
 @dataclass
 class Status(DataClassORJSONMixin):
     time: int
     value: StatusType
+
 
 @dataclass
 class Params(DataClassORJSONMixin):
@@ -40,6 +42,7 @@ class Params(DataClassORJSONMixin):
     tenantInstanceId: str
     categoryId: int
     status: Status
+
 
 @dataclass
 class ThingStatusMessage(DataClassORJSONMixin):

@@ -2,10 +2,10 @@
 import json
 import time
 from typing import Dict
+
 from pyluba.aliyun.tmp_constant import tmp_constant
 from pyluba.mammotion.commands.messages.navigation import MessageNavigation
 from pyluba.proto import dev_net_pb2, luba_msg_pb2
-from pyluba.utility.constant.device_constant import bleOrderCmd
 
 
 class MessageNetwork:

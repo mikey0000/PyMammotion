@@ -1,5 +1,6 @@
 import base64
 
+
 class DatatypeConverter:
     encode_map = None
 

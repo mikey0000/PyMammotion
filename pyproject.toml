@@ -372,7 +372,7 @@ max-line-length-suggestions = 72
 
 [tool.ruff]
 required-version = ">=0.4.3"
-exclude = ['pyluba/proto/*pb2.py', 'pyluba/proto/*.pyi']
+exclude = ['pyluba/proto/*', 'tests/*']
 
 [tool.ruff.lint]
 select = [

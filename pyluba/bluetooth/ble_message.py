@@ -1,14 +1,11 @@
-import base64
-import datetime
 import itertools
 import json
+import logging
 import queue
 import sys
 import time
-import logging
 from asyncio import sleep
 from io import BytesIO
-from typing import Dict, List
 
 from bleak import BleakClient
 from jsonic.serializable import serialize
@@ -18,17 +15,13 @@ from pyluba.bluetooth.const import UUID_WRITE_CHARACTERISTIC
 from pyluba.bluetooth.data.convert import parse_custom_data
 from pyluba.bluetooth.data.framectrldata import FrameCtrlData
 from pyluba.bluetooth.data.notifydata import BlufiNotifyData
-from pyluba.data.model import Plan
 from pyluba.data.model.execute_boarder import ExecuteBorder
 from pyluba.mammotion.commands.messages.navigation import MessageNavigation
 from pyluba.proto import (
     dev_net_pb2,
     luba_msg_pb2,
-    mctrl_nav_pb2,
-    mctrl_sys_pb2,
 )
 from pyluba.utility.constant.device_constant import bleOrderCmd
-from pyluba.utility.rocker_util import RockerControlUtil
 
 _LOGGER = logging.getLogger(__name__)
 
