@@ -6,5 +6,5 @@ print(WorkMode.MODE_READY)
 
 print(device_mode(3))
 
-print(MammotionCommand().cancel_pause_execute_task())
-print(LubaMsg().parse(MammotionCommand().cancel_pause_execute_task()).nav.todev_taskctrl)
+print(MammotionCommand().resume_execute_task())
+print(LubaMsg().parse(MammotionCommand().resume_execute_task()).nav.todev_taskctrl)

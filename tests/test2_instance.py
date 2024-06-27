@@ -82,7 +82,7 @@ async def run(loop):
     await asyncio.sleep(5)
     print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
     await luba_ble.command("return_to_dock")
-    # await luba_ble.start_sync("cancel_pause_execute_task", 0)
+    # await luba_ble.start_sync("resume_execute_task", 0)
 
 
     # asyncio.run(await ble_heartbeat(luba_ble))

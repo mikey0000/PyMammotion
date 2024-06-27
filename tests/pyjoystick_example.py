@@ -93,7 +93,7 @@ class JoystickControl:
             if key.number == 0:  # x
                 asyncio.run(self._client.return_charge())
             if key.number == 1:
-                asyncio.run(self._client.auto_under_pile())
+                asyncio.run(self._client.leave_dock())
             if key.number == 3:
                 asyncio.run(self._client.setBladeControl(1))
             if key.number == 2:

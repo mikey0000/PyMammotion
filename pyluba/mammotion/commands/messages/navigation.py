@@ -382,7 +382,7 @@ class MessageNavigation(AbstractMessage):
             )
         ))
 
-    def auto_under_pile(self):
+    def leave_dock(self):
         build = mctrl_nav_pb2.MctlNav(to_dev_one_touch_leave_pile=1)
         print("Send command--One-click automatic undocking")
         return self.send_order_msg_nav(build)
@@ -627,7 +627,7 @@ class MessageNavigation(AbstractMessage):
         print("Send command - One-click automation test")
         return self.send_order_msg_nav(build)
 
-    def cancel_pause_execute_task(self):
+    def resume_execute_task(self):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=3, result=0))
         print("Send command - Cancel pause command")

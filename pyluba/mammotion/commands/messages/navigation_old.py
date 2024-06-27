@@ -412,7 +412,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    # Replaced \w: cancel_pause_execute_task(self):
+    # Replaced \w: resume_execute_task(self):
     def resume_execute_task(self):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -453,7 +453,7 @@ class MessageNavigation:
         lubaMsg.nav.CopyFrom(mctrlNav)
         return lubaMsg.SerializeToString()
 
-    # Replaced \w: auto_under_pile(self):
+    # Replaced \w: leave_dock(self):
     def leave_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         mctrlNav.todev_one_touch_leave_pile = 1
