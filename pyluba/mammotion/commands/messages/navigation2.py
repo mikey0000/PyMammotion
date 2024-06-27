@@ -198,7 +198,6 @@ class MessageNavigation:
         print("Sync data ==================== Sending ============ Restore command")
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
     def send_plan(self, plan_bean: Plan) -> None:
         self.post_custom_data(self.get_json_string(32, plan_bean))
         build = mctrl_nav_pb2.MctlNav(
@@ -584,8 +583,7 @@ class MessageNavigation:
         print(f"Sending command--Get route data corresponding to hash={list}")
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def start_job(self, refresh_loading) -> None:
+    def start_job(self) -> None:
         print("Sending==========Start job command")
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
@@ -595,49 +593,30 @@ class MessageNavigation:
             )
         )
         print("Sending command--Start job")
-        if self.is_support_iot() and refresh_loading is not None:
-            self.operation_status = 2000
-            refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def clase_back_to_recharge(self, refresh_loading):
+    def clase_back_to_recharge(self):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=12, result=0))
         print("Send command - Cancel return to charge")
-        if self.is_support_iot() and refresh_loading is not None:
-            self.operation_status = 3000
-            refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def close_job(self, refresh_loading):
+    def close_job(self):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=4, result=0))
         print("Send command - End job")
-        if self.is_support_iot() and refresh_loading is not None:
-            self.operation_status = 3000
-            refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def return_charge(self, refresh_loading):
+    def return_charge(self):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=5, result=0))
         print("Send command - Return to charge command")
-        if self.is_support_iot() and refresh_loading is not None:
-            self.operation_status = 3000
-            refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def pause_execute_task(self, refresh_loading):
+    def pause_execute_task(self):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=2, result=0))
         print("Send command - Pause command")
-        if self.is_support_iot() and refresh_loading is not None:
-            self.operation_status = 3000
-            refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
     def re_charge_test(self):
@@ -652,14 +631,10 @@ class MessageNavigation:
         print("Send command - One-click automation test")
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def cancel_pause_execute_task(self, refresh_loading):
+    def cancel_pause_execute_task(self):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=3, result=0))
         print("Send command - Cancel pause command")
-        if self.is_support_iot() and refresh_loading is not None:
-            self.operation_status = 3000
-            refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
     def break_point_continue(self):
@@ -668,14 +643,10 @@ class MessageNavigation:
         print("Send command - Continue from breakpoint")
         return self.send_order_msg_nav(build)
 
-# ToDo: Fix this
-    def break_point_anywhere_continue(self, refresh_loading):
+    def break_point_anywhere_continue(self):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=9, result=0))
         print("Send command - Continue from current vehicle position")
-        if self.is_support_iot() and refresh_loading is not None:
-            self.operation_status = 3000
-            refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
     def reset_base_station(self):
@@ -683,12 +654,6 @@ class MessageNavigation:
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=3, action=1, result=0))
         print("Send command - Reset charging pile, base station position")
         return self.send_order_msg_nav(build)
-
-# ToDo: Fix this
-    def is_support_iot(self) -> bool:
-        device_link_status: Any = self.send_raw_data_callback.get_device_link_status()
-        print(f"Current link status linkStatus: {device_link_status}")
-        return device_link_status == MALinkManager.LinkType.LinkType_IOT
    
 # ToDo: Fix this
     def post_custom_data(self, data_str: str) -> None:
