@@ -1,5 +1,6 @@
 # === sendOrderMsg_Media ===
 from pyluba.proto import luba_msg_pb2, luba_mul_pb2
+from pyluba.proto.luba_mul import MUL_LANGUAGE
 
 
 class MessageMedia:
@@ -17,10 +18,10 @@ class MessageMedia:
         return luba_msg.SerializeToString()
 
     def set_car_volume(self, volume: int):
-        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_switch=volume)))
+        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(at_switch=volume)))
 
-    def set_car_voice_language(self, language_type: int):
-        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_language_value=language_type)))
+    def set_car_voice_language(self, language_type: MUL_LANGUAGE | str | None):
+        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_audio=luba_mul_pb2.MulSetAudio(au_language=language_type)))
 
-    def set_car_wiper(self, round: int):
-        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_wiper=luba_mul_pb2.MulSetWiper(round=round)))
+    def set_car_wiper(self, round_num: int):
+        return self.send_order_msg_media(luba_mul_pb2.SocMul(set_wiper=luba_mul_pb2.MulSetWiper(round=round_num)))

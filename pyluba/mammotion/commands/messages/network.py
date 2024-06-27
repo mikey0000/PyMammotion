@@ -12,7 +12,7 @@ class MessageNetwork:
     messageNavigation: MessageNavigation = MessageNavigation()
 
     @staticmethod
-    def send_order_msg_net(self, build):
+    def send_order_msg_net(build):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.DEV_MOBILEAPP,
@@ -25,7 +25,6 @@ class MessageNetwork:
 
         return luba_msg.SerializeToString()
 
-    @staticmethod
     def get_device_base_info(self):
         net = dev_net_pb2.DevNet(
             todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
@@ -60,8 +59,8 @@ class MessageNetwork:
         print("Send command -- Set vision ZMQ to enable")
         return self.send_order_msg_net(build)
 
-    def set_iot_setting(self, iot_conctrl_type: dev_net_pb2.iot_conctrl_type):
-        build = dev_net_pb2.DevNet(todev_set_iot_offline_req=iot_conctrl_type)
+    def set_iot_setting(self, iot_control_type: dev_net_pb2.iot_conctrl_type):
+        build = dev_net_pb2.DevNet(todev_set_iot_offline_req=iot_control_type)
         print("Send command -- Device re-online")
         return self.send_order_msg_net(build)
 
