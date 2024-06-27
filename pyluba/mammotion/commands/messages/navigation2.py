@@ -195,6 +195,7 @@ class MessageNavigation:
         print("Sync data ==================== Sending ============ Restore command")
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def send_plan(self, plan_bean: Plan) -> None:
         self.post_custom_data(self.get_json_string(32, plan_bean))
         build = mctrl_nav_pb2.MctlNav(
@@ -343,6 +344,7 @@ class MessageNavigation:
             f"Send command--Send delete job plan command cmd={sub_cmd} planId = {plan_id}")
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def set_plan_unable_time(self, sub_cmd: int, device_id: str, unable_end_time: str, unable_start_time: str) -> None:
         build = mctrl_nav_pb2.NavUnableTimeSet(
             sub_cmd=sub_cmd,
@@ -415,6 +417,7 @@ class MessageNavigation:
         print("Send command--Get transfer area before charging pile")
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def get_regional_data(self, regional_data_bean):
         build = mctrl_nav_pb2.MctlNav(
             todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
@@ -497,6 +500,7 @@ class MessageNavigation:
         print("Send command--Clear job data")
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def generate_route_information(self, generate_route_information: GenerateRouteInformation):
         print(f"Generate route data source:{generate_route_information}")
         build = mctrl_nav_pb2.NavReqCoverPath(
@@ -513,8 +517,8 @@ class MessageNavigation:
               generate_route_information}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(bidire_reqconver_path=build))
 
+# ToDo: Fix this
     def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation):
-        print(f"Generate route data source: {generate_route_information}")
         print(f"Generate route data source: {generate_route_information}")
         build = mctrl_nav_pb2.NavReqCoverPath(
             pver=1,
@@ -535,6 +539,7 @@ class MessageNavigation:
               generate_route_information}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(bidire_reqconver_path=build))
 
+# ToDo: Fix this
     def end_generate_route_information(self):
         build = mctrl_nav_pb2.NavReqCoverPath(pver=1, sub_cmd=9)
         print(f"{self.get_device_name()} Generate route ===== {build}")
@@ -543,6 +548,7 @@ class MessageNavigation:
             "Send command -- End generating route information generate_route_information=")
         return self.send_order_msg_nav(build2)
 
+# ToDo: Fix this
     def query_generate_route_information(self):
         build = mctrl_nav_pb2.NavReqCoverPath(pver=1, sub_cmd=2)
         print(f"{self.get_device_name(
@@ -575,6 +581,7 @@ class MessageNavigation:
         print(f"Sending command--Get route data corresponding to hash={list}")
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def start_job(self, refresh_loading) -> None:
         print("Sending==========Start job command")
         build = mctrl_nav_pb2.MctlNav(
@@ -590,6 +597,7 @@ class MessageNavigation:
             refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def clase_back_to_recharge(self, refresh_loading):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=12, result=0))
@@ -599,6 +607,7 @@ class MessageNavigation:
             refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def close_job(self, refresh_loading):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=4, result=0))
@@ -608,6 +617,7 @@ class MessageNavigation:
             refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def return_charge(self, refresh_loading):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=5, result=0))
@@ -617,6 +627,7 @@ class MessageNavigation:
             refresh_loading.show_popup_window()
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def pause_execute_task(self, refresh_loading):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=2, result=0))
@@ -638,6 +649,7 @@ class MessageNavigation:
         print("Send command - One-click automation test")
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def cancel_pause_execute_task(self, refresh_loading):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=3, result=0))
@@ -653,6 +665,7 @@ class MessageNavigation:
         print("Send command - Continue from breakpoint")
         return self.send_order_msg_nav(build)
 
+# ToDo: Fix this
     def break_point_anywhere_continue(self, refresh_loading):
         build = mctrl_nav_pb2.MctlNav(
             todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=9, result=0))
