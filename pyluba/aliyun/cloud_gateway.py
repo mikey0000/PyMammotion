@@ -27,7 +27,7 @@ from pyluba.aliyun.dataclass.aep_response import AepResponse
 from pyluba.aliyun.dataclass.session_by_authcode_response import SessionByAuthCodeResponse
 from pyluba.aliyun.dataclass.dev_by_account_response import ListingDevByAccountResponse
 
-from pyluba.const import APP_KEY, APP_SECRET, ALIYUN_DOMAIN
+from pyluba.const import APP_KEY, APP_SECRET, ALIYUN_DOMAIN, APP_VERSION
 
 logger = getLogger(__name__)
 
@@ -238,7 +238,7 @@ class CloudIOTGateway:
                         "netType": "wifi",
                         "appKey": self._app_key,
                         "yunOSId": "",
-                        "appVersion": "1.11.188",
+                        "appVersion": APP_VERSION,
                         "utDid": self._utdid,
                         "appAuthToken": self._utdid,  # ???
                         "securityToken": self._utdid  # ???
