@@ -44,7 +44,7 @@ class MessageNetwork:
 
     def get_4g_info(self):
         build = dev_net_pb2.DevNet(
-            TodevMnetInfoReq=dev_net_pb2.DevNet().TodevMnetInfoReq)
+            todev_mnet_info_req=dev_net_pb2.DevNet().todev_mnet_info_req)
         print("Send command -- Get device 4G network information")
         return self.send_order_msg_net(build)
 
@@ -139,7 +139,7 @@ class MessageNetwork:
         build = dev_net_pb2.DevNet(
             todev_ble_sync=1,
             todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(
-                config_param=4,
+                configParam=4,
                 wifi_enable=new_wifi_status
             )
         )
