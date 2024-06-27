@@ -6,6 +6,7 @@ from aiohttp import ClientSession
 
 from pyluba import LubaHTTP
 from pyluba.aliyun.cloud_gateway import CloudIOTGateway
+from pyluba.const import MAMMOTION_DOMAIN
 from pyluba.mammotion.commands.mammotion_command import MammotionCommand
 from pyluba.mqtt.mqtt import LubaMQTT, logger
 
@@ -19,7 +20,7 @@ async def run():
 
     
 
-    async with ClientSession("https://domestic.mammotion.com") as session:
+    async with ClientSession(MAMMOTION_DOMAIN) as session:
         luba_http = await LubaHTTP.login(session, EMAIL, PASSWORD)
         country_code = luba_http.data.userInformation.domainAbbreviation
         logger.debug("CountryCode: " + country_code)

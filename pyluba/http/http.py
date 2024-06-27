@@ -5,6 +5,8 @@ from aiohttp import ClientSession
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pyluba.const import MAMMOTION_DOMAIN, MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET
+
 DataT = TypeVar("DataT")
 
 @dataclass
@@ -47,8 +49,8 @@ class LubaHTTP:
                 params=dict(
                     username=username,
                     password=password,
-                    client_id="MADKALUBAS",
-                    client_secret="GshzGRZJjuMUgd2sYHM7",
+                    client_id=MAMMOTION_CLIENT_ID,
+                    client_secret=MAMMOTION_CLIENT_SECRET,
                     grant_type="password"
                 )
         ) as resp:
@@ -60,6 +62,6 @@ class LubaHTTP:
             return Response(data=login_response_data, code=data["code"], msg=data["msg"])
 
 async def connect_http(username: str, password: str) -> LubaHTTP:
-    async with ClientSession("https://domestic.mammotion.com") as session:
+    async with ClientSession(MAMMOTION_DOMAIN) as session:
         login_response = await LubaHTTP.login(session, username, password)
         return LubaHTTP(session, login_response.data)

@@ -27,7 +27,7 @@ from pyluba.aliyun.dataclass.aep_response import AepResponse
 from pyluba.aliyun.dataclass.session_by_authcode_response import SessionByAuthCodeResponse
 from pyluba.aliyun.dataclass.dev_by_account_response import ListingDevByAccountResponse
 
-from pyluba.aliyun.const import APP_KEY, APP_SECRET, ALIYUN_DOMAIN
+from pyluba.const import APP_KEY, APP_SECRET, ALIYUN_DOMAIN
 
 logger = getLogger(__name__)
 
