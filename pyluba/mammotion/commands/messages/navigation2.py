@@ -54,8 +54,6 @@ class MessageNavigation:
             )
         )
         print("Send command--Enter grass collection status")
-        print("Grass collection print",
-              "Send command--Enter grass collection status")
         return self.send_order_msg_nav(build)
 
     def add_dump_point(self):
@@ -67,8 +65,6 @@ class MessageNavigation:
             )
         )
         print("Send command--Add grass collection point")
-        print("Grass collection print",
-              "Send command--Add grass collection point")
         return self.send_order_msg_nav(build)
 
     def revoke_dump_point(self):
@@ -80,8 +76,6 @@ class MessageNavigation:
             )
         )
         print("Send command--Revoke grass collection point")
-        print("Grass collection print",
-              "Send command--Revoke grass collection point")
         return self.send_order_msg_nav(build)
 
     def exit_dumping_status(self):
@@ -93,8 +87,6 @@ class MessageNavigation:
             )
         )
         print("Send command--Exit grass collection setting status")
-        print("Grass collection print",
-              "Send command--Exit grass collection setting status")
         return self.send_order_msg_nav(build)
 
     def out_drop_dumping_add(self):
@@ -106,8 +98,6 @@ class MessageNavigation:
             )
         )
         print("Send command--Complete external grass collection point marking operation")
-        print("Grass collection print",
-              "Send command--Complete external grass collection point marking operation")
         return self.send_order_msg_nav(build)
 
     def recover_dumping(self):
@@ -119,8 +109,6 @@ class MessageNavigation:
             )
         )
         print("Send command--Recover grass collection operation")
-        print("Grass collection print",
-              "Send command--Recover grass collection operation")
         return self.send_order_msg_nav(build)
 
     def start_draw_barrier(self):
@@ -192,7 +180,6 @@ class MessageNavigation:
             )
         )
         print(f"Sending secondary editing command action={action}")
-        print(f"Secondary editing print send, sending action={action}")
         return self.send_order_msg_nav(build)
 
     def set_data_synchronization(self, type: int):
@@ -282,7 +269,6 @@ class MessageNavigation:
             reserved=plan_bean.reserved
         )
         print(f"Send read job plan command planBean={plan_bean}")
-        print(f"Send command--Send read job plan command planBean={plan_bean}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(todev_planjob_set=build))
 
     def send_schedule(self, plan_bean: PlanBean1) -> None:
@@ -325,7 +311,6 @@ class MessageNavigation:
             toward_mode=0
         )
         print(f"Send read job plan command planBean={plan_bean}")
-        print(f"Send command--Send read job plan command planBean={plan_bean}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(todev_planjob_set=build))
 
     def single_schedule(self, plan_id: str) -> None:
@@ -345,8 +330,6 @@ class MessageNavigation:
         )
         print(f"Send read job plan command cmd={
               sub_cmd} PlanIndex = {plan_index},logType={log_type}")
-        print(f"Send read job plan command cmd={
-              sub_cmd} PlanIndex = {plan_index},logType ={log_type}")
         return self.send_order_msg_nav(build)
 
     def delete_plan(self, sub_cmd: int, plan_id: str) -> None:
@@ -370,13 +353,11 @@ class MessageNavigation:
             unable_start_time=unable_start_time
         )
         print(f"{self.get_device_name()} Set forbidden time===={build}")
-        print("Send command--Set and read forbidden working time")
         return self.send_order_msg_nav(
             mctrl_nav_pb2.MctlNav(todev_unable_time_set=build))
 
     def read_plan_unable_time(self, sub_cmd: int) -> None:
         build = mctrl_nav_pb2.NavUnableTimeSet(sub_cmd=sub_cmd)
-        print(f"{self.get_device_name()} Plan delivery 3===={build}")
         build2 = mctrl_nav_pb2.MctlNav(todev_unable_time_set=build)
         print(f"Send command--Read plan time{sub_cmd}")
         return self.send_order_msg_nav(build2)
@@ -407,8 +388,6 @@ class MessageNavigation:
         )
         print(f"Area loading=====================:Get area hash list++Bluetooth:{
               sub_cmd},logType:{log_type}")
-        print(f"Area loading=====================:Get area hash list:{
-              sub_cmd},logType:{log_type}")
         return self.send_order_msg_nav(build)
 
     def get_hash_response(self, total_frame: int, current_frame: int):
@@ -425,8 +404,6 @@ class MessageNavigation:
             todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
                 pver=1, action=8, hash=hash, sub_cmd=1)
         )
-        print(
-            f"Area loading=====================:Send command--209,hash synchronize area data hash:{hash}")
         print(f"Send command--209,hash synchronize area data hash:{hash}")
         return self.send_order_msg_nav(build)
 
@@ -436,7 +413,6 @@ class MessageNavigation:
                 pver=1, action=8, sub_cmd=1, type=3)
         )
         print("Send command--Get transfer area before charging pile")
-        print("Send command===Get transfer area before charging pile==Bluetooth")
         return self.send_order_msg_nav(build)
 
     def get_regional_data(self, regional_data_bean):
@@ -463,7 +439,6 @@ class MessageNavigation:
                 sub_cmd=2, param_id=id, param_value=values)
         )
         print(f"Send command--Send tool command id={id},values={values}")
-        print(f"Send command--Send tool command id={id},values={values}")
         return self.send_order_msg_nav(build)
 
     def end_draw_border(self, type: int):
@@ -482,7 +457,6 @@ class MessageNavigation:
             todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
                 pver=1, action=7, sub_cmd=0)
         )
-        print("Send command--Cancel current recording (boundary, obstacle)")
         print("Send command--Cancel current recording (boundary, obstacle)")
         return self.send_order_msg_nav(build)
 
@@ -524,7 +498,6 @@ class MessageNavigation:
         return self.send_order_msg_nav(build)
 
     def generate_route_information(self, generate_route_information):
-        print(f"Generate route data source:{generate_route_information}")
         print(f"Generate route data source:{generate_route_information}")
         build = mctrl_nav_pb2.NavReqCoverPath(
             pver=1, sub_cmd=0, zone_hashs=generate_route_information.one_hashs,
@@ -575,11 +548,9 @@ class MessageNavigation:
         print(f"{self.get_device_name(
         )} Send command -- Get route configuration information generate_route_information={build}")
         build2 = mctrl_nav_pb2.MctlNav(bidire_reqconver_path=build)
-        print("Send command -- Get route configuration information generate_route_information=")
         return self.send_order_msg_nav(build2)
 
     def get_line_info(self, hash: int) -> None:
-        print(f"Sending route data 1111====: {hash}")
         print(f"Sending==========Get route command: {hash}")
         build = mctrl_nav_pb2.MctlNav(
             todev_zigzag_ack=mctrl_nav_pb2.NavUploadZigZagResultAck(
@@ -592,7 +563,6 @@ class MessageNavigation:
         return self.send_order_msg_nav(build)
 
     def get_line_info_list(self, list: List[int], transaction_id: int) -> None:
-        print(f"Sending route data 1111====: {list}")
         print(f"Sending==========Get route command: {list}")
         build = mctrl_nav_pb2.MctlNav(
             app_request_cover_paths=mctrl_nav_pb2.app_request_cover_paths_t(
