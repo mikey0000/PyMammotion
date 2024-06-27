@@ -298,7 +298,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        raise RuntimeError("Unreachable")
+        # raise RuntimeError("Unreachable")
 
     @property
     def name(self) -> str:
