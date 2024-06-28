@@ -11,6 +11,7 @@ from pyluba.proto.mctrl_nav import MctlNav, NavPlanJobSet
 
 logger = logging.getLogger(__name__)
 
+
 class MessageNavigation(AbstractMessage):
 
     @staticmethod
@@ -238,45 +239,8 @@ class MessageNavigation(AbstractMessage):
                 reserved=plan_bean.reserved
             )
         )
-        logger.debug(f"Send command--Send job plan command planBean={plan_bean}")
-        return self.send_order_msg_nav(build)
-
-    def send_plan2(self, plan_bean: Plan) -> bytes:
-        build = mctrl_nav_pb2.NavPlanJobSet(
-            pver=plan_bean.pver,
-            sub_cmd=plan_bean.sub_cmd,
-            area=plan_bean.area,
-            device_id=plan_bean.device_id,
-            work_time=plan_bean.work_time,
-            version=plan_bean.version,
-            id=plan_bean.id,
-            user_id=plan_bean.user_id,
-            device_id=plan_bean.device_id,
-            plan_id=plan_bean.plan_id,
-            task_id=plan_bean.task_id,
-            job_id=plan_bean.job_id,
-            start_time=plan_bean.start_time,
-            end_time=plan_bean.end_time,
-            week=plan_bean.week,
-            knife_height=plan_bean.knife_height,
-            model=plan_bean.model,
-            edge_mode=plan_bean.edge_mode,
-            required_time=plan_bean.required_time,
-            route_angle=plan_bean.route_angle,
-            route_model=plan_bean.route_model,
-            route_spacing=plan_bean.route_spacing,
-            ultrasonic_barrier=plan_bean.ultrasonic_barrier,
-            total_plan_num=plan_bean.total_plan_num,
-            plan_index=plan_bean.plan_index,
-            result=plan_bean.result,
-            speed=plan_bean.speed,
-            task_name=plan_bean.task_name,
-            job_name=plan_bean.job_name,
-            zone_hashs=plan_bean.zone_hashs,
-            reserved=plan_bean.reserved
-        )
         logger.debug(f"Send read job plan command planBean={plan_bean}")
-        return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(todev_planjob_set=build))
+        return self.send_order_msg_nav(build)
 
     def send_schedule(self, plan_bean: Plan) -> bytes:
         build = mctrl_nav_pb2.NavPlanJobSet(
@@ -336,7 +300,7 @@ class MessageNavigation(AbstractMessage):
             )
         )
         logger.debug(f"Send read job plan command cmd={
-              sub_cmd} PlanIndex = {plan_index},logType={log_type}")
+        sub_cmd} PlanIndex = {plan_index},logType={log_type}")
         return self.send_order_msg_nav(build)
 
     def delete_plan(self, sub_cmd: int, plan_id: str) -> bytes:
@@ -394,7 +358,7 @@ class MessageNavigation(AbstractMessage):
             todev_gethash=mctrl_nav_pb2.NavGetHashList(pver=1, subCmd=sub_cmd)
         )
         logger.debug(f"Area loading=====================:Get area hash list++Bluetooth:{
-              sub_cmd}")
+        sub_cmd}")
         return self.send_order_msg_nav(build)
 
     def get_hash_response(self, total_frame: int, current_frame: int):
@@ -403,7 +367,7 @@ class MessageNavigation(AbstractMessage):
                 pver=1, subCmd=2, currentFrame=current_frame, totalFrame=total_frame)
         )
         logger.debug(f"Send command--208 Response hash list command totalFrame={
-              total_frame},currentFrame={current_frame}")
+        total_frame},currentFrame={current_frame}")
         return self.send_order_msg_nav(build)
 
     def synchronize_hash_data(self, hash_num: int):
@@ -517,7 +481,7 @@ class MessageNavigation(AbstractMessage):
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
         logger.debug(f"Send command--Generate route information generateRouteInformation={
-              generate_route_information}")
+        generate_route_information}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(bidire_reqconver_path=build))
 
     def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation):
@@ -538,7 +502,7 @@ class MessageNavigation(AbstractMessage):
         )
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")
         logger.debug(f"Send command -- Modify route parameters generate_route_information={
-              generate_route_information}")
+        generate_route_information}")
         return self.send_order_msg_nav(mctrl_nav_pb2.MctlNav(bidire_reqconver_path=build))
 
     def end_generate_route_information(self):
