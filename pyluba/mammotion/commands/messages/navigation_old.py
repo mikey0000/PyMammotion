@@ -433,7 +433,7 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-    # Replaced \w: return_charge(self):
+    # Replaced \w: return_to_dock(self):
     def return_to_dock(self):
         mctrlNav = mctrl_nav_pb2.MctlNav()
         navTaskCtrl = mctrl_nav_pb2.NavTaskCtrl()
