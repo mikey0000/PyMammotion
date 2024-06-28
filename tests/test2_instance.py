@@ -66,7 +66,7 @@ async def run(loop):
     if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
         dev = luba_ble.luba_msg.sys.toapp_report_data.dev
         if dev.sys_status == 11:
-            await luba_ble.command("start_work_job")
+            await luba_ble.command("start_job")
     await luba_ble.command("get_report_cfg")
 
     print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)

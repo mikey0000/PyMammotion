@@ -165,10 +165,10 @@ class MessageSystem(AbstractMessage):
 
     # === sendOrderMsg_Sys2 ===
 
-    def request_iot_sys(self, rpt_act: mctrl_sys_pb2.rpt_act, rpt_info_type: List[int], timeout: int, period: int, no_change_period: int, count: int) -> None:
+    def request_iot_sys(self, rpt_act: mctrl_sys_pb2.rpt_act, rpt_info_type: List[RptInfoType | str] | None, timeout: int, period: int, no_change_period: int, count: int) -> None:
         build = mctrl_sys_pb2.MctlSys(todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
-            rpt_act=rpt_act,
-            rpt_info_type=rpt_info_type,
+            act=rpt_act,
+            sub=rpt_info_type,
             timeout=timeout,
             period=period,
             no_change_period=no_change_period,

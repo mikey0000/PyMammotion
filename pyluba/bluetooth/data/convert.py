@@ -84,15 +84,15 @@ def store_nav_data(nav):
         region_data.result = toapp_get_commondata_ack.result
         region_data.action = toapp_get_commondata_ack.action
         region_data.type = toapp_get_commondata_ack.type
-        region_data.Hash = toapp_get_commondata_ack.Hash
-        region_data.pHashA = int(toapp_get_commondata_ack.paternalHashA)
-        region_data.pHashB = int(toapp_get_commondata_ack.paternalHashB)
+        region_data.hash = toapp_get_commondata_ack.Hash
+        region_data.p_hash_a = int(toapp_get_commondata_ack.paternalHashA)
+        region_data.p_hash_b = int(toapp_get_commondata_ack.paternalHashB)
         region_data.path = toapp_get_commondata_ack.dataCouple
-        region_data.subCmd = toapp_get_commondata_ack.subCmd
-        region_data.totalFrame = toapp_get_commondata_ack.totalFrame
-        region_data.currentFrame = toapp_get_commondata_ack.currentFrame
-        region_data.dataHash = toapp_get_commondata_ack.dataHash
-        region_data.dataLen = toapp_get_commondata_ack.dataLen
+        region_data.sub_cmd = toapp_get_commondata_ack.subCmd
+        region_data.total_frame = toapp_get_commondata_ack.totalFrame
+        region_data.current_frame = toapp_get_commondata_ack.currentFrame
+        region_data.data_hash = toapp_get_commondata_ack.dataHash
+        region_data.data_len = toapp_get_commondata_ack.dataLen
         region_data.pver = toapp_get_commondata_ack.pver
         print(region_data)
 
