@@ -1,41 +1,12 @@
+import logging
 from typing import List
 
-class GenerateRouteInformation:
-    # What one of these 3 inits should I keep?
-    def __init__(self):
-        self.path_order = ""
-        self.toward_mode = 0
-        self.ultra_wave = 0
-        self.channel_mode = 0
-        self.channel_width = 0
-        self.edge_mode = 0
-        self.job_id = 0
-        self.job_mode = 0
-        self.job_ver = 0
-        self.knife_height = 0
-        self.one_hashs: List[int] = []
-        self.rain_tactics = 0
-        self.speed = 0.0
-        self.toward = 0
-        self.toward_included_angle = 0
+logger = logging.getLogger(__name__)
 
-    def __init__(self, one_hashs: List[int], job_mode: int, channel_width: int, speed: float, ultra_wave: int,
-                 channel_mode: int, rain_tactics: int, toward: int, knife_height: int, path_order: str):
-        self.path_order = ""
-        self.toward_mode = 0
-        self.one_hashs = one_hashs
-        self.rain_tactics = rain_tactics
-        self.job_mode = job_mode
-        self.knife_height = knife_height
-        self.speed = speed
-        self.ultra_wave = ultra_wave
-        self.channel_width = channel_width
-        self.channel_mode = channel_mode
-        self.toward = toward
-        self.edge_mode = rain_tactics
-        self.path_order = path_order
-        self.toward_included_angle = self.toward_included_angle
-        print(f"Mode route command parameters jobMode={job_mode}//channelWidth={channel_width}//speed={speed}//UltraWave={ultra_wave}//channelMode={channel_mode}//edgeMode={rain_tactics}//knifeHeight={knife_height}  pathOrder:{path_order.encode('utf-8')}")
+class GenerateRouteInformation:
+    """
+    Creates a model for generating route information and mowing plan before starting a job.
+    """
 
     def __init__(self, one_hashs: List[int], job_mode: int, channel_width: int, speed: float, ultra_wave: int,
                  channel_mode: int, rain_tactics: int, toward: int, knife_height: int, path_order: str, toward_included_angle: int):
@@ -53,7 +24,7 @@ class GenerateRouteInformation:
         self.edge_mode = rain_tactics
         self.path_order = path_order
         self.toward_included_angle = toward_included_angle
-        print(f"Mode route command parameters jobMode={job_mode}//channelWidth={channel_width}//speed={speed}//UltraWave={ultra_wave}//channelMode={channel_mode}//edgeMode={rain_tactics}//knifeHeight={knife_height}  pathOrder:{path_order.encode('utf-8')}")
+        logger.debug(f"Mode route command parameters jobMode={job_mode}//channelWidth={channel_width}//speed={speed}//UltraWave={ultra_wave}//channelMode={channel_mode}//edgeMode={rain_tactics}//knifeHeight={knife_height}  pathOrder:{path_order.encode('utf-8')}")
 
     def get_job_id(self) -> int:
         return self.job_id
