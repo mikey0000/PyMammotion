@@ -1,5 +1,6 @@
 from typing import List
 
+
 class Plan:
     def __init__(self):
         self.pver: int = 0

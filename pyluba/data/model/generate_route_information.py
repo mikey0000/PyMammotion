@@ -4,8 +4,7 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 class GenerateRouteInformation:
-    """
-    Creates a model for generating route information and mowing plan before starting a job.
+    """Creates a model for generating route information and mowing plan before starting a job.
     """
 
     def __init__(self, one_hashs: List[int], job_mode: int, channel_width: int, speed: float, ultra_wave: int,
