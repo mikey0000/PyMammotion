@@ -63,10 +63,10 @@ async def run(loop):
     await luba_ble.start_sync(0)
     await asyncio.sleep(2)
     print(luba_ble.luba_msg.sys.toapp_report_data.dev)
-    if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
-        dev = luba_ble.luba_msg.sys.toapp_report_data.dev
-        if dev.sys_status == 11:
-            await luba_ble.command("start_job")
+    # if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
+    #     dev = luba_ble.luba_msg.sys.toapp_report_data.dev
+    #     if dev.sys_status == 11:
+    #         await luba_ble.command("start_job")
     await luba_ble.command("get_report_cfg")
 
     print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
@@ -81,8 +81,8 @@ async def run(loop):
     # print(luba_ble.luba_msg.sys.toapp_report_data.dev.battery_val)
     await asyncio.sleep(5)
     print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
-    await luba_ble.command("return_to_dock")
-    # await luba_ble.start_sync("resume_execute_task", 0)
+    # await luba_ble.command("return_to_dock")
+    # await luba_ble.command("get_hash_response", total_frame=1, current_frame=1)
 
 
     # asyncio.run(await ble_heartbeat(luba_ble))

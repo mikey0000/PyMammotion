@@ -175,7 +175,7 @@ class MammotionBaseDevice:
         """Send command to device and read response."""
 
     @abstractmethod
-    async def _send_command_with_args(self, key: str, **kwargs: dict[str, Any]) -> bytes | None:
+    async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command to device and read response."""
 
     async def start_sync(self, retry: int):
@@ -185,7 +185,7 @@ class MammotionBaseDevice:
         # cfg_proto.ParseFromString(cfg)
         # print(json_format.MessageToDict(cfg_proto))
 
-        plan = await self._send_command_with_args("read_plan_unable_time", sub_cmd=2)
+        plan = await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
         # plan_proto = luba_msg_pb2.LubaMsg()
         # plan_proto.ParseFromString(plan)
         # print(json_format.MessageToDict(plan_proto))

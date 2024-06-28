@@ -41,7 +41,7 @@ class MessageNavigation(AbstractMessage, ABC):
             seqs=1,
             version=1,
             subtype=1,
-            net=build)
+            nav=build)
 
         return luba_msg.SerializeToString()
 
@@ -309,7 +309,7 @@ class MessageNavigation(AbstractMessage, ABC):
             )
         ))
 
-    def read_plan(self, sub_cmd: int, plan_index: int, log_type: int) -> bytes:
+    def read_plan(self, sub_cmd: int, plan_index: int) -> bytes:
         build = MctlNav(
             todev_planjob_set=NavPlanJobSet(
                 sub_cmd=sub_cmd,
@@ -317,7 +317,7 @@ class MessageNavigation(AbstractMessage, ABC):
             )
         )
         logger.debug(f"Send read job plan command cmd={
-        sub_cmd} PlanIndex = {plan_index},logType={log_type}")
+        sub_cmd} PlanIndex = {plan_index}")
         return self.send_order_msg_nav(build)
 
     def delete_plan(self, sub_cmd: int, plan_id: str) -> bytes:
@@ -347,7 +347,7 @@ class MessageNavigation(AbstractMessage, ABC):
     def read_plan_unable_time(self, sub_cmd: int) -> bytes:
         build = NavUnableTimeSet(sub_cmd=sub_cmd)
         build2 = MctlNav(todev_unable_time_set=build)
-        logger.debug(f"Send command--Read plan time{sub_cmd}")
+        logger.debug(f"Send command--Read plan time {sub_cmd}")
         return self.send_order_msg_nav(build2)
 
     def query_job_history(self) -> bytes:
