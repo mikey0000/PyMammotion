@@ -63,16 +63,24 @@ class CloudIOTGateway:
         self._app_secret = APP_SECRET
         self.domain = ALIYUN_DOMAIN
 
-        uuid1 = str(uuid.uuid1())  # 128 chatarrers
-        self._client_id = uuid1[:8]  # First 8 Characters
-        self._device_sn = uuid1.replace("-", "")[:32]
-        self._utdid = self.generate_random_string(32)  # 32 Characters
+        self._client_id = self.generate_hardware_string(8) # 8 charatters
+        self._device_sn = self.generate_hardware_string(32)  # 32 charatters
+        self._utdid = self.generate_hardware_string(32)  # 32 charatters
 
     @staticmethod
     def generate_random_string(length):
         characters = string.ascii_letters + string.digits
         random_string = ''.join(random.choice(characters) for _ in range(length))
         return random_string
+    
+    def generate_hardware_string(self, length):
+        mac = uuid.getnode() # get MAC address
+        mac_str = f"{mac:012x}" # convert MAC address into string
+        hashed_mac = hashlib.sha256(mac_str.encode()).hexdigest() # generate Hash
+        if length > 64:
+            return hashed_mac + self.generate_random_string(64 - length)
+        else:
+            return hashed_mac[:length]
 
     def sign(self, data):
         keys = ["appKey", "clientId", "deviceSn", "timestamp"]
