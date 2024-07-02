@@ -2,7 +2,7 @@
 # sources: pyluba/proto/mctrl_sys.proto
 # plugin: python-betterproto
 from dataclasses import dataclass
-from typing import List
+
 
 import betterproto
 
@@ -157,8 +157,8 @@ class SysJobPlanTime(betterproto.Message):
     time_in_day: int = betterproto.int32_field(4)
     job_plan_mode: int = betterproto.int32_field(5)
     job_plan_enable: int = betterproto.int32_field(6)
-    week_day: List[int] = betterproto.int32_field(7)
-    time_in_week_day: List[int] = betterproto.int32_field(8)
+    week_day: list[int] = betterproto.int32_field(7)
+    time_in_week_day: list[int] = betterproto.int32_field(8)
     every_day: int = betterproto.int32_field(9)
     job_plan: "SysJobPlan" = betterproto.message_field(10)
 
@@ -240,7 +240,7 @@ class VisionPointMsg(betterproto.Message):
 class VisionPointInfoMsg(betterproto.Message):
     lable: int = betterproto.int32_field(1)
     num: int = betterproto.int32_field(2)
-    vision_point: List["VisionPointMsg"] = betterproto.message_field(3)
+    vision_point: list["VisionPointMsg"] = betterproto.message_field(3)
 
 
 @dataclass
@@ -264,25 +264,25 @@ class VisionStatisticMsg(betterproto.Message):
 class VisionStatisticInfoMsg(betterproto.Message):
     timestamp: float = betterproto.double_field(1)
     num: int = betterproto.int32_field(2)
-    vision_statistics: List["VisionStatisticMsg"] = betterproto.message_field(3)
+    vision_statistics: list["VisionStatisticMsg"] = betterproto.message_field(3)
 
 
 @dataclass
 class SystemRapidStateTunnelMsg(betterproto.Message):
-    rapid_state_data: List[int] = betterproto.int64_field(1)
-    vision_point_info: List["VisionPointInfoMsg"] = betterproto.message_field(2)
+    rapid_state_data: list[int] = betterproto.int64_field(1)
+    vision_point_info: list["VisionPointInfoMsg"] = betterproto.message_field(2)
     vio_to_app_info: "VioToAppInfoMsg" = betterproto.message_field(3)
     vision_statistic_info: "VisionStatisticInfoMsg" = betterproto.message_field(4)
 
 
 @dataclass
 class SystemTardStateTunnelMsg(betterproto.Message):
-    tard_state_data: List[int] = betterproto.int64_field(1)
+    tard_state_data: list[int] = betterproto.int64_field(1)
 
 
 @dataclass
 class SystemUpdateBufMsg(betterproto.Message):
-    update_buf_data: List[int] = betterproto.int64_field(1)
+    update_buf_data: list[int] = betterproto.int64_field(1)
 
 
 @dataclass
@@ -299,7 +299,7 @@ class SysOffChipFlash(betterproto.Message):
 
 @dataclass
 class SystemTmpCycleTxMsg(betterproto.Message):
-    cycle_tx_data: List[int] = betterproto.int64_field(1)
+    cycle_tx_data: list[int] = betterproto.int64_field(1)
 
 
 @dataclass
@@ -327,14 +327,14 @@ class ModFwInfo(betterproto.Message):
 class DeviceFwInfo(betterproto.Message):
     result: int = betterproto.int32_field(1)
     version: str = betterproto.string_field(2)
-    mod: List["ModFwInfo"] = betterproto.message_field(3)
+    mod: list["ModFwInfo"] = betterproto.message_field(3)
 
 
 @dataclass
 class MowToAppInfoT(betterproto.Message):
     type: int = betterproto.int32_field(1)
     cmd: int = betterproto.int32_field(2)
-    mow_data: List[int] = betterproto.int32_field(3)
+    mow_data: list[int] = betterproto.int32_field(3)
 
 
 @dataclass
@@ -347,7 +347,7 @@ class DeviceProductTypeInfoT(betterproto.Message):
 @dataclass
 class QCAppTestExcept(betterproto.Message):
     except_type: str = betterproto.string_field(1)
-    conditions: List["QCAppTestConditions"] = betterproto.message_field(2)
+    conditions: list["QCAppTestConditions"] = betterproto.message_field(2)
 
 
 @dataclass
@@ -365,14 +365,14 @@ class MowToAppQctoolsInfoT(betterproto.Message):
     time_of_duration: int = betterproto.int32_field(2)
     result: int = betterproto.int32_field(3)
     result_details: str = betterproto.string_field(4)
-    except_: List["QCAppTestExcept"] = betterproto.message_field(5)
+    except_: list["QCAppTestExcept"] = betterproto.message_field(5)
 
 
 @dataclass
 class MCtrlSimulationCmdData(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(1)
     param_id: int = betterproto.int32_field(2)
-    param_value: List[int] = betterproto.int32_field(3)
+    param_value: list[int] = betterproto.int32_field(3)
 
 
 @dataclass
@@ -489,7 +489,7 @@ class ReportInfoCfg(betterproto.Message):
     period: int = betterproto.int32_field(3)
     no_change_period: int = betterproto.int32_field(4)
     count: int = betterproto.int32_field(5)
-    sub: List["RptInfoType"] = betterproto.enum_field(6)
+    sub: list["RptInfoType"] = betterproto.enum_field(6)
 
 
 @dataclass
@@ -497,11 +497,11 @@ class ReportInfoData(betterproto.Message):
     connect: RptConnectStatus = betterproto.message_field(1)
     dev: RptDevStatus = betterproto.message_field(2)
     rtk: RptRtk = betterproto.message_field(3)
-    locations: List[RptDevLocation] = betterproto.message_field(4)
+    locations: list[RptDevLocation] = betterproto.message_field(4)
     work: RptWork = betterproto.message_field(5)
     fw_info: DeviceFwInfo = betterproto.message_field(6)
     maintain: RptMaintain = betterproto.message_field(7)
-    vision_point_info: List[VisionPointInfoMsg] = betterproto.message_field(8)
+    vision_point_info: list[VisionPointInfoMsg] = betterproto.message_field(8)
     vio_to_app_info: VioToAppInfoMsg = betterproto.message_field(9)
     vision_statistic_info: VisionStatisticInfoMsg = betterproto.message_field(10)
 

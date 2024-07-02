@@ -2,7 +2,7 @@
 # sources: pyluba/proto/dev_net.proto
 # plugin: python-betterproto
 from dataclasses import dataclass
-from typing import List
+
 
 import betterproto
 
@@ -155,12 +155,12 @@ class DrvDevInfoRespId(betterproto.Message):
 
 @dataclass
 class DrvDevInfoReq(betterproto.Message):
-    req_ids: List["DrvDevInfoReqId"] = betterproto.message_field(1)
+    req_ids: list["DrvDevInfoReqId"] = betterproto.message_field(1)
 
 
 @dataclass
 class DrvDevInfoResp(betterproto.Message):
-    resp_ids: List["DrvDevInfoRespId"] = betterproto.message_field(1)
+    resp_ids: list["DrvDevInfoRespId"] = betterproto.message_field(1)
 
 
 @dataclass
@@ -185,7 +185,7 @@ class WifiIotStatusReport(betterproto.Message):
 @dataclass
 class BleTestBytes(betterproto.Message):
     seqs: int = betterproto.int32_field(1)
-    data: List[float] = betterproto.fixed32_field(2)
+    data: list[float] = betterproto.fixed32_field(2)
 
 
 @dataclass
@@ -249,7 +249,7 @@ class MnetApn(betterproto.Message):
 @dataclass
 class MnetApnCfg(betterproto.Message):
     apn_used_idx: int = betterproto.int32_field(1)
-    apn: List["MnetApn"] = betterproto.message_field(2)
+    apn: list["MnetApn"] = betterproto.message_field(2)
 
 
 @dataclass

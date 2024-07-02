@@ -2,7 +2,7 @@
 # sources: pyluba/proto/mctrl_nav.proto
 # plugin: python-betterproto
 from dataclasses import dataclass
-from typing import List
+
 
 import betterproto
 
@@ -77,7 +77,7 @@ class NavTaskInfo(betterproto.Message):
     all_frame: int = betterproto.int32_field(3)
     current_frame: int = betterproto.int32_field(4)
     pathlen: int = betterproto.int32_field(5)
-    dc: List["CommDataCouple"] = betterproto.message_field(6)
+    dc: list["CommDataCouple"] = betterproto.message_field(6)
 
 
 @dataclass
@@ -94,7 +94,7 @@ class NavOptLineUp(betterproto.Message):
     all_frame: int = betterproto.int32_field(3)
     current_frame: int = betterproto.int32_field(4)
     channel_data_len: int = betterproto.int32_field(5)
-    dc: List["CommDataCouple"] = betterproto.message_field(6)
+    dc: list["CommDataCouple"] = betterproto.message_field(6)
 
 
 @dataclass
@@ -103,7 +103,7 @@ class NavOptiBorderInfo(betterproto.Message):
     all_frame: int = betterproto.int32_field(2)
     current_frame: int = betterproto.int32_field(3)
     border_data_len: int = betterproto.int32_field(4)
-    dc: List["CommDataCouple"] = betterproto.message_field(5)
+    dc: list["CommDataCouple"] = betterproto.message_field(5)
 
 
 @dataclass
@@ -112,7 +112,7 @@ class NavOptObsInfo(betterproto.Message):
     all_frame: int = betterproto.int32_field(2)
     current_frame: int = betterproto.int32_field(3)
     obstacle_data_len: int = betterproto.int32_field(4)
-    dc: List["CommDataCouple"] = betterproto.message_field(5)
+    dc: list["CommDataCouple"] = betterproto.message_field(5)
 
 
 @dataclass
@@ -158,7 +158,7 @@ class NavGetHashListAck(betterproto.Message):
     hash_len: int = betterproto.int32_field(6)
     reserved: str = betterproto.string_field(7)
     result: int = betterproto.int32_field(8)
-    data_couple: List[int] = betterproto.int64_field(13)
+    data_couple: list[int] = betterproto.int64_field(13)
 
 
 @dataclass
@@ -190,7 +190,7 @@ class NavGetCommDataAck(betterproto.Message):
     current_frame: int = betterproto.int32_field(10)
     data_hash: float = betterproto.fixed64_field(11)
     data_len: int = betterproto.int32_field(12)
-    data_couple: List["CommDataCouple"] = betterproto.message_field(13)
+    data_couple: list["CommDataCouple"] = betterproto.message_field(13)
     reserved: str = betterproto.string_field(14)
 
 
@@ -208,7 +208,7 @@ class NavReqCoverPath(betterproto.Message):
     channel_mode: int = betterproto.int32_field(10)
     toward: int = betterproto.int32_field(11)
     speed: float = betterproto.float_field(12)
-    zone_hashs: List[float] = betterproto.fixed64_field(13)
+    zone_hashs: list[float] = betterproto.fixed64_field(13)
     path_hash: float = betterproto.fixed64_field(14)
     reserved: str = betterproto.string_field(15)
     result: int = betterproto.int32_field(16)
@@ -236,7 +236,7 @@ class NavUploadZigZagResult(betterproto.Message):
     data_hash: float = betterproto.fixed64_field(16)
     data_len: int = betterproto.int32_field(17)
     reserved: str = betterproto.string_field(18)
-    data_couple: List["CommDataCouple"] = betterproto.message_field(19)
+    data_couple: list["CommDataCouple"] = betterproto.message_field(19)
     sub_cmd: int = betterproto.int32_field(20)
 
 
@@ -316,13 +316,13 @@ class NavPlanJobSet(betterproto.Message):
     speed: float = betterproto.float_field(26)
     task_name: str = betterproto.string_field(27)
     job_name: str = betterproto.string_field(28)
-    zone_hashs: List[float] = betterproto.fixed64_field(29)
+    zone_hashs: list[float] = betterproto.fixed64_field(29)
     reserved: str = betterproto.string_field(30)
     start_date: str = betterproto.string_field(31)
     end_date: str = betterproto.string_field(32)
     trigger_type: int = betterproto.int32_field(33)
     day: int = betterproto.int32_field(34)
-    weeks: List[float] = betterproto.fixed32_field(35)
+    weeks: list[float] = betterproto.fixed32_field(35)
     remained_seconds: int = betterproto.int64_field(36)
     toward_mode: int = betterproto.int32_field(37)
     toward_included_angle: int = betterproto.int32_field(38)
@@ -349,7 +349,7 @@ class ChargePileType(betterproto.Message):
 class SimulationCmdData(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(1)
     param_id: int = betterproto.int32_field(2)
-    param_value: List[int] = betterproto.int32_field(3)
+    param_value: list[int] = betterproto.int32_field(3)
 
 
 @dataclass
@@ -392,8 +392,8 @@ class AppRequestCoverPathsT(betterproto.Message):
     current_frame: int = betterproto.int32_field(4)
     data_hash: float = betterproto.fixed64_field(5)
     transaction_id: int = betterproto.int64_field(6)
-    reserved: List[int] = betterproto.int64_field(7)
-    hash_list: List[float] = betterproto.fixed64_field(8)
+    reserved: list[int] = betterproto.int64_field(7)
+    hash_list: list[float] = betterproto.fixed64_field(8)
 
 
 @dataclass
@@ -403,7 +403,7 @@ class CoverPathPacketT(betterproto.Message):
     path_total: int = betterproto.int32_field(3)
     path_cur: int = betterproto.int32_field(4)
     zone_hash: float = betterproto.fixed64_field(5)
-    data_couple: List["CommDataCouple"] = betterproto.message_field(6)
+    data_couple: list["CommDataCouple"] = betterproto.message_field(6)
 
 
 @dataclass
@@ -419,9 +419,9 @@ class CoverPathUploadT(betterproto.Message):
     vaild_path_num: int = betterproto.int32_field(9)
     data_hash: float = betterproto.fixed64_field(10)
     transaction_id: int = betterproto.int64_field(11)
-    reserved: List[int] = betterproto.int64_field(12)
+    reserved: list[int] = betterproto.int64_field(12)
     data_len: int = betterproto.int32_field(13)
-    path_packets: List["CoverPathPacketT"] = betterproto.message_field(14)
+    path_packets: list["CoverPathPacketT"] = betterproto.message_field(14)
 
 
 @dataclass
@@ -461,7 +461,7 @@ class CostmapT(betterproto.Message):
     center_y: float = betterproto.float_field(4)
     yaw: float = betterproto.float_field(5)
     res: float = betterproto.float_field(6)
-    costmap: List[int] = betterproto.int32_field(7)
+    costmap: list[int] = betterproto.int32_field(7)
 
 
 @dataclass
@@ -472,7 +472,7 @@ class PlanTaskNameIdT(betterproto.Message):
 
 @dataclass
 class NavGetAllPlanTask(betterproto.Message):
-    tasks: List["PlanTaskNameIdT"] = betterproto.message_field(1)
+    tasks: list["PlanTaskNameIdT"] = betterproto.message_field(1)
 
 
 @dataclass

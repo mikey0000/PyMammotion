@@ -2,7 +2,7 @@
 # sources: pyluba/proto/mctrl_driver.proto
 # plugin: python-betterproto
 from dataclasses import dataclass
-from typing import List
+
 
 import betterproto
 
@@ -64,7 +64,7 @@ class RtkSysMaskQueryT(betterproto.Message):
 @dataclass
 class RtkSysMaskQueryAckT(betterproto.Message):
     sat_system: int = betterproto.uint32_field(1)
-    system_mask_bits: List[int] = betterproto.uint32_field(2)
+    system_mask_bits: list[int] = betterproto.uint32_field(2)
 
 
 @dataclass
