@@ -75,10 +75,7 @@ class CloudIOTGateway:
     
     def generate_hardware_string(self, length):
         hashed_uuid = hashlib.sha1(f"{uuid.getnode()}".encode()).hexdigest()
-        if length > 64:
-            return hashed_mac + self.generate_random_string(64 - length)
-        else:
-            return hashed_mac[:length]
+       return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
 
     def sign(self, data):
         keys = ["appKey", "clientId", "deviceSn", "timestamp"]
