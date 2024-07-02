@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import itertools
 import json
 import random
 import string
@@ -72,10 +73,12 @@ class CloudIOTGateway:
         characters = string.ascii_letters + string.digits
         random_string = ''.join(random.choice(characters) for _ in range(length))
         return random_string
-    
-    def generate_hardware_string(self, length):
+
+    @staticmethod
+    def generate_hardware_string(length) -> str:
+        """generate hardware string that is consistent per device."""
         hashed_uuid = hashlib.sha1(f"{uuid.getnode()}".encode()).hexdigest()
-       return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
+        return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
 
     def sign(self, data):
         keys = ["appKey", "clientId", "deviceSn", "timestamp"]
