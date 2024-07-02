@@ -74,9 +74,7 @@ class CloudIOTGateway:
         return random_string
     
     def generate_hardware_string(self, length):
-        mac = uuid.getnode() # get MAC address
-        mac_str = f"{mac:012x}" # convert MAC address into string
-        hashed_mac = hashlib.sha256(mac_str.encode()).hexdigest() # generate Hash
+        hashed_uuid = hashlib.sha1(f"{uuid.getnode()}".encode()).hexdigest()
         if length > 64:
             return hashed_mac + self.generate_random_string(64 - length)
         else:
