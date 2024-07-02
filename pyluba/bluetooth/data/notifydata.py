@@ -1,6 +1,8 @@
 from io import BytesIO
 
 """Notify data object"""
+
+
 class BlufiNotifyData:
     """generated source for class BlufiNotifyData"""
 

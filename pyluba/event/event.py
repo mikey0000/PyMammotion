@@ -2,7 +2,6 @@ import asyncio
 
 
 class Event:
-
     def __init__(self):
         self.__eventhandlers = []
 
@@ -15,11 +14,12 @@ class Event:
         return self
 
     async def __call__(self, *args, **kwargs):
-        await asyncio.gather(*[handler(*args, **kwargs) for handler in self.__eventhandlers])
+        await asyncio.gather(
+            *[handler(*args, **kwargs) for handler in self.__eventhandlers]
+        )
 
 
 class MoveEvent:
-
     def __init__(self):
         self.OnMoveFinished = Event()
 
@@ -28,15 +28,14 @@ class MoveEvent:
         # raise an event
         await self.OnMoveFinished()
 
-    def AddSubscribersForMoveFinishedEvent(self,objMethod):
+    def AddSubscribersForMoveFinishedEvent(self, objMethod):
         self.OnMoveFinished += objMethod
 
-    def RemoveSubscribersForMoveFinishedEvent(self,objMethod):
+    def RemoveSubscribersForMoveFinishedEvent(self, objMethod):
         self.OnMoveFinished -= objMethod
 
 
 class BleNotificationEvent:
-
     def __init__(self):
         self.OnBleNotification = Event()
 
@@ -44,8 +43,8 @@ class BleNotificationEvent:
         # This function will be executed when data is received.
         await self.OnBleNotification(data)
 
-    def AddSubscribersForBleNotificationEvent(self,objMethod):
+    def AddSubscribersForBleNotificationEvent(self, objMethod):
         self.OnBleNotification += objMethod
 
-    def RemoveSubscribersForBleNotificationEvent(self,objMethod):
+    def RemoveSubscribersForBleNotificationEvent(self, objMethod):
         self.OnBleNotification -= objMethod

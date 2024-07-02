@@ -44,6 +44,7 @@ betterproto = {extras = ["compiler"], version = "^1.2.5"}
 pylint = "^3.2.2"
 ruff = "^0.4.6"
 mypy = "^1.10.0"
+pre-commit = "^3.7.1"
 
 
 [tool.bumpver]

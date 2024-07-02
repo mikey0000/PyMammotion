@@ -17,7 +17,7 @@ class MessageSystem(AbstractMessage):
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS,
             sender=luba_msg_pb2.DEV_MOBILEAPP,
             rcver=luba_msg_pb2.DEV_MAINCTL,
-            sys=sys
+            sys=sys,
         )
 
         return luba_msg.SerializeToString()
@@ -26,7 +26,6 @@ class MessageSystem(AbstractMessage):
         build = mctrl_sys_pb2.MctlSys(todev_reset_system=1)
         print("Send command - send factory reset")
         return self.send_order_msg_sys(build)
-
 
     async def set_blade_control(self, on_off: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
@@ -37,15 +36,35 @@ class MessageSystem(AbstractMessage):
         return self.send_order_msg_sys(mctlsys)
 
     def get_device_product_model(self):
-        return self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()), 12, True)
+        return self.send_order_msg_sys(
+            mctrl_sys_pb2.MctlSys(
+                device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()
+            ),
+            12,
+            True,
+        )
 
     def read_and_set_sidelight(self, is_sidelight: bool, operate: int):
         if is_sidelight:
             build = mctrl_sys_pb2.TimeCtrlLight(
-                operate=operate, enable=0, action=0, start_hour=0, start_min=0, end_hour=0, end_min=0)
+                operate=operate,
+                enable=0,
+                action=0,
+                start_hour=0,
+                start_min=0,
+                end_hour=0,
+                end_min=0,
+            )
         else:
             build = mctrl_sys_pb2.TimeCtrlLight(
-                operate=operate, enable=1, action=0, start_hour=0, start_min=0, end_hour=0, end_min=0)
+                operate=operate,
+                enable=1,
+                action=0,
+                start_hour=0,
+                start_min=0,
+                end_hour=0,
+                end_min=0,
+            )
         print(f"Send read and write sidelight command is_sidelight:{
             is_sidelight}, operate:{operate}")
         build2 = mctrl_sys_pb2.MctlSys(todev_time_ctrl_light=build)
@@ -53,9 +72,12 @@ class MessageSystem(AbstractMessage):
             is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
         return self.send_order_msg_sys(build2)
 
-    def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: List[int]):
+    def test_tool_order_to_sys(
+        self, sub_cmd: int, param_id: int, param_value: List[int]
+    ):
         build = mctrl_sys_pb2.mCtrlSimulationCmdData(
-            sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
+            sub_cmd=sub_cmd, param_id=param_id, param_value=param_value
+        )
         print(f"Send tool test command: subCmd={sub_cmd}, param_id:{
             param_id}, param_value={param_value}")
         build2 = mctrl_sys_pb2.MctlSys(simulation_cmd=build)
@@ -66,16 +88,24 @@ class MessageSystem(AbstractMessage):
     def read_and_set_rt_k_paring_code(self, op: int, cgf: str):
         print(f"Send read and write base station configuration quality op:{
             op}, cgf:{cgf}")
-        return self.send_order_msg_sys(mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)))
+        return self.send_order_msg_sys(
+            mctrl_sys_pb2.MctlSys(
+                todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)
+            )
+        )
 
     def allpowerfull_rw(self, id: int, context: int, rw: int):
-        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_2(self.get_device_name()):
+        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_2(
+            self.get_device_name()
+        ):
             self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
             return
         build = mctrl_sys_pb2.MctlSys(
-            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(id=id, context=context, rw=rw))
+            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(id=id, context=context, rw=rw)
+        )
         print(
-            f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
+            f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}"
+        )
         if id == 5:
             # This logic doesnt make snese, but its what they had so..
             return self.send_order_msg_sys(build)
@@ -154,10 +184,25 @@ class MessageSystem(AbstractMessage):
         i9 = 1 if calendar.dst() else 0
         print(f"Print time zone, time zone={
             i8}, daylight saving time={i9} week={i4}")
-        build = mctrl_sys_pb2.MctlSys(todev_data_time=mctrl_sys_pb2.SysSetDateTime(
-            year=i, month=i2, date=i3, week=i4, hours=i5, minutes=i6, seconds=i7, time_zone=i8, daylight=i9))
-        print(f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{
-            i3}, month:{i2}, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}", "Time synchronization", True)
+        build = mctrl_sys_pb2.MctlSys(
+            todev_data_time=mctrl_sys_pb2.SysSetDateTime(
+                year=i,
+                month=i2,
+                date=i3,
+                week=i4,
+                hours=i5,
+                minutes=i6,
+                seconds=i7,
+                time_zone=i8,
+                daylight=i9,
+            )
+        )
+        print(
+            f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{
+            i3}, month:{i2}, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}",
+            "Time synchronization",
+            True,
+        )
         return self.send_order_msg_sys(build)
 
     def get_device_version_info(self):
@@ -165,55 +210,49 @@ class MessageSystem(AbstractMessage):
 
     # === sendOrderMsg_Sys2 ===
 
-    def request_iot_sys(self, rpt_act: mctrl_sys_pb2.rpt_act, rpt_info_type: List[RptInfoType | str] | None, timeout: int, period: int, no_change_period: int, count: int) -> None:
-        build = mctrl_sys_pb2.MctlSys(todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
-            act=rpt_act,
-            sub=rpt_info_type,
-            timeout=timeout,
-            period=period,
-            no_change_period=no_change_period,
-            count=count
-        ))
+    def request_iot_sys(
+        self,
+        rpt_act: mctrl_sys_pb2.rpt_act,
+        rpt_info_type: List[RptInfoType | str] | None,
+        timeout: int,
+        period: int,
+        no_change_period: int,
+        count: int,
+    ) -> None:
+        build = mctrl_sys_pb2.MctlSys(
+            todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
+                act=rpt_act,
+                sub=rpt_info_type,
+                timeout=timeout,
+                period=period,
+                no_change_period=no_change_period,
+                count=count,
+            )
+        )
         print(f"Send command==== IOT slim data Act {
             build.todev_report_cfg.act} {build}")
         return self.send_order_msg_sys(build)
 
-
-
-    def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
+    def get_report_cfg(
+        self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000
+    ):
         mctlsys = mctrl_sys_pb2.MctlSys(
             todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
                 timeout=timeout,
                 period=period,
                 no_change_period=no_change_period,
-                count=1
+                count=1,
             )
         )
 
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_CONNECT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_RTK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_LOCAL.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_WORK.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_DEV_STA.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_POINT.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VIO.value
-        )
-        mctlsys.todev_report_cfg.sub.append(
-            RptInfoType.RIT_VISION_STATISTIC.value
-        )
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC.value)
 
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_EMBED_SYS

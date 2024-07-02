@@ -6,7 +6,9 @@ from pyluba.mammotion.commands.messages.video import MessageVideo
 from pyluba.proto import dev_net_pb2, luba_msg_pb2
 
 
-class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo):
+class MammotionCommand(
+    MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo
+):
     """MQTT commands for Luba."""
 
     def __init__(self, device_name: str) -> None:
@@ -19,9 +21,7 @@ class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, Message
     """BLE commands for Luba."""
 
     def send_todev_ble_sync(self, sync_type: int) -> bytes:
-        commEsp = dev_net_pb2.DevNet(
-            todev_ble_sync=sync_type
-        )
+        commEsp = dev_net_pb2.DevNet(todev_ble_sync=sync_type)
 
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP

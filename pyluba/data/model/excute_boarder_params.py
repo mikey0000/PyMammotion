@@ -1,6 +1,3 @@
-
-
-
 class ExecuteBorderParams:
     """generated source for class ExecuteBorderParamsBean"""
 
@@ -40,4 +37,12 @@ class ExecuteBorderParams:
 
     def __str__(self):
         """Generated source for method toString"""
-        return "ExecuteBorderParamsBean{currentFrame=" + self.currentFrame + ", jobIndex='" + self.jobIndex + "', border=" + self.border + '}'
+        return (
+            "ExecuteBorderParamsBean{currentFrame="
+            + self.currentFrame
+            + ", jobIndex='"
+            + self.jobIndex
+            + "', border="
+            + self.border
+            + "}"
+        )

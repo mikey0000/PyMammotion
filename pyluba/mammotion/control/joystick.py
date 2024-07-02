@@ -14,6 +14,7 @@ bleNotificationEvt = BleNotificationEvent()
 
 nest_asyncio.apply()
 
+
 class JoystickControl:
     """Joystick class for controlling Luba with a joystick"""
 
@@ -42,7 +43,9 @@ class JoystickControl:
             button_repeater=repeater,
         )
 
-        self.worker = PeriodicThread(0.2, self.run_movement, name='luba-process_movements')
+        self.worker = PeriodicThread(
+            0.2, self.run_movement, name="luba-process_movements"
+        )
         self.worker.alive = self.mngr.alive  # stop when this event stops
         self.worker.daemon = True
 
@@ -56,13 +59,15 @@ class JoystickControl:
             self.stopped = True
         self.stopped = False
         (linear_speed, angular_speed) = self.transform_both_speeds(
-                self.linear_speed,
-                self.angular_speed,
-                self.linear_percent,
-                self.angular_percent,
-            )
+            self.linear_speed,
+            self.angular_speed,
+            self.linear_percent,
+            self.angular_percent,
+        )
         asyncio.run(
-            self._client.command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+            self._client.command(
+                "send_movement", linear_speed=linear_speed, angular_speed=angular_speed
+            )
         )
 
     def print_add(self, joy):
@@ -78,7 +83,6 @@ class JoystickControl:
         self.mngr.start()
         self.worker.start()
 
-
     def get_percent(self, percent: float):
         if percent <= 15.0:
             return 0.0
@@ -86,9 +90,13 @@ class JoystickControl:
         return percent - 15.0
 
     @staticmethod
-    def transform_both_speeds(linear: float, angular: float, linear_percent: float, angular_percent: float):
+    def transform_both_speeds(
+        linear: float, angular: float, linear_percent: float, angular_percent: float
+    ):
         transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
-        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
+        transform4 = RockerControlUtil.getInstance().transfrom3(
+            angular, angular_percent
+        )
 
         if transfrom3 is not None and len(transfrom3) > 0:
             linear_speed = transfrom3[0] * 10
@@ -102,23 +110,31 @@ class JoystickControl:
         if key.keytype is Key.BUTTON and key.value == 1:
             # print(key, "-", key.keytype, "-", key.number, "-", key.value)
             if key.number == 0:  # x
-                asyncio.run(self._client.command('return_to_dock'))
+                asyncio.run(self._client.command("return_to_dock"))
             if key.number == 1:
-                asyncio.run(self._client.command('leave_dock'))
+                asyncio.run(self._client.command("leave_dock"))
             if key.number == 3:
-                asyncio.run(self._client.command('set_blade_control', on_off=1))
+                asyncio.run(self._client.command("set_blade_control", on_off=1))
             if key.number == 2:
-                asyncio.run(self._client.command('set_blade_control', on_off=0))
+                asyncio.run(self._client.command("set_blade_control", on_off=0))
             if key.number == 9:
                 # lower knife height
                 if self._blade_height > 25:
                     self._blade_height -= 5
-                    asyncio.run(self._client.command('set_blade_height',height=self._blade_height))
+                    asyncio.run(
+                        self._client.command(
+                            "set_blade_height", height=self._blade_height
+                        )
+                    )
             if key.number == 10:
                 # raise knife height
                 if self._blade_height < 60:
                     self._blade_height += 5
-                    asyncio.run(self._client.command('set_blade_height',height=self._blade_height))
+                    asyncio.run(
+                        self._client.command(
+                            "set_blade_height", height=self._blade_height
+                        )
+                    )
 
         if key.keytype is Key.AXIS:
             # print(key, "-", key.keytype, "-", key.number, "-", key.value)
@@ -147,12 +163,16 @@ class JoystickControl:
                         # angular_speed==450
                         if key.value > 0:
                             self.angular_speed = 0.0
-                            self.angular_percent = self.get_percent(abs(key.value * 100))
+                            self.angular_percent = self.get_percent(
+                                abs(key.value * 100)
+                            )
                         else:
                             # angle=180.0
                             # linear_speed=0//angular_speed=-450
                             self.angular_speed = 180.0
-                            self.angular_percent = self.get_percent(abs(key.value * 100))
+                            self.angular_percent = self.get_percent(
+                                abs(key.value * 100)
+                            )
 
             else:
                 match key.number:

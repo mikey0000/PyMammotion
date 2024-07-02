@@ -1,5 +1,3 @@
-
-
 class bleOrderCmd:
     allpowerfullRW = 67
     alongBorder = 9
@@ -235,6 +233,6 @@ def device_mode(value):
         35: "MODE_ERASER_DRAW",
         36: "MODE_EDIT_BOUNDARY",
         37: "MODE_LOCATION_ERROR",
-        38: "MODE_BOUNDARY_JUMP"
+        38: "MODE_BOUNDARY_JUMP",
     }
     return modes.get(value, "Invalid mode")

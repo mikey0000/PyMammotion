@@ -28,8 +28,14 @@ if __name__ == "__main__":
     CLIENT_ID = os.environ.get("CLIENT_ID")
     IOT_TOKEN = os.environ.get("IOT_TOKEN")
     REGION = os.environ.get("REGION")
-    luba = LubaMQTT(iot_token=IOT_TOKEN, region_id=REGION, product_key=PRODUCT_KEY, device_name=DEVICE_NAME,
-                    device_secret=DEVICE_SECRET, client_id=CLIENT_ID)
+    luba = LubaMQTT(
+        iot_token=IOT_TOKEN,
+        region_id=REGION,
+        product_key=PRODUCT_KEY,
+        device_name=DEVICE_NAME,
+        device_secret=DEVICE_SECRET,
+        client_id=CLIENT_ID,
+    )
     luba.connect_async()
 
     event_loop = asyncio.new_event_loop()

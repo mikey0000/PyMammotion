@@ -1,4 +1,3 @@
-
 from bleak import BleakClient, BleakScanner, BLEDevice
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
@@ -10,6 +9,7 @@ from pyluba.event.event import BleNotificationEvent
 
 # TODO setup for each Luba
 address = "90:38:0C:6E:EE:9E"
+
 
 class LubaBLE:
     client: BleakClient
@@ -26,7 +26,7 @@ class LubaBLE:
             print(advertising_data)
             if device.address == "90:38:0C:6E:EE:9E":
                 return True
-            if  advertising_data.local_name and "Luba-" in advertising_data.local_name:
+            if advertising_data.local_name and "Luba-" in advertising_data.local_name:
                 return True
             return False
 
@@ -46,14 +46,18 @@ class LubaBLE:
         if self.client is not None:
             return await self.client.disconnect()
 
-    async def notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray):
+    async def notification_handler(
+        self, _characteristic: BleakGATTCharacteristic, data: bytearray
+    ):
         """Simple notification handler which prints the data received."""
         await self._bleEvt.BleNotification(data)
 
-    def service_changed_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
+    def service_changed_handler(
+        self, characteristic: BleakGATTCharacteristic, data: bytearray
+    ):
         """Simple notification handler which prints the data received."""
         print(f"Response 2 {characteristic.description}: {data}")
-        print(data.decode("utf-8") )
+        print(data.decode("utf-8"))
         # BlufiNotifyData
         # run an event handler back to somewhere
 

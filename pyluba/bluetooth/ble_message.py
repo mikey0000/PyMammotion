@@ -49,7 +49,7 @@ class BleMessage:
     mReadSequence: iter
     mAck: queue
     notification: BlufiNotifyData
-    messageNavigation:MessageNavigation = MessageNavigation()
+    messageNavigation: MessageNavigation = MessageNavigation()
 
     def __init__(self, client: BleakClient):
         self.client = client
@@ -58,22 +58,13 @@ class BleMessage:
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
 
-
     async def get_device_version_main(self):
-        commEsp = dev_net_pb2.DevNet(
-            todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
-        )
+        commEsp = dev_net_pb2.DevNet(todev_devinfo_req=dev_net_pb2.DrvDevInfoReq())
 
         for i in range(1, 8):
-            if (i == 1):
-                commEsp.todev_devinfo_req.req_ids.add(
-                    id=i,
-                    type=6
-                )
-            commEsp.todev_devinfo_req.req_ids.add(
-                id=i,
-                type=3
-            )
+            if i == 1:
+                commEsp.todev_devinfo_req.req_ids.add(id=i, type=6)
+            commEsp.todev_devinfo_req.req_ids.add(id=i, type=3)
 
         lubaMsg = luba_msg_pb2.LubaMsg()
         lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
@@ -86,14 +77,17 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
-
     async def get_task(self):
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
-        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
+        await self.messageNavigation.post_custom_data(
+            self.get_json_string(bleOrderCmd.task, hash_map)
+        )
 
     async def send_ble_alive(self):
         hash_map = {"ctrl": 1}
-        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
+        await self.messageNavigation.post_custom_data(
+            self.get_json_string(bleOrderCmd.bleAlive, hash_map)
+        )
 
     def clearNotification(self):
         self.notification = None
@@ -113,9 +107,8 @@ class BleMessage:
             version=1,
             subtype=1,
             net=dev_net_pb2.DevNet(
-                todev_ble_sync=1,
-                todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
-            )
+                todev_ble_sync=1, todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
+            ),
         )
         byte_arr = luba_msg.SerializeToString()
         await self.post_custom_data_bytes(byte_arr)
@@ -124,7 +117,9 @@ class BleMessage:
         request = False
         type = self.messageNavigation.getTypeValue(0, 5)
         try:
-            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
+            request = await self.messageNavigation.post(
+                BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None
+            )
             # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -138,7 +133,9 @@ class BleMessage:
         request = False
         type = self.messageNavigation.getTypeValue(0, 7)
         try:
-            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
+            request = await self.messageNavigation.post(
+                BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None
+            )
             # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -153,18 +150,21 @@ class BleMessage:
 
     def parseNotification(self, response: bytearray):
         dataOffset = None
-        if (response is None):
+        if response is None:
             # Log.w(TAG, "parseNotification null data");
             return -1
 
         # if (this.mPrintDebug):
         #     Log.d(TAG, "parseNotification Notification= " + Arrays.toString(response));
         # }
-        if (len(response) >= 4):
+        if len(response) >= 4:
             sequence = int(response[2])  # toInt
             if sequence != next(self.mReadSequence):
-                print("parseNotification read sequence wrong",
-                      sequence, self.mReadSequence)
+                print(
+                    "parseNotification read sequence wrong",
+                    sequence,
+                    self.mReadSequence,
+                )
                 self.mReadSequence = itertools.count(start=sequence)
                 # this is questionable
                 # self.mReadSequence = sequence
@@ -187,13 +187,13 @@ class BleMessage:
             dataLen = int(response[3])  # toInt specifies length of data
 
             try:
-                dataBytes = response[4: 4 + dataLen]
+                dataBytes = response[4 : 4 + dataLen]
                 if frameCtrlData.isEncrypted():
                     print("is encrypted")
                 #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
                 #     dataBytes = aes.decrypt(dataBytes);
                 # }
-                if (frameCtrlData.isChecksum()):
+                if frameCtrlData.isChecksum():
                     print("checksum")
                 #     int respChecksum1 = toInt(response[response.length - 1]);
                 #     int respChecksum2 = toInt(response[response.length - 2]);
@@ -210,7 +210,7 @@ class BleMessage:
                 #         return -4;
                 #     }
                 # }
-                if (frameCtrlData.hasFrag()):
+                if frameCtrlData.hasFrag():
                     dataOffset = 2
                 else:
                     dataOffset = 0
@@ -228,10 +228,10 @@ class BleMessage:
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
-        if (pkgType == 0):
+        if pkgType == 0:
             # never seem to get these..
             self._parseCtrlData(subType, dataBytes)
-        if (pkgType == 1):
+        if pkgType == 1:
             if return_bytes:
                 return dataBytes
             return await self._parseDataData(subType, dataBytes)
@@ -264,8 +264,8 @@ class BleMessage:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
                 luba_msg = parse_custom_data(data)  # parse to protobuf message
                 # really need some sort of callback
-                if luba_msg.HasField('net'):
-                    if luba_msg.net.HasField('toapp_wifi_iot_status'):
+                if luba_msg.HasField("net"):
+                    if luba_msg.net.HasField("toapp_wifi_iot_status"):
                         # await sleep(1.5)
                         print("sending ble sync")
                         # await self.send_todev_ble_sync(2)
@@ -288,7 +288,6 @@ class BleMessage:
             jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
             return json.dumps(jSONObject)
         except Exception:
-
             return ""
 
     def current_milli_time(self):
@@ -315,11 +314,13 @@ class BleMessage:
         return next(self.mSendSequence) & 255
 
     async def post_custom_data_bytes(self, data: bytes):
-        if (data == None):
+        if data == None:
             return
         type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            suc = await self.post(
+                self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data
+            )
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
             # print(suc)
@@ -328,72 +329,101 @@ class BleMessage:
 
     async def post_custom_data(self, data_str: str):
         data = data_str.encode()
-        if (data == None):
+        if data == None:
             return
         type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            suc = await self.post(
+                self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data
+            )
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
         except Exception as err:
             print(err)
 
-    async def post(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int, data: bytes) -> bool:
+    async def post(
+        self,
+        encrypt: bool,
+        checksum: bool,
+        require_ack: bool,
+        type_of: int,
+        data: bytes,
+    ) -> bool:
         if data is None:
             return await self.post_non_data(encrypt, checksum, require_ack, type_of)
 
-        return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
+        return await self.post_contains_data(
+            encrypt, checksum, require_ack, type_of, data
+        )
 
-    async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
+    async def post_non_data(
+        self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int
+    ) -> bool:
         sequence = self.generateSendSequence()
         postBytes = self.getPostBytes(
-            type_of, encrypt, checksum, require_ack, False, sequence, None)
+            type_of, encrypt, checksum, require_ack, False, sequence, None
+        )
         posted = await self.gatt_write(postBytes)
         return posted and (not require_ack or self.receiveAck(sequence))
 
-    async def post_contains_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int,
-                                 data: bytes) -> bool:
+    async def post_contains_data(
+        self,
+        encrypt: bool,
+        checksum: bool,
+        require_ack: bool,
+        type_of: int,
+        data: bytes,
+    ) -> bool:
         chunk_size = 517  # self.client.mtu_size - 3
 
         chunks = list()
         for i in range(0, len(data), chunk_size):
-            if (i + chunk_size > len(data)):
-                chunks.append(data[i: len(data)])
+            if i + chunk_size > len(data):
+                chunks.append(data[i : len(data)])
             else:
-                chunks.append(data[i: i + chunk_size])
+                chunks.append(data[i : i + chunk_size])
         for index, chunk in enumerate(chunks):
             frag = index != len(chunks) - 1
             sequence = self.generateSendSequence()
             postBytes = self.getPostBytes(
-                type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
+                type_of, encrypt, checksum, require_ack, frag, sequence, chunk
+            )
             # print("sequence")
             # print(sequence)
             posted = await self.gatt_write(postBytes)
-            if (posted != None):
+            if posted != None:
                 return False
 
-            if (not frag):
+            if not frag:
                 return not require_ack or self.receiveAck(sequence)
 
-            if (require_ack and not self.receiveAck(sequence)):
+            if require_ack and not self.receiveAck(sequence):
                 return False
             else:
                 print("sleeping 0.01")
                 await sleep(0.01)
 
-    def getPostBytes(self, type: int, encrypt: bool, checksum: bool, require_ack: bool, hasFrag: bool, sequence: int,
-                     data: bytes) -> bytes:
-
+    def getPostBytes(
+        self,
+        type: int,
+        encrypt: bool,
+        checksum: bool,
+        require_ack: bool,
+        hasFrag: bool,
+        sequence: int,
+        data: bytes,
+    ) -> bytes:
         byteOS = BytesIO()
-        dataLength = (0 if data == None else len(data))
+        dataLength = 0 if data == None else len(data)
         frameCtrl = FrameCtrlData.getFrameCTRLValue(
-            encrypt, checksum, 0, require_ack, hasFrag)
+            encrypt, checksum, 0, require_ack, hasFrag
+        )
         byteOS.write(type.to_bytes(1, sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
         byteOS.write(sequence.to_bytes(1, sys.byteorder))
         byteOS.write(dataLength.to_bytes(1, sys.byteorder))
 
-        if (data != None):
+        if data != None:
             byteOS.write(data)
 
         print(byteOS.getvalue())

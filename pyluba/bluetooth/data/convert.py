@@ -16,11 +16,13 @@ deviceBreakPointMap: Dict[str, int] = {}
 chargeStateTemp = -1
 
 
-'''Parse data packets back into their protobuf types.
+"""Parse data packets back into their protobuf types.
 
 TODO allow for registering events to individual messages
 as trying to register for all would be a mess
-'''
+"""
+
+
 def parse_custom_data(data: bytes):
     luba_msg = luba_msg_pb2.LubaMsg()
     try:
@@ -33,19 +35,18 @@ def parse_custom_data(data: bytes):
         # toappGetHashAck = luba_msg.nav.toapp_get_commondata_ack
         # print(toappGetHashAck.Hash)
 
-        if luba_msg.HasField('sys'):
+        if luba_msg.HasField("sys"):
             store_sys_data(luba_msg.sys)
-        elif luba_msg.HasField('net'):
-            if luba_msg.net.HasField('todev_ble_sync'):
+        elif luba_msg.HasField("net"):
+            if luba_msg.net.HasField("todev_ble_sync"):
                 pass
                 # await asyncio.sleep(1.5)
                 # await bleClient.send_todev_ble_sync(1)
 
-
             store_net_data(luba_msg.net)
-        elif luba_msg.HasField('nav'):
+        elif luba_msg.HasField("nav"):
             store_nav_data(luba_msg.nav)
-        elif luba_msg.HasField('driver'):
+        elif luba_msg.HasField("driver"):
             pass
         else:
             pass
@@ -57,16 +58,18 @@ def parse_custom_data(data: bytes):
 
 
 def store_sys_data(sys):
-    if(sys.HasField("systemTardStateTunnel")):
+    if sys.HasField("systemTardStateTunnel"):
         tard_state_data_list = sys.systemTardStateTunnel.tard_state_data
         longValue8 = tard_state_data_list[0]
         longValue9 = tard_state_data_list[1]
-        print("Device status report,deviceState:", longValue8, ",deviceName:", "Luba...")
+        print(
+            "Device status report,deviceState:", longValue8, ",deviceName:", "Luba..."
+        )
         chargeStateTemp = longValue9
         longValue10 = tard_state_data_list[6]
         longValue11 = tard_state_data_list[7]
 
-        #device_state_map
+        # device_state_map
     if sys.HasField("systemRapidStateTunnel"):
         rapid_state_data_list = sys.systemRapidStateTunnel.rapid_state_data
         print(rapid_state_data_list)
@@ -77,7 +80,7 @@ def store_sys_data(sys):
 
 
 def store_nav_data(nav):
-    if(nav.HasField('toapp_get_commondata_ack')):
+    if nav.HasField("toapp_get_commondata_ack"):
         """has data about paths and zones"""
         toapp_get_commondata_ack = nav.toapp_get_commondata_ack
         region_data = RegionData()
@@ -96,8 +99,7 @@ def store_nav_data(nav):
         region_data.pver = toapp_get_commondata_ack.pver
         print(region_data)
 
-
-    if(nav.HasField('toapp_gethash_ack')):
+    if nav.HasField("toapp_gethash_ack"):
         toapp_gethash_ack = nav.toapp_gethash_ack
         hash_list = HashList()
 
@@ -110,6 +112,7 @@ def store_nav_data(nav):
         hash_list.path = data_couple_list
         print(hash_list)
         # use callback to provide hash list
+
 
 def store_net_data(net):
     if net.toapp_wifi_iot_status:

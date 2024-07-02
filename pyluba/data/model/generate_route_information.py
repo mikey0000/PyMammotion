@@ -3,12 +3,24 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
-class GenerateRouteInformation:
-    """Creates a model for generating route information and mowing plan before starting a job.
-    """
 
-    def __init__(self, one_hashs: List[int], job_mode: int, channel_width: int, speed: float, ultra_wave: int,
-                 channel_mode: int, rain_tactics: int, toward: int, knife_height: int, path_order: str, toward_included_angle: int):
+class GenerateRouteInformation:
+    """Creates a model for generating route information and mowing plan before starting a job."""
+
+    def __init__(
+        self,
+        one_hashs: List[int],
+        job_mode: int,
+        channel_width: int,
+        speed: float,
+        ultra_wave: int,
+        channel_mode: int,
+        rain_tactics: int,
+        toward: int,
+        knife_height: int,
+        path_order: str,
+        toward_included_angle: int,
+    ):
         self.path_order = ""
         self.toward_mode = 0
         self.one_hashs = one_hashs
@@ -23,7 +35,9 @@ class GenerateRouteInformation:
         self.edge_mode = rain_tactics
         self.path_order = path_order
         self.toward_included_angle = toward_included_angle
-        logger.debug(f"Mode route command parameters jobMode={job_mode}//channelWidth={channel_width}//speed={speed}//UltraWave={ultra_wave}//channelMode={channel_mode}//edgeMode={rain_tactics}//knifeHeight={knife_height}  pathOrder:{path_order.encode('utf-8')}")
+        logger.debug(
+            f"Mode route command parameters jobMode={job_mode}//channelWidth={channel_width}//speed={speed}//UltraWave={ultra_wave}//channelMode={channel_mode}//edgeMode={rain_tactics}//knifeHeight={knife_height}  pathOrder:{path_order.encode('utf-8')}"
+        )
 
     def get_job_id(self) -> int:
         return self.job_id

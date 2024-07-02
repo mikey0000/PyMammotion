@@ -34,16 +34,17 @@ class Base64EncodedProtobuf(SerializableType):
         return json_format.MessageToDict(data)
 
 
-
 @dataclass
 class DeviceProtobufMsgEventValue(DataClassORJSONMixin):
     content: Base64EncodedProtobuf
+
 
 @dataclass
 class DeviceWarningEventValue(DataClassORJSONMixin):
     # TODO: enum for error codes
     # (see resources/res/values-en-rUS/strings.xml in APK)
     code: int
+
 
 @dataclass
 class GeneralParams(DataClassORJSONMixin):
@@ -66,17 +67,20 @@ class GeneralParams(DataClassORJSONMixin):
     tenantInstanceId: str
     value: Any
 
+
 @dataclass
 class DeviceProtobufMsgEventParams(GeneralParams):
     identifier: Literal["device_protobuf_msg_event"]
     type: Literal["info"]
     value: DeviceProtobufMsgEventValue
 
+
 @dataclass
 class DeviceWarningEventParams(GeneralParams):
     identifier: Literal["device_warning_event"]
     type: Literal["alert"]
     value: DeviceWarningEventValue
+
 
 @dataclass
 class ThingEventMessage(DataClassORJSONMixin):

@@ -14,7 +14,8 @@ class MessageNavigation:
             seqs=1,
             version=1,
             subtype=1,
-            net=build)
+            net=build,
+        )
 
         return luba_msg.SerializeToString()
 
@@ -25,10 +26,11 @@ class MessageNavigation:
             )
         )
         print(
-            f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
+            f"Send command--9 general read and write command id={id}, context={context}, rw={rw}"
+        )
         return self.send_order_msg_nav(build)
 
- # === Below are the previous functions. These are going to be updated ===
+    # === Below are the previous functions. These are going to be updated ===
 
     # NOT REPLACED!!! - But also doesnt seem to be used
     def get_hash(self):
@@ -44,7 +46,7 @@ class MessageNavigation:
                 todev_gethash=mctrl_nav_pb2.NavGetHashList(
                     pver=1,
                 )
-            )
+            ),
         )
 
         return luba_msg.SerializeToString()
@@ -61,11 +63,8 @@ class MessageNavigation:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_gethash=mctrl_nav_pb2.NavGetHashList(
-                    pver=1,
-                    subCmd=i
-                )
-            )
+                todev_gethash=mctrl_nav_pb2.NavGetHashList(pver=1, subCmd=i)
+            ),
         )
 
         return luba_msg.SerializeToString()
@@ -82,9 +81,7 @@ class MessageNavigation:
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
                 todev_zigzag_ack=mctrl_nav_pb2.NavUploadZigZagResultAck(
-                    pver=1,
-                    currentHash=i,
-                    subCmd=0
+                    pver=1, currentHash=i, subCmd=0
                 )
             ),
         )
@@ -107,20 +104,15 @@ class MessageNavigation:
                     action=8,
                     type=3,
                     currentFrame=currentFrame,
-                    totalFrame=totalFrame
+                    totalFrame=totalFrame,
                 )
-            )
+            ),
         )
         return luba_msg.SerializeToString()
 
     # Replaced \w: get_area_to_be_transferred(self):
     def get_area_tobe_transferred(self):
-        commondata = mctrl_nav_pb2.NavGetCommData(
-            pver=1,
-            subCmd=1,
-            action=8,
-            type=3
-        )
+        commondata = mctrl_nav_pb2.NavGetCommData(pver=1, subCmd=1, action=8, type=3)
 
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV,
@@ -130,19 +122,14 @@ class MessageNavigation:
             seqs=1,
             version=1,
             subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_get_commondata=commondata
-            )
+            nav=mctrl_nav_pb2.MctlNav(todev_get_commondata=commondata),
         )
         return luba_msg.SerializeToString()
 
     # Replaced \w: synchronize_hash_data(self, hash: int):
     def synchronize_hash_data(self, hash_int: int):
         commondata = mctrl_nav_pb2.NavGetCommData(
-            pver=1,
-            subCmd=1,
-            action=8,
-            Hash=hash_int
+            pver=1, subCmd=1, action=8, Hash=hash_int
         )
 
         luba_msg = luba_msg_pb2.LubaMsg(
@@ -153,9 +140,7 @@ class MessageNavigation:
             seqs=1,
             version=1,
             subtype=1,
-            nav=mctrl_nav_pb2.MctlNav(
-                todev_get_commondata=commondata
-            )
+            nav=mctrl_nav_pb2.MctlNav(todev_get_commondata=commondata),
         )
         return luba_msg.SerializeToString()
 
@@ -170,12 +155,8 @@ class MessageNavigation:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=1,
-                    result=0
-                )
-            )
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=1, result=0)
+            ),
         )
 
         return luba_msg.SerializeToString()
@@ -194,7 +175,7 @@ class MessageNavigation:
                 todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
                     subCmd=i,
                 )
-            )
+            ),
         )
         return luba_msg.SerializeToString()
 
@@ -211,11 +192,8 @@ class MessageNavigation:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(
-                    subCmd=i,
-                    planIndex=i2
-                )
-            )
+                todev_planjob_set=mctrl_nav_pb2.NavPlanJobSet(subCmd=i, planIndex=i2)
+            ),
         )
         return luba_msg.SerializeToString()
 
@@ -284,27 +262,38 @@ class MessageNavigation:
         return luba_msg.SerializeToString()
 
     def get_reserved(self, generate_route_information):
-        return bytes([generate_route_information.path_order, generate_route_information.obstacle_laps]).decode('utf-8')
+        return bytes(
+            [
+                generate_route_information.path_order,
+                generate_route_information.obstacle_laps,
+            ]
+        ).decode("utf-8")
 
     # Replaced \w: generate_route_information(self, generate_route_information: GenerateRouteInformation):
-    def generate_route_information(self, generate_route_information: GenerateRouteInformation):
+    def generate_route_information(
+        self, generate_route_information: GenerateRouteInformation
+    ):
         """How you start a manual job, then call startjob"""
 
         nav_req_cover_path = mctrl_nav_pb2.NavReqCoverPath()
         nav_req_cover_path.pver = 1
         nav_req_cover_path.subCmd = 0
-        nav_req_cover_path.zoneHashs.extend(
-            generate_route_information.one_hashs)
+        nav_req_cover_path.zoneHashs.extend(generate_route_information.one_hashs)
         nav_req_cover_path.jobMode = generate_route_information.job_mode  # grid type
-        nav_req_cover_path.edgeMode = generate_route_information.edge_mode  # border laps
+        nav_req_cover_path.edgeMode = (
+            generate_route_information.edge_mode
+        )  # border laps
         nav_req_cover_path.knifeHeight = generate_route_information.knife_height
         nav_req_cover_path.speed = generate_route_information.speed
         nav_req_cover_path.ultraWave = generate_route_information.ultra_wave
-        nav_req_cover_path.channelWidth = generate_route_information.channel_width  # mow width
+        nav_req_cover_path.channelWidth = (
+            generate_route_information.channel_width
+        )  # mow width
         nav_req_cover_path.channelMode = generate_route_information.channel_mode
         nav_req_cover_path.toward = generate_route_information.toward
         nav_req_cover_path.reserved = self.get_reserved(
-            generate_route_information)  # grid or border first
+            generate_route_information
+        )  # grid or border first
 
         luba_msg = luba_msg_pb2.LubaMsg()
         luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
@@ -321,9 +310,19 @@ class MessageNavigation:
 
         return luba_msg.SerializeToString()
 
-# =============== ToDo: What is this replaced with? ===============
-    def start_work_order(self, job_id, job_ver, rain_tactics, job_mode, knife_height, speed, ultra_wave,
-                               channel_width, channel_mode):
+    # =============== ToDo: What is this replaced with? ===============
+    def start_work_order(
+        self,
+        job_id,
+        job_ver,
+        rain_tactics,
+        job_mode,
+        knife_height,
+        speed,
+        ultra_wave,
+        channel_width,
+        channel_mode,
+    ):
         """Pretty sure this starts a job too but isn't used"""
         luba_msg = luba_msg_pb2.LubaMsg()
         luba_msg.msgtype = luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_NAV
@@ -362,12 +361,8 @@ class MessageNavigation:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=7,
-                    result=0
-                )
-            )
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=7, result=0)
+            ),
         )
         return luba_msg.SerializeToString()
 
@@ -382,12 +377,8 @@ class MessageNavigation:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=9,
-                    result=0
-                )
-            )
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=9, result=0)
+            ),
         )
         return luba_msg.SerializeToString()
 
@@ -402,12 +393,8 @@ class MessageNavigation:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=2,
-                    result=0
-                )
-            )
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=2, result=0)
+            ),
         )
 
         return luba_msg.SerializeToString()
@@ -423,12 +410,8 @@ class MessageNavigation:
             version=1,
             subtype=1,
             nav=mctrl_nav_pb2.MctlNav(
-                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(
-                    type=1,
-                    action=3,
-                    result=0
-                )
-            )
+                todev_taskctrl=mctrl_nav_pb2.NavTaskCtrl(type=1, action=3, result=0)
+            ),
         )
 
         return luba_msg.SerializeToString()
@@ -472,9 +455,7 @@ class MessageNavigation:
     def set_data_synchronization(self, type: int):
         mctrl_nav = mctrl_nav_pb2.MctlNav(
             todev_get_commondata=mctrl_nav_pb2.NavGetCommData(
-                pver=1,
-                action=12,
-                type=type
+                pver=1, action=12, type=type
             )
         )
 

@@ -90,7 +90,7 @@ class tmp_constant:
     MQTT_TOPIC_PROPERTIES = "/app/down/thing/properties"
     MQTT_TOPIC_SERVICE_REPLY = "/app/down/thing/service/invoke/reply"
     MQTT_TOPIC_STATUS = "/app/down/thing/status"
-    OPTIONNUMREGISTRY_ACCESSKEY = 36 # deprecated
+    OPTIONNUMREGISTRY_ACCESSKEY = 36  # deprecated
     PATH_DISCOVERY = "/dev/core/service/dev"
     PATH_GROUP_PRE = "/thing/service/"
     PATH_NOTIFY = "/dev/core/service/notify"
@@ -121,7 +121,7 @@ class tmp_constant:
     SERVICE_METHOD = "method"
     SERVICE_NAME = "name"
     SERVICE_OUTPUTDATA = "outputData"
-    SESSION_VALID_TIME = 86400 # deprecated
+    SESSION_VALID_TIME = 86400  # deprecated
     TAG = "[Tmp]"
     THING_WIFI_STATUS_NOTIFY = "thing/wifi/status/notify"
     TMP_MODEL_TYPE_ALI_BREEZE = "breeze"
@@ -138,12 +138,14 @@ class tmp_constant:
     TYPE_VALUE_STRING = "string"
     TYPE_VALUE_STRUCT = "struct"
     TYPE_VALUE_TEXT = "text"
-    UNKNOWN_CODE = 0 # deprecated
-    URI_ALINK_DEVICE_DATA = "alink/deviceStatus" # deprecated
-    URI_ALINK_SERVICE = "alink/service" # deprecated
-    URI_AUTH = "/auth" # deprecated
+    UNKNOWN_CODE = 0  # deprecated
+    URI_ALINK_DEVICE_DATA = "alink/deviceStatus"  # deprecated
+    URI_ALINK_SERVICE = "alink/service"  # deprecated
+    URI_AUTH = "/auth"  # deprecated
     URI_AUTHEN_REGISTER = "/sys/{productKey}/{deviceName}/thing/authen/sub/register"
-    URI_AUTHEN_REGISTER_REPLY = "/sys/{productKey}/{deviceName}/thing/authen/sub/register_reply"
+    URI_AUTHEN_REGISTER_REPLY = (
+        "/sys/{productKey}/{deviceName}/thing/authen/sub/register_reply"
+    )
     URI_BLACKLIST_UPDATE_POST = "/thing/lan/blacklist/update"
     URI_BLACKLIST_UPDATE_REPLY_POST = "/thing/lan/blacklist/update_reply"
     URI_DEVICE = "/device/core/dev"
@@ -163,7 +165,9 @@ class tmp_constant:
     URI_TOPIC_LOCALDEVICE_STATECHANGE = "group/localstatechange"
     URI_TOPIC_REPLY_POST = "_reply"
     URI_UPDATE_DEVICE_INFO = "/sys/{productKey}/{deviceName}/thing/deviceinfo/update"
-    URI_UPDATE_DEVICE_INFO_REPLY = "/sys/{productKey}/{deviceName}/thing/deviceinfo/update_reply"
+    URI_UPDATE_DEVICE_INFO_REPLY = (
+        "/sys/{productKey}/{deviceName}/thing/deviceinfo/update_reply"
+    )
     URI_USER = "/user"
     VALUE_SHA256 = "sha256"
     VERSION = "1.0"

@@ -33,6 +33,7 @@ class PositionMode(Enum):
         else:
             return "-"
 
+
 class RTKStatus(Enum):
     NONE = 0
     SINGLE = 1

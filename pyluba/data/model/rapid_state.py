@@ -26,7 +26,11 @@ class RapidState:
     @classmethod
     def from_raw(cls, raw: list[int]) -> "RapidState":
         return RapidState(
-            rtk_status=RTKStatus.FINE if raw[0] == 4 else RTKStatus.BAD if raw[0] in (1, 5) else RTKStatus.NONE,
+            rtk_status=RTKStatus.FINE
+            if raw[0] == 4
+            else RTKStatus.BAD
+            if raw[0] in (1, 5)
+            else RTKStatus.NONE,
             pos_level=raw[1],
             satellites_total=raw[2],
             rtk_age=raw[3] / 10000,

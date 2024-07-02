@@ -11,5 +11,7 @@ class HashList:
         self.path: typing.List[int] = []
 
     def __str__(self) -> str:
-        return f"HashBean{{pver={self.pver}, subCmd={self.subCmd}, totalFrame={self.totalFrame}, " + \
-            f"currentFrame={self.currentFrame}, dataHash={self.dataHash}, path={self.path}}}"
+        return (
+            f"HashBean{{pver={self.pver}, subCmd={self.subCmd}, totalFrame={self.totalFrame}, "
+            + f"currentFrame={self.currentFrame}, dataHash={self.dataHash}, path={self.path}}}"
+        )

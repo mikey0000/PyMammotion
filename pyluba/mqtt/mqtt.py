@@ -24,10 +24,17 @@ logger = getLogger(__name__)
 
 
 class LubaMQTT(BaseLuba):
-
     _cloud_client = None
-    def __init__(self, region_id: str, product_key: str, device_name: str, device_secret: str, iot_token: str,
-                 client_id: Optional[str] = None):
+
+    def __init__(
+        self,
+        region_id: str,
+        product_key: str,
+        device_name: str,
+        device_secret: str,
+        iot_token: str,
+        client_id: Optional[str] = None,
+    ):
         super().__init__()
 
         self.on_connected: Optional[Callable[[], None]] = None
@@ -43,16 +50,25 @@ class LubaMQTT(BaseLuba):
         if client_id is None:
             client_id = f"python-{device_name}"
         self._mqtt_client_id = f"{client_id}|securemode=2,signmethod=hmacsha1|"
-        sign_content = f"clientId{client_id}deviceName{device_name}productKey{product_key}"
+        sign_content = (
+            f"clientId{client_id}deviceName{device_name}productKey{product_key}"
+        )
         self._mqtt_password = hmac.new(
-            device_secret.encode("utf-8"), sign_content.encode("utf-8"),
-            hashlib.sha1
+            device_secret.encode("utf-8"), sign_content.encode("utf-8"), hashlib.sha1
         ).hexdigest()
 
         self._client_id = client_id
 
-        self._linkkit_client = LinkKit(region_id, product_key, device_name, device_secret, auth_type="",
-                                       client_id=client_id, password=self._mqtt_password, username=self._mqtt_username)
+        self._linkkit_client = LinkKit(
+            region_id,
+            product_key,
+            device_name,
+            device_secret,
+            auth_type="",
+            client_id=client_id,
+            password=self._mqtt_password,
+            username=self._mqtt_username,
+        )
 
         self._linkkit_client.enable_logger(level=logging.DEBUG)
         self._linkkit_client.on_connect = self._thing_on_connect
@@ -96,57 +112,71 @@ class LubaMQTT(BaseLuba):
         print("on_thing_enable")
         # print('subscribe_topic, topic:%s' % echo_topic)
         # self._linkkit_client.subscribe_topic(echo_topic, 0)
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply")
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/event/property/post_reply")
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events")
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status")
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties")
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/model/down_raw")
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
+        )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/event/property/post_reply"
+        )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events"
+        )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status"
+        )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties"
+        )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/model/down_raw"
+        )
 
-        self._linkkit_client.publish_topic(f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
-                                           json.dumps({
-                                               "id": "msgid1",
-                                               "version": "1.0",
-                                               "request": {
-                                                   "clientId": self._mqtt_username
-                                               },
-                                               "params": {
-                                                   "iotToken": self._iot_token
-                                               }
-                                           })
-                                           )
+        self._linkkit_client.publish_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
+            json.dumps(
+                {
+                    "id": "msgid1",
+                    "version": "1.0",
+                    "request": {"clientId": self._mqtt_username},
+                    "params": {"iotToken": self._iot_token},
+                }
+            ),
+        )
 
         # self._linkkit_client.query_ota_firmware()
         command = MammotionCommand(device_name="Luba")
         self._cloud_client.send_cloud_command(command.get_report_cfg())
 
     def _thing_on_topic_message(self, topic, payload, qos, user_data):
-        print("on_topic_message, receive message, topic:%s, payload:%s, qos:%d" % (topic, payload, qos))
+        print(
+            "on_topic_message, receive message, topic:%s, payload:%s, qos:%d"
+            % (topic, payload, qos)
+        )
 
     def _thing_on_connect(self, session_flag, rc, user_data):
         print("on_connect, session_flag:%d, rc:%d" % (session_flag, rc))
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
 
-
     def _on_connect(self, _client, _userdata, _flags: dict, rc: int):
         if rc == 0:
             logger.info("Connected")
             self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/#")
-            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply")
+            self._client.subscribe(
+                f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
+            )
 
-            self._client.publish(f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
-                                 json.dumps({
-                                     "id": "msgid1",
-                                     "version": "1.0",
-                                     "request": {
-                                         "clientId": self._mqtt_username
-                                     },
-                                     "params": {
-                                         "iotToken": self._iot_token
-                                     }
-                                 })
-                                 )
+            self._client.publish(
+                f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
+                json.dumps(
+                    {
+                        "id": "msgid1",
+                        "version": "1.0",
+                        "request": {"clientId": self._mqtt_username},
+                        "params": {"iotToken": self._iot_token},
+                    }
+                ),
+            )
 
             if self.on_connected:
                 self.on_connected()
@@ -175,11 +205,16 @@ class LubaMQTT(BaseLuba):
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
                 content = cast(luba_msg_pb2, params.value.content)
-                if content.WhichOneof("subMsg") == "sys" and content.sys.WhichOneof("subSysMsg") == "systemRapidState":
+                if (
+                    content.WhichOneof("subMsg") == "sys"
+                    and content.sys.WhichOneof("subSysMsg") == "systemRapidState"
+                ):
                     state = RapidState.from_raw(content.sys.systemRapidState.data)
                     self._set_rapid_state(state)
                 else:
-                    logger.info("Unhandled protobuf event: %s", content.WhichOneof("subMsg"))
+                    logger.info(
+                        "Unhandled protobuf event: %s", content.WhichOneof("subMsg")
+                    )
             elif params.identifier == "device_warning_event":
                 if self.on_warning:
                     self.on_warning(params.value.code)

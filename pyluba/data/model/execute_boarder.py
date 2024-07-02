@@ -33,4 +33,4 @@ class ExecuteBorder(Serializable):
 
     def __str__(self):
         """Generated source for method toString"""
-        return "ExecuteBean{cmd=" + self.cmd + ", params=" + self.params + '}'
+        return "ExecuteBean{cmd=" + self.cmd + ", params=" + self.params + "}"

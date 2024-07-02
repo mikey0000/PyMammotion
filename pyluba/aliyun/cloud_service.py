@@ -8,14 +8,13 @@ from aliyunsdkiot.request.v20180120.InvokeThingServiceRequest import (
 
 
 class CloudService:
-
     # com.aliyun.iot.aep.sdk
     # https://domestic.mammotion.com/privacy/ - lists all aliyun packages
     def __init__(self):
         self.selectDeviceIOTID = ""
-        accessKeyId = '<your accessKey>'
-        accessKeySecret = '<your accessSecret>'
-        self.clt = client.AcsClient(accessKeyId, accessKeySecret, 'ap-southeast')
+        accessKeyId = "<your accessKey>"
+        accessKeySecret = "<your accessSecret>"
+        self.clt = client.AcsClient(accessKeyId, accessKeySecret, "ap-southeast")
 
     """
     String printBase64Binary = DatatypeConverter.printBase64Binary(byteArray);
@@ -31,21 +30,19 @@ class CloudService:
         }
     
     """
-    def invoke_thing_service(self, data: bytearray):
 
-        base64_encoded = base64.b64encode(data).decode('utf-8')
+    def invoke_thing_service(self, data: bytearray):
+        base64_encoded = base64.b64encode(data).decode("utf-8")
 
         # Create a dictionary structure
         data = {
-            "args": {
-                "content": base64_encoded
-            },
+            "args": {"content": base64_encoded},
             "DEVICE_IOTID": self.selectDeviceIOTID,
-            "identifier": "device_protobuf_sync_service"
+            "identifier": "device_protobuf_sync_service",
         }
 
         request = InvokeThingServiceRequest()
-        request.set_accept_format('json')
+        request.set_accept_format("json")
 
         request.set_Args("Args")
         request.set_Identifier("Identifier")
@@ -56,10 +53,9 @@ class CloudService:
         # python2:  print(response)
         print(response)
 
-
     def get_device_status(self):
         request = GetDeviceStatusRequest()
-        request.set_accept_format('json')
+        request.set_accept_format("json")
 
         request.set_IotId("IotId")
         request.set_ProductKey("ProductKey")

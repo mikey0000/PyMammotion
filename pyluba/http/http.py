@@ -9,11 +9,13 @@ from pyluba.const import MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET, MAMMOTION
 
 DataT = TypeVar("DataT")
 
+
 @dataclass
 class Response(DataClassDictMixin, Generic[DataT]):
     data: DataT
     code: int
     msg: str
+
 
 @dataclass
 class LoginResponseUserInformation(DataClassORJSONMixin):
@@ -23,6 +25,7 @@ class LoginResponseUserInformation(DataClassORJSONMixin):
     userId: str
     userAccount: str
     authType: str
+
 
 @dataclass
 class LoginResponseData(DataClassORJSONMixin):
@@ -36,6 +39,7 @@ class LoginResponseData(DataClassORJSONMixin):
     userInformation: LoginResponseUserInformation
     jti: str
 
+
 class LubaHTTP:
     def __init__(self, session: ClientSession, login: LoginResponseData):
         self._session = session
@@ -43,23 +47,28 @@ class LubaHTTP:
         self._login = login
 
     @classmethod
-    async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
+    async def login(
+        cls, session: ClientSession, username: str, password: str
+    ) -> Response[LoginResponseData]:
         async with session.post(
-                "/user-server/v1/user/oauth/token",
-                params=dict(
-                    username=username,
-                    password=password,
-                    client_id=MAMMOTION_CLIENT_ID,
-                    client_secret=MAMMOTION_CLIENT_SECRET,
-                    grant_type="password"
-                )
+            "/user-server/v1/user/oauth/token",
+            params=dict(
+                username=username,
+                password=password,
+                client_id=MAMMOTION_CLIENT_ID,
+                client_secret=MAMMOTION_CLIENT_SECRET,
+                grant_type="password",
+            ),
         ) as resp:
             data = await resp.json()
             print(data)
             # TODO catch errors from mismatch user / password
             # Assuming the data format matches the expected structure
             login_response_data = LoginResponseData.from_dict(data["data"])
-            return Response(data=login_response_data, code=data["code"], msg=data["msg"])
+            return Response(
+                data=login_response_data, code=data["code"], msg=data["msg"]
+            )
+
 
 async def connect_http(username: str, password: str) -> LubaHTTP:
     async with ClientSession(MAMMOTION_DOMAIN) as session:

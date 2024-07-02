@@ -12,15 +12,14 @@ class MessageOta:
             seqs=1,
             version=1,
             subtype=1,
-            ota=ota)
+            ota=ota,
+        )
 
         return luba_msg.SerializeToString()
 
     def get_device_ota_info(self, log_type: int):
         todev_get_info_req = mctrl_ota_pb2.MctlOta(
-            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
-                type=mctrl_ota_pb2.IT_OTA
-            )
+            todev_get_info_req=mctrl_ota_pb2.getInfoReq(type=mctrl_ota_pb2.IT_OTA)
         )
 
         print("===Send command to get upgrade details===logType:" + str(log_type))
@@ -29,9 +28,7 @@ class MessageOta:
     def get_device_info_new(self):
         """New device call for OTA upgrade information."""
         todev_get_info_req = mctrl_ota_pb2.MctlOta(
-            todev_get_info_req=mctrl_ota_pb2.getInfoReq(
-                type=mctrl_ota_pb2.IT_BASE
-            )
+            todev_get_info_req=mctrl_ota_pb2.getInfoReq(type=mctrl_ota_pb2.IT_BASE)
         )
         print("Send to get OTA upgrade information", "Get device information")
         return self.send_order_msg_ota(todev_get_info_req)
