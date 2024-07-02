@@ -329,6 +329,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 self._device,
                 self.name,
                 self._disconnected,
+                max_attempts=10,
                 use_services_cache=True,
                 ble_device_callback=lambda: self._device,
             )
@@ -537,6 +538,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return
         _LOGGER.debug("%s: Disconnecting", self.name)
         try:
+            """We reset what command the robot last heard before disconnecting."""
+            command_bytes = self._commands.send_todev_ble_sync(2)
+            await self._message.post_custom_data_bytes(command_bytes)
             await client.stop_notify(self._read_char)
             await client.disconnect()
         except BLEAK_RETRY_EXCEPTIONS as ex:
