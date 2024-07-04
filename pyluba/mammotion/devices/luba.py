@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID
 
 import betterproto
+from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.backends.service import BleakGATTCharacteristic, BleakGATTServiceCollection
 from bleak.exc import BleakDBusError
@@ -330,7 +331,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 return
             _LOGGER.debug("%s: Connecting; RSSI: %s", self.name, self.rssi)
             client: BleakClientWithServiceCache = await establish_connection(
-                BleakClientWithServiceCache,
+                BleakClient,
                 self._device,
                 self.name,
                 self._disconnected,
