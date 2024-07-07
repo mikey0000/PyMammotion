@@ -11,7 +11,7 @@
 [img_pyversions]: https://img.shields.io/pypi/pyversions/pyluba.svg
 [url_pyversions]: https://pypi.python.org/pypi/pyluba
 
-# PyLuba API
+# PyMammotion API (Previously PyLuba)
 
 API to control Luba via MQTT, Cloud and bluetooth.
 
