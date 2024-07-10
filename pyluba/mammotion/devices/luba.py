@@ -21,7 +21,9 @@ from bleak_retry_connector import (
 )
 
 from pyluba.bluetooth import BleMessage
+from pyluba.data.model.device import MowingDevice
 from pyluba.mammotion.commands.mammotion_command import MammotionCommand
+from pyluba.proto.dev_net import DevNet
 from pyluba.proto.luba_msg import LubaMsg
 
 
@@ -107,7 +109,7 @@ class MammotionBaseDevice:
         """Update raw and model data from notifications."""
         # proto_luba = luba_msg_pb2.LubaMsg()
         # proto_luba.ParseFromString(data)
-        tmp_msg = LubaMsg.FromString(data)
+        tmp_msg = LubaMsg().parse(data)
         res = betterproto.which_one_of(tmp_msg, "LubaSubMsg")
         match res[0]:
             case "nav":
@@ -148,6 +150,7 @@ class MammotionBaseDevice:
                     self._raw_data["net"][net_sub_msg[0]] = net_sub_msg[1].to_dict(
                         casing=betterproto.Casing.SNAKE
                     )
+
             case "mul":
                 mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, "SubMul")
                 mul = self._raw_data.get("mul")
@@ -165,7 +168,7 @@ class MammotionBaseDevice:
                     casing=betterproto.Casing.SNAKE
                 )
 
-        self._luba_msg = LubaMsg().from_dict(self._raw_data)
+        self._luba_msg = MowingDevice.from_raw(self._raw_data)
 
     @property
     def raw_data(self) -> dict[str, Any]:
@@ -185,15 +188,9 @@ class MammotionBaseDevice:
 
     async def start_sync(self, retry: int):
         await self._send_command("get_device_base_info", retry)
-        cfg = await self._send_command("get_report_cfg", retry)
-        # cfg_proto = luba_msg_pb2.LubaMsg()
-        # cfg_proto.ParseFromString(cfg)
-        # print(json_format.MessageToDict(cfg_proto))
+        await self._send_command("get_report_cfg", retry)
+        await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
 
-        plan = await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
-        # plan_proto = luba_msg_pb2.LubaMsg()
-        # plan_proto.ParseFromString(plan)
-        # print(json_format.MessageToDict(plan_proto))
 
         RW = await self._send_command_with_args(
             "allpowerfull_rw", id=5, context=1, rw=1

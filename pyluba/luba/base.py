@@ -48,59 +48,5 @@ class BaseLuba:
             self.on_status_change(status)
 
     @property
-    def pos_x(self) -> float:
-        return self._rapid_state.pos_x if self._rapid_state is not None else None
-
-    @property
-    def pos_y(self) -> float:
-        return self._rapid_state.pos_y if self._rapid_state is not None else None
-
-    @property
-    def rtk_status(self) -> RTKStatus:
-        return self._rapid_state.rtk_status if self._rapid_state is not None else None
-
-    @property
-    def toward(self) -> float:
-        return self._rapid_state.toward if self._rapid_state is not None else None
-
-    @property
-    def satellites_total(self) -> int:
-        return (
-            self._rapid_state.satellites_total
-            if self._rapid_state is not None
-            else None
-        )
-
-    @property
-    def satellites_l2(self) -> int:
-        return (
-            self._rapid_state.satellites_l2 if self._rapid_state is not None else None
-        )
-
-    @property
-    def rtk_age(self) -> float:
-        return self._rapid_state.rtk_age if self._rapid_state is not None else None
-
-    @property
-    def lat_std(self) -> float:
-        return self._rapid_state.lat_std if self._rapid_state is not None else None
-
-    @property
-    def lon_std(self) -> float:
-        return self._rapid_state.lon_std if self._rapid_state is not None else None
-
-    @property
-    def pos_type(self) -> int:
-        return self._rapid_state.pos_type if self._rapid_state is not None else None
-
-    @property
-    def pos_level(self) -> int:
-        return self._rapid_state.pos_level if self._rapid_state is not None else None
-
-    @property
-    def zone_hash(self) -> int:
-        return self._rapid_state.zone_hash if self._rapid_state is not None else None
-
-    @property
     def status(self) -> Optional[StatusType]:
         return self._status
