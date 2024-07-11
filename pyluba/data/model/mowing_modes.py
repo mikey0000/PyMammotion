@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import IntEnum
 
 
-class CuttingMode(Enum):
+class CuttingMode(IntEnum):
     """job_mode"""
 
     single_grid = 0
@@ -10,7 +10,7 @@ class CuttingMode(Enum):
     no_grid = 3
 
 
-class BorderPatrolMode(Enum):
+class BorderPatrolMode(IntEnum):
     """"""
 
     none = 0
@@ -20,7 +20,7 @@ class BorderPatrolMode(Enum):
     four = 4
 
 
-class ObstacleLapsMode(Enum):
+class ObstacleLapsMode(IntEnum):
     """mowingLaps"""
 
     none = 0
@@ -30,7 +30,7 @@ class ObstacleLapsMode(Enum):
     four = 4
 
 
-class MowOrder(Enum):
+class MowOrder(IntEnum):
     """path_order"""
 
     border_first = 0
