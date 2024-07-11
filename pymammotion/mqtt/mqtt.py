@@ -19,10 +19,6 @@ from pymammotion.proto import luba_msg_pb2
 logger = getLogger(__name__)
 
 
-# with sqlite3.connect("messages.db") as conn:
-#     conn.execute("CREATE TABLE IF NOT EXISTS messages (topic TEXT, timestamp INTEGER, payload TEXT)")
-
-
 class LubaMQTT(BaseLuba):
     _cloud_client = None
 
@@ -40,6 +36,7 @@ class LubaMQTT(BaseLuba):
         self.on_connected: Optional[Callable[[], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
         self.on_disconnected: Optional[Callable[[], None]] = None
+        self.on_message: Optional[Callable[[str, str, str], None]] = None
 
         self._product_key = product_key
         self._device_name = device_name
@@ -144,14 +141,22 @@ class LubaMQTT(BaseLuba):
         )
 
         # self._linkkit_client.query_ota_firmware()
-        command = MammotionCommand(device_name="Luba")
-        self._cloud_client.send_cloud_command(command.get_report_cfg())
+        #command = MammotionCommand(device_name="Luba")
+        #self._cloud_client.send_cloud_command(command.get_report_cfg())
 
     def _thing_on_topic_message(self, topic, payload, qos, user_data):
         print(
             "on_topic_message, receive message, topic:%s, payload:%s, qos:%d"
             % (topic, payload, qos)
         )
+        payload = json.loads(payload)
+        iot_id = (
+                payload.get("params", {})
+                .get("iotId", "")
+        )
+        if(iot_id != "" and self.on_message):
+            self.on_message(topic, payload, iot_id)
+
 
     def _thing_on_connect(self, session_flag, rc, user_data):
         print("on_connect, session_flag:%d, rc:%d" % (session_flag, rc))
@@ -228,3 +233,6 @@ class LubaMQTT(BaseLuba):
         else:
             logger.info("Unhandled topic: %s", message.topic)
             logger.debug(payload)
+
+    def _get_cloud_client(self) ->Optional[CloudIOTGateway]:
+        return self._cloud_client

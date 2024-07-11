@@ -7,6 +7,7 @@ from abc import abstractmethod
 from enum import Enum
 from typing import Any
 from uuid import UUID
+import json
 
 import betterproto
 from bleak import BleakClient
@@ -24,6 +25,11 @@ from pymammotion.bluetooth import BleMessage
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.proto.luba_msg import LubaMsg
+
+from pyluba.mqtt.mqtt import LubaMQTT
+
+
+
 
 
 class CharacteristicMissingError(Exception):
@@ -47,6 +53,8 @@ WRITE_CHAR_UUID = _sb_uuid(comms_type="tx")
 DBUS_ERROR_BACKOFF_TIME = 0.25
 
 DISCONNECT_DELAY = 10
+
+TIMEOUT_CLOUD_RESPONSE = 10
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -560,3 +568,77 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     async def _disconnect(self) -> bool:
         if self._client is not None:
             return await self._client.disconnect()
+        
+
+"""Class for Cloud Device"""
+class MammotionBaseCloudDevice(MammotionBaseDevice):
+    def __init__(self, mqtt_client: LubaMQTT, iot_id: str, device_name: str, nick_name: str, **kwargs: Any) -> None:
+        self.mqtt_client = mqtt_client
+        self.iot_id = iot_id
+        self_device_name = device_name
+        self.nick_name = nick_name
+        self._command_futures = {}
+        self.loop = asyncio.get_event_loop()
+
+    def _on_mqtt_message(self, topic: str, payload: str) -> None:
+        """Handle incoming MQTT messages."""
+        _LOGGER.debug(f"MQTT message received on topic {topic}: {payload}")
+        payload = json.loads(payload)
+        message_id = self._extract_message_id(payload)
+        if message_id and message_id in self._command_futures:
+            self._parse_mqtt_response(topic=topic, payload=payload)
+            future = self._command_futures.pop(message_id)
+            if not future.done():
+                future.set_result(payload)
+
+    async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
+        """Send command to device via MQTT and read response."""
+        future = self.loop.create_future()
+        message_id = self.mqtt_client._get_cloud_client().send_cloud_command(self.iot_id, key)
+        if (message_id != ""):
+            self._command_futures[message_id] = future
+            try:
+                response = await asyncio.wait_for(future, timeout=TIMEOUT_CLOUD_RESPONSE)
+                return None
+            except asyncio.TimeoutError:
+                _LOGGER.error(f"Command '{key}' timed out")
+                return None
+        else:
+            return None
+            
+        
+    async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
+        pass
+
+    def _extract_message_id(self, payload: dict) -> str:
+        """Extract the message ID from the payload."""
+        if 'id' in payload:
+            return payload['id']
+        return ''
+    
+    def _extract_encoded_message(self, payload: dict) -> str:
+        try:
+            content = (
+                payload.get("data", {})
+                .get("data", {})
+                .get("params", {})
+                .get("content", "")
+            )
+            if isinstance(content, str):
+                return content
+            else:
+                return str(content)
+        except Exception as e:
+            _LOGGER.error(f"Error extracting encoded message: {e}, Payload: {payload}")
+            return ''
+
+    def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
+        """Parsing MQTT Message"""
+        if topic.endswith("/app/down/thing/events"):
+            if(payload['method'] == "thing.events"):
+                if(payload['params']['identifier'] == "device_protobuf_msg_event" and payload["params"]["deviceName"].startswith(("Luba-", "Yuka-"))):
+                    self._update_raw_data(payload['params']['value']['content'])
+
+    async def _disconnect(self):
+        """Disconnect the MQTT client."""
+        pass #ToDo

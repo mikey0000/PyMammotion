@@ -505,7 +505,7 @@ class CloudIOTGateway:
                 ListingDevByAccountResponse.from_dict(response_body_dict)
             )
 
-    def send_cloud_command(self, command: bytes):
+    def send_cloud_command(self, iotId: str, command: bytes) -> str:
         config = Config(
             app_key=self._app_key,  # correct
             app_secret=self._app_secret,
@@ -522,12 +522,15 @@ class CloudIOTGateway:
         )
 
         # TODO move to using  InvokeThingServiceRequest()
+
+        message_id = str(uuid.uuid4())
+
         body = IoTApiRequest(
-            id=str(uuid.uuid4()),
+            id=message_id,
             params={
                 "args": {"content": self.converter.printBase64Binary(command)},
                 "identifier": "device_protobuf_sync_service",
-                "iotId": "MbXcDE2X63CENA0lPGIo000000",  # TODO get iotId from listbybinding request
+                "iotId": f"{iotId}",
             },
             request=request,
             version="1.0",
@@ -543,9 +546,13 @@ class CloudIOTGateway:
         logger.debug(response.status_code)
         logger.debug(response.body)
 
-        # self._region = response.body.data
-        # Decodifica il corpo della risposta
         response_body_str = response.body.decode("utf-8")
-
-        # Carica la stringa JSON in un dizionario
         response_body_dict = json.loads(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
+            logger.error(f"Error in sending cloud command: {str(response_body_dict.get("code"))} - {str(response_body_dict["msg"])}")
+            return ""
+        else:
+            return message_id
+
+
