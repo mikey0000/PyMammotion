@@ -635,9 +635,10 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parsing MQTT Message"""
         if topic.endswith("/app/down/thing/events"):
-            if(payload['method'] == "thing.events"):
-                if(payload['params']['identifier'] == "device_protobuf_msg_event" and payload["params"]["deviceName"].startswith(("Luba-", "Yuka-"))):
-                    self._update_raw_data(payload['params']['value']['content'])
+            event = ThingEventMessage(**payload)
+            params = event.params
+            if params.identifier == "device_protobuf_msg_event":
+                    self._update_raw_data(params.value.content)
 
     async def _disconnect(self):
         """Disconnect the MQTT client."""
