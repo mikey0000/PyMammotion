@@ -64,4 +64,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 The trademarks "Mammotion," "Luba," and "Yuka" referenced herein are registered trademarks of their respective owners. The author of this software repository is not affiliated with, endorsed by, or connected to these trademark owners in any way.
 
-By using this software, you agree to the terms of this disclaimer.
