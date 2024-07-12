@@ -66,7 +66,7 @@ if __name__ ==  '__main__':
 
     #Assign callback based on iotId
     _luba_mqtt.on_message = lambda topic, payload, iotId: [
-        device._on_mqtt_message(topic, payload) for device in _devices_list if device.iot_id == iotId
+        device._on_mqtt_message(topic, payload) for device in _devices_list if device.iot_id == iot_id
     ]
 
     logger.debug(_devices_list)
