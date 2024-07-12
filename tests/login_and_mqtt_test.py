@@ -65,7 +65,7 @@ if __name__ ==  '__main__':
             _devices_list.append(dev)
 
     #Assign callback based on iotId
-    _luba_mqtt.on_message = lambda topic, payload, iotId: [
+    _luba_mqtt.on_message = lambda topic, payload, iot_id: [
         device._on_mqtt_message(topic, payload) for device in _devices_list if device.iot_id == iot_id
     ]
 
