@@ -59,11 +59,6 @@ If you encounter any issues:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Legal Disclaimer
-
-The software provided in this repository is offered "as-is" and the author makes no representations or warranties of any kind concerning the software, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement. In no event shall the author be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
-
-Users of this software assume all risks associated with its use, including but not limited to the risk of damage to hardware, loss of data, and account suspension or bans. The author disclaims any responsibility for any such consequences.
 
 ## Trademark Notice
 
