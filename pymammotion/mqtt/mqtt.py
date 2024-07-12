@@ -19,7 +19,7 @@ from pymammotion.proto import luba_msg_pb2
 logger = getLogger(__name__)
 
 
-class LubaMQTT(BaseLuba):
+class MammotionMQTT:
     _cloud_client = None
 
     def __init__(
