@@ -505,7 +505,7 @@ class CloudIOTGateway:
                 ListingDevByAccountResponse.from_dict(response_body_dict)
             )
 
-    def send_cloud_command(self, iotId: str, command: bytes) -> str:
+    def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         config = Config(
             app_key=self._app_key,  # correct
             app_secret=self._app_secret,
