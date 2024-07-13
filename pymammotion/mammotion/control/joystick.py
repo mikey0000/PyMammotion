@@ -6,9 +6,9 @@ import pyjoystick
 from pyjoystick.sdl2 import Key, run_event_loop
 from pyjoystick.utils import PeriodicThread
 
-from pyluba import MammotionBaseBLEDevice
-from pyluba.event import BleNotificationEvent
-from pyluba.utility.rocker_util import RockerControlUtil
+from pymammotion import MammotionBaseBLEDevice
+from pymammotion.event import BleNotificationEvent
+from pymammotion.utility.rocker_util import RockerControlUtil
 
 bleNotificationEvt = BleNotificationEvent()
 

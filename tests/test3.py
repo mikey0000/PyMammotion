@@ -1,6 +1,6 @@
-from pyluba.mammotion.commands.mammotion_command import LubaCommandProtoBLE, MammotionCommand
-from pyluba.proto.luba_msg import LubaMsg
-from pyluba.utility.constant.device_constant import WorkMode, device_mode
+from pymammotion.mammotion.commands.mammotion_command import LubaCommandProtoBLE, MammotionCommand
+from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.utility.constant.device_constant import WorkMode, device_mode
 
 print(WorkMode.MODE_READY)
 

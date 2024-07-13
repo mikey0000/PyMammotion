@@ -20,11 +20,11 @@ from bleak_retry_connector import (
     establish_connection,
 )
 
-from pyluba.bluetooth import BleMessage
-from pyluba.data.model.device import MowingDevice
-from pyluba.mammotion.commands.mammotion_command import MammotionCommand
-from pyluba.proto.dev_net import DevNet
-from pyluba.proto.luba_msg import LubaMsg
+from pymammotion.bluetooth import BleMessage
+from pymammotion.data.model.device import MowingDevice
+from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
+from pymammotion.proto.dev_net import DevNet
+from pymammotion.proto.luba_msg import LubaMsg
 
 
 class CharacteristicMissingError(Exception):

@@ -6,9 +6,9 @@ from pyjoystick.utils import PeriodicThread
 from timeit import default_timer as timer
 
 
-from pyluba.bluetooth.ble import LubaBLE
-from pyluba.bluetooth.ble_message import BleMessage
-from pyluba.event.event import BleNotificationEvent
+from pymammotion.bluetooth.ble import LubaBLE
+from pymammotion.bluetooth.ble_message import BleMessage
+from pymammotion.event.event import BleNotificationEvent
 
 bleNotificationEvt = BleNotificationEvent()
 

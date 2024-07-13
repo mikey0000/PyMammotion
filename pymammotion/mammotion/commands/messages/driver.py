@@ -3,8 +3,8 @@ import time
 from abc import ABC
 from logging import getLogger
 
-from pyluba.mammotion.commands.abstract_message import AbstractMessage
-from pyluba.proto import luba_msg_pb2, mctrl_driver_pb2
+from pymammotion.mammotion.commands.abstract_message import AbstractMessage
+from pymammotion.proto import luba_msg_pb2, mctrl_driver_pb2
 
 logger = getLogger(__name__)
 

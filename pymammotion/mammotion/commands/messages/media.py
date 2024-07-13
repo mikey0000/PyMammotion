@@ -1,6 +1,6 @@
 # === sendOrderMsg_Media ===
-from pyluba.proto import luba_msg_pb2, luba_mul_pb2
-from pyluba.proto.luba_mul import MUL_LANGUAGE
+from pymammotion.proto import luba_msg_pb2, luba_mul_pb2
+from pymammotion.proto.luba_mul import MUL_LANGUAGE
 
 
 class MessageMedia:

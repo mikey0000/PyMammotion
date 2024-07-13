@@ -1,5 +1,5 @@
 from google.protobuf.message import DecodeError
-from pyluba.proto import luba_msg_pb2
+from pymammotion.proto import luba_msg_pb2
 
 
 def parse_custom_data(data: bytes):

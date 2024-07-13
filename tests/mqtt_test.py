@@ -5,7 +5,7 @@ import os
 
 from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
 
-from pyluba.data.mqtt.event import ThingEventMessage
+from pymammotion.data.mqtt.event import ThingEventMessage
 
 PRODUCT_KEY = os.environ.get("PRODUCT_KEY")
 DEVICE_NAME = os.environ.get("DEVICE_NAME")

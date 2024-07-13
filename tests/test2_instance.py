@@ -5,8 +5,8 @@ from threading import Thread
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 
-from pyluba.event.event import BleNotificationEvent
-from pyluba.mammotion.devices.luba import MammotionBaseBLEDevice, has_field
+from pymammotion.event.event import BleNotificationEvent
+from pymammotion.mammotion.devices.luba import MammotionBaseBLEDevice, has_field
 
 bleNotificationEvt = BleNotificationEvent()
 

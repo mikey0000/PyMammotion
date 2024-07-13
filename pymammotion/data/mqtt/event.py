@@ -6,7 +6,7 @@ from google.protobuf import json_format
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import SerializableType
 
-from pyluba.proto import luba_msg_pb2
+from pymammotion.proto import luba_msg_pb2
 
 
 class Base64EncodedProtobuf(SerializableType):

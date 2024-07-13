@@ -5,7 +5,7 @@ from aiohttp import ClientSession
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pyluba.const import MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET, MAMMOTION_DOMAIN
+from pymammotion.const import MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET, MAMMOTION_DOMAIN
 
 DataT = TypeVar("DataT")
 

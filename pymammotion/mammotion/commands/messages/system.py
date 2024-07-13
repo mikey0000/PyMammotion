@@ -2,11 +2,11 @@
 import datetime
 from typing import List
 
-from pyluba.mammotion.commands.abstract_message import AbstractMessage
-from pyluba.mammotion.commands.messages.navigation import MessageNavigation
-from pyluba.proto import luba_msg_pb2, mctrl_sys_pb2
-from pyluba.proto.mctrl_sys import RptInfoType
-from pyluba.utility.device_type import DeviceType
+from pymammotion.mammotion.commands.abstract_message import AbstractMessage
+from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
+from pymammotion.proto import luba_msg_pb2, mctrl_sys_pb2
+from pymammotion.proto.mctrl_sys import RptInfoType
+from pymammotion.utility.device_type import DeviceType
 
 
 class MessageSystem(AbstractMessage):

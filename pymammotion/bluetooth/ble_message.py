@@ -10,18 +10,18 @@ from io import BytesIO
 from bleak import BleakClient
 from jsonic.serializable import serialize
 
-from pyluba.aliyun.tmp_constant import tmp_constant
-from pyluba.bluetooth.const import UUID_WRITE_CHARACTERISTIC
-from pyluba.bluetooth.data.convert import parse_custom_data
-from pyluba.bluetooth.data.framectrldata import FrameCtrlData
-from pyluba.bluetooth.data.notifydata import BlufiNotifyData
-from pyluba.data.model.execute_boarder import ExecuteBorder
-from pyluba.mammotion.commands.messages.navigation import MessageNavigation
-from pyluba.proto import (
+from pymammotion.aliyun.tmp_constant import tmp_constant
+from pymammotion.bluetooth.const import UUID_WRITE_CHARACTERISTIC
+from pymammotion.bluetooth.data.convert import parse_custom_data
+from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
+from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
+from pymammotion.data.model.execute_boarder import ExecuteBorder
+from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
+from pymammotion.proto import (
     dev_net_pb2,
     luba_msg_pb2,
 )
-from pyluba.utility.constant.device_constant import bleOrderCmd
+from pymammotion.utility.constant.device_constant import bleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
 
