@@ -191,7 +191,6 @@ class MammotionBaseDevice:
         await self._send_command("get_report_cfg", retry)
         await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
 
-
         RW = await self._send_command_with_args(
             "allpowerfull_rw", id=5, context=1, rw=1
         )
