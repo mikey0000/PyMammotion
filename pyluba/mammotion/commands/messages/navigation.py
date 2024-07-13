@@ -7,8 +7,7 @@ from pyluba.data.model import GenerateRouteInformation
 from pyluba.data.model.plan import Plan
 from pyluba.data.model.region_data import RegionData
 from pyluba.mammotion.commands.abstract_message import AbstractMessage
-from pyluba.proto import luba_msg_pb2
-from pyluba.proto.luba_msg import LubaMsg
+from pyluba.proto.luba_msg import LubaMsg, MsgCmdType, MsgDevice, MsgAttr
 from pyluba.proto.mctrl_nav import (
     AppRequestCoverPathsT,
     MctlNav,
@@ -33,10 +32,10 @@ class MessageNavigation(AbstractMessage, ABC):
     @staticmethod
     def send_order_msg_nav(build) -> bytes:
         luba_msg = LubaMsg(
-            msgtype=luba_msg_pb2.MSG_CMD_TYPE_NAV,
-            sender=luba_msg_pb2.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.DEV_MAINCTL,
-            msgattr=luba_msg_pb2.MSG_ATTR_REQ,
+            msgtype=MsgCmdType.MSG_CMD_TYPE_NAV,
+            sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=MsgDevice.DEV_MAINCTL,
+            msgattr=MsgAttr.MSG_ATTR_REQ,
             seqs=1,
             version=1,
             subtype=1,

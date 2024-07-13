@@ -28,7 +28,7 @@ bleak-retry-connector = "^3.5.0"
 jsonic = "^1.0.0"
 mashumaro = "^3.13"
 orjson = "^3.9.15"
-betterproto = "^1.2.5"
+betterproto = "^2.0.0b6"
 pyjoystick = "^1.2.4"
 nest-asyncio = "^1.6.0"
 
@@ -40,7 +40,7 @@ twine = "^5.0.0"
 bumpver = "^2023.1129"
 frida-tools = "^12.3.0"
 grpcio-tools = "^1.63.0"
-betterproto = {extras = ["compiler"], version = "^1.2.5"}
+betterproto = {extras = ["compiler"], version = "^2.0.0b6"}
 pylint = "^3.2.2"
 ruff = "^0.4.6"
 mypy = "^1.10.0"
