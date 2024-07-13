@@ -1,0 +1,46 @@
+name: Push
+
+on:
+  # Only build on main branch when pushed (when PR is merged)
+  push:
+    branches:
+      - main
+  # Only build in PR on creation/update
+  pull_request:
+
+env:
+  APP_VERSION: ${{ github.sha }}
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      BRANCH_NAME: ${{ env.BRANCH_NAME }}
+      ENCODED_BRANCH_NAME: ${{ steps.branchname.outputs.ENCODED_BRANCH_NAME }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+      - name: Python Ruff Lint and Format
+        uses: adityabhangle658/ruff-python-lint-format-check-pr@v1.0.3
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+      - name: Install project
+        run: poetry install --no-interaction
