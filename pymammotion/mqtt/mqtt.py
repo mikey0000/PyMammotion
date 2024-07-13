@@ -15,6 +15,7 @@ from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.luba.base import BaseLuba
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.proto import luba_msg_pb2
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 
 logger = getLogger(__name__)
 
