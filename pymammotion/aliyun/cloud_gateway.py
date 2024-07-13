@@ -530,7 +530,7 @@ class CloudIOTGateway:
             params={
                 "args": {"content": self.converter.printBase64Binary(command)},
                 "identifier": "device_protobuf_sync_service",
-                "iotId": f"{iotId}",
+                "iotId": f"{iot_id}",
             },
             request=request,
             version="1.0",
