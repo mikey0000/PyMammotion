@@ -1,5 +1,5 @@
 [tool.poetry]
-name        = "pyluba"
+name        = "pymammotion"
 version     = "0.0.37"
 license     = "GNU-3.0"
 description = ""
@@ -9,7 +9,7 @@ authors     = [
     "Jan Dalheimer <jan@dalheimer.de>",
     "jLynx <@jlynx>"
 ]
-packages = [{include = "pyluba"}]
+packages = [{include = "pymammotion"}]
 
 
 [tool.poetry.dependencies]
@@ -58,12 +58,12 @@ push            = false
 
 [tool.bumpver.file_patterns]
 "pyproject.toml" = ['current_version = "{version}"', 'version     = "{version}"']
-"src/pyluba/__init__.py" = ["{version}"]
+"src/pymammotion/__init__.py" = ["{version}"]
 "setup.cfg" = ["version = {version}"]
 "README.md" = ['\[SemVer {version}\]', 'img.shields.io/static/v1.svg?label=SemVer&message={version}&color=blue']
 
 [tool.setuptools.package-data]
-pyluba = ["py.typed"]
+pymammotion = ["py.typed"]
 
 
 [tool.pylint.MAIN]
@@ -373,7 +373,7 @@ max-line-length-suggestions = 72
 
 [tool.ruff]
 required-version = ">=0.4.3"
-exclude = ['pyluba/proto/*', 'tests/*']
+exclude = ['pymammotion/proto/*', 'tests/*']
 
 [tool.ruff.lint]
 select = [
