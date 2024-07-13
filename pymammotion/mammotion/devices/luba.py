@@ -23,7 +23,6 @@ from bleak_retry_connector import (
 from pymammotion.bluetooth import BleMessage
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
-from pymammotion.proto.dev_net import DevNet
 from pymammotion.proto.luba_msg import LubaMsg
 
 

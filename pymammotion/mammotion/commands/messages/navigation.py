@@ -7,7 +7,7 @@ from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.plan import Plan
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
-from pymammotion.proto.luba_msg import LubaMsg, MsgCmdType, MsgDevice, MsgAttr
+from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 from pymammotion.proto.mctrl_nav import (
     AppRequestCoverPathsT,
     MctlNav,

@@ -1,4 +1,5 @@
 from google.protobuf.message import DecodeError
+
 from pymammotion.proto import luba_msg_pb2
 
 
