@@ -6,4 +6,4 @@ repos:
         args:
           - --fix
       - id: ruff-format
-        files: ^((pyluba|tests)/.+)?[^/]+\.(py|pyi)$
+        files: ^((pymammotion|tests)/.+)?[^/]+\.(py|pyi)$
