@@ -1,3 +1,5 @@
+"""Module for interacting with Aliyun Cloud IoT Gateway."""
+
 import base64
 import hashlib
 import hmac
@@ -30,9 +32,6 @@ from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
 
-# init client
-
-
 MOVE_HEADERS = (
     "x-ca-signature",
     "x-ca-signature-headers",
@@ -47,6 +46,8 @@ MOVE_HEADERS = (
 
 
 class CloudIOTGateway:
+    """Class for interacting with Aliyun Cloud IoT Gateway."""
+
     _client_id = ""
     _device_sn = ""
     _utdid = ""
@@ -61,19 +62,20 @@ class CloudIOTGateway:
     converter = DatatypeConverter()
 
     def __init__(self):
+        """Initialize the CloudIOTGateway."""
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
         self.domain = ALIYUN_DOMAIN
 
-        self._client_id = self.generate_hardware_string(8)  # 8 charatters
-        self._device_sn = self.generate_hardware_string(32)  # 32 charatters
-        self._utdid = self.generate_hardware_string(32)  # 32 charatters
+        self._client_id = self.generate_hardware_string(8)  # 8 characters
+        self._device_sn = self.generate_hardware_string(32)  # 32 characters
+        self._utdid = self.generate_hardware_string(32)  # 32 characters
 
     @staticmethod
     def generate_random_string(length):
+        """Generate a random string of specified length."""
         characters = string.ascii_letters + string.digits
-        random_string = "".join(random.choice(characters) for _ in range(length))
-        return random_string
+        return "".join(random.choice(characters) for _ in range(length))
 
     @staticmethod
     def generate_hardware_string(length) -> str:
@@ -82,28 +84,24 @@ class CloudIOTGateway:
         return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
 
     def sign(self, data):
+        """Generate signature for the given data."""
         keys = ["appKey", "clientId", "deviceSn", "timestamp"]
         concatenated_str = ""
         for key in keys:
             concatenated_str += f"{key}{data.get(key, '')}"
 
-        logger.debug(f"sign(), toSignStr = {concatenated_str}")
+        logger.debug("sign(), toSignStr = %s", concatenated_str)
 
-        sign = hmac.new(
+        return hmac.new(
             self._app_secret.encode("utf-8"),
             concatenated_str.encode("utf-8"),
             hashlib.sha1,
         ).hexdigest()
 
-        return sign
-
     def get_region(self, country_code: str, auth_code: str):
-        # shim out the regions?
-        #  https://api.link.aliyun.com/living/account/region/get?x-ca-request-id=59abc767-fbbc-4333-9127-e65d792133a8
-        # x-ca-request-id is a random UUID on each request
-
+        """Get the region based on country code and auth code."""
         config = Config(
-            app_key=self._app_key,  # correct
+            app_key=self._app_key,
             app_secret=self._app_secret,
             domain=self.domain,
         )
@@ -123,7 +121,6 @@ class CloudIOTGateway:
         )
 
         # send request
-        # possibly need to do this ourselves
         response = client.do_request(
             "/living/account/region/get", "https", "POST", None, body, RuntimeOptions()
         )
@@ -132,36 +129,36 @@ class CloudIOTGateway:
         logger.debug(response.status_code)
         logger.debug(response.body)
 
-        # Decodifica il corpo della risposta
+        # Decode the response body
         response_body_str = response.body.decode("utf-8")
 
-        # Carica la stringa JSON in un dizionario
+        # Load the JSON string into a dictionary
         response_body_dict = json.loads(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in getting regions: " + response_body_dict["msg"])
-        else:
-            self._region = RegionResponse.from_dict(response_body_dict)
-            logger.debug("Endpoint : " + self._region.data.mqttEndpoint)
+
+        self._region = RegionResponse.from_dict(response_body_dict)
+        logger.debug("Endpoint: %s", self._region.data.mqttEndpoint)
 
         return response.body
 
     def aep_handle(self):
-        # https://api.link.aliyun.com/app/aepauth/handle
+        """Handle AEP authentication."""
         aep_domain = self.domain
 
         if self._region.data.apiGatewayEndpoint is not None:
             aep_domain = self._region.data.apiGatewayEndpoint
 
         config = Config(
-            app_key=self._app_key,  # correct
+            app_key=self._app_key,
             app_secret=self._app_secret,
             domain=aep_domain,
         )
         client = Client(config)
 
         request = CommonParams(api_ver="1.0.0", language="en-US")
-        logger.debug("client id ", self._client_id)
+        logger.debug("client id %s", self._client_id)
         time_now = time.time()
         data_to_sign = {
             "appKey": self._app_key,
@@ -185,7 +182,6 @@ class CloudIOTGateway:
         )
 
         # send request
-        # possibly need to do this ourselves
         response = client.do_request(
             "/app/aepauth/handle", "https", "POST", None, body, RuntimeOptions()
         )
@@ -202,16 +198,15 @@ class CloudIOTGateway:
             raise Exception(
                 "Error in getting mqtt credentials: " + response_body_dict["msg"]
             )
-        else:
-            self._aep_response = AepResponse.from_dict(response_body_dict)
+
+        self._aep_response = AepResponse.from_dict(response_body_dict)
 
         logger.debug(response_body_dict)
 
         return response.body
 
-    # returns vid
-
     async def connect(self):
+        """Connect to the Aliyun Cloud IoT Gateway."""
         region_url = "sdk.openaccount.aliyun.com"
         async with ClientSession() as session:
             headers = {
@@ -276,15 +271,14 @@ class CloudIOTGateway:
             async with session.post(
                 f"https://{region_url}/api/prd/connect.json",
                 headers=headers,
-                params=dict(request=json.dumps(_bodyParam, separators=(",", ":"))),
+                params={"request": json.dumps(_bodyParam, separators=(",", ":"))},
             ) as resp:
                 data = await resp.json()
                 self._connect_response = ConnectResponse.from_dict(data)
                 logger.debug(data)
 
     async def login_by_oauth(self, country_code: str, auth_code: str):
-        """loginbyoauth.json."""
-
+        """Login by OAuth."""
         region_url = self._region.data.oaApiGatewayEndpoint
 
         async with ClientSession() as session:
@@ -345,24 +339,19 @@ class CloudIOTGateway:
             async with session.post(
                 f"https://{region_url}/api/prd/loginbyoauth.json",
                 headers=headers,
-                params=dict(
-                    loginByOauthRequest=json.dumps(_bodyParam, separators=(",", ":"))
-                ),
+                params={
+                    "loginByOauthRequest": json.dumps(_bodyParam, separators=(",", ":"))
+                },
             ) as resp:
                 data = await resp.json()
                 logger.debug(data)
 
                 self._login_by_oauth_response = LoginByOAuthResponse.from_dict(data)
 
-        # self._region = response.body.data
-
-        # return response.body
-
-        # headers require sid vid or at a minimuim vid which comes from prd/connect.json
-
     def session_by_auth_code(self):
+        """Create a session by auth code."""
         config = Config(
-            app_key=self._app_key,  # correct
+            app_key=self._app_key,
             app_secret=self._app_secret,
             domain=self._region.data.apiGatewayEndpoint,
         )
@@ -384,7 +373,6 @@ class CloudIOTGateway:
         )
 
         # send request
-        # possibly need to do this ourselves
         response = client.do_request(
             "/account/createSessionByAuthCode",
             "https",
@@ -398,26 +386,27 @@ class CloudIOTGateway:
         logger.debug(response.status_code)
         logger.debug(response.body)
 
-        # Decodifica il corpo della risposta
+        # Decode the response body
         response_body_str = response.body.decode("utf-8")
 
-        # Carica la stringa JSON in un dizionario
+        # Load the JSON string into a dictionary
         response_body_dict = json.loads(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
-        else:
-            self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(
-                response_body_dict
-            )
+
+        self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(
+            response_body_dict
+        )
 
         return response.body
 
     def check_or_refresh_session(self):
-        if self.load_saved_params() == False:
+        """Check or refresh the session."""
+        if self.load_saved_params() is False:
             return False
         config = Config(
-            app_key=self._app_key,  # correct
+            app_key=self._app_key,
             app_secret=self._app_secret,
             domain=self._region.data.apiGatewayEndpoint,
         )
@@ -457,11 +446,12 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Carica la stringa JSON in un dizionario
-        response_body_dict = json.loads(response_body_str)
+        json.loads(response_body_str)
 
     def list_binding_by_account(self):
+        """List bindings by account."""
         config = Config(
-            app_key=self._app_key,  # correct
+            app_key=self._app_key,
             app_secret=self._app_secret,
             domain=self._region.data.apiGatewayEndpoint,
         )
@@ -482,7 +472,6 @@ class CloudIOTGateway:
         )
 
         # send request
-        # possibly need to do this ourselves
         response = client.do_request(
             "/uc/listBindingByAccount", "https", "POST", None, body, RuntimeOptions()
         )
@@ -491,23 +480,23 @@ class CloudIOTGateway:
         logger.debug(response.status_code)
         logger.debug(response.body)
 
-        # self._region = response.body.data
-        # Decodifica il corpo della risposta
+        # Decode the response body
         response_body_str = response.body.decode("utf-8")
 
-        # Carica la stringa JSON in un dizionario
+        # Load the JSON string into a dictionary
         response_body_dict = json.loads(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
-        else:
-            self._listing_dev_by_account_response = (
-                ListingDevByAccountResponse.from_dict(response_body_dict)
-            )
 
-    def send_cloud_command(self, command: bytes):
+        self._listing_dev_by_account_response = (
+            ListingDevByAccountResponse.from_dict(response_body_dict)
+        )
+
+    def send_cloud_command(self, iot_id: str, command: bytes) -> str:
+        """Send a cloud command to the specified IoT device."""
         config = Config(
-            app_key=self._app_key,  # correct
+            app_key=self._app_key,
             app_secret=self._app_secret,
             domain=self._region.data.apiGatewayEndpoint,
         )
@@ -522,19 +511,21 @@ class CloudIOTGateway:
         )
 
         # TODO move to using  InvokeThingServiceRequest()
+
+        message_id = str(uuid.uuid4())
+
         body = IoTApiRequest(
-            id=str(uuid.uuid4()),
+            id=message_id,
             params={
                 "args": {"content": self.converter.printBase64Binary(command)},
                 "identifier": "device_protobuf_sync_service",
-                "iotId": "MbXcDE2X63CENA0lPGIo000000",  # TODO get iotId from listbybinding request
+                "iotId": f"{iot_id}",
             },
             request=request,
             version="1.0",
         )
 
         # send request
-        # possibly need to do this ourselves
         response = client.do_request(
             "/thing/service/invoke", "https", "POST", None, body, RuntimeOptions()
         )
@@ -543,9 +534,15 @@ class CloudIOTGateway:
         logger.debug(response.status_code)
         logger.debug(response.body)
 
-        # self._region = response.body.data
-        # Decodifica il corpo della risposta
         response_body_str = response.body.decode("utf-8")
-
-        # Carica la stringa JSON in un dizionario
         response_body_dict = json.loads(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
+            logger.error(
+                "Error in sending cloud command: %s - %s",
+                str(response_body_dict.get("code")),
+                str(response_body_dict["msg"]),
+            )
+            return ""
+
+        return message_id

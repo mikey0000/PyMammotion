@@ -1,3 +1,5 @@
+"""MammotionMQTT."""
+
 import hashlib
 import hmac
 import json
@@ -8,22 +10,18 @@ from typing import Callable, Optional, cast
 from linkkit.linkkit import LinkKit
 from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
 
-from pymammotion.data.model import RapidState
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.luba.base import BaseLuba
-from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.proto import luba_msg_pb2
 
 logger = getLogger(__name__)
 
 
-# with sqlite3.connect("messages.db") as conn:
-#     conn.execute("CREATE TABLE IF NOT EXISTS messages (topic TEXT, timestamp INTEGER, payload TEXT)")
+class MammotionMQTT:
+    """MQTT client for pymammotion."""
 
-
-class LubaMQTT(BaseLuba):
     _cloud_client = None
 
     def __init__(
@@ -35,11 +33,13 @@ class LubaMQTT(BaseLuba):
         iot_token: str,
         client_id: Optional[str] = None,
     ):
+        """Create instance of MammotionMQTT."""
         super().__init__()
 
         self.on_connected: Optional[Callable[[], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
         self.on_disconnected: Optional[Callable[[], None]] = None
+        self.on_message: Optional[Callable[[str, str, str], None]] = None
 
         self._product_key = product_key
         self._device_name = device_name
@@ -90,11 +90,13 @@ class LubaMQTT(BaseLuba):
 
     # region Connection handling
     def connect(self):
+        """Connect to MQTT Server."""
         logger.info("Connecting...")
         self._client.connect(host=self._mqtt_host)
         self._client.loop_forever()
 
     def connect_async(self):
+        """Connect async to MQTT Server."""
         logger.info("Connecting...")
         self._linkkit_client.thing_setup()
         self._linkkit_client.connect_async()
@@ -103,14 +105,16 @@ class LubaMQTT(BaseLuba):
         self._linkkit_client.start_worker_loop()
 
     def disconnect(self):
+        """Disconnect from MQTT Server."""
         logger.info("Disconnecting...")
         self._linkkit_client.disconnect()
         self._client.disconnect()
         self._client.loop_stop()
 
     def _thing_on_thing_enable(self, user_data):
-        print("on_thing_enable")
-        # print('subscribe_topic, topic:%s' % echo_topic)
+        """Is called when Thing is enabled."""
+        logger.debug("on_thing_enable")
+        # logger.debug('subscribe_topic, topic:%s' % echo_topic)
         # self._linkkit_client.subscribe_topic(echo_topic, 0)
         self._linkkit_client.subscribe_topic(
             f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
@@ -144,23 +148,30 @@ class LubaMQTT(BaseLuba):
         )
 
         # self._linkkit_client.query_ota_firmware()
-        command = MammotionCommand(device_name="Luba")
-        self._cloud_client.send_cloud_command(command.get_report_cfg())
+        # command = MammotionCommand(device_name="Luba")
+        # self._cloud_client.send_cloud_command(command.get_report_cfg())
 
     def _thing_on_topic_message(self, topic, payload, qos, user_data):
-        print(
-            "on_topic_message, receive message, topic:%s, payload:%s, qos:%d"
-            % (topic, payload, qos)
+        """Is called when thing topic comes in."""
+        logger.debug(
+            "on_topic_message, receive message, topic:%s, payload:%s, qos:%d",
+            topic, payload, qos,
         )
+        payload = json.loads(payload)
+        iot_id = payload.get("params", {}).get("iotId", "")
+        if iot_id != "" and self.on_message:
+            self.on_message(topic, payload, iot_id)
 
     def _thing_on_connect(self, session_flag, rc, user_data):
-        print("on_connect, session_flag:%d, rc:%d" % (session_flag, rc))
+        """Is called on thing connect."""
+        logger.debug("on_connect, session_flag:%d, rc:%d", session_flag, rc)
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
 
     def _on_connect(self, _client, _userdata, _flags: dict, rc: int):
+        """Is called when on connect."""
         if rc == 0:
-            logger.info("Connected")
+            logger.debug("Connected")
             self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/#")
             self._client.subscribe(
                 f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
@@ -186,18 +197,15 @@ class LubaMQTT(BaseLuba):
                 self.on_error(connack_string(rc))
 
     def _on_disconnect(self, _client, _userdata, rc: int):
+        """Is called on disconnect."""
         logger.info("Disconnected")
         logger.debug(rc)
         if self.on_disconnected:
             self.on_disconnected()
 
-    # endregion
-
     def _on_message(self, _client, _userdata, message: MQTTMessage):
+        """Is called when message is received."""
         logger.info("Message on topic %s", message.topic)
-        # with sqlite3.connect("messages.db") as conn:
-        #     conn.execute("INSERT INTO messages (topic, timestamp, payload) VALUES (?, ?, ?)",
-        #                  (message.topic, int(message.timestamp), message.payload.decode("utf-8")))
 
         payload = json.loads(message.payload)
         if message.topic.endswith("/app/down/thing/events"):
@@ -205,26 +213,24 @@ class LubaMQTT(BaseLuba):
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
                 content = cast(luba_msg_pb2, params.value.content)
-                if (
-                    content.WhichOneof("subMsg") == "sys"
-                    and content.sys.WhichOneof("subSysMsg") == "systemRapidState"
-                ):
-                    state = RapidState.from_raw(content.sys.systemRapidState.data)
-                    self._set_rapid_state(state)
-                else:
-                    logger.info(
-                        "Unhandled protobuf event: %s", content.WhichOneof("subMsg")
-                    )
+
+                logger.info(
+                    "Unhandled protobuf event: %s", content.WhichOneof("subMsg")
+                )
             elif params.identifier == "device_warning_event":
-                if self.on_warning:
-                    self.on_warning(params.value.code)
+                logger.debug("identifier event: %s", params.identifier)
             else:
                 logger.info("Unhandled event: %s", params.identifier)
         elif message.topic.endswith("/app/down/thing/status"):
             status = ThingStatusMessage(**payload)
-            self._set_status(status.params.status.value)
+            logger.debug(status.params.status.value)
         elif message.topic.endswith("/app/down/thing/properties"):
             properties = ThingPropertiesMessage(**payload)
+            logger.debug("properties: %s", properties)
         else:
-            logger.info("Unhandled topic: %s", message.topic)
+            logger.debug("Unhandled topic: %s", message.topic)
             logger.debug(payload)
+
+    def _get_cloud_client(self) -> Optional[CloudIOTGateway]:
+        """Return internal cloud client."""
+        return self._cloud_client
