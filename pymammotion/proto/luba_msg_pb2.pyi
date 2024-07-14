@@ -1,10 +1,10 @@
-from pyluba.proto import mctrl_driver_pb2 as _mctrl_driver_pb2
-from pyluba.proto import mctrl_nav_pb2 as _mctrl_nav_pb2
-from pyluba.proto import mctrl_sys_pb2 as _mctrl_sys_pb2
-from pyluba.proto import dev_net_pb2 as _dev_net_pb2
-from pyluba.proto import mctrl_ota_pb2 as _mctrl_ota_pb2
-from pyluba.proto import luba_mul_pb2 as _luba_mul_pb2
-from pyluba.proto import mctrl_pept_pb2 as _mctrl_pept_pb2
+from pymammotion.proto import mctrl_driver_pb2 as _mctrl_driver_pb2
+from pymammotion.proto import mctrl_nav_pb2 as _mctrl_nav_pb2
+from pymammotion.proto import mctrl_sys_pb2 as _mctrl_sys_pb2
+from pymammotion.proto import dev_net_pb2 as _dev_net_pb2
+from pymammotion.proto import mctrl_ota_pb2 as _mctrl_ota_pb2
+from pymammotion.proto import luba_mul_pb2 as _luba_mul_pb2
+from pymammotion.proto import mctrl_pept_pb2 as _mctrl_pept_pb2
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-import "pyluba/proto/common.proto";
+import "pymammotion/proto/common.proto";
 
 message NavLatLonUp {
   double lat = 1;

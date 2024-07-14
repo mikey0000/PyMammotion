@@ -15,16 +15,18 @@ from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequ
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
 
-from pyluba.aliyun.dataclass.aep_response import AepResponse
-from pyluba.aliyun.dataclass.connect_response import ConnectResponse
-from pyluba.aliyun.dataclass.dev_by_account_response import ListingDevByAccountResponse
-from pyluba.aliyun.dataclass.login_by_oauth_response import LoginByOAuthResponse
-from pyluba.aliyun.dataclass.regions_response import RegionResponse
-from pyluba.aliyun.dataclass.session_by_authcode_response import (
+from pymammotion.aliyun.dataclass.aep_response import AepResponse
+from pymammotion.aliyun.dataclass.connect_response import ConnectResponse
+from pymammotion.aliyun.dataclass.dev_by_account_response import (
+    ListingDevByAccountResponse,
+)
+from pymammotion.aliyun.dataclass.login_by_oauth_response import LoginByOAuthResponse
+from pymammotion.aliyun.dataclass.regions_response import RegionResponse
+from pymammotion.aliyun.dataclass.session_by_authcode_response import (
     SessionByAuthCodeResponse,
 )
-from pyluba.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
-from pyluba.utility.datatype_converter import DatatypeConverter
+from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
+from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
 

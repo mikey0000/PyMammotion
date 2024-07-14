@@ -1,11 +1,11 @@
 import asyncio
 from threading import Thread
 
-from pyluba import LubaBLE
-from pyluba.bluetooth import BleMessage
-from pyluba.event import BleNotificationEvent
-from pyluba.event.event import MoveEvent
-from pyluba.mammotion.control.joystick import JoystickControl
+from pymammotion import LubaBLE
+from pymammotion.bluetooth import BleMessage
+from pymammotion.event import BleNotificationEvent
+from pymammotion.event.event import MoveEvent
+from pymammotion.mammotion.control.joystick import JoystickControl
 
 moveEvt = MoveEvent()
 bleNotificationEvt = BleNotificationEvent()

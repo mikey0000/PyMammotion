@@ -1,9 +1,9 @@
-from pyluba.mammotion.commands.messages.navigation import MessageNavigation
-from pyluba.mammotion.commands.messages.network import MessageNetwork
-from pyluba.mammotion.commands.messages.ota import MessageOta
-from pyluba.mammotion.commands.messages.system import MessageSystem
-from pyluba.mammotion.commands.messages.video import MessageVideo
-from pyluba.proto import dev_net_pb2, luba_msg_pb2
+from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
+from pymammotion.mammotion.commands.messages.network import MessageNetwork
+from pymammotion.mammotion.commands.messages.ota import MessageOta
+from pymammotion.mammotion.commands.messages.system import MessageSystem
+from pymammotion.mammotion.commands.messages.video import MessageVideo
+from pymammotion.proto import dev_net_pb2, luba_msg_pb2
 
 
 class MammotionCommand(

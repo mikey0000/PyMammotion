@@ -1,11 +1,11 @@
 from bleak import BleakClient, BleakScanner, BLEDevice
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
-from pyluba.bluetooth.const import (
+from pymammotion.bluetooth.const import (
     SERVICE_CHANGED_CHARACTERISTIC,
     UUID_NOTIFICATION_CHARACTERISTIC,
 )
-from pyluba.event.event import BleNotificationEvent
+from pymammotion.event.event import BleNotificationEvent
 
 # TODO setup for each Luba
 address = "90:38:0C:6E:EE:9E"

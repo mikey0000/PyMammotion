@@ -1,5 +1,5 @@
 # === sendOrderMsg_Ota ===
-from pyluba.proto import luba_msg_pb2, mctrl_ota_pb2
+from pymammotion.proto import luba_msg_pb2, mctrl_ota_pb2
 
 
 class MessageOta:

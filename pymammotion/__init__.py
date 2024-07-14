@@ -9,12 +9,12 @@ import logging
 import os
 
 # works outside HA on its own
-from pyluba.bluetooth.ble import LubaBLE
-from pyluba.http.http import LubaHTTP, connect_http
+from pymammotion.bluetooth.ble import LubaBLE
+from pymammotion.http.http import LubaHTTP, connect_http
 
 # TODO make a working device that will work outside HA too.
-from pyluba.mammotion.devices import MammotionBaseBLEDevice
-from pyluba.mqtt.mqtt import LubaMQTT, logger
+from pymammotion.mammotion.devices import MammotionBaseBLEDevice
+from pymammotion.mqtt.mqtt import LubaMQTT, logger
 
 # TODO provide interface to pick between mqtt/cloud/bluetooth
 

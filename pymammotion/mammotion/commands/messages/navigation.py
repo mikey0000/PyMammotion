@@ -3,12 +3,12 @@ import logging
 from abc import ABC
 from typing import List
 
-from pyluba.data.model import GenerateRouteInformation
-from pyluba.data.model.plan import Plan
-from pyluba.data.model.region_data import RegionData
-from pyluba.mammotion.commands.abstract_message import AbstractMessage
-from pyluba.proto.luba_msg import LubaMsg, MsgCmdType, MsgDevice, MsgAttr
-from pyluba.proto.mctrl_nav import (
+from pymammotion.data.model import GenerateRouteInformation
+from pymammotion.data.model.plan import Plan
+from pymammotion.data.model.region_data import RegionData
+from pymammotion.mammotion.commands.abstract_message import AbstractMessage
+from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
+from pymammotion.proto.mctrl_nav import (
     AppRequestCoverPathsT,
     MctlNav,
     NavGetCommData,

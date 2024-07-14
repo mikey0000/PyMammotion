@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-import "pyluba/proto/mctrl_driver.proto";
-import "pyluba/proto/mctrl_nav.proto";
-import "pyluba/proto/mctrl_sys.proto";
-import "pyluba/proto/dev_net.proto";
-import "pyluba/proto/mctrl_ota.proto";
-import "pyluba/proto/luba_mul.proto";
-import "pyluba/proto/mctrl_pept.proto";
+import "pymammotion/proto/mctrl_driver.proto";
+import "pymammotion/proto/mctrl_nav.proto";
+import "pymammotion/proto/mctrl_sys.proto";
+import "pymammotion/proto/dev_net.proto";
+import "pymammotion/proto/mctrl_ota.proto";
+import "pymammotion/proto/luba_mul.proto";
+import "pymammotion/proto/mctrl_pept.proto";
 
 message MsgNull {
 }

@@ -1,7 +1,7 @@
 # === sendOrderMsg_Video ===
-from pyluba.mammotion.commands.abstract_message import AbstractMessage
-from pyluba.proto import luba_msg_pb2, luba_mul_pb2
-from pyluba.utility.device_type import DeviceType
+from pymammotion.mammotion.commands.abstract_message import AbstractMessage
+from pymammotion.proto import luba_msg_pb2, luba_mul_pb2
+from pymammotion.utility.device_type import DeviceType
 
 
 class MessageVideo(AbstractMessage):
