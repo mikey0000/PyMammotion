@@ -1,4 +1,5 @@
 """Device control of mammotion robots over bluetooth or MQTT."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +8,7 @@ import json
 import logging
 from abc import abstractmethod
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import betterproto
@@ -35,8 +36,15 @@ class CharacteristicMissingError(Exception):
 
 
 def _sb_uuid(comms_type: str = "service") -> UUID | str:
-    """Return Mammotion UUID."""
+    """Return Mammotion UUID.
 
+    Args:
+        comms_type (str): The type of communication (tx, rx, or service).
+
+    Returns:
+        UUID | str: The UUID for the specified communication type or an error message.
+
+    """
     _uuid = {"tx": "ff01", "rx": "ff02", "service": "2A05"}
 
     if comms_type in _uuid:
@@ -58,10 +66,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def slashescape(err):
-    """Codecs error handler. err is UnicodeDecode instance. return
-    a tuple with a replacement for the unencodable part of the input
-    and a position where encoding should continue.
-    """
+    """Escape a slash character."""
     # print err, dir(err), err.start, err.end, err.object[:err.start]
     thebyte = err.object[err.start : err.end]
     repl = "\\x" + hex(ord(thebyte))[2:]
@@ -78,12 +83,16 @@ def _handle_timeout(fut: asyncio.Future[None]) -> None:
 
 
 class ConnectionPreference(Enum):
+    """Enum for connection preference."""
+
     EITHER = 0
     WIFI = 1
     BLUETOOTH = 2
 
 
 class MammotionDevice:
+    """Represents a Mammotion device."""
+
     _ble_device: MammotionBaseBLEDevice | None = None
 
     def __init__(
@@ -91,20 +100,26 @@ class MammotionDevice:
         ble_device: BLEDevice,
         preference: ConnectionPreference = ConnectionPreference.EITHER,
     ) -> None:
+        """Initialize MammotionDevice."""
         if ble_device:
             self._ble_device = MammotionBaseBLEDevice(ble_device)
             self._preference = preference
 
     async def send_command(self, key: str):
+        """Send a command to the device."""
         return await self._ble_device.command(key)
 
 
 def has_field(message: betterproto.Message) -> bool:
+    """Check if the message has any fields serialized on wire."""
     return betterproto.serialized_on_wire(message)
 
 
 class MammotionBaseDevice:
+    """Base class for Mammotion devices."""
+
     def __init__(self) -> None:
+        """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
         self._luba_msg = LubaMsg()
@@ -112,75 +127,84 @@ class MammotionBaseDevice:
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
-        # proto_luba = luba_msg_pb2.LubaMsg()
-        # proto_luba.ParseFromString(data)
         tmp_msg = LubaMsg().parse(data)
         res = betterproto.which_one_of(tmp_msg, "LubaSubMsg")
         match res[0]:
             case "nav":
-                nav_sub_msg = betterproto.which_one_of(tmp_msg.nav, "SubNavMsg")
-                nav = self._raw_data.get("nav")
-                if nav is None:
-                    self._raw_data["nav"] = {}
-                if isinstance(nav_sub_msg[1], int):
-                    self._raw_data["net"][nav_sub_msg[0]] = nav_sub_msg[1]
-                else:
-                    self._raw_data["nav"][nav_sub_msg[0]] = nav_sub_msg[1].to_dict(
-                        casing=betterproto.Casing.SNAKE
-                    )
+                self._update_nav_data(tmp_msg)
             case "sys":
-                sys_sub_msg = betterproto.which_one_of(tmp_msg.sys, "SubSysMsg")
-                sys = self._raw_data.get("sys")
-                if sys is None:
-                    self._raw_data["sys"] = {}
-                self._raw_data["sys"][sys_sub_msg[0]] = sys_sub_msg[1].to_dict(
-                    casing=betterproto.Casing.SNAKE
-                )
+                self._update_sys_data(tmp_msg)
             case "driver":
-                drv_sub_msg = betterproto.which_one_of(tmp_msg.driver, "SubDrvMsg")
-                drv = self._raw_data.get("driver")
-                if drv is None:
-                    self._raw_data["driver"] = {}
-                self._raw_data["driver"][drv_sub_msg[0]] = drv_sub_msg[1].to_dict(
-                    casing=betterproto.Casing.SNAKE
-                )
+                self._update_driver_data(tmp_msg)
             case "net":
-                net_sub_msg = betterproto.which_one_of(tmp_msg.net, "NetSubType")
-                net = self._raw_data.get("net")
-                if net is None:
-                    self._raw_data["net"] = {}
-                if isinstance(net_sub_msg[1], int):
-                    self._raw_data["net"][net_sub_msg[0]] = net_sub_msg[1]
-                else:
-                    self._raw_data["net"][net_sub_msg[0]] = net_sub_msg[1].to_dict(
-                        casing=betterproto.Casing.SNAKE
-                    )
-
+                self._update_net_data(tmp_msg)
             case "mul":
-                mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, "SubMul")
-                mul = self._raw_data.get("mul")
-                if mul is None:
-                    self._raw_data["mul"] = {}
-                self._raw_data["mul"][mul_sub_msg[0]] = mul_sub_msg[1].to_dict(
-                    casing=betterproto.Casing.SNAKE
-                )
+                self._update_mul_data(tmp_msg)
             case "ota":
-                ota_sub_msg = betterproto.which_one_of(tmp_msg.ota, "SubOtaMsg")
-                ota = self._raw_data.get("ota")
-                if ota is None:
-                    self._raw_data["ota"] = {}
-                self._raw_data["ota"][ota_sub_msg[0]] = ota_sub_msg[1].to_dict(
-                    casing=betterproto.Casing.SNAKE
-                )
+                self._update_ota_data(tmp_msg)
 
         self._luba_msg = MowingDevice.from_raw(self._raw_data)
 
+    def _update_nav_data(self, tmp_msg):
+        """Update navigation data."""
+        nav_sub_msg = betterproto.which_one_of(tmp_msg.nav, "SubNavMsg")
+        nav = self._raw_data.get("nav", {})
+        if isinstance(nav_sub_msg[1], int):
+            nav[nav_sub_msg[0]] = nav_sub_msg[1]
+        else:
+            nav[nav_sub_msg[0]] = nav_sub_msg[1].to_dict(
+                casing=betterproto.Casing.SNAKE
+            )
+        self._raw_data["nav"] = nav
+
+    def _update_sys_data(self, tmp_msg):
+        """Update system data."""
+        sys_sub_msg = betterproto.which_one_of(tmp_msg.sys, "SubSysMsg")
+        sys = self._raw_data.get("sys", {})
+        sys[sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        self._raw_data["sys"] = sys
+
+    def _update_driver_data(self, tmp_msg):
+        """Update driver data."""
+        drv_sub_msg = betterproto.which_one_of(tmp_msg.driver, "SubDrvMsg")
+        drv = self._raw_data.get("driver", {})
+        drv[drv_sub_msg[0]] = drv_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        self._raw_data["driver"] = drv
+
+    def _update_net_data(self, tmp_msg):
+        """Update network data."""
+        net_sub_msg = betterproto.which_one_of(tmp_msg.net, "NetSubType")
+        net = self._raw_data.get("net", {})
+        if isinstance(net_sub_msg[1], int):
+            net[net_sub_msg[0]] = net_sub_msg[1]
+        else:
+            net[net_sub_msg[0]] = net_sub_msg[1].to_dict(
+                casing=betterproto.Casing.SNAKE
+            )
+        self._raw_data["net"] = net
+
+    def _update_mul_data(self, tmp_msg):
+        """Update mul data."""
+        mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, "SubMul")
+        mul = self._raw_data.get("mul", {})
+        mul[mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        self._raw_data["mul"] = mul
+
+    def _update_ota_data(self, tmp_msg):
+        """Update OTA data."""
+        ota_sub_msg = betterproto.which_one_of(tmp_msg.ota, "SubOtaMsg")
+        ota = self._raw_data.get("ota", {})
+        ota[ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        self._raw_data["ota"] = ota
+
     @property
     def raw_data(self) -> dict[str, Any]:
+        """Get the raw data of the device."""
         return self._raw_data
 
     @property
     def luba_msg(self) -> LubaMsg:
+        """Get the LubaMsg of the device."""
         return self._luba_msg
 
     @abstractmethod
@@ -192,23 +216,22 @@ class MammotionBaseDevice:
         """Send command to device and read response."""
 
     async def start_sync(self, retry: int):
+        """Start synchronization with the device."""
         await self._send_command("get_device_base_info", retry)
         await self._send_command("get_report_cfg", retry)
         await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
-
-        await self._send_command_with_args(
-            "allpowerfull_rw", id=5, context=1, rw=1
-        )
-        # RW_proto = luba_msg_pb2.LubaMsg()
-        # RW_proto.ParseFromString(RW)
-        # print(json_format.MessageToDict(RW_proto))
+        await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
 
     async def command(self, key: str, **kwargs):
+        """Send a command to the device."""
         return await self._send_command_with_args(key, **kwargs)
 
 
 class MammotionBaseBLEDevice(MammotionBaseDevice):
+    """Base class for Mammotion BLE devices."""
+
     def __init__(self, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
+        """Initialize MammotionBaseBLEDevice."""
         super().__init__()
         self._interface = f"hci{interface}"
         self._device = device
@@ -224,6 +247,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._key: str | None = None
 
     def update_device(self, device: BLEDevice) -> None:
+        """Update the BLE device."""
         self._device = device
 
     async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
@@ -239,11 +263,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 command_bytes = getattr(self._commands, key)(**kwargs)
                 return await self._send_command_locked(key, command_bytes)
             except BleakNotFoundError:
-                _LOGGER.error(
+                _LOGGER.exception(
                     "%s: device not found, no longer in range, or poor RSSI: %s",
                     self.name,
                     self.rssi,
-                    exc_info=True,
                 )
                 raise
             except CharacteristicMissingError as ex:
@@ -258,7 +281,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        # raise RuntimeError("Unreachable")
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
@@ -273,11 +295,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 command_bytes = getattr(self._commands, key)()
                 return await self._send_command_locked(key, command_bytes)
             except BleakNotFoundError:
-                _LOGGER.error(
+                _LOGGER.exception(
                     "%s: device not found, no longer in range, or poor RSSI: %s",
                     self.name,
                     self.rssi,
-                    exc_info=True,
                 )
                 raise
             except CharacteristicMissingError as ex:
@@ -292,7 +313,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug(
                     "%s: communication failed with:", self.name, exc_info=True
                 )
-        # raise RuntimeError("Unreachable")
 
     @property
     def name(self) -> str:
@@ -568,10 +588,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return await self._client.disconnect()
 
 
-"""Class for Cloud Device"""
-
-
 class MammotionBaseCloudDevice(MammotionBaseDevice):
+    """Base class for Mammotion Cloud devices."""
+
     def __init__(
         self,
         mqtt_client: MammotionMQTT,
@@ -580,6 +599,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         nick_name: str,
         **kwargs: Any,
     ) -> None:
+        """Initialize MammotionBaseCloudDevice."""
+        super().__init__()
         self._mqtt_client = mqtt_client
         self.iot_id = iot_id
         self.nick_name = nick_name
@@ -588,7 +609,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     def _on_mqtt_message(self, topic: str, payload: str) -> None:
         """Handle incoming MQTT messages."""
-        _LOGGER.debug(f"MQTT message received on topic {topic}: {payload}")
+        _LOGGER.debug("MQTT message received on topic %s: %s", topic, payload)
         payload = json.loads(payload)
         message_id = self._extract_message_id(payload)
         if message_id and message_id in self._command_futures:
@@ -600,32 +621,26 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
         future = self.loop.create_future()
-        message_id = self._mqtt_client._get_cloud_client().send_cloud_command(
+        message_id = self._mqtt_client.get_cloud_client().send_cloud_command(
             self.iot_id, key
         )
         if message_id != "":
             self._command_futures[message_id] = future
             try:
-                await asyncio.wait_for(
-                    future, timeout=TIMEOUT_CLOUD_RESPONSE
-                )
-                return None
+                return await asyncio.wait_for(future, timeout=TIMEOUT_CLOUD_RESPONSE)
             except asyncio.TimeoutError:
-                _LOGGER.error(f"Command '{key}' timed out")
-                return None
-        else:
-            return None
+                _LOGGER.error("Command '%s' timed out", key)
+        return None
 
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
-        pass
+        """Send command with arguments to device via MQTT and read response."""
 
     def _extract_message_id(self, payload: dict) -> str:
         """Extract the message ID from the payload."""
-        if "id" in payload:
-            return payload["id"]
-        return ""
+        return payload.get("id", "")
 
     def _extract_encoded_message(self, payload: dict) -> str:
+        """Extract the encoded message from the payload."""
         try:
             content = (
                 payload.get("data", {})
@@ -633,21 +648,18 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 .get("params", {})
                 .get("content", "")
             )
-            if isinstance(content, str):
-                return content
-            else:
-                return str(content)
-        except Exception as e:
-            _LOGGER.error(f"Error extracting encoded message: {e}, Payload: {payload}")
+            return str(content)
+        except AttributeError:
+            _LOGGER.error("Error extracting encoded message. Payload: %s", payload)
             return ""
 
     def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
-        """Parsing MQTT Message."""
+        """Parse the MQTT response."""
         if topic.endswith("/app/down/thing/events"):
             event = ThingEventMessage(**payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                self._update_raw_data(params.value.content)
+                self._update_raw_data(cast(bytes, params.value.content))
 
     async def _disconnect(self):
         """Disconnect the MQTT client."""
