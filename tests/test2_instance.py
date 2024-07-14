@@ -5,13 +5,16 @@ from threading import Thread
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 
+from pymammotion.data.model import RegionData
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice, has_field
+from pymammotion.proto.luba_msg import LubaMsg
 
 bleNotificationEvt = BleNotificationEvent()
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
+
 
 async def ble_heartbeat(luba_client):
     while True:
@@ -84,7 +87,7 @@ async def run(loop):
     # await luba_ble.command("return_to_dock")
     # await luba_ble.command("get_hash_response", total_frame=1, current_frame=1)
     counter = 30
-    while(counter > 0):
+    while (counter > 0):
         luba_device = await scan_for_luba()
         if luba_device is not None:
             luba_ble.update_device(luba_device)
@@ -93,8 +96,31 @@ async def run(loop):
         # await luba_ble._execute_disconnect_with_lock()
         await asyncio.sleep(60)
 
-        counter-=1
+        counter -= 1
 
+    # get all areas
+    hash_list_result = await luba_ble.command("get_all_boundary_hash_list", sub_cmd=3)
+    get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
+
+    #if current frame is less than total frame iterate
+    current_frame = get_hash_ack.current_frame
+    while current_frame != get_hash_ack.total_frame:
+        hash_response_result = await luba_ble.command("get_hash_response", total_frame=get_hash_ack.total_frame,
+                                                      current_frame=current_frame)
+        get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
+        # todo store get_hash_response_ack
+        current_frame += 1
+
+    regional_data = RegionData()
+    regional_data.sub_cmd = 2
+    regional_data.action = 8
+    regional_data.type = 3
+    regional_data.total_frame = 1
+    regional_data.current_frame = 1
+    regional_data_result = await luba_ble.command("get_regional_data", regional_data=regional_data)
+    commondata = LubaMsg().parse(regional_data_result).nav.toapp_get_commondata_ack
+
+    # app_request_cover_paths_t use hashlist from ??
 
     # asyncio.run(await ble_heartbeat(luba_ble))
     print("end run?")

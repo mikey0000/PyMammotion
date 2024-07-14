@@ -313,15 +313,15 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Send command--Get transfer area before charging pile")
         return self.send_order_msg_nav(build)
 
-    def get_regional_data(self, regional_data_bean: RegionData):
+    def get_regional_data(self, regional_data: RegionData):
         build = MctlNav(
             todev_get_commondata=NavGetCommData(
                 pver=1,
-                action=regional_data_bean.action,
-                type=regional_data_bean.type,
-                data_hash=regional_data_bean.hash,
-                total_frame=regional_data_bean.total_frame,
-                current_frame=regional_data_bean.current_frame,
+                action=regional_data.action,
+                type=regional_data.type,
+                data_hash=regional_data.hash,
+                total_frame=regional_data.total_frame,
+                current_frame=regional_data.current_frame,
                 sub_cmd=2,
             )
         )
