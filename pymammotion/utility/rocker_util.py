@@ -16,13 +16,36 @@ class RockerControlUtil:
 
     @classmethod
     def getInstance(cls):
-        """Generated source for method getInstance"""
+        """Return the instance of RockerControlUtil if it exists, otherwise create
+        a new instance.
+
+        If the instance of RockerControlUtil does not exist, a new instance is
+        created and returned.
+
+        Args:
+            cls (class): The class for which the instance is being retrieved.
+
+        Returns:
+            RockerControlUtil: The instance of RockerControlUtil.
+        """
         if cls.instance_ == None:
             cls.instance_ = RockerControlUtil()
         return cls.instance_
 
     def transfrom(self, f, f2):
-        """Generated source for method transfrom"""
+        """Perform a transformation based on the input angles and distance.
+
+        This method calculates the transformation based on the input angle 'f'
+        and distance 'f2'. It determines the radians based on the angle and
+        performs trigonometric calculations to update the list.
+
+        Args:
+            f (float): The input angle in degrees.
+            f2 (float): The input distance value.
+
+        Returns:
+            list: A list containing the transformed values based on the input parameters.
+        """
         radians = 0.0
         self.list_.clear()
         i = self.thresholdValue_2
@@ -55,7 +78,23 @@ class RockerControlUtil:
         return copy.copy(self.list_)
 
     def transfrom2(self, f, f2):
-        """Generated source for method transfrom2"""
+        """Calculate the transformation of input angles to radians and perform
+        trigonometric calculations.
+
+        This method takes two input parameters, f and f2, and calculates the
+        transformation of the input angle 'f' to radians. It then performs
+        trigonometric calculations based on the transformed angle and the input
+        value 'f2'.
+
+        Args:
+            self: The instance of the class.
+            f (float): The input angle in degrees.
+            f2 (float): The input value for trigonometric calculations.
+
+        Returns:
+            list: A list containing the results of trigonometric calculations based on the
+                input values.
+        """
         radians = 0.0
         self.list_.clear()
         i = self.thresholdValue_2
@@ -97,7 +136,22 @@ class RockerControlUtil:
         return copy.copy(self.list_)
 
     def transfrom3(self, f, f2):
-        """Generated source for method transfrom3"""
+        """Calculate the transformation of input angles to radians and perform
+        trigonometric calculations.
+
+        This method calculates the transformation of input angles to radians
+        based on certain threshold values. It then performs trigonometric
+        calculations using the transformed angles and input distance value.
+
+        Args:
+            self: The instance of the class.
+            f (float): The input angle value in degrees.
+            f2 (float): The input distance value.
+
+        Returns:
+            list: A list containing the calculated trigonometric values based on the input
+                angles and distance.
+        """
         radians = 0.0
         self.list_.clear()
         i = self.thresholdValue_2

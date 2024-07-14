@@ -18,6 +18,13 @@ class BaseLuba:
         self.on_status_change: Optional[Callable[[StatusType], None]] = None
 
     def _set_rapid_state(self, state: RapidState):
+        """Set the rapid state and trigger callbacks if certain state attributes
+        have changed.
+
+        Args:
+            state (RapidState): The new RapidState object to set.
+        """
+
         old_state = self._rapid_state
         self._rapid_state = state
         if old_state:
@@ -43,6 +50,13 @@ class BaseLuba:
                     )
 
     def _set_status(self, status: StatusType):
+        """Set the status of the object and trigger the on_status_change callback
+        if available.
+
+        Args:
+            status (StatusType): The status to be set for the object.
+        """
+
         self._status = status
         if self.on_status_change:
             self.on_status_change(status)
