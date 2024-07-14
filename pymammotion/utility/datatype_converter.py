@@ -16,6 +16,7 @@ class DatatypeConverter:
 
         Returns:
             list: The encode map for DatatypeConverter.
+
         """
 
         if DatatypeConverter.encode_map is None:
@@ -57,6 +58,7 @@ class DatatypeConverter:
 
         Returns:
             str: The Base64 binary representation of the input byte array.
+
         """
 
         if i2 is None:
@@ -85,6 +87,7 @@ class DatatypeConverter:
         Note:
             This function assumes that DatatypeConverter has a method 'encode' and
             'init_encode_map' for encoding.
+
         """
 
         DatatypeConverter.init_encode_map()  # Ensure encode_map is initialized

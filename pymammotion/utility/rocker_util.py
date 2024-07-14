@@ -27,6 +27,7 @@ class RockerControlUtil:
 
         Returns:
             RockerControlUtil: An instance of RockerControlUtil.
+
         """
         if cls.instance_ == None:
             cls.instance_ = RockerControlUtil()
@@ -45,6 +46,7 @@ class RockerControlUtil:
 
         Returns:
             list: A list containing the transformed coordinates.
+
         """
         radians = 0.0
         self.list_.clear()
@@ -94,6 +96,7 @@ class RockerControlUtil:
         Returns:
             list: A list containing the transformed values based on trigonometric
                 calculations.
+
         """
         radians = 0.0
         self.list_.clear()
@@ -152,6 +155,7 @@ class RockerControlUtil:
         Returns:
             list: A list containing the calculated values based on trigonometric
                 functions.
+
         """
         radians = 0.0
         self.list_.clear()

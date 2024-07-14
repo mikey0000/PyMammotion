@@ -43,6 +43,7 @@ class Periodic:
 
         Args:
             self: The instance of the class.
+
         """
 
         while True:
@@ -65,6 +66,7 @@ def periodic(period):
     Returns:
         function: A scheduler function that can be used as a decorator to run a function
             periodically.
+
     """
 
     def scheduler(fcn):
@@ -79,6 +81,7 @@ def periodic(period):
 
         Returns:
             function: An async function that will execute the input function periodically.
+
         """
 
         async def wrapper(*args, **kwargs):
@@ -91,6 +94,7 @@ def periodic(period):
             Args:
                 *args: Variable length argument list to be passed to the function.
                 **kwargs: Arbitrary keyword arguments to be passed to the function.
+
             """
 
             while True:

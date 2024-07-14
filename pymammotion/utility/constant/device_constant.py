@@ -221,6 +221,7 @@ def device_mode(value):
     Returns:
         str: The mode corresponding to the input value. Returns "Invalid mode" if no
             mode is found.
+
     """
 
     modes = {

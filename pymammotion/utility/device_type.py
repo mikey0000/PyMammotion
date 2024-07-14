@@ -40,6 +40,7 @@ class DeviceType(Enum):
 
         Returns:
             DeviceType: The corresponding DeviceType enum value based on the input value.
+
         """
 
         if value == 0:
@@ -64,6 +65,7 @@ class DeviceType(Enum):
 
         Returns:
             DeviceType: The type of device based on the provided information.
+
         """
 
         if not device_name and not product_key:
@@ -109,6 +111,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the device has 4G capability, False otherwise.
+
         """
 
         if not product_key:
@@ -132,6 +135,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the device is of type LUBA, False otherwise.
+
         """
 
         if not product_key:
@@ -152,6 +156,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the device type is LUBA 2 or higher, False otherwise.
+
         """
 
         if not product_key:
@@ -170,6 +175,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the device type is LUBA_YUKA, False otherwise.
+
         """
 
         return (
@@ -191,6 +197,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the device type is within the RTK range, False otherwise.
+
         """
 
         if not product_key:
@@ -214,6 +221,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the product key is in the predefined list, False otherwise.
+
         """
 
         if not product_key:
@@ -229,6 +237,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the product key is in the list of valid keys, False otherwise.
+
         """
 
         if not product_key:
@@ -256,6 +265,7 @@ class DeviceType(Enum):
 
         Returns:
             bool: True if the product key is in the predefined list, False otherwise.
+
         """
 
         if not product_key:

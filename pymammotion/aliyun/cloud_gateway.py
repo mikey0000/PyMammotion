@@ -489,8 +489,8 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
-        self._listing_dev_by_account_response = (
-            ListingDevByAccountResponse.from_dict(response_body_dict)
+        self._listing_dev_by_account_response = ListingDevByAccountResponse.from_dict(
+            response_body_dict
         )
 
     def send_cloud_command(self, iot_id: str, command: bytes) -> str:

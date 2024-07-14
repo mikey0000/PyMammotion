@@ -155,7 +155,9 @@ class MammotionMQTT:
         """Is called when thing topic comes in."""
         logger.debug(
             "on_topic_message, receive message, topic:%s, payload:%s, qos:%d",
-            topic, payload, qos,
+            topic,
+            payload,
+            qos,
         )
         payload = json.loads(payload)
         iot_id = payload.get("params", {}).get("iotId", "")
