@@ -4,12 +4,12 @@ import os
 
 from aiohttp import ClientSession
 
-from pyluba import LubaHTTP
-from pyluba.aliyun.cloud_gateway import CloudIOTGateway
-from pyluba.const import MAMMOTION_DOMAIN
-from pyluba.mammotion.commands.mammotion_command import MammotionCommand
-from pyluba.mqtt.mqtt import LubaMQTT, logger
-from pyluba.mammotion.devices.luba_cloud import MammotionBaseCloudDevice
+from pymammotion import LubaHTTP
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.const import MAMMOTION_DOMAIN
+from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
+from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT, logger
+from pymammotion.mammotion.devices.mammotion import MammotionBaseCloudDevice
 
 logger = logging.getLogger(__name__)
 
@@ -44,20 +44,20 @@ if __name__ ==  '__main__':
 
     
 
-    _luba_mqtt = LubaMQTT(region_id=cloud_client._region.data.regionId,
+    _mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
                     product_key=cloud_client._aep_response.data.productKey,
                     device_name=cloud_client._aep_response.data.deviceName,
                     device_secret=cloud_client._aep_response.data.deviceSecret, iot_token=cloud_client._session_by_authcode_response.data.iotToken, client_id=cloud_client._client_id)
 
-    _luba_mqtt._cloud_client = cloud_client
-    #luba.connect() blocks further calls
-    _luba_mqtt.connect_async()
+    _mammotion_mqtt._cloud_client = cloud_client
+    #mammotion.connect() blocks further calls
+    _mammotion_mqtt.connect_async()
 
     _devices_list = []
     for device in cloud_client._listing_dev_by_account_response.data.data:
         if(device.deviceName.startswith(("Luba-", "Yuka-"))):
             dev = MammotionBaseCloudDevice (
-                mqtt_client=_luba_mqtt,
+                mqtt_client=_mammotion_mqtt,
                 iot_id=device.iotId,
                 device_name=device.deviceName,
                 nick_name=device.nickName
@@ -65,7 +65,7 @@ if __name__ ==  '__main__':
             _devices_list.append(dev)
 
     #Assign callback based on iotId
-    _luba_mqtt.on_message = lambda topic, payload, iot_id: [
+    _mammotion_mqtt.on_message = lambda topic, payload, iot_id: [
         device._on_mqtt_message(topic, payload) for device in _devices_list if device.iot_id == iot_id
     ]
 

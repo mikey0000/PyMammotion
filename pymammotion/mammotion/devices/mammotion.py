@@ -1,3 +1,4 @@
+"""Device control of mammotion robots over bluetooth or MQTT."""
 from __future__ import annotations
 
 import asyncio
@@ -59,7 +60,7 @@ _LOGGER = logging.getLogger(__name__)
 def slashescape(err):
     """Codecs error handler. err is UnicodeDecode instance. return
     a tuple with a replacement for the unencodable part of the input
-    and a position where encoding should continue
+    and a position where encoding should continue.
     """
     # print err, dir(err), err.start, err.end, err.object[:err.start]
     thebyte = err.object[err.start : err.end]
@@ -195,7 +196,7 @@ class MammotionBaseDevice:
         await self._send_command("get_report_cfg", retry)
         await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
 
-        RW = await self._send_command_with_args(
+        await self._send_command_with_args(
             "allpowerfull_rw", id=5, context=1, rw=1
         )
         # RW_proto = luba_msg_pb2.LubaMsg()
@@ -581,7 +582,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     ) -> None:
         self._mqtt_client = mqtt_client
         self.iot_id = iot_id
-        self_device_name = device_name
         self.nick_name = nick_name
         self._command_futures = {}
         self.loop = asyncio.get_event_loop()
@@ -606,7 +606,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         if message_id != "":
             self._command_futures[message_id] = future
             try:
-                response = await asyncio.wait_for(
+                await asyncio.wait_for(
                     future, timeout=TIMEOUT_CLOUD_RESPONSE
                 )
                 return None
@@ -642,7 +642,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             return ""
 
     def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
-        """Parsing MQTT Message"""
+        """Parsing MQTT Message."""
         if topic.endswith("/app/down/thing/events"):
             event = ThingEventMessage(**payload)
             params = event.params

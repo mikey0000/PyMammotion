@@ -1,4 +1,4 @@
-"""mqtt init"""
+"""mqtt init."""
 
 from .mammotion import MammotionBaseBLEDevice, has_field
 
