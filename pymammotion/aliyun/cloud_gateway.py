@@ -550,9 +550,9 @@ class CloudIOTGateway:
         response_body_dict = json.loads(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            logger.error(f"Error in sending cloud command: {str(response_body_dict.get("code"))} - {str(response_body_dict["msg"])}")
+            logger.error(
+                f"Error in sending cloud command: {str(response_body_dict.get("code"))} - {str(response_body_dict["msg"])}"
+            )
             return ""
         else:
             return message_id
-
-
