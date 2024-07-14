@@ -210,6 +210,19 @@ class WorkMode:
 
 
 def device_mode(value):
+    """Return the mode corresponding to the given value.
+
+    This function takes a value and returns the corresponding mode from a
+    predefined dictionary.
+
+    Args:
+        value (int): The value for which mode needs to be determined.
+
+    Returns:
+        str: The mode corresponding to the input value. Returns "Invalid mode" if no
+            mode is found.
+    """
+
     modes = {
         0: "MODE_NOT_ACTIVE",
         1: "MODE_ONLINE",

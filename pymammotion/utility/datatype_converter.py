@@ -6,6 +6,18 @@ class DatatypeConverter:
 
     @staticmethod
     def init_encode_map():
+        """Initialize the encode map for DatatypeConverter if it is not already
+        initialized.
+
+        This function initializes the encode map for DatatypeConverter by
+        creating a list of 64 elements and populating it with characters for
+        encoding. If the encode map is already initialized, it returns the
+        existing encode map.
+
+        Returns:
+            list: The encode map for DatatypeConverter.
+        """
+
         if DatatypeConverter.encode_map is None:
             cArr = [0] * 64
             for i in range(26):
@@ -33,6 +45,20 @@ class DatatypeConverter:
 
     @staticmethod
     def _printBase64Binary(bArr, i=0, i2=None):
+        """Print the Base64 binary representation of a byte array.
+
+        This function takes a byte array and optional start and end indices to
+        print the Base64 binary representation.
+
+        Args:
+            bArr (list): A list of bytes to be converted to Base64 binary.
+            i (int): The starting index of the byte array (default is 0).
+            i2 (int): The ending index of the byte array (default is the length of bArr).
+
+        Returns:
+            str: The Base64 binary representation of the input byte array.
+        """
+
         if i2 is None:
             i2 = len(bArr)
         cArr = [""] * (((i2 + 2) // 3) * 4)
@@ -41,6 +67,26 @@ class DatatypeConverter:
 
     @staticmethod
     def _printBase64Binary_core(bArr, i, i2, cArr, i3):
+        """Encode binary data into Base64 format.
+
+        This function encodes binary data into Base64 format following the
+        Base64 encoding algorithm.
+
+        Args:
+            bArr (list): List of binary data to be encoded.
+            i (int): Starting index of the binary data to be encoded.
+            i2 (int): Length of binary data to be encoded.
+            cArr (list): List to store the encoded Base64 characters.
+            i3 (int): Starting index in the cArr to store the encoded characters.
+
+        Returns:
+            int: The index in cArr where encoding ends.
+
+        Note:
+            This function assumes that DatatypeConverter has a method 'encode' and
+            'init_encode_map' for encoding.
+        """
+
         DatatypeConverter.init_encode_map()  # Ensure encode_map is initialized
         while i2 >= 3:
             cArr[i3] = DatatypeConverter.encode(bArr[i] >> 2)
