@@ -382,7 +382,7 @@ nav {
 
 
 # get all the hash data
-
+# getLineInfoList
 msgtype: MSG_CMD_TYPE_NAV
 sender: DEV_MOBILEAPP
 rcver: DEV_MAINCTL

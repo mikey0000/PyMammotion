@@ -1,5 +1,6 @@
 # === sendOrderMsg_Nav ===
 import logging
+import time
 from abc import ABC
 from typing import List
 
@@ -40,6 +41,7 @@ class MessageNavigation(AbstractMessage, ABC):
             version=1,
             subtype=1,
             nav=build,
+            timestamp=round(time.time() * 1000),
         )
 
         return luba_msg.SerializeToString()
@@ -227,7 +229,7 @@ class MessageNavigation(AbstractMessage, ABC):
             MctlNav(plan_task_execute=NavPlanTaskExecute(sub_cmd=1, id=plan_id))
         )
 
-    def read_plan(self, sub_cmd: int, plan_index: int) -> bytes:
+    def read_plan(self, sub_cmd: int, plan_index: int = 0) -> bytes:
         build = MctlNav(
             todev_planjob_set=NavPlanJobSet(sub_cmd=sub_cmd, plan_index=plan_index)
         )

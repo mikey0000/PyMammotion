@@ -4,7 +4,7 @@
 [![PyPI Releases][img_pypi]][url_pypi]
 [![Supported Python Versions][img_pyversions]][url_pyversions]
 
-[img_version]: https://img.shields.io/static/v1.svg?label=SemVer&message=0.0.1&color=blue
+[img_version]: https://img.shields.io/static/v1.svg?label=SemVer&message=0.4.0&color=blue
 [url_version]: https://pypi.org/project/pymammotion/
 
 [img_pypi]: https://img.shields.io/badge/PyPI-wheels-green.svg

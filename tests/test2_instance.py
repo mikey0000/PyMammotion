@@ -5,15 +5,13 @@ from threading import Thread
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 
-from pymammotion.data.model import RegionData
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice, has_field
-from pymammotion.proto.luba_msg import LubaMsg
 
 bleNotificationEvt = BleNotificationEvent()
 
 logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
 
 
 async def ble_heartbeat(luba_client):

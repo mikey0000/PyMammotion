@@ -24,6 +24,7 @@ from bleak_retry_connector import (
 )
 
 from pymammotion.bluetooth import BleMessage
+from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
@@ -219,8 +220,94 @@ class MammotionBaseDevice:
         """Start synchronization with the device."""
         await self._send_command("get_device_base_info", retry)
         await self._send_command("get_report_cfg", retry)
-        await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
-        await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
+        """Read plans from device."""
+        plan_result = await self._send_command_with_args(
+            "read_plan", sub_cmd=2, plan_index=0
+        )
+        print(LubaMsg().parse(plan_result).nav.todev_planjob_set)
+        """Logs I think."""
+        # await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
+
+        hash_list_result = await self._send_command_with_args(
+            "get_all_boundary_hash_list", sub_cmd=0
+        )
+        print(hash_list_result)
+        get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
+        print(get_hash_ack)
+        # await sleep(2)
+        # hash_response_result = await self._send_command_with_args("get_hash_response",
+        #                                                           total_frame=get_hash_ack.total_frame,
+        #                                                           current_frame=get_hash_ack.current_frame)
+        # get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
+        # print(get_hash_response_ack)
+
+        for hash in get_hash_ack.data_couple:
+            sync_result = await self._send_command_with_args(
+                "synchronize_hash_data", hash_num=hash
+            )
+            commondata_ack = LubaMsg().parse(sync_result).nav.toapp_get_commondata_ack
+            print("synchronise hash")
+            print(sync_result)
+            print(commondata_ack)
+
+            total_frame = 2
+            current_frame = commondata_ack.current_frame
+            while not current_frame > total_frame:
+                region_data = RegionData()
+                region_data.hash = hash
+                region_data.action = 8
+                region_data.total_frame = total_frame
+                region_data.current_frame = current_frame
+                region_result = await self._send_command_with_args(
+                    "get_regional_data", regional_data=region_data
+                )
+                region_gethash_ack = (
+                    LubaMsg().parse(region_result).nav.toapp_gethash_ack
+                )
+                print("region results")
+                print(region_result)
+                print(region_gethash_ack)
+                current_frame += 1
+
+        # if get_hash_ack.total_frame == 1:
+        #     sub_cmd = get_hash_ack.sub_cmd
+        #     hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=sub_cmd)
+        #     print(hash_list_result)
+        #     get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
+        #     print(get_hash_ack)
+
+        # sub_cmd 3 is line hashes??
+        # sub_cmd 4 is dump location (yuka)
+
+        # command_bytes = self._commands.send_todev_ble_sync(2)
+        # await self._message.post_custom_data_bytes(command_bytes)
+        # if current frame is less than total frame iterate
+        hashes = get_hash_ack.data_couple
+
+        current_frame = get_hash_ack.current_frame
+        while not (current_frame > get_hash_ack.total_frame):
+            print("get_hash_response")
+            hash_response_result = await self._send_command_with_args(
+                "get_hash_response",
+                total_frame=get_hash_ack.total_frame,
+                current_frame=current_frame,
+            )
+            get_hash_response_ack = (
+                LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
+            )
+            print(get_hash_response_ack)
+            current_frame += 1
+        #
+        # regional_data = RegionData()
+        # regional_data.sub_cmd = 2
+        # regional_data.action = 8
+        # regional_data.type = 3 # matches hash list sub cmd I think
+        # regional_data.total_frame = 1
+        # regional_data.current_frame = 1
+        # regional_data_result = await self._send_command_with_args("get_regional_data", regional_data=regional_data)
+        # commondata = LubaMsg().parse(regional_data_result).nav
+        # print(commondata)
+        print("end debug")
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
@@ -454,7 +541,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         await self._message.post_custom_data_bytes(command)
 
-        timeout = 5
+        timeout = 10
         timeout_handle = self.loop.call_at(
             self.loop.time() + timeout, _handle_timeout, self._notify_future
         )
@@ -605,6 +692,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.iot_id = iot_id
         self.nick_name = nick_name
         self._command_futures = {}
+        self._commands: MammotionCommand = MammotionCommand(device_name)
         self.loop = asyncio.get_event_loop()
 
     def _on_mqtt_message(self, topic: str, payload: str) -> None:
@@ -621,8 +709,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
         future = self.loop.create_future()
+        command_bytes = getattr(self._commands, key)()
         message_id = self._mqtt_client.get_cloud_client().send_cloud_command(
-            self.iot_id, key
+            self.iot_id, command_bytes
         )
         if message_id != "":
             self._command_futures[message_id] = future
@@ -634,6 +723,18 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command with arguments to device via MQTT and read response."""
+        future = self.loop.create_future()
+        command_bytes = getattr(self._commands, key)(**kwargs)
+        message_id = self._mqtt_client.get_cloud_client().send_cloud_command(
+            self.iot_id, command_bytes
+        )
+        if message_id != "":
+            self._command_futures[message_id] = future
+            try:
+                return await asyncio.wait_for(future, timeout=TIMEOUT_CLOUD_RESPONSE)
+            except asyncio.TimeoutError:
+                _LOGGER.error("Command '%s' timed out", key)
+        return None
 
     def _extract_message_id(self, payload: dict) -> str:
         """Extract the message ID from the payload."""

@@ -233,6 +233,6 @@ class MammotionMQTT:
             logger.debug("Unhandled topic: %s", message.topic)
             logger.debug(payload)
 
-    def _get_cloud_client(self) -> Optional[CloudIOTGateway]:
+    def get_cloud_client(self) -> Optional[CloudIOTGateway]:
         """Return internal cloud client."""
         return self._cloud_client
