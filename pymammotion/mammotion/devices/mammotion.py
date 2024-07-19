@@ -235,38 +235,40 @@ class MammotionBaseDevice:
         get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
         print(get_hash_ack)
         # await sleep(2)
-        # hash_response_result = await self._send_command_with_args("get_hash_response",
-        #                                                           total_frame=get_hash_ack.total_frame,
-        #                                                           current_frame=get_hash_ack.current_frame)
+        hash_response_result = await self._send_command_with_args("get_hash_response",
+                                                                  total_frame=get_hash_ack.total_frame,
+                                                                  current_frame=get_hash_ack.current_frame)
         # get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
         # print(get_hash_response_ack)
 
-        for hash in get_hash_ack.data_couple:
+        for data_hash in get_hash_ack.data_couple:
+            print(data_hash)
             sync_result = await self._send_command_with_args(
-                "synchronize_hash_data", hash_num=hash
+                "synchronize_hash_data", hash_num=data_hash
             )
             commondata_ack = LubaMsg().parse(sync_result).nav.toapp_get_commondata_ack
             print("synchronise hash")
             print(sync_result)
             print(commondata_ack)
 
-            total_frame = 2
-            current_frame = commondata_ack.current_frame
-            while not current_frame > total_frame:
+            total_frame = commondata_ack.total_frame
+            current_frame = 1
+            while not current_frame == total_frame:
                 region_data = RegionData()
-                region_data.hash = hash
-                region_data.action = 8
+                region_data.hash = data_hash
+                region_data.action = commondata_ack.action
+                region_data.type = commondata_ack.type
                 region_data.total_frame = total_frame
                 region_data.current_frame = current_frame
                 region_result = await self._send_command_with_args(
                     "get_regional_data", regional_data=region_data
                 )
-                region_gethash_ack = (
-                    LubaMsg().parse(region_result).nav.toapp_gethash_ack
+                region_commondata_ack = (
+                    LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
                 )
                 print("region results")
                 print(region_result)
-                print(region_gethash_ack)
+                print(region_commondata_ack)
                 current_frame += 1
 
         # if get_hash_ack.total_frame == 1:

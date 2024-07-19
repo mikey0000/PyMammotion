@@ -285,8 +285,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def get_all_boundary_hash_list(self, sub_cmd: int):
         build = MctlNav(todev_gethash=NavGetHashList(pver=1, sub_cmd=sub_cmd))
-        logger.debug(f"Area loading=====================:Get area hash list++Bluetooth:{
-        sub_cmd}")
+        logger.debug(f"Area loading=====================:Get area hash list++Bluetooth:{sub_cmd}")
         return self.send_order_msg_nav(build)
 
     def get_hash_response(self, total_frame: int, current_frame: int):
@@ -295,14 +294,13 @@ class MessageNavigation(AbstractMessage, ABC):
                 pver=1, sub_cmd=2, current_frame=current_frame, total_frame=total_frame
             )
         )
-        logger.debug(f"Send command--208 Response hash list command totalFrame={
-        total_frame},currentFrame={current_frame}")
+        logger.debug(f"Send command--208 Response hash list command totalFrame={total_frame},currentFrame={current_frame}")
         return self.send_order_msg_nav(build)
 
     def synchronize_hash_data(self, hash_num: int):
         build = MctlNav(
             todev_get_commondata=NavGetCommData(
-                pver=1, action=8, data_hash=hash_num, sub_cmd=1
+                pver=1, action=8, hash=hash_num, sub_cmd=1
             )
         )
         logger.debug(f"Send command--209,hash synchronize area data hash:{hash}")
@@ -321,7 +319,7 @@ class MessageNavigation(AbstractMessage, ABC):
                 pver=1,
                 action=regional_data.action,
                 type=regional_data.type,
-                data_hash=regional_data.hash,
+                hash=regional_data.hash,
                 total_frame=regional_data.total_frame,
                 current_frame=regional_data.current_frame,
                 sub_cmd=2,
