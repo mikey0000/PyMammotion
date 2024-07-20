@@ -7,6 +7,7 @@ import codecs
 import json
 import logging
 from abc import abstractmethod
+from asyncio import sleep
 from enum import Enum
 from typing import Any, cast
 from uuid import UUID
@@ -212,99 +213,65 @@ class MammotionBaseDevice:
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command to device and read response."""
 
+    @abstractmethod
+    async def _ble_sync(self):
+        """Send ble sync command."""
+
     async def start_sync(self, retry: int):
         """Start synchronization with the device."""
         await self._send_command("get_device_base_info", retry)
         await self._send_command("get_report_cfg", retry)
         """Read plans from device."""
-        plan_result = await self._send_command_with_args(
-            "read_plan", sub_cmd=2, plan_index=0
-        )
+        plan_result = await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
         print(LubaMsg().parse(plan_result).nav.todev_planjob_set)
+
         """Logs I think."""
         # await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
 
-        hash_list_result = await self._send_command_with_args(
-            "get_all_boundary_hash_list", sub_cmd=0
-        )
+        hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=0)
         print(hash_list_result)
         get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
         print(get_hash_ack)
         # await sleep(2)
-        hash_response_result = await self._send_command_with_args("get_hash_response",
-                                                                  total_frame=get_hash_ack.total_frame,
-                                                                  current_frame=get_hash_ack.current_frame)
+        hash_response_result = await self._send_command_with_args(
+            "get_hash_response", total_frame=get_hash_ack.total_frame, current_frame=get_hash_ack.current_frame
+        )
         # get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
         # print(get_hash_response_ack)
 
+        # ble sync
+        await self._ble_sync()
+
+        await sleep(1)
+
         for data_hash in get_hash_ack.data_couple:
             print(data_hash)
-            sync_result = await self._send_command_with_args(
-                "synchronize_hash_data", hash_num=data_hash
-            )
+            sync_result = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
             commondata_ack = LubaMsg().parse(sync_result).nav.toapp_get_commondata_ack
             print("synchronise hash")
             print(sync_result)
             print(commondata_ack)
+            await sleep(1)
 
             total_frame = commondata_ack.total_frame
             current_frame = 1
-            while not current_frame == total_frame:
+            while current_frame <= total_frame:
                 region_data = RegionData()
                 region_data.hash = data_hash
                 region_data.action = commondata_ack.action
                 region_data.type = commondata_ack.type
                 region_data.total_frame = total_frame
                 region_data.current_frame = current_frame
-                region_result = await self._send_command_with_args(
-                    "get_regional_data", regional_data=region_data
-                )
-                region_commondata_ack = (
-                    LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
-                )
+                region_result = await self._send_command_with_args("get_regional_data", regional_data=region_data)
+                region_commondata_ack = LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
                 print("region results")
                 print(region_result)
                 print(region_commondata_ack)
                 current_frame += 1
 
-        # if get_hash_ack.total_frame == 1:
-        #     sub_cmd = get_hash_ack.sub_cmd
-        #     hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=sub_cmd)
-        #     print(hash_list_result)
-        #     get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
-        #     print(get_hash_ack)
-
         # sub_cmd 3 is line hashes??
         # sub_cmd 4 is dump location (yuka)
 
-        # command_bytes = self._commands.send_todev_ble_sync(2)
-        # await self._message.post_custom_data_bytes(command_bytes)
-        # if current frame is less than total frame iterate
-        hashes = get_hash_ack.data_couple
-
-        current_frame = get_hash_ack.current_frame
-        while not (current_frame > get_hash_ack.total_frame):
-            print("get_hash_response")
-            hash_response_result = await self._send_command_with_args(
-                "get_hash_response",
-                total_frame=get_hash_ack.total_frame,
-                current_frame=current_frame,
-            )
-            get_hash_response_ack = (
-                LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
-            )
-            print(get_hash_response_ack)
-            current_frame += 1
-        #
-        # regional_data = RegionData()
-        # regional_data.sub_cmd = 2
-        # regional_data.action = 8
-        # regional_data.type = 3 # matches hash list sub cmd I think
-        # regional_data.total_frame = 1
-        # regional_data.current_frame = 1
-        # regional_data_result = await self._send_command_with_args("get_regional_data", regional_data=regional_data)
-        # commondata = LubaMsg().parse(regional_data_result).nav
-        # print(commondata)
         print("end debug")
 
     async def command(self, key: str, **kwargs):
@@ -318,6 +285,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def __init__(self, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__()
+        self._prev_notification = None
         self._interface = f"hci{interface}"
         self._device = device
         self._client: BleakClientWithServiceCache | None = None
@@ -334,6 +302,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""
         self._device = device
+
+    async def _ble_sync(self):
+        command_bytes = self._commands.send_todev_ble_sync(2)
+        await self._message.post_custom_data_bytes(command_bytes)
 
     async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
         """Send command to device and read response."""
@@ -500,9 +472,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
-            if self._prev_notification == data:
-                return
-            self._prev_notification = data
             self._update_raw_data(data)
             self._message.clearNotification()
         else:
@@ -512,6 +481,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 # TODO occasionally respond with ble sync
                 return
+        # try and check all non-sync messages
+        which_group = betterproto.which_one_of(new_msg, "LubaSubMsg")
+        if self._prev_notification == which_group[1]:
+            return
+        self._prev_notification = which_group[1]
 
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)

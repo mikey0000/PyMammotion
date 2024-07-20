@@ -63,12 +63,12 @@ async def run(loop):
     await asyncio.sleep(2)
     await luba_ble.start_sync(0)
     await asyncio.sleep(2)
-    print(luba_ble.luba_msg.sys.toapp_report_data.dev)
+    # print(luba_ble.luba_msg.sys.toapp_report_data.dev)
     # if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
     #     dev = luba_ble.luba_msg.sys.toapp_report_data.dev
     #     if dev.sys_status == 11:
     #         await luba_ble.command("start_job")
-    await luba_ble.command("get_report_cfg")
+    # await luba_ble.command("get_report_cfg")
 
     print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
     await asyncio.sleep(5)
@@ -95,28 +95,6 @@ async def run(loop):
         await asyncio.sleep(60)
 
         counter -= 1
-
-    # get all areas
-    hash_list_result = await luba_ble.command("get_all_boundary_hash_list", sub_cmd=3)
-    get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
-
-    #if current frame is less than total frame iterate
-    current_frame = get_hash_ack.current_frame
-    while current_frame != get_hash_ack.total_frame:
-        hash_response_result = await luba_ble.command("get_hash_response", total_frame=get_hash_ack.total_frame,
-                                                      current_frame=current_frame)
-        get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
-        # todo store get_hash_response_ack
-        current_frame += 1
-
-    regional_data = RegionData()
-    regional_data.sub_cmd = 2
-    regional_data.action = 8
-    regional_data.type = 3
-    regional_data.total_frame = 1
-    regional_data.current_frame = 1
-    regional_data_result = await luba_ble.command("get_regional_data", regional_data=regional_data)
-    commondata = LubaMsg().parse(regional_data_result).nav.toapp_get_commondata_ack
 
     # app_request_cover_paths_t use hashlist from ??
 

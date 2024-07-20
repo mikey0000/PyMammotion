@@ -13,7 +13,7 @@ packages = [{include = "pymammotion"}]
 
 
 [tool.poetry.dependencies]
-python = ">=3.12,<3.13"
+python = "3.12"
 bleak = ">=0.21.0"
 protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
@@ -48,7 +48,7 @@ pre-commit = "^3.7.1"
 
 
 [tool.bumpver]
-current_version = "0.0.1"
+current_version = "0.0.40"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
