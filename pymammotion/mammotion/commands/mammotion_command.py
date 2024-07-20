@@ -6,9 +6,7 @@ from pymammotion.mammotion.commands.messages.video import MessageVideo
 from pymammotion.proto import dev_net_pb2, luba_msg_pb2
 
 
-class MammotionCommand(
-    MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo
-):
+class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo):
     """MQTT commands for Luba."""
 
     def __init__(self, device_name: str) -> None:

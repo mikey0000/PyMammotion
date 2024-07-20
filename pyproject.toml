@@ -368,12 +368,13 @@ overgeneral-exceptions = [
 runtime-typing = false
 
 [tool.pylint.CODE_STYLE]
-max-line-length-suggestions = 72
+max-line-length-suggestions = 120
 
 
 [tool.ruff]
 required-version = ">=0.4.3"
 exclude = ['pymammotion/proto/*', 'tests/*']
+line-length = 120
 
 [tool.ruff.lint]
 select = [

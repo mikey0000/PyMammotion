@@ -48,9 +48,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def allpowerfull_rw_adapter_x3(self, id: int, context: int, rw: int) -> bytes:
         build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=id, context=context, rw=rw))
-        logger.debug(
-            f"Send command--9 general read and write command id={id}, context={context}, rw={rw}"
-        )
+        logger.debug(f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
         return self.send_order_msg_nav(build)
 
     def along_border(self):
@@ -85,9 +83,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def out_drop_dumping_add(self):
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=15, type=12))
-        logger.debug(
-            "Send command--Complete external grass collection point marking operation"
-        )
+        logger.debug("Send command--Complete external grass collection point marking operation")
         return self.send_order_msg_nav(build)
 
     def recover_dumping(self):
@@ -126,22 +122,14 @@ class MessageNavigation(AbstractMessage, ABC):
         return self.send_order_msg_nav(build)
 
     def set_edit_boundary(self, action: int):
-        build = MctlNav(
-            todev_get_commondata=NavGetCommData(pver=1, action=action, type=0)
-        )
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=action, type=0))
         logger.debug(f"Sending secondary editing command action={action}")
         return self.send_order_msg_nav(build)
 
     def set_data_synchronization(self, type: int):
-        logger.debug(
-            f"Sync data ==================== Sending ============ Restore command: {type}"
-        )
-        build = MctlNav(
-            todev_get_commondata=NavGetCommData(pver=1, action=12, type=type)
-        )
-        logger.debug(
-            "Sync data ==================== Sending ============ Restore command"
-        )
+        logger.debug(f"Sync data ==================== Sending ============ Restore command: {type}")
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=12, type=type))
+        logger.debug("Sync data ==================== Sending ============ Restore command")
         return self.send_order_msg_nav(build)
 
     def send_plan(self, plan_bean: Plan) -> bytes:
@@ -225,30 +213,19 @@ class MessageNavigation(AbstractMessage, ABC):
         return self.send_order_msg_nav(MctlNav(todev_planjob_set=build))
 
     def single_schedule(self, plan_id: str) -> bytes:
-        return self.send_order_msg_nav(
-            MctlNav(plan_task_execute=NavPlanTaskExecute(sub_cmd=1, id=plan_id))
-        )
+        return self.send_order_msg_nav(MctlNav(plan_task_execute=NavPlanTaskExecute(sub_cmd=1, id=plan_id)))
 
     def read_plan(self, sub_cmd: int, plan_index: int = 0) -> bytes:
-        build = MctlNav(
-            todev_planjob_set=NavPlanJobSet(sub_cmd=sub_cmd, plan_index=plan_index)
-        )
-        logger.debug(f"Send read job plan command cmd={
-        sub_cmd} PlanIndex = {plan_index}")
+        build = MctlNav(todev_planjob_set=NavPlanJobSet(sub_cmd=sub_cmd, plan_index=plan_index))
+        logger.debug(f"Send read job plan command cmd={sub_cmd} PlanIndex = {plan_index}")
         return self.send_order_msg_nav(build)
 
     def delete_plan(self, sub_cmd: int, plan_id: str) -> bytes:
-        build = MctlNav(
-            todev_planjob_set=NavPlanJobSet(sub_cmd=sub_cmd, plan_id=plan_id)
-        )
-        logger.debug(
-            f"Send command--Send delete job plan command cmd={sub_cmd} planId = {plan_id}"
-        )
+        build = MctlNav(todev_planjob_set=NavPlanJobSet(sub_cmd=sub_cmd, plan_id=plan_id))
+        logger.debug(f"Send command--Send delete job plan command cmd={sub_cmd} planId = {plan_id}")
         return self.send_order_msg_nav(build)
 
-    def set_plan_unable_time(
-        self, sub_cmd: int, device_id: str, unable_end_time: str, unable_start_time: str
-    ) -> bytes:
+    def set_plan_unable_time(self, sub_cmd: int, device_id: str, unable_end_time: str, unable_start_time: str) -> bytes:
         build = NavUnableTimeSet(
             sub_cmd=sub_cmd,
             device_id=device_id,
@@ -267,16 +244,10 @@ class MessageNavigation(AbstractMessage, ABC):
         return self.send_order_msg_nav(build2)
 
     def query_job_history(self) -> bytes:
-        return self.send_order_msg_nav(
-            MctlNav(todev_work_report_update_cmd=WorkReportUpdateCmd(sub_cmd=1))
-        )
+        return self.send_order_msg_nav(MctlNav(todev_work_report_update_cmd=WorkReportUpdateCmd(sub_cmd=1)))
 
     def request_job_history(self, num: int) -> bytes:
-        return self.send_order_msg_nav(
-            MctlNav(
-                todev_work_report_cmd=WorkReportCmdData(sub_cmd=1, get_info_num=num)
-            )
-        )
+        return self.send_order_msg_nav(MctlNav(todev_work_report_cmd=WorkReportCmdData(sub_cmd=1, get_info_num=num)))
 
     def leave_dock(self):
         build = MctlNav(todev_one_touch_leave_pile=1)
@@ -290,26 +261,20 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def get_hash_response(self, total_frame: int, current_frame: int):
         build = MctlNav(
-            todev_gethash=NavGetHashList(
-                pver=1, sub_cmd=2, current_frame=current_frame, total_frame=total_frame
-            )
+            todev_gethash=NavGetHashList(pver=1, sub_cmd=2, current_frame=current_frame, total_frame=total_frame)
         )
-        logger.debug(f"Send command--208 Response hash list command totalFrame={total_frame},currentFrame={current_frame}")
+        logger.debug(
+            f"Send command--208 Response hash list command totalFrame={total_frame},currentFrame={current_frame}"
+        )
         return self.send_order_msg_nav(build)
 
     def synchronize_hash_data(self, hash_num: int):
-        build = MctlNav(
-            todev_get_commondata=NavGetCommData(
-                pver=1, action=8, hash=hash_num, sub_cmd=1
-            )
-        )
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=8, hash=hash_num, sub_cmd=1))
         logger.debug(f"Send command--209,hash synchronize area data hash:{hash}")
         return self.send_order_msg_nav(build)
 
     def get_area_to_be_transferred(self):
-        build = MctlNav(
-            todev_get_commondata=NavGetCommData(pver=1, action=8, sub_cmd=1, type=3)
-        )
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=8, sub_cmd=1, type=3))
         logger.debug("Send command--Get transfer area before charging pile")
         return self.send_order_msg_nav(build)
 
@@ -334,43 +299,27 @@ class MessageNavigation(AbstractMessage, ABC):
         return self.send_order_msg_nav(build)
 
     def send_tools_order(self, param_id: int, values: List[int]):
-        build = MctlNav(
-            simulation_cmd=SimulationCmdData(
-                sub_cmd=2, param_id=param_id, param_value=values
-            )
-        )
+        build = MctlNav(simulation_cmd=SimulationCmdData(sub_cmd=2, param_id=param_id, param_value=values))
         logger.debug(f"Send command--Send tool command id={param_id},values={values}")
         return self.send_order_msg_nav(build)
 
     def end_draw_border(self, type: int):
         if type == -1:
             return
-        build = MctlNav(
-            todev_get_commondata=NavGetCommData(pver=1, action=1, type=type)
-        )
-        logger.debug(
-            f"Send command--End drawing boundary, obstacle, channel command type={type}"
-        )
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=1, type=type))
+        logger.debug(f"Send command--End drawing boundary, obstacle, channel command type={type}")
         return self.send_order_msg_nav(build)
 
     def cancel_current_record(self):
-        build = MctlNav(
-            todev_get_commondata=NavGetCommData(pver=1, action=7, sub_cmd=0)
-        )
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=7, sub_cmd=0))
         logger.debug("Send command--Cancel current recording (boundary, obstacle)")
         return self.send_order_msg_nav(build)
 
     def delete_map_elements(self, type: int, hash_num: int):
         if type == -1:
             return
-        build = MctlNav(
-            todev_get_commondata=NavGetCommData(
-                pver=1, action=6, type=type, hash=hash_num
-            )
-        )
-        logger.debug(
-            f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash}"
-        )
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=type, hash=hash_num))
+        logger.debug(f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash}")
         return self.send_order_msg_nav(build)
 
     def delete_charge_point(self):
@@ -390,9 +339,7 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Send command--Clear job data")
         return self.send_order_msg_nav(build)
 
-    def generate_route_information(
-        self, generate_route_information: GenerateRouteInformation
-    ):
+    def generate_route_information(self, generate_route_information: GenerateRouteInformation):
         logger.debug(f"Generate route data source:{generate_route_information}")
         build = NavReqCoverPath(
             pver=1,
@@ -415,9 +362,7 @@ class MessageNavigation(AbstractMessage, ABC):
         generate_route_information}")
         return self.send_order_msg_nav(MctlNav(bidire_reqconver_path=build))
 
-    def modify_generate_route_information(
-        self, generate_route_information: GenerateRouteInformation
-    ):
+    def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation):
         logger.debug(f"Generate route data source: {generate_route_information}")
         build = NavReqCoverPath(
             pver=1,
@@ -442,9 +387,7 @@ class MessageNavigation(AbstractMessage, ABC):
         build = NavReqCoverPath(pver=1, sub_cmd=9)
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")
         build2 = MctlNav(bidire_reqconver_path=build)
-        logger.debug(
-            "Send command -- End generating route information generate_route_information="
-        )
+        logger.debug("Send command -- End generating route information generate_route_information=")
         return self.send_order_msg_nav(build2)
 
     def query_generate_route_information(self):
@@ -456,14 +399,8 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def get_line_info(self, current_hash: int) -> bytes:
         logger.debug(f"Sending==========Get route command: {current_hash}")
-        build = MctlNav(
-            todev_zigzag_ack=NavUploadZigZagResultAck(
-                pver=1, current_hash=current_hash, sub_cmd=0
-            )
-        )
-        logger.debug(
-            f"Sending command--Get route data corresponding to hash={current_hash}"
-        )
+        build = MctlNav(todev_zigzag_ack=NavUploadZigZagResultAck(pver=1, current_hash=current_hash, sub_cmd=0))
+        logger.debug(f"Sending command--Get route data corresponding to hash={current_hash}")
         return self.send_order_msg_nav(build)
 
     def get_line_info_list(self, hash_list: List[int], transaction_id: int) -> bytes:
@@ -473,9 +410,7 @@ class MessageNavigation(AbstractMessage, ABC):
                 pver=1, hash_list=hash_list, transaction_id=transaction_id, sub_cmd=0
             )
         )
-        logger.debug(
-            f"Sending command--Get route data corresponding to hash={hash_list}"
-        )
+        logger.debug(f"Sending command--Get route data corresponding to hash={hash_list}")
         return self.send_order_msg_nav(build)
 
     def start_job(self) -> bytes:

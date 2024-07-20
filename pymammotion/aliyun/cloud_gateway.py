@@ -121,9 +121,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = client.do_request(
-            "/living/account/region/get", "https", "POST", None, body, RuntimeOptions()
-        )
+        response = client.do_request("/living/account/region/get", "https", "POST", None, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -182,9 +180,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = client.do_request(
-            "/app/aepauth/handle", "https", "POST", None, body, RuntimeOptions()
-        )
+        response = client.do_request("/app/aepauth/handle", "https", "POST", None, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -195,9 +191,7 @@ class CloudIOTGateway:
         response_body_dict = json.loads(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception(
-                "Error in getting mqtt credentials: " + response_body_dict["msg"]
-            )
+            raise Exception("Error in getting mqtt credentials: " + response_body_dict["msg"])
 
         self._aep_response = AepResponse.from_dict(response_body_dict)
 
@@ -250,14 +244,12 @@ class CloudIOTGateway:
             header = "".join(f"{k}:{dic[k]}\n" for k in keys).strip()
 
             headers["x-ca-signature-headers"] = sign_headers
-            string_to_sign = (
-                "POST\n{}\n\n{}\n{}\n{}\n/api/prd/connect.json?request={}".format(
-                    headers["accept"],
-                    headers["content-type"],
-                    headers["date"],
-                    header,
-                    json.dumps(_bodyParam, separators=(",", ":")),
-                )
+            string_to_sign = "POST\n{}\n\n{}\n{}\n{}\n/api/prd/connect.json?request={}".format(
+                headers["accept"],
+                headers["content-type"],
+                headers["date"],
+                header,
+                json.dumps(_bodyParam, separators=(",", ":")),
             )
 
             hash_val = hmac.new(
@@ -339,9 +331,7 @@ class CloudIOTGateway:
             async with session.post(
                 f"https://{region_url}/api/prd/loginbyoauth.json",
                 headers=headers,
-                params={
-                    "loginByOauthRequest": json.dumps(_bodyParam, separators=(",", ":"))
-                },
+                params={"loginByOauthRequest": json.dumps(_bodyParam, separators=(",", ":"))},
             ) as resp:
                 data = await resp.json()
                 logger.debug(data)
@@ -395,9 +385,7 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
-        self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(
-            response_body_dict
-        )
+        self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
 
         return response.body
 
@@ -472,9 +460,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = client.do_request(
-            "/uc/listBindingByAccount", "https", "POST", None, body, RuntimeOptions()
-        )
+        response = client.do_request("/uc/listBindingByAccount", "https", "POST", None, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -489,9 +475,7 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
-        self._listing_dev_by_account_response = ListingDevByAccountResponse.from_dict(
-            response_body_dict
-        )
+        self._listing_dev_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
 
     def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send a cloud command to the specified IoT device."""
@@ -526,9 +510,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = client.do_request(
-            "/thing/service/invoke", "https", "POST", None, body, RuntimeOptions()
-        )
+        response = client.do_request("/thing/service/invoke", "https", "POST", None, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)

@@ -143,9 +143,7 @@ class tmp_constant:
     URI_ALINK_SERVICE = "alink/service"  # deprecated
     URI_AUTH = "/auth"  # deprecated
     URI_AUTHEN_REGISTER = "/sys/{productKey}/{deviceName}/thing/authen/sub/register"
-    URI_AUTHEN_REGISTER_REPLY = (
-        "/sys/{productKey}/{deviceName}/thing/authen/sub/register_reply"
-    )
+    URI_AUTHEN_REGISTER_REPLY = "/sys/{productKey}/{deviceName}/thing/authen/sub/register_reply"
     URI_BLACKLIST_UPDATE_POST = "/thing/lan/blacklist/update"
     URI_BLACKLIST_UPDATE_REPLY_POST = "/thing/lan/blacklist/update_reply"
     URI_DEVICE = "/device/core/dev"
@@ -165,9 +163,7 @@ class tmp_constant:
     URI_TOPIC_LOCALDEVICE_STATECHANGE = "group/localstatechange"
     URI_TOPIC_REPLY_POST = "_reply"
     URI_UPDATE_DEVICE_INFO = "/sys/{productKey}/{deviceName}/thing/deviceinfo/update"
-    URI_UPDATE_DEVICE_INFO_REPLY = (
-        "/sys/{productKey}/{deviceName}/thing/deviceinfo/update_reply"
-    )
+    URI_UPDATE_DEVICE_INFO_REPLY = "/sys/{productKey}/{deviceName}/thing/deviceinfo/update_reply"
     URI_USER = "/user"
     VALUE_SHA256 = "sha256"
     VERSION = "1.0"

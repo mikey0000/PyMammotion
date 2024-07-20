@@ -50,9 +50,7 @@ class MammotionMQTT:
         if client_id is None:
             client_id = f"python-{device_name}"
         self._mqtt_client_id = f"{client_id}|securemode=2,signmethod=hmacsha1|"
-        sign_content = (
-            f"clientId{client_id}deviceName{device_name}productKey{product_key}"
-        )
+        sign_content = f"clientId{client_id}deviceName{device_name}productKey{product_key}"
         self._mqtt_password = hmac.new(
             device_secret.encode("utf-8"), sign_content.encode("utf-8"), hashlib.sha1
         ).hexdigest()
@@ -122,15 +120,9 @@ class MammotionMQTT:
         self._linkkit_client.subscribe_topic(
             f"/sys/{self._product_key}/{self._device_name}/app/down/thing/event/property/post_reply"
         )
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events"
-        )
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status"
-        )
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties"
-        )
+        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events")
+        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status")
+        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties")
         self._linkkit_client.subscribe_topic(
             f"/sys/{self._product_key}/{self._device_name}/app/down/thing/model/down_raw"
         )
@@ -175,9 +167,7 @@ class MammotionMQTT:
         if rc == 0:
             logger.debug("Connected")
             self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/#")
-            self._client.subscribe(
-                f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
-            )
+            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply")
 
             self._client.publish(
                 f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
@@ -216,9 +206,7 @@ class MammotionMQTT:
             if params.identifier == "device_protobuf_msg_event":
                 content = cast(luba_msg_pb2, params.value.content)
 
-                logger.info(
-                    "Unhandled protobuf event: %s", content.WhichOneof("subMsg")
-                )
+                logger.info("Unhandled protobuf event: %s", content.WhichOneof("subMsg"))
             elif params.identifier == "device_warning_event":
                 logger.debug("identifier event: %s", params.identifier)
             else:

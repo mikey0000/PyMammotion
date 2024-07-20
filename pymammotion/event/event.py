@@ -14,9 +14,7 @@ class Event:
         return self
 
     async def __call__(self, *args, **kwargs):
-        await asyncio.gather(
-            *[handler(*args, **kwargs) for handler in self.__eventhandlers]
-        )
+        await asyncio.gather(*[handler(*args, **kwargs) for handler in self.__eventhandlers])
 
 
 class MoveEvent:

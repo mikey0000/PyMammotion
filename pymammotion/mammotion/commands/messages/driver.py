@@ -28,49 +28,35 @@ class MessageDriver(AbstractMessage, ABC):
 
     def set_blade_height(self, height: int):
         logger.debug(f"Send knife height height={height}")
-        build = mctrl_driver_pb2.MctlDriver(
-            todev_knife_height_set=mctrl_driver_pb2.DrvKnifeHeight(knifeHeight=height)
-        )
+        build = mctrl_driver_pb2.MctlDriver(todev_knife_height_set=mctrl_driver_pb2.DrvKnifeHeight(knifeHeight=height))
         logger.debug(f"Send command--Knife motor height setting height={height}")
         return self.send_order_msg_driver(build)
 
     def set_speed(self, speed: float):
         logger.debug(f"{self.get_device_name()} set speed, {speed}")
-        build = mctrl_driver_pb2.MctlDriver(
-            bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(speed=speed, rw=1)
-        )
+        build = mctrl_driver_pb2.MctlDriver(bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(speed=speed, rw=1))
         logger.debug(f"Send command--Speed setting speed={speed}")
         return self.send_order_msg_driver(build)
 
     def syn_nav_star_point_data(self, sat_system: int):
         build = mctrl_driver_pb2.MctlDriver(
-            rtk_sys_mask_query=mctrl_driver_pb2.rtk_sys_mask_query_t(
-                sat_system=sat_system
-            )
+            rtk_sys_mask_query=mctrl_driver_pb2.rtk_sys_mask_query_t(sat_system=sat_system)
         )
-        logger.debug(
-            f"Send command--Navigation satellite frequency point synchronization={sat_system}"
-        )
+        logger.debug(f"Send command--Navigation satellite frequency point synchronization={sat_system}")
         return self.send_order_msg_driver(build)
 
     def set_nav_star_point(self, cmd_req: str):
         build = mctrl_driver_pb2.MctlDriver(
-            rtk_cfg_req=mctrl_driver_pb2.rtk_cfg_req_t(
-                cmd_req=cmd_req, cmd_length=len(cmd_req) - 1
-            )
+            rtk_cfg_req=mctrl_driver_pb2.rtk_cfg_req_t(cmd_req=cmd_req, cmd_length=len(cmd_req) - 1)
         )
-        logger.debug(
-            f"Send command--Navigation satellite frequency point setting={cmd_req}"
-        )
+        logger.debug(f"Send command--Navigation satellite frequency point setting={cmd_req}")
         logger.debug(
             f"Navigation satellite setting, Send command--Navigation satellite frequency point setting={cmd_req}"
         )
         return self.send_order_msg_driver(build)
 
     def get_speed(self):
-        build = mctrl_driver_pb2.MctlDriver(
-            bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(rw=0)
-        )
+        build = mctrl_driver_pb2.MctlDriver(bidire_speed_read_set=mctrl_driver_pb2.DrvSrSpeed(rw=0))
         logger.debug("Send command--Get speed value")
         return self.send_order_msg_driver(build)
 
