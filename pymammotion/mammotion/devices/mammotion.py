@@ -7,7 +7,6 @@ import codecs
 import json
 import logging
 from abc import abstractmethod
-from asyncio import sleep
 from enum import Enum
 from typing import Any, cast
 from uuid import UUID
@@ -126,11 +125,13 @@ def has_field(message: betterproto.Message) -> bool:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
+    _luba_msg: MowingDevice
+
     def __init__(self) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
-        self._luba_msg = LubaMsg()
+        self._luba_msg = MowingDevice()
         self._notify_future: asyncio.Future[bytes] | None = None
 
     def _update_raw_data(self, data: bytes) -> None:
@@ -151,7 +152,7 @@ class MammotionBaseDevice:
             case "ota":
                 self._update_ota_data(tmp_msg)
 
-        self._luba_msg = MowingDevice.from_raw(self._raw_data)
+        self._luba_msg.update_raw(self._raw_data)
 
     def _update_nav_data(self, tmp_msg):
         """Update navigation data."""
@@ -247,25 +248,22 @@ class MammotionBaseDevice:
         bidrect_context_3 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
         bidrect_context_2 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
         # one of these has the base point
+        # need to store these
         print(bidrect_context_1)
         print(bidrect_context_3)
         print(bidrect_context_2)
-        # investigate
-        print("get hash response")
+
         hash_response_result = await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
         get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
-        print(get_hash_response_ack)
         await self._ble_sync()
 
         for data_hash in get_hash_ack.data_couple:
-            print(data_hash)
             sync_result = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
-            print("synchronise hash")
-            print(sync_result)
+
             if sync_result is not None:
                 commondata_ack = LubaMsg().parse(sync_result).nav.toapp_get_commondata_ack
-                print(commondata_ack)  # start of frame
 
+                self._luba_msg.map.update(commondata_ack)
                 total_frame = commondata_ack.total_frame
                 current_frame = 1
                 while current_frame < total_frame:
@@ -281,6 +279,7 @@ class MammotionBaseDevice:
                     print(region_result)
                     if region_result is not None:
                         region_commondata_ack = LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
+                        self._luba_msg.map.update(region_commondata_ack)
                         print(region_commondata_ack)
                     current_frame += 1
 
@@ -293,7 +292,7 @@ class MammotionBaseDevice:
         print(get_hash_ack)
 
         # get cover path from these hashes
-
+        print(self._luba_msg.map)
         print("end debug")
 
     async def command(self, key: str, **kwargs):

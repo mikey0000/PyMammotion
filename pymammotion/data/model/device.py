@@ -18,12 +18,19 @@ class MowingDevice:
     """Wraps the betterproto dataclasses so we can bypass the groups for keeping all data."""
 
     device: LubaMsg
-    map: HashList | None = None
+    map: HashList
+
+    def __iter__(self):
+        self.device = LubaMsg()
+        self.map = HashList(area={}, path={}, obstacle={})
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
         """Take in raw data to hold in the betterproto dataclass."""
         return MowingDevice(device=LubaMsg(**raw))
+
+    def update_raw(self, raw: dict) -> None:
+        self.device = LubaMsg(**raw)
 
     @property
     def net(self):
