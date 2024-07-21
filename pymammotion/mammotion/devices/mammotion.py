@@ -84,6 +84,12 @@ def _handle_timeout(fut: asyncio.Future[None]) -> None:
         fut.set_exception(asyncio.TimeoutError)
 
 
+async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None:
+    """Handle a retry."""
+    if not fut.done():
+        await func(command)
+
+
 class ConnectionPreference(Enum):
     """Enum for connection preference."""
 
@@ -233,44 +239,60 @@ class MammotionBaseDevice:
         get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
         print(get_hash_ack)
         # await sleep(2)
-        hash_response_result = await self._send_command_with_args(
-            "get_hash_response", total_frame=get_hash_ack.total_frame, current_frame=get_hash_ack.current_frame
-        )
-        # get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
-        # print(get_hash_response_ack)
 
         # ble sync
         await self._ble_sync()
 
-        await sleep(1)
+        bidrect_context_1 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
+        bidrect_context_3 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
+        bidrect_context_2 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
+        # one of these has the base point
+        print(bidrect_context_1)
+        print(bidrect_context_3)
+        print(bidrect_context_2)
+        # investigate
+        print("get hash response")
+        hash_response_result = await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
+        get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
+        print(get_hash_response_ack)
+        await self._ble_sync()
 
         for data_hash in get_hash_ack.data_couple:
             print(data_hash)
             sync_result = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
-            commondata_ack = LubaMsg().parse(sync_result).nav.toapp_get_commondata_ack
             print("synchronise hash")
             print(sync_result)
-            print(commondata_ack)
-            await sleep(1)
+            if sync_result is not None:
+                commondata_ack = LubaMsg().parse(sync_result).nav.toapp_get_commondata_ack
+                print(commondata_ack)  # start of frame
 
-            total_frame = commondata_ack.total_frame
-            current_frame = 1
-            while current_frame <= total_frame:
-                region_data = RegionData()
-                region_data.hash = data_hash
-                region_data.action = commondata_ack.action
-                region_data.type = commondata_ack.type
-                region_data.total_frame = total_frame
-                region_data.current_frame = current_frame
-                region_result = await self._send_command_with_args("get_regional_data", regional_data=region_data)
-                region_commondata_ack = LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
-                print("region results")
-                print(region_result)
-                print(region_commondata_ack)
-                current_frame += 1
+                total_frame = commondata_ack.total_frame
+                current_frame = 1
+                while current_frame < total_frame:
+                    region_data = RegionData()
+                    region_data.hash = data_hash
+                    region_data.action = commondata_ack.action
+                    region_data.type = commondata_ack.type
+                    region_data.total_frame = total_frame
+                    region_data.current_frame = current_frame
+                    print("sending region command", current_frame, total_frame)
+                    region_result = await self._send_command_with_args("get_regional_data", regional_data=region_data)
+                    print("region results")
+                    print(region_result)
+                    if region_result is not None:
+                        region_commondata_ack = LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
+                        print(region_commondata_ack)
+                    current_frame += 1
 
         # sub_cmd 3 is line hashes??
         # sub_cmd 4 is dump location (yuka)
+        # line list
+        hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
+        print(hash_list_result)
+        get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
+        print(get_hash_ack)
+
+        # get cover path from these hashes
 
         print("end debug")
 
@@ -481,11 +503,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 # TODO occasionally respond with ble sync
                 return
-        # try and check all non-sync messages
-        which_group = betterproto.which_one_of(new_msg, "LubaSubMsg")
-        if self._prev_notification == which_group[1]:
-            return
-        self._prev_notification = which_group[1]
 
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)
@@ -506,7 +523,13 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         await self._message.post_custom_data_bytes(command)
 
-        timeout = 10
+        retry_handle = self.loop.call_at(
+            self.loop.time() + 2,
+            lambda: asyncio.ensure_future(
+                _handle_retry(self._notify_future, self._message.post_custom_data_bytes, command)
+            ),
+        )
+        timeout = 5
         timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
         timeout_expired = False
         try:
@@ -517,6 +540,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         finally:
             if not timeout_expired:
                 timeout_handle.cancel()
+                retry_handle.cancel()
             self._notify_future = None
 
         _LOGGER.debug("%s: Notification received: %s", self.name, notify_msg.hex())

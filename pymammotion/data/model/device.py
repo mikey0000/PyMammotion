@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from pymammotion.data.model import HashList
 from pymammotion.proto.dev_net import DevNet
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.luba_mul import SocMul
@@ -17,6 +18,7 @@ class MowingDevice:
     """Wraps the betterproto dataclasses so we can bypass the groups for keeping all data."""
 
     device: LubaMsg
+    map: HashList | None = None
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
