@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from pymammotion.data.model import HashList
+from pymammotion.data.model.location import Location
 from pymammotion.proto.dev_net import DevNet
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.luba_mul import SocMul
@@ -10,7 +11,7 @@ from pymammotion.proto.mctrl_driver import MctlDriver
 from pymammotion.proto.mctrl_nav import MctlNav
 from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys
+from pymammotion.proto.mctrl_sys import MctlSys, SystemUpdateBufMsg
 
 
 @dataclass
@@ -19,10 +20,12 @@ class MowingDevice:
 
     device: LubaMsg
     map: HashList
+    location: Location
 
-    def __iter__(self):
+    def __init__(self):
         self.device = LubaMsg()
         self.map = HashList(area={}, path={}, obstacle={})
+        self.location = Location()
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
@@ -31,6 +34,18 @@ class MowingDevice:
 
     def update_raw(self, raw: dict) -> None:
         self.device = LubaMsg(**raw)
+
+    def buffer(self, buffer_list: SystemUpdateBufMsg):
+        """Update the device based on which buffer we are reading from."""
+        # 2 is error codes
+        if buffer_list.update_buf_data.index(0) == 1:
+            self.location.RTK.latitude = buffer_list.update_buf_data.index(5)
+            self.location.RTK.longitude = buffer_list.update_buf_data.index(6)
+            self.location.dock.latitude = buffer_list.update_buf_data.index(7)
+            self.location.dock.longitude = buffer_list.update_buf_data.index(8)
+            self.location.dock.rotation = buffer_list.update_buf_data.index(3) + 180
+            # index(4) is device speed
+
 
     @property
     def net(self):
@@ -164,3 +179,4 @@ class PeptData:
             return self.pept[item]
 
         return MctlPept().__getattribute__(item).from_dict(value=self.pept[item])
+

@@ -222,40 +222,36 @@ class MammotionBaseDevice:
 
     @abstractmethod
     async def _ble_sync(self):
-        """Send ble sync command."""
+        """Send ble sync command every 3 seconds or sooner."""
 
     async def start_sync(self, retry: int):
         """Start synchronization with the device."""
         await self._send_command("get_device_base_info", retry)
         await self._send_command("get_report_cfg", retry)
         """Read plans from device."""
-        plan_result = await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
-        print(LubaMsg().parse(plan_result).nav.todev_planjob_set)
+        await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
 
         """Logs I think."""
         # await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
 
         hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=0)
-        print(hash_list_result)
         get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
-        print(get_hash_ack)
         # await sleep(2)
 
-        # ble sync
-        await self._ble_sync()
-
-        bidrect_context_1 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
-        bidrect_context_3 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
-        bidrect_context_2 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
+        context_1 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
+        context_3 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
+        context_2 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
         # one of these has the base point
         # need to store these
-        print(bidrect_context_1)
-        print(bidrect_context_3)
-        print(bidrect_context_2)
+
+        update_buf_list = LubaMsg().parse(context_1).sys.system_update_buf
+        if has_field(update_buf_list):
+            self._luba_msg.buffer(update_buf_list)
 
         hash_response_result = await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
-        get_hash_response_ack = LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
-        await self._ble_sync()
+        print("get hash response")
+        print(hash_response_result)
+        LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
 
         for data_hash in get_hash_ack.data_couple:
             sync_result = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
@@ -273,27 +269,19 @@ class MammotionBaseDevice:
                     region_data.type = commondata_ack.type
                     region_data.total_frame = total_frame
                     region_data.current_frame = current_frame
-                    print("sending region command", current_frame, total_frame)
                     region_result = await self._send_command_with_args("get_regional_data", regional_data=region_data)
-                    print("region results")
-                    print(region_result)
                     if region_result is not None:
                         region_commondata_ack = LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
                         self._luba_msg.map.update(region_commondata_ack)
-                        print(region_commondata_ack)
                     current_frame += 1
 
-        # sub_cmd 3 is line hashes??
+        # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
         # line list
-        hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
-        print(hash_list_result)
-        get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
-        print(get_hash_ack)
+        # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
+        # get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
 
         # get cover path from these hashes
-        print(self._luba_msg.map)
-        print("end debug")
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
@@ -306,6 +294,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def __init__(self, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__()
+        self._ble_sync_task = None
         self._prev_notification = None
         self._interface = f"hci{interface}"
         self._device = device
@@ -327,6 +316,21 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     async def _ble_sync(self):
         command_bytes = self._commands.send_todev_ble_sync(2)
         await self._message.post_custom_data_bytes(command_bytes)
+
+    async def run_periodic_sync_task(self) -> None:
+        try:
+            await self._ble_sync()
+        except Exception as e:
+            _LOGGER.error(f"An error occurred: {e}")
+        finally:
+            self.schedule_ble_sync()
+
+    def schedule_ble_sync(self):
+        """Periodically sync to keep connection alive."""
+        if self._client.is_connected:
+            self._ble_sync_task = self.loop.call_later(
+                130, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
+            )
 
     async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
         """Send command to device and read response."""
@@ -460,9 +464,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
-
-            command_bytes = self._commands.send_todev_ble_sync(2)
-            await self._message.post_custom_data_bytes(command_bytes)
+            # don't await this
+            self.schedule_ble_sync()
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
