@@ -14,7 +14,7 @@ from pymammotion.http.http import LubaHTTP, connect_http
 
 # TODO make a working device that will work outside HA too.
 from pymammotion.mammotion.devices import MammotionBaseBLEDevice
-from pymammotion.mqtt.mqtt import LubaMQTT, logger
+from pymammotion.mqtt import MammotionMQTT
 
 # TODO provide interface to pick between mqtt/cloud/bluetooth
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     CLIENT_ID = os.environ.get("CLIENT_ID")
     IOT_TOKEN = os.environ.get("IOT_TOKEN")
     REGION = os.environ.get("REGION")
-    luba = LubaMQTT(
+    luba = MammotionMQTT(
         iot_token=IOT_TOKEN,
         region_id=REGION,
         product_key=PRODUCT_KEY,

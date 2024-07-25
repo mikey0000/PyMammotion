@@ -8,7 +8,7 @@ from pymammotion import LubaHTTP
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.const import MAMMOTION_DOMAIN
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
-from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT, logger
+from pymammotion.mqtt import MammotionMQTT
 from pymammotion.mammotion.devices.mammotion import MammotionBaseCloudDevice
 
 logger = logging.getLogger(__name__)
