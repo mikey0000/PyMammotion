@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import TypedDict
 
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck
 

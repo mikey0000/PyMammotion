@@ -5,6 +5,7 @@ from dataclasses import dataclass
 @dataclass
 class Point:
     """Returns a lat long."""
+
     latitude: float
     longitude: float
 
@@ -23,6 +24,7 @@ class Dock(Point):
 @dataclass
 class Location:
     """Stores/retrieves RTK GPS data."""
+
     device: Point
     RTK: Point
     dock: Dock

@@ -46,3 +46,20 @@ class BleNotificationEvent:
 
     def RemoveSubscribersForBleNotificationEvent(self, objMethod):
         self.OnBleNotification -= objMethod
+
+
+class DataEvent:
+    """Callbacks for data events."""
+
+    def __init__(self):
+        self.on_data_event = Event()
+
+    async def data_event(self, data):
+        # This function will be executed when data is received.
+        await self.on_data_event(data)
+
+    def add_subscribers(self, obj_method):
+        self.on_data_event += obj_method
+
+    def remove_subscribers(self, obj_method):
+        self.on_data_event -= obj_method

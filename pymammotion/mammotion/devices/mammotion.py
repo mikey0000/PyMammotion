@@ -27,9 +27,11 @@ from pymammotion.bluetooth import BleMessage
 from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
+from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
 from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
 
 
 class CharacteristicMissingError(Exception):
@@ -69,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 def slashescape(err):
     """Escape a slash character."""
     # print err, dir(err), err.start, err.end, err.object[:err.start]
-    thebyte = err.object[err.start : err.end]
+    thebyte = err.object[err.start: err.end]
     repl = "\\x" + hex(ord(thebyte))[2:]
     return (repl, err.end)
 
@@ -103,9 +105,9 @@ class MammotionDevice:
     _ble_device: MammotionBaseBLEDevice | None = None
 
     def __init__(
-        self,
-        ble_device: BLEDevice,
-        preference: ConnectionPreference = ConnectionPreference.EITHER,
+            self,
+            ble_device: BLEDevice,
+            preference: ConnectionPreference = ConnectionPreference.EITHER,
     ) -> None:
         """Initialize MammotionDevice."""
         if ble_device:
@@ -126,13 +128,39 @@ class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
     _luba_msg: MowingDevice
+    _state_manager: StateManager
 
     def __init__(self) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
         self._luba_msg = MowingDevice()
+        self._state_manager = StateManager(self._luba_msg)
+
+        self._state_manager.gethash_ack_callback.add_subscribers(self.datahash_response)
+        self._state_manager.get_commondata_ack_callback.add_subscribers(self.commdata_response)
         self._notify_future: asyncio.Future[bytes] | None = None
+
+    async def datahash_response(self, hash_ack: NavGetHashListAck):
+        """Callback for handling datahash response."""
+        for data_hash in hash_ack.data_couple:
+            await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
+
+    async def commdata_response(self, common_data: NavGetCommDataAck):
+        """Callback for handling common data response."""
+        # TODO check if the hash exists and whether or not to call get regional
+        print(common_data)
+        total_frame = common_data.total_frame
+        current_frame = 1
+        while current_frame < total_frame:
+            region_data = RegionData()
+            region_data.hash = common_data.data_hash
+            region_data.action = common_data.action
+            region_data.type = common_data.type
+            region_data.total_frame = total_frame
+            region_data.current_frame = current_frame
+            await self._send_command_with_args("get_regional_data", regional_data=region_data)
+            current_frame += 1
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
@@ -231,57 +259,18 @@ class MammotionBaseDevice:
         """Read plans from device."""
         await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
 
-        """Logs I think."""
-        # await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
+        await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=0)
 
-        hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=0)
-        get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
-        # await sleep(2)
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
 
-        context_1 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
-        context_3 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
-        context_2 = await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
-        # one of these has the base point
-        # need to store these
-
-        update_buf_list = LubaMsg().parse(context_1).sys.system_update_buf
-        if has_field(update_buf_list):
-            self._luba_msg.buffer(update_buf_list)
-
-        hash_response_result = await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
-        print("get hash response")
-        print(hash_response_result)
-        LubaMsg().parse(hash_response_result).nav.toapp_gethash_ack
-
-        for data_hash in get_hash_ack.data_couple:
-            sync_result = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
-
-            if sync_result is not None:
-                commondata_ack = LubaMsg().parse(sync_result).nav.toapp_get_commondata_ack
-
-                self._luba_msg.map.update(commondata_ack)
-                total_frame = commondata_ack.total_frame
-                current_frame = 1
-                while current_frame < total_frame:
-                    region_data = RegionData()
-                    region_data.hash = data_hash
-                    region_data.action = commondata_ack.action
-                    region_data.type = commondata_ack.type
-                    region_data.total_frame = total_frame
-                    region_data.current_frame = current_frame
-                    region_result = await self._send_command_with_args("get_regional_data", regional_data=region_data)
-                    if region_result is not None:
-                        region_commondata_ack = LubaMsg().parse(region_result).nav.toapp_get_commondata_ack
-                        self._luba_msg.map.update(region_commondata_ack)
-                    current_frame += 1
+        await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
-        # line list
+        # jobs list
         # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
-        # get_hash_ack = LubaMsg().parse(hash_list_result).nav.toapp_gethash_ack
-
-        # get cover path from these hashes
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
@@ -503,9 +492,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
-                # TODO occasionally respond with ble sync
                 return
 
+        self._state_manager.notification(new_msg)
+        # may or may not be correct, some work could be done here to correctly match responses
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)
             return
@@ -662,12 +652,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     """Base class for Mammotion Cloud devices."""
 
     def __init__(
-        self,
-        mqtt_client: MammotionMQTT,
-        iot_id: str,
-        device_name: str,
-        nick_name: str,
-        **kwargs: Any,
+            self,
+            mqtt_client: MammotionMQTT,
+            iot_id: str,
+            device_name: str,
+            nick_name: str,
+            **kwargs: Any,
     ) -> None:
         """Initialize MammotionBaseCloudDevice."""
         super().__init__()
