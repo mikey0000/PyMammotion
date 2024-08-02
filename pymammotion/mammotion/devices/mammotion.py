@@ -71,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 def slashescape(err):
     """Escape a slash character."""
     # print err, dir(err), err.start, err.end, err.object[:err.start]
-    thebyte = err.object[err.start: err.end]
+    thebyte = err.object[err.start : err.end]
     repl = "\\x" + hex(ord(thebyte))[2:]
     return (repl, err.end)
 
@@ -105,9 +105,9 @@ class MammotionDevice:
     _ble_device: MammotionBaseBLEDevice | None = None
 
     def __init__(
-            self,
-            ble_device: BLEDevice,
-            preference: ConnectionPreference = ConnectionPreference.EITHER,
+        self,
+        ble_device: BLEDevice,
+        preference: ConnectionPreference = ConnectionPreference.EITHER,
     ) -> None:
         """Initialize MammotionDevice."""
         if ble_device:
@@ -144,15 +144,23 @@ class MammotionBaseDevice:
     async def datahash_response(self, hash_ack: NavGetHashListAck):
         """Callback for handling datahash response."""
         for data_hash in hash_ack.data_couple:
-            await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
+            result_hash = 0
+            while data_hash != result_hash:
+                print("requesting hash")
+                print(data_hash)
+                data = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
+                msg = LubaMsg().parse(data)
+                if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
+                    result_hash = msg.nav.toapp_get_commondata_ack.hash
+                else:
+                    await asyncio.sleep(0.5)
 
     async def commdata_response(self, common_data: NavGetCommDataAck):
         """Callback for handling common data response."""
         # TODO check if the hash exists and whether or not to call get regional
-        print(common_data)
         total_frame = common_data.total_frame
         current_frame = 1
-        while current_frame < total_frame:
+        while current_frame <= total_frame:
             region_data = RegionData()
             region_data.hash = common_data.data_hash
             region_data.action = common_data.action
@@ -283,6 +291,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def __init__(self, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__()
+        self._pong_count = None
         self._ble_sync_task = None
         self._prev_notification = None
         self._interface = f"hci{interface}"
@@ -481,7 +490,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
-        _LOGGER.info("%s: Received notification: %s", self.name, data)
+        _LOGGER.debug("%s: Received notification: %s", self.name, data)
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
@@ -492,13 +501,17 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
-                return
+                self._pong_count += 1
 
-        self._state_manager.notification(new_msg)
+                if self._pong_count < 3:
+                    return
+
         # may or may not be correct, some work could be done here to correctly match responses
         if self._notify_future and not self._notify_future.done():
+            self._pong_count = 0
             self._notify_future.set_result(data)
-            return
+
+        await self._state_manager.notification(new_msg)
 
     async def _start_notify(self) -> None:
         """Start notification."""
@@ -652,12 +665,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     """Base class for Mammotion Cloud devices."""
 
     def __init__(
-            self,
-            mqtt_client: MammotionMQTT,
-            iot_id: str,
-            device_name: str,
-            nick_name: str,
-            **kwargs: Any,
+        self,
+        mqtt_client: MammotionMQTT,
+        iot_id: str,
+        device_name: str,
+        nick_name: str,
+        **kwargs: Any,
     ) -> None:
         """Initialize MammotionBaseCloudDevice."""
         super().__init__()

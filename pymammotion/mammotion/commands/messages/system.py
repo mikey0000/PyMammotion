@@ -1,5 +1,6 @@
 # === sendOrderMsg_Sys ===
 import datetime
+from abc import ABC
 from typing import List
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
@@ -9,7 +10,7 @@ from pymammotion.proto.mctrl_sys import RptInfoType
 from pymammotion.utility.device_type import DeviceType
 
 
-class MessageSystem(AbstractMessage):
+class MessageSystem(AbstractMessage, ABC):
     messageNavigation: MessageNavigation = MessageNavigation()
 
     def send_order_msg_sys(self, sys):
@@ -204,7 +205,7 @@ class MessageSystem(AbstractMessage):
         period: int,
         no_change_period: int,
         count: int,
-    ) -> None:
+    ) -> bytes:
         build = mctrl_sys_pb2.MctlSys(
             todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
                 act=rpt_act,

@@ -4,6 +4,7 @@ from pymammotion.proto.luba_mul import MUL_LANGUAGE
 
 
 class MessageMedia:
+    @staticmethod
     def send_order_msg_media(self, mul):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_MUL,

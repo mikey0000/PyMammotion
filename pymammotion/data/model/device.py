@@ -16,7 +16,7 @@ from pymammotion.proto.mctrl_sys import MctlSys, SystemUpdateBufMsg
 
 @dataclass
 class MowingDevice:
-    """Wraps the betterproto dataclasses so we can bypass the groups for keeping all data."""
+    """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
 
     device: LubaMsg
     map: HashList
@@ -26,26 +26,61 @@ class MowingDevice:
         self.device = LubaMsg()
         self.map = HashList(area={}, path={}, obstacle={})
         self.location = Location()
+        self.err_code_list = []
+        self.err_code_list_time = []
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
         """Take in raw data to hold in the betterproto dataclass."""
-        return MowingDevice(device=LubaMsg(**raw))
+        mowing_device = MowingDevice()
+        mowing_device.device = LubaMsg(**raw)
+        return mowing_device
 
     def update_raw(self, raw: dict) -> None:
+        """Update the raw LubaMsg data."""
         self.device = LubaMsg(**raw)
 
     def buffer(self, buffer_list: SystemUpdateBufMsg):
         """Update the device based on which buffer we are reading from."""
-        # 2 is error codes
-        if buffer_list.update_buf_data.index(0) == 1:
-            self.location.RTK.latitude = buffer_list.update_buf_data.index(5)
-            self.location.RTK.longitude = buffer_list.update_buf_data.index(6)
-            self.location.dock.latitude = buffer_list.update_buf_data.index(7)
-            self.location.dock.longitude = buffer_list.update_buf_data.index(8)
-            self.location.dock.rotation = buffer_list.update_buf_data.index(3) + 180
-            # index(4) is device speed
-
+        match buffer_list.update_buf_data[0]:
+            case 1:
+                # 4 speed
+                self.location.RTK.latitude = buffer_list.update_buf_data[5]
+                self.location.RTK.longitude = buffer_list.update_buf_data[6]
+                self.location.dock.latitude = buffer_list.update_buf_data[7]
+                self.location.dock.longitude = buffer_list.update_buf_data[8]
+                self.location.dock.rotation = buffer_list.update_buf_data[3] + 180
+            case 2:
+                self.err_code_list.clear()
+                self.err_code_list_time.clear()
+                self.err_code_list.extend(
+                    [
+                        buffer_list.update_buf_data[3],
+                        buffer_list.update_buf_data[5],
+                        buffer_list.update_buf_data[7],
+                        buffer_list.update_buf_data[9],
+                        buffer_list.update_buf_data[11],
+                        buffer_list.update_buf_data[13],
+                        buffer_list.update_buf_data[15],
+                        buffer_list.update_buf_data[17],
+                        buffer_list.update_buf_data[19],
+                        buffer_list.update_buf_data[21],
+                    ]
+                )
+                self.err_code_list_time.extend(
+                    [
+                        buffer_list.update_buf_data[4],
+                        buffer_list.update_buf_data[6],
+                        buffer_list.update_buf_data[8],
+                        buffer_list.update_buf_data[10],
+                        buffer_list.update_buf_data[12],
+                        buffer_list.update_buf_data[14],
+                        buffer_list.update_buf_data[16],
+                        buffer_list.update_buf_data[18],
+                        buffer_list.update_buf_data[20],
+                        buffer_list.update_buf_data[22],
+                    ]
+                )
 
     @property
     def net(self):
@@ -179,4 +214,3 @@ class PeptData:
             return self.pept[item]
 
         return MctlPept().__getattribute__(item).from_dict(value=self.pept[item])
-

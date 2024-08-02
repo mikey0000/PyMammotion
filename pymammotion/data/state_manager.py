@@ -1,4 +1,5 @@
 """Manage state from notifications into MowingDevice."""
+
 import betterproto
 
 from pymammotion.data.model.device import MowingDevice
@@ -26,14 +27,13 @@ class StateManager:
         """Set device."""
         self._device = device
 
-
-    def notification(self, message: LubaMsg):
+    async def notification(self, message: LubaMsg):
         """Handle protobuf notifications."""
         res = betterproto.which_one_of(message, "LubaSubMsg")
 
         match res[0]:
             case "nav":
-                self._update_nav_data(message)
+                await self._update_nav_data(message)
             case "sys":
                 self._update_sys_data(message)
             case "driver":
@@ -45,19 +45,19 @@ class StateManager:
             case "ota":
                 self._update_ota_data(message)
 
-    def _update_nav_data(self, message):
+    async def _update_nav_data(self, message):
         """Update nav data."""
         nav_msg = betterproto.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
             case "toapp_gethash_ack":
                 # call callback to handle this data
-                self.gethash_ack_callback.data_event(nav_msg[1])
-
+                print(nav_msg[1])
+                await self.gethash_ack_callback.data_event(nav_msg[1])
             case "toapp_get_commondata_ack":
                 # callback to additional method
+                print(nav_msg[1])
                 self._device.map.update(nav_msg[1])
-                self.get_commondata_ack_callback.data_event(nav_msg[1])
-
+                await self.get_commondata_ack_callback.data_event(nav_msg[1])
 
     def _update_sys_data(self, message):
         """Update system."""
@@ -65,7 +65,11 @@ class StateManager:
         match sys_msg[0]:
             case "system_update_buf":
                 # call callback to handle this data
+                print(sys_msg[1])
                 self._device.buffer(sys_msg[1])
+            case "toapp_report_data":
+                # data for sensors
+                pass
 
     def _update_driver_data(self, message):
         pass

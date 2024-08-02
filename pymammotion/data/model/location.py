@@ -1,4 +1,5 @@
 """Contains RTK models for robot location and RTK positions."""
+
 from dataclasses import dataclass
 
 
@@ -13,13 +14,17 @@ class Point:
         self.latitude = 0
         self.longitude = 0
 
+
 @dataclass
 class Dock(Point):
+    """Stores robot dock position."""
+
     rotation: int
 
     def __init__(self):
         super().__init__()
         self.rotation = 0
+
 
 @dataclass
 class Location:
