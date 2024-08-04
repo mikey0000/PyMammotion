@@ -559,10 +559,16 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         """Resolve characteristics."""
         self._read_char = services.get_characteristic(READ_CHAR_UUID)
         if not self._read_char:
-            raise CharacteristicMissingError(READ_CHAR_UUID)
+            self._read_char = READ_CHAR_UUID
+            _LOGGER.error(CharacteristicMissingError(READ_CHAR_UUID))
+            """Sometimes the robot doesn't report this correctly."""
+            # raise CharacteristicMissingError(READ_CHAR_UUID)
         self._write_char = services.get_characteristic(WRITE_CHAR_UUID)
         if not self._write_char:
-            raise CharacteristicMissingError(WRITE_CHAR_UUID)
+            self._write_char = WRITE_CHAR_UUID
+            _LOGGER.error(CharacteristicMissingError(WRITE_CHAR_UUID))
+            """Sometimes the robot doesn't report this correctly."""
+            # raise CharacteristicMissingError(WRITE_CHAR_UUID)
 
     def _reset_disconnect_timer(self):
         """Reset disconnect timer."""
@@ -641,10 +647,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Disconnecting", self.name)
         try:
             """We reset what command the robot last heard before disconnecting."""
-            command_bytes = self._commands.send_todev_ble_sync(2)
-            await self._message.post_custom_data_bytes(command_bytes)
-            await client.stop_notify(self._read_char)
-            await client.disconnect()
+            if client.is_connected:
+                command_bytes = self._commands.send_todev_ble_sync(2)
+                await self._message.post_custom_data_bytes(command_bytes)
+                await client.stop_notify(self._read_char)
+                await client.disconnect()
         except BLEAK_RETRY_EXCEPTIONS as ex:
             _LOGGER.warning(
                 "%s: Error disconnecting: %s; RSSI: %s",
