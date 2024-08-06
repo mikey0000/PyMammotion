@@ -142,12 +142,10 @@ class MammotionBaseDevice:
         self._notify_future: asyncio.Future[bytes] | None = None
 
     async def datahash_response(self, hash_ack: NavGetHashListAck):
-        """Callback for handling datahash response."""
+        """Handle datahash responses."""
         for data_hash in hash_ack.data_couple:
             result_hash = 0
             while data_hash != result_hash:
-                print("requesting hash")
-                print(data_hash)
                 data = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
                 msg = LubaMsg().parse(data)
                 if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
@@ -156,7 +154,7 @@ class MammotionBaseDevice:
                     await asyncio.sleep(0.5)
 
     async def commdata_response(self, common_data: NavGetCommDataAck):
-        """Callback for handling common data response."""
+        """Handle common data responses."""
         # TODO check if the hash exists and whether or not to call get regional
         total_frame = common_data.total_frame
         current_frame = 1
@@ -264,14 +262,17 @@ class MammotionBaseDevice:
         """Start synchronization with the device."""
         await self._send_command("get_device_base_info", retry)
         await self._send_command("get_report_cfg", retry)
-        """Read plans from device."""
+        """RTK and dock location."""
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
+        """Error codes."""
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
+
+    async def start_map_sync(self):
+        """Start sync of map data."""
         await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
 
         await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=0)
-
-        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
-        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
-        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
 
         await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
 
@@ -316,10 +317,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         await self._message.post_custom_data_bytes(command_bytes)
 
     async def run_periodic_sync_task(self) -> None:
+        """Send ble sync to robot."""
         try:
             await self._ble_sync()
-        except Exception as e:
-            _LOGGER.error(f"An error occurred: {e}")
         finally:
             self.schedule_ble_sync()
 
