@@ -462,7 +462,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
-            # don't await this
             self.schedule_ble_sync()
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
@@ -561,14 +560,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         if not self._read_char:
             self._read_char = READ_CHAR_UUID
             _LOGGER.error(CharacteristicMissingError(READ_CHAR_UUID))
-            """Sometimes the robot doesn't report this correctly."""
-            # raise CharacteristicMissingError(READ_CHAR_UUID)
         self._write_char = services.get_characteristic(WRITE_CHAR_UUID)
         if not self._write_char:
             self._write_char = WRITE_CHAR_UUID
             _LOGGER.error(CharacteristicMissingError(WRITE_CHAR_UUID))
-            """Sometimes the robot doesn't report this correctly."""
-            # raise CharacteristicMissingError(WRITE_CHAR_UUID)
 
     def _reset_disconnect_timer(self):
         """Reset disconnect timer."""
