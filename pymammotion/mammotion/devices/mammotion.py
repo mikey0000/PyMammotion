@@ -325,7 +325,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     def schedule_ble_sync(self):
         """Periodically sync to keep connection alive."""
-        if self._client.is_connected:
+        if self._client is not None and self._client.is_connected:
             self._ble_sync_task = self.loop.call_later(
                 130, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
             )
