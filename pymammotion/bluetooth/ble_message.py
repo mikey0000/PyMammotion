@@ -79,15 +79,11 @@ class BleMessage:
 
     async def get_task(self):
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
-        await self.messageNavigation.post_custom_data(
-            self.get_json_string(bleOrderCmd.task, hash_map)
-        )
+        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
 
     async def send_ble_alive(self):
         hash_map = {"ctrl": 1}
-        await self.messageNavigation.post_custom_data(
-            self.get_json_string(bleOrderCmd.bleAlive, hash_map)
-        )
+        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
 
     def clearNotification(self):
         self.notification = None
@@ -106,9 +102,7 @@ class BleMessage:
             seqs=1,
             version=1,
             subtype=1,
-            net=dev_net_pb2.DevNet(
-                todev_ble_sync=1, todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()
-            ),
+            net=dev_net_pb2.DevNet(todev_ble_sync=1, todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()),
         )
         byte_arr = luba_msg.SerializeToString()
         await self.post_custom_data_bytes(byte_arr)
@@ -117,9 +111,7 @@ class BleMessage:
         request = False
         type = self.messageNavigation.getTypeValue(0, 5)
         try:
-            request = await self.messageNavigation.post(
-                BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None
-            )
+            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -133,9 +125,7 @@ class BleMessage:
         request = False
         type = self.messageNavigation.getTypeValue(0, 7)
         try:
-            request = await self.messageNavigation.post(
-                BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None
-            )
+            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             # print(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -318,9 +308,7 @@ class BleMessage:
             return
         type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(
-                self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data
-            )
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
             # print(suc)
@@ -333,9 +321,7 @@ class BleMessage:
             return
         type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(
-                self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data
-            )
+            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
         except Exception as err:
@@ -352,17 +338,11 @@ class BleMessage:
         if data is None:
             return await self.post_non_data(encrypt, checksum, require_ack, type_of)
 
-        return await self.post_contains_data(
-            encrypt, checksum, require_ack, type_of, data
-        )
+        return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
 
-    async def post_non_data(
-        self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int
-    ) -> bool:
+    async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
         sequence = self.generateSendSequence()
-        postBytes = self.getPostBytes(
-            type_of, encrypt, checksum, require_ack, False, sequence, None
-        )
+        postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
         posted = await self.gatt_write(postBytes)
         return posted and (not require_ack or self.receiveAck(sequence))
 
@@ -385,9 +365,7 @@ class BleMessage:
         for index, chunk in enumerate(chunks):
             frag = index != len(chunks) - 1
             sequence = self.generateSendSequence()
-            postBytes = self.getPostBytes(
-                type_of, encrypt, checksum, require_ack, frag, sequence, chunk
-            )
+            postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
             # print("sequence")
             # print(sequence)
             posted = await self.gatt_write(postBytes)
@@ -415,9 +393,7 @@ class BleMessage:
     ) -> bytes:
         byteOS = BytesIO()
         dataLength = 0 if data == None else len(data)
-        frameCtrl = FrameCtrlData.getFrameCTRLValue(
-            encrypt, checksum, 0, require_ack, hasFrag
-        )
+        frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
         byteOS.write(type.to_bytes(1, sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
         byteOS.write(sequence.to_bytes(1, sys.byteorder))

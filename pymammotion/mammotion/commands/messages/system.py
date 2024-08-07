@@ -1,5 +1,6 @@
 # === sendOrderMsg_Sys ===
 import datetime
+from abc import ABC
 from typing import List
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
@@ -9,7 +10,7 @@ from pymammotion.proto.mctrl_sys import RptInfoType
 from pymammotion.utility.device_type import DeviceType
 
 
-class MessageSystem(AbstractMessage):
+class MessageSystem(AbstractMessage, ABC):
     messageNavigation: MessageNavigation = MessageNavigation()
 
     def send_order_msg_sys(self, sys):
@@ -37,9 +38,7 @@ class MessageSystem(AbstractMessage):
 
     def get_device_product_model(self):
         return self.send_order_msg_sys(
-            mctrl_sys_pb2.MctlSys(
-                device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()
-            ),
+            mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()),
             12,
             True,
         )
@@ -72,12 +71,8 @@ class MessageSystem(AbstractMessage):
             is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
         return self.send_order_msg_sys(build2)
 
-    def test_tool_order_to_sys(
-        self, sub_cmd: int, param_id: int, param_value: List[int]
-    ):
-        build = mctrl_sys_pb2.mCtrlSimulationCmdData(
-            sub_cmd=sub_cmd, param_id=param_id, param_value=param_value
-        )
+    def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: List[int]):
+        build = mctrl_sys_pb2.mCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
         print(f"Send tool test command: subCmd={sub_cmd}, param_id:{
             param_id}, param_value={param_value}")
         build2 = mctrl_sys_pb2.MctlSys(simulation_cmd=build)
@@ -89,23 +84,15 @@ class MessageSystem(AbstractMessage):
         print(f"Send read and write base station configuration quality op:{
             op}, cgf:{cgf}")
         return self.send_order_msg_sys(
-            mctrl_sys_pb2.MctlSys(
-                todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf)
-            )
+            mctrl_sys_pb2.MctlSys(todev_lora_cfg_req=mctrl_sys_pb2.LoraCfgReq(op=op, cfg=cgf))
         )
 
     def allpowerfull_rw(self, id: int, context: int, rw: int):
-        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_2(
-            self.get_device_name()
-        ):
+        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_2(self.get_device_name()):
             self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
             return
-        build = mctrl_sys_pb2.MctlSys(
-            bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(id=id, context=context, rw=rw)
-        )
-        print(
-            f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}"
-        )
+        build = mctrl_sys_pb2.MctlSys(bidire_comm_cmd=mctrl_sys_pb2.SysCommCmd(id=id, context=context, rw=rw))
+        print(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
         if id == 5:
             # This logic doesnt make snese, but its what they had so..
             return self.send_order_msg_sys(build)
@@ -218,7 +205,7 @@ class MessageSystem(AbstractMessage):
         period: int,
         no_change_period: int,
         count: int,
-    ) -> None:
+    ) -> bytes:
         build = mctrl_sys_pb2.MctlSys(
             todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
                 act=rpt_act,
@@ -233,9 +220,7 @@ class MessageSystem(AbstractMessage):
             build.todev_report_cfg.act} {build}")
         return self.send_order_msg_sys(build)
 
-    def get_report_cfg(
-        self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000
-    ):
+    def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
         mctlsys = mctrl_sys_pb2.MctlSys(
             todev_report_cfg=mctrl_sys_pb2.report_info_cfg(
                 timeout=timeout,

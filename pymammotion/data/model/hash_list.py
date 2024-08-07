@@ -1,17 +1,37 @@
-import typing
+from dataclasses import dataclass
+
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck
 
 
+@dataclass
+class FrameList:
+    total_frame: int
+    data: list[NavGetCommDataAck]
+
+
+@dataclass
 class HashList:
-    def __init__(self):
-        self.pver: int = 0
-        self.subCmd: int = 0
-        self.totalFrame: int = 0
-        self.currentFrame: int = 0
-        self.dataHash: int = 0
-        self.path: typing.List[int] = []
+    """stores our map data.
+    [hashID, FrameList].
+    """
 
-    def __str__(self) -> str:
-        return (
-            f"HashBean{{pver={self.pver}, subCmd={self.subCmd}, totalFrame={self.totalFrame}, "
-            + f"currentFrame={self.currentFrame}, dataHash={self.dataHash}, path={self.path}}}"
-        )
+    area: dict  # type 0
+    path: dict  # type 2
+    obstacle: dict  # type 1
+
+    def update(self, hash_data: NavGetCommDataAck):
+        """Update the map data."""
+        if hash_data.type == 0:
+            if self.area.get(hash_data.hash) is None:
+                self.area[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
+            self.area[hash_data.hash].data.append(hash_data)
+
+        if hash_data.type == 1:
+            if self.obstacle.get(hash_data.hash) is None:
+                self.obstacle[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
+            self.obstacle[hash_data.hash].data.append(hash_data)
+
+        if hash_data.type == 2:
+            if self.path.get(hash_data.hash) is None:
+                self.path[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
+            self.path[hash_data.hash].data.append(hash_data)

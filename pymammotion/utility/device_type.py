@@ -75,21 +75,13 @@ class DeviceType(Enum):
             substring = device_name[:3]
             substring2 = device_name[:7]
 
-            if DeviceType.RTK.name in substring or DeviceType.contain_rtk_product_key(
-                product_key
-            ):
+            if DeviceType.RTK.name in substring or DeviceType.contain_rtk_product_key(product_key):
                 return DeviceType.RTK
-            elif (
-                DeviceType.LUBA_2.name in substring2
-                or DeviceType.contain_luba_2_product_key(product_key)
-            ):
+            elif DeviceType.LUBA_2.name in substring2 or DeviceType.contain_luba_2_product_key(product_key):
                 return DeviceType.LUBA_2
             elif DeviceType.LUBA_YUKA.name in substring2:
                 return DeviceType.LUBA_YUKA
-            elif (
-                DeviceType.LUBA.name in substring2
-                or DeviceType.contain_luba_product_key(product_key)
-            ):
+            elif DeviceType.LUBA.name in substring2 or DeviceType.contain_luba_product_key(product_key):
                 return DeviceType.LUBA
             else:
                 return DeviceType.UNKNOWN
@@ -178,10 +170,7 @@ class DeviceType(Enum):
 
         """
 
-        return (
-            DeviceType.value_of_str(device_name).get_value()
-            == DeviceType.LUBA_YUKA.get_value()
-        )
+        return DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_YUKA.get_value()
 
     @staticmethod
     def is_rtk(device_name, product_key=""):
@@ -205,11 +194,7 @@ class DeviceType(Enum):
         else:
             device_type = DeviceType.value_of_str(device_name, product_key)
 
-        return (
-            DeviceType.RTK.get_value()
-            <= device_type.get_value()
-            < DeviceType.LUBA.get_value()
-        )
+        return DeviceType.RTK.get_value() <= device_type.get_value() < DeviceType.LUBA.get_value()
 
     @staticmethod
     def contain_rtk_product_key(product_key):

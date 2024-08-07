@@ -33,16 +33,12 @@ class MessageNetwork:
         return self.send_order_msg_net(net)
 
     def get_4g_module_info(self):
-        build = dev_net_pb2.DevNet(
-            todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req
-        )
+        build = dev_net_pb2.DevNet(todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req)
         print("Send command -- Get device 4G network module information")
         return self.send_order_msg_net(build)
 
     def get_4g_info(self):
-        build = dev_net_pb2.DevNet(
-            todev_mnet_info_req=dev_net_pb2.DevNet().todev_mnet_info_req
-        )
+        build = dev_net_pb2.DevNet(todev_mnet_info_req=dev_net_pb2.DevNet().todev_mnet_info_req)
         print("Send command -- Get device 4G network information")
         return self.send_order_msg_net(build)
 
@@ -82,9 +78,7 @@ class MessageNetwork:
         print(
             f"Send log====Feedback====Command======requestID:{request_id} operation:{operation} serverIp:{server_ip} type:{type}"
         )
-        return self.send_order_msg_net(
-            dev_net_pb2.DevNet(todev_ble_sync=1, todev_uploadfile_req=build)
-        )
+        return self.send_order_msg_net(dev_net_pb2.DevNet(todev_ble_sync=1, todev_uploadfile_req=build))
 
     def set_device_socket_request(
         self,
@@ -107,9 +101,7 @@ class MessageNetwork:
         print(
             f"Send log====Feedback====Command======requestID:{request_id}  operation:{operation} serverIp:{server_ip}  type:{type}"
         )
-        return self.send_order_msg_net(
-            dev_net_pb2.DevNet(todev_ble_sync=1, todev_uploadfile_req=build)
-        )
+        return self.send_order_msg_net(dev_net_pb2.DevNet(todev_ble_sync=1, todev_uploadfile_req=build))
 
     def get_device_log_info(self, biz_id: str, type: int, log_url: str) -> bytes:
         """Get device log info (bluetooth only)."""
@@ -129,15 +121,11 @@ class MessageNetwork:
     def cancel_log_update(self, biz_id: str):
         """Cancel log update (bluetooth only)."""
         return self.send_order_msg_net(
-            dev_net_pb2.DevNet(
-                todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(bizId=biz_id)
-            )
+            dev_net_pb2.DevNet(todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(bizId=biz_id))
         )
 
     def get_device_network_info(self):
-        build = dev_net_pb2.DevNet(
-            todev_networkinfo_req=dev_net_pb2.GetNetworkInfoReq(req_ids=1)
-        )
+        build = dev_net_pb2.DevNet(todev_networkinfo_req=dev_net_pb2.GetNetworkInfoReq(req_ids=1))
         print("Send command - get device network information")
         return self.send_order_msg_net(build)
 
@@ -159,13 +147,9 @@ class MessageNetwork:
     def set_device_wifi_enable_status(self, new_wifi_status: bool):
         build = dev_net_pb2.DevNet(
             todev_ble_sync=1,
-            todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(
-                configParam=4, wifi_enable=new_wifi_status
-            ),
+            todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(configParam=4, wifi_enable=new_wifi_status),
         )
-        print(
-            f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}"
-        )
+        print(f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
         return self.send_order_msg_net(build)
 
     def wifi_connectinfo_update(self, device_name: str, is_binary: bool):
@@ -189,9 +173,7 @@ class MessageNetwork:
     def get_record_wifi_list(self, is_binary: bool):
         print(f"getRecordWifiList().isBinary={is_binary}")
         if is_binary:
-            build = dev_net_pb2.DevNet(
-                todev_ble_sync=1, todev_WifiListUpload=dev_net_pb2.DrvWifiList()
-            )
+            build = dev_net_pb2.DevNet(todev_ble_sync=1, todev_WifiListUpload=dev_net_pb2.DrvWifiList())
             print("Send command - get memorized WiFi list upload command")
             return self.send_order_msg_net(build)
         self.get_record_wifi_list2()
@@ -205,9 +187,7 @@ class MessageNetwork:
         if is_binary:
             build = dev_net_pb2.DevNet(
                 todev_ble_sync=1,
-                todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(
-                    configParam=status, Confssid=ssid
-                ),
+                todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(configParam=status, Confssid=ssid),
             )
             print(
                 f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})"

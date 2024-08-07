@@ -93,12 +93,8 @@ class DatatypeConverter:
         DatatypeConverter.init_encode_map()  # Ensure encode_map is initialized
         while i2 >= 3:
             cArr[i3] = DatatypeConverter.encode(bArr[i] >> 2)
-            cArr[i3 + 1] = DatatypeConverter.encode(
-                ((bArr[i] & 3) << 4) | ((bArr[i + 1] >> 4) & 15)
-            )
-            cArr[i3 + 2] = DatatypeConverter.encode(
-                ((bArr[i + 1] & 15) << 2) | ((bArr[i + 2] >> 6) & 3)
-            )
+            cArr[i3 + 1] = DatatypeConverter.encode(((bArr[i] & 3) << 4) | ((bArr[i + 1] >> 4) & 15))
+            cArr[i3 + 2] = DatatypeConverter.encode(((bArr[i + 1] & 15) << 2) | ((bArr[i + 2] >> 6) & 3))
             cArr[i3 + 3] = DatatypeConverter.encode(bArr[i + 2] & 63)
             i2 -= 3
             i += 3
@@ -112,9 +108,7 @@ class DatatypeConverter:
 
         if i2 == 2:
             cArr[i3] = DatatypeConverter.encode(bArr[i] >> 2)
-            cArr[i3 + 1] = DatatypeConverter.encode(
-                ((bArr[i] & 3) << 4) | ((bArr[i + 1] >> 4) & 15)
-            )
+            cArr[i3 + 1] = DatatypeConverter.encode(((bArr[i] & 3) << 4) | ((bArr[i + 1] >> 4) & 15))
             cArr[i3 + 2] = DatatypeConverter.encode((bArr[i + 1] & 15) << 2)
             cArr[i3 + 3] = "="
 

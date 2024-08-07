@@ -24,11 +24,14 @@ from bleak_retry_connector import (
 )
 
 from pymammotion.bluetooth import BleMessage
+from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
+from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
 from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
 
 
 class CharacteristicMissingError(Exception):
@@ -82,6 +85,12 @@ def _handle_timeout(fut: asyncio.Future[None]) -> None:
         fut.set_exception(asyncio.TimeoutError)
 
 
+async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None:
+    """Handle a retry."""
+    if not fut.done():
+        await func(command)
+
+
 class ConnectionPreference(Enum):
     """Enum for connection preference."""
 
@@ -118,12 +127,46 @@ def has_field(message: betterproto.Message) -> bool:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
+    _luba_msg: MowingDevice
+    _state_manager: StateManager
+
     def __init__(self) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
-        self._luba_msg = LubaMsg()
+        self._luba_msg = MowingDevice()
+        self._state_manager = StateManager(self._luba_msg)
+
+        self._state_manager.gethash_ack_callback.add_subscribers(self.datahash_response)
+        self._state_manager.get_commondata_ack_callback.add_subscribers(self.commdata_response)
         self._notify_future: asyncio.Future[bytes] | None = None
+
+    async def datahash_response(self, hash_ack: NavGetHashListAck):
+        """Handle datahash responses."""
+        for data_hash in hash_ack.data_couple:
+            result_hash = 0
+            while data_hash != result_hash:
+                data = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
+                msg = LubaMsg().parse(data)
+                if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
+                    result_hash = msg.nav.toapp_get_commondata_ack.hash
+                else:
+                    await asyncio.sleep(0.5)
+
+    async def commdata_response(self, common_data: NavGetCommDataAck):
+        """Handle common data responses."""
+        # TODO check if the hash exists and whether or not to call get regional
+        total_frame = common_data.total_frame
+        current_frame = 1
+        while current_frame <= total_frame:
+            region_data = RegionData()
+            region_data.hash = common_data.data_hash
+            region_data.action = common_data.action
+            region_data.type = common_data.type
+            region_data.total_frame = total_frame
+            region_data.current_frame = current_frame
+            await self._send_command_with_args("get_regional_data", regional_data=region_data)
+            current_frame += 1
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
@@ -143,7 +186,7 @@ class MammotionBaseDevice:
             case "ota":
                 self._update_ota_data(tmp_msg)
 
-        self._luba_msg = MowingDevice.from_raw(self._raw_data)
+        self._luba_msg.update_raw(self._raw_data)
 
     def _update_nav_data(self, tmp_msg):
         """Update navigation data."""
@@ -152,9 +195,7 @@ class MammotionBaseDevice:
         if isinstance(nav_sub_msg[1], int):
             nav[nav_sub_msg[0]] = nav_sub_msg[1]
         else:
-            nav[nav_sub_msg[0]] = nav_sub_msg[1].to_dict(
-                casing=betterproto.Casing.SNAKE
-            )
+            nav[nav_sub_msg[0]] = nav_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
         self._raw_data["nav"] = nav
 
     def _update_sys_data(self, tmp_msg):
@@ -178,9 +219,7 @@ class MammotionBaseDevice:
         if isinstance(net_sub_msg[1], int):
             net[net_sub_msg[0]] = net_sub_msg[1]
         else:
-            net[net_sub_msg[0]] = net_sub_msg[1].to_dict(
-                casing=betterproto.Casing.SNAKE
-            )
+            net[net_sub_msg[0]] = net_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
         self._raw_data["net"] = net
 
     def _update_mul_data(self, tmp_msg):
@@ -215,12 +254,32 @@ class MammotionBaseDevice:
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command to device and read response."""
 
+    @abstractmethod
+    async def _ble_sync(self):
+        """Send ble sync command every 3 seconds or sooner."""
+
     async def start_sync(self, retry: int):
         """Start synchronization with the device."""
         await self._send_command("get_device_base_info", retry)
         await self._send_command("get_report_cfg", retry)
+        """RTK and dock location."""
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
+        """Error codes."""
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
+        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
+
+    async def start_map_sync(self):
+        """Start sync of map data."""
         await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
-        await self._send_command_with_args("allpowerfull_rw", id=5, context=1, rw=1)
+
+        await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=0)
+
+        await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
+
+        # sub_cmd 3 is job hashes??
+        # sub_cmd 4 is dump location (yuka)
+        # jobs list
+        # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
@@ -233,6 +292,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def __init__(self, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__()
+        self._pong_count = None
+        self._ble_sync_task = None
+        self._prev_notification = None
         self._interface = f"hci{interface}"
         self._device = device
         self._client: BleakClientWithServiceCache | None = None
@@ -249,6 +311,24 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""
         self._device = device
+
+    async def _ble_sync(self):
+        command_bytes = self._commands.send_todev_ble_sync(2)
+        await self._message.post_custom_data_bytes(command_bytes)
+
+    async def run_periodic_sync_task(self) -> None:
+        """Send ble sync to robot."""
+        try:
+            await self._ble_sync()
+        finally:
+            self.schedule_ble_sync()
+
+    def schedule_ble_sync(self):
+        """Periodically sync to keep connection alive."""
+        if self._client.is_connected:
+            self._ble_sync_task = self.loop.call_later(
+                130, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
+            )
 
     async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
         """Send command to device and read response."""
@@ -278,9 +358,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                     exc_info=True,
                 )
             except BLEAK_RETRY_EXCEPTIONS:
-                _LOGGER.debug(
-                    "%s: communication failed with:", self.name, exc_info=True
-                )
+                _LOGGER.debug("%s: communication failed with:", self.name, exc_info=True)
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
@@ -310,9 +388,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                     exc_info=True,
                 )
             except BLEAK_RETRY_EXCEPTIONS:
-                _LOGGER.debug(
-                    "%s: communication failed with:", self.name, exc_info=True
-                )
+                _LOGGER.debug("%s: communication failed with:", self.name, exc_info=True)
 
     @property
     def name(self) -> str:
@@ -386,9 +462,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
-
-            command_bytes = self._commands.send_todev_ble_sync(2)
-            await self._message.post_custom_data_bytes(command_bytes)
+            self.schedule_ble_sync()
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
@@ -409,15 +483,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             raise
         except BLEAK_RETRY_EXCEPTIONS as ex:
             # Disconnect so we can reset state and try again
-            _LOGGER.debug(
-                "%s: RSSI: %s; Disconnecting due to error: %s", self.name, self.rssi, ex
-            )
+            _LOGGER.debug("%s: RSSI: %s; Disconnecting due to error: %s", self.name, self.rssi, ex)
             await self._execute_forced_disconnect()
             raise
 
-    async def _notification_handler(
-        self, _sender: BleakGATTCharacteristic, data: bytearray
-    ) -> None:
+    async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
         _LOGGER.debug("%s: Received notification: %s", self.name, data)
         result = self._message.parseNotification(data)
@@ -429,15 +499,18 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
-            if new_msg.net.todev_ble_sync != 0 or has_field(
-                new_msg.net.toapp_wifi_iot_status
-            ):
-                # TODO occasionally respond with ble sync
-                return
+            if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
+                self._pong_count += 1
 
+                if self._pong_count < 3:
+                    return
+
+        # may or may not be correct, some work could be done here to correctly match responses
         if self._notify_future and not self._notify_future.done():
+            self._pong_count = 0
             self._notify_future.set_result(data)
-            return
+
+        await self._state_manager.notification(new_msg)
 
     async def _start_notify(self) -> None:
         """Start notification."""
@@ -454,10 +527,14 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         await self._message.post_custom_data_bytes(command)
 
-        timeout = 5
-        timeout_handle = self.loop.call_at(
-            self.loop.time() + timeout, _handle_timeout, self._notify_future
+        retry_handle = self.loop.call_at(
+            self.loop.time() + 2,
+            lambda: asyncio.ensure_future(
+                _handle_retry(self._notify_future, self._message.post_custom_data_bytes, command)
+            ),
         )
+        timeout = 5
+        timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
         timeout_expired = False
         try:
             notify_msg = await self._notify_future
@@ -467,6 +544,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         finally:
             if not timeout_expired:
                 timeout_handle.cancel()
+                retry_handle.cancel()
             self._notify_future = None
 
         _LOGGER.debug("%s: Notification received: %s", self.name, notify_msg.hex())
@@ -480,25 +558,23 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         """Resolve characteristics."""
         self._read_char = services.get_characteristic(READ_CHAR_UUID)
         if not self._read_char:
-            raise CharacteristicMissingError(READ_CHAR_UUID)
+            self._read_char = READ_CHAR_UUID
+            _LOGGER.error(CharacteristicMissingError(READ_CHAR_UUID))
         self._write_char = services.get_characteristic(WRITE_CHAR_UUID)
         if not self._write_char:
-            raise CharacteristicMissingError(WRITE_CHAR_UUID)
+            self._write_char = WRITE_CHAR_UUID
+            _LOGGER.error(CharacteristicMissingError(WRITE_CHAR_UUID))
 
     def _reset_disconnect_timer(self):
         """Reset disconnect timer."""
         self._cancel_disconnect_timer()
         self._expected_disconnect = False
-        self._disconnect_timer = self.loop.call_later(
-            DISCONNECT_DELAY, self._disconnect_from_timer
-        )
+        self._disconnect_timer = self.loop.call_later(DISCONNECT_DELAY, self._disconnect_from_timer)
 
     def _disconnected(self, client: BleakClientWithServiceCache) -> None:
         """Disconnected callback."""
         if self._expected_disconnect:
-            _LOGGER.debug(
-                "%s: Disconnected from device; RSSI: %s", self.name, self.rssi
-            )
+            _LOGGER.debug("%s: Disconnected from device; RSSI: %s", self.name, self.rssi)
             return
         _LOGGER.warning(
             "%s: Device unexpectedly disconnected; RSSI: %s",
@@ -518,9 +594,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             self._reset_disconnect_timer()
             return
         self._cancel_disconnect_timer()
-        self._timed_disconnect_task = asyncio.create_task(
-            self._execute_timed_disconnect()
-        )
+        self._timed_disconnect_task = asyncio.create_task(self._execute_timed_disconnect())
 
     def _cancel_disconnect_timer(self):
         """Cancel disconnect timer."""
@@ -568,10 +642,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Disconnecting", self.name)
         try:
             """We reset what command the robot last heard before disconnecting."""
-            command_bytes = self._commands.send_todev_ble_sync(2)
-            await self._message.post_custom_data_bytes(command_bytes)
-            await client.stop_notify(self._read_char)
-            await client.disconnect()
+            if client.is_connected:
+                command_bytes = self._commands.send_todev_ble_sync(2)
+                await self._message.post_custom_data_bytes(command_bytes)
+                await client.stop_notify(self._read_char)
+                await client.disconnect()
         except BLEAK_RETRY_EXCEPTIONS as ex:
             _LOGGER.warning(
                 "%s: Error disconnecting: %s; RSSI: %s",
@@ -605,6 +680,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.iot_id = iot_id
         self.nick_name = nick_name
         self._command_futures = {}
+        self._commands: MammotionCommand = MammotionCommand(device_name)
         self.loop = asyncio.get_event_loop()
 
     def _on_mqtt_message(self, topic: str, payload: str) -> None:
@@ -621,9 +697,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
         future = self.loop.create_future()
-        message_id = self._mqtt_client.get_cloud_client().send_cloud_command(
-            self.iot_id, key
-        )
+        command_bytes = getattr(self._commands, key)()
+        message_id = self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command_bytes)
         if message_id != "":
             self._command_futures[message_id] = future
             try:
@@ -634,6 +709,16 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command with arguments to device via MQTT and read response."""
+        future = self.loop.create_future()
+        command_bytes = getattr(self._commands, key)(**kwargs)
+        message_id = self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command_bytes)
+        if message_id != "":
+            self._command_futures[message_id] = future
+            try:
+                return await asyncio.wait_for(future, timeout=TIMEOUT_CLOUD_RESPONSE)
+            except asyncio.TimeoutError:
+                _LOGGER.error("Command '%s' timed out", key)
+        return None
 
     def _extract_message_id(self, payload: dict) -> str:
         """Extract the message ID from the payload."""
@@ -642,12 +727,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _extract_encoded_message(self, payload: dict) -> str:
         """Extract the encoded message from the payload."""
         try:
-            content = (
-                payload.get("data", {})
-                .get("data", {})
-                .get("params", {})
-                .get("content", "")
-            )
+            content = payload.get("data", {}).get("data", {}).get("params", {}).get("content", "")
             return str(content)
         except AttributeError:
             _LOGGER.error("Error extracting encoded message. Payload: %s", payload)

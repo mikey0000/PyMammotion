@@ -51,9 +51,7 @@ class LubaHTTP:
         self._login = login
 
     @classmethod
-    async def login(
-        cls, session: ClientSession, username: str, password: str
-    ) -> Response[LoginResponseData]:
+    async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
         async with session.post(
             "/user-server/v1/user/oauth/token",
             params=dict(
@@ -69,9 +67,7 @@ class LubaHTTP:
             # TODO catch errors from mismatch user / password
             # Assuming the data format matches the expected structure
             login_response_data = LoginResponseData.from_dict(data["data"])
-            return Response(
-                data=login_response_data, code=data["code"], msg=data["msg"]
-            )
+            return Response(data=login_response_data, code=data["code"], msg=data["msg"])
 
 
 async def connect_http(username: str, password: str) -> LubaHTTP:

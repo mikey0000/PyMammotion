@@ -11,7 +11,8 @@ from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice, has_
 bleNotificationEvt = BleNotificationEvent()
 
 logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
+
 
 async def ble_heartbeat(luba_client):
     while True:
@@ -62,12 +63,12 @@ async def run(loop):
     await asyncio.sleep(2)
     await luba_ble.start_sync(0)
     await asyncio.sleep(2)
-    print(luba_ble.luba_msg.sys.toapp_report_data.dev)
+    # print(luba_ble.luba_msg.sys.toapp_report_data.dev)
     # if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
     #     dev = luba_ble.luba_msg.sys.toapp_report_data.dev
     #     if dev.sys_status == 11:
     #         await luba_ble.command("start_job")
-    await luba_ble.command("get_report_cfg")
+    # await luba_ble.command("get_report_cfg")
 
     print(luba_ble.luba_msg.sys.toapp_report_data.dev.charge_state)
     await asyncio.sleep(5)
@@ -84,7 +85,7 @@ async def run(loop):
     # await luba_ble.command("return_to_dock")
     # await luba_ble.command("get_hash_response", total_frame=1, current_frame=1)
     counter = 30
-    while(counter > 0):
+    while (counter > 0):
         luba_device = await scan_for_luba()
         if luba_device is not None:
             luba_ble.update_device(luba_device)
@@ -93,8 +94,9 @@ async def run(loop):
         # await luba_ble._execute_disconnect_with_lock()
         await asyncio.sleep(60)
 
-        counter-=1
+        counter -= 1
 
+    # app_request_cover_paths_t use hashlist from ??
 
     # asyncio.run(await ble_heartbeat(luba_ble))
     print("end run?")

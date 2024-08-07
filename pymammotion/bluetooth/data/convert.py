@@ -19,9 +19,7 @@ def store_sys_data(sys):
         tard_state_data_list = sys.systemTardStateTunnel.tard_state_data
         longValue8 = tard_state_data_list[0]
         longValue9 = tard_state_data_list[1]
-        print(
-            "Device status report,deviceState:", longValue8, ",deviceName:", "Luba..."
-        )
+        print("Device status report,deviceState:", longValue8, ",deviceName:", "Luba...")
         chargeStateTemp = longValue9
         longValue10 = tard_state_data_list[6]
         longValue11 = tard_state_data_list[7]

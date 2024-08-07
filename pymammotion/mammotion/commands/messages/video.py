@@ -21,7 +21,5 @@ class MessageVideo(AbstractMessage):
             if DeviceType.is_yuka(self.get_device_name())
             else luba_mul_pb2.MUL_CAMERA_POSITION.LEFT
         )
-        mctl_sys = luba_mul_pb2.SocMul(
-            set_video=luba_mul_pb2.MulSetVideo(position=position, vi_switch=enter_state)
-        )
+        mctl_sys = luba_mul_pb2.SocMul(set_video=luba_mul_pb2.MulSetVideo(position=position, vi_switch=enter_state))
         return self.send_order_msg_video(mctl_sys)

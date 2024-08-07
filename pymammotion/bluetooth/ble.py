@@ -46,15 +46,11 @@ class LubaBLE:
         if self.client is not None:
             return await self.client.disconnect()
 
-    async def notification_handler(
-        self, _characteristic: BleakGATTCharacteristic, data: bytearray
-    ):
+    async def notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray):
         """Simple notification handler which prints the data received."""
         await self._bleEvt.BleNotification(data)
 
-    def service_changed_handler(
-        self, characteristic: BleakGATTCharacteristic, data: bytearray
-    ):
+    def service_changed_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Simple notification handler which prints the data received."""
         print(f"Response 2 {characteristic.description}: {data}")
         print(data.decode("utf-8"))
@@ -63,12 +59,8 @@ class LubaBLE:
 
     async def notifications(self):
         if self.client.is_connected:
-            await self.client.start_notify(
-                UUID_NOTIFICATION_CHARACTERISTIC, self.notification_handler
-            )
-            await self.client.start_notify(
-                SERVICE_CHANGED_CHARACTERISTIC, self.service_changed_handler
-            )
+            await self.client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self.notification_handler)
+            await self.client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, self.service_changed_handler)
 
     def getClient(self):
         return self.client
