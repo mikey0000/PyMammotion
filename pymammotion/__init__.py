@@ -16,6 +16,16 @@ from pymammotion.http.http import LubaHTTP, connect_http
 from pymammotion.mammotion.devices import MammotionBaseBLEDevice
 from pymammotion.mqtt import MammotionMQTT
 
+
+
+__all__ = [
+    'LubaBLE',
+    'LubaHTTP',
+    'connect_http',
+    'MammotionBaseBLEDevice',
+    'MammotionMQTT'
+]
+
 logger = logging.getLogger(__name__)
 
 # TODO provide interface to pick between mqtt/cloud/bluetooth
