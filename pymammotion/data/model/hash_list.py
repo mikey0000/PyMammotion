@@ -22,16 +22,19 @@ class HashList:
     def update(self, hash_data: NavGetCommDataAck):
         """Update the map data."""
         if hash_data.type == 0:
-            if self.area.get(hash_data.hash) is None:
-                self.area[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
-            self.area[hash_data.hash].data.append(hash_data)
+            self._add_hash_data(self.area, hash_data)
 
         if hash_data.type == 1:
-            if self.obstacle.get(hash_data.hash) is None:
-                self.obstacle[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
-            self.obstacle[hash_data.hash].data.append(hash_data)
+            self._add_hash_data(self.obstacle, hash_data)
 
         if hash_data.type == 2:
-            if self.path.get(hash_data.hash) is None:
-                self.path[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
-            self.path[hash_data.hash].data.append(hash_data)
+            self._add_hash_data(self.path, hash_data)
+
+    @staticmethod
+    def _add_hash_data(hash_dict: dict, hash_data: NavGetCommDataAck) -> None:
+        if hash_dict.get(hash_data.hash) is None:
+            hash_dict[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
+
+        hash_values = [item.hash for item in hash_dict[hash_data.hash].data]
+        if hash_data not in hash_values:
+            hash_dict[hash_data.hash].data.append(hash_data)
