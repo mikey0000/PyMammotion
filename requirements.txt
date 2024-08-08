@@ -54,18 +54,12 @@ py-jsonic==0.0.2
     # via pymammotion (pyproject.toml)
 pycparser==2.21
     # via cffi
-pydantic~=2.6.2
-    # via pymammotion (pyproject.toml)
-pydantic-core==2.10.1
-    # via pydantic
 typing-extensions==4.8.0
     # via
     #   pydantic
     #   pydantic-core
 yarl==1.9.2
     # via aiohttp
-
-pymammotion~=0.0.1
 alibabacloud_apigateway_util~=0.0.2
 jsonic~=1.0.0
 alibabacloud_iot_api_gateway~=0.0.4
