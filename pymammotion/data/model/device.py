@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+import betterproto
+
 from pymammotion.data.model import HashList
 from pymammotion.data.model.location import Location
 from pymammotion.proto.dev_net import DevNet
@@ -122,95 +124,158 @@ class MowingDevice:
 class DevNetData:
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
-    net: DevNet
+    net: dict
+
+    def __init__(self, net: DevNet):
+        if isinstance(net, dict):
+            self.net = net
+        else:
+            self.net = net.to_dict()
 
     def __getattr__(self, item):
         """Intercept call to get net in dict and return a betterproto dataclass."""
-        if not isinstance(self.net[item], dict):
-            return self.net[item]
+        if self.net.get(item) is None:
+            return DevNet().__getattribute__(item)
 
-        return DevNet().__getattribute__(item).from_dict(value=self.net[item])
+        if not isinstance(self.net.get(item), dict):
+            return self.net.get(item)
+
+        return DevNet().__getattribute__(item).from_dict(value=self.net.get(item))
 
 
 @dataclass
 class SysData:
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
-    sys: MctlSys
+    sys: dict
+
+    def __init__(self, sys: MctlSys):
+        if isinstance(sys, dict):
+            self.sys = sys
+        else:
+            self.sys = sys.to_dict()
 
     def __getattr__(self, item):
-        """Intercept call to get net in dict and return a betterproto dataclass."""
-        if not isinstance(self.sys[item], dict):
-            return self.sys[item]
+        """Intercept call to get sys in dict and return a betterproto dataclass."""
+        if self.sys.get(item) is None:
+            return MctlSys().__getattribute__(item)
 
-        return MctlSys().__getattribute__(item).from_dict(value=self.sys[item])
+        if not isinstance(self.sys.get(item), dict):
+            return self.sys.get(item)
+
+        return MctlSys().__getattribute__(item).from_dict(value=self.sys.get(item))
 
 
 @dataclass
 class NavData:
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
-    nav: MctlNav
+    nav: dict
+
+    def __init__(self, nav: MctlNav):
+        if isinstance(nav, dict):
+            self.nav = nav
+        else:
+            self.nav = nav.to_dict()
 
     def __getattr__(self, item):
         """Intercept call to get nav in dict and return a betterproto dataclass."""
-        if not isinstance(self.nav[item], dict):
-            return self.nav[item]
+        if self.nav.get(item) is None:
+            return MctlNav().__getattribute__(item)
 
-        return MctlNav().__getattribute__(item).from_dict(value=self.nav[item])
+        if not isinstance(self.nav.get(item), dict):
+            return self.nav.get(item)
+
+        return MctlNav().__getattribute__(item).from_dict(value=self.nav.get(item))
 
 
 @dataclass
 class DriverData:
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
-    driver: MctlDriver
+    driver: dict
+
+    def __init__(self, driver: MctlDriver):
+        if isinstance(driver, dict):
+            self.driver = driver
+        else:
+            self.driver = driver.to_dict()
 
     def __getattr__(self, item):
         """Intercept call to get driver in dict and return a betterproto dataclass."""
-        if not isinstance(self.driver[item], dict):
-            return self.driver[item]
+        if self.driver.get(item) is None:
+            return MctlDriver().__getattribute__(item)
 
-        return MctlDriver().__getattribute__(item).from_dict(value=self.driver[item])
+        if not isinstance(self.driver.get(item), dict):
+            return self.driver.get(item)
+
+        return MctlDriver().__getattribute__(item).from_dict(value=self.driver.get(item))
 
 
 @dataclass
 class MulData:
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
-    mul: SocMul
+    mul: dict
+
+    def __init__(self, mul: SocMul):
+        if isinstance(mul, dict):
+            self.mul = mul
+        else:
+            self.mul = mul.to_dict()
 
     def __getattr__(self, item):
         """Intercept call to get mul in dict and return a betterproto dataclass."""
-        if not isinstance(self.mul[item], dict):
-            return self.mul[item]
+        if self.mul.get(item) is None:
+            return SocMul().__getattribute__(item)
 
-        return SocMul().__getattribute__(item).from_dict(value=self.mul[item])
+        if not isinstance(self.mul.get(item), dict):
+            return self.mul.get(item)
+
+        return SocMul().__getattribute__(item).from_dict(value=self.mul.get(item))
 
 
 @dataclass
 class OtaData:
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
-    ota: MctlOta
+    ota: dict
+
+    def __init__(self, ota: MctlOta):
+        if isinstance(ota, dict):
+            self.ota = ota
+        else:
+            self.ota = ota.to_dict()
 
     def __getattr__(self, item):
         """Intercept call to get ota in dict and return a betterproto dataclass."""
-        if not isinstance(self.ota[item], dict):
-            return self.ota[item]
+        if self.ota.get(item) is None:
+            return MctlOta().__getattribute__(item)
 
-        return MctlOta().__getattribute__(item).from_dict(value=self.ota[item])
+        if not isinstance(self.ota.get(item), dict):
+            return self.ota.get(item)
+
+        return MctlOta().__getattribute__(item).from_dict(value=self.ota.get(item))
 
 
 @dataclass
 class PeptData:
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
-    pept: MctlPept
+    pept: dict
+
+    def __init__(self, pept: MctlPept):
+        if isinstance(pept, dict):
+            self.pept = pept
+        else:
+            self.pept = pept.to_dict()
 
     def __getattr__(self, item):
         """Intercept call to get pept in dict and return a betterproto dataclass."""
-        if not isinstance(self.pept[item], dict):
-            return self.pept[item]
+        if self.pept.get(item) is None:
+            return MctlPept().__getattribute__(item)
 
-        return MctlPept().__getattribute__(item).from_dict(value=self.pept[item])
+        if not isinstance(self.pept.get(item), dict):
+            return self.pept.get(item)
+
+        return MctlPept().__getattribute__(item).from_dict(value=self.pept.get(item))

@@ -209,7 +209,7 @@ class WorkMode:
     MODE_WORKING = 13
 
 
-def device_mode(value):
+def device_mode(value) -> str:
     """Return the mode corresponding to the given value.
 
     This function takes a value and returns the corresponding mode from a

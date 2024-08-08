@@ -318,7 +318,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def __init__(self, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__()
-        self._pong_count = None
         self._ble_sync_task = None
         self._prev_notification = None
         self._interface = f"hci{interface}"
@@ -526,16 +525,13 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
-                self._pong_count += 1
-
-                if self._pong_count < 3:
-                    return
+                return
 
         # may or may not be correct, some work could be done here to correctly match responses
         if self._notify_future and not self._notify_future.done():
-            self._pong_count = 0
             self._notify_future.set_result(data)
 
+        self._reset_disconnect_timer()
         await self._state_manager.notification(new_msg)
 
     async def _start_notify(self) -> None:
@@ -668,7 +664,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Disconnecting", self.name)
         try:
             """We reset what command the robot last heard before disconnecting."""
-            if client.is_connected:
+            if client is not None and client.is_connected:
                 command_bytes = self._commands.send_todev_ble_sync(2)
                 await self._message.post_custom_data_bytes(command_bytes)
                 await client.stop_notify(self._read_char)
