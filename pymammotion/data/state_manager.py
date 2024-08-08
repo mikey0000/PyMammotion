@@ -51,9 +51,9 @@ class StateManager:
         nav_msg = betterproto.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
             case "toapp_gethash_ack":
-                self._device.map.obstacle = []
-                self._device.map.area = []
-                self._device.map.path = []
+                self._device.map.obstacle = dict()
+                self._device.map.area = dict()
+                self._device.map.path = dict()
                 await self.gethash_ack_callback.data_event(nav_msg[1])
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]
