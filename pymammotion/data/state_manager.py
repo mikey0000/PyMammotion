@@ -5,6 +5,7 @@ import betterproto
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.event.event import DataEvent
 from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck
 
 
 class StateManager:
@@ -50,25 +51,23 @@ class StateManager:
         nav_msg = betterproto.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
             case "toapp_gethash_ack":
-                # call callback to handle this data
-                print(nav_msg[1])
+                self._device.map.obstacle = []
+                self._device.map.area = []
+                self._device.map.path = []
                 await self.gethash_ack_callback.data_event(nav_msg[1])
             case "toapp_get_commondata_ack":
-                # callback to additional method
-                print(nav_msg[1])
-                self._device.map.update(nav_msg[1])
-                await self.get_commondata_ack_callback.data_event(nav_msg[1])
+                common_data: NavGetCommDataAck = nav_msg[1]
+                updated = self._device.map.update(common_data)
+                if updated:
+                    await self.get_commondata_ack_callback.data_event(common_data)
 
     def _update_sys_data(self, message):
         """Update system."""
         sys_msg = betterproto.which_one_of(message.sys, "SubSysMsg")
         match sys_msg[0]:
             case "system_update_buf":
-                # call callback to handle this data
-                print(sys_msg[1])
                 self._device.buffer(sys_msg[1])
             case "toapp_report_data":
-                # data for sensors
                 pass
 
     def _update_driver_data(self, message):

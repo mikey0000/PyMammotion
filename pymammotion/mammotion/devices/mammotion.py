@@ -79,6 +79,21 @@ def slashescape(err):
 codecs.register_error("slashescape", slashescape)
 
 
+def find_next_integer(lst: list[int], current_int: int) -> int | None:
+    try:
+        # Find the index of the current integer
+        current_index = lst.index(current_int)
+
+        # Check if there is a next integer in the list
+        if current_index + 1 < len(lst):
+            return lst[current_index + 1]
+        else:
+            return None  # Or raise an exception or handle it in some other way
+    except ValueError:
+        # Handle the case where current_int is not in the list
+        return None  # Or raise an exception or handle it in some other way
+
+
 def _handle_timeout(fut: asyncio.Future[None]) -> None:
     """Handle a timeout."""
     if not fut.done():
@@ -143,30 +158,41 @@ class MammotionBaseDevice:
 
     async def datahash_response(self, hash_ack: NavGetHashListAck):
         """Handle datahash responses."""
-        for data_hash in hash_ack.data_couple:
+        result_hash = 0
+        while hash_ack.data_couple[0] != result_hash:
+            data = await self._send_command_with_args("synchronize_hash_data", hash_num=hash_ack.data_couple[0])
+            msg = LubaMsg().parse(data)
+            if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
+                result_hash = msg.nav.toapp_get_commondata_ack.hash
+
+    async def commdata_response(self, common_data: NavGetCommDataAck):
+        """Handle common data responses."""
+        total_frame = common_data.total_frame
+        current_frame = common_data.current_frame
+
+        if total_frame == current_frame:
+            # get next in hash ack list
+
+            data_hash = find_next_integer(self.luba_msg.nav.toapp_gethash_ack.data_couple, common_data.hash)
+            if data_hash is None:
+                return
             result_hash = 0
             while data_hash != result_hash:
                 data = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
                 msg = LubaMsg().parse(data)
                 if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
                     result_hash = msg.nav.toapp_get_commondata_ack.hash
-                else:
-                    await asyncio.sleep(0.5)
-
-    async def commdata_response(self, common_data: NavGetCommDataAck):
-        """Handle common data responses."""
-        # TODO check if the hash exists and whether or not to call get regional
-        total_frame = common_data.total_frame
-        current_frame = 1
-        while current_frame <= total_frame:
+        else:
+            # check if we have the data already first
             region_data = RegionData()
-            region_data.hash = common_data.data_hash
+            region_data.hash = common_data.hash
             region_data.action = common_data.action
             region_data.type = common_data.type
             region_data.total_frame = total_frame
             region_data.current_frame = current_frame
             await self._send_command_with_args("get_regional_data", regional_data=region_data)
-            current_frame += 1
+
+
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
@@ -242,7 +268,7 @@ class MammotionBaseDevice:
         return self._raw_data
 
     @property
-    def luba_msg(self) -> LubaMsg:
+    def luba_msg(self) -> MowingDevice:
         """Get the LubaMsg of the device."""
         return self._luba_msg
 
