@@ -69,6 +69,8 @@ class StateManager:
                 self._device.buffer(sys_msg[1])
             case "toapp_report_data":
                 pass
+            case "mow_to_app_info":
+                self._device.mow_info(sys_msg[1])
 
     def _update_driver_data(self, message):
         pass

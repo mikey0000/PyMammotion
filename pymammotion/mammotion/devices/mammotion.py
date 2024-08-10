@@ -192,8 +192,6 @@ class MammotionBaseDevice:
             region_data.current_frame = current_frame
             await self._send_command_with_args("get_regional_data", regional_data=region_data)
 
-
-
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
         tmp_msg = LubaMsg().parse(data)
@@ -217,6 +215,9 @@ class MammotionBaseDevice:
     def _update_nav_data(self, tmp_msg):
         """Update navigation data."""
         nav_sub_msg = betterproto.which_one_of(tmp_msg.nav, "SubNavMsg")
+        if nav_sub_msg[1] is None:
+            _LOGGER.debug("Sub message was NoneType %s", nav_sub_msg[0])
+            return
         nav = self._raw_data.get("nav", {})
         if isinstance(nav_sub_msg[1], int):
             nav[nav_sub_msg[0]] = nav_sub_msg[1]
@@ -227,6 +228,9 @@ class MammotionBaseDevice:
     def _update_sys_data(self, tmp_msg):
         """Update system data."""
         sys_sub_msg = betterproto.which_one_of(tmp_msg.sys, "SubSysMsg")
+        if sys_sub_msg[1] is None:
+            _LOGGER.debug("Sub message was NoneType %s", sys_sub_msg[0])
+            return
         sys = self._raw_data.get("sys", {})
         sys[sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
         self._raw_data["sys"] = sys
@@ -234,6 +238,9 @@ class MammotionBaseDevice:
     def _update_driver_data(self, tmp_msg):
         """Update driver data."""
         drv_sub_msg = betterproto.which_one_of(tmp_msg.driver, "SubDrvMsg")
+        if drv_sub_msg[1] is None:
+            _LOGGER.debug("Sub message was NoneType %s", drv_sub_msg[0])
+            return
         drv = self._raw_data.get("driver", {})
         drv[drv_sub_msg[0]] = drv_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
         self._raw_data["driver"] = drv
@@ -241,6 +248,9 @@ class MammotionBaseDevice:
     def _update_net_data(self, tmp_msg):
         """Update network data."""
         net_sub_msg = betterproto.which_one_of(tmp_msg.net, "NetSubType")
+        if net_sub_msg[1] is None:
+            _LOGGER.debug("Sub message was NoneType %s", net_sub_msg[0])
+            return
         net = self._raw_data.get("net", {})
         if isinstance(net_sub_msg[1], int):
             net[net_sub_msg[0]] = net_sub_msg[1]
@@ -251,6 +261,9 @@ class MammotionBaseDevice:
     def _update_mul_data(self, tmp_msg):
         """Update mul data."""
         mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, "SubMul")
+        if mul_sub_msg[1] is None:
+            _LOGGER.debug("Sub message was NoneType %s", mul_sub_msg[0])
+            return
         mul = self._raw_data.get("mul", {})
         mul[mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
         self._raw_data["mul"] = mul
@@ -258,6 +271,9 @@ class MammotionBaseDevice:
     def _update_ota_data(self, tmp_msg):
         """Update OTA data."""
         ota_sub_msg = betterproto.which_one_of(tmp_msg.ota, "SubOtaMsg")
+        if ota_sub_msg[1] is None:
+            _LOGGER.debug("Sub message was NoneType %s", ota_sub_msg[0])
+            return
         ota = self._raw_data.get("ota", {})
         ota[ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
         self._raw_data["ota"] = ota
@@ -487,6 +503,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
+            command_bytes = self._commands.send_todev_ble_sync(2)
+            await self._message.post_custom_data_bytes(command_bytes)
             self.schedule_ble_sync()
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:

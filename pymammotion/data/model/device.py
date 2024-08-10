@@ -2,8 +2,6 @@
 
 from dataclasses import dataclass
 
-import betterproto
-
 from pymammotion.data.model import HashList
 from pymammotion.data.model.location import Location
 from pymammotion.proto.dev_net import DevNet
@@ -13,7 +11,7 @@ from pymammotion.proto.mctrl_driver import MctlDriver
 from pymammotion.proto.mctrl_nav import MctlNav
 from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys, SystemUpdateBufMsg
+from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, SystemUpdateBufMsg
 
 
 @dataclass
@@ -83,6 +81,9 @@ class MowingDevice:
                         buffer_list.update_buf_data[22],
                     ]
                 )
+
+    def mow_info(self, toapp_mow_info: MowToAppInfoT):
+        pass
 
     @property
     def net(self):
