@@ -11,13 +11,13 @@ poetry install
 poetry run python tests/test2_instance.py
 
 # generate models from protobuf
-poetry run protoc -I=. --python_out=. --python_betterproto_out=. ./pyluba/proto/*.proto
+poetry run protoc -I=. --python_out=. --python_betterproto_out=. ./pymammotion/proto/*.proto
 
 # generate python proto from protobuf
-poetry run protoc -I=. --python_out=. --python_out=. ./pyluba/proto/*.proto
+poetry run protoc -I=. --python_out=. --python_out=. ./pymammotion/proto/*.proto
 
 # generate typehints from protobuf
-poetry run protoc -I=. --python_out=. --pyi_out=. ./pyluba/proto/*.proto
+poetry run protoc -I=. --python_out=. --pyi_out=. ./pymammotion/proto/*.proto
 
 poetry run ruff check --fix
 poetry run mypy {filename}

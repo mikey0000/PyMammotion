@@ -23,7 +23,7 @@ from pymammotion.proto.mctrl_nav import (
     NavUploadZigZagResultAck,
     SimulationCmdData,
     WorkReportCmdData,
-    WorkReportUpdateCmd,
+    WorkReportUpdateCmd, NavMapNameMsg,
 )
 
 logger = logging.getLogger(__name__)
@@ -254,6 +254,37 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Send command--One-click automatic undocking")
         return self.send_order_msg_nav(build)
 
+    def get_area_name_list(self, device_id: str) -> bytes:
+        # Build the NavMapNameMsg with the specified parameters
+        mctl_nav = MctlNav(
+            toapp_map_name_msg=NavMapNameMsg(
+            hash=0,
+            result=0,
+            device_id=device_id, # iotId or ???
+            rw=0
+            )
+        )
+
+        # Send the message with the specified ID and acknowledge flag
+        logger.debug("Send command--Get area name list")
+        return self.send_order_msg_nav(mctl_nav)
+
+    def set_area_name(self, device_id, hash_id: int, name: str) -> bytes:
+        # Build the NavMapNameMsg with the specified parameters
+        mctl_nav = MctlNav(
+            toapp_map_name_msg=NavMapNameMsg(
+            hash=hash_id,
+            name=name,
+            result=0,
+            device_id=device_id,
+            rw=1
+            )
+        )
+
+        # Send the message with the specified ID and acknowledge flag
+        logger.debug("Send command--Get area name list")
+        return self.send_order_msg_nav(mctl_nav)
+
     def get_all_boundary_hash_list(self, sub_cmd: int):
         build = MctlNav(todev_gethash=NavGetHashList(pver=1, sub_cmd=sub_cmd))
         logger.debug(f"Area loading=====================:Get area hash list++Bluetooth:{sub_cmd}")
@@ -354,7 +385,7 @@ class MessageNavigation(AbstractMessage, ABC):
             channel_mode=generate_route_information.channel_mode,
             toward=generate_route_information.toward,
             toward_included_angle=generate_route_information.toward_included_angle,  # luba 2 yuka only
-            toward_mode=generate_route_information.toward_mode,  # luba 2 yuka only
+            toward_mode=generate_route_information.toward_mode, # luba 2 yuka only
             reserved=generate_route_information.path_order,
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")

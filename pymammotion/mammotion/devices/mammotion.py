@@ -71,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 def slashescape(err):
     """Escape a slash character."""
     # print err, dir(err), err.start, err.end, err.object[:err.start]
-    thebyte = err.object[err.start : err.end]
+    thebyte = err.object[err.start: err.end]
     repl = "\\x" + hex(ord(thebyte))[2:]
     return (repl, err.end)
 
@@ -120,9 +120,9 @@ class MammotionDevice:
     _ble_device: MammotionBaseBLEDevice | None = None
 
     def __init__(
-        self,
-        ble_device: BLEDevice,
-        preference: ConnectionPreference = ConnectionPreference.EITHER,
+            self,
+            ble_device: BLEDevice,
+            preference: ConnectionPreference = ConnectionPreference.EITHER,
     ) -> None:
         """Initialize MammotionDevice."""
         if ble_device:
@@ -318,6 +318,8 @@ class MammotionBaseDevice:
 
         await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
 
+        await self._send_command_with_args("get_area_name_list",
+                                           device_id=self.luba_msg.device.net.toapp_wifi_iot_status.devicename)
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
         # jobs list
@@ -707,12 +709,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     """Base class for Mammotion Cloud devices."""
 
     def __init__(
-        self,
-        mqtt_client: MammotionMQTT,
-        iot_id: str,
-        device_name: str,
-        nick_name: str,
-        **kwargs: Any,
+            self,
+            mqtt_client: MammotionMQTT,
+            iot_id: str,
+            device_name: str,
+            nick_name: str,
+            **kwargs: Any,
     ) -> None:
         """Initialize MammotionBaseCloudDevice."""
         super().__init__()

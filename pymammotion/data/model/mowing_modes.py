@@ -35,3 +35,11 @@ class MowOrder(IntEnum):
 
     border_first = 0
     grid_first = 1
+
+
+class BypassStrategy(IntEnum):
+    """Matches up with ultra_wave."""
+    direct_touch = 0
+    slow_touch = 1
+    less_touch = 2
+    no_touch = 3 # luba 2 yuka only or possibly value of 10

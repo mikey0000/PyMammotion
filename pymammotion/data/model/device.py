@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from pymammotion.data.model import HashList
+from pymammotion.data.model.device_config import DeviceLimits
 from pymammotion.data.model.location import Location
 from pymammotion.proto.dev_net import DevNet
 from pymammotion.proto.luba_msg import LubaMsg
@@ -28,6 +29,7 @@ class MowingDevice:
         self.location = Location()
         self.err_code_list = []
         self.err_code_list_time = []
+        self.limits = DeviceLimits(30, 70, 0.2, 0.6)
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
