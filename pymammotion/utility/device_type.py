@@ -7,6 +7,9 @@ class DeviceType(Enum):
     LUBA = (1, "Luba", "Luba 1")
     LUBA_2 = (2, "Luba-VS", "Luba 2")
     LUBA_YUKA = (3, "Yuka-", "Yuka")
+    YUKA_MINI = (4, "Yuka-MN", "Yuka Mini")
+    YUKA_MINI2 = (5, "Yuka-YM", "Yuka Mini 2")
+    LUBA_VP = (6, "Luba-VP", "Luba VP")
 
     def __init__(self, value: int, name: str, model: str):
         self._value = value
