@@ -545,6 +545,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
+
+                if has_field(new_msg.net.toapp_wifi_iot_status) and self._commands.get_device_product_key() == "":
+                    self._commands.set_device_product_key(new_msg.net.toapp_wifi_iot_status.productkey)
+
                 return
 
         # may or may not be correct, some work could be done here to correctly match responses
