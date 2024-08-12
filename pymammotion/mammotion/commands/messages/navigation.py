@@ -14,6 +14,7 @@ from pymammotion.proto.mctrl_nav import (
     MctlNav,
     NavGetCommData,
     NavGetHashList,
+    NavMapNameMsg,
     NavPlanJobSet,
     NavPlanTaskExecute,
     NavReqCoverPath,
@@ -23,7 +24,7 @@ from pymammotion.proto.mctrl_nav import (
     NavUploadZigZagResultAck,
     SimulationCmdData,
     WorkReportCmdData,
-    WorkReportUpdateCmd, NavMapNameMsg,
+    WorkReportUpdateCmd,
 )
 from pymammotion.utility.device_type import DeviceType
 
@@ -31,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 
 class MessageNavigation(AbstractMessage, ABC):
-
     def get_msg_device(self, msg_type: MsgCmdType, msg_device: MsgDevice) -> MsgDevice:
         """Changes the rcver name if it's not a luba1."""
         if DeviceType.is_luba1(self.get_device_name()) and msg_type == MsgCmdType.MSG_CMD_TYPE_NAV:
@@ -265,10 +265,10 @@ class MessageNavigation(AbstractMessage, ABC):
         # Build the NavMapNameMsg with the specified parameters
         mctl_nav = MctlNav(
             toapp_map_name_msg=NavMapNameMsg(
-            hash=0,
-            result=0,
-            device_id=device_id, # iotId or ???
-            rw=0
+                hash=0,
+                result=0,
+                device_id=device_id,  # iotId or ???
+                rw=0,
             )
         )
 
@@ -279,13 +279,7 @@ class MessageNavigation(AbstractMessage, ABC):
     def set_area_name(self, device_id, hash_id: int, name: str) -> bytes:
         # Build the NavMapNameMsg with the specified parameters
         mctl_nav = MctlNav(
-            toapp_map_name_msg=NavMapNameMsg(
-            hash=hash_id,
-            name=name,
-            result=0,
-            device_id=device_id,
-            rw=1
-            )
+            toapp_map_name_msg=NavMapNameMsg(hash=hash_id, name=name, result=0, device_id=device_id, rw=1)
         )
 
         # Send the message with the specified ID and acknowledge flag
@@ -392,7 +386,7 @@ class MessageNavigation(AbstractMessage, ABC):
             channel_mode=generate_route_information.channel_mode,
             toward=generate_route_information.toward,
             toward_included_angle=generate_route_information.toward_included_angle,  # luba 2 yuka only
-            toward_mode=generate_route_information.toward_mode, # luba 2 yuka only
+            toward_mode=generate_route_information.toward_mode,  # luba 2 yuka only
             reserved=generate_route_information.path_order,
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
