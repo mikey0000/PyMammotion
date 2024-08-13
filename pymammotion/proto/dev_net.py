@@ -149,7 +149,7 @@ class DrvDevInfoReqId(betterproto.Message):
 class DrvDevInfoRespId(betterproto.Message):
     id: int = betterproto.int32_field(1)
     type: int = betterproto.int32_field(2)
-    res: DrvDevInfoResult = betterproto.enum_field(3)
+    res: "DrvDevInfoResult" = betterproto.enum_field(3)
     info: str = betterproto.string_field(4)
 
 
@@ -233,7 +233,7 @@ class GetMnetInfoReq(betterproto.Message):
 class GetMnetInfoRsp(betterproto.Message):
     req_ids: int = betterproto.int32_field(1)
     result: int = betterproto.int32_field(2)
-    mnet: MnetInfo = betterproto.message_field(3)
+    mnet: "MnetInfo" = betterproto.message_field(3)
 
 
 @dataclass

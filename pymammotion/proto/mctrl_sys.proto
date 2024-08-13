@@ -72,8 +72,8 @@ message SysMowInfo {
   int32 deviceState = 1;
   int32 batVal = 2;
   int32 knifeHeight = 3;
-  int32 RTKstatus = 4;
-  int32 RTKstars = 5;
+  int32 rtk_status = 4;
+  int32 rtk_stars = 5;
 }
 
 message SysOptiLineAck {

@@ -11,6 +11,7 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
+from pymammotion.proto import basestation_pb2 as pymammotion_dot_proto_dot_basestation__pb2
 from pymammotion.proto import mctrl_driver_pb2 as pymammotion_dot_proto_dot_mctrl__driver__pb2
 from pymammotion.proto import mctrl_nav_pb2 as pymammotion_dot_proto_dot_mctrl__nav__pb2
 from pymammotion.proto import mctrl_sys_pb2 as pymammotion_dot_proto_dot_mctrl__sys__pb2
@@ -20,21 +21,21 @@ from pymammotion.proto import luba_mul_pb2 as pymammotion_dot_proto_dot_luba__mu
 from pymammotion.proto import mctrl_pept_pb2 as pymammotion_dot_proto_dot_mctrl__pept__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n pymammotion/proto/luba_msg.proto\x1a$pymammotion/proto/mctrl_driver.proto\x1a!pymammotion/proto/mctrl_nav.proto\x1a!pymammotion/proto/mctrl_sys.proto\x1a\x1fpymammotion/proto/dev_net.proto\x1a!pymammotion/proto/mctrl_ota.proto\x1a pymammotion/proto/luba_mul.proto\x1a\"pymammotion/proto/mctrl_pept.proto\"\t\n\x07MsgNull\"\x99\x03\n\x07LubaMsg\x12\x1c\n\x07msgtype\x18\x01 \x01(\x0e\x32\x0b.MsgCmdType\x12\x1a\n\x06sender\x18\x02 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x05rcver\x18\x03 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x07msgattr\x18\x04 \x01(\x0e\x32\x08.MsgAttr\x12\x0c\n\x04seqs\x18\x05 \x01(\x05\x12\x0f\n\x07version\x18\x06 \x01(\x05\x12\x0f\n\x07subtype\x18\x07 \x01(\x05\x12\x16\n\x03net\x18\x08 \x01(\x0b\x32\x07.DevNetH\x00\x12\x17\n\x03sys\x18\n \x01(\x0b\x32\x08.MctlSysH\x00\x12\x17\n\x03nav\x18\x0b \x01(\x0b\x32\x08.MctlNavH\x00\x12\x1d\n\x06\x64river\x18\x0c \x01(\x0b\x32\x0b.MctlDriverH\x00\x12\x17\n\x03ota\x18\r \x01(\x0b\x32\x08.MctlOtaH\x00\x12\x16\n\x03mul\x18\x0e \x01(\x0b\x32\x07.SocMulH\x00\x12\x18\n\x04null\x18\x10 \x01(\x0b\x32\x08.MsgNullH\x00\x12\x19\n\x04pept\x18\x11 \x01(\x0b\x32\t.MctlPeptH\x00\x12\x11\n\ttimestamp\x18\x0f \x01(\x04\x42\x0c\n\nLubaSubMsg*\xd7\x02\n\nMsgCmdType\x12\x16\n\x12MSG_CMD_TYPE_START\x10\x00\x12\x15\n\x10MSG_CMD_TYPE_NAV\x10\xf0\x01\x12\x1e\n\x19MSG_CMD_TYPE_LOCALIZATION\x10\xf1\x01\x12\x1a\n\x15MSG_CMD_TYPE_PLANNING\x10\xf2\x01\x12\x1e\n\x19MSG_CMD_TYPE_EMBED_DRIVER\x10\xf3\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_SYS\x10\xf4\x01\x12\x1f\n\x1aMSG_CMD_TYPE_EMBED_MIDWARE\x10\xf5\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_OTA\x10\xf6\x01\x12\x1d\n\x18MSG_CMD_TYPE_APPLICATION\x10\xf7\x01\x12\x15\n\x10MSG_CMD_TYPE_ESP\x10\xf8\x01\x12\x15\n\x10MSG_CMD_TYPE_MUL\x10\xf9\x01\x12\x16\n\x11MSG_CMD_TYPE_PEPT\x10\xfa\x01*V\n\x07MsgAttr\x12\x11\n\rMSG_ATTR_NONE\x10\x00\x12\x10\n\x0cMSG_ATTR_REQ\x10\x01\x12\x11\n\rMSG_ATTR_RESP\x10\x02\x12\x13\n\x0fMSG_ATTR_REPORT\x10\x03*\xa8\x02\n\tMsgDevice\x12\x10\n\x0c\x44\x45V_COMM_ESP\x10\x00\x12\x0f\n\x0b\x44\x45V_MAINCTL\x10\x01\x12\x11\n\rDEV_LEFTMOTOR\x10\x02\x12\x12\n\x0e\x44\x45V_RIGHTMOTOR\x10\x03\x12\x13\n\x0f\x44\x45V_BASESTATION\x10\x04\x12\x0e\n\nDEV_RTKCLI\x10\x05\x12\x0f\n\x0b\x44\x45V_USBHOST\x10\x06\x12\x11\n\rDEV_MOBILEAPP\x10\x07\x12\x11\n\rDEV_IOTSERVER\x10\x08\x12\x0b\n\x07\x44\x45V_BMS\x10\t\x12\x12\n\x0e\x44\x45V_NAVIGATION\x10\x11\x12\x14\n\x10\x44\x45V_LOCALIZATION\x10\x12\x12\x12\n\x0e\x44\x45V_PERCEPTION\x10\x13\x12\x19\n\x15SOC_MODULE_MULTIMEDIA\x10\x15\x12\x0f\n\x0b\x44\x45V_IOTCTRL\x10\x19\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n pymammotion/proto/luba_msg.proto\x1a#pymammotion/proto/basestation.proto\x1a$pymammotion/proto/mctrl_driver.proto\x1a!pymammotion/proto/mctrl_nav.proto\x1a!pymammotion/proto/mctrl_sys.proto\x1a\x1fpymammotion/proto/dev_net.proto\x1a!pymammotion/proto/mctrl_ota.proto\x1a pymammotion/proto/luba_mul.proto\x1a\"pymammotion/proto/mctrl_pept.proto\"\t\n\x07MsgNull\"\xb7\x03\n\x07LubaMsg\x12\x1c\n\x07msgtype\x18\x01 \x01(\x0e\x32\x0b.MsgCmdType\x12\x1a\n\x06sender\x18\x02 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x05rcver\x18\x03 \x01(\x0e\x32\n.MsgDevice\x12\x19\n\x07msgattr\x18\x04 \x01(\x0e\x32\x08.MsgAttr\x12\x0c\n\x04seqs\x18\x05 \x01(\x05\x12\x0f\n\x07version\x18\x06 \x01(\x05\x12\x0f\n\x07subtype\x18\x07 \x01(\x05\x12\x16\n\x03net\x18\x08 \x01(\x0b\x32\x07.DevNetH\x00\x12\x17\n\x03sys\x18\n \x01(\x0b\x32\x08.MctlSysH\x00\x12\x17\n\x03nav\x18\x0b \x01(\x0b\x32\x08.MctlNavH\x00\x12\x1d\n\x06\x64river\x18\x0c \x01(\x0b\x32\x0b.MctlDriverH\x00\x12\x17\n\x03ota\x18\r \x01(\x0b\x32\x08.MctlOtaH\x00\x12\x16\n\x03mul\x18\x0e \x01(\x0b\x32\x07.SocMulH\x00\x12\x18\n\x04null\x18\x10 \x01(\x0b\x32\x08.MsgNullH\x00\x12\x19\n\x04pept\x18\x11 \x01(\x0b\x32\t.MctlPeptH\x00\x12\x1c\n\x04\x62\x61se\x18\x12 \x01(\x0b\x32\x0c.BaseStationH\x00\x12\x11\n\ttimestamp\x18\x0f \x01(\x04\x42\x0c\n\nLubaSubMsg*\xd7\x02\n\nMsgCmdType\x12\x16\n\x12MSG_CMD_TYPE_START\x10\x00\x12\x15\n\x10MSG_CMD_TYPE_NAV\x10\xf0\x01\x12\x1e\n\x19MSG_CMD_TYPE_LOCALIZATION\x10\xf1\x01\x12\x1a\n\x15MSG_CMD_TYPE_PLANNING\x10\xf2\x01\x12\x1e\n\x19MSG_CMD_TYPE_EMBED_DRIVER\x10\xf3\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_SYS\x10\xf4\x01\x12\x1f\n\x1aMSG_CMD_TYPE_EMBED_MIDWARE\x10\xf5\x01\x12\x1b\n\x16MSG_CMD_TYPE_EMBED_OTA\x10\xf6\x01\x12\x1d\n\x18MSG_CMD_TYPE_APPLICATION\x10\xf7\x01\x12\x15\n\x10MSG_CMD_TYPE_ESP\x10\xf8\x01\x12\x15\n\x10MSG_CMD_TYPE_MUL\x10\xf9\x01\x12\x16\n\x11MSG_CMD_TYPE_PEPT\x10\xfa\x01*V\n\x07MsgAttr\x12\x11\n\rMSG_ATTR_NONE\x10\x00\x12\x10\n\x0cMSG_ATTR_REQ\x10\x01\x12\x11\n\rMSG_ATTR_RESP\x10\x02\x12\x13\n\x0fMSG_ATTR_REPORT\x10\x03*\xa8\x02\n\tMsgDevice\x12\x10\n\x0c\x44\x45V_COMM_ESP\x10\x00\x12\x0f\n\x0b\x44\x45V_MAINCTL\x10\x01\x12\x11\n\rDEV_LEFTMOTOR\x10\x02\x12\x12\n\x0e\x44\x45V_RIGHTMOTOR\x10\x03\x12\x13\n\x0f\x44\x45V_BASESTATION\x10\x04\x12\x0e\n\nDEV_RTKCLI\x10\x05\x12\x0f\n\x0b\x44\x45V_USBHOST\x10\x06\x12\x11\n\rDEV_MOBILEAPP\x10\x07\x12\x11\n\rDEV_IOTSERVER\x10\x08\x12\x0b\n\x07\x44\x45V_BMS\x10\t\x12\x12\n\x0e\x44\x45V_NAVIGATION\x10\x11\x12\x14\n\x10\x44\x45V_LOCALIZATION\x10\x12\x12\x12\n\x0e\x44\x45V_PERCEPTION\x10\x13\x12\x19\n\x15SOC_MODULE_MULTIMEDIA\x10\x15\x12\x0f\n\x0b\x44\x45V_IOTCTRL\x10\x19\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'pymammotion.proto.luba_msg_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _MSGCMDTYPE._serialized_start=706
-  _MSGCMDTYPE._serialized_end=1049
-  _MSGATTR._serialized_start=1051
-  _MSGATTR._serialized_end=1137
-  _MSGDEVICE._serialized_start=1140
-  _MSGDEVICE._serialized_end=1436
-  _MSGNULL._serialized_start=282
-  _MSGNULL._serialized_end=291
-  _LUBAMSG._serialized_start=294
-  _LUBAMSG._serialized_end=703
+  _MSGCMDTYPE._serialized_start=773
+  _MSGCMDTYPE._serialized_end=1116
+  _MSGATTR._serialized_start=1118
+  _MSGATTR._serialized_end=1204
+  _MSGDEVICE._serialized_start=1207
+  _MSGDEVICE._serialized_end=1503
+  _MSGNULL._serialized_start=319
+  _MSGNULL._serialized_end=328
+  _LUBAMSG._serialized_start=331
+  _LUBAMSG._serialized_end=770
 # @@protoc_insertion_point(module_scope)

@@ -236,18 +236,16 @@ class DrvWifiConf(_message.Message):
     def __init__(self, succFlag: bool = ..., code: _Optional[int] = ..., Confssid: _Optional[str] = ...) -> None: ...
 
 class DrvWifiList(_message.Message):
-    __slots__ = ["NVS_Wifi_Upload"]
+    __slots__ = ["nvs_wifi_upload"]
     NVS_WIFI_UPLOAD_FIELD_NUMBER: _ClassVar[int]
-    NVS_Wifi_Upload: int
-    def __init__(self, NVS_Wifi_Upload: _Optional[int] = ...) -> None: ...
+    nvs_wifi_upload: int
+    def __init__(self, nvs_wifi_upload: _Optional[int] = ...) -> None: ...
 
 class DrvWifiMsg(_message.Message):
-    __slots__ = ["IP", "Msgssid", "devicename", "password", "productkey", "rssi", "status1", "status2", "wifi_enable"]
+    __slots__ = ["devicename", "ip", "msgssid", "password", "productkey", "rssi", "status1", "status2", "wifi_enable"]
     DEVICENAME_FIELD_NUMBER: _ClassVar[int]
-    IP: str
     IP_FIELD_NUMBER: _ClassVar[int]
     MSGSSID_FIELD_NUMBER: _ClassVar[int]
-    Msgssid: str
     PASSWORD_FIELD_NUMBER: _ClassVar[int]
     PRODUCTKEY_FIELD_NUMBER: _ClassVar[int]
     RSSI_FIELD_NUMBER: _ClassVar[int]
@@ -255,13 +253,15 @@ class DrvWifiMsg(_message.Message):
     STATUS2_FIELD_NUMBER: _ClassVar[int]
     WIFI_ENABLE_FIELD_NUMBER: _ClassVar[int]
     devicename: str
+    ip: str
+    msgssid: str
     password: str
     productkey: str
     rssi: int
     status1: bool
     status2: bool
     wifi_enable: bool
-    def __init__(self, status1: bool = ..., status2: bool = ..., IP: _Optional[str] = ..., Msgssid: _Optional[str] = ..., password: _Optional[str] = ..., rssi: _Optional[int] = ..., productkey: _Optional[str] = ..., devicename: _Optional[str] = ..., wifi_enable: bool = ...) -> None: ...
+    def __init__(self, status1: bool = ..., status2: bool = ..., ip: _Optional[str] = ..., msgssid: _Optional[str] = ..., password: _Optional[str] = ..., rssi: _Optional[int] = ..., productkey: _Optional[str] = ..., devicename: _Optional[str] = ..., wifi_enable: bool = ...) -> None: ...
 
 class DrvWifiSet(_message.Message):
     __slots__ = ["Confssid", "configParam", "wifi_enable"]
@@ -274,10 +274,10 @@ class DrvWifiSet(_message.Message):
     def __init__(self, configParam: _Optional[int] = ..., Confssid: _Optional[str] = ..., wifi_enable: bool = ...) -> None: ...
 
 class DrvWifiUpload(_message.Message):
-    __slots__ = ["Wifi_Msg_Upload"]
+    __slots__ = ["wifi_msg_upload"]
     WIFI_MSG_UPLOAD_FIELD_NUMBER: _ClassVar[int]
-    Wifi_Msg_Upload: int
-    def __init__(self, Wifi_Msg_Upload: _Optional[int] = ...) -> None: ...
+    wifi_msg_upload: int
+    def __init__(self, wifi_msg_upload: _Optional[int] = ...) -> None: ...
 
 class GetMnetCfgReq(_message.Message):
     __slots__ = ["req_ids"]
