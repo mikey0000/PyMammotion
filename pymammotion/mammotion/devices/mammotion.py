@@ -10,6 +10,7 @@ from abc import abstractmethod
 from enum import Enum
 from typing import Any, cast
 from uuid import UUID
+import base64
 
 import betterproto
 from bleak import BleakClient
@@ -104,6 +105,11 @@ async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None
     """Handle a retry."""
     if not fut.done():
         await func(command)
+
+async def _handle_retry_cloud(fut: asyncio.Future[None], func, iotId: str, command: bytes) -> None:
+    """Handle a retry."""
+    if not fut.done():
+        func(iotId, command)
 
 
 class ConnectionPreference(Enum):
@@ -320,6 +326,8 @@ class MammotionBaseDevice:
 
         await self._send_command_with_args("get_area_name_list",
                                            device_id=self.luba_msg.device.net.toapp_wifi_iot_status.devicename)
+        
+        
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
         # jobs list
@@ -713,12 +721,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     """Base class for Mammotion Cloud devices."""
 
     def __init__(
-            self,
-            mqtt_client: MammotionMQTT,
-            iot_id: str,
-            device_name: str,
-            nick_name: str,
-            **kwargs: Any,
+        self,
+        mqtt_client: MammotionMQTT,
+        iot_id: str,
+        device_name: str,
+        nick_name: str,
+        **kwargs: Any,
     ) -> None:
         """Initialize MammotionBaseCloudDevice."""
         super().__init__()
@@ -727,44 +735,105 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.nick_name = nick_name
         self._command_futures = {}
         self._commands: MammotionCommand = MammotionCommand(device_name)
-        self.loop = asyncio.get_event_loop()
+        self.currentID = ""
+        self._operation_lock = asyncio.Lock()
 
     def _on_mqtt_message(self, topic: str, payload: str) -> None:
         """Handle incoming MQTT messages."""
         _LOGGER.debug("MQTT message received on topic %s: %s", topic, payload)
-        payload = json.loads(payload)
-        message_id = self._extract_message_id(payload)
-        if message_id and message_id in self._command_futures:
-            self._parse_mqtt_response(topic=topic, payload=payload)
-            future = self._command_futures.pop(message_id)
-            if not future.done():
-                future.set_result(payload)
+
+        json_str = json.dumps(payload)
+        payload = json.loads(json_str)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self._handle_mqtt_message(topic, payload))
+        loop.close()
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
-        future = self.loop.create_future()
-        command_bytes = getattr(self._commands, key)()
-        message_id = self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command_bytes)
-        if message_id != "":
-            self._command_futures[message_id] = future
+        if self._operation_lock.locked():
+            _LOGGER.debug(
+                "%s: Operation already in progress, waiting for it to complete;",
+                self.nick_name
+            )
+        
+        async with self._operation_lock:
             try:
-                return await asyncio.wait_for(future, timeout=TIMEOUT_CLOUD_RESPONSE)
-            except asyncio.TimeoutError:
-                _LOGGER.error("Command '%s' timed out", key)
-        return None
+                command_bytes = getattr(self._commands, key)()
+                return await self._send_command_locked(key, command_bytes)
+            except Exception as ex:
+                _LOGGER.exception(
+                    "%s: error in sending command -  %s",
+                    self.nick_name,
+                    ex
+                )
+                raise
+    
+    async def _send_command_locked(self, key: str, command: bytes) -> bytes:
+        """Send command to device and read response."""
+        try:
+            return await self._execute_command_locked(key, command)
+        except Exception as ex:
+            # Disconnect so we can reset state and try again
+            await asyncio.sleep(DBUS_ERROR_BACKOFF_TIME)
+            _LOGGER.debug(
+                "%s: error in _send_command_locked: %s",
+                self.nick_name,
+                ex,
+            )
+            raise
+    
+    async def _execute_command_locked(self, key: str, command: bytes) -> bytes:
+        """Execute command and read response."""
+        assert self._mqtt_client is not None
+        self._notify_future = self.loop.create_future()
+        self._key = key
+        _LOGGER.debug("%s: Sending command: %s", self.nick_name, key)
+        self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command)
+
+        retry_handle = self.loop.call_at(
+            self.loop.time() + 20,
+            lambda: asyncio.ensure_future(
+                _handle_retry_cloud(self._notify_future, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
+            ),
+        )
+        timeout = 20
+        timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
+        timeout_expired = False
+        try:
+            notify_msg = await self._notify_future
+        except asyncio.TimeoutError:
+            timeout_expired = True
+            raise
+        finally:
+            if not timeout_expired:
+                timeout_handle.cancel()
+                retry_handle.cancel()
+            self._notify_future = None
+
+        _LOGGER.debug("%s: Message received", self.nick_name)
+
+        return notify_msg
 
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command with arguments to device via MQTT and read response."""
-        future = self.loop.create_future()
-        command_bytes = getattr(self._commands, key)(**kwargs)
-        message_id = self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command_bytes)
-        if message_id != "":
-            self._command_futures[message_id] = future
+        if self._operation_lock.locked():
+            _LOGGER.debug(
+                "%s: Operation already in progress, waiting for it to complete;",
+                self.nick_name
+            )
+        async with self._operation_lock:
             try:
-                return await asyncio.wait_for(future, timeout=TIMEOUT_CLOUD_RESPONSE)
-            except asyncio.TimeoutError:
-                _LOGGER.error("Command '%s' timed out", key)
-        return None
+                command_bytes = getattr(self._commands, key)(**kwargs)
+                return await self._send_command_locked(key, command_bytes)
+            except Exception as ex:
+                _LOGGER.exception(
+                    "%s: error in sending command -  %s",
+                    self.nick_name,
+                    ex
+                )
+                raise
 
     def _extract_message_id(self, payload: dict) -> str:
         """Extract the message ID from the payload."""
@@ -779,13 +848,30 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             _LOGGER.error("Error extracting encoded message. Payload: %s", payload)
             return ""
 
-    def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
+    async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parse the MQTT response."""
         if topic.endswith("/app/down/thing/events"):
-            event = ThingEventMessage(**payload)
+            print (f"Thing event received")
+            event = ThingEventMessage.from_dicts(payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                self._update_raw_data(cast(bytes, params.value.content))
+                print (f"Protobuf reveice")
+                binary_data = base64.b64decode(params.value.get('content', ''))
+                self._update_raw_data(cast(bytes, binary_data))
+                new_msg = LubaMsg().parse(cast(bytes, binary_data))
+                if self._notify_future and not self._notify_future.done():
+                    self._notify_future.set_result(new_msg)
+                await self._state_manager.notification(new_msg)
+
+    async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
+        """Async handler for incoming MQTT messages."""
+        await self._parse_mqtt_response(topic=topic, payload=payload)
+       # message_id = self._extract_message_id(payload)
+       # print (f"Received message id: {self.currentID}")
+       # message_id = self.currentID
+       # if message_id and message_id in self._command_futures:
+       #     print (f"Start parsing response")
+            
 
     async def _disconnect(self):
         """Disconnect the MQTT client."""

@@ -34,6 +34,16 @@ async def run():
 
         cloud_client.list_binding_by_account()
         return cloud_client
+    
+async def sync_status_and_map(cloud_device: MammotionBaseCloudDevice):
+    await asyncio.sleep(1)
+    await cloud_device.start_sync(0)
+    await asyncio.sleep(2)
+    await cloud_device.start_map_sync()
+
+    while(True):
+        print(cloud_device.luba_msg)
+        await asyncio.sleep(5)
 
 if __name__ ==  '__main__':
     logging.basicConfig(level=logging.DEBUG)
@@ -69,6 +79,6 @@ if __name__ ==  '__main__':
         device._on_mqtt_message(topic, payload) for device in _devices_list if device.iot_id == iot_id
     ]
 
-    logger.debug(_devices_list)
+    sync = event_loop.run_until_complete(sync_status_and_map(_devices_list[0]))
 
     event_loop.run_forever()
