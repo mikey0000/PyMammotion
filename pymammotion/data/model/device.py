@@ -1,5 +1,5 @@
 """MowingDevice class to wrap around the betterproto dataclasses."""
-
+import math
 from dataclasses import dataclass
 
 import betterproto
@@ -17,6 +17,10 @@ from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
 from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, SystemUpdateBufMsg, ReportInfoData
 from pymammotion.utility.map import CoordinateConverter
+
+
+def parse_double(val: float, d: float):
+    return val / math.pow(10.0, d)
 
 
 @dataclass
@@ -52,10 +56,10 @@ class MowingDevice:
         match buffer_list.update_buf_data[0]:
             case 1:
                 # 4 speed
-                self.location.RTK.latitude = buffer_list.update_buf_data[5]
-                self.location.RTK.longitude = buffer_list.update_buf_data[6]
-                self.location.dock.latitude = buffer_list.update_buf_data[7]
-                self.location.dock.longitude = buffer_list.update_buf_data[8]
+                self.location.RTK.latitude = parse_double(buffer_list.update_buf_data[5], 8.0)
+                self.location.RTK.longitude = parse_double(buffer_list.update_buf_data[6], 8.0)
+                self.location.dock.latitude = parse_double(buffer_list.update_buf_data[7], 4.0)
+                self.location.dock.longitude = parse_double(buffer_list.update_buf_data[8], 4.0)
                 self.location.dock.rotation = buffer_list.update_buf_data[3] + 180
             case 2:
                 self.err_code_list.clear()

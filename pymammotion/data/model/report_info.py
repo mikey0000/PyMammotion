@@ -72,6 +72,7 @@ class LocationData:
 
 @dataclass
 class WorkData:
+    path: int = 0
     path_hash: str = ""
     progress: int = 0
     area: int = 0
@@ -80,14 +81,22 @@ class WorkData:
     bp_pos_x: int = 0
     bp_pos_y: int = 0
     real_path_num: str = ""
+    path_pos_x: int = 0
+    path_pos_y: int = 0
     ub_zone_hash: str = ""
+    ub_path_hash: str = ""
     init_cfg_hash: str = ""
     ub_ecode_hash: str = ""
+    nav_run_mode: int = 0
+    test_mode_status: int = 0
+    man_run_speed: int = 0
+    nav_edit_status: int = 0
     knife_height: int = 0
 
     @classmethod
     def from_dict(cls, data: dict):
         return cls(
+            path=data.get('path', 0),
             path_hash=data.get('path_hash', ""),
             progress=data.get('progress', 0),
             area=data.get('area', 0),
@@ -96,9 +105,16 @@ class WorkData:
             bp_pos_x=data.get('bp_pos_x', 0),
             bp_pos_y=data.get('bp_pos_y', 0),
             real_path_num=data.get('real_path_num', ""),
+            path_pos_x=data.get('path_pos_x', 0),
+            path_pos_y=data.get('path_pos_y', 0),
             ub_zone_hash=data.get('ub_zone_hash', ""),
+            ub_path_hash=data.get('ub_path_hash', ""),
             init_cfg_hash=data.get('init_cfg_hash', ""),
             ub_ecode_hash=data.get('ub_ecode_hash', ""),
+            nav_run_mode=data.get('nav_run_mode', 0),
+            test_mode_status=data.get('test_mode_status', 0),
+            man_run_speed=data.get('man_run_speed', 0),
+            nav_edit_status=data.get('nav_edit_status', 0),
             knife_height=data.get('knife_height', 0)
         )
 
