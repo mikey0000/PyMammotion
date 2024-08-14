@@ -99,7 +99,7 @@ class MowingDevice:
             if index == 0:
                 self.location.position_type = location.pos_type
                 self.location.orientation = location.real_toward / 10000
-                self.location.device = coordinate_converter.enu_to_lla(location.real_pos_y, location.real_pos_x)
+                self.location.device = coordinate_converter.enu_to_lla(parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0))
 
         self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 

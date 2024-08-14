@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field, asdict
 
-
 @dataclass
 class ConnectData:
     connect_type: int = 0
@@ -127,16 +126,16 @@ class ReportData:
     locations: list[LocationData] = field(default_factory=list)
     work: WorkData = field(default_factory=WorkData)
 
-    @classmethod
-    def from_dict(cls, data: dict):
-        locations = cls.locations
+
+    def from_dict(self, data: dict):
+        locations = self.locations
         if data.get('locations') is not None:
             locations=[LocationData.from_dict(loc) for loc in data.get('locations', [])]
 
-        return cls(
-            connect=ConnectData.from_dict(data.get('connect', asdict(cls.connect))),
-            dev=DeviceData.from_dict(data.get('dev', asdict(cls.dev))),
-            rtk=RTKData.from_dict(data.get('rtk', asdict(cls.rtk))),
+        return ReportData(
+            connect=ConnectData.from_dict(data.get('connect', asdict(self.connect))),
+            dev=DeviceData.from_dict(data.get('dev', asdict(self.dev))),
+            rtk=RTKData.from_dict(data.get('rtk', asdict(self.rtk))),
             locations=locations,
-            work=WorkData.from_dict(data.get('work', asdict(cls.work)))
+            work=WorkData.from_dict(data.get('work', asdict(self.work)))
         )
