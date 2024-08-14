@@ -534,12 +534,12 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
-        _LOGGER.debug("%s: Received notification: %s", self.name, data)
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
             self._update_raw_data(data)
             self._message.clearNotification()
+            _LOGGER.debug("%s: Received notification: %s", self.name, data)
         else:
             return
         new_msg = LubaMsg().parse(data)

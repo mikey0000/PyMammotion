@@ -3,6 +3,7 @@
 # plugin: python-betterproto
 from dataclasses import dataclass
 
+from .dev_net import *
 
 import betterproto
 

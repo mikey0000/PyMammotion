@@ -7,6 +7,7 @@ from bleak.backends.device import BLEDevice
 
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice, has_field
+from pymammotion.proto.mctrl_sys import MctlSys, RptAct, RptInfoType
 
 bleNotificationEvt = BleNotificationEvent()
 

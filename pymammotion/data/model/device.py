@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass
 
+import betterproto
+
 from pymammotion.data.model import HashList
 from pymammotion.data.model.device_config import DeviceLimits
 from pymammotion.data.model.location import Location
+from pymammotion.data.model.report_info import ReportData
 from pymammotion.proto.dev_net import DevNet
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.luba_mul import SocMul
@@ -12,7 +15,8 @@ from pymammotion.proto.mctrl_driver import MctlDriver
 from pymammotion.proto.mctrl_nav import MctlNav
 from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, SystemUpdateBufMsg
+from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, SystemUpdateBufMsg, ReportInfoData
+from pymammotion.utility.map import CoordinateConverter
 
 
 @dataclass
@@ -27,6 +31,7 @@ class MowingDevice:
         self.device = LubaMsg()
         self.map = HashList(area={}, path={}, obstacle={})
         self.location = Location()
+        self.report_data = ReportData()
         self.err_code_list = []
         self.err_code_list_time = []
         self.limits = DeviceLimits(30, 70, 0.2, 0.6)
@@ -83,6 +88,18 @@ class MowingDevice:
                         buffer_list.update_buf_data[22],
                     ]
                 )
+
+    def update_report_data(self, toapp_report_data: ReportInfoData):
+        coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
+        for index, location in enumerate(toapp_report_data.locations):
+            if index == 0:
+                self.location.position_type = location.pos_type
+                self.location.orientation = location.real_toward / 10000
+                self.location.device = coordinate_converter.enu_to_lla(location.real_pos_y, location.real_pos_x)
+
+        self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
+
+
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT):
         pass

@@ -68,7 +68,7 @@ class StateManager:
             case "system_update_buf":
                 self._device.buffer(sys_msg[1])
             case "toapp_report_data":
-                pass
+                self._device.update_report_data(sys_msg[1])
             case "mow_to_app_info":
                 self._device.mow_info(sys_msg[1])
 
