@@ -274,18 +274,18 @@ class SysKnifeControl(_message.Message):
     def __init__(self, knife_status: _Optional[int] = ..., knife_height: _Optional[int] = ...) -> None: ...
 
 class SysMowInfo(_message.Message):
-    __slots__ = ["RTKstars", "RTKstatus", "batVal", "deviceState", "knifeHeight"]
+    __slots__ = ["batVal", "deviceState", "knifeHeight", "rtk_stars", "rtk_status"]
     BATVAL_FIELD_NUMBER: _ClassVar[int]
     DEVICESTATE_FIELD_NUMBER: _ClassVar[int]
     KNIFEHEIGHT_FIELD_NUMBER: _ClassVar[int]
-    RTKSTARS_FIELD_NUMBER: _ClassVar[int]
-    RTKSTATUS_FIELD_NUMBER: _ClassVar[int]
-    RTKstars: int
-    RTKstatus: int
+    RTK_STARS_FIELD_NUMBER: _ClassVar[int]
+    RTK_STATUS_FIELD_NUMBER: _ClassVar[int]
     batVal: int
     deviceState: int
     knifeHeight: int
-    def __init__(self, deviceState: _Optional[int] = ..., batVal: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., RTKstatus: _Optional[int] = ..., RTKstars: _Optional[int] = ...) -> None: ...
+    rtk_stars: int
+    rtk_status: int
+    def __init__(self, deviceState: _Optional[int] = ..., batVal: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., rtk_status: _Optional[int] = ..., rtk_stars: _Optional[int] = ...) -> None: ...
 
 class SysOffChipFlash(_message.Message):
     __slots__ = ["code", "data", "id", "length", "msg", "offset", "op", "start_addr"]

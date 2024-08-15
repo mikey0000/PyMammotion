@@ -10,9 +10,9 @@ class Point:
     latitude: float
     longitude: float
 
-    def __init__(self):
-        self.latitude = 0
-        self.longitude = 0
+    def __init__(self, latitude=0.0, longitude=0.0):
+        self.latitude = latitude
+        self.longitude = longitude
 
 
 @dataclass
@@ -33,6 +33,8 @@ class Location:
     device: Point
     RTK: Point
     dock: Dock
+    position_type: int
+    orientation: int # 360 degree rotation +-
 
     def __init__(self):
         self.device = Point()

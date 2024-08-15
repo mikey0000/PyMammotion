@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+message request_basestation_info_t {
+    uint32 request_type = 1;
+}
+
+message response_basestation_info_t {
+    uint64 system_status = 1;
+    uint32 app_connect_type = 2;
+    int32 ble_rssi = 3;
+    int32 wifi_rssi = 4;
+    uint64 sats_num = 5;
+    int64 lora_scan = 6;
+    int64 lora_channel = 7;
+    int64 lora_locid = 8;
+    int64 lora_netid = 9;
+    uint64 rtk_status = 10;
+    int32 lowpower_status = 11;
+    int32 mqtt_rtk_status = 12;
+    int32 rtk_channel = 13;
+    int32 rtk_switch = 14;
+}
+
+message app_to_base_mqtt_rtk_t {
+    int32 rtk_switch = 1;
+    string rtk_url = 2;
+    int32 rtk_port = 3;
+    string rtk_username = 4;
+    string rtk_password = 5;
+}
+
+message base_to_app_mqtt_rtk_t {
+    int32 rtk_switch_status = 1;
+}
+
+message BaseStation {
+    oneof BaseStationSubType {
+        request_basestation_info_t to_dev = 1;
+        response_basestation_info_t to_app = 2;
+        app_to_base_mqtt_rtk_t app_to_base_mqtt_rtk_msg = 3;
+        base_to_app_mqtt_rtk_t base_to_app_mqtt_rtk_msg = 4;
+    }
+}

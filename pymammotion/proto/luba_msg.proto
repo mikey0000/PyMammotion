@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+import "pymammotion/proto/basestation.proto";
 import "pymammotion/proto/mctrl_driver.proto";
 import "pymammotion/proto/mctrl_nav.proto";
 import "pymammotion/proto/mctrl_sys.proto";
@@ -28,6 +29,7 @@ message LubaMsg {
     SocMul mul = 14;
     MsgNull null = 16;
     MctlPept pept = 17;
+    BaseStation base = 18;
   }
   uint64 timestamp = 15;
 }

@@ -2,9 +2,9 @@
 # sources: pymammotion/proto/mctrl_nav.proto
 # plugin: python-betterproto
 from dataclasses import dataclass
-import betterproto
-
 from .common import *
+
+import betterproto
 
 
 @dataclass
