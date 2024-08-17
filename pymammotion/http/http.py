@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar, Optional
+from typing import Generic, Literal, Optional, TypeVar
 
 from aiohttp import ClientSession
 from mashumaro import DataClassDictMixin

@@ -1,7 +1,6 @@
 from base64 import b64decode
-import base64
 from dataclasses import dataclass
-from typing import Any, Literal, Union, Optional
+from typing import Any, Literal, Optional, Union
 
 from google.protobuf import json_format
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -33,6 +32,7 @@ class Base64EncodedProtobuf(SerializableType):
         data = luba_msg_pb2.LubaMsg()
         data.ParseFromString(binary)
         return json_format.MessageToDict(data)
+
 
 @dataclass
 class DeviceProtobufMsgEventValue(DataClassORJSONMixin):
@@ -78,6 +78,7 @@ class GeneralParams(DataClassORJSONMixin):
     deviceType: Optional[str] = None
     _traceId: Optional[str] = None
 
+
 @dataclass
 class DeviceProtobufMsgEventParams(GeneralParams):
     identifier: Literal["device_protobuf_msg_event"]
@@ -100,26 +101,21 @@ class ThingEventMessage(DataClassORJSONMixin):
     version: Literal["1.0"]
 
     @classmethod
-    def from_dicts(cls, payload: dict) -> 'ThingEventMessage':
+    def from_dicts(cls, payload: dict) -> "ThingEventMessage":
         """Deserializza il payload JSON in un'istanza di ThingEventMessage."""
-        method = payload.get('method')
-        event_id = payload.get('id')
-        params_dict = payload.get('params', {})
-        version = payload.get('version')
+        method = payload.get("method")
+        event_id = payload.get("id")
+        params_dict = payload.get("params", {})
+        version = payload.get("version")
 
         # Determina quale classe usare per i parametri
-        identifier = params_dict.get('identifier')
-        if identifier == 'device_protobuf_msg_event':
+        identifier = params_dict.get("identifier")
+        if identifier == "device_protobuf_msg_event":
             params_obj = DeviceProtobufMsgEventParams(**params_dict)
-        elif identifier == 'device_warning_event':
+        elif identifier == "device_warning_event":
             params_obj = DeviceWarningEventParams(**params_dict)
         else:
             raise ValueError(f"Unknown identifier: {identifier}")
 
         # Crea e restituisce l'istanza di ThingEventMessage
-        return cls(
-            method=method,
-            id=event_id,
-            params=params_obj,
-            version=version
-        )
+        return cls(method=method, id=event_id, params=params_obj, version=version)

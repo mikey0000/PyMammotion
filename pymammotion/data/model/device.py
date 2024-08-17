@@ -1,4 +1,5 @@
 """MowingDevice class to wrap around the betterproto dataclasses."""
+
 import math
 from dataclasses import dataclass
 
@@ -15,7 +16,7 @@ from pymammotion.proto.mctrl_driver import MctlDriver
 from pymammotion.proto.mctrl_nav import MctlNav
 from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, SystemUpdateBufMsg, ReportInfoData
+from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, ReportInfoData, SystemUpdateBufMsg
 from pymammotion.utility.map import CoordinateConverter
 
 
@@ -99,11 +100,11 @@ class MowingDevice:
             if index == 0:
                 self.location.position_type = location.pos_type
                 self.location.orientation = location.real_toward / 10000
-                self.location.device = coordinate_converter.enu_to_lla(parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0))
+                self.location.device = coordinate_converter.enu_to_lla(
+                    parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
+                )
 
         self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
-
-
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT):
         pass

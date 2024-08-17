@@ -4,13 +4,10 @@ from pymammotion.mammotion.commands.messages.ota import MessageOta
 from pymammotion.mammotion.commands.messages.system import MessageSystem
 from pymammotion.mammotion.commands.messages.video import MessageVideo
 from pymammotion.proto import dev_net_pb2, luba_msg_pb2
-from pymammotion.utility.device_type import DeviceType
 
 
 class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo):
     """MQTT commands for Luba."""
-
-
 
     def __init__(self, device_name: str) -> None:
         self._device_name = device_name
@@ -25,7 +22,6 @@ class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, Message
 
     def set_device_product_key(self, product_key: str) -> None:
         self._product_key = product_key
-
 
     """BLE commands for Luba."""
 

@@ -1,14 +1,14 @@
 """MammotionMQTT."""
-import asyncio
+
 import hashlib
 import hmac
 import json
 import logging
 from logging import getLogger
-from typing import Callable, Optional, cast, Awaitable
+from typing import Callable, Optional, cast
 
 from linkkit.linkkit import LinkKit
-from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
+from paho.mqtt.client import MQTTMessage
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -21,7 +21,6 @@ logger = getLogger(__name__)
 
 class MammotionMQTT:
     """MQTT client for pymammotion."""
-
 
     def __init__(
         self,
@@ -77,7 +76,6 @@ class MammotionMQTT:
         #        self._mqtt_host = "public.itls.eu-central-1.aliyuncs.com"
         self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
 
-
     def connect_async(self):
         """Connect async to MQTT Server."""
         logger.info("Connecting...")
@@ -124,7 +122,6 @@ class MammotionMQTT:
             ),
         )
 
-
         if self.on_ready:
             self.is_ready = True
             self.on_ready()
@@ -153,7 +150,6 @@ class MammotionMQTT:
         logger.debug("on_connect, session_flag:%d, rc:%d", session_flag, rc)
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
-
 
     def _on_disconnect(self, _client, _userdata, rc: int):
         """Is called on disconnect."""

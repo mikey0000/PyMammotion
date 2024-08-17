@@ -34,7 +34,7 @@ class Location:
     RTK: Point
     dock: Dock
     position_type: int
-    orientation: int # 360 degree rotation +-
+    orientation: int  # 360 degree rotation +-
 
     def __init__(self):
         self.device = Point()

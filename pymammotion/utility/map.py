@@ -1,4 +1,5 @@
 import math
+
 import numpy as np
 
 from pymammotion.data.model.location import Point
@@ -8,11 +9,11 @@ class CoordinateConverter:
     def __init__(self, latitude_rad: float, longitude_rad: float):
         # Initialize constants
         self.WGS84A = 6378137.0
-        self.f_ = 3.3528106647474805E-21
+        self.f_ = 3.3528106647474805e-21
         self.b_ = (1.0 - self.f_) * self.WGS84A
         self.e2_ = (2.0 - self.f_) * self.f_
         self.e2m_ = (1.0 - self.f_) * (1.0 - self.f_)
-        self.ep2_ = ((self.WGS84A ** 2) - (self.b_ ** 2)) / (self.b_ ** 2)
+        self.ep2_ = ((self.WGS84A**2) - (self.b_**2)) / (self.b_**2)
 
         # Initialize rotation matrix
         self.R_ = np.zeros((3, 3))
@@ -31,7 +32,7 @@ class CoordinateConverter:
         sin_lon = math.sin(lon_rad)
         cos_lon = math.cos(lon_rad)
 
-        sqrt = self.WGS84A / math.sqrt(1.0 - (self.e2_ * (sin_lat ** 2)))
+        sqrt = self.WGS84A / math.sqrt(1.0 - (self.e2_ * (sin_lat**2)))
         d3 = sqrt * cos_lat
 
         self.x0_ = d3 * cos_lon
@@ -62,7 +63,10 @@ class CoordinateConverter:
         cos_lat = math.cos(atan2_lat)
 
         lon = math.atan2(d4, d3) * 180.0 / math.pi
-        lat = math.atan2(d5 + self.ep2_ * self.b_ * (sin_lat ** 3), hypot - self.e2_ * self.WGS84A * (cos_lat ** 3)) * 180.0 / math.pi
+        lat = (
+            math.atan2(d5 + self.ep2_ * self.b_ * (sin_lat**3), hypot - self.e2_ * self.WGS84A * (cos_lat**3))
+            * 180.0
+            / math.pi
+        )
 
         return Point(latitude=lat, longitude=lon)
-

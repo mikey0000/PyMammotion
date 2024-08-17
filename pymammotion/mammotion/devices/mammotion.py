@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import codecs
 import json
 import logging
 from abc import abstractmethod
 from enum import Enum
-from typing import Any, cast, Optional, Callable
+from typing import Any, Callable, Optional, cast
 from uuid import UUID
-import base64
 
 import betterproto
 from bleak import BleakClient
@@ -72,7 +72,7 @@ _LOGGER = logging.getLogger(__name__)
 def slashescape(err):
     """Escape a slash character."""
     # print err, dir(err), err.start, err.end, err.object[:err.start]
-    thebyte = err.object[err.start: err.end]
+    thebyte = err.object[err.start : err.end]
     repl = "\\x" + hex(ord(thebyte))[2:]
     return (repl, err.end)
 
@@ -106,6 +106,7 @@ async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None
     if not fut.done():
         await func(command)
 
+
 async def _handle_retry_cloud(fut: asyncio.Future[None], func, iotId: str, command: bytes) -> None:
     """Handle a retry."""
     if not fut.done():
@@ -126,9 +127,9 @@ class MammotionDevice:
     _ble_device: MammotionBaseBLEDevice | None = None
 
     def __init__(
-            self,
-            ble_device: BLEDevice,
-            preference: ConnectionPreference = ConnectionPreference.EITHER,
+        self,
+        ble_device: BLEDevice,
+        preference: ConnectionPreference = ConnectionPreference.EITHER,
     ) -> None:
         """Initialize MammotionDevice."""
         if ble_device:
@@ -324,10 +325,10 @@ class MammotionBaseDevice:
 
         await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
 
-        await self._send_command_with_args("get_area_name_list",
-                                           device_id=self.luba_msg.device.net.toapp_wifi_iot_status.devicename)
-        
-        
+        await self._send_command_with_args(
+            "get_area_name_list", device_id=self.luba_msg.device.net.toapp_wifi_iot_status.devicename
+        )
+
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
         # jobs list
@@ -553,7 +554,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
-
                 if has_field(new_msg.net.toapp_wifi_iot_status) and self._commands.get_device_product_key() == "":
                     self._commands.set_device_product_key(new_msg.net.toapp_wifi_iot_status.productkey)
 
@@ -752,7 +752,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         # temporary for testing only
         # self._start_sync_task = self.loop.call_later(30, lambda: asyncio.ensure_future(self.start_sync(0)))
 
-
     def on_ready(self):
         """Callback for when MQTT is subscribed to events."""
         if self.on_ready_callback:
@@ -765,7 +764,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     def on_disconnected(self):
         """Callback for when MQTT disconnects."""
-        pass
 
     def _ble_sync(self):
         command_bytes = self._commands.send_todev_ble_sync(3)
@@ -797,23 +795,16 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
         if self._operation_lock.locked():
-            _LOGGER.debug(
-                "%s: Operation already in progress, waiting for it to complete;",
-                self.nick_name
-            )
-        
+            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.nick_name)
+
         async with self._operation_lock:
             try:
                 command_bytes = getattr(self._commands, key)()
                 return await self._send_command_locked(key, command_bytes)
             except Exception as ex:
-                _LOGGER.exception(
-                    "%s: error in sending command -  %s",
-                    self.nick_name,
-                    ex
-                )
+                _LOGGER.exception("%s: error in sending command -  %s", self.nick_name, ex)
                 raise
-    
+
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
         try:
@@ -827,7 +818,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 ex,
             )
             raise
-    
+
     async def _execute_command_locked(self, key: str, command: bytes) -> bytes:
         """Execute command and read response."""
         assert self._mqtt_client is not None
@@ -839,7 +830,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         retry_handle = self.loop.call_at(
             self.loop.time() + 20,
             lambda: asyncio.ensure_future(
-                _handle_retry_cloud(self._notify_future, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
+                _handle_retry_cloud(
+                    self._notify_future, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command
+                )
             ),
         )
         timeout = 20
@@ -863,20 +856,13 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command with arguments to device via MQTT and read response."""
         if self._operation_lock.locked():
-            _LOGGER.debug(
-                "%s: Operation already in progress, waiting for it to complete;",
-                self.nick_name
-            )
+            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.nick_name)
         async with self._operation_lock:
             try:
                 command_bytes = getattr(self._commands, key)(**kwargs)
                 return await self._send_command_locked(key, command_bytes)
             except Exception as ex:
-                _LOGGER.exception(
-                    "%s: error in sending command -  %s",
-                    self.nick_name,
-                    ex
-                )
+                _LOGGER.exception("%s: error in sending command -  %s", self.nick_name, ex)
                 raise
 
     def _extract_message_id(self, payload: dict) -> str:
@@ -895,12 +881,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parse the MQTT response."""
         if topic.endswith("/app/down/thing/events"):
-            _LOGGER.debug(f"Thing event received")
+            _LOGGER.debug("Thing event received")
             event = ThingEventMessage.from_dicts(payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                _LOGGER.debug(f"Protobuf event")
-                binary_data = base64.b64decode(params.value.get('content', ''))
+                _LOGGER.debug("Protobuf event")
+                binary_data = base64.b64decode(params.value.get("content", ""))
                 self._update_raw_data(cast(bytes, binary_data))
                 new_msg = LubaMsg().parse(cast(bytes, binary_data))
                 if self._notify_future and not self._notify_future.done():
@@ -910,7 +896,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
         """Async handler for incoming MQTT messages."""
         self._parse_mqtt_response(topic=topic, payload=payload)
-            
 
     async def _disconnect(self):
         """Disconnect the MQTT client."""

@@ -257,6 +257,7 @@ def device_mode(value) -> str:
 
 class PosType(IntEnum):
     """Position of the robot."""
+
     AREA_BORDER_ON = 7
     AREA_INSIDE = 1
     AREA_OUT = 0
@@ -268,4 +269,3 @@ class PosType(IntEnum):
     OBS_ON = 2
     TURN_AREA_INSIDE = 4
     VIRTUAL_INSIDE = 6
-
