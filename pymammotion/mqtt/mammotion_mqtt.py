@@ -33,6 +33,7 @@ class MammotionMQTT:
     ):
         """Create instance of MammotionMQTT."""
         super().__init__()
+        self._cloud_client = None
         self.is_connected = False
         self.is_ready = False
         self.on_connected: Optional[Callable[[], None]] = None
@@ -73,7 +74,6 @@ class MammotionMQTT:
         self._linkkit_client.on_disconnect = self._on_disconnect
         self._linkkit_client.on_thing_enable = self._thing_on_thing_enable
         self._linkkit_client.on_topic_message = self._thing_on_topic_message
-        #        self._mqtt_host = "public.itls.eu-central-1.aliyuncs.com"
         self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
 
     def connect_async(self):
@@ -81,16 +81,12 @@ class MammotionMQTT:
         logger.info("Connecting...")
         self._linkkit_client.thing_setup()
         self._linkkit_client.connect_async()
-        # self._client.connect_async(host=self._mqtt_host)
-        # self._client.loop_start()
         self._linkkit_client.start_worker_loop()
 
     def disconnect(self):
         """Disconnect from MQTT Server."""
         logger.info("Disconnecting...")
         self._linkkit_client.disconnect()
-        # self._client.disconnect()
-        # self._client.loop_stop()
 
     def _thing_on_thing_enable(self, user_data):
         """Is called when Thing is enabled."""

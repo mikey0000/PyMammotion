@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional, cast
 from uuid import UUID
 
 import betterproto
+from aiohttp import ClientSession
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.backends.service import BleakGATTCharacteristic, BleakGATTServiceCollection
@@ -24,11 +25,15 @@ from bleak_retry_connector import (
     establish_connection,
 )
 
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.bluetooth import BleMessage
+from pymammotion.const import MAMMOTION_DOMAIN
 from pymammotion.data.model import RegionData
+from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.state_manager import StateManager
+from pymammotion.http.http import LubaHTTP
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
 from pymammotion.proto.luba_msg import LubaMsg
@@ -125,10 +130,13 @@ class MammotionDevice:
     """Represents a Mammotion device."""
 
     _ble_device: MammotionBaseBLEDevice | None = None
+    _cloud_device: MammotionBaseCloudDevice | None = None
+    _devices_list = []
 
     def __init__(
         self,
         ble_device: BLEDevice,
+        cloud_credentials: Credentials | None = None,
         preference: ConnectionPreference = ConnectionPreference.EITHER,
     ) -> None:
         """Initialize MammotionDevice."""
@@ -136,9 +144,69 @@ class MammotionDevice:
             self._ble_device = MammotionBaseBLEDevice(ble_device)
             self._preference = preference
 
+        if cloud_credentials:
+            self.initiate_cloud_connection(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
+
+    async def initiate_cloud_connection(self, account: str, password: str):
+        cloud_client = await self.login(account, password)
+
+        _mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
+                                        product_key=cloud_client._aep_response.data.productKey,
+                                        device_name=cloud_client._aep_response.data.deviceName,
+                                        device_secret=cloud_client._aep_response.data.deviceSecret,
+                                        iot_token=cloud_client._session_by_authcode_response.data.iotToken,
+                                        client_id=cloud_client._client_id)
+
+        _mammotion_mqtt._cloud_client = cloud_client
+        _mammotion_mqtt.connect_async()
+
+        self._devices_list = []
+        for device in cloud_client._listing_dev_by_account_response.data.data:
+            if (device.deviceName.startswith(("Luba-", "Yuka-"))):
+                dev = MammotionBaseCloudDevice(
+                    mqtt_client=_mammotion_mqtt,
+                    iot_id=device.iotId,
+                    device_name=device.deviceName,
+                    nick_name=device.nickName
+                )
+                self._devices_list.append(dev)
+
+    @staticmethod
+    async def login(account: str, password: str) -> CloudIOTGateway:
+        """Login to mammotion cloud."""
+        cloud_client = CloudIOTGateway()
+        async with ClientSession(MAMMOTION_DOMAIN) as session:
+            luba_http = await LubaHTTP.login(session, account, password)
+            country_code = luba_http.data.userInformation.domainAbbreviation
+            _LOGGER.debug("CountryCode: " + country_code)
+            _LOGGER.debug("AuthCode: " + luba_http.data.authorization_code)
+            cloud_client.get_region(country_code, luba_http.data.authorization_code)
+            await cloud_client.connect()
+            await cloud_client.login_by_oauth(country_code, luba_http.data.authorization_code)
+            cloud_client.aep_handle()
+            cloud_client.session_by_auth_code()
+
+            cloud_client.list_binding_by_account()
+            return cloud_client
+
+
     async def send_command(self, key: str):
         """Send a command to the device."""
-        return await self._ble_device.command(key)
+        if self._preference is ConnectionPreference.BLUETOOTH:
+            return await self._ble_device.command(key)
+        if self._preference is ConnectionPreference.WIFI:
+            return await self._cloud_device.command(key)
+        # TODO work with both with EITHER
+
+    async def send_command_with_args(self, key, kwargs):
+        """Send a command with args to the device."""
+        if self._preference is ConnectionPreference.BLUETOOTH:
+            return await self._ble_device.command(key, **kwargs)
+        if self._preference is ConnectionPreference.WIFI:
+            return await self._cloud_device.command(key, **kwargs)
+        # TODO work with both with EITHER
+
+
 
 
 def has_field(message: betterproto.Message) -> bool:
