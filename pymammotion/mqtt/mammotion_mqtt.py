@@ -1,11 +1,11 @@
 """MammotionMQTT."""
-
+import asyncio
 import hashlib
 import hmac
 import json
 import logging
 from logging import getLogger
-from typing import Callable, Optional, cast
+from typing import Callable, Optional, cast, Awaitable
 
 from linkkit.linkkit import LinkKit
 from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
@@ -22,7 +22,6 @@ logger = getLogger(__name__)
 class MammotionMQTT:
     """MQTT client for pymammotion."""
 
-    _cloud_client = None
 
     def __init__(
         self,
@@ -35,8 +34,10 @@ class MammotionMQTT:
     ):
         """Create instance of MammotionMQTT."""
         super().__init__()
-
+        self.is_connected = False
+        self.is_ready = False
         self.on_connected: Optional[Callable[[], None]] = None
+        self.on_ready: Optional[Callable[[], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
         self.on_disconnected: Optional[Callable[[], None]] = None
         self.on_message: Optional[Callable[[str, str, str], None]] = None
@@ -76,22 +77,6 @@ class MammotionMQTT:
         #        self._mqtt_host = "public.itls.eu-central-1.aliyuncs.com"
         self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
 
-        self._client = Client(
-            client_id=self._mqtt_client_id,
-            protocol=MQTTv311,
-        )
-        self._client.on_message = self._on_message
-        self._client.on_connect = self._on_connect
-        self._client.on_disconnect = self._on_disconnect
-        self._client.username_pw_set(self._mqtt_username, self._mqtt_password)
-        self._client.enable_logger(logger.getChild("paho"))
-
-    # region Connection handling
-    def connect(self):
-        """Connect to MQTT Server."""
-        logger.info("Connecting...")
-        self._client.connect(host=self._mqtt_host)
-        self._client.loop_forever()
 
     def connect_async(self):
         """Connect async to MQTT Server."""
@@ -106,8 +91,8 @@ class MammotionMQTT:
         """Disconnect from MQTT Server."""
         logger.info("Disconnecting...")
         self._linkkit_client.disconnect()
-        self._client.disconnect()
-        self._client.loop_stop()
+        # self._client.disconnect()
+        # self._client.loop_stop()
 
     def _thing_on_thing_enable(self, user_data):
         """Is called when Thing is enabled."""
@@ -139,6 +124,10 @@ class MammotionMQTT:
             ),
         )
 
+
+        if self.on_ready:
+            self.is_ready = True
+            self.on_ready()
         # self._linkkit_client.query_ota_firmware()
         # command = MammotionCommand(device_name="Luba")
         # self._cloud_client.send_cloud_command(command.get_report_cfg())
@@ -158,39 +147,19 @@ class MammotionMQTT:
 
     def _thing_on_connect(self, session_flag, rc, user_data):
         """Is called on thing connect."""
+        self.is_connected = True
+        if self.on_connected is not None:
+            self.on_connected()
         logger.debug("on_connect, session_flag:%d, rc:%d", session_flag, rc)
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
 
-    def _on_connect(self, _client, _userdata, _flags: dict, rc: int):
-        """Is called when on connect."""
-        if rc == 0:
-            logger.debug("Connected")
-            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/#")
-            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply")
-
-            self._client.publish(
-                f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
-                json.dumps(
-                    {
-                        "id": "msgid1",
-                        "version": "1.0",
-                        "request": {"clientId": self._mqtt_username},
-                        "params": {"iotToken": self._iot_token},
-                    }
-                ),
-            )
-
-            if self.on_connected:
-                self.on_connected()
-        else:
-            logger.error("Could not connect %s", connack_string(rc))
-            if self.on_error:
-                self.on_error(connack_string(rc))
 
     def _on_disconnect(self, _client, _userdata, rc: int):
         """Is called on disconnect."""
         logger.info("Disconnected")
+        self.is_connected = False
+        self.is_ready = False
         logger.debug(rc)
         if self.on_disconnected:
             self.on_disconnected()

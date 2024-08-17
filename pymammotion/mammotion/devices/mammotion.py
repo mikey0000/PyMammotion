@@ -8,7 +8,7 @@ import json
 import logging
 from abc import abstractmethod
 from enum import Enum
-from typing import Any, cast
+from typing import Any, cast, Optional, Callable
 from uuid import UUID
 import base64
 
@@ -730,25 +730,69 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     ) -> None:
         """Initialize MammotionBaseCloudDevice."""
         super().__init__()
+        self._ble_sync_task = None
+        self.is_ready = False
         self._mqtt_client = mqtt_client
         self.iot_id = iot_id
         self.nick_name = nick_name
         self._command_futures = {}
         self._commands: MammotionCommand = MammotionCommand(device_name)
         self.currentID = ""
+        self.on_ready_callback: Optional[Callable[[], None]] = None
         self._operation_lock = asyncio.Lock()
 
-    def _on_mqtt_message(self, topic: str, payload: str) -> None:
+        self._mqtt_client.on_connected = self.on_connected
+        self._mqtt_client.on_disconnected = self.on_disconnected
+        self._mqtt_client.on_message = self._on_mqtt_message
+        self._mqtt_client.on_ready = self.on_ready
+        if self._mqtt_client.is_connected:
+            self._ble_sync()
+            self.run_periodic_sync_task()
+
+        # temporary for testing only
+        # self._start_sync_task = self.loop.call_later(30, lambda: asyncio.ensure_future(self.start_sync(0)))
+
+
+    def on_ready(self):
+        """Callback for when MQTT is subscribed to events."""
+        if self.on_ready_callback:
+            self.on_ready_callback()
+
+    def on_connected(self):
+        """Callback for when MQTT connects."""
+        self._ble_sync()
+        self.run_periodic_sync_task()
+
+    def on_disconnected(self):
+        """Callback for when MQTT disconnects."""
+        pass
+
+    def _ble_sync(self):
+        command_bytes = self._commands.send_todev_ble_sync(3)
+        self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command_bytes)
+
+    async def run_periodic_sync_task(self) -> None:
+        """Send ble sync to robot."""
+        try:
+            self._ble_sync()
+        finally:
+            self.schedule_ble_sync()
+
+    def schedule_ble_sync(self):
+        """Periodically sync to keep connection alive."""
+        if self._mqtt_client is not None and self._mqtt_client.is_connected:
+            self._ble_sync_task = self.loop.call_later(
+                160, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
+            )
+
+    def _on_mqtt_message(self, topic: str, payload: str, iot_id: str) -> None:
         """Handle incoming MQTT messages."""
         _LOGGER.debug("MQTT message received on topic %s: %s", topic, payload)
 
         json_str = json.dumps(payload)
         payload = json.loads(json_str)
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self._handle_mqtt_message(topic, payload))
-        loop.close()
+        self._handle_mqtt_message(topic, payload)
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
@@ -848,29 +892,24 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             _LOGGER.error("Error extracting encoded message. Payload: %s", payload)
             return ""
 
-    async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
+    def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parse the MQTT response."""
         if topic.endswith("/app/down/thing/events"):
-            print (f"Thing event received")
+            _LOGGER.debug(f"Thing event received")
             event = ThingEventMessage.from_dicts(payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                print (f"Protobuf reveice")
+                _LOGGER.debug(f"Protobuf event")
                 binary_data = base64.b64decode(params.value.get('content', ''))
                 self._update_raw_data(cast(bytes, binary_data))
                 new_msg = LubaMsg().parse(cast(bytes, binary_data))
                 if self._notify_future and not self._notify_future.done():
                     self._notify_future.set_result(new_msg)
-                await self._state_manager.notification(new_msg)
+                asyncio.run(self._state_manager.notification(new_msg))
 
-    async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
+    def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
         """Async handler for incoming MQTT messages."""
-        await self._parse_mqtt_response(topic=topic, payload=payload)
-       # message_id = self._extract_message_id(payload)
-       # print (f"Received message id: {self.currentID}")
-       # message_id = self.currentID
-       # if message_id and message_id in self._command_futures:
-       #     print (f"Start parsing response")
+        self._parse_mqtt_response(topic=topic, payload=payload)
             
 
     async def _disconnect(self):

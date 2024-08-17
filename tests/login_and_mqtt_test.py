@@ -39,7 +39,7 @@ async def sync_status_and_map(cloud_device: MammotionBaseCloudDevice):
     await asyncio.sleep(1)
     await cloud_device.start_sync(0)
     await asyncio.sleep(2)
-    await cloud_device.start_map_sync()
+    # await cloud_device.start_map_sync()
 
     while(True):
         print(cloud_device.luba_msg)
@@ -52,15 +52,13 @@ if __name__ ==  '__main__':
     asyncio.set_event_loop(event_loop)
     cloud_client = event_loop.run_until_complete(run())
 
-    
-
     _mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
                     product_key=cloud_client._aep_response.data.productKey,
                     device_name=cloud_client._aep_response.data.deviceName,
                     device_secret=cloud_client._aep_response.data.deviceSecret, iot_token=cloud_client._session_by_authcode_response.data.iotToken, client_id=cloud_client._client_id)
 
+
     _mammotion_mqtt._cloud_client = cloud_client
-    #mammotion.connect() blocks further calls
     _mammotion_mqtt.connect_async()
 
     _devices_list = []
@@ -74,11 +72,5 @@ if __name__ ==  '__main__':
             )
             _devices_list.append(dev)
 
-    #Assign callback based on iotId
-    _mammotion_mqtt.on_message = lambda topic, payload, iot_id: [
-        device._on_mqtt_message(topic, payload) for device in _devices_list if device.iot_id == iot_id
-    ]
-
-    sync = event_loop.run_until_complete(sync_status_and_map(_devices_list[0]))
 
     event_loop.run_forever()

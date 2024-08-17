@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar
+from typing import Generic, Literal, TypeVar, Optional
 
 from aiohttp import ClientSession
 from mashumaro import DataClassDictMixin
@@ -25,7 +25,7 @@ class Response(DataClassDictMixin, Generic[DataT]):
 class LoginResponseUserInformation(DataClassORJSONMixin):
     areaCode: str
     domainAbbreviation: str
-    email: str
+    email: Optional[str]
     userId: str
     userAccount: str
     authType: str

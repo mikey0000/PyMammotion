@@ -6,7 +6,6 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 @dataclass
 class Device(DataClassORJSONMixin):
-    productModel: str
     gmtModified: int
     netType: str
     nickName: str
@@ -26,6 +25,7 @@ class Device(DataClassORJSONMixin):
     status: int
     productImage: Optional[str] = None
     categoryImage: Optional[str] = None
+    productModel: Optional[str] = None
 
 
 @dataclass
