@@ -44,7 +44,7 @@ class LoginResponseData(DataClassORJSONMixin):
     jti: str
 
 
-class LubaHTTP:
+class MammotionHTTP:
     def __init__(self, session: ClientSession, login: LoginResponseData):
         self._session = session
         self._session.headers["Authorization"] = f"Bearer {login.access_token}"
@@ -70,7 +70,7 @@ class LubaHTTP:
             return Response(data=login_response_data, code=data["code"], msg=data["msg"])
 
 
-async def connect_http(username: str, password: str) -> LubaHTTP:
+async def connect_http(username: str, password: str) -> MammotionHTTP:
     async with ClientSession(MAMMOTION_DOMAIN) as session:
-        login_response = await LubaHTTP.login(session, username, password)
-        return LubaHTTP(session, login_response.data)
+        login_response = await MammotionHTTP.login(session, username, password)
+        return MammotionHTTP(session, login_response.data)

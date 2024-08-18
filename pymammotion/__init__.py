@@ -10,13 +10,13 @@ import os
 
 # works outside HA on its own
 from pymammotion.bluetooth.ble import LubaBLE
-from pymammotion.http.http import LubaHTTP, connect_http
+from pymammotion.http.http import MammotionHTTP, connect_http
 
 # TODO make a working device that will work outside HA too.
 from pymammotion.mammotion.devices import MammotionBaseBLEDevice
 from pymammotion.mqtt import MammotionMQTT
 
-__all__ = ["LubaBLE", "LubaHTTP", "connect_http", "MammotionBaseBLEDevice", "MammotionMQTT"]
+__all__ = ["LubaBLE", "MammotionHTTP", "connect_http", "MammotionBaseBLEDevice", "MammotionMQTT"]
 
 logger = logging.getLogger(__name__)
 
