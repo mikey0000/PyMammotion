@@ -33,7 +33,7 @@ from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.state_manager import StateManager
-from pymammotion.http.http import MammotionHTTP
+from pymammotion.http.http import MammotionHTTP, connect_http
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
 from pymammotion.proto.luba_msg import LubaMsg
@@ -176,13 +176,13 @@ class MammotionDevice:
         """Login to mammotion cloud."""
         cloud_client = CloudIOTGateway()
         async with ClientSession(MAMMOTION_DOMAIN) as session:
-            mammotion_http = await MammotionHTTP.login(session, account, password)
-            country_code = mammotion_http.data.userInformation.domainAbbreviation
+            mammotion_http = await connect_http(account, password)
+            country_code = mammotion_http.login.userInformation.domainAbbreviation
             _LOGGER.debug("CountryCode: " + country_code)
-            _LOGGER.debug("AuthCode: " + mammotion_http.data.authorization_code)
-            cloud_client.get_region(country_code, mammotion_http.data.authorization_code)
+            _LOGGER.debug("AuthCode: " + mammotion_http.login.authorization_code)
+            cloud_client.get_region(country_code, mammotion_http.login.authorization_code)
             await cloud_client.connect()
-            await cloud_client.login_by_oauth(country_code, mammotion_http.data.authorization_code)
+            await cloud_client.login_by_oauth(country_code, mammotion_http.login.authorization_code)
             cloud_client.aep_handle()
             cloud_client.session_by_auth_code()
 

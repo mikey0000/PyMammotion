@@ -7,6 +7,7 @@ from aiohttp import ClientSession
 from pymammotion import MammotionHTTP
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.const import MAMMOTION_DOMAIN
+from pymammotion.http.http import connect_http
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT, logger
 from pymammotion.mammotion.devices.mammotion import MammotionBaseCloudDevice
@@ -19,21 +20,18 @@ async def run():
     PASSWORD = os.environ.get('PASSWORD')
     cloud_client = CloudIOTGateway()
 
-    
+    mammotion_http = await connect_http(EMAIL, PASSWORD)
+    country_code = mammotion_http.login.userInformation.domainAbbreviation
+    logger.debug("CountryCode: " + country_code)
+    logger.debug("AuthCode: " + mammotion_http.login.authorization_code)
+    cloud_client.get_region(country_code, mammotion_http.login.authorization_code)
+    await cloud_client.connect()
+    await cloud_client.login_by_oauth(country_code, mammotion_http.login.authorization_code)
+    cloud_client.aep_handle()
+    cloud_client.session_by_auth_code()
 
-    async with ClientSession(MAMMOTION_DOMAIN) as session:
-        luba_http = await MammotionHTTP.login(session, EMAIL, PASSWORD)
-        country_code = luba_http.data.userInformation.domainAbbreviation
-        logger.debug("CountryCode: " + country_code)
-        logger.debug("AuthCode: " + luba_http.data.authorization_code)
-        cloud_client.get_region(country_code, luba_http.data.authorization_code)
-        await cloud_client.connect()
-        await cloud_client.login_by_oauth(country_code, luba_http.data.authorization_code)
-        cloud_client.aep_handle()
-        cloud_client.session_by_auth_code()
-
-        cloud_client.list_binding_by_account()
-        return cloud_client
+    print(cloud_client.list_binding_by_account())
+    return cloud_client
     
 async def sync_status_and_map(cloud_device: MammotionBaseCloudDevice):
     await asyncio.sleep(1)

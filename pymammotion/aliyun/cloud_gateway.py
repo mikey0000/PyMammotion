@@ -391,8 +391,6 @@ class CloudIOTGateway:
 
     def check_or_refresh_session(self):
         """Check or refresh the session."""
-        if self.load_saved_params() is False:
-            return False
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -436,7 +434,7 @@ class CloudIOTGateway:
         # Carica la stringa JSON in un dizionario
         json.loads(response_body_str)
 
-    def list_binding_by_account(self):
+    def list_binding_by_account(self) -> ListingDevByAccountResponse:
         """List bindings by account."""
         config = Config(
             app_key=self._app_key,
@@ -476,6 +474,7 @@ class CloudIOTGateway:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
         self._listing_dev_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
+        return self._listing_dev_by_account_response
 
     def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send a cloud command to the specified IoT device."""
