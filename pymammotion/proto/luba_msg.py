@@ -4,8 +4,8 @@
 from dataclasses import dataclass
 
 import betterproto
-
 from .common import *
+from .basestation import *
 from .dev_net import *
 from .luba_mul import *
 from .mctrl_driver import *
@@ -77,4 +77,5 @@ class LubaMsg(betterproto.Message):
     mul: "SocMul" = betterproto.message_field(14, group="LubaSubMsg")
     null: "MsgNull" = betterproto.message_field(16, group="LubaSubMsg")
     pept: "MctlPept" = betterproto.message_field(17, group="LubaSubMsg")
+    base: "BaseStation" = betterproto.message_field(18, group="LubaSubMsg")
     timestamp: int = betterproto.uint64_field(15)

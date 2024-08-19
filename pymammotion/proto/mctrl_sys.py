@@ -3,10 +3,9 @@
 # plugin: python-betterproto
 from dataclasses import dataclass
 
+from .dev_net import *
 
 import betterproto
-
-from .dev_net import *
 
 
 class Operation(betterproto.Enum):
@@ -287,8 +286,8 @@ class SystemUpdateBufMsg(betterproto.Message):
 
 @dataclass
 class SysOffChipFlash(betterproto.Message):
-    op: Operation = betterproto.enum_field(1)
-    id: OffPartId = betterproto.enum_field(2)
+    op: "Operation" = betterproto.enum_field(1)
+    id: "OffPartId" = betterproto.enum_field(2)
     start_addr: int = betterproto.uint32_field(3)
     offset: int = betterproto.uint32_field(4)
     length: int = betterproto.int32_field(5)
@@ -434,10 +433,10 @@ class RptDevStatus(betterproto.Message):
     last_status: int = betterproto.int32_field(5)
     sys_time_stamp: int = betterproto.int64_field(6)
     vslam_status: int = betterproto.int32_field(7)
-    mnet_info: MnetInfo = betterproto.message_field(8)
-    vio_survival_info: VioSurvivalInfoT = betterproto.message_field(9)
-    collector_status: CollectorStatusT = betterproto.message_field(10)
-    lock_state: LockStateT = betterproto.message_field(11)
+    mnet_info: "MnetInfo" = betterproto.message_field(8)
+    vio_survival_info: "VioSurvivalInfoT" = betterproto.message_field(9)
+    collector_status: "CollectorStatusT" = betterproto.message_field(10)
+    lock_state: "LockStateT" = betterproto.message_field(11)
 
 
 @dataclass
@@ -494,16 +493,16 @@ class ReportInfoCfg(betterproto.Message):
 
 @dataclass
 class ReportInfoData(betterproto.Message):
-    connect: RptConnectStatus = betterproto.message_field(1)
-    dev: RptDevStatus = betterproto.message_field(2)
-    rtk: RptRtk = betterproto.message_field(3)
-    locations: list[RptDevLocation] = betterproto.message_field(4)
-    work: RptWork = betterproto.message_field(5)
-    fw_info: DeviceFwInfo = betterproto.message_field(6)
-    maintain: RptMaintain = betterproto.message_field(7)
-    vision_point_info: list[VisionPointInfoMsg] = betterproto.message_field(8)
-    vio_to_app_info: VioToAppInfoMsg = betterproto.message_field(9)
-    vision_statistic_info: VisionStatisticInfoMsg = betterproto.message_field(10)
+    connect: "RptConnectStatus" = betterproto.message_field(1)
+    dev: "RptDevStatus" = betterproto.message_field(2)
+    rtk: "RptRtk" = betterproto.message_field(3)
+    locations: list["RptDevLocation"] = betterproto.message_field(4)
+    work: "RptWork" = betterproto.message_field(5)
+    fw_info: "DeviceFwInfo" = betterproto.message_field(6)
+    maintain: "RptMaintain" = betterproto.message_field(7)
+    vision_point_info: list["VisionPointInfoMsg"] = betterproto.message_field(8)
+    vio_to_app_info: "VioToAppInfoMsg" = betterproto.message_field(9)
+    vision_statistic_info: "VisionStatisticInfoMsg" = betterproto.message_field(10)
 
 
 @dataclass
@@ -566,7 +565,7 @@ class MctlSys(betterproto.Message):
         37, group="SubSysMsg"
     )
     todev_report_cfg: "ReportInfoCfg" = betterproto.message_field(38, group="SubSysMsg")
-    toapp_report_data: ReportInfoData = betterproto.message_field(
+    toapp_report_data: "ReportInfoData" = betterproto.message_field(
         39, group="SubSysMsg"
     )
     simulation_cmd: "MCtrlSimulationCmdData" = betterproto.message_field(

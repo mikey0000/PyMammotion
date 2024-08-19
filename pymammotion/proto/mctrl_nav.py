@@ -2,11 +2,9 @@
 # sources: pymammotion/proto/mctrl_nav.proto
 # plugin: python-betterproto
 from dataclasses import dataclass
-
+from .common import *
 
 import betterproto
-
-from .common import *
 
 
 @dataclass
@@ -476,6 +474,69 @@ class NavGetAllPlanTask(betterproto.Message):
 
 
 @dataclass
+class NavTaskCtrlAck(betterproto.Message):
+    """Define the NavTaskCtrlAck message"""
+
+    type: int = betterproto.int32_field(1)
+    action: int = betterproto.int32_field(2)
+    result: int = betterproto.int32_field(3)
+    nav_state: int = betterproto.int32_field(4)
+    reserved: str = betterproto.string_field(5)
+
+
+@dataclass
+class NavMapNameMsg(betterproto.Message):
+    rw: int = betterproto.int32_field(1)
+    hash: int = betterproto.int64_field(2)
+    name: str = betterproto.string_field(3)
+    result: int = betterproto.int32_field(4)
+    device_id: str = betterproto.string_field(5)
+
+
+@dataclass
+class SvgMessageT(betterproto.Message):
+    x_move: float = betterproto.double_field(1)
+    y_move: float = betterproto.double_field(2)
+    scale: float = betterproto.double_field(3)
+    rotate: float = betterproto.double_field(4)
+    base_width_m: float = betterproto.double_field(5)
+    base_width_pix: int = betterproto.int32_field(7)
+    base_height_m: float = betterproto.double_field(6)
+    base_height_pix: int = betterproto.int32_field(8)
+    data_count: int = betterproto.int32_field(12)
+    hide_svg: bool = betterproto.bool_field(13)
+    name_count: int = betterproto.int32_field(11)
+    svg_file_name: str = betterproto.string_field(9)
+    svg_file_data: str = betterproto.string_field(10)
+
+
+@dataclass
+class SvgMessageAckT(betterproto.Message):
+    pver: int = betterproto.int32_field(1)
+    sub_cmd: int = betterproto.int32_field(2)
+    total_frame: int = betterproto.int32_field(3)
+    current_frame: int = betterproto.int32_field(4)
+    data_hash: int = betterproto.int64_field(5)
+    paternal_hash_a: int = betterproto.int64_field(6)
+    type: int = betterproto.int32_field(7)
+    result: int = betterproto.int32_field(8)
+    svg_message: "SvgMessageT" = betterproto.message_field(9)
+
+
+@dataclass
+class AreaHashName(betterproto.Message):
+    # Define fields for AreaHashName message here For example:
+    name: str = betterproto.string_field(1)
+    hash: int = betterproto.int64_field(2)
+
+
+@dataclass
+class AppGetAllAreaHashName(betterproto.Message):
+    device_id: str = betterproto.string_field(1)
+    hashnames: list["AreaHashName"] = betterproto.message_field(2)
+
+
+@dataclass
 class MctlNav(betterproto.Message):
     toapp_lat_up: "NavLatLonUp" = betterproto.message_field(1, group="SubNavMsg")
     toapp_pos_up: "NavPosUp" = betterproto.message_field(2, group="SubNavMsg")
@@ -586,4 +647,15 @@ class MctlNav(betterproto.Message):
     )
     all_plan_task: "NavGetAllPlanTask" = betterproto.message_field(
         56, group="SubNavMsg"
+    )
+    todev_taskctrl_ack: "NavTaskCtrlAck" = betterproto.message_field(
+        57, group="SubNavMsg"
+    )
+    toapp_map_name_msg: "NavMapNameMsg" = betterproto.message_field(
+        58, group="SubNavMsg"
+    )
+    todev_svg_msg: "SvgMessageAckT" = betterproto.message_field(59, group="SubNavMsg")
+    toapp_svg_msg: "SvgMessageAckT" = betterproto.message_field(60, group="SubNavMsg")
+    toapp_all_hash_name: "AppGetAllAreaHashName" = betterproto.message_field(
+        61, group="SubNavMsg"
     )

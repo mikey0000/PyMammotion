@@ -423,6 +423,63 @@ message nav_get_all_plan_task {
   repeated plan_task_name_id_t tasks = 1;
 }
 
+// Define the NavTaskCtrlAck message
+message NavTaskCtrlAck {
+    int32 type = 1;
+    int32 action = 2;
+    int32 result = 3;
+    int32 nav_state = 4;
+    string reserved = 5;
+}
+
+message NavMapNameMsg {
+    int32 rw = 1;  // Represents RW field
+    int64 hash = 2;  // Represents HASH field
+    string name = 3;  // Represents NAME field
+    int32 result = 4;  // Represents RESULT field
+    string device_id = 5;  // Represents DEVICEID field
+}
+
+message svg_message_t {
+    double x_move = 1;
+    double y_move = 2;
+    double scale = 3;
+    double rotate = 4;
+    double base_width_m = 5;
+    int32 base_width_pix = 7;
+    double base_height_m = 6;
+    int32 base_height_pix = 8;
+    int32 data_count = 12;
+    bool hide_svg = 13;
+    int32 name_count = 11;
+    string svg_file_name = 9;
+    string svg_file_data = 10;
+}
+
+message SvgMessageAckT {
+    int32 pver = 1;          // Represents PVER field
+    int32 sub_cmd = 2;       // Represents SUBCMD field
+    int32 total_frame = 3;   // Represents TOTALFRAME field
+    int32 current_frame = 4; // Represents CURRENTFRAME field
+    int64 data_hash = 5;     // Represents DATAHASH field
+    int64 paternal_hash_a = 6; // Represents PATERNALHASHA field
+    int32 type = 7;          // Represents TYPE field
+    int32 result = 8;        // Represents RESULT field
+    svg_message_t svg_message = 9; // Represents SVG_MESSAGE field
+}
+
+message AreaHashName {
+    // Define fields for AreaHashName message here
+    // For example:
+    string name = 1;  // Replace with actual field definitions
+    int64 hash = 2;   // Replace with actual field definitions
+}
+
+message AppGetAllAreaHashName {
+    string device_id = 1;           // Represents DEVICEID field
+    repeated AreaHashName hashnames = 2; // Represents HASHNAMES field
+}
+
 message MctlNav {
   oneof SubNavMsg {
     NavLatLonUp toapp_lat_up = 1;
@@ -481,5 +538,10 @@ message MctlNav {
     costmap_t toapp_costmap = 54;
     plan_task_name_id_t plan_task_name_id = 55;
     nav_get_all_plan_task all_plan_task = 56;
+    NavTaskCtrlAck todev_taskctrl_ack = 57;
+    NavMapNameMsg toapp_map_name_msg = 58;
+    SvgMessageAckT todev_svg_msg = 59;
+    SvgMessageAckT toapp_svg_msg = 60;
+    AppGetAllAreaHashName toapp_all_hash_name = 61;
   }
 }

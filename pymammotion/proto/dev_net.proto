@@ -1,11 +1,11 @@
 syntax = "proto3";
 
 message DrvWifiUpload {
-  int32 Wifi_Msg_Upload = 1;
+  int32 wifi_msg_upload = 1;
 }
 
 message DrvWifiList {
-  int32 NVS_Wifi_Upload = 1;
+  int32 nvs_wifi_upload = 1;
 }
 
 message DrvWifiSet {
@@ -17,8 +17,8 @@ message DrvWifiSet {
 message DrvWifiMsg {
   bool status1 = 1;
   bool status2 = 2;
-  string IP = 3;
-  string Msgssid = 4;
+  string ip = 3;
+  string msgssid = 4;
   string password = 5;
   int32 rssi = 6;
   string productkey = 7;

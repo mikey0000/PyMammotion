@@ -11,10 +11,17 @@ class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, Message
 
     def __init__(self, device_name: str) -> None:
         self._device_name = device_name
+        self._product_key = ""
 
     def get_device_name(self) -> str:
         """Get device name."""
         return self._device_name
+
+    def get_device_product_key(self) -> str:
+        return self._product_key
+
+    def set_device_product_key(self, product_key: str) -> None:
+        self._product_key = product_key
 
     """BLE commands for Luba."""
 

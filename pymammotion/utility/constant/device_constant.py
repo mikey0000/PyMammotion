@@ -1,3 +1,6 @@
+from enum import IntEnum
+
+
 class bleOrderCmd:
     allpowerfullRW = 67
     alongBorder = 9
@@ -250,3 +253,19 @@ def device_mode(value) -> str:
         38: "MODE_BOUNDARY_JUMP",
     }
     return modes.get(value, "Invalid mode")
+
+
+class PosType(IntEnum):
+    """Position of the robot."""
+
+    AREA_BORDER_ON = 7
+    AREA_INSIDE = 1
+    AREA_OUT = 0
+    CHANNAL_AREA_OVERLAP = 9
+    CHANNEL_ON = 3
+    CHARGE_ON = 5
+    DUMPING_AREA_INSIDE = 8
+    DUMPING_OUTSIDE = 10
+    OBS_ON = 2
+    TURN_AREA_INSIDE = 4
+    VIRTUAL_INSIDE = 6
