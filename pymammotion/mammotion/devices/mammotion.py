@@ -206,8 +206,19 @@ class MammotionDevice:
             return await self._cloud_device.command(key, **kwargs)
         # TODO work with both with EITHER
 
+    async def start_sync(self, retry: int):
+        if self._preference is ConnectionPreference.BLUETOOTH:
+            return await self._ble_device.start_sync(retry)
+        if self._preference is ConnectionPreference.WIFI:
+            return await self._cloud_device.start_sync(retry)
+        # TODO work with both with EITHER
 
-
+    async def start_map_sync(self):
+        if self._preference is ConnectionPreference.BLUETOOTH:
+            return await self._ble_device.start_map_sync()
+        if self._preference is ConnectionPreference.WIFI:
+            return await self._cloud_device.start_map_sync()
+        # TODO work with both with EITHER
 
 def has_field(message: betterproto.Message) -> bool:
     """Check if the message has any fields serialized on wire."""
