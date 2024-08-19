@@ -21,12 +21,12 @@ async def run():
     cloud_client = CloudIOTGateway()
 
     mammotion_http = await connect_http(EMAIL, PASSWORD)
-    country_code = mammotion_http.login.userInformation.domainAbbreviation
+    country_code = mammotion_http.login_info.userInformation.domainAbbreviation
     logger.debug("CountryCode: " + country_code)
-    logger.debug("AuthCode: " + mammotion_http.login.authorization_code)
-    cloud_client.get_region(country_code, mammotion_http.login.authorization_code)
+    logger.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
+    cloud_client.get_region(country_code, mammotion_http.login_info.authorization_code)
     await cloud_client.connect()
-    await cloud_client.login_by_oauth(country_code, mammotion_http.login.authorization_code)
+    await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
     cloud_client.aep_handle()
     cloud_client.session_by_auth_code()
 
@@ -40,7 +40,7 @@ async def sync_status_and_map(cloud_device: MammotionBaseCloudDevice):
     # await cloud_device.start_map_sync()
 
     while(True):
-        print(cloud_device.luba_msg)
+        print(cloud_device.mower)
         await asyncio.sleep(5)
 
 if __name__ ==  '__main__':
@@ -64,9 +64,7 @@ if __name__ ==  '__main__':
         if(device.deviceName.startswith(("Luba-", "Yuka-"))):
             dev = MammotionBaseCloudDevice (
                 mqtt_client=_mammotion_mqtt,
-                iot_id=device.iotId,
-                device_name=device.deviceName,
-                nick_name=device.nickName
+                cloud_device=device
             )
             _devices_list.append(dev)
 
