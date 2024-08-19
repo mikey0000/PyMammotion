@@ -50,7 +50,7 @@ class MammotionHTTP:
     def __init__(self, login: LoginResponseData):
         self._headers = dict()
         self._headers["Authorization"] = f"Bearer {login.access_token}"
-        self.login = login
+        self.login_info = login
 
     @classmethod
     async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:

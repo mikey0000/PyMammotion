@@ -177,12 +177,12 @@ class MammotionDevice:
         cloud_client = CloudIOTGateway()
         async with ClientSession(MAMMOTION_DOMAIN) as session:
             mammotion_http = await connect_http(account, password)
-            country_code = mammotion_http.login.userInformation.domainAbbreviation
+            country_code = mammotion_http.login_info.userInformation.domainAbbreviation
             _LOGGER.debug("CountryCode: " + country_code)
-            _LOGGER.debug("AuthCode: " + mammotion_http.login.authorization_code)
-            cloud_client.get_region(country_code, mammotion_http.login.authorization_code)
+            _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
+            cloud_client.get_region(country_code, mammotion_http.login_info.authorization_code)
             await cloud_client.connect()
-            await cloud_client.login_by_oauth(country_code, mammotion_http.login.authorization_code)
+            await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
             cloud_client.aep_handle()
             cloud_client.session_by_auth_code()
 

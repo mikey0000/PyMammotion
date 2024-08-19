@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
+from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
@@ -26,6 +27,9 @@ class Device(DataClassORJSONMixin):
     productImage: Optional[str] = None
     categoryImage: Optional[str] = None
     productModel: Optional[str] = None
+
+    class Config(BaseConfig):
+        omit_default = True
 
 
 @dataclass
