@@ -8,7 +8,7 @@ from pymammotion import MammotionHTTP
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.const import MAMMOTION_DOMAIN
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
-from pymammotion.mqtt.mqtt import LubaMQTT, logger
+from pymammotion.mqtt import MammotionMQTT
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ if __name__ ==  '__main__':
     logging.basicConfig(level=logging.DEBUG)
     logger.getChild("paho").setLevel(logging.WARNING)
 
-    luba = LubaMQTT(region_id=cloud_client._region.data.regionId,
+    luba = MammotionMQTT(region_id=cloud_client._region.data.regionId,
                     product_key=cloud_client._aep_response.data.productKey,
                     device_name=cloud_client._aep_response.data.deviceName,
                     device_secret=cloud_client._aep_response.data.deviceSecret, iot_token=cloud_client._session_by_authcode_response.data.iotToken, client_id=cloud_client._client_id)

@@ -26,6 +26,7 @@ from bleak_retry_connector import (
 )
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.dataclass.dev_by_account_response import Device
 from pymammotion.bluetooth import BleMessage
 from pymammotion.const import MAMMOTION_DOMAIN
 from pymammotion.data.model import RegionData
@@ -33,7 +34,7 @@ from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.state_manager import StateManager
-from pymammotion.http.http import MammotionHTTP, connect_http
+from pymammotion.http.http import connect_http
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
 from pymammotion.proto.luba_msg import LubaMsg
@@ -125,23 +126,82 @@ class ConnectionPreference(Enum):
     WIFI = 1
     BLUETOOTH = 2
 
-
-class MammotionDevice:
-    """Represents a Mammotion device."""
-
+class MammotionMixedDeviceManager:
     _ble_device: MammotionBaseBLEDevice | None = None
     _cloud_device: MammotionBaseCloudDevice | None = None
-    _devices_list = []
+    _mowing_state: MowingDevice = MowingDevice()
+
+    def __init__(self, name: str, cloud_device: Device | None = None,
+                 ble_device: BLEDevice | None = None, mqtt: MammotionMQTT | None = None) -> None:
+        self.name = name
+        self.add_ble(ble_device)
+        self.add_cloud(cloud_device, mqtt)
+
+    def mower_state(self):
+        return self._mowing_state
+
+    def ble(self) -> MammotionBaseBLEDevice | None:
+        return self._ble_device
+
+    def cloud(self) -> MammotionBaseCloudDevice | None:
+        return self._cloud_device
+
+    def add_ble(self, ble_device: BLEDevice) -> None:
+        if ble_device is not None:
+            self._ble_device = MammotionBaseBLEDevice(self._mowing_state, ble_device)
+
+    def add_cloud(self, cloud_device: Device | None = None, mqtt: MammotionMQTT | None = None) -> None:
+        if cloud_device is not None:
+            self._cloud_device = MammotionBaseCloudDevice(
+                mqtt_client=mqtt,
+                cloud_device=cloud_device,
+                mowing_state=self._mowing_state)
+
+    def replace_cloud(self, cloud_device:MammotionBaseCloudDevice) -> None:
+        self._cloud_device = cloud_device
+
+    def replace_ble(self, ble_device:MammotionBaseBLEDevice) -> None:
+        self._ble_device = ble_device
+
+    def has_cloud(self) -> bool:
+        return self._cloud_device is not None
+
+    def has_ble(self) -> bool:
+        return self._ble_device is not None
+
+
+class MammotionDevices:
+
+    devices = dict[str, MammotionMixedDeviceManager] = {}
+
+    def add_device(self, mammotion_device: MammotionMixedDeviceManager) -> None:
+        exists: MammotionMixedDeviceManager | None = self.devices.get(mammotion_device.name)
+        if not exists:
+            self.devices[mammotion_device.name] = mammotion_device
+        if mammotion_device.has_cloud():
+            exists.replace_cloud(mammotion_device.cloud())
+        if mammotion_device.has_ble():
+            exists.replace_ble(mammotion_device.ble())
+
+    def get_device(self, mammotion_device_name: str) -> MammotionMixedDeviceManager:
+        return self.devices.get(mammotion_device_name)
+
+class Mammotion:
+    """Represents a Mammotion device."""
+
+    devices = MammotionDevices()
 
     def __init__(
         self,
         ble_device: BLEDevice,
         cloud_credentials: Credentials | None = None,
-        preference: ConnectionPreference = ConnectionPreference.EITHER,
+        preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
     ) -> None:
         """Initialize MammotionDevice."""
         if ble_device:
-            self._ble_device = MammotionBaseBLEDevice(ble_device)
+            self.devices.add_device(MammotionMixedDeviceManager(name=ble_device.name, ble_device=ble_device))
+
+        if preference:
             self._preference = preference
 
         if cloud_credentials:
@@ -160,16 +220,10 @@ class MammotionDevice:
         _mammotion_mqtt._cloud_client = cloud_client
         _mammotion_mqtt.connect_async()
 
-        self._devices_list = []
-        for device in cloud_client._listing_dev_by_account_response.data.data:
-            if (device.deviceName.startswith(("Luba-", "Yuka-"))):
-                dev = MammotionBaseCloudDevice(
-                    mqtt_client=_mammotion_mqtt,
-                    iot_id=device.iotId,
-                    device_name=device.deviceName,
-                    nick_name=device.nickName
-                )
-                self._devices_list.append(dev)
+        for device in cloud_client.listing_dev_by_account_response.data.data:
+            if device.deviceName.startswith(("Luba-", "Yuka-")):
+                self.devices.add_device(MammotionMixedDeviceManager(name=device.deviceName, cloud_device=device, mqtt=_mammotion_mqtt))
+
 
     @staticmethod
     async def login(account: str, password: str) -> CloudIOTGateway:
@@ -189,36 +243,51 @@ class MammotionDevice:
             cloud_client.list_binding_by_account()
             return cloud_client
 
+    def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
+        return self.devices.get_device(name)
 
-    async def send_command(self, key: str):
+    async def send_command(self, name: str, key: str):
         """Send a command to the device."""
-        if self._preference is ConnectionPreference.BLUETOOTH:
-            return await self._ble_device.command(key)
-        if self._preference is ConnectionPreference.WIFI:
-            return await self._cloud_device.command(key)
-        # TODO work with both with EITHER
+        device = self.get_device_by_name(name)
+        if device:
+            if self._preference is ConnectionPreference.BLUETOOTH:
+                return await device.ble().command(key)
+            if self._preference is ConnectionPreference.WIFI:
+                return await device.cloud().command(key)
+            # TODO work with both with EITHER
 
-    async def send_command_with_args(self, key, kwargs):
+    async def send_command_with_args(self,name: str, key: str, kwargs):
         """Send a command with args to the device."""
-        if self._preference is ConnectionPreference.BLUETOOTH:
-            return await self._ble_device.command(key, **kwargs)
-        if self._preference is ConnectionPreference.WIFI:
-            return await self._cloud_device.command(key, **kwargs)
-        # TODO work with both with EITHER
+        device = self.get_device_by_name(name)
+        if device:
+            if self._preference is ConnectionPreference.BLUETOOTH:
+                return await device.ble().command(key, **kwargs)
+            if self._preference is ConnectionPreference.WIFI:
+                return await device.cloud().command(key, **kwargs)
+            # TODO work with both with EITHER
 
-    async def start_sync(self, retry: int):
-        if self._preference is ConnectionPreference.BLUETOOTH:
-            return await self._ble_device.start_sync(retry)
-        if self._preference is ConnectionPreference.WIFI:
-            return await self._cloud_device.start_sync(retry)
-        # TODO work with both with EITHER
+    async def start_sync(self,name:str, retry: int):
+        device = self.get_device_by_name(name)
+        if device:
+            if self._preference is ConnectionPreference.BLUETOOTH:
+                return await device.ble().start_sync(retry)
+            if self._preference is ConnectionPreference.WIFI:
+                return await device.cloud().start_sync(retry)
+            # TODO work with both with EITHER
 
-    async def start_map_sync(self):
-        if self._preference is ConnectionPreference.BLUETOOTH:
-            return await self._ble_device.start_map_sync()
-        if self._preference is ConnectionPreference.WIFI:
-            return await self._cloud_device.start_map_sync()
-        # TODO work with both with EITHER
+    async def start_map_sync(self, name:str):
+        device = self.get_device_by_name(name)
+        if device:
+            if self._preference is ConnectionPreference.BLUETOOTH:
+                return await device.ble().start_map_sync()
+            if self._preference is ConnectionPreference.WIFI:
+                return await device.cloud().start_map_sync()
+            # TODO work with both with EITHER
+
+    def mower(self, name: str):
+        device = self.get_device_by_name(name)
+        if device:
+            return device.mower_state
 
 def has_field(message: betterproto.Message) -> bool:
     """Check if the message has any fields serialized on wire."""
@@ -228,15 +297,15 @@ def has_field(message: betterproto.Message) -> bool:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
-    _luba_msg: MowingDevice
+    _mower: MowingDevice
     _state_manager: StateManager
 
-    def __init__(self) -> None:
+    def __init__(self, device: MowingDevice) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
-        self._luba_msg = MowingDevice()
-        self._state_manager = StateManager(self._luba_msg)
+        self._mower = device
+        self._state_manager = StateManager(self._mower)
 
         self._state_manager.gethash_ack_callback.add_subscribers(self.datahash_response)
         self._state_manager.get_commondata_ack_callback.add_subscribers(self.commdata_response)
@@ -259,7 +328,7 @@ class MammotionBaseDevice:
         if total_frame == current_frame:
             # get next in hash ack list
 
-            data_hash = find_next_integer(self.luba_msg.nav.toapp_gethash_ack.data_couple, common_data.hash)
+            data_hash = find_next_integer(self._mower.nav.toapp_gethash_ack.data_couple, common_data.hash)
             if data_hash is None:
                 return
             result_hash = 0
@@ -296,7 +365,7 @@ class MammotionBaseDevice:
             case "ota":
                 self._update_ota_data(tmp_msg)
 
-        self._luba_msg.update_raw(self._raw_data)
+        self._mower.update_raw(self._raw_data)
 
     def _update_nav_data(self, tmp_msg):
         """Update navigation data."""
@@ -370,9 +439,9 @@ class MammotionBaseDevice:
         return self._raw_data
 
     @property
-    def luba_msg(self) -> MowingDevice:
+    def mower(self) -> MowingDevice:
         """Get the LubaMsg of the device."""
-        return self._luba_msg
+        return self._mower
 
     @abstractmethod
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
@@ -405,7 +474,7 @@ class MammotionBaseDevice:
         await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
 
         await self._send_command_with_args(
-            "get_area_name_list", device_id=self.luba_msg.device.net.toapp_wifi_iot_status.devicename
+            "get_area_name_list", device_id=self._mower.device.net.toapp_wifi_iot_status.devicename
         )
 
         # sub_cmd 3 is job hashes??
@@ -421,13 +490,14 @@ class MammotionBaseDevice:
 class MammotionBaseBLEDevice(MammotionBaseDevice):
     """Base class for Mammotion BLE devices."""
 
-    def __init__(self, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
+    def __init__(self, mowing_state: MowingDevice, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
-        super().__init__()
+        super().__init__(mowing_state)
         self._ble_sync_task = None
         self._prev_notification = None
         self._interface = f"hci{interface}"
         self._device = device
+        self._mower = mowing_state
         self._client: BleakClientWithServiceCache | None = None
         self._read_char: BleakGATTCharacteristic | None = None
         self._write_char: BleakGATTCharacteristic | None = None
@@ -802,20 +872,18 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def __init__(
         self,
         mqtt_client: MammotionMQTT,
-        iot_id: str,
-        device_name: str,
-        nick_name: str,
-        **kwargs: Any,
+        cloud_device: Device,
+        mowing_state: MowingDevice
     ) -> None:
         """Initialize MammotionBaseCloudDevice."""
-        super().__init__()
+        super().__init__(mowing_state)
         self._ble_sync_task = None
         self.is_ready = False
         self._mqtt_client = mqtt_client
-        self.iot_id = iot_id
-        self.nick_name = nick_name
+        self.iot_id = cloud_device.iotId
+        self._mower = mowing_state
         self._command_futures = {}
-        self._commands: MammotionCommand = MammotionCommand(device_name)
+        self._commands: MammotionCommand = MammotionCommand(cloud_device.deviceName)
         self.currentID = ""
         self.on_ready_callback: Optional[Callable[[], None]] = None
         self._operation_lock = asyncio.Lock()

@@ -563,3 +563,7 @@ class CloudIOTGateway:
             return ""
 
         return message_id
+
+    @property
+    def listing_dev_by_account_response(self):
+        return self._listing_dev_by_account_response
