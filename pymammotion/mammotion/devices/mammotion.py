@@ -172,7 +172,7 @@ class MammotionMixedDeviceManager:
 
 class MammotionDevices:
 
-    devices = dict[str, MammotionMixedDeviceManager] = {}
+    devices: dict[str, MammotionMixedDeviceManager] = {}
 
     def add_device(self, mammotion_device: MammotionMixedDeviceManager) -> None:
         exists: MammotionMixedDeviceManager | None = self.devices.get(mammotion_device.name)
@@ -881,6 +881,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.is_ready = False
         self._mqtt_client = mqtt_client
         self.iot_id = cloud_device.iotId
+        self.device = cloud_device
         self._mower = mowing_state
         self._command_futures = {}
         self._commands: MammotionCommand = MammotionCommand(cloud_device.deviceName)
