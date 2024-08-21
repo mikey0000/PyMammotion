@@ -176,8 +176,9 @@ class MammotionDevices:
 
     def add_device(self, mammotion_device: MammotionMixedDeviceManager) -> None:
         exists: MammotionMixedDeviceManager | None = self.devices.get(mammotion_device.name)
-        if not exists:
+        if exists is None:
             self.devices[mammotion_device.name] = mammotion_device
+            return
         if mammotion_device.has_cloud():
             exists.replace_cloud(mammotion_device.cloud())
         if mammotion_device.has_ble():
@@ -191,11 +192,25 @@ class Mammotion:
 
     devices = MammotionDevices()
 
+    @classmethod
+    async def create(cls, ble_device: BLEDevice,
+        cloud_credentials: Credentials | None = None,
+        preference: ConnectionPreference = ConnectionPreference.BLUETOOTH):
+        cloud_client = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
+        self = cls(ble_device, cloud_client, preference)
+
+        if cloud_credentials:
+            await self.initiate_cloud_connection(cloud_client)
+
+        return self
+
+
+
     def __init__(
         self,
-        ble_device: BLEDevice,
-        cloud_credentials: Credentials | None = None,
-        preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
+            ble_device: BLEDevice,
+            cloud_client: CloudIOTGateway | None = None,
+            preference: ConnectionPreference = ConnectionPreference.BLUETOOTH
     ) -> None:
         """Initialize MammotionDevice."""
         if ble_device:
@@ -204,11 +219,7 @@ class Mammotion:
         if preference:
             self._preference = preference
 
-        if cloud_credentials:
-            self.initiate_cloud_connection(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
-
-    async def initiate_cloud_connection(self, account: str, password: str):
-        cloud_client = await self.login(account, password)
+    async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway) -> None:
 
         _mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
                                         product_key=cloud_client._aep_response.data.productKey,
@@ -218,7 +229,8 @@ class Mammotion:
                                         client_id=cloud_client._client_id)
 
         _mammotion_mqtt._cloud_client = cloud_client
-        _mammotion_mqtt.connect_async()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _mammotion_mqtt.connect_async)
 
         for device in cloud_client.listing_dev_by_account_response.data.data:
             if device.deviceName.startswith(("Luba-", "Yuka-")):
@@ -234,13 +246,14 @@ class Mammotion:
             country_code = mammotion_http.login_info.userInformation.domainAbbreviation
             _LOGGER.debug("CountryCode: " + country_code)
             _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
-            cloud_client.get_region(country_code, mammotion_http.login_info.authorization_code)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, cloud_client.get_region, country_code, mammotion_http.login_info.authorization_code)
             await cloud_client.connect()
             await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
-            cloud_client.aep_handle()
-            cloud_client.session_by_auth_code()
+            await loop.run_in_executor(None, cloud_client.aep_handle)
+            await loop.run_in_executor(None, cloud_client.session_by_auth_code)
 
-            cloud_client.list_binding_by_account()
+            await loop.run_in_executor(None, cloud_client.list_binding_by_account)
             return cloud_client
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
@@ -943,14 +956,14 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
         if self._operation_lock.locked():
-            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.nick_name)
+            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.device.nickName)
 
         async with self._operation_lock:
             try:
                 command_bytes = getattr(self._commands, key)()
                 return await self._send_command_locked(key, command_bytes)
             except Exception as ex:
-                _LOGGER.exception("%s: error in sending command -  %s", self.nick_name, ex)
+                _LOGGER.exception("%s: error in sending command -  %s", self.device.nickName, ex)
                 raise
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
@@ -962,7 +975,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             await asyncio.sleep(DBUS_ERROR_BACKOFF_TIME)
             _LOGGER.debug(
                 "%s: error in _send_command_locked: %s",
-                self.nick_name,
+                self.device.nickName,
                 ex,
             )
             raise
@@ -972,8 +985,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         assert self._mqtt_client is not None
         self._notify_future = self.loop.create_future()
         self._key = key
-        _LOGGER.debug("%s: Sending command: %s", self.nick_name, key)
-        self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command)
+        _LOGGER.debug("%s: Sending command: %s", self.device.nickName, key)
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
 
         retry_handle = self.loop.call_at(
             self.loop.time() + 20,
@@ -997,20 +1011,20 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 retry_handle.cancel()
             self._notify_future = None
 
-        _LOGGER.debug("%s: Message received", self.nick_name)
+        _LOGGER.debug("%s: Message received", self.device.nickName)
 
         return notify_msg
 
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command with arguments to device via MQTT and read response."""
         if self._operation_lock.locked():
-            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.nick_name)
+            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.device.nickName)
         async with self._operation_lock:
             try:
                 command_bytes = getattr(self._commands, key)(**kwargs)
                 return await self._send_command_locked(key, command_bytes)
             except Exception as ex:
-                _LOGGER.exception("%s: error in sending command -  %s", self.nick_name, ex)
+                _LOGGER.exception("%s: error in sending command -  %s", self.device.nickName, ex)
                 raise
 
     def _extract_message_id(self, payload: dict) -> str:
