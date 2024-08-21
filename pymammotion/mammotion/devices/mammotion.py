@@ -9,6 +9,7 @@ import json
 import logging
 from abc import abstractmethod
 from enum import Enum
+from functools import cache
 from typing import Any, Callable, Optional, cast
 from uuid import UUID
 
@@ -187,29 +188,30 @@ class MammotionDevices:
     def get_device(self, mammotion_device_name: str) -> MammotionMixedDeviceManager:
         return self.devices.get(mammotion_device_name)
 
-class Mammotion:
+async def create_devices(ble_device: BLEDevice,
+    cloud_credentials: Credentials | None = None,
+    preference: ConnectionPreference = ConnectionPreference.BLUETOOTH):
+    cloud_client = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
+    mammotion = Mammotion(ble_device, preference)
+
+    if cloud_credentials:
+        await mammotion.initiate_cloud_connection(cloud_client)
+
+    return mammotion
+
+
+@cache
+class Mammotion(object):
     """Represents a Mammotion device."""
 
     devices = MammotionDevices()
-
-    @classmethod
-    async def create(cls, ble_device: BLEDevice,
-        cloud_credentials: Credentials | None = None,
-        preference: ConnectionPreference = ConnectionPreference.BLUETOOTH):
-        cloud_client = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
-        self = cls(ble_device, cloud_client, preference)
-
-        if cloud_credentials:
-            await self.initiate_cloud_connection(cloud_client)
-
-        return self
+    _mammotion_mqtt: MammotionMQTT | None = None
 
 
 
     def __init__(
         self,
             ble_device: BLEDevice,
-            cloud_client: CloudIOTGateway | None = None,
             preference: ConnectionPreference = ConnectionPreference.BLUETOOTH
     ) -> None:
         """Initialize MammotionDevice."""
@@ -220,21 +222,27 @@ class Mammotion:
             self._preference = preference
 
     async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway) -> None:
+        if self._mammotion_mqtt is not None:
+            if not self._mammotion_mqtt.is_connected:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, self._mammotion_mqtt.connect_async)
+            return
 
-        _mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
+
+        self._mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
                                         product_key=cloud_client._aep_response.data.productKey,
                                         device_name=cloud_client._aep_response.data.deviceName,
                                         device_secret=cloud_client._aep_response.data.deviceSecret,
                                         iot_token=cloud_client._session_by_authcode_response.data.iotToken,
                                         client_id=cloud_client._client_id)
 
-        _mammotion_mqtt._cloud_client = cloud_client
+        self._mammotion_mqtt._cloud_client = cloud_client
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, _mammotion_mqtt.connect_async)
+        await loop.run_in_executor(None, self._mammotion_mqtt.connect_async)
 
         for device in cloud_client.listing_dev_by_account_response.data.data:
             if device.deviceName.startswith(("Luba-", "Yuka-")):
-                self.devices.add_device(MammotionMixedDeviceManager(name=device.deviceName, cloud_device=device, mqtt=_mammotion_mqtt))
+                self.devices.add_device(MammotionMixedDeviceManager(name=device.deviceName, cloud_device=device, mqtt=self._mammotion_mqtt))
 
 
     @staticmethod
