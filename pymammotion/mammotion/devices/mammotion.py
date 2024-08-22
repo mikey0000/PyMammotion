@@ -264,6 +264,7 @@ class Mammotion(object):
             await loop.run_in_executor(None, cloud_client.list_binding_by_account)
             return cloud_client
 
+
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
         return self.devices.get_device(name)
 
@@ -277,7 +278,7 @@ class Mammotion(object):
                 return await device.cloud().command(key)
             # TODO work with both with EITHER
 
-    async def send_command_with_args(self,name: str, key: str, kwargs):
+    async def send_command_with_args(self,name: str, key: str, **kwargs: any):
         """Send a command with args to the device."""
         device = self.get_device_by_name(name)
         if device:
@@ -308,7 +309,7 @@ class Mammotion(object):
     def mower(self, name: str):
         device = self.get_device_by_name(name)
         if device:
-            return device.mower_state
+            return device.mower_state()
 
 def has_field(message: betterproto.Message) -> bool:
     """Check if the message has any fields serialized on wire."""
@@ -926,22 +927,26 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         if self.on_ready_callback:
             self.on_ready_callback()
 
+        asyncio.run(self._ble_sync())
+        asyncio.run(self.run_periodic_sync_task())
+
     def on_connected(self):
         """Callback for when MQTT connects."""
-        self._ble_sync()
-        self.run_periodic_sync_task()
+
 
     def on_disconnected(self):
         """Callback for when MQTT disconnects."""
 
-    def _ble_sync(self):
+    async def _ble_sync(self):
         command_bytes = self._commands.send_todev_ble_sync(3)
-        self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command_bytes)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command_bytes)
+
 
     async def run_periodic_sync_task(self) -> None:
         """Send ble sync to robot."""
         try:
-            self._ble_sync()
+            await self._ble_sync()
         finally:
             self.schedule_ble_sync()
 
@@ -995,7 +1000,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._key = key
         _LOGGER.debug("%s: Sending command: %s", self.device.nickName, key)
         loop = asyncio.get_running_loop()
-        loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
+        await loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
 
         retry_handle = self.loop.call_at(
             self.loop.time() + 20,

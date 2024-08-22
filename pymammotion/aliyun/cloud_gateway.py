@@ -522,7 +522,7 @@ class CloudIOTGateway:
             logger.error(
                 "Error in sending cloud command: %s - %s",
                 str(response_body_dict.get("code")),
-                str(response_body_dict["msg"]),
+                str(response_body_dict.get("msg")),
             )
             return ""
 

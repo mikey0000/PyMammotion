@@ -147,12 +147,11 @@ class MammotionMQTT:
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
 
-    def _on_disconnect(self, _client, _userdata, rc: int):
+    def _on_disconnect(self, _client, _userdata):
         """Is called on disconnect."""
         logger.info("Disconnected")
         self.is_connected = False
         self.is_ready = False
-        logger.debug(rc)
         if self.on_disconnected:
             self.on_disconnected()
 
