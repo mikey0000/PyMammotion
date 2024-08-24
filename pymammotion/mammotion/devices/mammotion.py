@@ -40,6 +40,7 @@ from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
+from pymammotion.utility.rocker_util import RockerControlUtil
 
 
 class CharacteristicMissingError(Exception):
@@ -503,6 +504,28 @@ class MammotionBaseDevice:
         # sub_cmd 4 is dump location (yuka)
         # jobs list
         # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
+
+    async def move_forward(self):
+        linear_speed = 1.0
+        angular_speed = 0.0
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(90, 1000)
+        transform4 = RockerControlUtil.getInstance().transfrom3(0, 0)
+
+        if transfrom3 is not None and len(transfrom3) > 0:
+            linear_speed = transfrom3[0] * 10
+            angular_speed = int(transform4[1] * 4.5)
+        await self._send_command_with_args("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+
+    async def move_stop(self):
+        linear_speed = 0.0
+        angular_speed = 0.0
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(0, 0)
+        transform4 = RockerControlUtil.getInstance().transfrom3(0, 0)
+
+        if transfrom3 is not None and len(transfrom3) > 0:
+            linear_speed = transfrom3[0] * 10
+            angular_speed = int(transform4[1] * 4.5)
+        await self._send_command_with_args("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
