@@ -530,6 +530,8 @@ class CloudIOTGateway:
             )
             if response_body_dict.get("code") == 29003:
                 raise SetupException(response_body_dict.get("code"))
+            if response_body_dict.get("code") == 6205:
+                """Device is offline."""
 
         return message_id
 
