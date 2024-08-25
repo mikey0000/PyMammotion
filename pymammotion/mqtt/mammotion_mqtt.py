@@ -1,5 +1,5 @@
 """MammotionMQTT."""
-
+import asyncio
 import hashlib
 import hmac
 import json
@@ -81,7 +81,7 @@ class MammotionMQTT:
         logger.info("Connecting...")
         self._linkkit_client.thing_setup()
         self._linkkit_client.connect_async()
-        self._linkkit_client.start_worker_loop()
+
 
     def disconnect(self):
         """Disconnect from MQTT Server."""
@@ -91,6 +91,7 @@ class MammotionMQTT:
     def _thing_on_thing_enable(self, user_data):
         """Is called when Thing is enabled."""
         logger.debug("on_thing_enable")
+        self.is_connected = True
         # logger.debug('subscribe_topic, topic:%s' % echo_topic)
         # self._linkkit_client.subscribe_topic(echo_topic, 0)
         self._linkkit_client.subscribe_topic(

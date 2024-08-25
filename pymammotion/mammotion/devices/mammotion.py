@@ -115,10 +115,12 @@ async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None
         await func(command)
 
 
-async def _handle_retry_cloud(fut: asyncio.Future[None], func, iotId: str, command: bytes) -> None:
+async def _handle_retry_cloud(fut: asyncio.Future[None], func, iot_id: str, command: bytes) -> None:
     """Handle a retry."""
+
     if not fut.done():
-        func(iotId, command)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, func, iot_id, command)
 
 
 class ConnectionPreference(Enum):
@@ -224,10 +226,8 @@ class Mammotion(object):
 
     async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway) -> None:
         if self._mammotion_mqtt is not None:
-            if not self._mammotion_mqtt.is_connected:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, self._mammotion_mqtt.connect_async)
-            return
+            if self._mammotion_mqtt.is_connected:
+                return
 
 
         self._mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
@@ -245,6 +245,11 @@ class Mammotion(object):
             if device.deviceName.startswith(("Luba-", "Yuka-")):
                 self.devices.add_device(MammotionMixedDeviceManager(name=device.deviceName, cloud_device=device, mqtt=self._mammotion_mqtt))
 
+    def set_disconnect_strategy(self, disconnect: bool):
+        for device_name, device in self.devices.devices:
+            if device.ble() is not None:
+                ble_device: MammotionBaseBLEDevice = device.ble()
+                ble_device.set_disconnect_strategy(disconnect)
 
     @staticmethod
     async def login(account: str, password: str) -> CloudIOTGateway:
@@ -538,6 +543,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def __init__(self, mowing_state: MowingDevice, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__(mowing_state)
+        self._disconnect_strategy = True
         self._ble_sync_task = None
         self._prev_notification = None
         self._interface = f"hci{interface}"
@@ -644,7 +650,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     @property
     def rssi(self) -> int:
         """Return RSSI of device."""
-        return 0
+        try:
+            return self._mower.device.sys.toapp_report_data.connect.ble_rssi
+        finally:
+            return 0
 
     async def _ensure_connected(self):
         """Ensure connection to device is established."""
@@ -674,12 +683,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 return
             _LOGGER.debug("%s: Connecting; RSSI: %s", self.name, self.rssi)
             client: BleakClientWithServiceCache = await establish_connection(
-                BleakClient,
+                BleakClientWithServiceCache,
                 self._device,
                 self.name,
                 self._disconnected,
                 max_attempts=10,
-                use_services_cache=True,
                 ble_device_callback=lambda: self._device,
             )
             _LOGGER.debug("%s: Connected; RSSI: %s", self.name, self.rssi)
@@ -861,6 +869,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _execute_timed_disconnect(self) -> None:
         """Execute timed disconnection."""
+        if not self._disconnect_strategy:
+            return
         _LOGGER.debug(
             "%s: Executing timed disconnect after timeout of %s",
             self.name,
@@ -909,6 +919,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     async def _disconnect(self) -> bool:
         if self._client is not None:
             return await self._client.disconnect()
+
+    def set_disconnect_strategy(self, disconnect):
+        self._disconnect_strategy = disconnect
 
 
 class MammotionBaseCloudDevice(MammotionBaseDevice):
@@ -1026,7 +1039,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         await loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
 
         retry_handle = self.loop.call_at(
-            self.loop.time() + 20,
+            self.loop.time() + 10,
             lambda: asyncio.ensure_future(
                 _handle_retry_cloud(
                     self._notify_future, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command
@@ -1087,6 +1100,14 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 binary_data = base64.b64decode(params.value.get("content", ""))
                 self._update_raw_data(cast(bytes, binary_data))
                 new_msg = LubaMsg().parse(cast(bytes, binary_data))
+
+                if self._commands.get_device_product_key() == "" and self._commands.get_device_name() == event.params.deviceName:
+                    self._commands.set_device_product_key(event.params.productKey)
+
+                if betterproto.serialized_on_wire(new_msg.net):
+                    if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
+                        return
+
                 if self._notify_future and not self._notify_future.done():
                     self._notify_future.set_result(new_msg)
                 asyncio.run(self._state_manager.notification(new_msg))

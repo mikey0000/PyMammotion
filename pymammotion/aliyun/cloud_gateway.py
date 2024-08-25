@@ -9,7 +9,7 @@ import random
 import string
 import time
 import uuid
-from logging import getLogger
+from logging import getLogger, exception
 
 from aiohttp import ClientSession
 from alibabacloud_iot_api_gateway.client import Client
@@ -43,6 +43,10 @@ MOVE_HEADERS = (
     "token",
     "user-agent",
 )
+
+
+class SetupException(Exception):
+    pass
 
 
 class CloudIOTGateway:
@@ -524,7 +528,8 @@ class CloudIOTGateway:
                 str(response_body_dict.get("code")),
                 str(response_body_dict.get("msg")),
             )
-            return ""
+            if response_body_dict.get("code") == 29003:
+                raise SetupException(response_body_dict.get("code"))
 
         return message_id
 

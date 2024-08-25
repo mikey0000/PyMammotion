@@ -5,6 +5,7 @@ from threading import Thread
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 
+from pymammotion.data.model.device import MowingDevice
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice, has_field
 from pymammotion.proto.mctrl_sys import MctlSys, RptAct, RptInfoType
@@ -58,7 +59,8 @@ async def run(loop):
         return
 
     luba_ble = MammotionBaseBLEDevice(
-        device=luba_device
+        device=luba_device,
+        mowing_state=MowingDevice()
     )
 
     await asyncio.sleep(2)

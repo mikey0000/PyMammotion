@@ -7,8 +7,8 @@ from dataclasses import dataclass
 class Point:
     """Returns a lat long."""
 
-    latitude: float
-    longitude: float
+    latitude: float = 0.0
+    longitude: float = 0.0
 
     def __init__(self, latitude=0.0, longitude=0.0):
         self.latitude = latitude
@@ -19,7 +19,7 @@ class Point:
 class Dock(Point):
     """Stores robot dock position."""
 
-    rotation: int
+    rotation: int = 0
 
     def __init__(self):
         super().__init__()
@@ -33,8 +33,8 @@ class Location:
     device: Point
     RTK: Point
     dock: Dock
-    position_type: int
-    orientation: int  # 360 degree rotation +-
+    position_type: int = 0
+    orientation: int = 0 # 360 degree rotation +-
 
     def __init__(self):
         self.device = Point()
