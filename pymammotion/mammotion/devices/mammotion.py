@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import queue
+import threading
 import asyncio
 import base64
 import codecs
 import json
 import logging
 from abc import abstractmethod
+from collections import deque
 from enum import Enum
+from functools import cache
 from typing import Any, Callable, Optional, cast
 from uuid import UUID
 
@@ -37,8 +41,10 @@ from pymammotion.data.state_manager import StateManager
 from pymammotion.http.http import connect_http
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
+from pymammotion.mqtt.mammotion_future import MammotionFuture
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
+from pymammotion.utility.rocker_util import RockerControlUtil
 
 
 class CharacteristicMissingError(Exception):
@@ -86,10 +92,10 @@ def slashescape(err):
 codecs.register_error("slashescape", slashescape)
 
 
-def find_next_integer(lst: list[int], current_int: int) -> int | None:
+def find_next_integer(lst: list[int], current_hash: float) -> int | None:
     try:
         # Find the index of the current integer
-        current_index = lst.index(current_int)
+        current_index = lst.index(current_hash)
 
         # Check if there is a next integer in the list
         if current_index + 1 < len(lst):
@@ -113,10 +119,12 @@ async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None
         await func(command)
 
 
-async def _handle_retry_cloud(fut: asyncio.Future[None], func, iotId: str, command: bytes) -> None:
+async def _handle_retry_cloud(self, fut: asyncio.Future[None], func, iot_id: str, command: bytes) -> None:
     """Handle a retry."""
+
     if not fut.done():
-        func(iotId, command)
+        self._operation_lock.release()
+        await self.loop.run_in_executor(None, func, iot_id, command)
 
 
 class ConnectionPreference(Enum):
@@ -172,12 +180,13 @@ class MammotionMixedDeviceManager:
 
 class MammotionDevices:
 
-    devices = dict[str, MammotionMixedDeviceManager] = {}
+    devices: dict[str, MammotionMixedDeviceManager] = {}
 
     def add_device(self, mammotion_device: MammotionMixedDeviceManager) -> None:
         exists: MammotionMixedDeviceManager | None = self.devices.get(mammotion_device.name)
-        if not exists:
+        if exists is None:
             self.devices[mammotion_device.name] = mammotion_device
+            return
         if mammotion_device.has_cloud():
             exists.replace_cloud(mammotion_device.cloud())
         if mammotion_device.has_ble():
@@ -186,16 +195,31 @@ class MammotionDevices:
     def get_device(self, mammotion_device_name: str) -> MammotionMixedDeviceManager:
         return self.devices.get(mammotion_device_name)
 
-class Mammotion:
+async def create_devices(ble_device: BLEDevice,
+    cloud_credentials: Credentials | None = None,
+    preference: ConnectionPreference = ConnectionPreference.BLUETOOTH):
+    cloud_client = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
+    mammotion = Mammotion(ble_device, preference)
+
+    if cloud_credentials:
+        await mammotion.initiate_cloud_connection(cloud_client)
+
+    return mammotion
+
+
+@cache
+class Mammotion(object):
     """Represents a Mammotion device."""
 
     devices = MammotionDevices()
+    _mammotion_mqtt: MammotionMQTT | None = None
+
+
 
     def __init__(
         self,
-        ble_device: BLEDevice,
-        cloud_credentials: Credentials | None = None,
-        preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
+            ble_device: BLEDevice,
+            preference: ConnectionPreference = ConnectionPreference.BLUETOOTH
     ) -> None:
         """Initialize MammotionDevice."""
         if ble_device:
@@ -204,26 +228,32 @@ class Mammotion:
         if preference:
             self._preference = preference
 
-        if cloud_credentials:
-            self.initiate_cloud_connection(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
+    async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway) -> None:
+        if self._mammotion_mqtt is not None:
+            if self._mammotion_mqtt.is_connected:
+                return
 
-    async def initiate_cloud_connection(self, account: str, password: str):
-        cloud_client = await self.login(account, password)
 
-        _mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
+        self._mammotion_mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
                                         product_key=cloud_client._aep_response.data.productKey,
                                         device_name=cloud_client._aep_response.data.deviceName,
                                         device_secret=cloud_client._aep_response.data.deviceSecret,
                                         iot_token=cloud_client._session_by_authcode_response.data.iotToken,
                                         client_id=cloud_client._client_id)
 
-        _mammotion_mqtt._cloud_client = cloud_client
-        _mammotion_mqtt.connect_async()
+        self._mammotion_mqtt._cloud_client = cloud_client
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._mammotion_mqtt.connect_async)
 
         for device in cloud_client.listing_dev_by_account_response.data.data:
             if device.deviceName.startswith(("Luba-", "Yuka-")):
-                self.devices.add_device(MammotionMixedDeviceManager(name=device.deviceName, cloud_device=device, mqtt=_mammotion_mqtt))
+                self.devices.add_device(MammotionMixedDeviceManager(name=device.deviceName, cloud_device=device, mqtt=self._mammotion_mqtt))
 
+    def set_disconnect_strategy(self, disconnect: bool):
+        for device_name, device in self.devices.devices:
+            if device.ble() is not None:
+                ble_device: MammotionBaseBLEDevice = device.ble()
+                ble_device.set_disconnect_strategy(disconnect)
 
     @staticmethod
     async def login(account: str, password: str) -> CloudIOTGateway:
@@ -234,14 +264,16 @@ class Mammotion:
             country_code = mammotion_http.login_info.userInformation.domainAbbreviation
             _LOGGER.debug("CountryCode: " + country_code)
             _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
-            cloud_client.get_region(country_code, mammotion_http.login_info.authorization_code)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, cloud_client.get_region, country_code, mammotion_http.login_info.authorization_code)
             await cloud_client.connect()
             await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
-            cloud_client.aep_handle()
-            cloud_client.session_by_auth_code()
+            await loop.run_in_executor(None, cloud_client.aep_handle)
+            await loop.run_in_executor(None, cloud_client.session_by_auth_code)
 
-            cloud_client.list_binding_by_account()
+            await loop.run_in_executor(None, cloud_client.list_binding_by_account)
             return cloud_client
+
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
         return self.devices.get_device(name)
@@ -256,7 +288,7 @@ class Mammotion:
                 return await device.cloud().command(key)
             # TODO work with both with EITHER
 
-    async def send_command_with_args(self,name: str, key: str, kwargs):
+    async def send_command_with_args(self,name: str, key: str, **kwargs: any):
         """Send a command with args to the device."""
         device = self.get_device_by_name(name)
         if device:
@@ -287,7 +319,7 @@ class Mammotion:
     def mower(self, name: str):
         device = self.get_device_by_name(name)
         if device:
-            return device.mower_state
+            return device.mower_state()
 
 def has_field(message: betterproto.Message) -> bool:
     """Check if the message has any fields serialized on wire."""
@@ -306,7 +338,6 @@ class MammotionBaseDevice:
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
         self._mower = device
         self._state_manager = StateManager(self._mower)
-
         self._state_manager.gethash_ack_callback.add_subscribers(self.datahash_response)
         self._state_manager.get_commondata_ack_callback.add_subscribers(self.commdata_response)
         self._notify_future: asyncio.Future[bytes] | None = None
@@ -482,6 +513,28 @@ class MammotionBaseDevice:
         # jobs list
         # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
 
+    async def move_forward(self):
+        linear_speed = 1.0
+        angular_speed = 0.0
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(90, 1000)
+        transform4 = RockerControlUtil.getInstance().transfrom3(0, 0)
+
+        if transfrom3 is not None and len(transfrom3) > 0:
+            linear_speed = transfrom3[0] * 10
+            angular_speed = int(transform4[1] * 4.5)
+        await self._send_command_with_args("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+
+    async def move_stop(self):
+        linear_speed = 0.0
+        angular_speed = 0.0
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(0, 0)
+        transform4 = RockerControlUtil.getInstance().transfrom3(0, 0)
+
+        if transfrom3 is not None and len(transfrom3) > 0:
+            linear_speed = transfrom3[0] * 10
+            angular_speed = int(transform4[1] * 4.5)
+        await self._send_command_with_args("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
         return await self._send_command_with_args(key, **kwargs)
@@ -493,6 +546,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def __init__(self, mowing_state: MowingDevice, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__(mowing_state)
+        self._disconnect_strategy = True
         self._ble_sync_task = None
         self._prev_notification = None
         self._interface = f"hci{interface}"
@@ -599,7 +653,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     @property
     def rssi(self) -> int:
         """Return RSSI of device."""
-        return 0
+        try:
+            return self._mower.device.sys.toapp_report_data.connect.ble_rssi
+        finally:
+            return 0
 
     async def _ensure_connected(self):
         """Ensure connection to device is established."""
@@ -629,12 +686,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 return
             _LOGGER.debug("%s: Connecting; RSSI: %s", self.name, self.rssi)
             client: BleakClientWithServiceCache = await establish_connection(
-                BleakClient,
+                BleakClientWithServiceCache,
                 self._device,
                 self.name,
                 self._disconnected,
                 max_attempts=10,
-                use_services_cache=True,
                 ble_device_callback=lambda: self._device,
             )
             _LOGGER.debug("%s: Connected; RSSI: %s", self.name, self.rssi)
@@ -816,6 +872,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _execute_timed_disconnect(self) -> None:
         """Execute timed disconnection."""
+        if not self._disconnect_strategy:
+            return
         _LOGGER.debug(
             "%s: Executing timed disconnect after timeout of %s",
             self.name,
@@ -865,6 +923,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         if self._client is not None:
             return await self._client.disconnect()
 
+    def set_disconnect_strategy(self, disconnect):
+        self._disconnect_strategy = disconnect
+
 
 class MammotionBaseCloudDevice(MammotionBaseDevice):
     """Base class for Mammotion Cloud devices."""
@@ -881,12 +942,13 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.is_ready = False
         self._mqtt_client = mqtt_client
         self.iot_id = cloud_device.iotId
+        self.device = cloud_device
         self._mower = mowing_state
         self._command_futures = {}
         self._commands: MammotionCommand = MammotionCommand(cloud_device.deviceName)
         self.currentID = ""
         self.on_ready_callback: Optional[Callable[[], None]] = None
-        self._operation_lock = asyncio.Lock()
+        self._waiting_queue = deque()
 
         self._mqtt_client.on_connected = self.on_connected
         self._mqtt_client.on_disconnected = self.on_disconnected
@@ -899,27 +961,31 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         # temporary for testing only
         # self._start_sync_task = self.loop.call_later(30, lambda: asyncio.ensure_future(self.start_sync(0)))
 
-    def on_ready(self):
+    async def on_ready(self):
         """Callback for when MQTT is subscribed to events."""
         if self.on_ready_callback:
             self.on_ready_callback()
 
-    def on_connected(self):
-        """Callback for when MQTT connects."""
-        self._ble_sync()
-        self.run_periodic_sync_task()
+        await self._ble_sync()
+        await self.run_periodic_sync_task()
 
-    def on_disconnected(self):
+    async def on_connected(self):
+        """Callback for when MQTT connects."""
+
+
+    async def on_disconnected(self):
         """Callback for when MQTT disconnects."""
 
-    def _ble_sync(self):
+    async def _ble_sync(self):
         command_bytes = self._commands.send_todev_ble_sync(3)
-        self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command_bytes)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command_bytes)
+
 
     async def run_periodic_sync_task(self) -> None:
         """Send ble sync to robot."""
         try:
-            self._ble_sync()
+            await self._ble_sync()
         finally:
             self.schedule_ble_sync()
 
@@ -930,27 +996,24 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 160, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
             )
 
-    def _on_mqtt_message(self, topic: str, payload: str, iot_id: str) -> None:
+    async def _on_mqtt_message(self, topic: str, payload: str, iot_id: str) -> None:
         """Handle incoming MQTT messages."""
-        _LOGGER.debug("MQTT message received on topic %s: %s", topic, payload)
+        _LOGGER.debug("MQTT message received on topic %s: %s", topic, payload, iot_id)
 
         json_str = json.dumps(payload)
         payload = json.loads(json_str)
 
-        self._handle_mqtt_message(topic, payload)
+        await self._handle_mqtt_message(topic, payload)
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device via MQTT and read response."""
-        if self._operation_lock.locked():
-            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.nick_name)
 
-        async with self._operation_lock:
-            try:
-                command_bytes = getattr(self._commands, key)()
-                return await self._send_command_locked(key, command_bytes)
-            except Exception as ex:
-                _LOGGER.exception("%s: error in sending command -  %s", self.nick_name, ex)
-                raise
+        try:
+            command_bytes = getattr(self._commands, key)()
+            return await self._send_command_locked(key, command_bytes)
+        except Exception as ex:
+            _LOGGER.exception("%s: error in sending command -  %s", self.device.nickName, ex)
+            raise
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
@@ -961,7 +1024,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             await asyncio.sleep(DBUS_ERROR_BACKOFF_TIME)
             _LOGGER.debug(
                 "%s: error in _send_command_locked: %s",
-                self.nick_name,
+                self.device.nickName,
                 ex,
             )
             raise
@@ -969,48 +1032,29 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _execute_command_locked(self, key: str, command: bytes) -> bytes:
         """Execute command and read response."""
         assert self._mqtt_client is not None
-        self._notify_future = self.loop.create_future()
         self._key = key
-        _LOGGER.debug("%s: Sending command: %s", self.nick_name, key)
-        self._mqtt_client.get_cloud_client().send_cloud_command(self.iot_id, command)
-
-        retry_handle = self.loop.call_at(
-            self.loop.time() + 20,
-            lambda: asyncio.ensure_future(
-                _handle_retry_cloud(
-                    self._notify_future, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command
-                )
-            ),
-        )
+        _LOGGER.debug("%s: Sending command: %s", self.device.nickName, key)
+        await self.loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
+        future = MammotionFuture()
+        self._waiting_queue.append(future)
         timeout = 20
-        timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
-        timeout_expired = False
         try:
-            notify_msg = await self._notify_future
+            notify_msg = await future.async_get(timeout)
         except asyncio.TimeoutError:
-            timeout_expired = True
             raise
-        finally:
-            if not timeout_expired:
-                timeout_handle.cancel()
-                retry_handle.cancel()
-            self._notify_future = None
 
-        _LOGGER.debug("%s: Message received", self.nick_name)
+        _LOGGER.debug("%s: Message received", self.device.nickName)
 
         return notify_msg
 
     async def _send_command_with_args(self, key: str, **kwargs: any) -> bytes | None:
         """Send command with arguments to device via MQTT and read response."""
-        if self._operation_lock.locked():
-            _LOGGER.debug("%s: Operation already in progress, waiting for it to complete;", self.nick_name)
-        async with self._operation_lock:
-            try:
-                command_bytes = getattr(self._commands, key)(**kwargs)
-                return await self._send_command_locked(key, command_bytes)
-            except Exception as ex:
-                _LOGGER.exception("%s: error in sending command -  %s", self.nick_name, ex)
-                raise
+        try:
+            command_bytes = getattr(self._commands, key)(**kwargs)
+            return await self._send_command_locked(key, command_bytes)
+        except Exception as ex:
+            _LOGGER.exception("%s: error in sending command -  %s", self.device.nickName, ex)
+            raise
 
     def _extract_message_id(self, payload: dict) -> str:
         """Extract the message ID from the payload."""
@@ -1025,7 +1069,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             _LOGGER.error("Error extracting encoded message. Payload: %s", payload)
             return ""
 
-    def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
+    async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parse the MQTT response."""
         if topic.endswith("/app/down/thing/events"):
             _LOGGER.debug("Thing event received")
@@ -1036,14 +1080,25 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 binary_data = base64.b64decode(params.value.get("content", ""))
                 self._update_raw_data(cast(bytes, binary_data))
                 new_msg = LubaMsg().parse(cast(bytes, binary_data))
-                if self._notify_future and not self._notify_future.done():
-                    self._notify_future.set_result(new_msg)
-                asyncio.run(self._state_manager.notification(new_msg))
 
-    def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
+                if self._commands.get_device_product_key() == "" and self._commands.get_device_name() == event.params.deviceName:
+                    self._commands.set_device_product_key(event.params.productKey)
+
+                if betterproto.serialized_on_wire(new_msg.net):
+                    if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
+                        return
+
+
+                if len(self._waiting_queue) > 0:
+                    fut: MammotionFuture = self._waiting_queue.popleft()
+                    fut.resolve(cast(bytes, binary_data))
+                await self._state_manager.notification(new_msg)
+
+    async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
         """Async handler for incoming MQTT messages."""
-        self._parse_mqtt_response(topic=topic, payload=payload)
+        await self._parse_mqtt_response(topic=topic, payload=payload)
 
-    async def _disconnect(self):
+    def _disconnect(self):
         """Disconnect the MQTT client."""
         self._mqtt_client.disconnect()
+

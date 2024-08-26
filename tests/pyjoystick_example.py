@@ -9,6 +9,7 @@ from timeit import default_timer as timer
 from pymammotion.bluetooth.ble import LubaBLE
 from pymammotion.bluetooth.ble_message import BleMessage
 from pymammotion.event.event import BleNotificationEvent
+from pymammotion.utility.rocker_util import RockerControlUtil
 
 bleNotificationEvt = BleNotificationEvent()
 
@@ -49,6 +50,17 @@ class JoystickControl:
     def _movement_finished(self):
         self.ignore_events = False
 
+    @staticmethod
+    def transform_both_speeds(linear: float, angular: float, linear_percent: float, angular_percent: float):
+        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
+        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
+
+        if transfrom3 is not None and len(transfrom3) > 0:
+            linear_speed = transfrom3[0] * 10
+            angular_speed = int(transform4[1] * 4.5)
+            print(linear_speed, angular_speed)
+            return linear_speed, angular_speed
+
     def run_movement(self):
         if (self.linear_percent == 0.0 and self.angular_percent == 0.0):
             if self.stopped:
@@ -56,14 +68,13 @@ class JoystickControl:
             self.stopped = True
         self.stopped = False
             
-        asyncio.run(
-            self._client.transformBothSpeeds(
+
+        self.transform_both_speeds(
                 self.linear_speed,
                 self.angular_speed,
                 self.linear_percent,
                 self.angular_percent,
             )
-        )
             
     def print_add(self, joy):
         print("Added", joy)

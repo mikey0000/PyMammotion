@@ -3,6 +3,6 @@ from dataclasses import dataclass
 
 @dataclass
 class Credentials:
-    email: str
-    password: str
-    account_id: str
+    email: str = None
+    password: str = None
+    account_id: str = None

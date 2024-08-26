@@ -9,7 +9,7 @@ import random
 import string
 import time
 import uuid
-from logging import getLogger
+from logging import getLogger, exception
 from datetime import datetime
 
 from aiohttp import ClientSession
@@ -44,6 +44,10 @@ MOVE_HEADERS = (
     "token",
     "user-agent",
 )
+
+
+class SetupException(Exception):
+    pass
 
 
 class CloudIOTGateway:
@@ -558,9 +562,12 @@ class CloudIOTGateway:
             logger.error(
                 "Error in sending cloud command: %s - %s",
                 str(response_body_dict.get("code")),
-                str(response_body_dict["msg"]),
+                str(response_body_dict.get("msg")),
             )
-            return ""
+            if response_body_dict.get("code") == 29003:
+                raise SetupException(response_body_dict.get("code"))
+            if response_body_dict.get("code") == 6205:
+                """Device is offline."""
 
         return message_id
 
