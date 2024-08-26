@@ -10,6 +10,7 @@ import string
 import time
 import uuid
 from logging import getLogger, exception
+from datetime import datetime
 
 from aiohttp import ClientSession
 from alibabacloud_iot_api_gateway.client import Client
@@ -62,6 +63,8 @@ class CloudIOTGateway:
     _session_by_authcode_response = None
     _listing_dev_by_account_response = None
     _region = None
+
+    _iot_token_issued_at : int = None
 
     converter = DatatypeConverter()
 
@@ -390,11 +393,13 @@ class CloudIOTGateway:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
         self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
+        self._iot_token_issued_at  = int(time.time())
 
         return response.body
 
     def check_or_refresh_session(self):
         """Check or refresh the session."""
+        logger.debug("Try to refresh token")
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -431,12 +436,32 @@ class CloudIOTGateway:
         logger.debug(response.status_code)
         logger.debug(response.body)
 
-        # self._region = response.body.data
-        # Decodifica il corpo della risposta
+        # Decode the response body
         response_body_str = response.body.decode("utf-8")
 
-        # Carica la stringa JSON in un dizionario
-        json.loads(response_body_str)
+        # Load the JSON string into a dictionary
+        response_body_dict = json.loads(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
+            raise Exception("Error check or refresh token: " + response_body_dict.get('msg', ''))
+
+        identityId = response_body_dict.get('data', {}).get('identityId', None)
+        refreshTokenExpire = response_body_dict.get('data', {}).get('refreshTokenExpire', None)
+        iotToken = response_body_dict.get('data', {}).get('iotToken', None)
+        iotTokenExpire = response_body_dict.get('data', {}).get('iotTokenExpire', None)
+        refreshToken = response_body_dict.get('data', {}).get('refreshToken', None)
+
+        if (identityId is None or refreshTokenExpire is None or iotToken is None or iotTokenExpire is None or refreshToken is None):
+            raise Exception("Error check or refresh token: Parameters not correct")
+        
+        self._session_by_authcode_response.data.identityId = identityId
+        self._session_by_authcode_response.data.refreshTokenExpire = refreshTokenExpire
+        self._session_by_authcode_response.data.iotToken = iotToken
+        self._session_by_authcode_response.data.iotTokenExpire = iotTokenExpire
+        self._session_by_authcode_response.data.refreshToken = refreshToken
+        self._iot_token_issued_at  = int(time.time())
+
+        
 
     def list_binding_by_account(self) -> ListingDevByAccountResponse:
         """List bindings by account."""
@@ -482,6 +507,17 @@ class CloudIOTGateway:
 
     def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send a cloud command to the specified IoT device."""
+
+        """Check if iotToken is expired"""
+        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (int(time.time()) + (5 * 3600)):
+            """Token expired - Try to refresh - Check if refreshToken is not expired"""
+            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (int(time.time())):
+                self.check_or_refresh_session()
+            else:
+                raise Exception("Refresh token expired. Please re-login")
+                
+            
+
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
