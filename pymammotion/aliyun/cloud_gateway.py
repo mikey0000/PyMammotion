@@ -9,7 +9,8 @@ import random
 import string
 import time
 import uuid
-from logging import getLogger
+from logging import getLogger, exception
+from datetime import datetime
 
 from aiohttp import ClientSession
 from alibabacloud_iot_api_gateway.client import Client
@@ -45,6 +46,13 @@ MOVE_HEADERS = (
 )
 
 
+class SetupException(Exception):
+    pass
+
+class AuthRefreshException(Exception):
+    """Raise exception when library cannot refresh token."""
+
+
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
 
@@ -52,16 +60,18 @@ class CloudIOTGateway:
     _device_sn = ""
     _utdid = ""
 
-    _connect_response = None
-    _login_by_oauth_response = None
-    _aep_response = None
-    _session_by_authcode_response = None
-    _listing_dev_by_account_response = None
-    _region = None
+    _connect_response: ConnectResponse | None = None
+    _login_by_oauth_response: LoginByOAuthResponse | None = None
+    _aep_response: AepResponse | None = None
+    _session_by_authcode_response: SessionByAuthCodeResponse | None = None
+    _devices_by_account_response: ListingDevByAccountResponse | None = None
+    _region_response = None
+
+    _iot_token_issued_at : int = None
 
     converter = DatatypeConverter()
 
-    def __init__(self):
+    def __init__(self, connect_response: ConnectResponse | None = None, login_by_oauth_response: LoginByOAuthResponse | None = None, aep_response: AepResponse | None = None, session_by_authcode_response: SessionByAuthCodeResponse | None = None, region_response: RegionResponse | None = None, dev_by_account: ListingDevByAccountResponse | None = None):
         """Initialize the CloudIOTGateway."""
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
@@ -70,6 +80,12 @@ class CloudIOTGateway:
         self._client_id = self.generate_hardware_string(8)  # 8 characters
         self._device_sn = self.generate_hardware_string(32)  # 32 characters
         self._utdid = self.generate_hardware_string(32)  # 32 characters
+        self._connect_response = connect_response
+        self._login_by_oauth_response = login_by_oauth_response
+        self._aep_response = aep_response
+        self._session_by_authcode_response = session_by_authcode_response
+        self._region_response = region_response
+        self._devices_by_account_response = dev_by_account
 
     @staticmethod
     def generate_random_string(length):
@@ -97,6 +113,24 @@ class CloudIOTGateway:
             concatenated_str.encode("utf-8"),
             hashlib.sha1,
         ).hexdigest()
+
+    def get_connect_response(self):
+        return self._connect_response
+
+    def get_login_by_oauth_response(self):
+        return self._login_by_oauth_response
+
+    def get_aep_response(self):
+        return self._aep_response
+
+    def get_session_by_authcode_response(self):
+        return self._session_by_authcode_response
+
+    def get_devices_by_account_response(self):
+        return self._devices_by_account_response
+
+    def get_region_response(self):
+        return self._region_response
 
     def get_region(self, country_code: str, auth_code: str):
         """Get the region based on country code and auth code."""
@@ -136,8 +170,8 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in getting regions: " + response_body_dict["msg"])
 
-        self._region = RegionResponse.from_dict(response_body_dict)
-        logger.debug("Endpoint: %s", self._region.data.mqttEndpoint)
+        self._region_response = RegionResponse.from_dict(response_body_dict)
+        logger.debug("Endpoint: %s", self._region_response.data.mqttEndpoint)
 
         return response.body
 
@@ -145,8 +179,8 @@ class CloudIOTGateway:
         """Handle AEP authentication."""
         aep_domain = self.domain
 
-        if self._region.data.apiGatewayEndpoint is not None:
-            aep_domain = self._region.data.apiGatewayEndpoint
+        if self._region_response.data.apiGatewayEndpoint is not None:
+            aep_domain = self._region_response.data.apiGatewayEndpoint
 
         config = Config(
             app_key=self._app_key,
@@ -271,7 +305,7 @@ class CloudIOTGateway:
 
     async def login_by_oauth(self, country_code: str, auth_code: str):
         """Login by OAuth."""
-        region_url = self._region.data.oaApiGatewayEndpoint
+        region_url = self._region_response.data.oaApiGatewayEndpoint
 
         async with ClientSession() as session:
             headers = {
@@ -343,7 +377,7 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
         client = Client(config)
 
@@ -386,17 +420,17 @@ class CloudIOTGateway:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
         self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
+        self._iot_token_issued_at  = int(time.time())
 
         return response.body
 
     def check_or_refresh_session(self):
         """Check or refresh the session."""
-        if self.load_saved_params() is False:
-            return False
+        logger.debug("Try to refresh token")
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
         client = Client(config)
 
@@ -429,19 +463,36 @@ class CloudIOTGateway:
         logger.debug(response.status_code)
         logger.debug(response.body)
 
-        # self._region = response.body.data
-        # Decodifica il corpo della risposta
+        # Decode the response body
         response_body_str = response.body.decode("utf-8")
 
-        # Carica la stringa JSON in un dizionario
-        json.loads(response_body_str)
+        # Load the JSON string into a dictionary
+        response_body_dict = json.loads(response_body_str)
 
-    def list_binding_by_account(self):
+        if int(response_body_dict.get("code")) != 200:
+            raise Exception("Error check or refresh token: " + response_body_dict.get('msg', ''))
+
+        identityId = response_body_dict.get('data', {}).get('identityId', None)
+        refreshTokenExpire = response_body_dict.get('data', {}).get('refreshTokenExpire', None)
+        iotToken = response_body_dict.get('data', {}).get('iotToken', None)
+        iotTokenExpire = response_body_dict.get('data', {}).get('iotTokenExpire', None)
+        refreshToken = response_body_dict.get('data', {}).get('refreshToken', None)
+
+
+        if (identityId is None or refreshTokenExpire is None or iotToken is None or iotTokenExpire is None or refreshToken is None):
+            raise Exception("Error check or refresh token: Parameters not correct")
+
+        self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
+        self._iot_token_issued_at  = int(time.time())
+
+        
+
+    def list_binding_by_account(self) -> ListingDevByAccountResponse:
         """List bindings by account."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
 
         client = Client(config)
@@ -475,14 +526,26 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
-        self._listing_dev_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
+        self._devices_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
+        return self._devices_by_account_response
 
     def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send a cloud command to the specified IoT device."""
+
+        """Check if iotToken is expired"""
+        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (int(time.time()) + (5 * 3600)):
+            """Token expired - Try to refresh - Check if refreshToken is not expired"""
+            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (int(time.time())):
+                self.check_or_refresh_session()
+            else:
+                raise AuthRefreshException("Refresh token expired. Please re-login")
+                
+            
+
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
 
         client = Client(config)
@@ -523,8 +586,15 @@ class CloudIOTGateway:
             logger.error(
                 "Error in sending cloud command: %s - %s",
                 str(response_body_dict.get("code")),
-                str(response_body_dict["msg"]),
+                str(response_body_dict.get("msg")),
             )
-            return ""
+            if response_body_dict.get("code") == 29003:
+                raise SetupException(response_body_dict.get("code"))
+            if response_body_dict.get("code") == 6205:
+                """Device is offline."""
 
         return message_id
+
+    @property
+    def listing_dev_by_account_response(self):
+        return self._devices_by_account_response

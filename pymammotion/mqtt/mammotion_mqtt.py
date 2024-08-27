@@ -1,14 +1,14 @@
 """MammotionMQTT."""
-
+import asyncio
 import hashlib
 import hmac
 import json
 import logging
 from logging import getLogger
-from typing import Callable, Optional, cast
+from typing import Callable, Optional, cast, Awaitable
 
 from linkkit.linkkit import LinkKit
-from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
+from paho.mqtt.client import MQTTMessage
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -22,8 +22,6 @@ logger = getLogger(__name__)
 class MammotionMQTT:
     """MQTT client for pymammotion."""
 
-    _cloud_client = None
-
     def __init__(
         self,
         region_id: str,
@@ -35,11 +33,14 @@ class MammotionMQTT:
     ):
         """Create instance of MammotionMQTT."""
         super().__init__()
-
-        self.on_connected: Optional[Callable[[], None]] = None
-        self.on_error: Optional[Callable[[str], None]] = None
-        self.on_disconnected: Optional[Callable[[], None]] = None
-        self.on_message: Optional[Callable[[str, str, str], None]] = None
+        self._cloud_client = None
+        self.is_connected = False
+        self.is_ready = False
+        self.on_connected: Optional[Callable[[],Awaitable[None]]] = None
+        self.on_ready: Optional[Callable[[],Awaitable[None]]] = None
+        self.on_error: Optional[Callable[[str],Awaitable[None]]] = None
+        self.on_disconnected: Optional[Callable[[],Awaitable[None]]] = None
+        self.on_message: Optional[Callable[[str, str, str],Awaitable[None]]] = None
 
         self._product_key = product_key
         self._device_name = device_name
@@ -56,6 +57,7 @@ class MammotionMQTT:
         ).hexdigest()
 
         self._client_id = client_id
+        self.loop = asyncio.get_running_loop()
 
         self._linkkit_client = LinkKit(
             region_id,
@@ -73,45 +75,25 @@ class MammotionMQTT:
         self._linkkit_client.on_disconnect = self._on_disconnect
         self._linkkit_client.on_thing_enable = self._thing_on_thing_enable
         self._linkkit_client.on_topic_message = self._thing_on_topic_message
-        #        self._mqtt_host = "public.itls.eu-central-1.aliyuncs.com"
         self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
-
-        self._client = Client(
-            client_id=self._mqtt_client_id,
-            protocol=MQTTv311,
-        )
-        self._client.on_message = self._on_message
-        self._client.on_connect = self._on_connect
-        self._client.on_disconnect = self._on_disconnect
-        self._client.username_pw_set(self._mqtt_username, self._mqtt_password)
-        self._client.enable_logger(logger.getChild("paho"))
-
-    # region Connection handling
-    def connect(self):
-        """Connect to MQTT Server."""
-        logger.info("Connecting...")
-        self._client.connect(host=self._mqtt_host)
-        self._client.loop_forever()
 
     def connect_async(self):
         """Connect async to MQTT Server."""
         logger.info("Connecting...")
-        self._linkkit_client.thing_setup()
+        if self._linkkit_client.check_state() is LinkKit.LinkKitState.INITIALIZED:
+            self._linkkit_client.thing_setup()
         self._linkkit_client.connect_async()
-        # self._client.connect_async(host=self._mqtt_host)
-        # self._client.loop_start()
-        self._linkkit_client.start_worker_loop()
+
 
     def disconnect(self):
         """Disconnect from MQTT Server."""
         logger.info("Disconnecting...")
         self._linkkit_client.disconnect()
-        self._client.disconnect()
-        self._client.loop_stop()
 
     def _thing_on_thing_enable(self, user_data):
         """Is called when Thing is enabled."""
         logger.debug("on_thing_enable")
+        self.is_connected = True
         # logger.debug('subscribe_topic, topic:%s' % echo_topic)
         # self._linkkit_client.subscribe_topic(echo_topic, 0)
         self._linkkit_client.subscribe_topic(
@@ -139,6 +121,9 @@ class MammotionMQTT:
             ),
         )
 
+        if self.on_ready:
+            self.is_ready = True
+            asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop).result()
         # self._linkkit_client.query_ota_firmware()
         # command = MammotionCommand(device_name="Luba")
         # self._cloud_client.send_cloud_command(command.get_report_cfg())
@@ -154,46 +139,30 @@ class MammotionMQTT:
         payload = json.loads(payload)
         iot_id = payload.get("params", {}).get("iotId", "")
         if iot_id != "" and self.on_message:
-            self.on_message(topic, payload, iot_id)
+            future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
+            asyncio.wrap_future(future, loop=self.loop)
+
 
     def _thing_on_connect(self, session_flag, rc, user_data):
         """Is called on thing connect."""
+        self.is_connected = True
+        if self.on_connected is not None:
+            future = asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)
+            asyncio.wrap_future(future, loop=self.loop)
+
         logger.debug("on_connect, session_flag:%d, rc:%d", session_flag, rc)
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
 
-    def _on_connect(self, _client, _userdata, _flags: dict, rc: int):
-        """Is called when on connect."""
-        if rc == 0:
-            logger.debug("Connected")
-            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/#")
-            self._client.subscribe(f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply")
-
-            self._client.publish(
-                f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
-                json.dumps(
-                    {
-                        "id": "msgid1",
-                        "version": "1.0",
-                        "request": {"clientId": self._mqtt_username},
-                        "params": {"iotToken": self._iot_token},
-                    }
-                ),
-            )
-
-            if self.on_connected:
-                self.on_connected()
-        else:
-            logger.error("Could not connect %s", connack_string(rc))
-            if self.on_error:
-                self.on_error(connack_string(rc))
-
-    def _on_disconnect(self, _client, _userdata, rc: int):
+    def _on_disconnect(self, _client, _userdata):
         """Is called on disconnect."""
         logger.info("Disconnected")
-        logger.debug(rc)
+        self.is_connected = False
+        self.is_ready = False
         if self.on_disconnected:
-            self.on_disconnected()
+            future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
+            asyncio.wrap_future(future, loop=self.loop)
+
 
     def _on_message(self, _client, _userdata, message: MQTTMessage):
         """Is called when message is received."""
@@ -224,3 +193,4 @@ class MammotionMQTT:
     def get_cloud_client(self) -> Optional[CloudIOTGateway]:
         """Return internal cloud client."""
         return self._cloud_client
+

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, TypeVar
 
 from mashumaro import DataClassDictMixin
+from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 DataT = TypeVar("DataT")
@@ -24,3 +25,6 @@ class RegionResponse(DataClassDictMixin):
     code: int
     id: Optional[str] = None
     msg: Optional[str] = None
+
+    class Config(BaseConfig):
+        omit_default = True

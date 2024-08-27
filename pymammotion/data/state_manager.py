@@ -1,24 +1,22 @@
 """Manage state from notifications into MowingDevice."""
+from typing import Optional, Callable, Awaitable
 
 import betterproto
 
 from pymammotion.data.model.device import MowingDevice
-from pymammotion.event.event import DataEvent
 from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
 
 
 class StateManager:
     """Manage state."""
 
     _device: MowingDevice
-    gethash_ack_callback: DataEvent
-    get_commondata_ack_callback: DataEvent
 
     def __init__(self, device: MowingDevice):
         self._device = device
-        self.gethash_ack_callback = DataEvent()
-        self.get_commondata_ack_callback = DataEvent()
+        self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck],Awaitable[None]]] = None
+        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck],Awaitable[None]]] = None
 
     def get_device(self) -> MowingDevice:
         """Get device."""
@@ -54,12 +52,12 @@ class StateManager:
                 self._device.map.obstacle = dict()
                 self._device.map.area = dict()
                 self._device.map.path = dict()
-                await self.gethash_ack_callback.data_event(nav_msg[1])
+                await self.gethash_ack_callback(nav_msg[1])
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]
                 updated = self._device.map.update(common_data)
                 if updated:
-                    await self.get_commondata_ack_callback.data_event(common_data)
+                    await self.get_commondata_ack_callback(common_data)
 
     def _update_sys_data(self, message):
         """Update system."""
@@ -68,7 +66,9 @@ class StateManager:
             case "system_update_buf":
                 self._device.buffer(sys_msg[1])
             case "toapp_report_data":
-                pass
+                self._device.update_report_data(sys_msg[1])
+            case "mow_to_app_info":
+                self._device.mow_info(sys_msg[1])
 
     def _update_driver_data(self, message):
         pass

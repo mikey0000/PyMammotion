@@ -5,8 +5,10 @@ from threading import Thread
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 
+from pymammotion.data.model.device import MowingDevice
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice, has_field
+from pymammotion.proto.mctrl_sys import MctlSys, RptAct, RptInfoType
 
 bleNotificationEvt = BleNotificationEvent()
 
@@ -57,12 +59,14 @@ async def run(loop):
         return
 
     luba_ble = MammotionBaseBLEDevice(
-        device=luba_device
+        device=luba_device,
+        mowing_state=MowingDevice()
     )
 
     await asyncio.sleep(2)
     await luba_ble.start_sync(0)
-    await asyncio.sleep(2)
+    # await luba_ble.start_map_sync()
+    #await asyncio.sleep(2)
     # print(luba_ble.luba_msg.sys.toapp_report_data.dev)
     # if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
     #     dev = luba_ble.luba_msg.sys.toapp_report_data.dev
@@ -85,21 +89,25 @@ async def run(loop):
     # await luba_ble.command("return_to_dock")
     # await luba_ble.command("get_hash_response", total_frame=1, current_frame=1)
     counter = 30
-    while (counter > 0):
-        luba_device = await scan_for_luba()
-        if luba_device is not None:
-            luba_ble.update_device(luba_device)
-            await luba_ble.start_sync(0)
-        await asyncio.sleep(10)
-        # await luba_ble._execute_disconnect_with_lock()
-        await asyncio.sleep(60)
-
-        counter -= 1
+    # while (counter > 0):
+    #     luba_device = await scan_for_luba()
+    #     if luba_device is not None:
+    #         luba_ble.update_device(luba_device)
+    #         await luba_ble.start_sync(0)
+    #     await asyncio.sleep(10)
+    #     # await luba_ble._execute_disconnect_with_lock()
+    #     await asyncio.sleep(60)
+    #
+    #     counter -= 1
 
     # app_request_cover_paths_t use hashlist from ??
 
     # asyncio.run(await ble_heartbeat(luba_ble))
+    # await luba_ble.command("synchronize_hash_data", hash_num=25410289481558284)
+    await asyncio.sleep(20)
     print("end run?")
+    print(luba_ble.luba_msg.map)
+
 
 
 if __name__ == '__main__':

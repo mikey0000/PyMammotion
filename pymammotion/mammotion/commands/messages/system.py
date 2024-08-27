@@ -28,7 +28,7 @@ class MessageSystem(AbstractMessage, ABC):
         print("Send command - send factory reset")
         return self.send_order_msg_sys(build)
 
-    async def set_blade_control(self, on_off: int):
+    def set_blade_control(self, on_off: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
         sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
         sysKnifeControl.knife_status = on_off
