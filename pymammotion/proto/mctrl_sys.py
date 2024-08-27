@@ -312,7 +312,7 @@ class LoraCfgRsp(betterproto.Message):
     result: int = betterproto.int32_field(1)
     op: int = betterproto.int32_field(2)
     cfg: str = betterproto.string_field(3)
-    fac_cfg: str = betterproto.string_field(4)
+    fac_cfg: bytes = betterproto.bytes_field(4)
 
 
 @dataclass

@@ -82,7 +82,7 @@ class LoraCfgRsp(_message.Message):
     OP_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
     cfg: str
-    fac_cfg: str
+    fac_cfg: bytes
     op: int
     result: int
     def __init__(self, result: _Optional[int] = ..., op: _Optional[int] = ..., cfg: _Optional[str] = ..., fac_cfg: _Optional[str] = ...) -> None: ...
