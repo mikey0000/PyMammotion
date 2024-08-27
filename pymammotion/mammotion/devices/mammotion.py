@@ -1148,9 +1148,10 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
                 if len(self._waiting_queue) > 0:
                     fut: MammotionFuture = self._waiting_queue.popleft()
-                    while fut.fut.cancelled():
+                    while fut.fut.cancelled() and len(self._waiting_queue) > 0:
                         fut: MammotionFuture = self._waiting_queue.popleft()
-                    fut.resolve(cast(bytes, binary_data))
+                    if not fut.fut.cancelled():
+                        fut.resolve(cast(bytes, binary_data))
                 await self._state_manager.notification(new_msg)
 
     async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
