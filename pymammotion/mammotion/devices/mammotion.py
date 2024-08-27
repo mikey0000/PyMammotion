@@ -198,10 +198,11 @@ class MammotionDevices:
 async def create_devices(ble_device: BLEDevice,
     cloud_credentials: Credentials | None = None,
     preference: ConnectionPreference = ConnectionPreference.BLUETOOTH):
-    cloud_client = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password)
     mammotion = Mammotion(ble_device, preference)
 
     if cloud_credentials:
+        cloud_client = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email,
+                                             cloud_credentials.password)
         await mammotion.initiate_cloud_connection(cloud_client)
 
     return mammotion
