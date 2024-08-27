@@ -167,6 +167,7 @@ async def run():
     bleLubaConn = LubaBLE(bleNotificationEvt)
     did_connect = await bleLubaConn.scanForLubaAndConnect()
     if not did_connect:
+        print("Couldn't establish connection with the device")
         return
     await bleLubaConn.notifications()
     client = bleLubaConn.getClient()
@@ -188,6 +189,7 @@ if __name__ ==  '__main__':
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
     client = event_loop.run_until_complete(run())
-    joystick = JoystickControl(client)
-    joystick.run_controller()
-    event_loop.run_forever()
+    if client:
+        joystick = JoystickControl(client)
+        joystick.run_controller()
+        event_loop.run_forever()
