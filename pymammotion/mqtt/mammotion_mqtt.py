@@ -80,6 +80,8 @@ class MammotionMQTT:
     def connect_async(self):
         """Connect async to MQTT Server."""
         logger.info("Connecting...")
+        if self._linkkit_client.check_state() is LinkKit.LinkKitState.INITIALIZED:
+            self._linkkit_client.thing_setup()
         self._linkkit_client.connect_async()
 
 
@@ -121,8 +123,7 @@ class MammotionMQTT:
 
         if self.on_ready:
             self.is_ready = True
-            future = asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop)
-            asyncio.wrap_future(future, loop=self.loop)
+            asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop).result()
         # self._linkkit_client.query_ota_firmware()
         # command = MammotionCommand(device_name="Luba")
         # self._cloud_client.send_cloud_command(command.get_report_cfg())
@@ -138,8 +139,7 @@ class MammotionMQTT:
         payload = json.loads(payload)
         iot_id = payload.get("params", {}).get("iotId", "")
         if iot_id != "" and self.on_message:
-            future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
-            return asyncio.wrap_future(future, loop=self.loop)
+            asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop).result()
 
 
     def _thing_on_connect(self, session_flag, rc, user_data):

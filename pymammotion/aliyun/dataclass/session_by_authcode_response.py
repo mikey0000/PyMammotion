@@ -5,7 +5,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
 @dataclass
-class TokenData(DataClassORJSONMixin):
+class SessionOauthToken(DataClassORJSONMixin):
     identityId: str
     refreshTokenExpire: int
     iotToken: str
@@ -15,4 +15,4 @@ class TokenData(DataClassORJSONMixin):
 @dataclass
 class SessionByAuthCodeResponse(DataClassORJSONMixin):
     code: int
-    data: TokenData
+    data: SessionOauthToken

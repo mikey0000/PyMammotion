@@ -21,10 +21,6 @@ class Dock(Point):
 
     rotation: int = 0
 
-    def __init__(self):
-        super().__init__()
-        self.rotation = 0
-
 
 @dataclass
 class Location:

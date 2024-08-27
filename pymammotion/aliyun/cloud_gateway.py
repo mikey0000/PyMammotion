@@ -49,6 +49,9 @@ MOVE_HEADERS = (
 class SetupException(Exception):
     pass
 
+class AuthRefreshException(Exception):
+    """Raise exception when library cannot refresh token."""
+
 
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
@@ -57,18 +60,18 @@ class CloudIOTGateway:
     _device_sn = ""
     _utdid = ""
 
-    _connect_response = None
-    _login_by_oauth_response = None
-    _aep_response = None
-    _session_by_authcode_response = None
-    _listing_dev_by_account_response = None
-    _region = None
+    _connect_response: ConnectResponse | None = None
+    _login_by_oauth_response: LoginByOAuthResponse | None = None
+    _aep_response: AepResponse | None = None
+    _session_by_authcode_response: SessionByAuthCodeResponse | None = None
+    _devices_by_account_response: ListingDevByAccountResponse | None = None
+    _region_response = None
 
     _iot_token_issued_at : int = None
 
     converter = DatatypeConverter()
 
-    def __init__(self):
+    def __init__(self, connect_response: ConnectResponse | None, login_by_oauth_response: LoginByOAuthResponse | None, aep_response: AepResponse | None, session_by_authcode_response: SessionByAuthCodeResponse | None, region_response: RegionResponse | None, dev_by_account: ListingDevByAccountResponse | None):
         """Initialize the CloudIOTGateway."""
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
@@ -77,6 +80,12 @@ class CloudIOTGateway:
         self._client_id = self.generate_hardware_string(8)  # 8 characters
         self._device_sn = self.generate_hardware_string(32)  # 32 characters
         self._utdid = self.generate_hardware_string(32)  # 32 characters
+        self._connect_response = connect_response
+        self._login_by_oauth_response = login_by_oauth_response
+        self._aep_response = aep_response
+        self._session_by_authcode_response = session_by_authcode_response
+        self._region_response = region_response
+        self._devices_by_account_response = dev_by_account
 
     @staticmethod
     def generate_random_string(length):
@@ -104,6 +113,24 @@ class CloudIOTGateway:
             concatenated_str.encode("utf-8"),
             hashlib.sha1,
         ).hexdigest()
+
+    def get_connect_response(self):
+        return self._connect_response
+
+    def get_login_by_oauth_response(self):
+        return self._login_by_oauth_response
+
+    def get_aep_response(self):
+        return self._aep_response
+
+    def get_session_by_authcode_response(self):
+        return self._session_by_authcode_response
+
+    def get_devices_by_account_response(self):
+        return self._devices_by_account_response
+
+    def get_region_response(self):
+        return self._region_response
 
     def get_region(self, country_code: str, auth_code: str):
         """Get the region based on country code and auth code."""
@@ -143,8 +170,8 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in getting regions: " + response_body_dict["msg"])
 
-        self._region = RegionResponse.from_dict(response_body_dict)
-        logger.debug("Endpoint: %s", self._region.data.mqttEndpoint)
+        self._region_response = RegionResponse.from_dict(response_body_dict)
+        logger.debug("Endpoint: %s", self._region_response.data.mqttEndpoint)
 
         return response.body
 
@@ -152,8 +179,8 @@ class CloudIOTGateway:
         """Handle AEP authentication."""
         aep_domain = self.domain
 
-        if self._region.data.apiGatewayEndpoint is not None:
-            aep_domain = self._region.data.apiGatewayEndpoint
+        if self._region_response.data.apiGatewayEndpoint is not None:
+            aep_domain = self._region_response.data.apiGatewayEndpoint
 
         config = Config(
             app_key=self._app_key,
@@ -278,7 +305,7 @@ class CloudIOTGateway:
 
     async def login_by_oauth(self, country_code: str, auth_code: str):
         """Login by OAuth."""
-        region_url = self._region.data.oaApiGatewayEndpoint
+        region_url = self._region_response.data.oaApiGatewayEndpoint
 
         async with ClientSession() as session:
             headers = {
@@ -350,7 +377,7 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
         client = Client(config)
 
@@ -403,7 +430,7 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
         client = Client(config)
 
@@ -451,14 +478,11 @@ class CloudIOTGateway:
         iotTokenExpire = response_body_dict.get('data', {}).get('iotTokenExpire', None)
         refreshToken = response_body_dict.get('data', {}).get('refreshToken', None)
 
+
         if (identityId is None or refreshTokenExpire is None or iotToken is None or iotTokenExpire is None or refreshToken is None):
             raise Exception("Error check or refresh token: Parameters not correct")
-        
-        self._session_by_authcode_response.data.identityId = identityId
-        self._session_by_authcode_response.data.refreshTokenExpire = refreshTokenExpire
-        self._session_by_authcode_response.data.iotToken = iotToken
-        self._session_by_authcode_response.data.iotTokenExpire = iotTokenExpire
-        self._session_by_authcode_response.data.refreshToken = refreshToken
+
+        self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
         self._iot_token_issued_at  = int(time.time())
 
         
@@ -468,7 +492,7 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
 
         client = Client(config)
@@ -502,8 +526,8 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
-        self._listing_dev_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
-        return self._listing_dev_by_account_response
+        self._devices_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
+        return self._devices_by_account_response
 
     def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send a cloud command to the specified IoT device."""
@@ -514,14 +538,14 @@ class CloudIOTGateway:
             if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (int(time.time())):
                 self.check_or_refresh_session()
             else:
-                raise Exception("Refresh token expired. Please re-login")
+                raise AuthRefreshException("Refresh token expired. Please re-login")
                 
             
 
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region.data.apiGatewayEndpoint,
+            domain=self._region_response.data.apiGatewayEndpoint,
         )
 
         client = Client(config)
@@ -573,4 +597,4 @@ class CloudIOTGateway:
 
     @property
     def listing_dev_by_account_response(self):
-        return self._listing_dev_by_account_response
+        return self._devices_by_account_response
