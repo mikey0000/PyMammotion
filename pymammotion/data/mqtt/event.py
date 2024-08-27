@@ -95,9 +95,9 @@ class DeviceWarningEventParams(GeneralParams):
 
 @dataclass
 class ThingEventMessage(DataClassORJSONMixin):
-    method: Literal["thing.events"]
+    method: Literal["thing.events", "thing.properties"]
     id: str
-    params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams]
+    params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams, str]
     version: Literal["1.0"]
 
     @classmethod
@@ -114,6 +114,8 @@ class ThingEventMessage(DataClassORJSONMixin):
             params_obj = DeviceProtobufMsgEventParams(**params_dict)
         elif identifier == "device_warning_event":
             params_obj = DeviceWarningEventParams(**params_dict)
+        elif identifier == "device_config_req_event":
+            params_obj = payload.get("params", '')
         else:
             raise ValueError(f"Unknown identifier: {identifier}")
 

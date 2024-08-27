@@ -29,7 +29,7 @@ from bleak_retry_connector import (
     establish_connection,
 )
 
-from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway, DeviceOfflineException, SetupException
 from pymammotion.aliyun.dataclass.dev_by_account_response import Device
 from pymammotion.bluetooth import BleMessage
 from pymammotion.const import MAMMOTION_DOMAIN
@@ -1070,9 +1070,23 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         """Send command to device and read response."""
         try:
             return await self._execute_command_locked(key, command)
+        except DeviceOfflineException as ex:
+            _LOGGER.debug(
+                "%s: device offline in _send_command_locked: %s",
+                self.device.nickName,
+                ex,
+            )
+        except SetupException as ex:
+            session = self._mqtt_client.get_cloud_client().get_session_by_authcode_response()
+            _LOGGER.debug(
+                "%s: session identityId mssing in _send_command_locked: %s",
+                self.device.nickName,
+                session,
+            )
+            if session.data.identityId is None:
+                await self._mqtt_client.get_cloud_client().session_by_auth_code()
+
         except Exception as ex:
-            # Disconnect so we can reset state and try again
-            await asyncio.sleep(DBUS_ERROR_BACKOFF_TIME)
             _LOGGER.debug(
                 "%s: error in _send_command_locked: %s",
                 self.device.nickName,
@@ -1085,6 +1099,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         assert self._mqtt_client is not None
         self._key = key
         _LOGGER.debug("%s: Sending command: %s", self.device.nickName, key)
+
         await self.loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
         future = MammotionFuture()
         self._waiting_queue.append(future)
@@ -1132,7 +1147,10 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             _LOGGER.debug("Thing event received")
             event = ThingEventMessage.from_dicts(payload)
             params = event.params
-            if params.identifier == "device_protobuf_msg_event":
+            if isinstance(params, str):
+                _LOGGER.debug("config event %s", str)
+                return
+            if params.identifier == "device_protobuf_msg_event" and params.thingType == "thing.events":
                 _LOGGER.debug("Protobuf event")
                 binary_data = base64.b64decode(params.value.get("content", ""))
                 self._update_raw_data(cast(bytes, binary_data))
@@ -1153,6 +1171,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                     if not fut.fut.cancelled():
                         fut.resolve(cast(bytes, binary_data))
                 await self._state_manager.notification(new_msg)
+            if params.thingType == "thing.properties":
+                _LOGGER.debug(event)
 
     async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
         """Async handler for incoming MQTT messages."""
@@ -1161,5 +1181,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _disconnect(self):
         """Disconnect the MQTT client."""
         self._mqtt_client.disconnect()
+
 
 

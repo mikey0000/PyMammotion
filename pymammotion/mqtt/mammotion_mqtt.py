@@ -70,7 +70,7 @@ class MammotionMQTT:
             username=self._mqtt_username,
         )
 
-        self._linkkit_client.enable_logger(level=logging.DEBUG)
+        self._linkkit_client.enable_logger(level=logging.ERROR)
         self._linkkit_client.on_connect = self._thing_on_connect
         self._linkkit_client.on_disconnect = self._on_disconnect
         self._linkkit_client.on_thing_enable = self._thing_on_thing_enable

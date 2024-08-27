@@ -52,6 +52,9 @@ class SetupException(Exception):
 class AuthRefreshException(Exception):
     """Raise exception when library cannot refresh token."""
 
+class DeviceOfflineException(Exception):
+    """Raise exception when device is offline."""
+
 
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
@@ -416,10 +419,15 @@ class CloudIOTGateway:
         # Load the JSON string into a dictionary
         response_body_dict = json.loads(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in creating session: " + response_body_dict["msg"])
+        session_by_auth = SessionByAuthCodeResponse.from_dict(response_body_dict)
 
-        self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
+        if int(session_by_auth.code) != 200:
+            raise Exception("Error in creating session: " + response_body_str)
+
+        if session_by_auth.data.identityId is None:
+            raise Exception("Error in creating session: " + response_body_str)
+
+        self._session_by_authcode_response = session_by_auth
         self._iot_token_issued_at  = int(time.time())
 
         return response.body
@@ -472,17 +480,13 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error check or refresh token: " + response_body_dict.get('msg', ''))
 
-        identityId = response_body_dict.get('data', {}).get('identityId', None)
-        refreshTokenExpire = response_body_dict.get('data', {}).get('refreshTokenExpire', None)
-        iotToken = response_body_dict.get('data', {}).get('iotToken', None)
-        iotTokenExpire = response_body_dict.get('data', {}).get('iotTokenExpire', None)
-        refreshToken = response_body_dict.get('data', {}).get('refreshToken', None)
+        session = SessionByAuthCodeResponse.from_dict(response_body_dict)
+        session_data = session.data
 
-
-        if (identityId is None or refreshTokenExpire is None or iotToken is None or iotTokenExpire is None or refreshToken is None):
+        if session_data.identityId is None or session_data.refreshTokenExpire is None or session_data.iotToken is None or session_data.iotTokenExpire is None or session_data.refreshToken is None:
             raise Exception("Error check or refresh token: Parameters not correct")
 
-        self._session_by_authcode_response = SessionByAuthCodeResponse.from_dict(response_body_dict)
+        self._session_by_authcode_response = session
         self._iot_token_issued_at  = int(time.time())
 
         
@@ -591,6 +595,7 @@ class CloudIOTGateway:
             if response_body_dict.get("code") == 29003:
                 raise SetupException(response_body_dict.get("code"))
             if response_body_dict.get("code") == 6205:
+                raise DeviceOfflineException(response_body_dict.get("code"))
                 """Device is offline."""
 
         return message_id
