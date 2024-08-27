@@ -55,6 +55,8 @@ class AuthRefreshException(Exception):
 class DeviceOfflineException(Exception):
     """Raise exception when device is offline."""
 
+class LoginException(Exception):
+    """Raise exception when library cannot log in."""
 
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
@@ -303,8 +305,11 @@ class CloudIOTGateway:
                 params={"request": json.dumps(_bodyParam, separators=(",", ":"))},
             ) as resp:
                 data = await resp.json()
-                self._connect_response = ConnectResponse.from_dict(data)
                 logger.debug(data)
+                if resp.status == 200:
+                    self._connect_response = ConnectResponse.from_dict(data)
+                    return self._connect_response
+                raise LoginException(data)
 
     async def login_by_oauth(self, country_code: str, auth_code: str):
         """Login by OAuth."""
@@ -372,8 +377,10 @@ class CloudIOTGateway:
             ) as resp:
                 data = await resp.json()
                 logger.debug(data)
-
-                self._login_by_oauth_response = LoginByOAuthResponse.from_dict(data)
+                if resp.status == 200:
+                    self._login_by_oauth_response = LoginByOAuthResponse.from_dict(data)
+                    return self._login_by_oauth_response
+                raise LoginException(data)
 
     def session_by_auth_code(self):
         """Create a session by auth code."""
