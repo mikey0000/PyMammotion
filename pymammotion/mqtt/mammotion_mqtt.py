@@ -57,7 +57,7 @@ class MammotionMQTT:
         ).hexdigest()
 
         self._client_id = client_id
-        self.loop = asyncio.get_event_loop()
+        self.loop = asyncio.get_running_loop()
 
         self._linkkit_client = LinkKit(
             region_id,
@@ -139,7 +139,8 @@ class MammotionMQTT:
         payload = json.loads(payload)
         iot_id = payload.get("params", {}).get("iotId", "")
         if iot_id != "" and self.on_message:
-            asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop).result()
+            future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
+            asyncio.wrap_future(future, loop=self.loop)
 
 
     def _thing_on_connect(self, session_flag, rc, user_data):

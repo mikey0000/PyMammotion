@@ -235,7 +235,7 @@ class Mammotion(object):
                 return
 
         self.cloud_client = cloud_client
-        self.mqtt = MammotionMQTT(region_id=cloud_client._region.data.regionId,
+        self.mqtt = MammotionMQTT(region_id=cloud_client._region_response.data.regionId,
                                         product_key=cloud_client._aep_response.data.productKey,
                                         device_name=cloud_client._aep_response.data.deviceName,
                                         device_secret=cloud_client._aep_response.data.deviceSecret,
@@ -332,8 +332,9 @@ class MammotionBaseDevice:
 
     _mower: MowingDevice
     _state_manager: StateManager
+    _cloud_device: Device | None = None
 
-    def __init__(self, device: MowingDevice) -> None:
+    def __init__(self, device: MowingDevice, cloud_device: Device | None = None) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
@@ -342,12 +343,13 @@ class MammotionBaseDevice:
         self._state_manager.gethash_ack_callback = self.datahash_response
         self._state_manager.get_commondata_ack_callback = self.commdata_response
         self._notify_future: asyncio.Future[bytes] | None = None
+        self._cloud_device = cloud_device
 
     async def datahash_response(self, hash_ack: NavGetHashListAck):
         """Handle datahash responses."""
         result_hash = 0
         while hash_ack.data_couple[0] != result_hash:
-            data = await self._send_command_with_args("synchronize_hash_data", hash_num=hash_ack.data_couple[0])
+            data = await self.queue_command("synchronize_hash_data", hash_num=hash_ack.data_couple[0])
             msg = LubaMsg().parse(data)
             if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
                 result_hash = msg.nav.toapp_get_commondata_ack.hash
@@ -365,7 +367,7 @@ class MammotionBaseDevice:
                 return
             result_hash = 0
             while data_hash != result_hash:
-                data = await self._send_command_with_args("synchronize_hash_data", hash_num=data_hash)
+                data = await self.queue_command("synchronize_hash_data", hash_num=data_hash)
                 msg = LubaMsg().parse(data)
                 if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
                     result_hash = msg.nav.toapp_get_commondata_ack.hash
@@ -377,7 +379,7 @@ class MammotionBaseDevice:
             region_data.type = common_data.type
             region_data.total_frame = total_frame
             region_data.current_frame = current_frame
-            await self._send_command_with_args("get_regional_data", regional_data=region_data)
+            await self.queue_command("get_regional_data", regional_data=region_data)
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
@@ -476,6 +478,10 @@ class MammotionBaseDevice:
         return self._mower
 
     @abstractmethod
+    async def queue_command(self, key: str,  **kwargs: any) -> bytes:
+        """Queue commands to mower."""
+
+    @abstractmethod
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
 
@@ -505,9 +511,15 @@ class MammotionBaseDevice:
 
         await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
 
-        await self._send_command_with_args(
-            "get_area_name_list", device_id=self._mower.device.net.toapp_wifi_iot_status.devicename
-        )
+        if self._cloud_device:
+            await self._send_command_with_args(
+                "get_area_name_list", device_id=self._cloud_device.deviceName
+            )
+        if has_field(self._mower.net.toapp_wifi_iot_status):
+            await self._send_command_with_args(
+                "get_area_name_list", device_id=self._mower.net.toapp_wifi_iot_status.devicename
+            )
+
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
@@ -586,6 +598,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 130, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
             )
 
+    async def queue_command(self, key: str, **kwargs: any) -> bytes | None:
+        return await self._send_command_with_args(key, **kwargs)
+
     async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
         """Send command to device and read response."""
         if self._operation_lock.locked():
@@ -655,7 +670,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def rssi(self) -> int:
         """Return RSSI of device."""
         try:
-            return self._mower.device.sys.toapp_report_data.connect.ble_rssi
+            return self._mower.sys.toapp_report_data.connect.ble_rssi
         finally:
             return 0
 
@@ -938,9 +953,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         mowing_state: MowingDevice
     ) -> None:
         """Initialize MammotionBaseCloudDevice."""
-        super().__init__(mowing_state)
+        super().__init__(mowing_state, cloud_device)
         self._ble_sync_task = None
         self.is_ready = False
+        self.command_queue = asyncio.Queue()
+        self.processing_task = asyncio.create_task(self._process_queue())
         self._mqtt_client = mqtt_client
         self.iot_id = cloud_device.iotId
         self.device = cloud_device
@@ -966,7 +983,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def on_ready(self):
         """Callback for when MQTT is subscribed to events."""
         if self.on_ready_callback:
-            self.on_ready_callback()
+            await self.on_ready_callback()
 
         await self._ble_sync()
         await self.run_periodic_sync_task()
@@ -997,6 +1014,32 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             self._ble_sync_task = self.loop.call_later(
                 160, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
             )
+
+    async def queue_command(self, key: str, **kwargs: any) -> bytes:
+        # Create a future to hold the result
+        _LOGGER.debug("Queueing command: %s", key)
+        future = asyncio.Future()
+        # Put the command in the queue as a tuple (key, command, future)
+        command_bytes = getattr(self._commands, key)(**kwargs)
+        await self.command_queue.put((key, command_bytes, future))
+        # Wait for the future to be resolved
+        return await future
+
+    async def _process_queue(self):
+        while True:
+            # Get the next item from the queue
+            key, command, future = await self.command_queue.get()
+            try:
+                # Process the command using _execute_command_locked
+                result = await self._execute_command_locked(key, command)
+                # Set the result on the future
+                future.set_result(result)
+            except Exception as ex:
+                # Set the exception on the future if something goes wrong
+                future.set_exception(ex)
+            finally:
+                # Mark the task as done
+                self.command_queue.task_done()
 
     async def _on_mqtt_message(self, topic: str, payload: str, iot_id: str) -> None:
         """Handle incoming MQTT messages."""

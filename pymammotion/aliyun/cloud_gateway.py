@@ -71,7 +71,7 @@ class CloudIOTGateway:
 
     converter = DatatypeConverter()
 
-    def __init__(self, connect_response: ConnectResponse | None, login_by_oauth_response: LoginByOAuthResponse | None, aep_response: AepResponse | None, session_by_authcode_response: SessionByAuthCodeResponse | None, region_response: RegionResponse | None, dev_by_account: ListingDevByAccountResponse | None):
+    def __init__(self, connect_response: ConnectResponse | None = None, login_by_oauth_response: LoginByOAuthResponse | None = None, aep_response: AepResponse | None = None, session_by_authcode_response: SessionByAuthCodeResponse | None = None, region_response: RegionResponse | None = None, dev_by_account: ListingDevByAccountResponse | None = None):
         """Initialize the CloudIOTGateway."""
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
