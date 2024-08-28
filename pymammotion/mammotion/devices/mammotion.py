@@ -346,6 +346,9 @@ class MammotionBaseDevice:
         self._notify_future: asyncio.Future[bytes] | None = None
         self._cloud_device = cloud_device
 
+    def set_notifiction_callback(self, func: Callable[[],Awaitable[None]]):
+        self._state_manager.on_notification_callback = func
+
     async def datahash_response(self, hash_ack: NavGetHashListAck):
         """Handle datahash responses."""
         result_hash = 0
@@ -1147,10 +1150,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             _LOGGER.debug("Thing event received")
             event = ThingEventMessage.from_dicts(payload)
             params = event.params
-            if isinstance(params, str):
-                _LOGGER.debug("config event %s", str)
+            if params.identifier is None:
                 return
-            if params.identifier == "device_protobuf_msg_event" and params.thingType == "thing.events":
+            if params.identifier == "device_protobuf_msg_event" and event.method == "thing.events":
                 _LOGGER.debug("Protobuf event")
                 binary_data = base64.b64decode(params.value.get("content", ""))
                 self._update_raw_data(cast(bytes, binary_data))
@@ -1171,7 +1173,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                     if not fut.fut.cancelled():
                         fut.resolve(cast(bytes, binary_data))
                 await self._state_manager.notification(new_msg)
-            if params.thingType == "thing.properties":
+            if event.method == "thing.properties":
                 _LOGGER.debug(event)
 
     async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:

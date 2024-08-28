@@ -17,6 +17,7 @@ class StateManager:
         self._device = device
         self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck],Awaitable[None]]] = None
         self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck],Awaitable[None]]] = None
+        self.on_notification_callback: Optional[Callable[[],Awaitable[None]]] = None
 
     def get_device(self) -> MowingDevice:
         """Get device."""
@@ -43,6 +44,9 @@ class StateManager:
                 self._update_mul_data(message)
             case "ota":
                 self._update_ota_data(message)
+
+        if self.on_notification_callback:
+            await self.on_notification_callback()
 
     async def _update_nav_data(self, message):
         """Update nav data."""

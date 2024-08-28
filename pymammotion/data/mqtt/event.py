@@ -45,10 +45,15 @@ class DeviceWarningEventValue(DataClassORJSONMixin):
     # (see resources/res/values-en-rUS/strings.xml in APK)
     code: int
 
+@dataclass
+class DeviceConfigurationRequestValue(DataClassORJSONMixin):
+    code: int
+    bizId: str
+    params: str
+
 
 @dataclass
 class GeneralParams(DataClassORJSONMixin):
-    identifier: str
     groupIdList: list[str]
     groupId: str
     categoryKey: Literal["LawnMower"]
@@ -67,7 +72,7 @@ class GeneralParams(DataClassORJSONMixin):
     tenantInstanceId: str
     value: Any
 
-    # Campi opzionali
+    identifier: Optional[str] = None
     checkFailedData: Optional[dict] = None
     _tenantId: Optional[str] = None
     generateTime: Optional[int] = None
@@ -92,6 +97,11 @@ class DeviceWarningEventParams(GeneralParams):
     type: Literal["alert"]
     value: DeviceWarningEventValue
 
+@dataclass
+class DeviceConfigurationRequestEvent(GeneralParams):
+    type: Literal["info"]
+    value: DeviceConfigurationRequestValue
+
 
 @dataclass
 class ThingEventMessage(DataClassORJSONMixin):
@@ -102,7 +112,7 @@ class ThingEventMessage(DataClassORJSONMixin):
 
     @classmethod
     def from_dicts(cls, payload: dict) -> "ThingEventMessage":
-        """Deserializza il payload JSON in un'istanza di ThingEventMessage."""
+        """Deserialize payload JSON ThingEventMessage."""
         method = payload.get("method")
         event_id = payload.get("id")
         params_dict = payload.get("params", {})
@@ -110,7 +120,10 @@ class ThingEventMessage(DataClassORJSONMixin):
 
         # Determina quale classe usare per i parametri
         identifier = params_dict.get("identifier")
-        if identifier == "device_protobuf_msg_event":
+        if identifier is None:
+            """Request configuration event."""
+            params_obj = DeviceConfigurationRequestEvent(**params_dict)
+        elif identifier == "device_protobuf_msg_event":
             params_obj = DeviceProtobufMsgEventParams(**params_dict)
         elif identifier == "device_warning_event":
             params_obj = DeviceWarningEventParams(**params_dict)
@@ -119,5 +132,4 @@ class ThingEventMessage(DataClassORJSONMixin):
         else:
             raise ValueError(f"Unknown identifier: {identifier}")
 
-        # Crea e restituisce l'istanza di ThingEventMessage
         return cls(method=method, id=event_id, params=params_obj, version=version)
