@@ -11,6 +11,7 @@ import time
 import uuid
 from logging import getLogger, exception
 from datetime import datetime
+from urllib.parse import urlencode
 
 from aiohttp import ClientSession
 from alibabacloud_iot_api_gateway.client import Client
@@ -241,6 +242,7 @@ class CloudIOTGateway:
     async def connect(self):
         """Connect to the Aliyun Cloud IoT Gateway."""
         region_url = "sdk.openaccount.aliyun.com"
+        time_now = time.time()
         async with ClientSession() as session:
             headers = {
                 "host": region_url,
@@ -323,7 +325,7 @@ class CloudIOTGateway:
                 "x-ca-key": self._app_key,
                 "x-ca-signaturemethod": "HmacSHA256",
                 "accept": "application/json",
-                "content-type": "application/x-www-form-urlencoded",
+                "content-type": "application/x-www-form-urlencoded; charset=utf-8",
                 "user-agent": UtilClient.get_user_agent(None),
                 "vid": self._connect_response.data.vid,
             }
@@ -331,14 +333,16 @@ class CloudIOTGateway:
             _bodyParam = {
                 "country": country_code,
                 "authCode": auth_code,
-                "oauthPlateform": "23",
+                "oauthPlateform": 23,
                 "oauthAppKey": self._app_key,
-                "appAuthToken": self._device_sn,
                 "riskControlInfo": {
                     "appID": "com.agilexrobotics",
+                    "appAuthToken": "",
                     "signType": "RSA",
+                    "sdkVersion": "3.4.2",
                     "utdid": self._utdid,
                     "umidToken": self._utdid,
+                    "deviceId": self._connect_response.data.data.device.data.deviceId,
                     "USE_OA_PWD_ENCRYPT": "true",
                     "USE_H5_NC": "true",
                 },
@@ -354,12 +358,12 @@ class CloudIOTGateway:
             header = "".join(f"{k}:{dic[k]}\n" for k in keys).strip()
 
             headers["x-ca-signature-headers"] = sign_headers
-            string_to_sign = "POST\n{}\n\n{}\n{}\n{}\n/api/prd/loginbyoauth.json?loginByOauthRequest={}".format(
+            string_to_sign = "POST\n{}\n\n{}\n{}\n{}\n/api/prd/loginbyoauth.json?{}".format(
                 headers["accept"],
                 headers["content-type"],
                 headers["date"],
                 header,
-                json.dumps(_bodyParam, separators=(",", ":")),
+                f"loginByOauthRequest={json.dumps(_bodyParam, separators=(",", ":"))}",
             )
 
             hash_val = hmac.new(
@@ -369,12 +373,14 @@ class CloudIOTGateway:
             ).digest()
             signature = base64.b64encode(hash_val).decode("utf-8")
             headers["x-ca-signature"] = signature
-
             async with session.post(
                 f"https://{region_url}/api/prd/loginbyoauth.json",
                 headers=headers,
-                params={"loginByOauthRequest": json.dumps(_bodyParam, separators=(",", ":"))},
+                data={
+                    'loginByOauthRequest': json.dumps(_bodyParam, separators=(",", ":"))
+                }
             ) as resp:
+
                 data = await resp.json()
                 logger.debug(data)
                 if resp.status == 200:

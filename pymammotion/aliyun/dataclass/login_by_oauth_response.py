@@ -53,8 +53,8 @@ class InnerData(DataClassORJSONMixin):
     data: InnerDataContent
     subCode: int
     message: str
-    deviceId: str
     successful: str
+    deviceId: Optional[str] = None
 
 
 @dataclass

@@ -55,7 +55,7 @@ class MammotionHTTP:
     @classmethod
     async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
         async with session.post(
-            "/user-server/v1/user/oauth/token",
+            "/oauth/token",
             params=dict(
                 username=username,
                 password=password,
