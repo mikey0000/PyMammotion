@@ -18,9 +18,9 @@ DataT = TypeVar("DataT")
 
 @dataclass
 class Response(DataClassDictMixin, Generic[DataT]):
-    data: DataT
     code: int
     msg: str
+    data: DataT | None = None
 
 
 @dataclass
@@ -64,11 +64,12 @@ class MammotionHTTP:
                 grant_type="password",
             ),
         ) as resp:
-            data = await resp.json()
-            # TODO catch errors from mismatch user / password
-            # Assuming the data format matches the expected structure
-            login_response_data = LoginResponseData.from_dict(data["data"])
-            return Response(data=login_response_data, code=data["code"], msg=data["msg"])
+            if resp.status == 200:
+                data = await resp.json()
+                response = Response.from_dict(data)
+                # TODO catch errors from mismatch user / password elsewhere
+                # Assuming the data format matches the expected structure
+                return response
 
 
 async def connect_http(username: str, password: str) -> MammotionHTTP:
