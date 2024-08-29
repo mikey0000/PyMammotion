@@ -1071,6 +1071,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
         """Send command to device and read response."""
+        if not self._mqtt_client.is_connected:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._mqtt_client.connect_async)
+
+            if not self._mqtt_client.is_connected:
+                raise Exception("MQTT not connected, couldn't recover")
         try:
             return await self._execute_command_locked(key, command)
         except DeviceOfflineException as ex:
@@ -1106,7 +1112,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         await self.loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, self.iot_id, command)
         future = MammotionFuture()
         self._waiting_queue.append(future)
-        timeout = 20
+        timeout = 5
         try:
             notify_msg = await future.async_get(timeout)
         except asyncio.TimeoutError:

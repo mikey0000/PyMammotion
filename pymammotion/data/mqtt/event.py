@@ -130,6 +130,6 @@ class ThingEventMessage(DataClassORJSONMixin):
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", '')
         else:
-            raise ValueError(f"Unknown identifier: {identifier}")
+            raise ValueError(f"Unknown identifier: {identifier} {params_dict}")
 
         return cls(method=method, id=event_id, params=params_obj, version=version)
