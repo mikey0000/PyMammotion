@@ -47,10 +47,12 @@ class LoginResponseData(DataClassORJSONMixin):
 
 
 class MammotionHTTP:
-    def __init__(self, login: LoginResponseData):
+    def __init__(self, response: Response):
         self._headers = dict()
-        self._headers["Authorization"] = f"Bearer {login.access_token}"
-        self.login_info = login
+        self.login_info = LoginResponseData.from_dict(response.data) if response.data else None
+        self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if response.data else None
+        self.msg = response.msg
+        self.code = response.code
 
     @classmethod
     async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
@@ -75,4 +77,4 @@ class MammotionHTTP:
 async def connect_http(username: str, password: str) -> MammotionHTTP:
     async with ClientSession(MAMMOTION_DOMAIN) as session:
         login_response = await MammotionHTTP.login(session, username, password)
-        return MammotionHTTP(login_response.data)
+        return MammotionHTTP(login_response)
