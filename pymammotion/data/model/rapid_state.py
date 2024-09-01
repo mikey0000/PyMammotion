@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
+from pymammotion.utility.conversions import parse_double
+
 
 class RTKStatus(Enum):
     NONE = 0
@@ -10,18 +12,18 @@ class RTKStatus(Enum):
 
 @dataclass
 class RapidState:
-    pos_x: float
-    pos_y: float
-    rtk_status: RTKStatus
-    toward: float
-    satellites_total: int
-    satellites_l2: int
-    rtk_age: float
-    lat_std: float
-    lon_std: float
-    pos_type: int
-    zone_hash: int
-    pos_level: int
+    pos_x: float = 0
+    pos_y: float = 0
+    rtk_status: RTKStatus = RTKStatus.NONE
+    toward: float = 0
+    satellites_total: int = 0
+    satellites_l2: int = 0
+    rtk_age: float = 0
+    lat_std: float = 0
+    lon_std: float = 0
+    pos_type: int = 0
+    zone_hash: int = 0
+    pos_level: int = 0
 
     @classmethod
     def from_raw(cls, raw: list[int]) -> "RapidState":
@@ -29,13 +31,13 @@ class RapidState:
             rtk_status=RTKStatus.FINE if raw[0] == 4 else RTKStatus.BAD if raw[0] in (1, 5) else RTKStatus.NONE,
             pos_level=raw[1],
             satellites_total=raw[2],
-            rtk_age=raw[3] / 10000,
-            lat_std=raw[4] / 10000,
-            lon_std=raw[5] / 10000,
+            rtk_age=parse_double(raw[3], 4.0),
+            lat_std=parse_double(raw[4], 4.0),
+            lon_std=parse_double(raw[5], 4.0),
             satellites_l2=raw[6],
-            pos_x=raw[7] / 10000,
-            pos_y=raw[8] / 10000,
-            toward=raw[9] / 10000,
+            pos_x=parse_double(raw[7], 4.0),
+            pos_y=parse_double(raw[8], 4.0),
+            toward=parse_double(raw[9], 4.0),
             pos_type=raw[10],
             zone_hash=raw[11],
         )

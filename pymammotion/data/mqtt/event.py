@@ -51,6 +51,16 @@ class DeviceConfigurationRequestValue(DataClassORJSONMixin):
     bizId: str
     params: str
 
+@dataclass
+class DeviceNotificationEventCode(DataClassORJSONMixin):
+    localTime: int
+    code: str
+
+@dataclass
+class DeviceNotificationEventValue(DataClassORJSONMixin):
+    data: DeviceNotificationEventCode
+
+
 
 @dataclass
 class GeneralParams(DataClassORJSONMixin):
@@ -90,6 +100,16 @@ class DeviceProtobufMsgEventParams(GeneralParams):
     type: Literal["info"]
     value: DeviceProtobufMsgEventValue
 
+@dataclass
+class DeviceNotificationEventParams(GeneralParams):
+    """Device notification event.
+
+    {'data': '{"localTime":1725159492000,"code":"1002"}'},
+    """
+
+    identifier: Literal["device_notification_event"]
+    type: Literal["info"]
+    value: DeviceNotificationEventValue
 
 @dataclass
 class DeviceWarningEventParams(GeneralParams):
@@ -129,6 +149,8 @@ class ThingEventMessage(DataClassORJSONMixin):
             params_obj = DeviceWarningEventParams(**params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", '')
+        elif identifier == "device_notification_event":
+            params_obj = DeviceNotificationEventParams(**params_dict)
         else:
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")
 

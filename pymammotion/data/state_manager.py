@@ -53,9 +53,8 @@ class StateManager:
         nav_msg = betterproto.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
             case "toapp_gethash_ack":
-                self._device.map.obstacle = dict()
-                self._device.map.area = dict()
-                self._device.map.path = dict()
+                hashlist_ack: NavGetHashListAck = nav_msg[1]
+                self._device.map.set_hashlist(hashlist_ack.data_couple)
                 await self.gethash_ack_callback(nav_msg[1])
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]
@@ -73,6 +72,8 @@ class StateManager:
                 self._device.update_report_data(sys_msg[1])
             case "mow_to_app_info":
                 self._device.mow_info(sys_msg[1])
+            case "system_tard_state_tunnel":
+                self._device.run_state_update(sys_msg[1])
 
     def _update_driver_data(self, message):
         pass

@@ -123,7 +123,7 @@ class SystemUpdateBuf:
     ZONE_STATE_LEN_INDEX = 1
 
 
-class SystemRapidStateTunnel:
+class SystemRapidStateTunnelIndex(IntEnum):
     DIS_CAR_RTK_STARS_INDEX = 15
     DIS_RTK_STATUS_INDEX = 13
     L1_SATS_INDEX = 2

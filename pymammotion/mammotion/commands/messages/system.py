@@ -30,20 +30,19 @@ class MessageSystem(AbstractMessage, ABC):
 
     def set_blade_control(self, on_off: int):
         mctlsys = mctrl_sys_pb2.MctlSys()
-        sysKnifeControl = mctrl_sys_pb2.SysKnifeControl()
-        sysKnifeControl.knife_status = on_off
-        mctlsys.todev_knife_ctrl.CopyFrom(sysKnifeControl)
+        sys_knife_control = mctrl_sys_pb2.SysKnifeControl()
+        sys_knife_control.knife_status = on_off
+        mctlsys.todev_knife_ctrl.CopyFrom(sys_knife_control)
 
         return self.send_order_msg_sys(mctlsys)
 
     def get_device_product_model(self):
         return self.send_order_msg_sys(
-            mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t()),
-            12,
-            True,
+            mctrl_sys_pb2.MctlSys(device_product_type_info=mctrl_sys_pb2.device_product_type_info_t())
         )
 
     def read_and_set_sidelight(self, is_sidelight: bool, operate: int):
+        """Read state of sidelight as well as set it."""
         if is_sidelight:
             build = mctrl_sys_pb2.TimeCtrlLight(
                 operate=operate,
@@ -80,7 +79,7 @@ class MessageSystem(AbstractMessage, ABC):
             param_id}, param_value={param_value}")
         return self.send_order_msg_sys(build2)
 
-    def read_and_set_rt_k_paring_code(self, op: int, cgf: str):
+    def read_and_set_rtk_paring_code(self, op: int, cgf: str):
         print(f"Send read and write base station configuration quality op:{
             op}, cgf:{cgf}")
         return self.send_order_msg_sys(

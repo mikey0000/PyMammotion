@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import betterproto
 
-from pymammotion.data.model import HashList
+from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_config import DeviceLimits
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
@@ -16,12 +16,11 @@ from pymammotion.proto.mctrl_driver import MctlDriver
 from pymammotion.proto.mctrl_nav import MctlNav
 from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, ReportInfoData, SystemUpdateBufMsg
+from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, ReportInfoData, SystemUpdateBufMsg, \
+    SystemRapidStateTunnelMsg
+from pymammotion.utility.constant import WorkMode
+from pymammotion.utility.conversions import parse_double
 from pymammotion.utility.map import CoordinateConverter
-
-
-def parse_double(val: float, d: float):
-    return val / math.pow(10.0, d)
 
 
 @dataclass
@@ -31,15 +30,17 @@ class MowingDevice:
     device: LubaMsg
     map: HashList
     location: Location
+    mowing_state: RapidState
 
     def __init__(self):
         self.device = LubaMsg()
-        self.map = HashList(area={}, path={}, obstacle={})
+        self.map = HashList(area={}, path={}, obstacle={}, hashlist=[])
         self.location = Location()
         self.report_data = ReportData()
         self.err_code_list = []
         self.err_code_list_time = []
         self.limits = DeviceLimits(30, 70, 0.2, 0.6)
+        self.mowing_state = RapidState()
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
@@ -97,14 +98,21 @@ class MowingDevice:
     def update_report_data(self, toapp_report_data: ReportInfoData):
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):
-            if index == 0:
+            if index == 0 and location.real_pos_y != 0:
                 self.location.position_type = location.pos_type
                 self.location.orientation = location.real_toward / 10000
                 self.location.device = coordinate_converter.enu_to_lla(
                     parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
                 )
+                if location.zone_hash:
+                    self.location.work_zone = location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
+
+
 
         self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
+
+    def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg):
+        self.mowing_state = RapidState().from_raw(rapid_state.rapid_state_data)
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT):
         pass

@@ -8,12 +8,11 @@ from pyjoystick.utils import PeriodicThread
 
 from pymammotion import MammotionBaseBLEDevice
 from pymammotion.event import BleNotificationEvent
-from pymammotion.utility.rocker_util import RockerControlUtil
+from pymammotion.utility.movement import transform_both_speeds, get_percent
 
 bleNotificationEvt = BleNotificationEvent()
 
 nest_asyncio.apply()
-
 
 class JoystickControl:
     """Joystick class for controlling Luba with a joystick"""
@@ -54,7 +53,7 @@ class JoystickControl:
                 return
             self.stopped = True
         self.stopped = False
-        (linear_speed, angular_speed) = self.transform_both_speeds(
+        (linear_speed, angular_speed) = transform_both_speeds(
             self.linear_speed,
             self.angular_speed,
             self.linear_percent,
@@ -74,23 +73,6 @@ class JoystickControl:
     def run_controller(self):
         self.mngr.start()
         self.worker.start()
-
-    def get_percent(self, percent: float):
-        if percent <= 15.0:
-            return 0.0
-
-        return percent - 15.0
-
-    @staticmethod
-    def transform_both_speeds(linear: float, angular: float, linear_percent: float, angular_percent: float):
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
-        transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
-
-        if transfrom3 is not None and len(transfrom3) > 0:
-            linear_speed = transfrom3[0] * 10
-            angular_speed = int(transform4[1] * 4.5)
-            print(linear_speed, angular_speed)
-            return linear_speed, angular_speed
 
     def handle_key_received(self, key):
         # print(key, "-", key.keytype, "-", key.number, "-", key.value)
@@ -129,11 +111,13 @@ class JoystickControl:
                         # linear_speed==-1000
                         print("case 1")
                         if key.value > 0:
+                            """Backwards."""
                             self.linear_speed = 270.0
-                            self.linear_percent = self.get_percent(abs(key.value * 100))
+                            self.linear_percent = get_percent(abs(key.value * 100))
                         else:
+                            """Forwards."""
                             self.linear_speed = 90.0
-                            self.linear_percent = self.get_percent(abs(key.value * 100))
+                            self.linear_percent = get_percent(abs(key.value * 100))
 
                     case 2:  # right  (left right)
                         # take left right values and convert to angular movement
@@ -143,12 +127,12 @@ class JoystickControl:
                         # angular_speed==450
                         if key.value > 0:
                             self.angular_speed = 0.0
-                            self.angular_percent = self.get_percent(abs(key.value * 100))
+                            self.angular_percent = get_percent(abs(key.value * 100))
                         else:
                             # angle=180.0
                             # linear_speed=0//angular_speed=-450
                             self.angular_speed = 180.0
-                            self.angular_percent = self.get_percent(abs(key.value * 100))
+                            self.angular_percent = get_percent(abs(key.value * 100))
 
             else:
                 match key.number:

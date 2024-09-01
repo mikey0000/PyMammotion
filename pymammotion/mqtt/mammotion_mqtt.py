@@ -123,7 +123,8 @@ class MammotionMQTT:
 
         if self.on_ready:
             self.is_ready = True
-            asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop).result()
+            future = asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop)
+            asyncio.wrap_future(future, loop=self.loop)
         # self._linkkit_client.query_ota_firmware()
         # command = MammotionCommand(device_name="Luba")
         # self._cloud_client.send_cloud_command(command.get_report_cfg())

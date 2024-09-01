@@ -18,7 +18,6 @@ from uuid import UUID
 
 import betterproto
 from aiohttp import ClientSession
-from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.backends.service import BleakGATTCharacteristic, BleakGATTServiceCollection
 from bleak.exc import BleakDBusError
@@ -44,7 +43,7 @@ from pymammotion.mqtt import MammotionMQTT
 from pymammotion.mqtt.mammotion_future import MammotionFuture
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
-from pymammotion.utility.rocker_util import RockerControlUtil
+from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 
 class CharacteristicMissingError(Exception):
@@ -300,7 +299,7 @@ class Mammotion(object):
                 return await device.cloud().command(key, **kwargs)
             # TODO work with both with EITHER
 
-    async def start_sync(self,name:str, retry: int):
+    async def start_sync(self, name:str, retry: int):
         device = self.get_device_by_name(name)
         if device:
             if self._preference is ConnectionPreference.BLUETOOTH:
@@ -346,37 +345,31 @@ class MammotionBaseDevice:
         self._notify_future: asyncio.Future[bytes] | None = None
         self._cloud_device = cloud_device
 
-    def set_notifiction_callback(self, func: Callable[[],Awaitable[None]]):
+    def set_notification_callback(self, func: Callable[[],Awaitable[None]]):
         self._state_manager.on_notification_callback = func
 
     async def datahash_response(self, hash_ack: NavGetHashListAck):
         """Handle datahash responses."""
-        result_hash = 0
-        while hash_ack.data_couple[0] != result_hash:
-            data = await self.queue_command("synchronize_hash_data", hash_num=hash_ack.data_couple[0])
-            msg = LubaMsg().parse(data)
-            if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
-                result_hash = msg.nav.toapp_get_commondata_ack.hash
+        await self.queue_command("synchronize_hash_data", hash_num=hash_ack.data_couple[0])
 
     async def commdata_response(self, common_data: NavGetCommDataAck):
         """Handle common data responses."""
         total_frame = common_data.total_frame
         current_frame = common_data.current_frame
 
-        if total_frame == current_frame:
+        missing_frames = self._mower.map.missing_frame(common_data)
+        if len(missing_frames) == 0:
             # get next in hash ack list
 
             data_hash = find_next_integer(self._mower.nav.toapp_gethash_ack.data_couple, common_data.hash)
             if data_hash is None:
                 return
-            result_hash = 0
-            while data_hash != result_hash:
-                data = await self.queue_command("synchronize_hash_data", hash_num=data_hash)
-                msg = LubaMsg().parse(data)
-                if betterproto.serialized_on_wire(msg.nav.toapp_get_commondata_ack):
-                    result_hash = msg.nav.toapp_get_commondata_ack.hash
+
+            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
         else:
-            # check if we have the data already first
+            if current_frame != missing_frames[0]-1:
+                current_frame = missing_frames[0]-1
+
             region_data = RegionData()
             region_data.hash = common_data.hash
             region_data.action = common_data.action
@@ -499,28 +492,28 @@ class MammotionBaseDevice:
 
     async def start_sync(self, retry: int):
         """Start synchronization with the device."""
-        await self._send_command("get_device_base_info", retry)
-        await self._send_command("get_report_cfg", retry)
+        await self.queue_command("get_device_base_info")
+        await self.queue_command("get_device_product_model")
+        await self.queue_command("get_report_cfg")
         """RTK and dock location."""
-        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=1)
-        """Error codes."""
-        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=2)
-        await self._send_command_with_args("allpowerfull_rw", id=5, rw=1, context=3)
+        await self.queue_command("allpowerfull_rw", id=5, rw=1, context=1)
 
     async def start_map_sync(self):
         """Start sync of map data."""
-        await self._send_command_with_args("read_plan", sub_cmd=2, plan_index=0)
+        await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
-        await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=0)
+        await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
 
-        await self._send_command_with_args("get_hash_response", total_frame=1, current_frame=1)
+        await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
 
+
+        # work out why this crashes sometimes for better proto
         if self._cloud_device:
-            await self._send_command_with_args(
+            await self.queue_command(
                 "get_area_name_list", device_id=self._cloud_device.deviceName
             )
         if has_field(self._mower.net.toapp_wifi_iot_status):
-            await self._send_command_with_args(
+            await self.queue_command(
                 "get_area_name_list", device_id=self._mower.net.toapp_wifi_iot_status.devicename
             )
 
@@ -529,32 +522,40 @@ class MammotionBaseDevice:
         # sub_cmd 4 is dump location (yuka)
         # jobs list
         # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
+    async def async_get_errors(self):
+        """Error codes."""
+        await self.queue_command("allpowerfull_rw", id=5, rw=1, context=2)
+        await self.queue_command("allpowerfull_rw", id=5, rw=1, context=3)
 
-    async def move_forward(self):
-        linear_speed = 1.0
-        angular_speed = 0.0
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(90, 1000)
-        transform4 = RockerControlUtil.getInstance().transfrom3(0, 0)
 
-        if transfrom3 is not None and len(transfrom3) > 0:
-            linear_speed = transfrom3[0] * 10
-            angular_speed = int(transform4[1] * 4.5)
-        await self._send_command_with_args("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+    async def move_forward(self, linear: float):
+        """Move forward. values 0.0 1.0."""
+        linear_percent = get_percent(abs(linear * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(90.0, 0.0, linear_percent, 0.0)
+        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
 
-    async def move_stop(self):
-        linear_speed = 0.0
-        angular_speed = 0.0
-        transfrom3 = RockerControlUtil.getInstance().transfrom3(0, 0)
-        transform4 = RockerControlUtil.getInstance().transfrom3(0, 0)
+    async def move_back(self, linear: float):
+        """Move back. values 0.0 1.0."""
+        linear_percent = get_percent(abs(linear * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(270.0, 0.0, linear_percent, 0.0)
+        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
 
-        if transfrom3 is not None and len(transfrom3) > 0:
-            linear_speed = transfrom3[0] * 10
-            angular_speed = int(transform4[1] * 4.5)
-        await self._send_command_with_args("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+    async def move_left(self, angulur: float):
+        """Move forward. values 0.0 1.0."""
+        angular_percent = get_percent(abs(angulur * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(0.0, 0.0, 0.0, angular_percent)
+        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+
+    async def move_right(self, angulur: float):
+        """Move back. values 0.0 1.0."""
+        angular_percent = get_percent(abs(angulur * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(0.0, 180.0, 0.0, angular_percent)
+        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
+
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
-        return await self._send_command_with_args(key, **kwargs)
+        return await self.queue_command(key, **kwargs)
 
 
 class MammotionBaseBLEDevice(MammotionBaseDevice):
@@ -806,6 +807,33 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         await self._message.post_custom_data_bytes(command)
 
+        timeout = 2
+        timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
+        timeout_expired = False
+        try:
+            notify_msg = await self._notify_future
+        except asyncio.TimeoutError:
+            timeout_expired = True
+            notify_msg = b''
+            self._notify_future.set_result(notify_msg)
+        finally:
+            if not timeout_expired:
+                timeout_handle.cancel()
+            self._notify_future = None
+
+        _LOGGER.debug("%s: Notification received: %s", self.name, notify_msg.hex())
+        return notify_msg
+
+    async def _execute_command_locked_old(self, key: str, command: bytes) -> bytes:
+        """Execute command and read response."""
+        assert self._client is not None
+        assert self._read_char is not None
+        assert self._write_char is not None
+        self._notify_future = self.loop.create_future()
+        self._key = key
+        _LOGGER.debug("%s: Sending command: %s", self.name, key)
+        await self._message.post_custom_data_bytes(command)
+
         retry_handle = self.loop.call_at(
             self.loop.time() + 2,
             lambda: asyncio.ensure_future(
@@ -961,7 +989,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._ble_sync_task = None
         self.is_ready = False
         self.command_queue = asyncio.Queue()
-        self.processing_task = asyncio.create_task(self._process_queue())
         self._mqtt_client = mqtt_client
         self.iot_id = cloud_device.iotId
         self.device = cloud_device
@@ -971,7 +998,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.currentID = ""
         self.on_ready_callback: Optional[Callable[[], Awaitable[None]]] = None
         self._waiting_queue = deque()
-        self._operation_lock = threading.Lock()
+        self._operation_lock = asyncio.Lock()
 
         self._mqtt_client.on_connected = self.on_connected
         self._mqtt_client.on_disconnected = self.on_disconnected
@@ -986,11 +1013,13 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def on_ready(self):
         """Callback for when MQTT is subscribed to events."""
-        if self.on_ready_callback:
-            await self.on_ready_callback()
+        loop = asyncio.get_event_loop()
 
+        if self.on_ready_callback:
+            self.loop.create_task(self.on_ready_callback)
         await self._ble_sync()
         await self.run_periodic_sync_task()
+        loop.create_task(self._process_queue())
 
     async def on_connected(self):
         """Callback for when MQTT connects."""
@@ -1008,7 +1037,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def run_periodic_sync_task(self) -> None:
         """Send ble sync to robot."""
         try:
-            await self._ble_sync()
+            if not self._operation_lock.locked():
+                await self._ble_sync()
         finally:
             self.schedule_ble_sync()
 
@@ -1116,7 +1146,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         try:
             notify_msg = await future.async_get(timeout)
         except asyncio.TimeoutError:
-            raise
+            notify_msg = b''
 
         _LOGGER.debug("%s: Message received", self.device.nickName)
 
@@ -1189,6 +1219,3 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _disconnect(self):
         """Disconnect the MQTT client."""
         self._mqtt_client.disconnect()
-
-
-
