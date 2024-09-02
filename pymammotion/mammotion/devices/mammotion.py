@@ -1015,11 +1015,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         """Callback for when MQTT is subscribed to events."""
         loop = asyncio.get_event_loop()
 
-        if self.on_ready_callback:
-            self.loop.create_task(self.on_ready_callback)
+
         await self._ble_sync()
         await self.run_periodic_sync_task()
         loop.create_task(self._process_queue())
+        if self.on_ready_callback:
+            await self.on_ready_callback()
 
     async def on_connected(self):
         """Callback for when MQTT connects."""
@@ -1219,3 +1220,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _disconnect(self):
         """Disconnect the MQTT client."""
         self._mqtt_client.disconnect()
+
+
+

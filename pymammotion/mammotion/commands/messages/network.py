@@ -26,6 +26,10 @@ class MessageNetwork:
 
         return luba_msg.SerializeToString()
 
+    def send_todev_ble_sync(self, sync_type: int) -> bytes:
+        comm_esp = dev_net_pb2.DevNet(todev_ble_sync=sync_type)
+        return self.send_order_msg_net(comm_esp)
+
     def get_device_base_info(self):
         net = dev_net_pb2.DevNet(todev_devinfo_req=dev_net_pb2.DrvDevInfoReq())
         net.todev_devinfo_req.req_ids.add(id=1, type=6)
