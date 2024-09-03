@@ -266,6 +266,7 @@ class Mammotion(object):
             _LOGGER.debug("CountryCode: " + country_code)
             _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
             loop = asyncio.get_running_loop()
+            cloud_client.set_http(mammotion_http)
             await loop.run_in_executor(None, cloud_client.get_region, country_code, mammotion_http.login_info.authorization_code)
             await cloud_client.connect()
             await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
@@ -815,7 +816,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         except asyncio.TimeoutError:
             timeout_expired = True
             notify_msg = b''
-            self._notify_future.set_result(notify_msg)
         finally:
             if not timeout_expired:
                 timeout_handle.cancel()

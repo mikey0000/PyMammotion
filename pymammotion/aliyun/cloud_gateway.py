@@ -9,9 +9,7 @@ import random
 import string
 import time
 import uuid
-from logging import getLogger, exception
-from datetime import datetime
-from urllib.parse import urlencode
+from logging import getLogger
 
 from aiohttp import ClientSession
 from alibabacloud_iot_api_gateway.client import Client
@@ -19,6 +17,7 @@ from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequ
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
 
+from pymammotion.http.http import MammotionHTTP
 from pymammotion.aliyun.dataclass.aep_response import AepResponse
 from pymammotion.aliyun.dataclass.connect_response import ConnectResponse
 from pymammotion.aliyun.dataclass.dev_by_account_response import (
@@ -79,6 +78,7 @@ class CloudIOTGateway:
 
     def __init__(self, connect_response: ConnectResponse | None = None, login_by_oauth_response: LoginByOAuthResponse | None = None, aep_response: AepResponse | None = None, session_by_authcode_response: SessionByAuthCodeResponse | None = None, region_response: RegionResponse | None = None, dev_by_account: ListingDevByAccountResponse | None = None):
         """Initialize the CloudIOTGateway."""
+        self.mammotion_http: MammotionHTTP | None = None
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
         self.domain = ALIYUN_DOMAIN
@@ -616,3 +616,6 @@ class CloudIOTGateway:
     @property
     def listing_dev_by_account_response(self):
         return self._devices_by_account_response
+
+    def set_http(self, mammotion_http):
+        self.mammotion_http = mammotion_http
