@@ -79,8 +79,7 @@ class MammotionHTTP:
     
     @classmethod
     async def get_stream_subscription(cls, iot_id: str) -> Response[StreamSubscriptionResponse]:
-        """Get agora.io data for view camera stream"""
-        print(cls._headers["Authorization"])
+        """Get agora.io data for view camera stream"""    
         async with ClientSession('https://domestic.mammotion.com') as session:
             async with session.post(
                 "/device-server/v1/stream/subscription",
@@ -88,8 +87,8 @@ class MammotionHTTP:
                     "deviceId" : iot_id
                 },
                 headers={
-                    "Authorization": f"{cls._headers["Authorization"]}",
-                    "Content-Type": "application/json"  # Se necessario
+                    "Authorization": f"{cls._headers['Authorization']}",
+                    "Content-Type": "application/json"
                 }
             ) as resp:
                 if resp.status == 200:
