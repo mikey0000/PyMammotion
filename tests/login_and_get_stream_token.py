@@ -32,7 +32,7 @@ async def run():
 
 
 
-        await _mammotion.get_stream_subsctiption(DEVICE_NAME)
+        await _mammotion.get_stream_subscription(DEVICE_NAME)
         
         return _mammotion
     except Exception as ex:

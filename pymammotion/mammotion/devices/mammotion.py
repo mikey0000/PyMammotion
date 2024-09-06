@@ -323,7 +323,7 @@ class Mammotion(object):
         if device:
             return device.mower_state()
     
-    async def get_stream_subsctiption(self, name: str):
+    async def get_stream_subscription(self, name: str):
         device = self.get_device_by_name(name)
         if self._preference is ConnectionPreference.WIFI:
             if self.mammotion_http_client is not None and device.has_cloud():
