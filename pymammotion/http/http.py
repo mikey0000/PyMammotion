@@ -6,6 +6,7 @@ from aiohttp.hdrs import AUTHORIZATION
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pymammotion.http.dataclass.stream_subscription_response import StreamSubscriptionResponse
 from pymammotion.aliyun.dataclass.connect_response import Device
 from pymammotion.const import (
     MAMMOTION_CLIENT_ID,
@@ -47,12 +48,14 @@ class LoginResponseData(DataClassORJSONMixin):
 
 
 class MammotionHTTP:
+    _headers = dict()
+
     def __init__(self, response: Response):
-        self._headers = dict()
         self.login_info = LoginResponseData.from_dict(response.data) if response.data else None
         self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if response.data else None
         self.msg = response.msg
         self.code = response.code
+        
 
     @classmethod
     async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
@@ -71,7 +74,31 @@ class MammotionHTTP:
                 response = Response.from_dict(data)
                 # TODO catch errors from mismatch user / password elsewhere
                 # Assuming the data format matches the expected structure
+                cls._session = session
                 return response
+    
+    @classmethod
+    async def get_stream_subscription(cls, iot_id: str) -> Response[StreamSubscriptionResponse]:
+        """Get agora.io data for view camera stream"""
+        print(cls._headers["Authorization"])
+        async with ClientSession('https://domestic.mammotion.com') as session:
+            async with session.post(
+                "/device-server/v1/stream/subscription",
+                json={
+                    "deviceId" : iot_id
+                },
+                headers={
+                    "Authorization": f"{cls._headers["Authorization"]}",
+                    "Content-Type": "application/json"  # Se necessario
+                }
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    response = StreamSubscriptionResponse.from_dict(data)
+                    # TODO catch errors from mismatch like token expire etc
+                    # Assuming the data format matches the expected structure
+                    return response
+
 
 
 async def connect_http(username: str, password: str) -> MammotionHTTP:

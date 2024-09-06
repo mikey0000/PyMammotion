@@ -13,7 +13,7 @@ from abc import abstractmethod
 from collections import deque
 from enum import Enum
 from functools import cache
-from typing import Any, Callable, Optional, cast, Awaitable
+from typing import Any, Callable, Optional, cast, Awaitable, Tuple
 from uuid import UUID
 
 import betterproto
@@ -37,7 +37,7 @@ from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.state_manager import StateManager
-from pymammotion.http.http import connect_http
+from pymammotion.http.http import connect_http, MammotionHTTP
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
 from pymammotion.mqtt.mammotion_future import MammotionFuture
@@ -200,9 +200,9 @@ async def create_devices(ble_device: BLEDevice,
     mammotion = Mammotion(ble_device, preference)
 
     if cloud_credentials:
-        cloud_client = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email,
+        cloud_client, mammotion_http = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email,
                                              cloud_credentials.password)
-        await mammotion.initiate_cloud_connection(cloud_client)
+        await mammotion.initiate_cloud_connection(cloud_client, mammotion_http)
 
     return mammotion
 
@@ -214,7 +214,7 @@ class Mammotion(object):
     devices = MammotionDevices()
     cloud_client: CloudIOTGateway | None = None
     mqtt: MammotionMQTT | None = None
-
+    mammotion_http_client: MammotionHTTP | None = None
 
 
     def __init__(
@@ -229,12 +229,13 @@ class Mammotion(object):
         if preference:
             self._preference = preference
 
-    async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway) -> None:
+    async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway, mammotion_http: MammotionHTTP) -> None:
         if self.mqtt is not None:
             if self.mqtt.is_connected:
                 return
 
         self.cloud_client = cloud_client
+        self.mammotion_http_client = mammotion_http
         self.mqtt = MammotionMQTT(region_id=cloud_client._region_response.data.regionId,
                                         product_key=cloud_client._aep_response.data.productKey,
                                         device_name=cloud_client._aep_response.data.deviceName,
@@ -257,7 +258,7 @@ class Mammotion(object):
                 ble_device.set_disconnect_strategy(disconnect)
 
     @staticmethod
-    async def login(account: str, password: str) -> CloudIOTGateway:
+    async def login(account: str, password: str) -> Tuple[CloudIOTGateway, MammotionHTTP]:
         """Login to mammotion cloud."""
         cloud_client = CloudIOTGateway()
         async with ClientSession(MAMMOTION_DOMAIN) as session:
@@ -266,7 +267,6 @@ class Mammotion(object):
             _LOGGER.debug("CountryCode: " + country_code)
             _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
             loop = asyncio.get_running_loop()
-            cloud_client.set_http(mammotion_http)
             await loop.run_in_executor(None, cloud_client.get_region, country_code, mammotion_http.login_info.authorization_code)
             await cloud_client.connect()
             await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
@@ -274,7 +274,7 @@ class Mammotion(object):
             await loop.run_in_executor(None, cloud_client.session_by_auth_code)
 
             await loop.run_in_executor(None, cloud_client.list_binding_by_account)
-            return cloud_client
+            return cloud_client, mammotion_http
 
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
@@ -322,6 +322,13 @@ class Mammotion(object):
         device = self.get_device_by_name(name)
         if device:
             return device.mower_state()
+    
+    async def get_stream_subsctiption(self, name: str):
+        device = self.get_device_by_name(name)
+        if self._preference is ConnectionPreference.WIFI:
+            if self.mammotion_http_client is not None and device.has_cloud():
+                _stream_response = await self.mammotion_http_client.get_stream_subscription(device.cloud().iot_id)
+                _LOGGER.debug(_stream_response)
 
 def has_field(message: betterproto.Message) -> bool:
     """Check if the message has any fields serialized on wire."""
@@ -816,6 +823,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         except asyncio.TimeoutError:
             timeout_expired = True
             notify_msg = b''
+            self._notify_future.set_result(notify_msg)
         finally:
             if not timeout_expired:
                 timeout_handle.cancel()
@@ -1220,6 +1228,3 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def _disconnect(self):
         """Disconnect the MQTT client."""
         self._mqtt_client.disconnect()
-
-
-
