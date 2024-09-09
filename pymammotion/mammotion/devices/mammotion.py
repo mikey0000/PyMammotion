@@ -261,7 +261,7 @@ class Mammotion(object):
     @staticmethod
     async def login(account: str, password: str) -> MammotionHTTP:
         """Login to mammotion cloud."""
-        cloud_client = CloudIOTGateway()
+   
         async with ClientSession(MAMMOTION_DOMAIN) as session:
             mammotion_http = await connect_http(account, password)
             country_code = mammotion_http.login_info.userInformation.domainAbbreviation
