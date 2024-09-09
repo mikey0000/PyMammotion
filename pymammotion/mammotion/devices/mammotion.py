@@ -326,7 +326,7 @@ class Mammotion(object):
     async def get_stream_subscription(self, name: str):
         device = self.get_device_by_name(name)
         if self._preference is ConnectionPreference.WIFI:
-            if self.mammotion_http_client is not None and device.has_cloud():
+            if self.http_client is not None and device.has_cloud():
                 _stream_response = await self.mammotion_http_client.get_stream_subscription(device.cloud().iot_id)
                 _LOGGER.debug(_stream_response)
 
