@@ -275,7 +275,7 @@ class Mammotion(object):
             await loop.run_in_executor(None, cloud_client.session_by_auth_code)
 
             await loop.run_in_executor(None, cloud_client.list_binding_by_account)
-            return cloud_client, mammotion_http
+            return mammotion_http
 
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
