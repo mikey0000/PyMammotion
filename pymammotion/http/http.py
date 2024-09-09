@@ -96,7 +96,7 @@ class MammotionHTTP:
                     response = StreamSubscriptionResponse.from_dict(data)
                     # TODO catch errors from mismatch like token expire etc
                     # Assuming the data format matches the expected structure
-                    return response
+                    return StreamSubscriptionResponse.from_dict(data)
 
 
 
