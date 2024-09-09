@@ -17,7 +17,6 @@ from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequ
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
 
-from pymammotion.http.http import MammotionHTTP
 from pymammotion.aliyun.dataclass.aep_response import AepResponse
 from pymammotion.aliyun.dataclass.connect_response import ConnectResponse
 from pymammotion.aliyun.dataclass.dev_by_account_response import (
@@ -29,6 +28,7 @@ from pymammotion.aliyun.dataclass.session_by_authcode_response import (
     SessionByAuthCodeResponse,
 )
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
+from pymammotion.http.http import MammotionHTTP
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
@@ -88,7 +88,7 @@ class CloudIOTGateway:
         session_by_authcode_response: SessionByAuthCodeResponse | None = None,
         region_response: RegionResponse | None = None,
         dev_by_account: ListingDevByAccountResponse | None = None,
-    ):
+    ) -> None:
         """Initialize the CloudIOTGateway."""
         self.mammotion_http: MammotionHTTP | None = None
         self._app_key = APP_KEY
@@ -131,24 +131,6 @@ class CloudIOTGateway:
             concatenated_str.encode("utf-8"),
             hashlib.sha1,
         ).hexdigest()
-
-    def get_connect_response(self):
-        return self._connect_response
-
-    def get_login_by_oauth_response(self):
-        return self._login_by_oauth_response
-
-    def get_aep_response(self):
-        return self._aep_response
-
-    def get_session_by_authcode_response(self):
-        return self._session_by_authcode_response
-
-    def get_devices_by_account_response(self):
-        return self._devices_by_account_response
-
-    def get_region_response(self):
-        return self._region_response
 
     def get_region(self, country_code: str, auth_code: str):
         """Get the region based on country code and auth code."""
@@ -633,5 +615,21 @@ class CloudIOTGateway:
     def listing_dev_by_account_response(self):
         return self._devices_by_account_response
 
-    def set_http(self, mammotion_http):
+    def set_http(self, mammotion_http) -> None:
         self.mammotion_http = mammotion_http
+
+    @property
+    def region_response(self):
+        return self._region_response
+
+    @property
+    def aep_response(self):
+        return self._aep_response
+
+    @property
+    def session_by_authcode_response(self):
+        return self._session_by_authcode_response
+
+    @property
+    def client_id(self):
+        return self._client_id
