@@ -87,7 +87,7 @@ class MammotionHTTP:
                     "deviceId" : iot_id
                 },
                 headers={
-                    "Authorization": f"{cls._headers['Authorization']}",
+                    "Authorization": f"{self._headers.get('Authorization', "")}",
                     "Content-Type": "application/json"
                 }
             ) as resp:
