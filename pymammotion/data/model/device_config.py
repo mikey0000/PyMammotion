@@ -62,7 +62,7 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
     return str(bArr, "UTF-8")
 
 
-def calculate_yuka_mode(operation_mode: OperationSettings):
+def calculate_yuka_mode(operation_mode: OperationSettings) -> int:
     if operation_mode.is_mow and operation_mode.is_dump and operation_mode.is_edge:
         return 14
     if operation_mode.is_mow and operation_mode.is_dump and not operation_mode.is_edge:

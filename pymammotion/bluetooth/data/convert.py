@@ -14,7 +14,7 @@ def parse_custom_data(data: bytes):
         print(err)
 
 
-def store_sys_data(sys):
+def store_sys_data(sys) -> None:
     if sys.HasField("systemTardStateTunnel"):
         tard_state_data_list = sys.systemTardStateTunnel.tard_state_data
         longValue8 = tard_state_data_list[0]

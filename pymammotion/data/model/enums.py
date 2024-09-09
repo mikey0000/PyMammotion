@@ -21,7 +21,7 @@ class PositionMode(Enum):
         else:
             return PositionMode.UNKNOWN
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self == PositionMode.FIX:
             return "Fix"
         elif self == PositionMode.SINGLE:
@@ -54,7 +54,7 @@ class RTKStatus(Enum):
         else:
             return RTKStatus.UNKNOWN
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self == RTKStatus.NONE:
             return "None"
         elif self == RTKStatus.SINGLE:

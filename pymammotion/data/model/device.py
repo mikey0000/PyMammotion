@@ -37,7 +37,7 @@ class MowingDevice:
     location: Location
     mowing_state: RapidState
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.device = LubaMsg()
         self.map = HashList(area={}, path={}, obstacle={}, hashlist=[])
         self.location = Location()
@@ -58,7 +58,7 @@ class MowingDevice:
         """Update the raw LubaMsg data."""
         self.device = LubaMsg(**raw)
 
-    def buffer(self, buffer_list: SystemUpdateBufMsg):
+    def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:
         """Update the device based on which buffer we are reading from."""
         match buffer_list.update_buf_data[0]:
             case 1:
@@ -100,7 +100,7 @@ class MowingDevice:
                     ]
                 )
 
-    def update_report_data(self, toapp_report_data: ReportInfoData):
+    def update_report_data(self, toapp_report_data: ReportInfoData) -> None:
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):
             if index == 0 and location.real_pos_y != 0:
@@ -116,10 +116,10 @@ class MowingDevice:
 
         self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 
-    def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg):
+    def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
         self.mowing_state = RapidState().from_raw(rapid_state.rapid_state_data)
 
-    def mow_info(self, toapp_mow_info: MowToAppInfoT):
+    def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
         pass
 
     @property
@@ -164,7 +164,7 @@ class DevNetData:
 
     net: dict
 
-    def __init__(self, net: DevNet):
+    def __init__(self, net: DevNet) -> None:
         if isinstance(net, dict):
             self.net = net
         else:
@@ -187,7 +187,7 @@ class SysData:
 
     sys: dict
 
-    def __init__(self, sys: MctlSys):
+    def __init__(self, sys: MctlSys) -> None:
         if isinstance(sys, dict):
             self.sys = sys
         else:
@@ -210,7 +210,7 @@ class NavData:
 
     nav: dict
 
-    def __init__(self, nav: MctlNav):
+    def __init__(self, nav: MctlNav) -> None:
         if isinstance(nav, dict):
             self.nav = nav
         else:
@@ -233,7 +233,7 @@ class DriverData:
 
     driver: dict
 
-    def __init__(self, driver: MctlDriver):
+    def __init__(self, driver: MctlDriver) -> None:
         if isinstance(driver, dict):
             self.driver = driver
         else:
@@ -256,7 +256,7 @@ class MulData:
 
     mul: dict
 
-    def __init__(self, mul: SocMul):
+    def __init__(self, mul: SocMul) -> None:
         if isinstance(mul, dict):
             self.mul = mul
         else:
@@ -279,7 +279,7 @@ class OtaData:
 
     ota: dict
 
-    def __init__(self, ota: MctlOta):
+    def __init__(self, ota: MctlOta) -> None:
         if isinstance(ota, dict):
             self.ota = ota
         else:
@@ -302,7 +302,7 @@ class PeptData:
 
     pept: dict
 
-    def __init__(self, pept: MctlPept):
+    def __init__(self, pept: MctlPept) -> None:
         if isinstance(pept, dict):
             self.pept = pept
         else:

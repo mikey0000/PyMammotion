@@ -11,12 +11,12 @@ class DeviceType(Enum):
     YUKA_MINI2 = (5, "Yuka-YM", "Yuka Mini 2")
     LUBA_VP = (6, "Luba-VP", "Luba VP")
 
-    def __init__(self, value: int, name: str, model: str):
+    def __init__(self, value: int, name: str, model: str) -> None:
         self._value = value
         self._name = name
         self._model = model
 
-    def get_name(self):
+    def get_name(self) -> str:
         return self._name
 
     def get_model(self):
@@ -28,7 +28,7 @@ class DeviceType(Enum):
     def get_value_str(self):
         return str(self._value)
 
-    def set_value(self, value):
+    def set_value(self, value) -> None:
         self._value = value
 
     @staticmethod
@@ -213,7 +213,7 @@ class DeviceType(Enum):
         return DeviceType.RTK.get_value() <= device_type.get_value() < DeviceType.LUBA.get_value()
 
     @staticmethod
-    def contain_rtk_product_key(product_key):
+    def contain_rtk_product_key(product_key) -> bool:
         """Check if the given product key is in a predefined list of RTK product
         keys.
 
@@ -230,7 +230,7 @@ class DeviceType(Enum):
         return product_key in ["a1qXkZ5P39W", "a1Nc68bGZzX"]
 
     @staticmethod
-    def contain_luba_product_key(product_key):
+    def contain_luba_product_key(product_key) -> bool:
         """Check if the given product key is in the list of valid product keys.
 
         Args:
@@ -258,7 +258,7 @@ class DeviceType(Enum):
         ]
 
     @staticmethod
-    def contain_luba_2_product_key(product_key):
+    def contain_luba_2_product_key(product_key) -> bool:
         """Check if the given product key is present in a predefined list.
 
         Args:
@@ -274,7 +274,7 @@ class DeviceType(Enum):
         return product_key in ["a1iMygIwxFC", "a1LLmy1zc0j", "a1LLmy1zc0j"]
 
     @staticmethod
-    def contain_yuka_product_key(product_key):
+    def contain_yuka_product_key(product_key) -> bool:
         """Check if the given product key is present in a predefined list.
 
         Args:

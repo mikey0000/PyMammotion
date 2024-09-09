@@ -14,13 +14,13 @@ address = "90:38:0C:6E:EE:9E"
 class MammotionBLE:
     client: BleakClient
 
-    def __init__(self, bleEvt: BleNotificationEvent):
+    def __init__(self, bleEvt: BleNotificationEvent) -> None:
         self._bleEvt = bleEvt
 
     async def scanForLubaAndConnect(self) -> bool:
         scanner = BleakScanner()
 
-        def scanCallback(device, advertising_data):
+        def scanCallback(device, advertising_data) -> bool:
             # TODO: do something with incoming data
             print(device)
             print(advertising_data)
@@ -46,18 +46,18 @@ class MammotionBLE:
         if self.client is not None:
             return await self.client.disconnect()
 
-    async def notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray):
+    async def notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Simple notification handler which prints the data received."""
         await self._bleEvt.BleNotification(data)
 
-    def service_changed_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
+    def service_changed_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Simple notification handler which prints the data received."""
         print(f"Response 2 {characteristic.description}: {data}")
         print(data.decode("utf-8"))
         # BlufiNotifyData
         # run an event handler back to somewhere
 
-    async def notifications(self):
+    async def notifications(self) -> None:
         if self.client.is_connected:
             await self.client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self.notification_handler)
             await self.client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, self.service_changed_handler)

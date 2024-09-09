@@ -3,13 +3,13 @@ from contextlib import suppress
 
 
 class Periodic:
-    def __init__(self, func, time):
+    def __init__(self, func, time) -> None:
         self.func = func
         self.time = time
         self.is_started = False
         self._task = None
 
-    def start(self):
+    def start(self) -> None:
         """Start the task if it is not already started.
 
         If the task is not already started, it sets the 'is_started' flag to
@@ -21,7 +21,7 @@ class Periodic:
             # Start task to call func periodically:
             self._task = asyncio.ensure_future(self._run())
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the task if it is currently running.
 
         If the task is currently running, it will be cancelled and awaited until
@@ -35,7 +35,7 @@ class Periodic:
             with suppress(asyncio.CancelledError):
                 await self._task
 
-    async def _run(self):
+    async def _run(self) -> None:
         """Run the specified function at regular intervals using asyncio.
 
         This method runs the specified function at regular intervals based on
@@ -84,7 +84,7 @@ def periodic(period):
 
         """
 
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args, **kwargs) -> None:
             """Execute the given function periodically using asyncio tasks.
 
             This function continuously creates an asyncio task to execute the

@@ -47,14 +47,14 @@ class LoginResponseData(DataClassORJSONMixin):
 
 
 class MammotionHTTP:
-    def __init__(self, response: Response):
+    def __init__(self, response: Response) -> None:
         self._headers = dict()
         self.login_info = LoginResponseData.from_dict(response.data) if response.data else None
         self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if response.data else None
         self.msg = response.msg
         self.code = response.code
 
-    async def get_all_error_codes(self):
+    async def get_all_error_codes(self) -> None:
         async with ClientSession() as session:
             async with session.post(
                 "code/record/export-data",

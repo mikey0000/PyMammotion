@@ -6,7 +6,7 @@ class FrameCtrlData:
     FRAME_CTRL_POSITION_REQUIRE_ACK = 3
     mValue = 0
 
-    def __init__(self, frameCtrlValue):
+    def __init__(self, frameCtrlValue) -> None:
         self.mValue = frameCtrlValue
 
     def check(self, position):

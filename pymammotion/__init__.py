@@ -33,12 +33,12 @@ if __name__ == "__main__":
     IOT_TOKEN = os.environ.get("IOT_TOKEN")
     REGION = os.environ.get("REGION")
     luba = MammotionMQTT(
-        iot_token=IOT_TOKEN,
-        region_id=REGION,
-        product_key=PRODUCT_KEY,
-        device_name=DEVICE_NAME,
-        device_secret=DEVICE_SECRET,
-        client_id=CLIENT_ID,
+        iot_token=IOT_TOKEN or '',
+        region_id=REGION or '',
+        product_key=PRODUCT_KEY or '',
+        device_name=DEVICE_NAME or '',
+        device_secret=DEVICE_SECRET or '',
+        client_id=CLIENT_ID or '',
     )
     luba.connect_async()
 

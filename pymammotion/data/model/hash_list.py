@@ -30,7 +30,7 @@ class HashList:
     obstacle: dict  # type 1
     hashlist: list[int]
 
-    def set_hashlist(self, hashlist: list[int]):
+    def set_hashlist(self, hashlist: list[int]) -> None:
         self.hashlist = hashlist
         self.area = {hash_id: frames for hash_id, frames in self.area.items() if hash_id in hashlist}
         self.path = {hash_id: frames for hash_id, frames in self.path.items() if hash_id in hashlist}

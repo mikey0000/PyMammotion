@@ -51,14 +51,14 @@ class BleMessage:
     notification: BlufiNotifyData
     messageNavigation: MessageNavigation = MessageNavigation()
 
-    def __init__(self, client: BleakClient):
+    def __init__(self, client: BleakClient) -> None:
         self.client = client
         self.mSendSequence = itertools.count()
         self.mReadSequence = itertools.count()
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
 
-    async def get_device_version_main(self):
+    async def get_device_version_main(self) -> None:
         commEsp = dev_net_pb2.DevNet(todev_devinfo_req=dev_net_pb2.DrvDevInfoReq())
 
         for i in range(1, 8):
@@ -77,22 +77,22 @@ class BleMessage:
         byte_arr = lubaMsg.SerializeToString()
         await self.messageNavigation.post_custom_data_bytes(byte_arr)
 
-    async def get_task(self):
+    async def get_task(self) -> None:
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
         await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
 
-    async def send_ble_alive(self):
+    async def send_ble_alive(self) -> None:
         hash_map = {"ctrl": 1}
         await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
 
-    def clearNotification(self):
+    def clearNotification(self) -> None:
         self.notification = None
         self.notification = BlufiNotifyData()
 
     # async def get_device_info(self):
     #     await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
-    async def send_device_info(self):
+    async def send_device_info(self) -> None:
         """Currently not called"""
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
@@ -107,7 +107,7 @@ class BleMessage:
         byte_arr = luba_msg.SerializeToString()
         await self.post_custom_data_bytes(byte_arr)
 
-    async def requestDeviceStatus(self):
+    async def requestDeviceStatus(self) -> None:
         request = False
         type = self.messageNavigation.getTypeValue(0, 5)
         try:
@@ -121,7 +121,7 @@ class BleMessage:
         # if not request:
         #     onStatusResponse(BlufiCallback.CODE_WRITE_DATA_FAILED, null)
 
-    async def requestDeviceVersion(self):
+    async def requestDeviceVersion(self) -> None:
         request = False
         type = self.messageNavigation.getTypeValue(0, 7)
         try:
@@ -132,7 +132,7 @@ class BleMessage:
             request = False
             _LOGGER.error(err)
 
-    async def sendBorderPackage(self, executeBorder: ExecuteBorder):
+    async def sendBorderPackage(self, executeBorder: ExecuteBorder) -> None:
         await self.messageNavigation.post_custom_data(serialize(executeBorder))
 
     async def gatt_write(self, data: bytes) -> None:
@@ -226,7 +226,7 @@ class BleMessage:
                 return dataBytes
             return await self._parseDataData(subType, dataBytes)
 
-    def _parseCtrlData(self, subType: int, data: bytes):
+    def _parseCtrlData(self, subType: int, data: bytes) -> None:
         pass
         # self._parseAck(data)
 
@@ -303,7 +303,7 @@ class BleMessage:
     def generateSendSequence(self):
         return next(self.mSendSequence) & 255
 
-    async def post_custom_data_bytes(self, data: bytes):
+    async def post_custom_data_bytes(self, data: bytes) -> None:
         if data == None:
             return
         type_val = self.getTypeValue(1, 19)
@@ -315,7 +315,7 @@ class BleMessage:
         except Exception as err:
             _LOGGER.debug(err)
 
-    async def post_custom_data(self, data_str: str):
+    async def post_custom_data(self, data_str: str) -> None:
         data = data_str.encode()
         if data == None:
             return

@@ -169,7 +169,7 @@ class MessageNetwork:
             return self.send_order_msg_net(build)
         self.wifi_connectinfo_update2()
 
-    def wifi_connectinfo_update2(self):
+    def wifi_connectinfo_update2(self) -> None:
         hash_map = {"getMsgCmd": 1}
         # self.post_custom_data(self.get_json_string(
         #     68, hash_map))  # ToDo: Fix this
@@ -182,7 +182,7 @@ class MessageNetwork:
             return self.send_order_msg_net(build)
         self.get_record_wifi_list2()
 
-    def get_record_wifi_list2(self):
+    def get_record_wifi_list2(self) -> None:
         pass
         # self.messageNavigation.post_custom_data(
         #     self.get_json_string(69))  # ToDo: Fix this
@@ -199,7 +199,7 @@ class MessageNetwork:
             return self.send_order_msg_net(build)
         self.close_clear_connect_current_wifi2(ssid, status)
 
-    def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int):
+    def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int) -> None:
         data = {"ssid": ssid, "getMsgCmd": get_msg_cmd}
         # self.messageNavigation.post_custom_data(
         # ToDo: Fix this

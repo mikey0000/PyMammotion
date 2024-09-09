@@ -8,7 +8,7 @@ import logging
 from abc import abstractmethod
 from enum import Enum
 from functools import cache
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 from uuid import UUID
 
 import betterproto
@@ -241,10 +241,10 @@ class Mammotion:
                 device_secret=cloud_client.aep_response.data.deviceSecret,
                 iot_token=cloud_client.session_by_authcode_response.data.iotToken,
                 client_id=cloud_client.client_id,
+                cloud_client=cloud_client
             )
         )
 
-        self.mqtt._cloud_client = cloud_client
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.mqtt.connect_async)
 
@@ -563,8 +563,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._device = device
         self._mower = mowing_state
         self._client: BleakClientWithServiceCache | None = None
-        self._read_char: BleakGATTCharacteristic | None = None
-        self._write_char: BleakGATTCharacteristic | None = None
+        self._read_char: BleakGATTCharacteristic | int | str | UUID = 0
+        self._write_char: BleakGATTCharacteristic | int | str | UUID = 0
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
         self._commands: MammotionCommand = MammotionCommand(device.name)
@@ -627,6 +627,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 )
             except BLEAK_RETRY_EXCEPTIONS:
                 _LOGGER.debug("%s: communication failed with:", self.name, exc_info=True)
+        return
 
     async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
         """Send command to device and read response."""
@@ -657,6 +658,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 )
             except BLEAK_RETRY_EXCEPTIONS:
                 _LOGGER.debug("%s: communication failed with:", self.name, exc_info=True)
+        return
 
     @property
     def name(self) -> str:
@@ -667,11 +669,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def rssi(self) -> int:
         """Return RSSI of device."""
         try:
-            return self._mower.sys.toapp_report_data.connect.ble_rssi
+            return cast(self._mower.sys.toapp_report_data.connect.ble_rssi, int)
         finally:
             return 0
 
-    async def _ensure_connected(self):
+    async def _ensure_connected(self) -> None:
         """Ensure connection to device is established."""
         if self._connect_lock.locked():
             _LOGGER.debug(
@@ -761,6 +763,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
+        if self._message is None:
+            return
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
@@ -792,8 +796,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     async def _execute_command_locked(self, key: str, command: bytes) -> bytes:
         """Execute command and read response."""
         assert self._client is not None
-        assert self._read_char is not None
-        assert self._write_char is not None
         self._notify_future = self.loop.create_future()
         self._key = key
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
@@ -810,39 +812,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         finally:
             if not timeout_expired:
                 timeout_handle.cancel()
-            self._notify_future = None
-
-        _LOGGER.debug("%s: Notification received: %s", self.name, notify_msg.hex())
-        return notify_msg
-
-    async def _execute_command_locked_old(self, key: str, command: bytes) -> bytes:
-        """Execute command and read response."""
-        assert self._client is not None
-        assert self._read_char is not None
-        assert self._write_char is not None
-        self._notify_future = self.loop.create_future()
-        self._key = key
-        _LOGGER.debug("%s: Sending command: %s", self.name, key)
-        await self._message.post_custom_data_bytes(command)
-
-        retry_handle = self.loop.call_at(
-            self.loop.time() + 2,
-            lambda: asyncio.ensure_future(
-                _handle_retry(self._notify_future, self._message.post_custom_data_bytes, command)
-            ),
-        )
-        timeout = 5
-        timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
-        timeout_expired = False
-        try:
-            notify_msg = await self._notify_future
-        except asyncio.TimeoutError:
-            timeout_expired = True
-            raise
-        finally:
-            if not timeout_expired:
-                timeout_handle.cancel()
-                retry_handle.cancel()
             self._notify_future = None
 
         _LOGGER.debug("%s: Notification received: %s", self.name, notify_msg.hex())
@@ -961,6 +930,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     async def _disconnect(self) -> bool:
         if self._client is not None:
             return await self._client.disconnect()
+        return True
 
-    def set_disconnect_strategy(self, disconnect) -> None:
+    def set_disconnect_strategy(self, disconnect: bool) -> None:
         self._disconnect_strategy = disconnect

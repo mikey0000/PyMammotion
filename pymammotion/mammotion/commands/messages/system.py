@@ -70,7 +70,7 @@ class MessageSystem(AbstractMessage, ABC):
             is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
         return self.send_order_msg_sys(build2)
 
-    def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: List[int]):
+    def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: list[int]):
         build = mctrl_sys_pb2.mCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
         print(f"Send tool test command: subCmd={sub_cmd}, param_id:{
             param_id}, param_value={param_value}")
@@ -199,7 +199,7 @@ class MessageSystem(AbstractMessage, ABC):
     def request_iot_sys(
         self,
         rpt_act: mctrl_sys_pb2.rpt_act,
-        rpt_info_type: List[RptInfoType | str] | None,
+        rpt_info_type: list[RptInfoType | str] | None,
         timeout: int,
         period: int,
         no_change_period: int,

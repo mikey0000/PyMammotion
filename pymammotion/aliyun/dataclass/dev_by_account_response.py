@@ -36,7 +36,7 @@ class Device(DataClassORJSONMixin):
 @dataclass
 class Data(DataClassORJSONMixin):
     total: int
-    data: List[Device]
+    data: list[Device]
     pageNo: int
     pageSize: int
 

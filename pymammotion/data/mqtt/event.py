@@ -10,7 +10,7 @@ from pymammotion.proto import luba_msg_pb2
 
 
 class Base64EncodedProtobuf(SerializableType):
-    def __init__(self, proto: str):
+    def __init__(self, proto: str) -> None:
         self.proto = proto
 
     def _serialize(self):

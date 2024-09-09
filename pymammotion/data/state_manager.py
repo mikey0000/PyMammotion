@@ -14,7 +14,7 @@ class StateManager:
 
     _device: MowingDevice
 
-    def __init__(self, device: MowingDevice):
+    def __init__(self, device: MowingDevice) -> None:
         self._device = device
         self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck], Awaitable[None]]] = None
         self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck], Awaitable[None]]] = None
@@ -24,11 +24,11 @@ class StateManager:
         """Get device."""
         return self._device
 
-    def set_device(self, device: MowingDevice):
+    def set_device(self, device: MowingDevice) -> None:
         """Set device."""
         self._device = device
 
-    async def notification(self, message: LubaMsg):
+    async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
         res = betterproto.which_one_of(message, "LubaSubMsg")
 
@@ -49,7 +49,7 @@ class StateManager:
         if self.on_notification_callback:
             await self.on_notification_callback()
 
-    async def _update_nav_data(self, message):
+    async def _update_nav_data(self, message) -> None:
         """Update nav data."""
         nav_msg = betterproto.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
@@ -63,7 +63,7 @@ class StateManager:
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
 
-    def _update_sys_data(self, message):
+    def _update_sys_data(self, message) -> None:
         """Update system."""
         sys_msg = betterproto.which_one_of(message.sys, "SubSysMsg")
         match sys_msg[0]:
@@ -76,14 +76,14 @@ class StateManager:
             case "system_tard_state_tunnel":
                 self._device.run_state_update(sys_msg[1])
 
-    def _update_driver_data(self, message):
+    def _update_driver_data(self, message) -> None:
         pass
 
-    def _update_net_data(self, message):
+    def _update_net_data(self, message) -> None:
         pass
 
-    def _update_mul_data(self, message):
+    def _update_mul_data(self, message) -> None:
         pass
 
-    def _update_ota_data(self, message):
+    def _update_ota_data(self, message) -> None:
         pass

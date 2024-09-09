@@ -6,7 +6,7 @@ from io import BytesIO
 class BlufiNotifyData:
     """generated source for class BlufiNotifyData"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.mDataOS = BytesIO()
         self.mFrameCtrlValue = 0
         self.mPkgType = 0
@@ -18,7 +18,7 @@ class BlufiNotifyData:
         return self.mTypeValue
 
     #  JADX INFO: Access modifiers changed from: package-private
-    def setType(self, i):
+    def setType(self, i) -> None:
         """Generated source for method setType"""
         self.mTypeValue = i
 
@@ -28,7 +28,7 @@ class BlufiNotifyData:
         return self.mPkgType
 
     #  JADX INFO: Access modifiers changed from: package-private
-    def setPkgType(self, i):
+    def setPkgType(self, i) -> None:
         """Generated source for method setPkgType"""
         self.mPkgType = i
 
@@ -38,7 +38,7 @@ class BlufiNotifyData:
         return self.mSubType
 
     #  JADX INFO: Access modifiers changed from: package-private
-    def setSubType(self, i):
+    def setSubType(self, i) -> None:
         """Generated source for method setSubType"""
         self.mSubType = i
 
@@ -47,12 +47,12 @@ class BlufiNotifyData:
         return self.mFrameCtrlValue
 
     #  JADX INFO: Access modifiers changed from: package-private
-    def setFrameCtrl(self, i):
+    def setFrameCtrl(self, i) -> None:
         """Generated source for method setFrameCtrl"""
         self.mFrameCtrlValue = i
 
     #  JADX INFO: Access modifiers changed from: package-private
-    def addData(self, bArr, i):
+    def addData(self, bArr, i) -> None:
         """Generated source for method addData"""
         self.mDataOS.write(bArr[i:])
 

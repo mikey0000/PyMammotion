@@ -333,7 +333,7 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Send command--Send indoor simulation command flag={flag}")
         return self.send_order_msg_nav(build)
 
-    def send_tools_order(self, param_id: int, values: List[int]):
+    def send_tools_order(self, param_id: int, values: list[int]):
         build = MctlNav(simulation_cmd=SimulationCmdData(sub_cmd=2, param_id=param_id, param_value=values))
         logger.debug(f"Send command--Send tool command id={param_id},values={values}")
         return self.send_order_msg_nav(build)
@@ -438,7 +438,7 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Sending command--Get route data corresponding to hash={current_hash}")
         return self.send_order_msg_nav(build)
 
-    def get_line_info_list(self, hash_list: List[int], transaction_id: int) -> bytes:
+    def get_line_info_list(self, hash_list: list[int], transaction_id: int) -> bytes:
         logger.debug(f"Sending==========Get route command: {hash_list}")
         build = MctlNav(
             app_request_cover_paths=AppRequestCoverPathsT(
