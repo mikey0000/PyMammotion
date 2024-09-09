@@ -824,7 +824,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         except asyncio.TimeoutError:
             timeout_expired = True
             notify_msg = b''
-            self._notify_future.set_result(notify_msg)
         finally:
             if not timeout_expired:
                 timeout_handle.cancel()
