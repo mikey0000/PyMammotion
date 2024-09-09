@@ -30,7 +30,7 @@ class Location:
     RTK: Point
     dock: Dock
     position_type: int = 0
-    orientation: int = 0 # 360 degree rotation +-
+    orientation: int = 0  # 360 degree rotation +-
     work_zone: int = 0
 
     def __init__(self):

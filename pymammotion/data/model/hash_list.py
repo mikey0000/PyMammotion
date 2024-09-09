@@ -6,9 +6,11 @@ from pymammotion.proto.mctrl_nav import NavGetCommDataAck
 
 class PathType(IntEnum):
     """Path types for common data."""
+
     AREA = 0
     OBSTACLE = 1
     PATH = 2
+
 
 @dataclass
 class FrameList:
@@ -34,7 +36,6 @@ class HashList:
         self.path = {hash_id: frames for hash_id, frames in self.path.items() if hash_id in hashlist}
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
 
-
     def missing_frame(self, hash_data: NavGetCommDataAck) -> list[int]:
         if hash_data.type == PathType.AREA:
             return self._find_missing_frames(self.area.get(hash_data.hash))
@@ -44,8 +45,6 @@ class HashList:
 
         if hash_data.type == PathType.PATH:
             return self._find_missing_frames(self.path.get(hash_data.hash))
-
-
 
     def update(self, hash_data: NavGetCommDataAck) -> bool:
         """Update the map data."""
@@ -58,17 +57,15 @@ class HashList:
         if hash_data.type == PathType.PATH:
             return self._add_hash_data(self.path, hash_data)
 
-
     @staticmethod
     def _find_missing_frames(frame_list: FrameList) -> list[int]:
         if frame_list.total_frame == len(frame_list.data):
             return []
-        number_list = list(range(1, frame_list.total_frame+1))
+        number_list = list(range(1, frame_list.total_frame + 1))
 
         current_frames = {frame.current_frame for frame in frame_list.data}
         missing_numbers = [num for num in number_list if num not in current_frames]
         return missing_numbers
-
 
     @staticmethod
     def _add_hash_data(hash_dict: dict, hash_data: NavGetCommDataAck) -> bool:

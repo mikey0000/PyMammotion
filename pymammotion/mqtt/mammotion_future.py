@@ -6,6 +6,7 @@ import async_timeout
 
 class MammotionFuture:
     """Create futures for each MQTT Message."""
+
     def __init__(self):
         self.fut: Future = Future()
         self.loop = self.fut.get_loop()

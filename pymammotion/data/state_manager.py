@@ -1,4 +1,5 @@
 """Manage state from notifications into MowingDevice."""
+
 from typing import Optional, Callable, Awaitable
 
 import betterproto
@@ -15,9 +16,9 @@ class StateManager:
 
     def __init__(self, device: MowingDevice):
         self._device = device
-        self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck],Awaitable[None]]] = None
-        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck],Awaitable[None]]] = None
-        self.on_notification_callback: Optional[Callable[[],Awaitable[None]]] = None
+        self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck], Awaitable[None]]] = None
+        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck], Awaitable[None]]] = None
+        self.on_notification_callback: Optional[Callable[[], Awaitable[None]]] = None
 
     def get_device(self) -> MowingDevice:
         """Get device."""

@@ -12,6 +12,7 @@ class SessionOauthToken(DataClassORJSONMixin):
     iotTokenExpire: int
     refreshToken: str
 
+
 @dataclass
 class SessionByAuthCodeResponse(DataClassORJSONMixin):
     code: int

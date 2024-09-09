@@ -29,7 +29,6 @@ class Device(DataClassORJSONMixin):
     categoryImage: Optional[str] = None
     productModel: Optional[str] = None
 
-
     class Config(BaseConfig):
         omit_default = True
 

@@ -54,6 +54,16 @@ class MammotionHTTP:
         self.msg = response.msg
         self.code = response.code
 
+    async def get_all_error_codes(self):
+        async with ClientSession() as session:
+            async with session.post(
+                "code/record/export-data",
+                headers=self._headers,
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                print(resp)
+
     @classmethod
     async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
         async with session.post(

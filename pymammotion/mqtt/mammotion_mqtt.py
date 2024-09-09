@@ -1,4 +1,5 @@
 """MammotionMQTT."""
+
 import asyncio
 import hashlib
 import hmac
@@ -36,11 +37,11 @@ class MammotionMQTT:
         self._cloud_client = None
         self.is_connected = False
         self.is_ready = False
-        self.on_connected: Optional[Callable[[],Awaitable[None]]] = None
-        self.on_ready: Optional[Callable[[],Awaitable[None]]] = None
-        self.on_error: Optional[Callable[[str],Awaitable[None]]] = None
-        self.on_disconnected: Optional[Callable[[],Awaitable[None]]] = None
-        self.on_message: Optional[Callable[[str, str, str],Awaitable[None]]] = None
+        self.on_connected: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_ready: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_error: Optional[Callable[[str], Awaitable[None]]] = None
+        self.on_disconnected: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_message: Optional[Callable[[str, str, str], Awaitable[None]]] = None
 
         self._product_key = product_key
         self._device_name = device_name
@@ -83,7 +84,6 @@ class MammotionMQTT:
         if self._linkkit_client.check_state() is LinkKit.LinkKitState.INITIALIZED:
             self._linkkit_client.thing_setup()
         self._linkkit_client.connect_async()
-
 
     def disconnect(self):
         """Disconnect from MQTT Server."""
@@ -143,7 +143,6 @@ class MammotionMQTT:
             future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
-
     def _thing_on_connect(self, session_flag, rc, user_data):
         """Is called on thing connect."""
         self.is_connected = True
@@ -163,7 +162,6 @@ class MammotionMQTT:
         if self.on_disconnected:
             future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
-
 
     def _on_message(self, _client, _userdata, message: MQTTMessage):
         """Is called when message is received."""
@@ -194,4 +192,3 @@ class MammotionMQTT:
     def get_cloud_client(self) -> Optional[CloudIOTGateway]:
         """Return internal cloud client."""
         return self._cloud_client
-

@@ -49,14 +49,18 @@ MOVE_HEADERS = (
 class SetupException(Exception):
     pass
 
+
 class AuthRefreshException(Exception):
     """Raise exception when library cannot refresh token."""
+
 
 class DeviceOfflineException(Exception):
     """Raise exception when device is offline."""
 
+
 class LoginException(Exception):
     """Raise exception when library cannot log in."""
+
 
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
@@ -72,11 +76,19 @@ class CloudIOTGateway:
     _devices_by_account_response: ListingDevByAccountResponse | None = None
     _region_response = None
 
-    _iot_token_issued_at : int = None
+    _iot_token_issued_at: int = None
 
     converter = DatatypeConverter()
 
-    def __init__(self, connect_response: ConnectResponse | None = None, login_by_oauth_response: LoginByOAuthResponse | None = None, aep_response: AepResponse | None = None, session_by_authcode_response: SessionByAuthCodeResponse | None = None, region_response: RegionResponse | None = None, dev_by_account: ListingDevByAccountResponse | None = None):
+    def __init__(
+        self,
+        connect_response: ConnectResponse | None = None,
+        login_by_oauth_response: LoginByOAuthResponse | None = None,
+        aep_response: AepResponse | None = None,
+        session_by_authcode_response: SessionByAuthCodeResponse | None = None,
+        region_response: RegionResponse | None = None,
+        dev_by_account: ListingDevByAccountResponse | None = None,
+    ):
         """Initialize the CloudIOTGateway."""
         self.mammotion_http: MammotionHTTP | None = None
         self._app_key = APP_KEY
@@ -376,11 +388,8 @@ class CloudIOTGateway:
             async with session.post(
                 f"https://{region_url}/api/prd/loginbyoauth.json",
                 headers=headers,
-                data={
-                    'loginByOauthRequest': json.dumps(_bodyParam, separators=(",", ":"))
-                }
+                data={"loginByOauthRequest": json.dumps(_bodyParam, separators=(",", ":"))},
             ) as resp:
-
                 data = await resp.json()
                 logger.debug(data)
                 if resp.status == 200:
@@ -441,7 +450,7 @@ class CloudIOTGateway:
             raise Exception("Error in creating session: " + response_body_str)
 
         self._session_by_authcode_response = session_by_auth
-        self._iot_token_issued_at  = int(time.time())
+        self._iot_token_issued_at = int(time.time())
 
         return response.body
 
@@ -491,18 +500,23 @@ class CloudIOTGateway:
         response_body_dict = json.loads(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error check or refresh token: " + response_body_dict.get('msg', ''))
+            logger.error(response_body_dict)
+            raise Exception("Error check or refresh token: " + response_body_dict.__str__())
 
         session = SessionByAuthCodeResponse.from_dict(response_body_dict)
         session_data = session.data
 
-        if session_data.identityId is None or session_data.refreshTokenExpire is None or session_data.iotToken is None or session_data.iotTokenExpire is None or session_data.refreshToken is None:
+        if (
+            session_data.identityId is None
+            or session_data.refreshTokenExpire is None
+            or session_data.iotToken is None
+            or session_data.iotTokenExpire is None
+            or session_data.refreshToken is None
+        ):
             raise Exception("Error check or refresh token: Parameters not correct")
 
         self._session_by_authcode_response = session
-        self._iot_token_issued_at  = int(time.time())
-
-        
+        self._iot_token_issued_at = int(time.time())
 
     def list_binding_by_account(self) -> ListingDevByAccountResponse:
         """List bindings by account."""
@@ -550,14 +564,16 @@ class CloudIOTGateway:
         """Send a cloud command to the specified IoT device."""
 
         """Check if iotToken is expired"""
-        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (int(time.time()) + (5 * 3600)):
+        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (
+            int(time.time()) + (5 * 3600)
+        ):
             """Token expired - Try to refresh - Check if refreshToken is not expired"""
-            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (int(time.time())):
+            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (
+                int(time.time())
+            ):
                 self.check_or_refresh_session()
             else:
                 raise AuthRefreshException("Refresh token expired. Please re-login")
-                
-            
 
         config = Config(
             app_key=self._app_key,

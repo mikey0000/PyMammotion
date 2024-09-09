@@ -11,7 +11,7 @@ from pymammotion.event.event import BleNotificationEvent
 address = "90:38:0C:6E:EE:9E"
 
 
-class LubaBLE:
+class MammotionBLE:
     client: BleakClient
 
     def __init__(self, bleEvt: BleNotificationEvent):

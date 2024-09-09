@@ -44,3 +44,11 @@ class BypassStrategy(IntEnum):
     slow_touch = 1
     less_touch = 2
     no_touch = 3  # luba 2 yuka only or possibly value of 10
+
+
+class PathAngleSetting(IntEnum):
+    """Path Angle type."""
+
+    relative_angle = 0
+    absolute_angle = 1
+    random_angle = 2  # Luba Pro / Luba 2 Yuka only

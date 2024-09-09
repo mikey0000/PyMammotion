@@ -6,7 +6,7 @@ from pyjoystick.utils import PeriodicThread
 from timeit import default_timer as timer
 
 
-from pymammotion.bluetooth.ble import LubaBLE
+from pymammotion.bluetooth.ble import MammotionBLE
 from pymammotion.bluetooth.ble_message import BleMessage
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.utility.rocker_util import RockerControlUtil
@@ -164,7 +164,7 @@ class JoystickControl:
                         self.angular_percent = 0.0
 
 async def run():
-    bleLubaConn = LubaBLE(bleNotificationEvt)
+    bleLubaConn = MammotionBLE(bleNotificationEvt)
     did_connect = await bleLubaConn.scanForLubaAndConnect()
     if not did_connect:
         print("Couldn't establish connection with the device")

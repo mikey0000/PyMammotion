@@ -14,6 +14,7 @@ bleNotificationEvt = BleNotificationEvent()
 
 nest_asyncio.apply()
 
+
 class JoystickControl:
     """Joystick class for controlling Luba with a joystick"""
 

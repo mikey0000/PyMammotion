@@ -45,21 +45,23 @@ class DeviceWarningEventValue(DataClassORJSONMixin):
     # (see resources/res/values-en-rUS/strings.xml in APK)
     code: int
 
+
 @dataclass
 class DeviceConfigurationRequestValue(DataClassORJSONMixin):
     code: int
     bizId: str
     params: str
 
+
 @dataclass
 class DeviceNotificationEventCode(DataClassORJSONMixin):
     localTime: int
     code: str
 
+
 @dataclass
 class DeviceNotificationEventValue(DataClassORJSONMixin):
     data: DeviceNotificationEventCode
-
 
 
 @dataclass
@@ -100,6 +102,7 @@ class DeviceProtobufMsgEventParams(GeneralParams):
     type: Literal["info"]
     value: DeviceProtobufMsgEventValue
 
+
 @dataclass
 class DeviceNotificationEventParams(GeneralParams):
     """Device notification event.
@@ -111,11 +114,13 @@ class DeviceNotificationEventParams(GeneralParams):
     type: Literal["info"]
     value: DeviceNotificationEventValue
 
+
 @dataclass
 class DeviceWarningEventParams(GeneralParams):
     identifier: Literal["device_warning_event"]
     type: Literal["alert"]
     value: DeviceWarningEventValue
+
 
 @dataclass
 class DeviceConfigurationRequestEvent(GeneralParams):
@@ -127,7 +132,7 @@ class DeviceConfigurationRequestEvent(GeneralParams):
 class ThingEventMessage(DataClassORJSONMixin):
     method: Literal["thing.events", "thing.properties"]
     id: str
-    params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams, str]
+    params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams, dict]
     version: Literal["1.0"]
 
     @classmethod

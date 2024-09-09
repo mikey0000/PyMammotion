@@ -16,8 +16,13 @@ from pymammotion.proto.mctrl_driver import MctlDriver
 from pymammotion.proto.mctrl_nav import MctlNav
 from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, ReportInfoData, SystemUpdateBufMsg, \
-    SystemRapidStateTunnelMsg
+from pymammotion.proto.mctrl_sys import (
+    MctlSys,
+    MowToAppInfoT,
+    ReportInfoData,
+    SystemUpdateBufMsg,
+    SystemRapidStateTunnelMsg,
+)
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
 from pymammotion.utility.map import CoordinateConverter
@@ -105,9 +110,9 @@ class MowingDevice:
                     parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
                 )
                 if location.zone_hash:
-                    self.location.work_zone = location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
-
-
+                    self.location.work_zone = (
+                        location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
+                    )
 
         self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 
