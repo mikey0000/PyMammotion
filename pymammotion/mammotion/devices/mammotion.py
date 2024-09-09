@@ -200,7 +200,8 @@ async def create_devices(ble_device: BLEDevice,
     mammotion = Mammotion(ble_device, preference)
 
     if cloud_credentials:
-        cloud_client, mammotion_http = await Mammotion.login(cloud_credentials.account_id or cloud_credentials.email,
+       cloud_client = CloudIOTGateway()
+        mammotion_http = await Mammotion.login(cloud_client, cloud_credentials.account_id or cloud_credentials.email,
                                              cloud_credentials.password)
         await mammotion.initiate_cloud_connection(cloud_client, mammotion_http)
 
