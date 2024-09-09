@@ -259,7 +259,7 @@ class Mammotion(object):
                 ble_device.set_disconnect_strategy(disconnect)
 
     @staticmethod
-    async def login(account: str, password: str) -> MammotionHTTP:
+    async def login(cloud_client: CloudIOTGateway, account: str, password: str) -> MammotionHTTP:
         """Login to mammotion cloud."""
    
         async with ClientSession(MAMMOTION_DOMAIN) as session:
