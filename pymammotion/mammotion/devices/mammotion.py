@@ -235,7 +235,7 @@ class Mammotion(object):
                 return
 
         self.cloud_client = cloud_client
-        self.mammotion_http_client = mammotion_http
+        self.http_client = mammotion_http
         self.mqtt = MammotionMQTT(region_id=cloud_client._region_response.data.regionId,
                                         product_key=cloud_client._aep_response.data.productKey,
                                         device_name=cloud_client._aep_response.data.deviceName,
