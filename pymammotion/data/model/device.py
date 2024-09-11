@@ -121,6 +121,9 @@ class MowingDevice:
     def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
         pass
 
+    def report_missing_data(self) -> None:
+        """Report missing data so we can refetch it."""
+
     @property
     def net(self):
         """Will return a wrapped betterproto of net."""

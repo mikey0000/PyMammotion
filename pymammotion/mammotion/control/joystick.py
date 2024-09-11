@@ -6,9 +6,9 @@ import pyjoystick
 from pyjoystick.sdl2 import Key, run_event_loop
 from pyjoystick.utils import PeriodicThread
 
-from pymammotion import MammotionBaseBLEDevice
 from pymammotion.event import BleNotificationEvent
-from pymammotion.utility.movement import transform_both_speeds, get_percent
+from pymammotion.mammotion.devices import MammotionBaseBLEDevice
+from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 bleNotificationEvt = BleNotificationEvent()
 

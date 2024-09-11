@@ -1,13 +1,15 @@
 """MammotionMQTT."""
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
 import logging
 from logging import getLogger
-from typing import Callable, Optional, cast, Awaitable
+from typing import Awaitable, Callable, Optional
 
+import betterproto
 from linkkit.linkkit import LinkKit
 from paho.mqtt.client import MQTTMessage
 
@@ -15,7 +17,7 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.proto import luba_msg_pb2
+from pymammotion.proto.luba_msg import LubaMsg
 
 logger = getLogger(__name__)
 
@@ -173,9 +175,9 @@ class MammotionMQTT:
             event = ThingEventMessage(**payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                content = cast(luba_msg_pb2, params.value.content)
+                content = LubaMsg().parse(base64.b64decode(params.value.content.proto))
 
-                logger.info("Unhandled protobuf event: %s", content.WhichOneof("subMsg"))
+                logger.info("Unhandled protobuf event: %s", betterproto.which_one_of(content, "LubaSubMsg"))
             elif params.identifier == "device_warning_event":
                 logger.debug("identifier event: %s", params.identifier)
             else:

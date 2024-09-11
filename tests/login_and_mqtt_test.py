@@ -50,12 +50,12 @@ if __name__ == '__main__':
     asyncio.set_event_loop(event_loop)
     cloud_client: CloudIOTGateway = event_loop.run_until_complete(run())
 
-    _mammotion_mqtt = MammotionCloud(MammotionMQTT(region_id=cloud_client._region_response.data.regionId,
-                                                   product_key=cloud_client._aep_response.data.productKey,
-                                                   device_name=cloud_client._aep_response.data.deviceName,
-                                                   device_secret=cloud_client._aep_response.data.deviceSecret,
-                                                   iot_token=cloud_client._session_by_authcode_response.data.iotToken,
-                                                   client_id=cloud_client._client_id,
+    _mammotion_mqtt = MammotionCloud(MammotionMQTT(region_id=cloud_client.region_response.data.regionId,
+                                                   product_key=cloud_client.aep_response.data.productKey,
+                                                   device_name=cloud_client.aep_response.data.deviceName,
+                                                   device_secret=cloud_client.aep_response.data.deviceSecret,
+                                                   iot_token=cloud_client.session_by_authcode_response.data.iotToken,
+                                                   client_id=cloud_client.client_id,
                                                    cloud_client=cloud_client))
 
     _mammotion_mqtt.connect_async()
