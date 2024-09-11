@@ -3,19 +3,19 @@ import base64
 import json
 import logging
 from collections import deque
-from typing import Awaitable, Callable, Optional, cast
+from typing import Any, Awaitable, Callable, Optional, cast
 
 import betterproto
 
 from pymammotion import MammotionMQTT
-from pymammotion.aliyun.cloud_gateway import DeviceOfflineException, SetupException
 from pymammotion.aliyun.dataclass.dev_by_account_response import Device
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
-from pymammotion.mammotion.devices.mammotion import MammotionBaseDevice, has_field
+from pymammotion.mammotion.devices.base import MammotionBaseDevice
 from pymammotion.mqtt.mammotion_future import MammotionFuture
+from pymammotion.proto import has_field
 from pymammotion.proto.luba_msg import LubaMsg
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,8 +48,11 @@ class MammotionCloud:
     def is_connected(self) -> bool:
         return self._mqtt_client.is_connected
 
-    def connect_async(self):
-        return self._mqtt_client.connect_async()
+    def disconnect(self) -> None:
+        self._mqtt_client.disconnect()
+
+    def connect_async(self) -> None:
+        self._mqtt_client.connect_async()
 
     def send_command(self, iot_id: str, command: bytes) -> None:
         self._mqtt_client.get_cloud_client().send_cloud_command(iot_id, command)
@@ -75,37 +78,6 @@ class MammotionCloud:
             finally:
                 # Mark the task as done
                 self.command_queue.task_done()
-
-    async def _send_command_locked(self, key: str, command: bytes) -> bytes:
-        """Send command to device and read response."""
-        if not self.is_connected:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._mqtt_client.connect_async)
-
-            if not self._mqtt_client.is_connected:
-                raise Exception("MQTT not connected, couldn't recover")
-        try:
-            return await self._execute_command_locked(key, command)
-        except DeviceOfflineException as ex:
-            _LOGGER.debug(
-                " device offline in _send_command_locked: %s",
-                ex,
-            )
-        except SetupException:
-            session = self._mqtt_client.get_cloud_client().get_session_by_authcode_response()
-            _LOGGER.debug(
-                " session identityId mssing in _send_command_locked: %s",
-                session,
-            )
-            if session.data.identityId is None:
-                await self._mqtt_client.get_cloud_client().session_by_auth_code()
-
-        except Exception as ex:
-            _LOGGER.debug(
-                "error in _send_command_locked: %s",
-                ex,
-            )
-            raise
 
     async def _execute_command_locked(self, iot_id: str, key: str, command: bytes) -> bytes:
         """Execute command and read response."""
@@ -181,8 +153,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
 
-        if self._mqtt.is_connected:
-            self._ble_sync()
+        if self._mqtt.is_ready:
             self.run_periodic_sync_task()
 
     async def on_ready(self) -> None:
@@ -215,7 +186,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 160, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
             )
 
-    async def queue_command(self, key: str, **kwargs: any) -> bytes:
+    async def queue_command(self, key: str, **kwargs: Any) -> bytes:
         # Create a future to hold the result
         _LOGGER.debug("Queueing command: %s", key)
         future = asyncio.Future()
@@ -248,7 +219,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         params = event.params
-        binary_data = base64.b64decode(params.value.content)
+        binary_data = base64.b64decode(params.value.content.proto)
         self._update_raw_data(cast(bytes, binary_data))
         new_msg = LubaMsg().parse(cast(bytes, binary_data))
 
@@ -267,7 +238,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             if fut is None:
                 return
             while fut.fut.cancelled() and len(self._mqtt.waiting_queue) > 0:
-                fut: MammotionFuture = self._mqtt.waiting_queue.popleft()
+                fut: MammotionFuture = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
             if not fut.fut.cancelled():
                 fut.resolve(cast(bytes, binary_data))
         await self._state_manager.notification(new_msg)

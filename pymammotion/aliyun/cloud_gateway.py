@@ -106,13 +106,13 @@ class CloudIOTGateway:
         self._devices_by_account_response = dev_by_account
 
     @staticmethod
-    def generate_random_string(length):
+    def generate_random_string(length: int):
         """Generate a random string of specified length."""
         characters = string.ascii_letters + string.digits
         return "".join(random.choice(characters) for _ in range(length))
 
     @staticmethod
-    def generate_hardware_string(length) -> str:
+    def generate_hardware_string(length: int) -> str:
         """Generate hardware string that is consistent per device."""
         hashed_uuid = hashlib.sha1(f"{uuid.getnode()}".encode()).hexdigest()
         return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
@@ -612,7 +612,7 @@ class CloudIOTGateway:
         return message_id
 
     @property
-    def listing_dev_by_account_response(self):
+    def devices_by_account_response(self):
         return self._devices_by_account_response
 
     def set_http(self, mammotion_http) -> None:
@@ -633,3 +633,7 @@ class CloudIOTGateway:
     @property
     def client_id(self):
         return self._client_id
+
+    @property
+    def login_by_oath_response(self):
+        return self._login_by_oauth_response

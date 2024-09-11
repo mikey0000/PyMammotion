@@ -62,7 +62,7 @@ class DeviceType(Enum):
             return DeviceType.UNKNOWN
 
     @staticmethod
-    def value_of_str(device_name: str, product_key=""):
+    def value_of_str(device_name: str, product_key: str = ""):
         """Determine the type of device based on the provided device name and
         product key.
 
@@ -101,7 +101,7 @@ class DeviceType(Enum):
             return DeviceType.UNKNOWN
 
     @staticmethod
-    def has_4g(device_name, product_key=""):
+    def has_4g(device_name: str, product_key: str = ""):
         """Check if the device has 4G capability based on the device name and
         optional product key.
 
@@ -126,7 +126,7 @@ class DeviceType(Enum):
         return device_type.get_value() >= DeviceType.LUBA_2.get_value()
 
     @staticmethod
-    def is_luba1(device_name, product_key=""):
+    def is_luba1(device_name: str, product_key: str = ""):
         """Check if the given device is of type LUBA.
 
         This function determines if the device specified by 'device_name' is of
@@ -150,7 +150,7 @@ class DeviceType(Enum):
         return device_type.get_value() == DeviceType.LUBA.get_value()
 
     @staticmethod
-    def is_luba_2(device_name, product_key=""):
+    def is_luba_2(device_name: str, product_key: str = ""):
         """Check if the device type is LUBA 2 or higher based on the device name
         and optional product key.
 
@@ -171,7 +171,7 @@ class DeviceType(Enum):
         return device_type.get_value() >= DeviceType.LUBA_2.get_value()
 
     @staticmethod
-    def is_yuka(device_name):
+    def is_yuka(device_name: str):
         """Check if the given device name corresponds to a LUBA_YUKA device type.
 
         Args:
@@ -189,7 +189,7 @@ class DeviceType(Enum):
         )
 
     @staticmethod
-    def is_rtk(device_name, product_key=""):
+    def is_rtk(device_name: str, product_key: str = ""):
         """Check if the device type is within the range of RTK devices.
 
         This function determines if the device type corresponding to the given

@@ -1,6 +1,5 @@
 """MowingDevice class to wrap around the betterproto dataclasses."""
 
-import math
 from dataclasses import dataclass
 
 import betterproto
@@ -20,8 +19,8 @@ from pymammotion.proto.mctrl_sys import (
     MctlSys,
     MowToAppInfoT,
     ReportInfoData,
-    SystemUpdateBufMsg,
     SystemRapidStateTunnelMsg,
+    SystemUpdateBufMsg,
 )
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
@@ -193,7 +192,7 @@ class SysData:
         else:
             self.sys = sys.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get sys in dict and return a betterproto dataclass."""
         if self.sys.get(item) is None:
             return MctlSys().__getattribute__(item)
@@ -216,7 +215,7 @@ class NavData:
         else:
             self.nav = nav.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get nav in dict and return a betterproto dataclass."""
         if self.nav.get(item) is None:
             return MctlNav().__getattribute__(item)
@@ -239,7 +238,7 @@ class DriverData:
         else:
             self.driver = driver.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get driver in dict and return a betterproto dataclass."""
         if self.driver.get(item) is None:
             return MctlDriver().__getattribute__(item)
@@ -262,7 +261,7 @@ class MulData:
         else:
             self.mul = mul.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get mul in dict and return a betterproto dataclass."""
         if self.mul.get(item) is None:
             return SocMul().__getattribute__(item)
@@ -285,7 +284,7 @@ class OtaData:
         else:
             self.ota = ota.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get ota in dict and return a betterproto dataclass."""
         if self.ota.get(item) is None:
             return MctlOta().__getattribute__(item)
@@ -308,7 +307,7 @@ class PeptData:
         else:
             self.pept = pept.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get pept in dict and return a betterproto dataclass."""
         if self.pept.get(item) is None:
             return MctlPept().__getattribute__(item)

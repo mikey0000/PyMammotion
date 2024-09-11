@@ -8,7 +8,7 @@ class ConnectData:
     wifi_rssi: int = 0
 
     @classmethod
-    def from_dict(cls, data: dict):
+    def from_dict(cls, data: dict) -> "ConnectData":
         return cls(
             connect_type=data.get("connect_type", 0),
             ble_rssi=data.get("ble_rssi", 0),

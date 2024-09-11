@@ -1,11 +1,10 @@
 # === sendOrderMsg_Sys ===
 import datetime
 from abc import ABC
-from typing import List
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
-from pymammotion.proto import luba_msg_pb2, mctrl_sys_pb2
+from pymammotion.proto import luba_msg_pb2, mctrl_sys, mctrl_sys_pb2
 from pymammotion.proto.mctrl_sys import RptInfoType
 from pymammotion.utility.device_type import DeviceType
 
@@ -158,7 +157,7 @@ class MessageSystem(AbstractMessage, ABC):
     #     return self.send_order_msg_sys(build2)
 
     def send_sys_set_date_time(self):
-        calendar = datetime.now()
+        calendar = datetime.datetime.now()
         i = calendar.year
         i2 = calendar.month
         i3 = calendar.day
@@ -170,8 +169,8 @@ class MessageSystem(AbstractMessage, ABC):
         i9 = 1 if calendar.dst() else 0
         print(f"Print time zone, time zone={
             i8}, daylight saving time={i9} week={i4}")
-        build = mctrl_sys_pb2.MctlSys(
-            todev_data_time=mctrl_sys_pb2.SysSetDateTime(
+        build = mctrl_sys.MctlSys(
+            todev_data_time=mctrl_sys.SysSetDateTime(
                 year=i,
                 month=i2,
                 date=i3,

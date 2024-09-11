@@ -2,7 +2,6 @@
 import logging
 import time
 from abc import ABC
-from typing import List
 
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.plan import Plan
@@ -61,82 +60,82 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
         return self.send_order_msg_nav(build)
 
-    def along_border(self):
+    def along_border(self) -> bytes:
         build = MctlNav(todev_edgecmd=1)
         logger.debug("Send command--along the edge command")
         return self.send_order_msg_nav(build)
 
-    def start_draw_border(self):
+    def start_draw_border(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=0, type=0))
         logger.debug("Send command--Start drawing boundary command")
         return self.send_order_msg_nav(build)
 
-    def enter_dumping_status(self):
+    def enter_dumping_status(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=14, type=12))
         logger.debug("Send command--Enter grass collection status")
         return self.send_order_msg_nav(build)
 
-    def add_dump_point(self):
+    def add_dump_point(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=0, type=12))
         logger.debug("Send command--Add grass collection point")
         return self.send_order_msg_nav(build)
 
-    def revoke_dump_point(self):
+    def revoke_dump_point(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=12))
         logger.debug("Send command--Revoke grass collection point")
         return self.send_order_msg_nav(build)
 
-    def exit_dumping_status(self):
+    def exit_dumping_status(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=1, type=12))
         logger.debug("Send command--Exit grass collection setting status")
         return self.send_order_msg_nav(build)
 
-    def out_drop_dumping_add(self):
+    def out_drop_dumping_add(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=15, type=12))
         logger.debug("Send command--Complete external grass collection point marking operation")
         return self.send_order_msg_nav(build)
 
-    def recover_dumping(self):
+    def recover_dumping(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=12, type=12))
         logger.debug("Send command--Recover grass collection operation")
         return self.send_order_msg_nav(build)
 
-    def start_draw_barrier(self):
+    def start_draw_barrier(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=0, type=1))
         logger.debug("Sending command - Draw obstacle command")
         return self.send_order_msg_nav(build)
 
-    def start_erase(self):
+    def start_erase(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=4, type=0))
         logger.debug("Sending command - Start erase command - Bluetooth")
         return self.send_order_msg_nav(build)
 
-    def end_erase(self):
+    def end_erase(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=5, type=0))
         logger.debug("Sending command - End erase command")
         return self.send_order_msg_nav(build)
 
-    def cancel_erase(self):
+    def cancel_erase(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=7, type=0))
         logger.debug("Sending command - Cancel erase command")
         return self.send_order_msg_nav(build)
 
-    def start_channel_line(self):
+    def start_channel_line(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=0, type=2))
         logger.debug("Sending command - Start drawing channel line command")
         return self.send_order_msg_nav(build)
 
-    def save_task(self):
+    def save_task(self) -> bytes:
         build = MctlNav(todev_save_task=1)
         logger.debug("Sending command - Save task command")
         return self.send_order_msg_nav(build)
 
-    def set_edit_boundary(self, action: int):
+    def set_edit_boundary(self, action: int) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=action, type=0))
         logger.debug(f"Sending secondary editing command action={action}")
         return self.send_order_msg_nav(build)
 
-    def set_data_synchronization(self, type: int):
+    def set_data_synchronization(self, type: int) -> bytes:
         logger.debug(f"Sync data ==================== Sending ============ Restore command: {type}")
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=12, type=type))
         logger.debug("Sync data ==================== Sending ============ Restore command")
@@ -259,7 +258,7 @@ class MessageNavigation(AbstractMessage, ABC):
     def request_job_history(self, num: int) -> bytes:
         return self.send_order_msg_nav(MctlNav(todev_work_report_cmd=WorkReportCmdData(sub_cmd=1, get_info_num=num)))
 
-    def leave_dock(self):
+    def leave_dock(self) -> bytes:
         build = MctlNav(todev_one_touch_leave_pile=1)
         logger.debug("Send command--One-click automatic undocking")
         return self.send_order_msg_nav(build)
@@ -289,12 +288,12 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Send command--Get area name list")
         return self.send_order_msg_nav(mctl_nav)
 
-    def get_all_boundary_hash_list(self, sub_cmd: int):
+    def get_all_boundary_hash_list(self, sub_cmd: int) -> bytes:
         build = MctlNav(todev_gethash=NavGetHashList(pver=1, sub_cmd=sub_cmd))
         logger.debug(f"Area loading=====================:Get area hash list++Bluetooth:{sub_cmd}")
         return self.send_order_msg_nav(build)
 
-    def get_hash_response(self, total_frame: int, current_frame: int):
+    def get_hash_response(self, total_frame: int, current_frame: int) -> bytes:
         build = MctlNav(
             todev_gethash=NavGetHashList(pver=1, sub_cmd=2, current_frame=current_frame, total_frame=total_frame)
         )
@@ -303,17 +302,17 @@ class MessageNavigation(AbstractMessage, ABC):
         )
         return self.send_order_msg_nav(build)
 
-    def synchronize_hash_data(self, hash_num: int):
+    def synchronize_hash_data(self, hash_num: int) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=8, hash=hash_num, sub_cmd=1))
         logger.debug(f"Send command--209,hash synchronize area data hash:{hash}")
         return self.send_order_msg_nav(build)
 
-    def get_area_to_be_transferred(self):
+    def get_area_to_be_transferred(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=8, sub_cmd=1, type=3))
         logger.debug("Send command--Get transfer area before charging pile")
         return self.send_order_msg_nav(build)
 
-    def get_regional_data(self, regional_data: RegionData):
+    def get_regional_data(self, regional_data: RegionData) -> bytes:
         build = MctlNav(
             todev_get_commondata=NavGetCommData(
                 pver=1,
@@ -328,53 +327,53 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Area loading=====================:Response area data")
         return self.send_order_msg_nav(build)
 
-    def indoor_simulation(self, flag: int):
+    def indoor_simulation(self, flag: int) -> bytes:
         build = MctlNav(simulation_cmd=SimulationCmdData(sub_cmd=flag))
         logger.debug(f"Send command--Send indoor simulation command flag={flag}")
         return self.send_order_msg_nav(build)
 
-    def send_tools_order(self, param_id: int, values: list[int]):
+    def send_tools_order(self, param_id: int, values: list[int]) -> bytes:
         build = MctlNav(simulation_cmd=SimulationCmdData(sub_cmd=2, param_id=param_id, param_value=values))
         logger.debug(f"Send command--Send tool command id={param_id},values={values}")
         return self.send_order_msg_nav(build)
 
-    def end_draw_border(self, type: int):
+    def end_draw_border(self, type: int) -> bytes:
         if type == -1:
             return
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=1, type=type))
         logger.debug(f"Send command--End drawing boundary, obstacle, channel command type={type}")
         return self.send_order_msg_nav(build)
 
-    def cancel_current_record(self):
+    def cancel_current_record(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=7, sub_cmd=0))
         logger.debug("Send command--Cancel current recording (boundary, obstacle)")
         return self.send_order_msg_nav(build)
 
-    def delete_map_elements(self, type: int, hash_num: int):
+    def delete_map_elements(self, type: int, hash_num: int) -> bytes:
         if type == -1:
             return
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=type, hash=hash_num))
         logger.debug(f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash}")
         return self.send_order_msg_nav(build)
 
-    def delete_charge_point(self):
+    def delete_charge_point(self) -> bytes:
         logger.debug("Delete charging pile")
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=5))
         logger.debug("Send command--Delete charging pile location and reset")
         return self.send_order_msg_nav(build)
 
-    def confirm_base_station(self):
+    def confirm_base_station(self) -> bytes:
         logger.debug("Reset base station")
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=2, type=7))
         logger.debug("Send command--Confirm no modification to base station")
         return self.send_order_msg_nav(build)
 
-    def delete_all(self):
+    def delete_all(self) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=6))
         logger.debug("Send command--Clear job data")
         return self.send_order_msg_nav(build)
 
-    def generate_route_information(self, generate_route_information: GenerateRouteInformation):
+    def generate_route_information(self, generate_route_information: GenerateRouteInformation) -> bytes:
         logger.debug(f"Generate route data source:{generate_route_information}")
         build = NavReqCoverPath(
             pver=1,
@@ -382,7 +381,7 @@ class MessageNavigation(AbstractMessage, ABC):
             zone_hashs=generate_route_information.one_hashs,
             job_mode=generate_route_information.job_mode,
             edge_mode=generate_route_information.edge_mode,
-            knife_height=generate_route_information.knife_height,
+            knife_height=generate_route_information.blade_height,
             speed=generate_route_information.speed,
             ultra_wave=generate_route_information.ultra_wave,
             channel_width=generate_route_information.channel_width,
@@ -397,7 +396,7 @@ class MessageNavigation(AbstractMessage, ABC):
         generate_route_information}")
         return self.send_order_msg_nav(MctlNav(bidire_reqconver_path=build))
 
-    def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation):
+    def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation) -> bytes:
         logger.debug(f"Generate route data source: {generate_route_information}")
         build = NavReqCoverPath(
             pver=1,
@@ -405,7 +404,7 @@ class MessageNavigation(AbstractMessage, ABC):
             zone_hashs=generate_route_information.one_hashs,
             job_mode=generate_route_information.job_mode,
             edge_mode=generate_route_information.edge_mode,
-            knife_height=generate_route_information.knife_height,
+            knife_height=generate_route_information.blade_height,
             speed=generate_route_information.speed,
             ultra_wave=generate_route_information.ultra_wave,
             channel_width=generate_route_information.channel_width,
@@ -418,14 +417,14 @@ class MessageNavigation(AbstractMessage, ABC):
         generate_route_information}")
         return self.send_order_msg_nav(MctlNav(bidire_reqconver_path=build))
 
-    def end_generate_route_information(self):
+    def end_generate_route_information(self) -> bytes:
         build = NavReqCoverPath(pver=1, sub_cmd=9)
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")
         build2 = MctlNav(bidire_reqconver_path=build)
         logger.debug("Send command -- End generating route information generate_route_information=")
         return self.send_order_msg_nav(build2)
 
-    def query_generate_route_information(self):
+    def query_generate_route_information(self) -> bytes:
         build = NavReqCoverPath(pver=1, sub_cmd=2)
         logger.debug(f"{self.get_device_name(
         )} Send command -- Get route configuration information generate_route_information={build}")
@@ -454,52 +453,52 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Sending command--Start job")
         return self.send_order_msg_nav(build)
 
-    def cancel_return_to_dock(self):
+    def cancel_return_to_dock(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=12, result=0))
         logger.debug("Send command - Cancel return to charge")
         return self.send_order_msg_nav(build)
 
-    def cancel_job(self):
+    def cancel_job(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=4, result=0))
         logger.debug("Send command - End job")
         return self.send_order_msg_nav(build)
 
-    def return_to_dock(self):
+    def return_to_dock(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=5, result=0))
         logger.debug("Send command - Return to charge command")
         return self.send_order_msg_nav(build)
 
-    def pause_execute_task(self):
+    def pause_execute_task(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=2, result=0))
         logger.debug("Send command - Pause command")
         return self.send_order_msg_nav(build)
 
-    def re_charge_test(self):
+    def re_charge_test(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=10, result=0))
         logger.debug("Send command - Return to charge test command")
         return self.send_order_msg_nav(build)
 
-    def fast_aotu_test(self, action: int):
+    def fast_aotu_test(self, action: int) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=action, result=0))
         logger.debug("Send command - One-click automation test")
         return self.send_order_msg_nav(build)
 
-    def resume_execute_task(self):
+    def resume_execute_task(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=3, result=0))
         logger.debug("Send command - Cancel pause command")
         return self.send_order_msg_nav(build)
 
-    def break_point_continue(self):
+    def break_point_continue(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=7, result=0))
         logger.debug("Send command - Continue from breakpoint")
         return self.send_order_msg_nav(build)
 
-    def break_point_anywhere_continue(self):
+    def break_point_anywhere_continue(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=9, result=0))
         logger.debug("Send command - Continue from current vehicle position")
         return self.send_order_msg_nav(build)
 
-    def reset_base_station(self):
+    def reset_base_station(self) -> bytes:
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=3, action=1, result=0))
         logger.debug("Send command - Reset charging pile, base station position")
         return self.send_order_msg_nav(build)

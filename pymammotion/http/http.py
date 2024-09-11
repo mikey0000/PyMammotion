@@ -1,49 +1,15 @@
-from dataclasses import dataclass
-from typing import Generic, Literal, Optional, TypeVar
+import csv
+from typing import cast
 
 from aiohttp import ClientSession
-from aiohttp.hdrs import AUTHORIZATION
-from mashumaro import DataClassDictMixin
-from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.aliyun.dataclass.connect_response import Device
 from pymammotion.const import (
+    MAMMOTION_API_DOMAIN,
     MAMMOTION_CLIENT_ID,
     MAMMOTION_CLIENT_SECRET,
     MAMMOTION_DOMAIN,
 )
-
-DataT = TypeVar("DataT")
-
-
-@dataclass
-class Response(DataClassDictMixin, Generic[DataT]):
-    code: int
-    msg: str
-    data: DataT | None = None
-
-
-@dataclass
-class LoginResponseUserInformation(DataClassORJSONMixin):
-    areaCode: str
-    domainAbbreviation: str
-    email: Optional[str]
-    userId: str
-    userAccount: str
-    authType: str
-
-
-@dataclass
-class LoginResponseData(DataClassORJSONMixin):
-    access_token: str
-    token_type: Literal["bearer"]
-    refresh_token: str
-    expires_in: int
-    scope: Literal["read"]
-    grant_type: Literal["password"]
-    authorization_code: str
-    userInformation: LoginResponseUserInformation
-    jti: str
+from pymammotion.http.model.http import ErrorInfo, LoginResponseData, Response
 
 
 class MammotionHTTP:
@@ -54,15 +20,28 @@ class MammotionHTTP:
         self.msg = response.msg
         self.code = response.code
 
-    async def get_all_error_codes(self) -> None:
-        async with ClientSession() as session:
+    async def get_all_error_codes(self) -> list[ErrorInfo]:
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
-                "code/record/export-data",
+                "/user-server/v1/code/record/export-data",
                 headers=self._headers,
             ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                print(resp)
+                data = await resp.json()
+                reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
+                codes = []
+                for row in reader:
+                    codes.append(ErrorInfo(**cast(row, dict)))
+                return codes
+
+    async def oauth_check(self) -> None:
+        """Check if token is valid.
+
+        Returns 401 if token is invalid. We then need to re-authenticate, can try to refresh token first
+        """
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post("/user-server/v1/user/oauth/check") as resp:
+                data = await resp.json()
+                response = Response.from_dict(data)
 
     @classmethod
     async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
@@ -76,12 +55,11 @@ class MammotionHTTP:
                 grant_type="password",
             ),
         ) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                response = Response.from_dict(data)
-                # TODO catch errors from mismatch user / password elsewhere
-                # Assuming the data format matches the expected structure
-                return response
+            data = await resp.json()
+            response = Response.from_dict(data)
+            # TODO catch errors from mismatch user / password elsewhere
+            # Assuming the data format matches the expected structure
+            return response
 
 
 async def connect_http(username: str, password: str) -> MammotionHTTP:

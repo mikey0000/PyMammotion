@@ -75,15 +75,29 @@ class BleMessage:
         lubaMsg.subtype = 1
         lubaMsg.net.CopyFrom(commEsp)
         byte_arr = lubaMsg.SerializeToString()
-        await self.messageNavigation.post_custom_data_bytes(byte_arr)
+        await self.post_custom_data_bytes(byte_arr)
 
     async def get_task(self) -> None:
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
-        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
+        await self.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
 
     async def send_ble_alive(self) -> None:
         hash_map = {"ctrl": 1}
-        await self.messageNavigation.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
+        await self.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
+
+    def get_json_string(self, cmd: int, hash_map: dict[str, object]) -> str:
+        jSONObject = {}
+        try:
+            jSONObject["cmd"] = cmd
+            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
+            jSONObject2 = {}
+            for key, value in hash_map.items():
+                jSONObject2[key] = value
+            jSONObject["params"] = jSONObject2
+            return json.dumps(jSONObject)
+        except Exception as e:
+            print(e)
+            return ""
 
     def clearNotification(self) -> None:
         self.notification = None
@@ -389,7 +403,7 @@ class BleMessage:
         require_ack: bool,
         hasFrag: bool,
         sequence: int,
-        data: bytes,
+        data: bytes | None,
     ) -> bytes:
         byteOS = BytesIO()
         dataLength = 0 if data == None else len(data)
