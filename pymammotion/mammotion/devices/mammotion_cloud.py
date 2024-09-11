@@ -219,6 +219,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         params = event.params
+        if event.params.iotId != self.iot_id:
+            return
         binary_data = base64.b64decode(params.value.content.proto)
         self._update_raw_data(cast(bytes, binary_data))
         new_msg = LubaMsg().parse(cast(bytes, binary_data))
