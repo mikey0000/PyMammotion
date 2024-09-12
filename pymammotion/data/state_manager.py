@@ -1,12 +1,12 @@
 """Manage state from notifications into MowingDevice."""
 
-from typing import Optional, Callable, Awaitable
+from typing import Awaitable, Callable, Optional
 
 import betterproto
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
+from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
 
 
 class StateManager:
@@ -62,6 +62,9 @@ class StateManager:
                 updated = self._device.map.update(common_data)
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
+            case "toapp_all_hash_name":
+                hash_names: AppGetAllAreaHashName = nav_msg[1]
+                self._device.map.area_name = hash_names.hashnames
 
     def _update_sys_data(self, message) -> None:
         """Update system."""

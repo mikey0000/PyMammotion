@@ -142,7 +142,7 @@ class NavGetHashList(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(2)
     total_frame: int = betterproto.int32_field(3)
     current_frame: int = betterproto.int32_field(4)
-    data_hash: float = betterproto.fixed64_field(5)
+    data_hash: int = betterproto.fixed64_field(5)
     reserved: str = betterproto.string_field(6)
 
 
@@ -152,7 +152,7 @@ class NavGetHashListAck(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(2)
     total_frame: int = betterproto.int32_field(3)
     current_frame: int = betterproto.int32_field(4)
-    data_hash: float = betterproto.fixed64_field(5)
+    data_hash: int = betterproto.fixed64_field(5)
     hash_len: int = betterproto.int32_field(6)
     reserved: str = betterproto.string_field(7)
     result: int = betterproto.int32_field(8)
@@ -170,7 +170,7 @@ class NavGetCommData(betterproto.Message):
     paternal_hash_b: int = betterproto.int64_field(7)
     total_frame: int = betterproto.int32_field(8)
     current_frame: int = betterproto.int32_field(9)
-    data_hash: float = betterproto.fixed64_field(10)
+    data_hash: int = betterproto.fixed64_field(10)
     reserved: str = betterproto.string_field(11)
 
 
@@ -181,12 +181,12 @@ class NavGetCommDataAck(betterproto.Message):
     result: int = betterproto.int32_field(3)
     action: int = betterproto.int32_field(4)
     type: int = betterproto.int32_field(5)
-    hash: float = betterproto.fixed64_field(6)
-    paternal_hash_a: float = betterproto.fixed64_field(7)
-    paternal_hash_b: float = betterproto.fixed64_field(8)
+    hash: int = betterproto.fixed64_field(6)
+    paternal_hash_a: int = betterproto.fixed64_field(7)
+    paternal_hash_b: int = betterproto.fixed64_field(8)
     total_frame: int = betterproto.int32_field(9)
     current_frame: int = betterproto.int32_field(10)
-    data_hash: float = betterproto.fixed64_field(11)
+    data_hash: int = betterproto.fixed64_field(11)
     data_len: int = betterproto.int32_field(12)
     data_couple: list["CommDataCouple"] = betterproto.message_field(13)
     reserved: str = betterproto.string_field(14)
@@ -206,8 +206,8 @@ class NavReqCoverPath(betterproto.Message):
     channel_mode: int = betterproto.int32_field(10)
     toward: int = betterproto.int32_field(11)
     speed: float = betterproto.float_field(12)
-    zone_hashs: list[float] = betterproto.fixed64_field(13)
-    path_hash: float = betterproto.fixed64_field(14)
+    zone_hashs: list[int] = betterproto.fixed64_field(13)
+    path_hash: int = betterproto.fixed64_field(14)
     reserved: str = betterproto.string_field(15)
     result: int = betterproto.int32_field(16)
     toward_mode: int = betterproto.int32_field(17)
@@ -226,12 +226,12 @@ class NavUploadZigZagResult(betterproto.Message):
     current_zone_path_num: int = betterproto.int32_field(8)
     current_zone_path_id: int = betterproto.int32_field(9)
     current_zone: int = betterproto.int32_field(10)
-    current_hash: float = betterproto.fixed64_field(11)
+    current_hash: int = betterproto.fixed64_field(11)
     total_frame: int = betterproto.int32_field(12)
     current_frame: int = betterproto.int32_field(13)
     channel_mode: int = betterproto.int32_field(14)
     channel_mode_id: int = betterproto.int32_field(15)
-    data_hash: float = betterproto.fixed64_field(16)
+    data_hash: int = betterproto.fixed64_field(16)
     data_len: int = betterproto.int32_field(17)
     reserved: str = betterproto.string_field(18)
     data_couple: list["CommDataCouple"] = betterproto.message_field(19)
@@ -242,10 +242,10 @@ class NavUploadZigZagResult(betterproto.Message):
 class NavUploadZigZagResultAck(betterproto.Message):
     pver: int = betterproto.int32_field(1)
     current_zone: int = betterproto.int32_field(2)
-    current_hash: float = betterproto.fixed64_field(3)
+    current_hash: int = betterproto.fixed64_field(3)
     total_frame: int = betterproto.int32_field(4)
     current_frame: int = betterproto.int32_field(5)
-    data_hash: float = betterproto.fixed64_field(6)
+    data_hash: int = betterproto.fixed64_field(6)
     reserved: str = betterproto.string_field(7)
     sub_cmd: int = betterproto.int32_field(8)
 
@@ -270,8 +270,8 @@ class NavTaskIdRw(betterproto.Message):
 
 @dataclass
 class NavSysHashOverview(betterproto.Message):
-    commonhash_overview: float = betterproto.fixed64_field(1)
-    path_hash_overview: float = betterproto.fixed64_field(2)
+    commonhash_overview: int = betterproto.fixed64_field(1)
+    path_hash_overview: int = betterproto.fixed64_field(2)
 
 
 @dataclass
@@ -281,7 +281,7 @@ class NavTaskBreakPoint(betterproto.Message):
     toward: int = betterproto.int32_field(3)
     flag: int = betterproto.int32_field(4)
     action: int = betterproto.int32_field(5)
-    zone_hash: float = betterproto.fixed64_field(6)
+    zone_hash: int = betterproto.fixed64_field(6)
 
 
 @dataclass
@@ -314,13 +314,13 @@ class NavPlanJobSet(betterproto.Message):
     speed: float = betterproto.float_field(26)
     task_name: str = betterproto.string_field(27)
     job_name: str = betterproto.string_field(28)
-    zone_hashs: list[float] = betterproto.fixed64_field(29)
+    zone_hashs: list[int] = betterproto.fixed64_field(29)
     reserved: str = betterproto.string_field(30)
     start_date: str = betterproto.string_field(31)
     end_date: str = betterproto.string_field(32)
     trigger_type: int = betterproto.int32_field(33)
     day: int = betterproto.int32_field(34)
-    weeks: list[float] = betterproto.fixed32_field(35)
+    weeks: list[int] = betterproto.fixed32_field(35)
     remained_seconds: int = betterproto.int64_field(36)
     toward_mode: int = betterproto.int32_field(37)
     toward_included_angle: int = betterproto.int32_field(38)
@@ -388,19 +388,19 @@ class AppRequestCoverPathsT(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(2)
     total_frame: int = betterproto.int32_field(3)
     current_frame: int = betterproto.int32_field(4)
-    data_hash: float = betterproto.fixed64_field(5)
+    data_hash: int = betterproto.fixed64_field(5)
     transaction_id: int = betterproto.int64_field(6)
     reserved: list[int] = betterproto.int64_field(7)
-    hash_list: list[float] = betterproto.fixed64_field(8)
+    hash_list: list[int] = betterproto.fixed64_field(8)
 
 
 @dataclass
 class CoverPathPacketT(betterproto.Message):
-    path_hash: float = betterproto.fixed64_field(1)
+    path_hash: int = betterproto.fixed64_field(1)
     path_type: int = betterproto.int32_field(2)
     path_total: int = betterproto.int32_field(3)
     path_cur: int = betterproto.int32_field(4)
-    zone_hash: float = betterproto.fixed64_field(5)
+    zone_hash: int = betterproto.fixed64_field(5)
     data_couple: list["CommDataCouple"] = betterproto.message_field(6)
 
 
@@ -415,7 +415,7 @@ class CoverPathUploadT(betterproto.Message):
     current_frame: int = betterproto.int32_field(7)
     total_path_num: int = betterproto.int32_field(8)
     vaild_path_num: int = betterproto.int32_field(9)
-    data_hash: float = betterproto.fixed64_field(10)
+    data_hash: int = betterproto.fixed64_field(10)
     transaction_id: int = betterproto.int64_field(11)
     reserved: list[int] = betterproto.int64_field(12)
     data_len: int = betterproto.int32_field(13)
@@ -424,7 +424,7 @@ class CoverPathUploadT(betterproto.Message):
 
 @dataclass
 class ZoneStartPrecentT(betterproto.Message):
-    data_hash: float = betterproto.fixed64_field(1)
+    data_hash: int = betterproto.fixed64_field(1)
     x: float = betterproto.float_field(2)
     y: float = betterproto.float_field(3)
     index: int = betterproto.int32_field(4)

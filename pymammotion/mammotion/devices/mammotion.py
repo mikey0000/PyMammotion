@@ -75,6 +75,9 @@ class MammotionMixedDeviceManager:
     def replace_ble(self, ble_device: MammotionBaseBLEDevice) -> None:
         self._ble_device = ble_device
 
+    def replace_mqtt(self, mqtt: MammotionCloud) -> None:
+        self._cloud_device._mqtt = mqtt
+
     def has_cloud(self) -> bool:
         return self._cloud_device is not None
 
@@ -155,10 +158,16 @@ class Mammotion:
         await loop.run_in_executor(None, self.mqtt.connect_async)
 
         for device in cloud_client.devices_by_account_response.data.data:
-            if device.deviceName.startswith(("Luba-", "Yuka-")) and self.devices.get_device(device.deviceName) is None:
+            mower_device = self.devices.get_device(device.deviceName)
+            if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
                 self.devices.add_device(
                     MammotionMixedDeviceManager(name=device.deviceName, cloud_device=device, mqtt=self.mqtt)
                 )
+            elif device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device:
+                if mower_device.cloud() is None:
+                    mower_device.add_cloud(cloud_device=device, mqtt=self.mqtt)
+                else:
+                    device.replace_mqtt(self.mqtt)
 
     def set_disconnect_strategy(self, disconnect: bool) -> None:
         for device_name, device in self.devices.devices:

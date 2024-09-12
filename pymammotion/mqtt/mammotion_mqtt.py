@@ -175,7 +175,7 @@ class MammotionMQTT:
             event = ThingEventMessage(**payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                content = LubaMsg().parse(base64.b64decode(params.value.content.proto))
+                content = LubaMsg().parse(base64.b64decode(params.value.content))
 
                 logger.info("Unhandled protobuf event: %s", betterproto.which_one_of(content, "LubaSubMsg"))
             elif params.identifier == "device_warning_event":

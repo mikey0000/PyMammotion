@@ -43,7 +43,7 @@ class BypassStrategy(IntEnum):
     direct_touch = 0
     slow_touch = 1
     less_touch = 2
-    no_touch = 3  # luba 2 yuka only or possibly value of 10
+    no_touch = 10  # luba 2 yuka only or possibly value of 10
 
 
 class PathAngleSetting(IntEnum):

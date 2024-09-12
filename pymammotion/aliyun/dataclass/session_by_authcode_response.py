@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from datetime import time
+from dataclasses import dataclass
+from typing import Optional
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -16,4 +16,4 @@ class SessionOauthToken(DataClassORJSONMixin):
 @dataclass
 class SessionByAuthCodeResponse(DataClassORJSONMixin):
     code: int
-    data: SessionOauthToken
+    data: Optional[SessionOauthToken]

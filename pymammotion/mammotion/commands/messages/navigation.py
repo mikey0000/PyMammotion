@@ -375,20 +375,21 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def generate_route_information(self, generate_route_information: GenerateRouteInformation) -> bytes:
         logger.debug(f"Generate route data source:{generate_route_information}")
+
         build = NavReqCoverPath(
             pver=1,
             sub_cmd=0,
             zone_hashs=generate_route_information.one_hashs,
-            job_mode=generate_route_information.job_mode,
-            edge_mode=generate_route_information.edge_mode,
-            knife_height=generate_route_information.blade_height,
-            speed=generate_route_information.speed,
-            ultra_wave=generate_route_information.ultra_wave,
-            channel_width=generate_route_information.channel_width,
-            channel_mode=generate_route_information.channel_mode,
-            toward=generate_route_information.toward,
-            toward_included_angle=generate_route_information.toward_included_angle,  # luba 2 yuka only
-            toward_mode=generate_route_information.toward_mode,  # luba 2 yuka only
+            job_mode=int(generate_route_information.job_mode),
+            edge_mode=int(generate_route_information.edge_mode),
+            knife_height=int(generate_route_information.blade_height),
+            speed=float(generate_route_information.speed),
+            ultra_wave=int(generate_route_information.ultra_wave),
+            channel_width=int(generate_route_information.channel_width),
+            channel_mode=int(generate_route_information.channel_mode),
+            toward=int(generate_route_information.toward),
+            toward_included_angle=int(generate_route_information.toward_included_angle),  # luba 2 yuka only
+            toward_mode=int(generate_route_information.toward_mode),  # luba 2 yuka only
             reserved=generate_route_information.path_order,
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
@@ -402,14 +403,14 @@ class MessageNavigation(AbstractMessage, ABC):
             pver=1,
             sub_cmd=3,
             zone_hashs=generate_route_information.one_hashs,
-            job_mode=generate_route_information.job_mode,
-            edge_mode=generate_route_information.edge_mode,
-            knife_height=generate_route_information.blade_height,
-            speed=generate_route_information.speed,
-            ultra_wave=generate_route_information.ultra_wave,
-            channel_width=generate_route_information.channel_width,
-            channel_mode=generate_route_information.channel_mode,
-            toward=generate_route_information.toward,
+            job_mode=int(generate_route_information.job_mode),
+            edge_mode=int(generate_route_information.edge_mode),
+            knife_height=int(generate_route_information.blade_height),
+            speed=float(generate_route_information.speed),
+            ultra_wave=int(generate_route_information.ultra_wave),
+            channel_width=int(generate_route_information.channel_width),
+            channel_mode=int(generate_route_information.channel_mode),
+            toward=int(generate_route_information.toward),
             reserved=generate_route_information.path_order,
         )
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")

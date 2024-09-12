@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 
 class Event:
@@ -54,9 +55,12 @@ class DataEvent:
     def __init__(self) -> None:
         self.on_data_event = Event()
 
-    async def data_event(self, data) -> None:
+    async def data_event(self, data: Any) -> None:
         # This function will be executed when data is received.
-        await self.on_data_event(data)
+        if data:
+            await self.on_data_event(data)
+        else:
+            await self.on_data_event()
 
     def add_subscribers(self, obj_method) -> None:
         self.on_data_event += obj_method

@@ -5,13 +5,14 @@ from typing import Any, Awaitable, Callable
 
 import betterproto
 
-from pymammotion.aliyun.dataclass.connect_response import Device
+from pymammotion.aliyun.dataclass.dev_by_account_response import Device
 from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.state_manager import StateManager
 from pymammotion.proto import has_field
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
+from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 _LOGGER = logging.getLogger(__name__)
@@ -197,17 +198,28 @@ class MammotionBaseDevice:
 
     async def start_map_sync(self) -> None:
         """Start sync of map data."""
+        try:
+            # work out why this crashes sometimes for better proto
+
+            if self._cloud_device:
+                if not DeviceType.is_luba1(self._cloud_device.deviceName, self._cloud_device.productKey):
+                    await self.queue_command("get_area_name_list", device_id=self._cloud_device.deviceName)
+            if has_field(self._mower.net.toapp_wifi_iot_status):
+                if not DeviceType.is_luba1(self._mower.net.toapp_wifi_iot_status.devicename):
+                    await self.queue_command(
+                        "get_area_name_list", device_id=self._mower.net.toapp_wifi_iot_status.devicename
+                    )
+        except Exception:
+            """Do nothing for now."""
+
         await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
-        await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-
-        await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
-
-        # work out why this crashes sometimes for better proto
-        if self._cloud_device:
-            await self.queue_command("get_area_name_list", device_id=self._cloud_device.deviceName)
-        if has_field(self._mower.net.toapp_wifi_iot_status):
-            await self.queue_command("get_area_name_list", device_id=self._mower.net.toapp_wifi_iot_status.devicename)
+        if not has_field(self.mower.nav.toapp_gethash_ack):
+            await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
+            await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
+        else:
+            for data_hash in self.mower.nav.toapp_gethash_ack.data_couple:
+                await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)

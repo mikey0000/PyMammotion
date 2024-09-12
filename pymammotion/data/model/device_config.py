@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pymammotion.utility.device_type import DeviceType
 
@@ -35,6 +35,7 @@ class OperationSettings:
     border_mode: int = 1  # border laps
     obstacle_laps: int = 1
     start_progress: int = 0
+    areas: list[int] = field(default_factory=list)
 
 
 def create_path_order(operation_mode: OperationSettings, device_name: str) -> str:
@@ -42,7 +43,7 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
     bArr = bytearray(8)
     bArr[0] = operation_mode.border_mode
     bArr[1] = operation_mode.obstacle_laps
-    bArr[3] = operation_mode.start_progress
+    bArr[3] = int(operation_mode.start_progress)
     bArr[2] = 0
 
     if not DeviceType.is_luba1(device_name):
@@ -53,13 +54,13 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
             i = 0
         bArr[5] = i
         if operation_mode.is_dump:
-            b = operation_mode.collect_grass_frequency
+            b = int(operation_mode.collect_grass_frequency)
         else:
             b = 10
         bArr[6] = b
     if DeviceType.is_luba1(device_name):
         bArr[4] = operation_mode.toward_mode
-    return str(bArr, "UTF-8")
+    return bArr.decode()
 
 
 def calculate_yuka_mode(operation_mode: OperationSettings) -> int:

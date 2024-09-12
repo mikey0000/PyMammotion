@@ -1,7 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck
+from pymammotion.proto.mctrl_nav import AreaHashName, NavGetCommDataAck
 
 
 class PathType(IntEnum):
@@ -29,6 +29,7 @@ class HashList:
     path: dict  # type 2
     obstacle: dict  # type 1
     hashlist: list[int]
+    area_name: list[AreaHashName] = field(default_factory=list)
 
     def set_hashlist(self, hashlist: list[int]) -> None:
         self.hashlist = hashlist
@@ -49,6 +50,9 @@ class HashList:
     def update(self, hash_data: NavGetCommDataAck) -> bool:
         """Update the map data."""
         if hash_data.type == PathType.AREA:
+            existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
+            if not existing_name:
+                self.area_name.append(AreaHashName(name=f"area {len(self.area_name)+1}", hash=hash_data.hash))
             return self._add_hash_data(self.area, hash_data)
 
         if hash_data.type == PathType.OBSTACLE:

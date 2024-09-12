@@ -36,7 +36,7 @@ class Base64EncodedProtobuf(SerializableType):
 
 @dataclass
 class DeviceProtobufMsgEventValue(DataClassORJSONMixin):
-    content: Base64EncodedProtobuf
+    content: str
 
 
 @dataclass
@@ -61,7 +61,7 @@ class DeviceNotificationEventCode(DataClassORJSONMixin):
 
 @dataclass
 class DeviceNotificationEventValue(DataClassORJSONMixin):
-    data: DeviceNotificationEventCode
+    data: str  # parsed to DeviceNotificationEventCode
 
 
 @dataclass
@@ -147,15 +147,15 @@ class ThingEventMessage(DataClassORJSONMixin):
         identifier = params_dict.get("identifier")
         if identifier is None:
             """Request configuration event."""
-            params_obj = DeviceConfigurationRequestEvent(**params_dict)
+            params_obj = DeviceConfigurationRequestEvent.from_dict(params_dict)
         elif identifier == "device_protobuf_msg_event":
-            params_obj = DeviceProtobufMsgEventParams(**params_dict)
+            params_obj = DeviceProtobufMsgEventParams.from_dict(params_dict)
         elif identifier == "device_warning_event":
-            params_obj = DeviceWarningEventParams(**params_dict)
+            params_obj = DeviceWarningEventParams.from_dict(params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", {})
         elif identifier == "device_notification_event":
-            params_obj = DeviceNotificationEventParams(**params_dict)
+            params_obj = DeviceNotificationEventParams.from_dict(params_dict)
         else:
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")
 

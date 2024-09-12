@@ -593,6 +593,7 @@ class CloudIOTGateway:
         logger.debug(response.headers)
         logger.debug(response.status_code)
         logger.debug(response.body)
+        logger.debug(iot_id)
 
         response_body_str = response.body.decode("utf-8")
         response_body_dict = json.loads(response_body_str)
@@ -635,5 +636,5 @@ class CloudIOTGateway:
         return self._client_id
 
     @property
-    def login_by_oath_response(self):
+    def login_by_oauth_response(self):
         return self._login_by_oauth_response

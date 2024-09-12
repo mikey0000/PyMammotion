@@ -42,8 +42,10 @@ class MammotionCloud:
         # temporary for testing only
         # self._start_sync_task = self.loop.call_later(30, lambda: asyncio.ensure_future(self.start_sync(0)))
 
-    def on_ready(self) -> None:
-        self.on_ready_event.data_event(None)
+    async def on_ready(self) -> None:
+        loop = asyncio.get_event_loop()
+        loop.create_task(self.process_queue())
+        await self.on_ready_event.data_event(None)
 
     def is_connected(self) -> bool:
         return self._mqtt_client.is_connected
@@ -63,7 +65,7 @@ class MammotionCloud:
     async def on_disconnected(self) -> None:
         """Callback for when MQTT disconnects."""
 
-    async def _process_queue(self) -> None:
+    async def process_queue(self) -> None:
         while True:
             # Get the next item from the queue
             iot_id, key, command, future = await self.command_queue.get()
@@ -113,7 +115,8 @@ class MammotionCloud:
             _LOGGER.debug("Thing event received")
             event = ThingEventMessage.from_dicts(payload)
             params = event.params
-            if params.get("identifier", None) is None:
+            if isinstance(params, dict) or params.identifier is None:
+                _LOGGER.debug("Received dict params: %s", params)
                 return
             if params.identifier == "device_protobuf_msg_event" and event.method == "thing.events":
                 _LOGGER.debug("Protobuf event")
@@ -158,11 +161,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def on_ready(self) -> None:
         """Callback for when MQTT is subscribed to events."""
-        loop = asyncio.get_event_loop()
-
         await self._ble_sync()
         await self.run_periodic_sync_task()
-        loop.create_task(self._process_queue())
         if self.on_ready_callback:
             await self.on_ready_callback()
 
@@ -221,9 +221,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         params = event.params
         if event.params.iotId != self.iot_id:
             return
-        binary_data = base64.b64decode(params.value.content.proto)
-        self._update_raw_data(cast(bytes, binary_data))
-        new_msg = LubaMsg().parse(cast(bytes, binary_data))
+        binary_data = base64.b64decode(params.value.content)
+        self._update_raw_data(binary_data)
+        new_msg = LubaMsg().parse(binary_data)
 
         if (
             self._commands.get_device_product_key() == ""
