@@ -16,4 +16,4 @@ class SessionOauthToken(DataClassORJSONMixin):
 @dataclass
 class SessionByAuthCodeResponse(DataClassORJSONMixin):
     code: int
-    data: Optional[SessionOauthToken]
+    data: Optional[SessionOauthToken] = None

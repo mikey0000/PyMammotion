@@ -151,7 +151,9 @@ class Mammotion:
         """Initialize MammotionDevice."""
         self._login_lock = asyncio.Lock()
 
-    def add_ble_device(self, ble_device: BLEDevice, preference: ConnectionPreference = ConnectionPreference.BLUETOOTH) -> None:
+    def add_ble_device(
+        self, ble_device: BLEDevice, preference: ConnectionPreference = ConnectionPreference.BLUETOOTH
+    ) -> None:
         if ble_device:
             self.devices.add_device(
                 MammotionMixedDeviceManager(name=ble_device.name, ble_device=ble_device, preference=preference)
@@ -187,7 +189,7 @@ class Mammotion:
             ),
             cloud_client,
         )
-
+        self.add_cloud_devices(self.mqtt_list.get(account))
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.mqtt_list[account].connect_async)
 

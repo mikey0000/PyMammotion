@@ -12,7 +12,6 @@ from pymammotion.data.state_manager import StateManager
 from pymammotion.proto import has_field
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
-from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 _LOGGER = logging.getLogger(__name__)
@@ -205,13 +204,11 @@ class MammotionBaseDevice:
             # work out why this crashes sometimes for better proto
 
             if self._cloud_device:
-                if not DeviceType.is_luba1(self._cloud_device.deviceName, self._cloud_device.productKey):
-                    await self.queue_command("get_area_name_list", device_id=self._cloud_device.deviceName)
+                await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
             if has_field(self._mower.net.toapp_wifi_iot_status):
-                if not DeviceType.is_luba1(self._mower.net.toapp_wifi_iot_status.devicename):
-                    await self.queue_command(
-                        "get_area_name_list", device_id=self._mower.net.toapp_wifi_iot_status.devicename
-                    )
+                await self.queue_command(
+                    "get_area_name_list", device_id=self._mower.net.toapp_wifi_iot_status.devicename
+                )
         except Exception:
             """Do nothing for now."""
 
