@@ -18,7 +18,7 @@ from pymammotion.utility.movement import get_percent, transform_both_speeds
 _LOGGER = logging.getLogger(__name__)
 
 
-def find_next_integer(lst: list[int], current_hash: float) -> int | None:
+def find_next_integer(lst: list[int], current_hash: int) -> int | None:
     try:
         # Find the index of the current integer
         current_index = lst.index(current_hash)
@@ -53,6 +53,9 @@ class MammotionBaseDevice:
 
     def set_notification_callback(self, func: Callable[[], Awaitable[None]]) -> None:
         self._state_manager.on_notification_callback = func
+
+    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
+        self._state_manager.queue_command_callback = func
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses."""

@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Optional, cast
 
 import betterproto
 
-from pymammotion import MammotionMQTT
+from pymammotion import CloudIOTGateway, MammotionMQTT
 from pymammotion.aliyun.dataclass.dev_by_account_response import Device
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -24,7 +24,8 @@ _LOGGER = logging.getLogger(__name__)
 class MammotionCloud:
     """Per account MQTT cloud."""
 
-    def __init__(self, mqtt_client: MammotionMQTT) -> None:
+    def __init__(self, mqtt_client: MammotionMQTT, cloud_client: CloudIOTGateway) -> None:
+        self.cloud_client = cloud_client
         self.loop = asyncio.get_event_loop()
         self._ble_sync_task = None
         self.is_ready = False
@@ -155,6 +156,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.currentID = ""
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
+        self.set_queue_callback(self.queue_command)
 
         if self._mqtt.is_ready:
             self.run_periodic_sync_task()
@@ -244,3 +246,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             if not fut.fut.cancelled():
                 fut.resolve(cast(bytes, binary_data))
         await self._state_manager.notification(new_msg)
+
+    @property
+    def mqtt(self):
+        return self._mqtt

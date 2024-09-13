@@ -88,6 +88,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._connect_lock = asyncio.Lock()
         self._operation_lock = asyncio.Lock()
         self._key: str | None = None
+        self.set_queue_callback(self.queue_command)
 
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""

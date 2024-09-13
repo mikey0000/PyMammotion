@@ -95,7 +95,6 @@ class DeviceType(Enum):
             elif DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
                 return DeviceType.LUBA
             else:
-                print("unknown device type")
                 return DeviceType.UNKNOWN
         except Exception:
             return DeviceType.UNKNOWN

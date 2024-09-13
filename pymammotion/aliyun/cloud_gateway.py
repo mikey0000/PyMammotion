@@ -586,6 +586,7 @@ class CloudIOTGateway:
             request=request,
             version="1.0",
         )
+        logger.debug(self.converter.printBase64Binary(command))
 
         # send request
         response = client.do_request("/thing/service/invoke", "https", "POST", None, body, RuntimeOptions())

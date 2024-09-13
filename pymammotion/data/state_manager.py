@@ -1,6 +1,6 @@
 """Manage state from notifications into MowingDevice."""
 
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 import betterproto
 
@@ -19,6 +19,7 @@ class StateManager:
         self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck], Awaitable[None]]] = None
         self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck], Awaitable[None]]] = None
         self.on_notification_callback: Optional[Callable[[], Awaitable[None]]] = None
+        self.queue_command_callback: Optional[Callable[[str, dict[str, Any]], Awaitable[bytes]]] = None
 
     def get_device(self) -> MowingDevice:
         """Get device."""
@@ -36,7 +37,7 @@ class StateManager:
             case "nav":
                 await self._update_nav_data(message)
             case "sys":
-                self._update_sys_data(message)
+                await self._update_sys_data(message)
             case "driver":
                 self._update_driver_data(message)
             case "net":
@@ -66,7 +67,7 @@ class StateManager:
                 hash_names: AppGetAllAreaHashName = nav_msg[1]
                 self._device.map.area_name = hash_names.hashnames
 
-    def _update_sys_data(self, message) -> None:
+    async def _update_sys_data(self, message) -> None:
         """Update system."""
         sys_msg = betterproto.which_one_of(message.sys, "SubSysMsg")
         match sys_msg[0]:
@@ -74,6 +75,8 @@ class StateManager:
                 self._device.buffer(sys_msg[1])
             case "toapp_report_data":
                 self._device.update_report_data(sys_msg[1])
+                if self.queue_command_callback:
+                    await self.queue_command_callback("get_report_cfg", stop=True)
             case "mow_to_app_info":
                 self._device.mow_info(sys_msg[1])
             case "system_tard_state_tunnel":
