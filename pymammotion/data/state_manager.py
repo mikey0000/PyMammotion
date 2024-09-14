@@ -5,6 +5,7 @@ from typing import Any, Awaitable, Callable, Optional
 import betterproto
 
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
 
@@ -65,7 +66,8 @@ class StateManager:
                     await self.get_commondata_ack_callback(common_data)
             case "toapp_all_hash_name":
                 hash_names: AppGetAllAreaHashName = nav_msg[1]
-                self._device.map.area_name = hash_names.hashnames
+                converted_list = [AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames]
+                self._device.map.area_name = converted_list
 
     async def _update_sys_data(self, message) -> None:
         """Update system."""
