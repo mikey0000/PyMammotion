@@ -203,7 +203,7 @@ class MammotionBaseDevice:
         try:
             # work out why this crashes sometimes for better proto
 
-            if self._cloud_device:
+            if self._cloud_device and len(self._mower.map.area_name) == 0:
                 await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
         except Exception:
             """Do nothing for now."""

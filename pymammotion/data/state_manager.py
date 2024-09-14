@@ -77,6 +77,8 @@ class StateManager:
                 self._device.buffer(sys_msg[1])
             case "toapp_report_data":
                 self._device.update_report_data(sys_msg[1])
+                if self.queue_command_callback:
+                    await self.queue_command_callback("get_report_cfg", stop=True)
             case "mow_to_app_info":
                 self._device.mow_info(sys_msg[1])
             case "system_tard_state_tunnel":

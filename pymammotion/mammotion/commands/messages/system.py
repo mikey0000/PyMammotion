@@ -248,7 +248,7 @@ class MessageSystem(AbstractMessage, ABC):
         mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
         mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
         mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION_INFO)
 
         lubaMsg = LubaMsg()
         lubaMsg.msgtype = MsgCmdType.MSG_CMD_TYPE_EMBED_SYS
