@@ -1,8 +1,10 @@
 """MowingDevice class to wrap around the betterproto dataclasses."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 import betterproto
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_config import DeviceLimits
@@ -28,23 +30,17 @@ from pymammotion.utility.map import CoordinateConverter
 
 
 @dataclass
-class MowingDevice:
+class MowingDevice(DataClassORJSONMixin):
     """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
 
-    device: LubaMsg
-    map: HashList
-    location: Location
-    mowing_state: RapidState
-
-    def __init__(self) -> None:
-        self.device = LubaMsg()
-        self.map = HashList(area={}, path={}, obstacle={}, hashlist=[])
-        self.location = Location()
-        self.report_data = ReportData()
-        self.err_code_list = []
-        self.err_code_list_time = []
-        self.limits = DeviceLimits(30, 70, 0.2, 0.6)
-        self.mowing_state = RapidState()
+    map: HashList = field(default_factory=HashList)
+    location: Location = field(default_factory=Location)
+    mowing_state: RapidState = field(default_factory=RapidState)
+    report_data: ReportData = field(default_factory=ReportData)
+    err_code_list: list = field(default_factory=list)
+    err_code_list_time: Optional[list] = field(default_factory=list)
+    limits: DeviceLimits = field(default_factory=DeviceLimits)
+    device: Optional[LubaMsg] = field(default_factory=LubaMsg)
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
@@ -161,7 +157,7 @@ class MowingDevice:
 
 
 @dataclass
-class DevNetData:
+class DevNetData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     net: dict
@@ -184,7 +180,7 @@ class DevNetData:
 
 
 @dataclass
-class SysData:
+class SysData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     sys: dict
@@ -207,7 +203,7 @@ class SysData:
 
 
 @dataclass
-class NavData:
+class NavData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     nav: dict
@@ -230,7 +226,7 @@ class NavData:
 
 
 @dataclass
-class DriverData:
+class DriverData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     driver: dict
@@ -253,7 +249,7 @@ class DriverData:
 
 
 @dataclass
-class MulData:
+class MulData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     mul: dict
@@ -276,7 +272,7 @@ class MulData:
 
 
 @dataclass
-class OtaData:
+class OtaData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     ota: dict
@@ -299,7 +295,7 @@ class OtaData:
 
 
 @dataclass
-class PeptData:
+class PeptData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     pept: dict

@@ -177,7 +177,7 @@ class Mammotion:
                 return
 
         self.cloud_client = cloud_client
-        self.mqtt_list[account] = MammotionCloud(
+        mammotion_cloud = MammotionCloud(
             MammotionMQTT(
                 region_id=cloud_client.region_response.data.regionId,
                 product_key=cloud_client.aep_response.data.productKey,
@@ -189,7 +189,9 @@ class Mammotion:
             ),
             cloud_client,
         )
-        self.add_cloud_devices(self.mqtt_list.get(account))
+        self.mqtt_list[account] = mammotion_cloud
+        self.add_cloud_devices(mammotion_cloud)
+
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.mqtt_list[account].connect_async)
 

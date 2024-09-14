@@ -154,7 +154,7 @@ class ThingEventMessage(DataClassORJSONMixin):
             params_obj = DeviceWarningEventParams.from_dict(params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", {})
-        elif identifier == "device_notification_event":
+        elif identifier == "device_notification_event" or identifier == "device_warning_code_event":
             params_obj = DeviceNotificationEventParams.from_dict(params_dict)
         else:
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")

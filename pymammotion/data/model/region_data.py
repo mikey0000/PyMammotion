@@ -1,7 +1,11 @@
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional
+
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
-class RegionData:
+@dataclass
+class RegionData(DataClassORJSONMixin):
     def __init__(self) -> None:
         self.hash: Optional[int] = None
         self.action: int = 0

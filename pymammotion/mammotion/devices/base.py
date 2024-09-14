@@ -205,10 +205,6 @@ class MammotionBaseDevice:
 
             if self._cloud_device:
                 await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
-            if has_field(self._mower.net.toapp_wifi_iot_status):
-                await self.queue_command(
-                    "get_area_name_list", device_id=self._mower.net.toapp_wifi_iot_status.devicename
-                )
         except Exception:
             """Do nothing for now."""
 

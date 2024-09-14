@@ -78,6 +78,7 @@ class RptInfoType(betterproto.Enum):
     RIT_VISION_POINT = 7
     RIT_VIO = 8
     RIT_VISION_STATISTIC = 9
+    RIT_BASESTATION_INFO = 10
 
 
 class RptAct(betterproto.Enum):

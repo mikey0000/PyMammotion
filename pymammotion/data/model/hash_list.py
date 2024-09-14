@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
 
+from mashumaro.mixins.orjson import DataClassORJSONMixin
+
 from pymammotion.proto.mctrl_nav import AreaHashName, NavGetCommDataAck
 
 
@@ -13,23 +15,31 @@ class PathType(IntEnum):
 
 
 @dataclass
-class FrameList:
+class FrameList(DataClassORJSONMixin):
     total_frame: int
     data: list[NavGetCommDataAck]
 
 
 @dataclass
-class HashList:
+class AreaHashNameList(DataClassORJSONMixin):
+    """Wrapper so we can serialize to and from dict."""
+
+    name: str
+    hash: int
+
+
+@dataclass
+class HashList(DataClassORJSONMixin):
     """stores our map data.
     [hashID, FrameList].
     hashlist for all our hashIDs for verification
     """
 
-    area: dict  # type 0
-    path: dict  # type 2
-    obstacle: dict  # type 1
-    hashlist: list[int]
-    area_name: list[AreaHashName] = field(default_factory=list)
+    area: dict = field(default_factory=dict)  # type 0
+    path: dict = field(default_factory=dict)  # type 2
+    obstacle: dict = field(default_factory=dict)  # type 1
+    hashlist: list[int] = field(default_factory=list)
+    area_name: list[AreaHashNameList] = field(default_factory=list)
 
     def set_hashlist(self, hashlist: list[int]) -> None:
         self.hashlist = hashlist

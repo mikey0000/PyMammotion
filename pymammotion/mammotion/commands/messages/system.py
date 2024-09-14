@@ -227,7 +227,7 @@ class MessageSystem(AbstractMessage, ABC):
         return self.send_order_msg_sys(build)
 
     def get_report_cfg(
-        self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000, stop: bool = False
+        self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000, stop: bool = False
     ):
         mctlsys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
@@ -239,15 +239,16 @@ class MessageSystem(AbstractMessage, ABC):
             )
         )
 
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO.value)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC.value)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION)
 
         lubaMsg = LubaMsg()
         lubaMsg.msgtype = MsgCmdType.MSG_CMD_TYPE_EMBED_SYS

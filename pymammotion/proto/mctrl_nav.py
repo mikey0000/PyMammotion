@@ -525,9 +525,8 @@ class SvgMessageAckT(betterproto.Message):
 
 @dataclass
 class AreaHashName(betterproto.Message):
-    # Define fields for AreaHashName message here For example:
-    name: str = betterproto.string_field(1)
-    hash: int = betterproto.int64_field(2)
+    name: str = betterproto.string_field(2)
+    hash: int = betterproto.fixed64_field(1)
 
 
 @dataclass
