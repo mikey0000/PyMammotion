@@ -221,7 +221,7 @@ class Mammotion:
 
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
-        cloud_client = CloudIOTGateway()
+   
         async with ClientSession(MAMMOTION_DOMAIN) as session:
             mammotion_http = await connect_http(account, password)
             country_code = mammotion_http.login_info.userInformation.domainAbbreviation
@@ -283,6 +283,14 @@ class Mammotion:
             if device.preference is ConnectionPreference.WIFI:
                 return await device.cloud().start_map_sync()
             # TODO work with both with EITHER
+            
+    async def get_stream_subscription(self, name: str):
+        device = self.get_device_by_name(name)
+        if self._preference is ConnectionPreference.WIFI:
+            if device.has_cloud():
+                _stream_response = await self.cloud().cloud_client.get_stream_subscription(device.cloud().iot_id)
+                _LOGGER.debug(_stream_response)
+                return _stream_response
 
     def mower(self, name: str):
         device = self.get_device_by_name(name)
