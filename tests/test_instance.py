@@ -1,7 +1,7 @@
 import asyncio
 from threading import Thread
 
-from pymammotion.bluetooth.ble import LubaBLE
+from pymammotion.bluetooth.ble import MammotionBLE
 from pymammotion.bluetooth.ble_message import BleMessage
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.event.event import BleNotificationEvent
@@ -28,7 +28,7 @@ class AsyncLoopThread(Thread):
 
 
 async def run():
-    bleLubaConn = LubaBLE(bleNotificationEvt)
+    bleLubaConn = MammotionBLE(bleNotificationEvt)
     did_connect = await bleLubaConn.scanForLubaAndConnect()
     if not did_connect:
         return
@@ -102,8 +102,9 @@ async def run():
         one_hashs=[8656065632562971511],
         rain_tactics=1,
         speed=.3,
-        ultra_wave=2,
+        ultra_wave=2, # touch no touch etc
         toward=0, # is just angle
+        toward_included_angle=0, # angle type relative etc
         knife_height=70,
         channel_mode=0, # line mode is grid single double or single2
         channel_width=25,
@@ -111,7 +112,6 @@ async def run():
         edge_mode=1, # border laps
         path_order=0,
         obstacle_laps=0
-
     )
     """arrayList.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_monday), 2, true, true));
         this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_tuesday), 3, false, true));

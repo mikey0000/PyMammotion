@@ -17,7 +17,6 @@ from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequ
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
 
-from pymammotion.http.http import MammotionHTTP
 from pymammotion.aliyun.dataclass.aep_response import AepResponse
 from pymammotion.aliyun.dataclass.connect_response import ConnectResponse
 from pymammotion.aliyun.dataclass.dev_by_account_response import (
@@ -29,6 +28,7 @@ from pymammotion.aliyun.dataclass.session_by_authcode_response import (
     SessionByAuthCodeResponse,
 )
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
+from pymammotion.http.http import MammotionHTTP
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
@@ -49,14 +49,18 @@ MOVE_HEADERS = (
 class SetupException(Exception):
     pass
 
+
 class AuthRefreshException(Exception):
     """Raise exception when library cannot refresh token."""
+
 
 class DeviceOfflineException(Exception):
     """Raise exception when device is offline."""
 
+
 class LoginException(Exception):
     """Raise exception when library cannot log in."""
+
 
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
@@ -72,11 +76,19 @@ class CloudIOTGateway:
     _devices_by_account_response: ListingDevByAccountResponse | None = None
     _region_response = None
 
-    _iot_token_issued_at : int = None
+    _iot_token_issued_at: int = None
 
     converter = DatatypeConverter()
 
-    def __init__(self, connect_response: ConnectResponse | None = None, login_by_oauth_response: LoginByOAuthResponse | None = None, aep_response: AepResponse | None = None, session_by_authcode_response: SessionByAuthCodeResponse | None = None, region_response: RegionResponse | None = None, dev_by_account: ListingDevByAccountResponse | None = None):
+    def __init__(
+        self,
+        connect_response: ConnectResponse | None = None,
+        login_by_oauth_response: LoginByOAuthResponse | None = None,
+        aep_response: AepResponse | None = None,
+        session_by_authcode_response: SessionByAuthCodeResponse | None = None,
+        region_response: RegionResponse | None = None,
+        dev_by_account: ListingDevByAccountResponse | None = None,
+    ) -> None:
         """Initialize the CloudIOTGateway."""
         self.mammotion_http: MammotionHTTP | None = None
         self._app_key = APP_KEY
@@ -94,13 +106,13 @@ class CloudIOTGateway:
         self._devices_by_account_response = dev_by_account
 
     @staticmethod
-    def generate_random_string(length):
+    def generate_random_string(length: int):
         """Generate a random string of specified length."""
         characters = string.ascii_letters + string.digits
         return "".join(random.choice(characters) for _ in range(length))
 
     @staticmethod
-    def generate_hardware_string(length) -> str:
+    def generate_hardware_string(length: int) -> str:
         """Generate hardware string that is consistent per device."""
         hashed_uuid = hashlib.sha1(f"{uuid.getnode()}".encode()).hexdigest()
         return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
@@ -119,24 +131,6 @@ class CloudIOTGateway:
             concatenated_str.encode("utf-8"),
             hashlib.sha1,
         ).hexdigest()
-
-    def get_connect_response(self):
-        return self._connect_response
-
-    def get_login_by_oauth_response(self):
-        return self._login_by_oauth_response
-
-    def get_aep_response(self):
-        return self._aep_response
-
-    def get_session_by_authcode_response(self):
-        return self._session_by_authcode_response
-
-    def get_devices_by_account_response(self):
-        return self._devices_by_account_response
-
-    def get_region_response(self):
-        return self._region_response
 
     def get_region(self, country_code: str, auth_code: str):
         """Get the region based on country code and auth code."""
@@ -376,11 +370,8 @@ class CloudIOTGateway:
             async with session.post(
                 f"https://{region_url}/api/prd/loginbyoauth.json",
                 headers=headers,
-                data={
-                    'loginByOauthRequest': json.dumps(_bodyParam, separators=(",", ":"))
-                }
+                data={"loginByOauthRequest": json.dumps(_bodyParam, separators=(",", ":"))},
             ) as resp:
-
                 data = await resp.json()
                 logger.debug(data)
                 if resp.status == 200:
@@ -441,7 +432,7 @@ class CloudIOTGateway:
             raise Exception("Error in creating session: " + response_body_str)
 
         self._session_by_authcode_response = session_by_auth
-        self._iot_token_issued_at  = int(time.time())
+        self._iot_token_issued_at = int(time.time())
 
         return response.body
 
@@ -491,18 +482,23 @@ class CloudIOTGateway:
         response_body_dict = json.loads(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error check or refresh token: " + response_body_dict.get('msg', ''))
+            logger.error(response_body_dict)
+            raise Exception("Error check or refresh token: " + response_body_dict.__str__())
 
         session = SessionByAuthCodeResponse.from_dict(response_body_dict)
         session_data = session.data
 
-        if session_data.identityId is None or session_data.refreshTokenExpire is None or session_data.iotToken is None or session_data.iotTokenExpire is None or session_data.refreshToken is None:
+        if (
+            session_data.identityId is None
+            or session_data.refreshTokenExpire is None
+            or session_data.iotToken is None
+            or session_data.iotTokenExpire is None
+            or session_data.refreshToken is None
+        ):
             raise Exception("Error check or refresh token: Parameters not correct")
 
         self._session_by_authcode_response = session
-        self._iot_token_issued_at  = int(time.time())
-
-        
+        self._iot_token_issued_at = int(time.time())
 
     def list_binding_by_account(self) -> ListingDevByAccountResponse:
         """List bindings by account."""
@@ -550,14 +546,16 @@ class CloudIOTGateway:
         """Send a cloud command to the specified IoT device."""
 
         """Check if iotToken is expired"""
-        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (int(time.time()) + (5 * 3600)):
+        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (
+            int(time.time()) + (5 * 3600)
+        ):
             """Token expired - Try to refresh - Check if refreshToken is not expired"""
-            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (int(time.time())):
+            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (
+                int(time.time())
+            ):
                 self.check_or_refresh_session()
             else:
                 raise AuthRefreshException("Refresh token expired. Please re-login")
-                
-            
 
         config = Config(
             app_key=self._app_key,
@@ -588,6 +586,7 @@ class CloudIOTGateway:
             request=request,
             version="1.0",
         )
+        logger.debug(self.converter.printBase64Binary(command))
 
         # send request
         response = client.do_request("/thing/service/invoke", "https", "POST", None, body, RuntimeOptions())
@@ -595,6 +594,7 @@ class CloudIOTGateway:
         logger.debug(response.headers)
         logger.debug(response.status_code)
         logger.debug(response.body)
+        logger.debug(iot_id)
 
         response_body_str = response.body.decode("utf-8")
         response_body_dict = json.loads(response_body_str)
@@ -614,8 +614,28 @@ class CloudIOTGateway:
         return message_id
 
     @property
-    def listing_dev_by_account_response(self):
+    def devices_by_account_response(self):
         return self._devices_by_account_response
 
-    def set_http(self, mammotion_http):
+    def set_http(self, mammotion_http) -> None:
         self.mammotion_http = mammotion_http
+
+    @property
+    def region_response(self):
+        return self._region_response
+
+    @property
+    def aep_response(self):
+        return self._aep_response
+
+    @property
+    def session_by_authcode_response(self):
+        return self._session_by_authcode_response
+
+    @property
+    def client_id(self):
+        return self._client_id
+
+    @property
+    def login_by_oauth_response(self):
+        return self._login_by_oauth_response

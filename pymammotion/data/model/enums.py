@@ -9,7 +9,7 @@ class PositionMode(Enum):
     UNKNOWN = 4
 
     @staticmethod
-    def from_value(value):
+    def from_value(value: int):
         if value == 0:
             return PositionMode.FIX
         elif value == 1:
@@ -21,7 +21,7 @@ class PositionMode(Enum):
         else:
             return PositionMode.UNKNOWN
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self == PositionMode.FIX:
             return "Fix"
         elif self == PositionMode.SINGLE:
@@ -42,7 +42,7 @@ class RTKStatus(Enum):
     UNKNOWN = 6
 
     @staticmethod
-    def from_value(value):
+    def from_value(value: int):
         if value == 0:
             return RTKStatus.NONE
         elif value == 1 or value == 2:
@@ -54,7 +54,7 @@ class RTKStatus(Enum):
         else:
             return RTKStatus.UNKNOWN
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self == RTKStatus.NONE:
             return "None"
         elif self == RTKStatus.SINGLE:

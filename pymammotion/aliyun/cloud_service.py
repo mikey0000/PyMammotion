@@ -10,7 +10,7 @@ from aliyunsdkiot.request.v20180120.InvokeThingServiceRequest import (
 class CloudService:
     # com.aliyun.iot.aep.sdk
     # https://domestic.mammotion.com/privacy/ - lists all aliyun packages
-    def __init__(self):
+    def __init__(self) -> None:
         self.selectDeviceIOTID = ""
         accessKeyId = "<your accessKey>"
         accessKeySecret = "<your accessSecret>"
@@ -31,7 +31,7 @@ class CloudService:
     
     """
 
-    def invoke_thing_service(self, data: bytearray):
+    def invoke_thing_service(self, data: bytearray) -> None:
         base64_encoded = base64.b64encode(data).decode("utf-8")
 
         # Create a dictionary structure
@@ -53,7 +53,7 @@ class CloudService:
         # python2:  print(response)
         print(response)
 
-    def get_device_status(self):
+    def get_device_status(self) -> None:
         request = GetDeviceStatusRequest()
         request.set_accept_format("json")
 

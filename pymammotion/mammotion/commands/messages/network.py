@@ -1,9 +1,5 @@
 # === sendOrderMsg_Net  ===
-import json
-import time
-from typing import Dict
 
-from pymammotion.aliyun.tmp_constant import tmp_constant
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
 from pymammotion.proto import dev_net_pb2, luba_msg_pb2
 
@@ -12,7 +8,7 @@ class MessageNetwork:
     messageNavigation: MessageNavigation = MessageNavigation()
 
     @staticmethod
-    def send_order_msg_net(build):
+    def send_order_msg_net(build) -> bytes:
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.DEV_MOBILEAPP,
@@ -36,17 +32,17 @@ class MessageNetwork:
 
         return self.send_order_msg_net(net)
 
-    def get_4g_module_info(self):
+    def get_4g_module_info(self) -> bytes:
         build = dev_net_pb2.DevNet(todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req)
         print("Send command -- Get device 4G network module information")
         return self.send_order_msg_net(build)
 
-    def get_4g_info(self):
+    def get_4g_info(self) -> bytes:
         build = dev_net_pb2.DevNet(todev_mnet_info_req=dev_net_pb2.DevNet().todev_mnet_info_req)
         print("Send command -- Get device 4G network information")
         return self.send_order_msg_net(build)
 
-    def set_zmq_enable(self):
+    def set_zmq_enable(self) -> bytes:
         build = dev_net_pb2.DevNet(
             todev_set_dds2zmq=dev_net_pb2.DrvDebugDdsZmq(
                 is_enable=True,
@@ -57,7 +53,7 @@ class MessageNetwork:
         print("Send command -- Set vision ZMQ to enable")
         return self.send_order_msg_net(build)
 
-    def set_iot_setting(self, iot_control_type: dev_net_pb2.iot_conctrl_type):
+    def set_iot_setting(self, iot_control_type: dev_net_pb2.iot_conctrl_type) -> bytes:
         build = dev_net_pb2.DevNet(todev_set_iot_offline_req=iot_control_type)
         print("Send command -- Device re-online")
         return self.send_order_msg_net(build)
@@ -70,7 +66,7 @@ class MessageNetwork:
         server_port: int,
         number: int,
         type: int,
-    ):
+    ) -> bytes:
         build = dev_net_pb2.DrvUploadFileToAppReq(
             bizId=request_id,
             operation=operation,
@@ -122,18 +118,18 @@ class MessageNetwork:
             )
         )
 
-    def cancel_log_update(self, biz_id: str):
+    def cancel_log_update(self, biz_id: str) -> bytes:
         """Cancel log update (bluetooth only)."""
         return self.send_order_msg_net(
             dev_net_pb2.DevNet(todev_log_data_cancel=dev_net_pb2.DrvUploadFileCancel(bizId=biz_id))
         )
 
-    def get_device_network_info(self):
+    def get_device_network_info(self) -> bytes:
         build = dev_net_pb2.DevNet(todev_networkinfo_req=dev_net_pb2.GetNetworkInfoReq(req_ids=1))
         print("Send command - get device network information")
         return self.send_order_msg_net(build)
 
-    def set_device_4g_enable_status(self, new_4g_status: bool):
+    def set_device_4g_enable_status(self, new_4g_status: bool) -> bytes:
         build = dev_net_pb2.DevNet(
             todev_ble_sync=1,
             todev_set_mnet_cfg_req=dev_net_pb2.SetMnetCfgReq(
@@ -148,7 +144,7 @@ class MessageNetwork:
         print(f"Send command - set 4G (on/off status). newWifiStatus={new_4g_status}")
         return self.send_order_msg_net(build)
 
-    def set_device_wifi_enable_status(self, new_wifi_status: bool):
+    def set_device_wifi_enable_status(self, new_wifi_status: bool) -> bytes:
         build = dev_net_pb2.DevNet(
             todev_ble_sync=1,
             todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(configParam=4, wifi_enable=new_wifi_status),
@@ -156,25 +152,25 @@ class MessageNetwork:
         print(f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
         return self.send_order_msg_net(build)
 
-    def wifi_connectinfo_update(self, device_name: str, is_binary: bool):
+    def wifi_connectinfo_update(self, device_name: str, is_binary: bool) -> bytes:
         print(
             f"Send command - get Wifi connection information.wifiConnectinfoUpdate().deviceName={device_name}.isBinary={is_binary}"
         )
         if is_binary:
             build = dev_net_pb2.DevNet(
                 todev_ble_sync=1,
-                todev_WifiMsgUpload=dev_net_pb2.DrvWifiUpload(Wifi_Msg_Upload=1),
+                todev_WifiMsgUpload=dev_net_pb2.DrvWifiUpload(wifi_msg_upload=1),
             )
             print("Send command - get Wifi connection information")
             return self.send_order_msg_net(build)
         self.wifi_connectinfo_update2()
 
-    def wifi_connectinfo_update2(self):
+    def wifi_connectinfo_update2(self) -> None:
         hash_map = {"getMsgCmd": 1}
         # self.post_custom_data(self.get_json_string(
         #     68, hash_map))  # ToDo: Fix this
 
-    def get_record_wifi_list(self, is_binary: bool):
+    def get_record_wifi_list(self, is_binary: bool) -> bytes:
         print(f"getRecordWifiList().isBinary={is_binary}")
         if is_binary:
             build = dev_net_pb2.DevNet(todev_ble_sync=1, todev_WifiListUpload=dev_net_pb2.DrvWifiList())
@@ -182,12 +178,12 @@ class MessageNetwork:
             return self.send_order_msg_net(build)
         self.get_record_wifi_list2()
 
-    def get_record_wifi_list2(self):
+    def get_record_wifi_list2(self) -> None:
         pass
         # self.messageNavigation.post_custom_data(
         #     self.get_json_string(69))  # ToDo: Fix this
 
-    def close_clear_connect_current_wifi(self, ssid: str, status: int, is_binary: bool):
+    def close_clear_connect_current_wifi(self, ssid: str, status: int, is_binary: bool) -> bytes:
         if is_binary:
             build = dev_net_pb2.DevNet(
                 todev_ble_sync=1,
@@ -199,22 +195,8 @@ class MessageNetwork:
             return self.send_order_msg_net(build)
         self.close_clear_connect_current_wifi2(ssid, status)
 
-    def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int):
+    def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int) -> None:
         data = {"ssid": ssid, "getMsgCmd": get_msg_cmd}
         # self.messageNavigation.post_custom_data(
         # ToDo: Fix this
         # self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
-
-    def get_json_string(self, cmd: int, hash_map: Dict[str, object]) -> str:
-        jSONObject = {}
-        try:
-            jSONObject["cmd"] = cmd
-            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
-            jSONObject2 = {}
-            for key, value in hash_map.items():
-                jSONObject2[key] = value
-            jSONObject["params"] = jSONObject2
-            return json.dumps(jSONObject)
-        except Exception as e:
-            print(e)
-            return ""

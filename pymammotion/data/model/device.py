@@ -1,9 +1,10 @@
 """MowingDevice class to wrap around the betterproto dataclasses."""
 
-import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 import betterproto
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_config import DeviceLimits
@@ -16,31 +17,30 @@ from pymammotion.proto.mctrl_driver import MctlDriver
 from pymammotion.proto.mctrl_nav import MctlNav
 from pymammotion.proto.mctrl_ota import MctlOta
 from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys, MowToAppInfoT, ReportInfoData, SystemUpdateBufMsg, \
-    SystemRapidStateTunnelMsg
+from pymammotion.proto.mctrl_sys import (
+    MctlSys,
+    MowToAppInfoT,
+    ReportInfoData,
+    SystemRapidStateTunnelMsg,
+    SystemUpdateBufMsg,
+)
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
 from pymammotion.utility.map import CoordinateConverter
 
 
 @dataclass
-class MowingDevice:
+class MowingDevice(DataClassORJSONMixin):
     """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
 
-    device: LubaMsg
-    map: HashList
-    location: Location
-    mowing_state: RapidState
-
-    def __init__(self):
-        self.device = LubaMsg()
-        self.map = HashList(area={}, path={}, obstacle={}, hashlist=[])
-        self.location = Location()
-        self.report_data = ReportData()
-        self.err_code_list = []
-        self.err_code_list_time = []
-        self.limits = DeviceLimits(30, 70, 0.2, 0.6)
-        self.mowing_state = RapidState()
+    map: HashList = field(default_factory=HashList)
+    location: Location = field(default_factory=Location)
+    mowing_state: RapidState = field(default_factory=RapidState)
+    report_data: ReportData = field(default_factory=ReportData)
+    err_code_list: list = field(default_factory=list)
+    err_code_list_time: Optional[list] = field(default_factory=list)
+    limits: DeviceLimits = field(default_factory=DeviceLimits)
+    device: Optional[LubaMsg] = field(default_factory=LubaMsg)
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
@@ -53,7 +53,7 @@ class MowingDevice:
         """Update the raw LubaMsg data."""
         self.device = LubaMsg(**raw)
 
-    def buffer(self, buffer_list: SystemUpdateBufMsg):
+    def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:
         """Update the device based on which buffer we are reading from."""
         match buffer_list.update_buf_data[0]:
             case 1:
@@ -95,7 +95,7 @@ class MowingDevice:
                     ]
                 )
 
-    def update_report_data(self, toapp_report_data: ReportInfoData):
+    def update_report_data(self, toapp_report_data: ReportInfoData) -> None:
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):
             if index == 0 and location.real_pos_y != 0:
@@ -105,17 +105,20 @@ class MowingDevice:
                     parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
                 )
                 if location.zone_hash:
-                    self.location.work_zone = location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
-
-
+                    self.location.work_zone = (
+                        location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
+                    )
 
         self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 
-    def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg):
+    def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
         self.mowing_state = RapidState().from_raw(rapid_state.rapid_state_data)
 
-    def mow_info(self, toapp_mow_info: MowToAppInfoT):
+    def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
         pass
+
+    def report_missing_data(self) -> None:
+        """Report missing data so we can refetch it."""
 
     @property
     def net(self):
@@ -154,12 +157,12 @@ class MowingDevice:
 
 
 @dataclass
-class DevNetData:
+class DevNetData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     net: dict
 
-    def __init__(self, net: DevNet):
+    def __init__(self, net: DevNet) -> None:
         if isinstance(net, dict):
             self.net = net
         else:
@@ -177,18 +180,18 @@ class DevNetData:
 
 
 @dataclass
-class SysData:
+class SysData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     sys: dict
 
-    def __init__(self, sys: MctlSys):
+    def __init__(self, sys: MctlSys) -> None:
         if isinstance(sys, dict):
             self.sys = sys
         else:
             self.sys = sys.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get sys in dict and return a betterproto dataclass."""
         if self.sys.get(item) is None:
             return MctlSys().__getattribute__(item)
@@ -200,18 +203,18 @@ class SysData:
 
 
 @dataclass
-class NavData:
+class NavData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     nav: dict
 
-    def __init__(self, nav: MctlNav):
+    def __init__(self, nav: MctlNav) -> None:
         if isinstance(nav, dict):
             self.nav = nav
         else:
             self.nav = nav.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get nav in dict and return a betterproto dataclass."""
         if self.nav.get(item) is None:
             return MctlNav().__getattribute__(item)
@@ -223,18 +226,18 @@ class NavData:
 
 
 @dataclass
-class DriverData:
+class DriverData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     driver: dict
 
-    def __init__(self, driver: MctlDriver):
+    def __init__(self, driver: MctlDriver) -> None:
         if isinstance(driver, dict):
             self.driver = driver
         else:
             self.driver = driver.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get driver in dict and return a betterproto dataclass."""
         if self.driver.get(item) is None:
             return MctlDriver().__getattribute__(item)
@@ -246,18 +249,18 @@ class DriverData:
 
 
 @dataclass
-class MulData:
+class MulData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     mul: dict
 
-    def __init__(self, mul: SocMul):
+    def __init__(self, mul: SocMul) -> None:
         if isinstance(mul, dict):
             self.mul = mul
         else:
             self.mul = mul.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get mul in dict and return a betterproto dataclass."""
         if self.mul.get(item) is None:
             return SocMul().__getattribute__(item)
@@ -269,18 +272,18 @@ class MulData:
 
 
 @dataclass
-class OtaData:
+class OtaData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     ota: dict
 
-    def __init__(self, ota: MctlOta):
+    def __init__(self, ota: MctlOta) -> None:
         if isinstance(ota, dict):
             self.ota = ota
         else:
             self.ota = ota.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get ota in dict and return a betterproto dataclass."""
         if self.ota.get(item) is None:
             return MctlOta().__getattribute__(item)
@@ -292,18 +295,18 @@ class OtaData:
 
 
 @dataclass
-class PeptData:
+class PeptData(DataClassORJSONMixin):
     """Wrapping class around LubaMsg to return a dataclass from the raw dict."""
 
     pept: dict
 
-    def __init__(self, pept: MctlPept):
+    def __init__(self, pept: MctlPept) -> None:
         if isinstance(pept, dict):
             self.pept = pept
         else:
             self.pept = pept.to_dict()
 
-    def __getattr__(self, item):
+    def __getattr__(self, item: str):
         """Intercept call to get pept in dict and return a betterproto dataclass."""
         if self.pept.get(item) is None:
             return MctlPept().__getattribute__(item)

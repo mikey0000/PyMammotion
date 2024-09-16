@@ -10,7 +10,7 @@ from pymammotion.proto import luba_msg_pb2
 
 
 class Base64EncodedProtobuf(SerializableType):
-    def __init__(self, proto: str):
+    def __init__(self, proto: str) -> None:
         self.proto = proto
 
     def _serialize(self):
@@ -36,7 +36,7 @@ class Base64EncodedProtobuf(SerializableType):
 
 @dataclass
 class DeviceProtobufMsgEventValue(DataClassORJSONMixin):
-    content: Base64EncodedProtobuf
+    content: str
 
 
 @dataclass
@@ -45,21 +45,23 @@ class DeviceWarningEventValue(DataClassORJSONMixin):
     # (see resources/res/values-en-rUS/strings.xml in APK)
     code: int
 
+
 @dataclass
 class DeviceConfigurationRequestValue(DataClassORJSONMixin):
     code: int
     bizId: str
     params: str
 
+
 @dataclass
 class DeviceNotificationEventCode(DataClassORJSONMixin):
     localTime: int
     code: str
 
+
 @dataclass
 class DeviceNotificationEventValue(DataClassORJSONMixin):
-    data: DeviceNotificationEventCode
-
+    data: str  # parsed to DeviceNotificationEventCode
 
 
 @dataclass
@@ -100,6 +102,7 @@ class DeviceProtobufMsgEventParams(GeneralParams):
     type: Literal["info"]
     value: DeviceProtobufMsgEventValue
 
+
 @dataclass
 class DeviceNotificationEventParams(GeneralParams):
     """Device notification event.
@@ -111,11 +114,13 @@ class DeviceNotificationEventParams(GeneralParams):
     type: Literal["info"]
     value: DeviceNotificationEventValue
 
+
 @dataclass
 class DeviceWarningEventParams(GeneralParams):
     identifier: Literal["device_warning_event"]
     type: Literal["alert"]
     value: DeviceWarningEventValue
+
 
 @dataclass
 class DeviceConfigurationRequestEvent(GeneralParams):
@@ -127,7 +132,7 @@ class DeviceConfigurationRequestEvent(GeneralParams):
 class ThingEventMessage(DataClassORJSONMixin):
     method: Literal["thing.events", "thing.properties"]
     id: str
-    params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams, str]
+    params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams, dict]
     version: Literal["1.0"]
 
     @classmethod
@@ -142,15 +147,15 @@ class ThingEventMessage(DataClassORJSONMixin):
         identifier = params_dict.get("identifier")
         if identifier is None:
             """Request configuration event."""
-            params_obj = DeviceConfigurationRequestEvent(**params_dict)
+            params_obj = DeviceConfigurationRequestEvent.from_dict(params_dict)
         elif identifier == "device_protobuf_msg_event":
-            params_obj = DeviceProtobufMsgEventParams(**params_dict)
+            params_obj = DeviceProtobufMsgEventParams.from_dict(params_dict)
         elif identifier == "device_warning_event":
-            params_obj = DeviceWarningEventParams(**params_dict)
+            params_obj = DeviceWarningEventParams.from_dict(params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", {})
-        elif identifier == "device_notification_event":
-            params_obj = DeviceNotificationEventParams(**params_dict)
+        elif identifier == "device_notification_event" or identifier == "device_warning_code_event":
+            params_obj = DeviceNotificationEventParams.from_dict(params_dict)
         else:
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")
 

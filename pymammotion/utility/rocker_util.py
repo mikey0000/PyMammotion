@@ -11,7 +11,7 @@ class RockerControlUtil:
     thresholdValue_2 = 7
     thresholdValue_3 = 15
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Generated source for method __init__"""
 
     @classmethod

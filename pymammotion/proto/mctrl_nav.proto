@@ -141,7 +141,7 @@ message NavGetCommData {
   int32 subCmd = 2;
   int32 action = 3;
   int32 type = 4;
-  int64 Hash = 5;
+  fixed64 Hash = 5;
   int64 paternalHashA = 6;
   int64 paternalHashB = 7;
   int32 totalFrame = 8;
@@ -434,7 +434,7 @@ message NavTaskCtrlAck {
 
 message NavMapNameMsg {
     int32 rw = 1;  // Represents RW field
-    int64 hash = 2;  // Represents HASH field
+    fixed64 hash = 2;  // Represents HASH field
     string name = 3;  // Represents NAME field
     int32 result = 4;  // Represents RESULT field
     string device_id = 5;  // Represents DEVICEID field
@@ -469,10 +469,8 @@ message SvgMessageAckT {
 }
 
 message AreaHashName {
-    // Define fields for AreaHashName message here
-    // For example:
-    string name = 1;  // Replace with actual field definitions
-    int64 hash = 2;   // Replace with actual field definitions
+    string name = 2;
+    fixed64 hash = 1;
 }
 
 message AppGetAllAreaHashName {

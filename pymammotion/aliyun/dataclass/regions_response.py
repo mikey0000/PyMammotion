@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, TypeVar
 
-from mashumaro import DataClassDictMixin
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -20,7 +19,7 @@ class RegionResponseData(DataClassORJSONMixin):
 
 
 @dataclass
-class RegionResponse(DataClassDictMixin):
+class RegionResponse(DataClassORJSONMixin):
     data: RegionResponseData
     code: int
     id: Optional[str] = None

@@ -6,13 +6,14 @@ import pyjoystick
 from pyjoystick.sdl2 import Key, run_event_loop
 from pyjoystick.utils import PeriodicThread
 
-from pymammotion import MammotionBaseBLEDevice
 from pymammotion.event import BleNotificationEvent
-from pymammotion.utility.movement import transform_both_speeds, get_percent
+from pymammotion.mammotion.devices import MammotionBaseBLEDevice
+from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 bleNotificationEvt = BleNotificationEvent()
 
 nest_asyncio.apply()
+
 
 class JoystickControl:
     """Joystick class for controlling Luba with a joystick"""
@@ -25,7 +26,7 @@ class JoystickControl:
     _blade_height = 25
     worker = None
 
-    def __init__(self, luba_ble: MammotionBaseBLEDevice):
+    def __init__(self, luba_ble: MammotionBaseBLEDevice) -> None:
         self._client = luba_ble
         self._curr_time = timer()
         self.stopped = False
@@ -44,10 +45,10 @@ class JoystickControl:
         self.worker.alive = self.mngr.alive  # stop when this event stops
         self.worker.daemon = True
 
-    def _movement_finished(self):
+    def _movement_finished(self) -> None:
         self.ignore_events = False
 
-    def run_movement(self):
+    def run_movement(self) -> None:
         if self.linear_percent == 0.0 and self.angular_percent == 0.0:
             if self.stopped:
                 return
@@ -61,20 +62,20 @@ class JoystickControl:
         )
         asyncio.run(self._client.command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed))
 
-    def print_add(self, joy):
+    def print_add(self, joy) -> None:
         print("Added", joy)
 
-    def print_remove(self, joy):
+    def print_remove(self, joy) -> None:
         print("Removed", joy)
 
-    def key_received(self, key):
+    def key_received(self, key) -> None:
         self.handle_key_received(key)
 
-    def run_controller(self):
+    def run_controller(self) -> None:
         self.mngr.start()
         self.worker.start()
 
-    def handle_key_received(self, key):
+    def handle_key_received(self, key) -> None:
         # print(key, "-", key.keytype, "-", key.number, "-", key.value)
 
         if key.keytype is Key.BUTTON and key.value == 1:

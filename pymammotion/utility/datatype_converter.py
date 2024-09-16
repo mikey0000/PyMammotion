@@ -20,13 +20,13 @@ class DatatypeConverter:
         """
 
         if DatatypeConverter.encode_map is None:
-            cArr = [0] * 64
-            for i in range(26):
-                cArr[i] = chr(i + 65)
-            for i in range(26, 52):
-                cArr[i] = chr(i - 26 + 97)
-            for i in range(52, 62):
-                cArr[i] = chr(i - 52 + 48)
+            cArr: list[str | int] = [0] * 64
+            for num in range(26):
+                cArr[num] = chr(num + 65)
+            for num_2 in range(26, 52):
+                cArr[num_2] = chr(num_2 - 26 + 97)
+            for num_3 in range(52, 62):
+                cArr[num_3] = chr(num_3 - 52 + 48)
             cArr[62] = "+"
             cArr[63] = "/"
             DatatypeConverter.encode_map = cArr
@@ -45,7 +45,7 @@ class DatatypeConverter:
         return DatatypeConverter.encode_map[i & 63]
 
     @staticmethod
-    def _printBase64Binary(bArr, i=0, i2=None):
+    def _printBase64Binary(bArr: bytes, i: int = 0, i2=None):
         """Print the Base64 binary representation of a byte array.
 
         This function takes a byte array and optional start and end indices to
@@ -68,7 +68,7 @@ class DatatypeConverter:
         return "".join(cArr)
 
     @staticmethod
-    def _printBase64Binary_core(bArr, i, i2, cArr, i3):
+    def _printBase64Binary_core(bArr: bytes, i, i2, cArr, i3):
         """Encode binary data into Base64 format.
 
         This function encodes binary data into Base64 format following the

@@ -1,8 +1,12 @@
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional
+
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
-class RegionData:
-    def __init__(self):
+@dataclass
+class RegionData(DataClassORJSONMixin):
+    def __init__(self) -> None:
         self.hash: Optional[int] = None
         self.action: int = 0
         self.current_frame: int = 0
@@ -10,7 +14,7 @@ class RegionData:
         self.data_len: int = 0
         self.p_hash_a: Optional[int] = None
         self.p_hash_b: Optional[int] = None
-        self.path: Optional[List[List[float]]] = None
+        self.path: Optional[list[list[float]]] = None
         self.pver: int = 0
         self.result: int = 0
         self.sub_cmd: int = 0
@@ -68,10 +72,10 @@ class RegionData:
     def set_current_frame(self, current_frame: int) -> None:
         self.current_frame = current_frame
 
-    def get_path(self) -> Optional[List[List[float]]]:
+    def get_path(self) -> Optional[list[list[float]]]:
         return self.path
 
-    def set_path(self, path: List[List[float]]) -> None:
+    def set_path(self, path: list[list[float]]) -> None:
         self.path = path
 
     def get_hash(self) -> Optional[int]:

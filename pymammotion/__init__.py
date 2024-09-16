@@ -8,15 +8,16 @@ import asyncio
 import logging
 import os
 
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+
 # works outside HA on its own
-from pymammotion.bluetooth.ble import LubaBLE
+from pymammotion.bluetooth.ble import MammotionBLE
 from pymammotion.http.http import MammotionHTTP, connect_http
 
 # TODO make a working device that will work outside HA too.
-from pymammotion.mammotion.devices import MammotionBaseBLEDevice
 from pymammotion.mqtt import MammotionMQTT
 
-__all__ = ["LubaBLE", "MammotionHTTP", "connect_http", "MammotionBaseBLEDevice", "MammotionMQTT"]
+__all__ = ["MammotionBLE", "MammotionHTTP", "connect_http", "MammotionMQTT"]
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +33,15 @@ if __name__ == "__main__":
     CLIENT_ID = os.environ.get("CLIENT_ID")
     IOT_TOKEN = os.environ.get("IOT_TOKEN")
     REGION = os.environ.get("REGION")
+    cloud_client = CloudIOTGateway()
     luba = MammotionMQTT(
-        iot_token=IOT_TOKEN,
-        region_id=REGION,
-        product_key=PRODUCT_KEY,
-        device_name=DEVICE_NAME,
-        device_secret=DEVICE_SECRET,
-        client_id=CLIENT_ID,
+        iot_token=IOT_TOKEN or "",
+        region_id=REGION or "",
+        product_key=PRODUCT_KEY or "",
+        device_name=DEVICE_NAME or "",
+        device_secret=DEVICE_SECRET or "",
+        client_id=CLIENT_ID or "",
+        cloud_client=cloud_client,
     )
     luba.connect_async()
 

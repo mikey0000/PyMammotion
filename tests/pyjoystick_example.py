@@ -6,15 +6,19 @@ from pyjoystick.utils import PeriodicThread
 from timeit import default_timer as timer
 
 
-from pymammotion.bluetooth.ble import LubaBLE
+from pymammotion.bluetooth.ble import MammotionBLE
 from pymammotion.bluetooth.ble_message import BleMessage
 from pymammotion.event.event import BleNotificationEvent
+from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.utility.rocker_util import RockerControlUtil
 
 bleNotificationEvt = BleNotificationEvent()
 
 import nest_asyncio
 nest_asyncio.apply()
+
+commands = MammotionCommand('')
+
 class JoystickControl:
     """Joystick class for controlling Luba with a joystick"""
 
@@ -164,7 +168,7 @@ class JoystickControl:
                         self.angular_percent = 0.0
 
 async def run():
-    bleLubaConn = LubaBLE(bleNotificationEvt)
+    bleLubaConn = MammotionBLE(bleNotificationEvt)
     did_connect = await bleLubaConn.scanForLubaAndConnect()
     if not did_connect:
         print("Couldn't establish connection with the device")
@@ -182,7 +186,8 @@ async def run():
             luba_client.clearNotification()
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
-    await luba_client.send_todev_ble_sync(2)
+    command_bytes = commands.send_todev_ble_sync(2)
+    await luba_client.post_custom_data_bytes(command_bytes)
     return luba_client
 
 if __name__ ==  '__main__':

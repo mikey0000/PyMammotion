@@ -1,12 +1,15 @@
 """MammotionMQTT."""
+
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
 import logging
 from logging import getLogger
-from typing import Callable, Optional, cast, Awaitable
+from typing import Awaitable, Callable, Optional
 
+import betterproto
 from linkkit.linkkit import LinkKit
 from paho.mqtt.client import MQTTMessage
 
@@ -14,7 +17,7 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.proto import luba_msg_pb2
+from pymammotion.proto.luba_msg import LubaMsg
 
 logger = getLogger(__name__)
 
@@ -29,18 +32,19 @@ class MammotionMQTT:
         device_name: str,
         device_secret: str,
         iot_token: str,
+        cloud_client: CloudIOTGateway,
         client_id: Optional[str] = None,
-    ):
+    ) -> None:
         """Create instance of MammotionMQTT."""
         super().__init__()
-        self._cloud_client = None
+        self._cloud_client = cloud_client
         self.is_connected = False
         self.is_ready = False
-        self.on_connected: Optional[Callable[[],Awaitable[None]]] = None
-        self.on_ready: Optional[Callable[[],Awaitable[None]]] = None
-        self.on_error: Optional[Callable[[str],Awaitable[None]]] = None
-        self.on_disconnected: Optional[Callable[[],Awaitable[None]]] = None
-        self.on_message: Optional[Callable[[str, str, str],Awaitable[None]]] = None
+        self.on_connected: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_ready: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_error: Optional[Callable[[str], Awaitable[None]]] = None
+        self.on_disconnected: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_message: Optional[Callable[[str, str, str], Awaitable[None]]] = None
 
         self._product_key = product_key
         self._device_name = device_name
@@ -77,20 +81,19 @@ class MammotionMQTT:
         self._linkkit_client.on_topic_message = self._thing_on_topic_message
         self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
 
-    def connect_async(self):
+    def connect_async(self) -> None:
         """Connect async to MQTT Server."""
         logger.info("Connecting...")
         if self._linkkit_client.check_state() is LinkKit.LinkKitState.INITIALIZED:
             self._linkkit_client.thing_setup()
         self._linkkit_client.connect_async()
 
-
-    def disconnect(self):
+    def disconnect(self) -> None:
         """Disconnect from MQTT Server."""
         logger.info("Disconnecting...")
         self._linkkit_client.disconnect()
 
-    def _thing_on_thing_enable(self, user_data):
+    def _thing_on_thing_enable(self, user_data) -> None:
         """Is called when Thing is enabled."""
         logger.debug("on_thing_enable")
         self.is_connected = True
@@ -129,7 +132,7 @@ class MammotionMQTT:
         # command = MammotionCommand(device_name="Luba")
         # self._cloud_client.send_cloud_command(command.get_report_cfg())
 
-    def _thing_on_topic_message(self, topic, payload, qos, user_data):
+    def _thing_on_topic_message(self, topic, payload, qos, user_data) -> None:
         """Is called when thing topic comes in."""
         logger.debug(
             "on_topic_message, receive message, topic:%s, payload:%s, qos:%d",
@@ -143,8 +146,7 @@ class MammotionMQTT:
             future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
-
-    def _thing_on_connect(self, session_flag, rc, user_data):
+    def _thing_on_connect(self, session_flag, rc, user_data) -> None:
         """Is called on thing connect."""
         self.is_connected = True
         if self.on_connected is not None:
@@ -155,7 +157,7 @@ class MammotionMQTT:
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
 
-    def _on_disconnect(self, _client, _userdata):
+    def _on_disconnect(self, _client, _userdata) -> None:
         """Is called on disconnect."""
         logger.info("Disconnected")
         self.is_connected = False
@@ -164,8 +166,7 @@ class MammotionMQTT:
             future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
-
-    def _on_message(self, _client, _userdata, message: MQTTMessage):
+    def _on_message(self, _client, _userdata, message: MQTTMessage) -> None:
         """Is called when message is received."""
         logger.info("Message on topic %s", message.topic)
 
@@ -174,9 +175,9 @@ class MammotionMQTT:
             event = ThingEventMessage(**payload)
             params = event.params
             if params.identifier == "device_protobuf_msg_event":
-                content = cast(luba_msg_pb2, params.value.content)
+                content = LubaMsg().parse(base64.b64decode(params.value.content))
 
-                logger.info("Unhandled protobuf event: %s", content.WhichOneof("subMsg"))
+                logger.info("Unhandled protobuf event: %s", betterproto.which_one_of(content, "LubaSubMsg"))
             elif params.identifier == "device_warning_event":
                 logger.debug("identifier event: %s", params.identifier)
             else:
@@ -191,7 +192,6 @@ class MammotionMQTT:
             logger.debug("Unhandled topic: %s", message.topic)
             logger.debug(payload)
 
-    def get_cloud_client(self) -> Optional[CloudIOTGateway]:
+    def get_cloud_client(self) -> CloudIOTGateway:
         """Return internal cloud client."""
         return self._cloud_client
-

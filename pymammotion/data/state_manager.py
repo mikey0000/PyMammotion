@@ -1,11 +1,13 @@
 """Manage state from notifications into MowingDevice."""
-from typing import Optional, Callable, Awaitable
+
+from typing import Any, Awaitable, Callable, Optional
 
 import betterproto
 
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
+from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
 
 
 class StateManager:
@@ -13,21 +15,22 @@ class StateManager:
 
     _device: MowingDevice
 
-    def __init__(self, device: MowingDevice):
+    def __init__(self, device: MowingDevice) -> None:
         self._device = device
-        self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck],Awaitable[None]]] = None
-        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck],Awaitable[None]]] = None
-        self.on_notification_callback: Optional[Callable[[],Awaitable[None]]] = None
+        self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck], Awaitable[None]]] = None
+        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck], Awaitable[None]]] = None
+        self.on_notification_callback: Optional[Callable[[], Awaitable[None]]] = None
+        self.queue_command_callback: Optional[Callable[[str, dict[str, Any]], Awaitable[bytes]]] = None
 
     def get_device(self) -> MowingDevice:
         """Get device."""
         return self._device
 
-    def set_device(self, device: MowingDevice):
+    def set_device(self, device: MowingDevice) -> None:
         """Set device."""
         self._device = device
 
-    async def notification(self, message: LubaMsg):
+    async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
         res = betterproto.which_one_of(message, "LubaSubMsg")
 
@@ -35,7 +38,7 @@ class StateManager:
             case "nav":
                 await self._update_nav_data(message)
             case "sys":
-                self._update_sys_data(message)
+                await self._update_sys_data(message)
             case "driver":
                 self._update_driver_data(message)
             case "net":
@@ -48,7 +51,7 @@ class StateManager:
         if self.on_notification_callback:
             await self.on_notification_callback()
 
-    async def _update_nav_data(self, message):
+    async def _update_nav_data(self, message) -> None:
         """Update nav data."""
         nav_msg = betterproto.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
@@ -61,8 +64,12 @@ class StateManager:
                 updated = self._device.map.update(common_data)
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
+            case "toapp_all_hash_name":
+                hash_names: AppGetAllAreaHashName = nav_msg[1]
+                converted_list = [AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames]
+                self._device.map.area_name = converted_list
 
-    def _update_sys_data(self, message):
+    async def _update_sys_data(self, message) -> None:
         """Update system."""
         sys_msg = betterproto.which_one_of(message.sys, "SubSysMsg")
         match sys_msg[0]:
@@ -75,14 +82,14 @@ class StateManager:
             case "system_tard_state_tunnel":
                 self._device.run_state_update(sys_msg[1])
 
-    def _update_driver_data(self, message):
+    def _update_driver_data(self, message) -> None:
         pass
 
-    def _update_net_data(self, message):
+    def _update_net_data(self, message) -> None:
         pass
 
-    def _update_mul_data(self, message):
+    def _update_mul_data(self, message) -> None:
         pass
 
-    def _update_ota_data(self, message):
+    def _update_ota_data(self, message) -> None:
         pass

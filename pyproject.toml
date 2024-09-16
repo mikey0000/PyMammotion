@@ -1,10 +1,10 @@
 [project]
 name        = "pymammotion"
-version     = "0.2.26"
+version     = "0.2.38"
 
 [tool.poetry]
 name        = "pymammotion"
-version     = "0.2.26"
+version     = "0.2.38"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
@@ -37,6 +37,8 @@ pyjoystick = "^1.2.4"
 nest-asyncio = "^1.6.0"
 numpy = "^1.26.0"
 async-timeout = "^4.0.3"
+mypy = "^1.11.2"
+autotyping = "^24.3.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -53,7 +55,7 @@ mypy = "^1.10.0"
 pre-commit = "^3.8.0"
 
 [tool.bumpver]
-current_version = "0.2.26"
+current_version = "0.2.38"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true

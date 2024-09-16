@@ -1,16 +1,18 @@
 """Contains RTK models for robot location and RTK positions."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
 @dataclass
-class Point:
+class Point(DataClassORJSONMixin):
     """Returns a lat long."""
 
     latitude: float = 0.0
     longitude: float = 0.0
 
-    def __init__(self, latitude=0.0, longitude=0.0):
+    def __init__(self, latitude: float = 0.0, longitude: float = 0.0) -> None:
         self.latitude = latitude
         self.longitude = longitude
 
@@ -23,17 +25,12 @@ class Dock(Point):
 
 
 @dataclass
-class Location:
+class Location(DataClassORJSONMixin):
     """Stores/retrieves RTK GPS data."""
 
-    device: Point
-    RTK: Point
-    dock: Dock
+    device: Point = field(default_factory=Point)
+    RTK: Point = field(default_factory=Point)
+    dock: Dock = field(default_factory=Dock)
     position_type: int = 0
-    orientation: int = 0 # 360 degree rotation +-
+    orientation: int = 0  # 360 degree rotation +-
     work_zone: int = 0
-
-    def __init__(self):
-        self.device = Point()
-        self.RTK = Point()
-        self.dock = Dock()

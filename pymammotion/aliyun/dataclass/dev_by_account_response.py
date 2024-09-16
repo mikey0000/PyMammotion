@@ -29,7 +29,6 @@ class Device(DataClassORJSONMixin):
     categoryImage: Optional[str] = None
     productModel: Optional[str] = None
 
-
     class Config(BaseConfig):
         omit_default = True
 
@@ -37,7 +36,7 @@ class Device(DataClassORJSONMixin):
 @dataclass
 class Data(DataClassORJSONMixin):
     total: int
-    data: List[Device]
+    data: list[Device]
     pageNo: int
     pageSize: int
 

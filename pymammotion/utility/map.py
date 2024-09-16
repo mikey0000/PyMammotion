@@ -6,7 +6,7 @@ from pymammotion.data.model.location import Point
 
 
 class CoordinateConverter:
-    def __init__(self, latitude_rad: float, longitude_rad: float):
+    def __init__(self, latitude_rad: float, longitude_rad: float) -> None:
         # Initialize constants
         self.WGS84A = 6378137.0
         self.f_ = 3.3528106647474805e-21
@@ -26,7 +26,7 @@ class CoordinateConverter:
         # Call set_init_lla with provided lat/lon
         self.set_init_lla(latitude_rad, longitude_rad)
 
-    def set_init_lla(self, lat_rad, lon_rad):
+    def set_init_lla(self, lat_rad, lon_rad) -> None:
         sin_lat = math.sin(lat_rad)
         cos_lat = math.cos(lat_rad)
         sin_lon = math.sin(lon_rad)
