@@ -93,7 +93,6 @@ class MammotionHTTP:
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    response = StreamSubscriptionResponse.from_dict(data)
                     # TODO catch errors from mismatch like token expire etc
                     # Assuming the data format matches the expected structure
                     return StreamSubscriptionResponse.from_dict(data)
