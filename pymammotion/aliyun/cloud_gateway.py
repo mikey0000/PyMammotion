@@ -17,14 +17,14 @@ from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequ
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
 
-from pymammotion.aliyun.dataclass.aep_response import AepResponse
-from pymammotion.aliyun.dataclass.connect_response import ConnectResponse
-from pymammotion.aliyun.dataclass.dev_by_account_response import (
+from pymammotion.aliyun.model.aep_response import AepResponse
+from pymammotion.aliyun.model.connect_response import ConnectResponse
+from pymammotion.aliyun.model.dev_by_account_response import (
     ListingDevByAccountResponse,
 )
-from pymammotion.aliyun.dataclass.login_by_oauth_response import LoginByOAuthResponse
-from pymammotion.aliyun.dataclass.regions_response import RegionResponse
-from pymammotion.aliyun.dataclass.session_by_authcode_response import (
+from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
+from pymammotion.aliyun.model.regions_response import RegionResponse
+from pymammotion.aliyun.model.session_by_authcode_response import (
     SessionByAuthCodeResponse,
 )
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
@@ -525,6 +525,47 @@ class CloudIOTGateway:
 
         # send request
         response = client.do_request("/uc/listBindingByAccount", "https", "POST", None, body, RuntimeOptions())
+        logger.debug(response.status_message)
+        logger.debug(response.headers)
+        logger.debug(response.status_code)
+        logger.debug(response.body)
+
+        # Decode the response body
+        response_body_str = response.body.decode("utf-8")
+
+        # Load the JSON string into a dictionary
+        response_body_dict = json.loads(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
+            raise Exception("Error in creating session: " + response_body_dict["msg"])
+
+        self._devices_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
+        return self._devices_by_account_response
+
+    def list_binding_by_dev(self, iot_id: str):
+        config = Config(
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,
+        )
+
+        client = Client(config)
+
+        # build request
+        request = CommonParams(
+            api_ver="1.0.8",
+            language="en-US",
+            iot_token=self._session_by_authcode_response.data.iotToken,
+        )
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params={"pageSize": 100, "pageNo": 1, "iotId": iot_id},
+            request=request,
+            version="1.0",
+        )
+
+        # send request
+        response = client.do_request("/uc/listBindingByDev", "https", "POST", None, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)

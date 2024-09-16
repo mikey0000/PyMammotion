@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Generic, Literal, Optional, TypeVar
 
 from mashumaro import DataClassDictMixin
+from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 DataT = TypeVar("DataT")
@@ -50,6 +51,9 @@ class Response(DataClassDictMixin, Generic[DataT]):
     code: int
     msg: str
     data: DataT | None = None
+
+    class Config(BaseConfig):
+        omit_default = True
 
 
 @dataclass

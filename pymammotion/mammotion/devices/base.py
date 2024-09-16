@@ -5,7 +5,7 @@ from typing import Any, Awaitable, Callable
 
 import betterproto
 
-from pymammotion.aliyun.dataclass.dev_by_account_response import Device
+from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.state_manager import StateManager

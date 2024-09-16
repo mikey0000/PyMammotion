@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable, Optional, cast
 import betterproto
 
 from pymammotion import CloudIOTGateway, MammotionMQTT
-from pymammotion.aliyun.dataclass.dev_by_account_response import Device
+from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.event.event import DataEvent

@@ -12,7 +12,7 @@ from aiohttp import ClientSession
 from bleak.backends.device import BLEDevice
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.aliyun.dataclass.dev_by_account_response import Device
+from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.const import MAMMOTION_DOMAIN
 from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
@@ -176,7 +176,6 @@ class Mammotion:
                 self.add_cloud_devices(self.mqtt_list.get(account))
                 return
 
-        self.cloud_client = cloud_client
         mammotion_cloud = MammotionCloud(
             MammotionMQTT(
                 region_id=cloud_client.region_response.data.regionId,
