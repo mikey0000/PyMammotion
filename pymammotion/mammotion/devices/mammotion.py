@@ -203,7 +203,7 @@ async def create_devices(ble_device: BLEDevice,
        cloud_client = CloudIOTGateway()
         mammotion_http = await Mammotion.login(cloud_client, cloud_credentials.account_id or cloud_credentials.email,
                                              cloud_credentials.password)
-        await mammotion.initiate_cloud_connection(cloud_client, mammotion_http)
+        await mammotion.initiate_cloud_connection(cloud_client)
 
     return mammotion
 
@@ -215,7 +215,6 @@ class Mammotion(object):
     devices = MammotionDevices()
     cloud_client: CloudIOTGateway | None = None
     mqtt: MammotionMQTT | None = None
-    mammotion_http_client: MammotionHTTP | None = None
 
 
     def __init__(
@@ -230,7 +229,7 @@ class Mammotion(object):
         if preference:
             self._preference = preference
 
-    async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway, mammotion_http: MammotionHTTP) -> None:
+    async def initiate_cloud_connection(self, cloud_client: CloudIOTGateway) -> None:
         if self.mqtt is not None:
             if self.mqtt.is_connected:
                 return
@@ -259,7 +258,7 @@ class Mammotion(object):
                 ble_device.set_disconnect_strategy(disconnect)
 
     @staticmethod
-    async def login(cloud_client: CloudIOTGateway, account: str, password: str) -> MammotionHTTP:
+    async def login(account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
    
         async with ClientSession(MAMMOTION_DOMAIN) as session:
