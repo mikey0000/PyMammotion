@@ -105,6 +105,15 @@ class MammotionMQTT:
         self._linkkit_client.subscribe_topic(
             f"/sys/{self._product_key}/{self._device_name}/app/down/thing/event/property/post_reply"
         )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/status/notify"
+        )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/connect/event/notify"
+        )
+        self._linkkit_client.subscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/_thing/event/notify"
+        )
         self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events")
         self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status")
         self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties")

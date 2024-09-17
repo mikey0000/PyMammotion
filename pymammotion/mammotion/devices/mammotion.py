@@ -8,12 +8,10 @@ from enum import Enum
 from functools import cache
 from typing import Any
 
-from aiohttp import ClientSession
 from bleak.backends.device import BLEDevice
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.model.dev_by_account_response import Device
-from pymammotion.const import MAMMOTION_DOMAIN
 from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.http.http import connect_http
@@ -105,7 +103,7 @@ class MammotionDevices:
     def get_device(self, mammotion_device_name: str) -> MammotionMixedDeviceManager:
         return self.devices.get(mammotion_device_name)
 
-    def remove_device(self, name) -> None:
+    async def remove_device(self, name) -> None:
         device_for_removal = self.devices.pop(name)
         if device_for_removal.has_cloud():
             should_disconnect = {
@@ -115,6 +113,11 @@ class MammotionDevices:
             }
             if len(should_disconnect) == 0:
                 device_for_removal.cloud()._mqtt.disconnect()
+            await device_for_removal.cloud().stop()
+        if device_for_removal.has_ble():
+            await device_for_removal.ble().stop()
+
+        del device_for_removal
 
 
 async def create_devices(
@@ -164,10 +167,7 @@ class Mammotion:
             exists: MammotionCloud | None = self.mqtt_list.get(account)
             if not exists or force:
                 cloud_client = await self.login(account, password)
-            else:
-                cloud_client = exists.cloud_client
-
-            await self.initiate_cloud_connection(account, cloud_client)
+                await self.initiate_cloud_connection(account, cloud_client)
 
     async def initiate_cloud_connection(self, account: str, cloud_client: CloudIOTGateway) -> None:
         if self.mqtt_list.get(account) is not None:
@@ -220,24 +220,23 @@ class Mammotion:
 
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
-   
-        async with ClientSession(MAMMOTION_DOMAIN) as session:
-            mammotion_http = await connect_http(account, password)
-            country_code = mammotion_http.login_info.userInformation.domainAbbreviation
-            _LOGGER.debug("CountryCode: " + country_code)
-            _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
-            loop = asyncio.get_running_loop()
-            cloud_client.set_http(mammotion_http)
-            await loop.run_in_executor(
-                None, cloud_client.get_region, country_code, mammotion_http.login_info.authorization_code
-            )
-            await cloud_client.connect()
-            await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
-            await loop.run_in_executor(None, cloud_client.aep_handle)
-            await loop.run_in_executor(None, cloud_client.session_by_auth_code)
+        cloud_client = CloudIOTGateway()
+        mammotion_http = await connect_http(account, password)
+        country_code = mammotion_http.login_info.userInformation.domainAbbreviation
+        _LOGGER.debug("CountryCode: " + country_code)
+        _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
+        cloud_client.set_http(mammotion_http)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, cloud_client.get_region, country_code, mammotion_http.login_info.authorization_code
+        )
+        await cloud_client.connect()
+        await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
+        await loop.run_in_executor(None, cloud_client.aep_handle)
+        await loop.run_in_executor(None, cloud_client.session_by_auth_code)
 
-            await loop.run_in_executor(None, cloud_client.list_binding_by_account)
-            return cloud_client
+        await loop.run_in_executor(None, cloud_client.list_binding_by_account)
+        return cloud_client
 
     def remove_device(self, name: str) -> None:
         self.devices.remove_device(name)
@@ -282,7 +281,7 @@ class Mammotion:
             if device.preference is ConnectionPreference.WIFI:
                 return await device.cloud().start_map_sync()
             # TODO work with both with EITHER
-            
+
     async def get_stream_subscription(self, name: str):
         device = self.get_device_by_name(name)
         if self._preference is ConnectionPreference.WIFI:

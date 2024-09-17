@@ -112,6 +112,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 130, lambda: asyncio.ensure_future(self.run_periodic_sync_task())
             )
 
+    async def stop(self) -> None:
+        """Stop all tasks and disconnect."""
+        self._ble_sync_task.cancel()
+        await self._client.disconnect()
+
     async def queue_command(self, key: str, **kwargs: Any) -> bytes | None:
         return await self._send_command_with_args(key, **kwargs)
 

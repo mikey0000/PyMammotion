@@ -2,6 +2,7 @@
 import datetime
 from abc import ABC
 
+from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
 from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
@@ -36,7 +37,7 @@ class MessageSystem(AbstractMessage, ABC):
 
     def reset_system(self):
         build = MctlSys(todev_reset_system=1)
-        print("Send command - send factory reset")
+        logger.debug("Send command - send factory reset")
         return self.send_order_msg_sys(build)
 
     def set_blade_control(self, on_off: int):
@@ -72,24 +73,24 @@ class MessageSystem(AbstractMessage, ABC):
                 end_hour=0,
                 end_min=0,
             )
-        print(f"Send read and write sidelight command is_sidelight:{
+        logger.debug(f"Send read and write sidelight command is_sidelight:{
             is_sidelight}, operate:{operate}")
         build2 = MctlSys(todev_time_ctrl_light=build)
-        print(f"Send command - send read and write sidelight command is_sidelight:{
+        logger.debug(f"Send command - send read and write sidelight command is_sidelight:{
             is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
         return self.send_order_msg_sys(build2)
 
     def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: list[int]):
         build = MCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
-        print(f"Send tool test command: subCmd={sub_cmd}, param_id:{
+        logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{
             param_id}, param_value={param_value}")
         build2 = MctlSys(simulation_cmd=build)
-        print(f"Send tool test command: subCmd={sub_cmd}, param_id:{
+        logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{
             param_id}, param_value={param_value}")
         return self.send_order_msg_sys(build2)
 
-    def read_and_set_rtk_paring_code(self, op: int, cgf: str):
-        print(f"Send read and write base station configuration quality op:{
+    def read_and_set_rtk_paring_code(self, op: int, cgf: str | None = None):
+        logger.debug(f"Send read and write base station configuration quality op:{
             op}, cgf:{cgf}")
         return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf)))
 
@@ -98,7 +99,7 @@ class MessageSystem(AbstractMessage, ABC):
             self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
             return
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=id, context=context, rw=rw))
-        print(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
+        logger.debug(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
         if id == 5:
             # This logic doesnt make snese, but its what they had so..
             return self.send_order_msg_sys(build)
@@ -107,7 +108,7 @@ class MessageSystem(AbstractMessage, ABC):
     # Commented out as not needed and too many refs to try fix up
     # def factory_test_order(self, test_id: int, test_duration: int, expect: str):
     #     new_builder = mow_to_app_qctools_info_t.Builder()
-    #     print(f"Factory tool print, expect={expect}")
+    #     logger.debug(f"Factory tool logger.debug, expect={expect}")
     #     if not expect:
     #         build = new_builder.set_type_value(
     #             test_id).set_time_of_duration(test_duration).build()
@@ -157,11 +158,11 @@ class MessageSystem(AbstractMessage, ABC):
     #         else:
     #             build = new_builder.set_type_value(
     #                 test_id).set_time_of_duration(test_duration).build()
-    #     print(f"Factory tool print, mow_to_app_qctools_info_t={
+    #     logger.debug(f"Factory tool logger.debug, mow_to_app_qctools_info_t={
     #         build.except_count}, mow_to_app_qctools_info_t22={build.except_list}")
     #     build2 = MctlSys(mow_to_app_qctools_info=build)
-    #     print(f"Send command - factory tool test command testId={
-    #         test_id}, testDuration={test_duration}", "Factory tool print222", True)
+    #     logger.debug(f"Send command - factory tool test command testId={
+    #         test_id}, testDuration={test_duration}", "Factory tool logger.debug222", True)
     #     return self.send_order_msg_sys(build2)
 
     def send_sys_set_date_time(self):
@@ -175,7 +176,7 @@ class MessageSystem(AbstractMessage, ABC):
         i7 = calendar.second
         i8 = calendar.utcoffset().total_seconds() // 60 if calendar.utcoffset() else 0
         i9 = 1 if calendar.dst() else 0
-        print(f"Print time zone, time zone={
+        logger.debug(f"Print time zone, time zone={
             i8}, daylight saving time={i9} week={i4}")
         build = MctlSys(
             todev_data_time=SysSetDateTime(
@@ -190,7 +191,7 @@ class MessageSystem(AbstractMessage, ABC):
                 daylight=i9,
             )
         )
-        print(
+        logger.debug(
             f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{
             i3}, month:{i2}, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}",
             "Time synchronization",
@@ -222,16 +223,46 @@ class MessageSystem(AbstractMessage, ABC):
                 count=count,
             )
         )
-        print(f"Send command==== IOT slim data Act {
+        logger.debug(f"Send command==== IOT slim data Act {
             build.todev_report_cfg.act} {build}")
         return self.send_order_msg_sys(build)
 
-    def get_report_cfg(
-        self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000, stop: bool = False
-    ):
+    def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
         mctlsys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
-                act=RptAct.RPT_STOP if stop else RptAct.RPT_START,
+                act=RptAct.RPT_STOP,
+                timeout=timeout,
+                period=period,
+                no_change_period=no_change_period,
+                count=1,
+            )
+        )
+
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
+        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
+
+        lubaMsg = LubaMsg()
+        lubaMsg.msgtype = MsgCmdType.MSG_CMD_TYPE_EMBED_SYS
+        lubaMsg.sender = MsgDevice.DEV_MOBILEAPP
+        lubaMsg.rcver = MsgDevice.DEV_MAINCTL
+        lubaMsg.msgattr = MsgAttr.MSG_ATTR_REQ
+        lubaMsg.seqs = 1
+        lubaMsg.version = 1
+        lubaMsg.subtype = 1
+        lubaMsg.sys = mctlsys
+        return lubaMsg.SerializeToString()
+
+    def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
+        mctlsys = MctlSys(
+            todev_report_cfg=ReportInfoCfg(
+                act=RptAct.RPT_START,
                 timeout=timeout,
                 period=period,
                 no_change_period=no_change_period,

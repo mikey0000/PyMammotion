@@ -15,21 +15,60 @@ _LOGGER = logging.getLogger(__name__)
 async def run() -> CloudIOTGateway:
     EMAIL = os.environ.get('EMAIL')
     PASSWORD = os.environ.get('PASSWORD')
-    cloud_gateway = CloudIOTGateway()
+    cloud_client = CloudIOTGateway()
 
     mammotion_http = await connect_http(EMAIL, PASSWORD)
     country_code = mammotion_http.login_info.userInformation.domainAbbreviation
     _LOGGER.debug("CountryCode: " + country_code)
     _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
-    cloud_gateway.get_region(country_code, mammotion_http.login_info.authorization_code)
-    await cloud_gateway.connect()
-    await cloud_gateway.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
-    cloud_gateway.aep_handle()
-    cloud_gateway.session_by_auth_code()
+    cloud_client.get_region(country_code, mammotion_http.login_info.authorization_code)
+    await cloud_client.connect()
+    await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
+    cloud_client.aep_handle()
+    cloud_client.session_by_auth_code()
     # await mammotion_http.get_all_error_codes()
 
-    print(cloud_gateway.list_binding_by_account())
-    return cloud_gateway
+    print(cloud_client.list_binding_by_account())
+
+    _mammotion_mqtt = MammotionCloud(MammotionMQTT(region_id=cloud_client.region_response.data.regionId,
+                                                   product_key=cloud_client.aep_response.data.productKey,
+                                                   device_name=cloud_client.aep_response.data.deviceName,
+                                                   device_secret=cloud_client.aep_response.data.deviceSecret,
+                                                   iot_token=cloud_client.session_by_authcode_response.data.iotToken,
+                                                   client_id=cloud_client.client_id, cloud_client=cloud_client
+                                                   ), cloud_client=cloud_client)
+
+    _mammotion_mqtt.connect_async()
+
+    _devices_list = []
+    for device in cloud_client.devices_by_account_response.data.data:
+        if (device.deviceName.startswith(("Luba-MTAJTZ7T"))):
+            dev = MammotionBaseCloudDevice(
+                mqtt=_mammotion_mqtt,
+                cloud_device=device,
+                mowing_state=MowingDevice()
+            )
+            _devices_list.append(dev)
+    await _devices_list[0].queue_command("send_todev_ble_sync", sync_type=3)
+    await _devices_list[0].queue_command("get_report_cfg_stop")
+    await asyncio.sleep(1)
+    await _devices_list[0].queue_command("get_report_cfg")
+    await asyncio.sleep(1)
+    await _devices_list[0].queue_command("read_and_set_rtk_paring_code", op=1)
+    # res = cloud_client.list_binding_by_dev(_devices_list[0].iot_id)
+    # print(res)
+    await asyncio.sleep(1)
+    await _devices_list[0].queue_command("send_todev_ble_sync", sync_type=3)
+    await _devices_list[0].queue_command("read_and_set_rtk_paring_code", op=1)
+    await asyncio.sleep(1)
+    # res = cloud_client.list_binding_by_dev(_devices_list[0].iot_id)
+    # print(res)
+    await _devices_list[0].queue_command("read_and_set_rtk_paring_code", op=1)
+    await asyncio.sleep(1)
+    await _devices_list[0].queue_command("send_todev_ble_sync", sync_type=3)
+    await _devices_list[0].queue_command("read_and_set_rtk_paring_code", op=1)
+    await asyncio.sleep(1)
+    await _devices_list[0].queue_command("read_and_set_rtk_paring_code", op=1)
 
 
 async def sync_status_and_map(cloud_device: MammotionBaseCloudDevice):
@@ -50,24 +89,6 @@ if __name__ == '__main__':
     asyncio.set_event_loop(event_loop)
     cloud_client: CloudIOTGateway = event_loop.run_until_complete(run())
 
-    _mammotion_mqtt = MammotionCloud(MammotionMQTT(region_id=cloud_client.region_response.data.regionId,
-                                                   product_key=cloud_client.aep_response.data.productKey,
-                                                   device_name=cloud_client.aep_response.data.deviceName,
-                                                   device_secret=cloud_client.aep_response.data.deviceSecret,
-                                                   iot_token=cloud_client.session_by_authcode_response.data.iotToken,
-                                                   client_id=cloud_client.client_id,
-                                                   cloud_client=cloud_client))
 
-    _mammotion_mqtt.connect_async()
-
-    _devices_list = []
-    for device in cloud_client.devices_by_account_response.data.data:
-        if (device.deviceName.startswith(("Luba-", "Yuka-"))):
-            dev = MammotionBaseCloudDevice(
-                mqtt=_mammotion_mqtt,
-                cloud_device=device,
-                mowing_state=MowingDevice()
-            )
-            _devices_list.append(dev)
 
     event_loop.run_forever()

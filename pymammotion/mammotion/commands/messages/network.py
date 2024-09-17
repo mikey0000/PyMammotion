@@ -1,5 +1,5 @@
 # === sendOrderMsg_Net  ===
-
+from pymammotion import logger
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
 from pymammotion.proto import dev_net_pb2, luba_msg_pb2
 
@@ -34,12 +34,12 @@ class MessageNetwork:
 
     def get_4g_module_info(self) -> bytes:
         build = dev_net_pb2.DevNet(todev_get_mnet_cfg_req=dev_net_pb2.DevNet().todev_get_mnet_cfg_req)
-        print("Send command -- Get device 4G network module information")
+        logger.debug("Send command -- Get device 4G network module information")
         return self.send_order_msg_net(build)
 
     def get_4g_info(self) -> bytes:
         build = dev_net_pb2.DevNet(todev_mnet_info_req=dev_net_pb2.DevNet().todev_mnet_info_req)
-        print("Send command -- Get device 4G network information")
+        logger.debug("Send command -- Get device 4G network information")
         return self.send_order_msg_net(build)
 
     def set_zmq_enable(self) -> bytes:
@@ -50,12 +50,12 @@ class MessageNetwork:
                 tx_zmq_url="tcp://0.0.0.0:5555",
             )
         )
-        print("Send command -- Set vision ZMQ to enable")
+        logger.debug("Send command -- Set vision ZMQ to enable")
         return self.send_order_msg_net(build)
 
     def set_iot_setting(self, iot_control_type: dev_net_pb2.iot_conctrl_type) -> bytes:
         build = dev_net_pb2.DevNet(todev_set_iot_offline_req=iot_control_type)
-        print("Send command -- Device re-online")
+        logger.debug("Send command -- Device re-online")
         return self.send_order_msg_net(build)
 
     def set_device_log_upload(
@@ -75,7 +75,7 @@ class MessageNetwork:
             num=number,
             type=type,
         )
-        print(
+        logger.debug(
             f"Send log====Feedback====Command======requestID:{request_id} operation:{operation} serverIp:{server_ip} type:{type}"
         )
         return self.send_order_msg_net(dev_net_pb2.DevNet(todev_ble_sync=1, todev_uploadfile_req=build))
@@ -98,7 +98,7 @@ class MessageNetwork:
             num=number,
             type=type,
         )
-        print(
+        logger.debug(
             f"Send log====Feedback====Command======requestID:{request_id}  operation:{operation} serverIp:{server_ip}  type:{type}"
         )
         return self.send_order_msg_net(dev_net_pb2.DevNet(todev_ble_sync=1, todev_uploadfile_req=build))
@@ -126,7 +126,7 @@ class MessageNetwork:
 
     def get_device_network_info(self) -> bytes:
         build = dev_net_pb2.DevNet(todev_networkinfo_req=dev_net_pb2.GetNetworkInfoReq(req_ids=1))
-        print("Send command - get device network information")
+        logger.debug("Send command - get device network information")
         return self.send_order_msg_net(build)
 
     def set_device_4g_enable_status(self, new_4g_status: bool) -> bytes:
@@ -141,7 +141,7 @@ class MessageNetwork:
             ),
         )
 
-        print(f"Send command - set 4G (on/off status). newWifiStatus={new_4g_status}")
+        logger.debug(f"Send command - set 4G (on/off status). newWifiStatus={new_4g_status}")
         return self.send_order_msg_net(build)
 
     def set_device_wifi_enable_status(self, new_wifi_status: bool) -> bytes:
@@ -149,11 +149,11 @@ class MessageNetwork:
             todev_ble_sync=1,
             todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(configParam=4, wifi_enable=new_wifi_status),
         )
-        print(f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
+        logger.debug(f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
         return self.send_order_msg_net(build)
 
     def wifi_connectinfo_update(self, device_name: str, is_binary: bool) -> bytes:
-        print(
+        logger.debug(
             f"Send command - get Wifi connection information.wifiConnectinfoUpdate().deviceName={device_name}.isBinary={is_binary}"
         )
         if is_binary:
@@ -161,7 +161,7 @@ class MessageNetwork:
                 todev_ble_sync=1,
                 todev_WifiMsgUpload=dev_net_pb2.DrvWifiUpload(wifi_msg_upload=1),
             )
-            print("Send command - get Wifi connection information")
+            logger.debug("Send command - get Wifi connection information")
             return self.send_order_msg_net(build)
         self.wifi_connectinfo_update2()
 
@@ -171,10 +171,10 @@ class MessageNetwork:
         #     68, hash_map))  # ToDo: Fix this
 
     def get_record_wifi_list(self, is_binary: bool) -> bytes:
-        print(f"getRecordWifiList().isBinary={is_binary}")
+        logger.debug(f"getRecordWifiList().isBinary={is_binary}")
         if is_binary:
             build = dev_net_pb2.DevNet(todev_ble_sync=1, todev_WifiListUpload=dev_net_pb2.DrvWifiList())
-            print("Send command - get memorized WiFi list upload command")
+            logger.debug("Send command - get memorized WiFi list upload command")
             return self.send_order_msg_net(build)
         self.get_record_wifi_list2()
 
@@ -189,7 +189,7 @@ class MessageNetwork:
                 todev_ble_sync=1,
                 todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(configParam=status, Confssid=ssid),
             )
-            print(
+            logger.debug(
                 f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})"
             )
             return self.send_order_msg_net(build)

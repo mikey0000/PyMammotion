@@ -190,6 +190,10 @@ class MammotionBaseDevice:
     async def _ble_sync(self):
         """Send ble sync command every 3 seconds or sooner."""
 
+    @abstractmethod
+    def stop(self):
+        """Stop everything ready for destroying."""
+
     async def start_sync(self, retry: int) -> None:
         """Start synchronization with the device."""
         await self.queue_command("get_device_base_info")

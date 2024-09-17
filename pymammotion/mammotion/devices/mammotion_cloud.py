@@ -2,12 +2,14 @@ import asyncio
 import base64
 import json
 import logging
+from asyncio import TimerHandle
 from collections import deque
 from typing import Any, Awaitable, Callable, Optional, cast
 
 import betterproto
 
 from pymammotion import CloudIOTGateway, MammotionMQTT
+from pymammotion.aliyun.cloud_gateway import DeviceOfflineException, SetupException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -27,12 +29,12 @@ class MammotionCloud:
     def __init__(self, mqtt_client: MammotionMQTT, cloud_client: CloudIOTGateway) -> None:
         self.cloud_client = cloud_client
         self.loop = asyncio.get_event_loop()
-        self._ble_sync_task = None
         self.is_ready = False
         self.command_queue = asyncio.Queue()
         self._waiting_queue = deque()
         self.mqtt_message_event = DataEvent()
         self.on_ready_event = DataEvent()
+        self.on_disconnected_event = DataEvent()
         self._operation_lock = asyncio.Lock()
         self._mqtt_client = mqtt_client
         self._mqtt_client.on_connected = self.on_connected
@@ -65,6 +67,7 @@ class MammotionCloud:
 
     async def on_disconnected(self) -> None:
         """Callback for when MQTT disconnects."""
+        await self.on_disconnected_event.data_event(None)
 
     async def process_queue(self) -> None:
         while True:
@@ -145,6 +148,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def __init__(self, mqtt: MammotionCloud, cloud_device: Device, mowing_state: MowingDevice) -> None:
         """Initialize MammotionBaseCloudDevice."""
         super().__init__(mowing_state, cloud_device)
+        self._ble_sync_task: TimerHandle | None = None
+        self.stopped = False
         self.on_ready_callback: Optional[Callable[[], Awaitable[None]]] = None
         self.loop = asyncio.get_event_loop()
         self._mqtt = mqtt
@@ -156,6 +161,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.currentID = ""
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
+        self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
         self.set_queue_callback(self.queue_command)
 
         if self._mqtt.is_ready:
@@ -163,10 +169,32 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def on_ready(self) -> None:
         """Callback for when MQTT is subscribed to events."""
-        await self._ble_sync()
-        await self.run_periodic_sync_task()
-        if self.on_ready_callback:
-            await self.on_ready_callback()
+        if self.stopped:
+            return
+        try:
+            await self._ble_sync()
+            if self._ble_sync_task is None or self._ble_sync_task.cancelled():
+                await self.run_periodic_sync_task()
+            if self.on_ready_callback:
+                await self.on_ready_callback()
+        except DeviceOfflineException:
+            await self.stop()
+        except SetupException:
+            await self.stop()
+
+    async def on_disconnect(self) -> None:
+        if self._ble_sync_task:
+            self._ble_sync_task.cancel()
+        loop = asyncio.get_event_loop()
+        self._mqtt.disconnect()
+        await loop.run_in_executor(None, self._mqtt.cloud_client.sign_out)
+
+    async def stop(self) -> None:
+        """Stop all tasks and disconnect."""
+        if self._ble_sync_task:
+            self._ble_sync_task.cancel()
+        self._mqtt.on_ready_event.remove_subscribers(self.on_ready)
+        self.stopped = True
 
     async def _ble_sync(self) -> None:
         command_bytes = self._commands.send_todev_ble_sync(3)
@@ -176,10 +204,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def run_periodic_sync_task(self) -> None:
         """Send ble sync to robot."""
         try:
-            if not self._mqtt._operation_lock.locked():
+            if not self._mqtt._operation_lock.locked() or not self.stopped:
                 await self._ble_sync()
         finally:
-            self.schedule_ble_sync()
+            if not self.stopped:
+                self.schedule_ble_sync()
 
     def schedule_ble_sync(self) -> None:
         """Periodically sync to keep connection alive."""

@@ -1,5 +1,6 @@
 """Manage state from notifications into MowingDevice."""
 
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Optional
 
 import betterproto
@@ -8,12 +9,14 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
+from pymammotion.utility.constant import WorkMode
 
 
 class StateManager:
     """Manage state."""
 
     _device: MowingDevice
+    last_updated_at: datetime = datetime.now()
 
     def __init__(self, device: MowingDevice) -> None:
         self._device = device
@@ -21,6 +24,7 @@ class StateManager:
         self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck], Awaitable[None]]] = None
         self.on_notification_callback: Optional[Callable[[], Awaitable[None]]] = None
         self.queue_command_callback: Optional[Callable[[str, dict[str, Any]], Awaitable[bytes]]] = None
+        self.last_updated_at = datetime.now()
 
     def get_device(self) -> MowingDevice:
         """Get device."""
@@ -33,6 +37,7 @@ class StateManager:
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
         res = betterproto.which_one_of(message, "LubaSubMsg")
+        self.last_updated_at = datetime.now()
 
         match res[0]:
             case "nav":
@@ -78,7 +83,8 @@ class StateManager:
             case "toapp_report_data":
                 self._device.update_report_data(sys_msg[1])
                 if self.queue_command_callback:
-                    await self.queue_command_callback("get_report_cfg", stop=True)
+                    if self._device.sys.toapp_report_data.dev.sys_status != WorkMode.MODE_WORKING:
+                        await self.queue_command_callback("get_report_cfg_stop")
             case "mow_to_app_info":
                 self._device.mow_info(sys_msg[1])
             case "system_tard_state_tunnel":

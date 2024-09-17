@@ -436,6 +436,49 @@ class CloudIOTGateway:
 
         return response.body
 
+    def sign_out(self) -> None:
+        config = Config(
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,
+        )
+        client = Client(config)
+
+        # build request
+        request = CommonParams(api_ver="1.0.4", language="en-US")
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params={
+                "request": {
+                    "refreshToken": self._session_by_authcode_response.data.refreshToken,
+                    "identityId": self._session_by_authcode_response.data.identityId,
+                }
+            },
+            request=request,
+            version="1.0",
+        )
+
+        # send request
+        # possibly need to do this ourselves
+        response = client.do_request(
+            "/iotx/account/invalidSession",
+            "https",
+            "POST",
+            None,
+            body,
+            RuntimeOptions(),
+        )
+        logger.debug(response.status_message)
+        logger.debug(response.headers)
+        logger.debug(response.status_code)
+        logger.debug(response.body)
+
+        # Decode the response body
+        response_body_str = response.body.decode("utf-8")
+
+        # Load the JSON string into a dictionary
+        response_body_dict = json.loads(response_body_str)
+
     def check_or_refresh_session(self):
         """Check or refresh the session."""
         logger.debug("Try to refresh token")
@@ -628,7 +671,6 @@ class CloudIOTGateway:
             version="1.0",
         )
         logger.debug(self.converter.printBase64Binary(command))
-
         # send request
         response = client.do_request("/thing/service/invoke", "https", "POST", None, body, RuntimeOptions())
         logger.debug(response.status_message)

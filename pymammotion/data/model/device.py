@@ -112,7 +112,17 @@ class MowingDevice(DataClassORJSONMixin):
         self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 
     def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
+        coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         self.mowing_state = RapidState().from_raw(rapid_state.rapid_state_data)
+        self.location.position_type = self.mowing_state.pos_type
+        self.location.orientation = self.mowing_state.toward / 10000
+        self.location.device = coordinate_converter.enu_to_lla(
+            parse_double(self.mowing_state.pos_y, 4.0), parse_double(self.mowing_state.pos_x, 4.0)
+        )
+        if self.mowing_state.zone_hash:
+            self.location.work_zone = (
+                self.mowing_state.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
+            )
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
         pass

@@ -16,7 +16,6 @@ from pymammotion.bluetooth.data.convert import parse_custom_data
 from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.data.model.execute_boarder import ExecuteBorder
-from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
 from pymammotion.proto import (
     dev_net_pb2,
     luba_msg_pb2,
@@ -49,7 +48,6 @@ class BleMessage:
     mReadSequence: iter
     mAck: queue
     notification: BlufiNotifyData
-    messageNavigation: MessageNavigation = MessageNavigation()
 
     def __init__(self, client: BleakClient) -> None:
         self.client = client
@@ -123,9 +121,9 @@ class BleMessage:
 
     async def requestDeviceStatus(self) -> None:
         request = False
-        type = self.messageNavigation.getTypeValue(0, 5)
+        type = self.getTypeValue(0, 5)
         try:
-            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
+            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             # _LOGGER.debug(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -137,9 +135,9 @@ class BleMessage:
 
     async def requestDeviceVersion(self) -> None:
         request = False
-        type = self.messageNavigation.getTypeValue(0, 7)
+        type = self.getTypeValue(0, 7)
         try:
-            request = await self.messageNavigation.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
+            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
             # _LOGGER.debug(request)
         except Exception as err:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
@@ -147,7 +145,7 @@ class BleMessage:
             _LOGGER.error(err)
 
     async def sendBorderPackage(self, executeBorder: ExecuteBorder) -> None:
-        await self.messageNavigation.post_custom_data(serialize(executeBorder))
+        await self.post_custom_data(serialize(executeBorder))
 
     async def gatt_write(self, data: bytes) -> None:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
@@ -340,6 +338,10 @@ class BleMessage:
             # onPostCustomDataResult(status, data)
         except Exception as err:
             _LOGGER.debug(err)
+            # we might be constantly connected and in a bad state
+            self.mSendSequence = itertools.count()
+            self.mReadSequence = itertools.count()
+            await self.client.disconnect()
 
     async def post(
         self,
