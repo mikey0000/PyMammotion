@@ -35,7 +35,6 @@ class ConnectionPreference(Enum):
 class MammotionMixedDeviceManager:
     _ble_device: MammotionBaseBLEDevice | None = None
     _cloud_device: MammotionBaseCloudDevice | None = None
-    _mowing_state: MowingDevice
     preference: ConnectionPreference
 
     def __init__(
@@ -46,14 +45,24 @@ class MammotionMixedDeviceManager:
         mqtt: MammotionCloud | None = None,
         preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
     ) -> None:
+        self._mower_state = None
         self.name = name
         self._mowing_state = MowingDevice()
         self.add_ble(ble_device)
         self.add_cloud(cloud_device, mqtt)
         self.preference = preference
 
+    @property
     def mower_state(self):
         return self._mowing_state
+
+    @mower_state.setter
+    def mower_state(self, value: MowingDevice) -> None:
+        if self._cloud_device:
+            self._cloud_device.state_manager.set_device(value)
+        if self._ble_device:
+            self._ble_device.state_manager.set_device(value)
+        self._mowing_state = value
 
     def ble(self) -> MammotionBaseBLEDevice | None:
         return self._ble_device
@@ -63,12 +72,12 @@ class MammotionMixedDeviceManager:
 
     def add_ble(self, ble_device: BLEDevice) -> None:
         if ble_device is not None:
-            self._ble_device = MammotionBaseBLEDevice(self._mowing_state, ble_device)
+            self._ble_device = MammotionBaseBLEDevice(self.mower_state, ble_device)
 
     def add_cloud(self, cloud_device: Device | None = None, mqtt: MammotionCloud | None = None) -> None:
         if cloud_device is not None:
             self._cloud_device = MammotionBaseCloudDevice(
-                mqtt, cloud_device=cloud_device, mowing_state=self._mowing_state
+                mqtt, cloud_device=cloud_device, mowing_state=self.mower_state
             )
 
     def replace_cloud(self, cloud_device: MammotionBaseCloudDevice) -> None:
@@ -284,13 +293,13 @@ class Mammotion:
 
     async def get_stream_subscription(self, name: str):
         device = self.get_device_by_name(name)
-        if self._preference is ConnectionPreference.WIFI:
+        if device.preference is ConnectionPreference.WIFI:
             if device.has_cloud():
-                _stream_response = await self.cloud().cloud_client.get_stream_subscription(device.cloud().iot_id)
+                _stream_response = await device.cloud().mqtt.cloud_client.get_stream_subscription(device.cloud().iot_id)
                 _LOGGER.debug(_stream_response)
                 return _stream_response
 
     def mower(self, name: str):
         device = self.get_device_by_name(name)
         if device:
-            return device.mower_state()
+            return device.mower_state

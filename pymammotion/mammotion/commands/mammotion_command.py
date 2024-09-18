@@ -4,7 +4,7 @@ from pymammotion.mammotion.commands.messages.network import MessageNetwork
 from pymammotion.mammotion.commands.messages.ota import MessageOta
 from pymammotion.mammotion.commands.messages.system import MessageSystem
 from pymammotion.mammotion.commands.messages.video import MessageVideo
-from pymammotion.proto import dev_net_pb2, luba_msg_pb2
+from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 
 class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo, MessageDriver):
@@ -23,3 +23,27 @@ class MammotionCommand(MessageSystem, MessageNavigation, MessageNetwork, Message
 
     def set_device_product_key(self, product_key: str) -> None:
         self._product_key = product_key
+
+    async def move_forward(self, linear: float) -> None:
+        """Move forward. values 0.0 1.0."""
+        linear_percent = get_percent(abs(linear * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(90.0, 0.0, linear_percent, 0.0)
+        await self.send_movement(linear_speed=linear_speed, angular_speed=angular_speed)
+
+    async def move_back(self, linear: float) -> None:
+        """Move back. values 0.0 1.0."""
+        linear_percent = get_percent(abs(linear * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(270.0, 0.0, linear_percent, 0.0)
+        await self.send_movement(linear_speed=linear_speed, angular_speed=angular_speed)
+
+    async def move_left(self, angular: float) -> None:
+        """Move forward. values 0.0 1.0."""
+        angular_percent = get_percent(abs(angular * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(0.0, 0.0, 0.0, angular_percent)
+        await self.send_movement(linear_speed=linear_speed, angular_speed=angular_speed)
+
+    async def move_right(self, angular: float) -> None:
+        """Move back. values 0.0 1.0."""
+        angular_percent = get_percent(abs(angular * 100))
+        (linear_speed, angular_speed) = transform_both_speeds(0.0, 180.0, 0.0, angular_percent)
+        await self.send_movement(linear_speed=linear_speed, angular_speed=angular_speed)

@@ -77,7 +77,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._prev_notification = None
         self._interface = f"hci{interface}"
         self._device = device
-        self._mower = mowing_state
         self._client: BleakClientWithServiceCache | None = None
         self._read_char: BleakGATTCharacteristic | int | str | UUID = 0
         self._write_char: BleakGATTCharacteristic | int | str | UUID = 0
@@ -191,7 +190,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def rssi(self) -> int:
         """Return RSSI of device."""
         try:
-            return cast(self._mower.sys.toapp_report_data.connect.ble_rssi, int)
+            return cast(self.mower.sys.toapp_report_data.connect.ble_rssi, int)
         finally:
             return 0
 

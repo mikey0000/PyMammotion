@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
+from mashumaro.mixins.orjson import DataClassORJSONMixin
+
 from pymammotion.utility.conversions import parse_double
 
 
@@ -11,7 +13,7 @@ class RTKStatus(Enum):
 
 
 @dataclass
-class RapidState:
+class RapidState(DataClassORJSONMixin):
     pos_x: float = 0
     pos_y: float = 0
     rtk_status: RTKStatus = RTKStatus.NONE

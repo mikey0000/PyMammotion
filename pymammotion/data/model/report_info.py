@@ -63,22 +63,20 @@ class WorkData(DataClassORJSONMixin):
 
 
 @dataclass
-class ReportData:
+class ReportData(DataClassORJSONMixin):
     connect: ConnectData = field(default_factory=ConnectData)
     dev: DeviceData = field(default_factory=DeviceData)
     rtk: RTKData = field(default_factory=RTKData)
     locations: list[LocationData] = field(default_factory=list)
     work: WorkData = field(default_factory=WorkData)
 
-    def from_dict(self, data: dict):
+    def update(self, data: dict) -> None:
         locations = self.locations
         if data.get("locations") is not None:
             locations = [LocationData.from_dict(loc) for loc in data.get("locations", [])]
 
-        return ReportData(
-            connect=ConnectData.from_dict(data.get("connect", asdict(self.connect))),
-            dev=DeviceData.from_dict(data.get("dev", asdict(self.dev))),
-            rtk=RTKData.from_dict(data.get("rtk", asdict(self.rtk))),
-            locations=locations,
-            work=WorkData.from_dict(data.get("work", asdict(self.work))),
-        )
+        self.connect = ConnectData.from_dict(data.get("connect", asdict(self.connect)))
+        self.dev = DeviceData.from_dict(data.get("dev", asdict(self.dev)))
+        self.rtk = RTKData.from_dict(data.get("rtk", asdict(self.rtk)))
+        self.locations = locations
+        self.work = WorkData.from_dict(data.get("work", asdict(self.work)))

@@ -109,7 +109,7 @@ class MowingDevice(DataClassORJSONMixin):
                         location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
                     )
 
-        self.report_data = self.report_data.from_dict(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
+        self.report_data.update(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 
     def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)

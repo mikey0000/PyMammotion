@@ -12,7 +12,6 @@ from pymammotion.data.state_manager import StateManager
 from pymammotion.proto import has_field
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
-from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +34,6 @@ def find_next_integer(lst: list[int], current_hash: int) -> int | None:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
-    _mower: MowingDevice
     _state_manager: StateManager
     _cloud_device: Device | None = None
 
@@ -43,8 +41,7 @@ class MammotionBaseDevice:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
-        self._mower = device
-        self._state_manager = StateManager(self._mower)
+        self._state_manager = StateManager(device)
         self._state_manager.gethash_ack_callback = self.datahash_response
         self._state_manager.get_commondata_ack_callback = self.commdata_response
         self._notify_future: asyncio.Future[bytes] | None = None
@@ -65,11 +62,11 @@ class MammotionBaseDevice:
         total_frame = common_data.total_frame
         current_frame = common_data.current_frame
 
-        missing_frames = self._mower.map.missing_frame(common_data)
+        missing_frames = self.mower.map.missing_frame(common_data)
         if len(missing_frames) == 0:
             # get next in hash ack list
 
-            data_hash = find_next_integer(self._mower.nav.toapp_gethash_ack.data_couple, common_data.hash)
+            data_hash = find_next_integer(self.mower.nav.toapp_gethash_ack.data_couple, common_data.hash)
             if data_hash is None:
                 return
 
@@ -104,7 +101,7 @@ class MammotionBaseDevice:
             case "ota":
                 self._update_ota_data(tmp_msg)
 
-        self._mower.update_raw(self._raw_data)
+        self.mower.update_raw(self._raw_data)
 
     def _update_nav_data(self, tmp_msg) -> None:
         """Update navigation data."""
@@ -180,7 +177,7 @@ class MammotionBaseDevice:
     @property
     def mower(self) -> MowingDevice:
         """Get the LubaMsg of the device."""
-        return self._mower
+        return self._state_manager.get_device()
 
     @abstractmethod
     async def queue_command(self, key: str, **kwargs: any) -> bytes | None:
@@ -207,7 +204,7 @@ class MammotionBaseDevice:
         try:
             # work out why this crashes sometimes for better proto
 
-            if self._cloud_device and len(self._mower.map.area_name) == 0:
+            if self._cloud_device and len(self.mower.map.area_name) == 0:
                 await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
         except Exception:
             """Do nothing for now."""
@@ -231,30 +228,10 @@ class MammotionBaseDevice:
         await self.queue_command("allpowerfull_rw", id=5, rw=1, context=2)
         await self.queue_command("allpowerfull_rw", id=5, rw=1, context=3)
 
-    async def move_forward(self, linear: float) -> None:
-        """Move forward. values 0.0 1.0."""
-        linear_percent = get_percent(abs(linear * 100))
-        (linear_speed, angular_speed) = transform_both_speeds(90.0, 0.0, linear_percent, 0.0)
-        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
-
-    async def move_back(self, linear: float) -> None:
-        """Move back. values 0.0 1.0."""
-        linear_percent = get_percent(abs(linear * 100))
-        (linear_speed, angular_speed) = transform_both_speeds(270.0, 0.0, linear_percent, 0.0)
-        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
-
-    async def move_left(self, angulur: float) -> None:
-        """Move forward. values 0.0 1.0."""
-        angular_percent = get_percent(abs(angulur * 100))
-        (linear_speed, angular_speed) = transform_both_speeds(0.0, 0.0, 0.0, angular_percent)
-        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
-
-    async def move_right(self, angulur: float) -> None:
-        """Move back. values 0.0 1.0."""
-        angular_percent = get_percent(abs(angulur * 100))
-        (linear_speed, angular_speed) = transform_both_speeds(0.0, 180.0, 0.0, angular_percent)
-        await self.queue_command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed)
-
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""
         return await self.queue_command(key, **kwargs)
+
+    @property
+    def state_manager(self):
+        return self._state_manager

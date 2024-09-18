@@ -91,6 +91,7 @@ class MammotionMQTT:
     def disconnect(self) -> None:
         """Disconnect from MQTT Server."""
         logger.info("Disconnecting...")
+
         self._linkkit_client.disconnect()
 
     def _thing_on_thing_enable(self, user_data) -> None:

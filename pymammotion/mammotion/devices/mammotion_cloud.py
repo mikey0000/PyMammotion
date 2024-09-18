@@ -155,7 +155,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt = mqtt
         self.iot_id = cloud_device.iotId
         self.device = cloud_device
-        self._mower = mowing_state
         self._command_futures = {}
         self._commands: MammotionCommand = MammotionCommand(cloud_device.deviceName)
         self.currentID = ""
