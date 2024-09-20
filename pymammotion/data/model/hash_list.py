@@ -3,7 +3,7 @@ from enum import IntEnum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.proto.mctrl_nav import AreaHashName, NavGetCommDataAck
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
 
 
 class PathType(IntEnum):
@@ -21,6 +21,12 @@ class FrameList(DataClassORJSONMixin):
 
 
 @dataclass
+class RootHashList(DataClassORJSONMixin):
+    total_frame: int
+    data: list[NavGetHashListAck]
+
+
+@dataclass
 class AreaHashNameList(DataClassORJSONMixin):
     """Wrapper so we can serialize to and from dict."""
 
@@ -35,17 +41,37 @@ class HashList(DataClassORJSONMixin):
     hashlist for all our hashIDs for verification
     """
 
+    root_hash_list: RootHashList = field(default_factory=RootHashList)
     area: dict = field(default_factory=dict)  # type 0
     path: dict = field(default_factory=dict)  # type 2
     obstacle: dict = field(default_factory=dict)  # type 1
-    hashlist: list[int] = field(default_factory=list)
     area_name: list[AreaHashNameList] = field(default_factory=list)
 
-    def set_hashlist(self, hashlist: list[int]) -> None:
-        self.hashlist = hashlist
+    def update_hash_lists(self, hashlist: list[int]) -> None:
         self.area = {hash_id: frames for hash_id, frames in self.area.items() if hash_id in hashlist}
         self.path = {hash_id: frames for hash_id, frames in self.path.items() if hash_id in hashlist}
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
+
+    @property
+    def hashlist(self) -> list[int]:
+        return [i for obj in self.root_hash_list.data for i in obj.data_couple]
+
+    def update_root_hash_list(self, hash_list: NavGetHashListAck) -> None:
+        self.root_hash_list.total_frame = hash_list.total_frame
+
+        for index, obj in enumerate(self.root_hash_list.data):
+            if obj.current_frame == hash_list.current_frame:
+                # Replace the item if current_frame matches
+                self.root_hash_list.data[index] = hash_list
+                self.update_hash_lists(self.hashlist)
+                return
+
+        # If no match was found, append the new item
+        self.root_hash_list.data.append(hash_list)
+        self.update_hash_lists(self.hashlist)
+
+    def missing_hash_frame(self):
+        return self._find_missing_frames(self.root_hash_list)
 
     def missing_frame(self, hash_data: NavGetCommDataAck) -> list[int]:
         if hash_data.type == PathType.AREA:
@@ -62,7 +88,7 @@ class HashList(DataClassORJSONMixin):
         if hash_data.type == PathType.AREA:
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
             if not existing_name:
-                self.area_name.append(AreaHashName(name=f"area {len(self.area_name)+1}", hash=hash_data.hash))
+                self.area_name.append(AreaHashNameList(name=f"area {len(self.area_name)+1}", hash=hash_data.hash))
             return self._add_hash_data(self.area, hash_data)
 
         if hash_data.type == PathType.OBSTACLE:
@@ -72,7 +98,7 @@ class HashList(DataClassORJSONMixin):
             return self._add_hash_data(self.path, hash_data)
 
     @staticmethod
-    def _find_missing_frames(frame_list: FrameList) -> list[int]:
+    def _find_missing_frames(frame_list: FrameList | RootHashList) -> list[int]:
         if frame_list.total_frame == len(frame_list.data):
             return []
         number_list = list(range(1, frame_list.total_frame + 1))

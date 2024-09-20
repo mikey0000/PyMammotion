@@ -62,7 +62,7 @@ class StateManager:
         match nav_msg[0]:
             case "toapp_gethash_ack":
                 hashlist_ack: NavGetHashListAck = nav_msg[1]
-                self._device.map.set_hashlist(hashlist_ack.data_couple)
+                self._device.map.update_root_hash_list(hashlist_ack)
                 await self.gethash_ack_callback(nav_msg[1])
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]

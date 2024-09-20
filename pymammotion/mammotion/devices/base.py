@@ -9,7 +9,6 @@ from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.state_manager import StateManager
-from pymammotion.proto import has_field
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
 
@@ -55,7 +54,15 @@ class MammotionBaseDevice:
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses."""
-        await self.queue_command("synchronize_hash_data", hash_num=hash_ack.data_couple[0])
+        current_frame = hash_ack.current_frame
+
+        missing_frames = self.mower.map.missing_hash_frame()
+        if len(missing_frames) == 0:
+            return await self.queue_command("synchronize_hash_data", hash_num=self.mower.map.hashlist)
+
+        if current_frame != missing_frames[0] - 1:
+            current_frame = missing_frames[0] - 1
+        await self.queue_command("get_hash_response", total_frame=hash_ack.total_frame, current_frame=current_frame)
 
     async def commdata_response(self, common_data: NavGetCommDataAck) -> None:
         """Handle common data responses."""
@@ -66,7 +73,7 @@ class MammotionBaseDevice:
         if len(missing_frames) == 0:
             # get next in hash ack list
 
-            data_hash = find_next_integer(self.mower.nav.toapp_gethash_ack.data_couple, common_data.hash)
+            data_hash = find_next_integer(self.mower.map.hashlist, common_data.hash)
             if data_hash is None:
                 return
 
@@ -201,22 +208,16 @@ class MammotionBaseDevice:
 
     async def start_map_sync(self) -> None:
         """Start sync of map data."""
-        try:
-            # work out why this crashes sometimes for better proto
 
-            if self._cloud_device and len(self.mower.map.area_name) == 0:
-                await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
-        except Exception:
-            """Do nothing for now."""
+        if self._cloud_device and len(self.mower.map.area_name) == 0:
+            await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
 
         await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
-        if not has_field(self.mower.nav.toapp_gethash_ack):
-            await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-            await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
-        else:
-            for data_hash in self.mower.nav.toapp_gethash_ack.data_couple:
-                await self.queue_command("synchronize_hash_data", hash_num=data_hash)
+        await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
+        await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
+        for data_hash in self.mower.map.hashlist:
+            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)

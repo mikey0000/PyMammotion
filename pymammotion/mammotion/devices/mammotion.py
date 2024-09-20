@@ -247,7 +247,7 @@ class Mammotion:
         await loop.run_in_executor(None, cloud_client.list_binding_by_account)
         return cloud_client
 
-    def remove_device(self, name: str) -> None:
+    async def remove_device(self, name: str) -> None:
         await self.devices.remove_device(name)
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
