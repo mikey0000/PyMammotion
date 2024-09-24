@@ -27,7 +27,7 @@ class MessageDriver(AbstractMessage, ABC):
 
     def set_blade_height(self, height: int):
         logger.debug(f"Send knife height height={height}")
-        build = mctrl_driver.MctlDriver(todev_knife_height_set=mctrl_driver.DrvKnifeHeight(knifeHeight=height))
+        build = mctrl_driver.MctlDriver(todev_knife_height_set=mctrl_driver.DrvKnifeHeight(knife_height=height))
         logger.debug(f"Send command--Knife motor height setting height={height}")
         return self.send_order_msg_driver(build)
 
