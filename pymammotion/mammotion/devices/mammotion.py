@@ -248,7 +248,7 @@ class Mammotion:
         return cloud_client
 
     def remove_device(self, name: str) -> None:
-        self.devices.remove_device(name)
+        await self.devices.remove_device(name)
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
         return self.devices.get_device(name)
