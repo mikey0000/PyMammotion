@@ -56,6 +56,15 @@ class HashList(DataClassORJSONMixin):
     def hashlist(self) -> list[int]:
         return [i for obj in self.root_hash_list.data for i in obj.data_couple]
 
+    @property
+    def missing_hashlist(self) -> list[int]:
+        return [
+            i
+            for obj in self.root_hash_list.data
+            for i in obj.data_couple
+            if i not in set(self.area.keys()).union(self.path.keys(), self.obstacle.keys())
+        ]
+
     def update_root_hash_list(self, hash_list: NavGetHashListAck) -> None:
         self.root_hash_list.total_frame = hash_list.total_frame
 

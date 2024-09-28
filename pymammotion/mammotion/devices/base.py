@@ -73,7 +73,7 @@ class MammotionBaseDevice:
         if len(missing_frames) == 0:
             # get next in hash ack list
 
-            data_hash = find_next_integer(self.mower.map.hashlist, common_data.hash)
+            data_hash = self.mower.map.missing_hashlist.pop()
             if data_hash is None:
                 return
 
@@ -216,8 +216,8 @@ class MammotionBaseDevice:
 
         await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
         await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
-        for data_hash in self.mower.map.hashlist:
-            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
+        data_hash = self.mower.map.missing_hashlist.pop()
+        await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
