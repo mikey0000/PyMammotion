@@ -478,6 +478,8 @@ class CloudIOTGateway:
 
         # Load the JSON string into a dictionary
         response_body_dict = json.loads(response_body_str)
+        logger.debug(response_body_dict)
+        return response_body_dict
 
     def check_or_refresh_session(self):
         """Check or refresh the session."""
@@ -689,6 +691,7 @@ class CloudIOTGateway:
                 str(response_body_dict.get("msg")),
             )
             if response_body_dict.get("code") == 29003:
+                self.sign_out()
                 raise SetupException(response_body_dict.get("code"))
             if response_body_dict.get("code") == 6205:
                 raise DeviceOfflineException(response_body_dict.get("code"))
