@@ -7,6 +7,7 @@ import betterproto
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.hash_list import AreaHashNameList
+from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
 from pymammotion.utility.constant import WorkMode
@@ -33,6 +34,10 @@ class StateManager:
     def set_device(self, device: MowingDevice) -> None:
         """Set device."""
         self._device = device
+
+    async def properties(self, properties: ThingPropertiesMessage) -> None:
+        params = properties.params
+        self._device.mqtt_properties = params
 
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""

@@ -12,6 +12,7 @@ class PathType(IntEnum):
     AREA = 0
     OBSTACLE = 1
     PATH = 2
+    DUMP = 12
 
 
 @dataclass
@@ -28,7 +29,7 @@ class NavGetHashListData(DataClassORJSONMixin, NavGetHashListAck):
 @dataclass
 class RootHashList(DataClassORJSONMixin):
     total_frame: int = 0
-    data: list[NavGetHashListData] = list
+    data: list[NavGetHashListAck] = field(default_factory=list)
 
 
 @dataclass
@@ -50,15 +51,19 @@ class HashList(DataClassORJSONMixin):
     area: dict = field(default_factory=dict)  # type 0
     path: dict = field(default_factory=dict)  # type 2
     obstacle: dict = field(default_factory=dict)  # type 1
+    dump: dict = field(default_factory=dict)  # type 12?
     area_name: list[AreaHashNameList] = field(default_factory=list)
 
     def update_hash_lists(self, hashlist: list[int]) -> None:
         self.area = {hash_id: frames for hash_id, frames in self.area.items() if hash_id in hashlist}
         self.path = {hash_id: frames for hash_id, frames in self.path.items() if hash_id in hashlist}
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
+        self.dump = {hash_id: frames for hash_id, frames in self.dump.items() if hash_id in hashlist}
 
     @property
     def hashlist(self) -> list[int]:
+        if len(self.root_hash_list.data) == 0:
+            return []
         return [i for obj in self.root_hash_list.data for i in obj.data_couple]
 
     @property
@@ -67,7 +72,7 @@ class HashList(DataClassORJSONMixin):
             i
             for obj in self.root_hash_list.data
             for i in obj.data_couple
-            if i not in set(self.area.keys()).union(self.path.keys(), self.obstacle.keys())
+            if i not in set(self.area.keys()).union(self.path.keys(), self.obstacle.keys(), self.dump.keys())
         ]
 
     def update_root_hash_list(self, hash_list: NavGetHashListAck) -> None:
@@ -97,6 +102,9 @@ class HashList(DataClassORJSONMixin):
         if hash_data.type == PathType.PATH:
             return self._find_missing_frames(self.path.get(hash_data.hash))
 
+        if hash_data.type == PathType.DUMP:
+            return self._find_missing_frames(self.dump.get(hash_data.hash))
+
     def update(self, hash_data: NavGetCommDataAck) -> bool:
         """Update the map data."""
         if hash_data.type == PathType.AREA:
@@ -110,6 +118,9 @@ class HashList(DataClassORJSONMixin):
 
         if hash_data.type == PathType.PATH:
             return self._add_hash_data(self.path, hash_data)
+
+        if hash_data.type == PathType.DUMP:
+            return self._add_hash_data(self.dump, hash_data)
 
     @staticmethod
     def _find_missing_frames(frame_list: FrameList | RootHashList) -> list[int]:

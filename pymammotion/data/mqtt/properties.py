@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar, Union
+from typing import Any, Generic, Literal, TypeVar, Union
 
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -114,17 +114,61 @@ Items = Union[
 
 
 @dataclass
+class Item:
+    time: int
+    value: Union[int, float, str, dict[str, Any]]  # Depending on the type of value
+
+
+@dataclass
+class Items:
+    iotState: Item
+    extMod: Item
+    deviceVersionInfo: Item
+    leftMotorBootVersion: Item
+    knifeHeight: Item
+    rtMrMod: Item
+    iotMsgHz: Item
+    iotMsgTotal: Item
+    loraRawConfig: Item
+    loraGeneralConfig: Item
+    leftMotorVersion: Item
+    intMod: Item
+    coordinate: Item
+    bmsVersion: Item
+    rightMotorVersion: Item
+    stm32H7Version: Item
+    rightMotorBootVersion: Item
+    deviceVersion: Item
+    rtkVersion: Item
+    ltMrMod: Item
+    networkInfo: Item
+    bmsHardwareVersion: Item
+    batteryPercentage: Item
+    deviceState: Item
+    deviceOtherInfo: Item
+    mcBootVersion: Item
+
+
+@dataclass
 class Params(DataClassORJSONMixin):
+    deviceType: Literal["LawnMower"]
     checkFailedData: dict
     groupIdList: list[str]
+    _tenantId: str
     groupId: str
     categoryKey: Literal["LawnMower"]
     batchId: str
     gmtCreate: int
     productKey: str
+    generateTime: int
     deviceName: str
+    _traceId: str
     iotId: str
+    JMSXDeliveryCount: int
     checkLevel: int
+    qos: int
+    requestId: str
+    _categoryKey: str
     namespace: str
     tenantId: str
     thingType: Literal["DEVICE"]

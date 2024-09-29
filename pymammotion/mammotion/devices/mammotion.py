@@ -299,7 +299,7 @@ class Mammotion:
                 _LOGGER.debug(_stream_response)
                 return _stream_response
 
-    def mower(self, name: str):
+    def mower(self, name: str) -> MowingDevice | None:
         device = self.get_device_by_name(name)
         if device:
             return device.mower_state

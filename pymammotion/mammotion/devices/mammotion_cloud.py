@@ -13,6 +13,7 @@ from pymammotion.aliyun.cloud_gateway import DeviceOfflineException, SetupExcept
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
+from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
@@ -33,6 +34,7 @@ class MammotionCloud:
         self.command_queue = asyncio.Queue()
         self._waiting_queue = deque()
         self.mqtt_message_event = DataEvent()
+        self.mqtt_properties_event = DataEvent()
         self.on_ready_event = DataEvent()
         self.on_disconnected_event = DataEvent()
         self._operation_lock = asyncio.Lock()
@@ -127,6 +129,7 @@ class MammotionCloud:
                 # Call the callbacks for each cloudDevice
                 await self.mqtt_message_event.data_event(event)
             if event.method == "thing.properties":
+                await self.mqtt_properties_event.data_event(event)
                 _LOGGER.debug(event)
 
     async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
@@ -159,6 +162,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._commands: MammotionCommand = MammotionCommand(cloud_device.deviceName)
         self.currentID = ""
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
+        self._mqtt.mqtt_properties_event.add_subscribers(self._parse_message_properties_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
         self.set_queue_callback(self.queue_command)
@@ -246,6 +250,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 queue.remove(item)
                 return item
         return None
+
+    async def _parse_message_properties_for_device(self, event: ThingPropertiesMessage) -> None:
+        if event.params.iotId != self.iot_id:
+            return
+        self.state_manager.properties(event)
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         params = event.params

@@ -74,7 +74,7 @@ class MammotionBaseDevice:
         if len(missing_frames) == 0:
             # get next in hash ack list
 
-            data_hash = self.mower.map.missing_hashlist.pop()
+            data_hash = self.mower.map.missing_hashlist.pop() if len(self.mower.map.missing_hashlist) > 0 else None
             if data_hash is None:
                 return
 
