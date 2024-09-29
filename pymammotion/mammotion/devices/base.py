@@ -58,7 +58,8 @@ class MammotionBaseDevice:
 
         missing_frames = self.mower.map.missing_hash_frame()
         if len(missing_frames) == 0:
-            return await self.queue_command("synchronize_hash_data", hash_num=self.mower.map.hashlist)
+            data_hash = self.mower.map.missing_hashlist.pop()
+            return await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         if current_frame != missing_frames[0] - 1:
             current_frame = missing_frames[0] - 1

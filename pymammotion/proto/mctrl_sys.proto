@@ -131,7 +131,7 @@ message vision_point_msg {
 }
 
 message vision_point_info_msg {
-  int32 lable = 1;
+  int32 label = 1;
   int32 num = 2;
   repeated vision_point_msg vision_point = 3;
 }
@@ -258,6 +258,12 @@ message rpt_lora {
   int32 lora_connection_status = 5;
 }
 
+message mqtt_rtk_connect {
+    int32 rtk_switch = 1;
+    int32 rtk_channel = 2;
+    string rtk_base_num = 3;
+}
+
 message rpt_rtk {
   int32 status = 1;
   int32 pos_level = 2;
@@ -271,6 +277,7 @@ message rpt_rtk {
   int32 co_view_stars = 10;
   int32 reset = 11;
   rpt_lora lora_info = 12;
+  mqtt_rtk_connect mqtt_rtk_info = 13;
 }
 
 message rpt_dev_location {
@@ -316,6 +323,12 @@ message rpt_connect_status {
   int32 mnet_rssi = 5;
   int32 mnet_inet = 6;
   net_used_type used_net = 7;
+  MnetCfg mnet_cfg = 8;
+}
+
+
+message nav_heading_state_t {
+    int32 heading_state = 1;
 }
 
 message rpt_work {
@@ -339,6 +352,7 @@ message rpt_work {
   int32 man_run_speed = 18;
   int32 nav_edit_status = 19;
   int32 knife_height = 20;
+  nav_heading_state_t nav_heading_state = 21;
 }
 
 message rpt_maintain {

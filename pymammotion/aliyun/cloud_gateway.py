@@ -62,6 +62,10 @@ class LoginException(Exception):
     """Raise exception when library cannot log in."""
 
 
+class CheckSessionException(Exception):
+    """Raise exception when checking session results in a failure."""
+
+
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
 
@@ -528,7 +532,7 @@ class CloudIOTGateway:
 
         if int(response_body_dict.get("code")) != 200:
             logger.error(response_body_dict)
-            raise Exception("Error check or refresh token: " + response_body_dict.__str__())
+            raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
 
         session = SessionByAuthCodeResponse.from_dict(response_body_dict)
         session_data = session.data
@@ -725,3 +729,7 @@ class CloudIOTGateway:
     @property
     def login_by_oauth_response(self):
         return self._login_by_oauth_response
+
+    @property
+    def connect_response(self):
+        return self._connect_response

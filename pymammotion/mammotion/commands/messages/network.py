@@ -26,9 +26,19 @@ class MessageNetwork:
         comm_esp = dev_net_pb2.DevNet(todev_ble_sync=sync_type)
         return self.send_order_msg_net(comm_esp)
 
-    def get_device_base_info(self):
+    def get_device_base_info(self) -> bytes:
         net = dev_net_pb2.DevNet(todev_devinfo_req=dev_net_pb2.DrvDevInfoReq())
         net.todev_devinfo_req.req_ids.add(id=1, type=6)
+
+        return self.send_order_msg_net(net)
+
+    def get_device_version_main(self) -> bytes:
+        net = dev_net_pb2.DevNet(todev_devinfo_req=dev_net_pb2.DrvDevInfoReq())
+
+        for i in range(1, 8):
+            if i == 1:
+                net.todev_devinfo_req.req_ids.add(id=i, type=6)
+            net.todev_devinfo_req.req_ids.add(id=i, type=3)
 
         return self.send_order_msg_net(net)
 

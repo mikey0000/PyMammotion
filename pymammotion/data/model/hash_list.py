@@ -21,9 +21,14 @@ class FrameList(DataClassORJSONMixin):
 
 
 @dataclass
+class NavGetHashListData(DataClassORJSONMixin, NavGetHashListAck):
+    """Dataclass for NavGetHashListData."""
+
+
+@dataclass
 class RootHashList(DataClassORJSONMixin):
-    total_frame: int
-    data: list[NavGetHashListAck]
+    total_frame: int = 0
+    data: list[NavGetHashListData] = list
 
 
 @dataclass

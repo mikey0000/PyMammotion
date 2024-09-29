@@ -1,15 +1,18 @@
 # === sendOrderMsg_Video ===
+from abc import ABC
+
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import luba_msg_pb2, luba_mul_pb2
+from pymammotion.proto.luba_msg import MsgCmdType, MsgDevice
 from pymammotion.utility.device_type import DeviceType
 
 
-class MessageVideo(AbstractMessage):
+class MessageVideo(AbstractMessage, ABC):
     async def send_order_msg_video(self, mul):
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_MUL,
             sender=luba_msg_pb2.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.SOC_MODULE_MULTIMEDIA,
+            rcver=self.get_msg_device(MsgCmdType.MSG_CMD_TYPE_MUL, MsgDevice.SOC_MODULE_MULTIMEDIA),
             mul=mul,
         )
 

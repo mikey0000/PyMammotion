@@ -25,21 +25,11 @@ from pymammotion.proto.mctrl_nav import (
     WorkReportCmdData,
     WorkReportUpdateCmd,
 )
-from pymammotion.utility.device_type import DeviceType
 
 logger = logging.getLogger(__name__)
 
 
 class MessageNavigation(AbstractMessage, ABC):
-    def get_msg_device(self, msg_type: MsgCmdType, msg_device: MsgDevice) -> MsgDevice:
-        """Changes the rcver name if it's not a luba1."""
-        if (
-            not DeviceType.is_luba1(self.get_device_name(), self.get_device_product_key())
-            and msg_type == MsgCmdType.MSG_CMD_TYPE_NAV
-        ):
-            return MsgDevice.DEV_NAVIGATION
-        return msg_device
-
     def send_order_msg_nav(self, build) -> bytes:
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.MSG_CMD_TYPE_NAV,

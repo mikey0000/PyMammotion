@@ -56,25 +56,6 @@ class BleMessage:
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
 
-    async def get_device_version_main(self) -> None:
-        commEsp = dev_net_pb2.DevNet(todev_devinfo_req=dev_net_pb2.DrvDevInfoReq())
-
-        for i in range(1, 8):
-            if i == 1:
-                commEsp.todev_devinfo_req.req_ids.add(id=i, type=6)
-            commEsp.todev_devinfo_req.req_ids.add(id=i, type=3)
-
-        lubaMsg = luba_msg_pb2.LubaMsg()
-        lubaMsg.msgtype = luba_msg_pb2.MSG_CMD_TYPE_ESP
-        lubaMsg.sender = luba_msg_pb2.DEV_MOBILEAPP
-        lubaMsg.msgattr = luba_msg_pb2.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.net.CopyFrom(commEsp)
-        byte_arr = lubaMsg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
     async def get_task(self) -> None:
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
         await self.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))

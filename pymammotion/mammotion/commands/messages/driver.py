@@ -11,12 +11,11 @@ logger = getLogger(__name__)
 
 
 class MessageDriver(AbstractMessage, ABC):
-    @staticmethod
-    def send_order_msg_driver(driver):
+    def send_order_msg_driver(self, driver) -> bytes:
         return LubaMsg(
             msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER,
             sender=MsgDevice.DEV_MOBILEAPP,
-            rcver=MsgDevice.DEV_MAINCTL,
+            rcver=self.get_msg_device(MsgCmdType.MSG_CMD_TYPE_EMBED_DRIVER, MsgDevice.DEV_MAINCTL),
             msgattr=MsgAttr.MSG_ATTR_REQ,
             timestamp=round(time.time() * 1000),
             seqs=1,

@@ -29,6 +29,16 @@ class MessageSystem(AbstractMessage, ABC):
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
             sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=self.get_msg_device(MsgCmdType.MSG_CMD_TYPE_EMBED_SYS, MsgDevice.DEV_MAINCTL),
+            sys=sys,
+        )
+
+        return luba_msg.SerializeToString()
+
+    def send_order_msg_sys_legacy(self, sys):
+        luba_msg = LubaMsg(
+            msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
             sys=sys,
         )
@@ -225,9 +235,10 @@ class MessageSystem(AbstractMessage, ABC):
         )
         logger.debug(f"Send command==== IOT slim data Act {
             build.todev_report_cfg.act} {build}")
-        return self.send_order_msg_sys(build)
+        return self.send_order_msg_sys_legacy(build)
 
     def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
+        # TODO use send_order_msg_sys_legacy
         mctlsys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
                 act=RptAct.RPT_STOP,
@@ -260,6 +271,7 @@ class MessageSystem(AbstractMessage, ABC):
         return lubaMsg.SerializeToString()
 
     def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
+        # TODO use send_order_msg_sys_legacy
         mctlsys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
                 act=RptAct.RPT_START,
