@@ -82,12 +82,10 @@ class HashList(DataClassORJSONMixin):
             if obj.current_frame == hash_list.current_frame:
                 # Replace the item if current_frame matches
                 self.root_hash_list.data[index] = hash_list
-                self.update_hash_lists(self.hashlist)
                 return
 
         # If no match was found, append the new item
         self.root_hash_list.data.append(hash_list)
-        self.update_hash_lists(self.hashlist)
 
     def missing_hash_frame(self):
         return self._find_missing_frames(self.root_hash_list)

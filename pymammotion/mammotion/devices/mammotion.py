@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from enum import Enum
-from functools import cache
 from typing import Any
 
 from bleak.backends.device import BLEDevice
@@ -45,16 +44,15 @@ class MammotionMixedDeviceManager:
         mqtt: MammotionCloud | None = None,
         preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
     ) -> None:
-        self._mower_state = None
         self.name = name
-        self._mowing_state = MowingDevice()
+        self._mower_state = MowingDevice()
         self.add_ble(ble_device)
         self.add_cloud(cloud_device, mqtt)
         self.preference = preference
 
     @property
     def mower_state(self):
-        return self._mowing_state
+        return self._mower_state
 
     @mower_state.setter
     def mower_state(self, value: MowingDevice) -> None:
@@ -62,13 +60,19 @@ class MammotionMixedDeviceManager:
             self._cloud_device.state_manager.set_device(value)
         if self._ble_device:
             self._ble_device.state_manager.set_device(value)
-        self._mowing_state = value
+        self._mower_state = value
 
     def ble(self) -> MammotionBaseBLEDevice | None:
         return self._ble_device
 
     def cloud(self) -> MammotionBaseCloudDevice | None:
         return self._cloud_device
+
+    def has_queued_commands(self) -> bool:
+        if self.has_cloud() and self.preference == ConnectionPreference.WIFI:
+            return not self.cloud()._mqtt.command_queue.empty()
+        else:
+            return False
 
     def add_ble(self, ble_device: BLEDevice) -> None:
         if ble_device is not None:
@@ -145,7 +149,6 @@ async def create_devices(
     return mammotion
 
 
-@cache
 class Mammotion:
     """Represents a Mammotion account and its devices."""
 
