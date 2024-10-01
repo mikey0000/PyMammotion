@@ -110,7 +110,7 @@ class DeviceNotificationEventParams(GeneralParams):
     {'data': '{"localTime":1725159492000,"code":"1002"}'},
     """
 
-    identifier: Literal["device_notification_event"]
+    identifier: Literal["device_notification_event", "device_warning_code_event"]
     type: Literal["info"]
     value: DeviceNotificationEventValue
 
