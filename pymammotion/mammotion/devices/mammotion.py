@@ -221,7 +221,7 @@ class Mammotion:
             elif device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device:
                 if mower_device.cloud() is None:
                     mower_device.add_cloud(cloud_device=device, mqtt=mqtt_client)
-                elif mqtt_client != mower_device.cloud().mqtt:
+                else:
                     mower_device.replace_mqtt(mqtt_client)
 
     def set_disconnect_strategy(self, disconnect: bool) -> None:

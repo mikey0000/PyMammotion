@@ -47,7 +47,7 @@ MOVE_HEADERS = (
 
 
 class SetupException(Exception):
-    pass
+    """Raise when mqtt expires token or token is invalid."""
 
 
 class AuthRefreshException(Exception):
@@ -72,15 +72,6 @@ class CloudIOTGateway:
     _client_id = ""
     _device_sn = ""
     _utdid = ""
-
-    _connect_response: ConnectResponse | None = None
-    _login_by_oauth_response: LoginByOAuthResponse | None = None
-    _aep_response: AepResponse | None = None
-    _session_by_authcode_response: SessionByAuthCodeResponse | None = None
-    _devices_by_account_response: ListingDevByAccountResponse | None = None
-    _region_response = None
-
-    _iot_token_issued_at: int = None
 
     converter = DatatypeConverter()
 
@@ -532,6 +523,7 @@ class CloudIOTGateway:
 
         if int(response_body_dict.get("code")) != 200:
             logger.error(response_body_dict)
+            self.sign_out()
             raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
 
         session = SessionByAuthCodeResponse.from_dict(response_body_dict)
