@@ -182,11 +182,10 @@ class Mammotion:
                 await self.initiate_cloud_connection(account, cloud_client)
 
     async def initiate_cloud_connection(self, account: str, cloud_client: CloudIOTGateway) -> None:
+        loop = asyncio.get_running_loop()
         if self.mqtt_list.get(account) is not None:
-            if self.mqtt_list.get(account).is_connected:
-                # we might have removed a device so readd
-                self.add_cloud_devices(self.mqtt_list.get(account))
-                return
+            if self.mqtt_list.get(account).is_connected():
+                await loop.run_in_executor(None, self.mqtt_list.get(account).disconnect)
 
         mammotion_cloud = MammotionCloud(
             MammotionMQTT(
@@ -203,7 +202,6 @@ class Mammotion:
         self.mqtt_list[account] = mammotion_cloud
         self.add_cloud_devices(mammotion_cloud)
 
-        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.mqtt_list[account].connect_async)
 
     def add_cloud_devices(self, mqtt_client: MammotionCloud) -> None:

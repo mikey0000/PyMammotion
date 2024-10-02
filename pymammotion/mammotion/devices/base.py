@@ -217,8 +217,9 @@ class MammotionBaseDevice:
 
         await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
         await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
-        data_hash = self.mower.map.missing_hashlist.pop()
-        await self.queue_command("synchronize_hash_data", hash_num=data_hash)
+        if len(self.mower.map.missing_hashlist) > 0:
+            data_hash = self.mower.map.missing_hashlist.pop()
+            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)

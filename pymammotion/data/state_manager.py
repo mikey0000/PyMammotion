@@ -1,16 +1,20 @@
 """Manage state from notifications into MowingDevice."""
 
+import logging
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Optional
 
 import betterproto
 
+from pymammotion.aliyun.cloud_gateway import SetupException
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
 from pymammotion.utility.constant import WorkMode
+
+logger = logging.getLogger(__name__)
 
 
 class StateManager:
@@ -89,7 +93,11 @@ class StateManager:
                 self._device.update_report_data(sys_msg[1])
                 if self.queue_command_callback:
                     if self._device.sys.toapp_report_data.dev.sys_status != WorkMode.MODE_WORKING:
-                        await self.queue_command_callback("get_report_cfg_stop")
+                        try:
+                            await self.queue_command_callback("get_report_cfg_stop")
+                        except SetupException as exc:
+                            # can't do anything about it yet
+                            logger.debug(exc)
             case "mow_to_app_info":
                 self._device.mow_info(sys_msg[1])
             case "system_tard_state_tunnel":

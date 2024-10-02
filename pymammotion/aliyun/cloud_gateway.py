@@ -687,6 +687,7 @@ class CloudIOTGateway:
                 str(response_body_dict.get("msg")),
             )
             if response_body_dict.get("code") == 29003:
+                logger.debug(self._session_by_authcode_response.data.identityId)
                 self.sign_out()
                 raise SetupException(response_body_dict.get("code"))
             if response_body_dict.get("code") == 6205:
