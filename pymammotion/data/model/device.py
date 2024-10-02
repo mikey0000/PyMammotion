@@ -8,6 +8,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_config import DeviceLimits
+from pymammotion.data.model.device_info import MowerInfo
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -34,7 +35,8 @@ from pymammotion.utility.map import CoordinateConverter
 class MowingDevice(DataClassORJSONMixin):
     """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
 
-    mqtt_properties: ThingPropertiesMessage | None = None
+    mower_state: MowerInfo = field(default_factory=MowerInfo)
+    mqtt_properties: ThingPropertiesMessage = field(default_factory=ThingPropertiesMessage)
     map: HashList = field(default_factory=HashList)
     location: Location = field(default_factory=Location)
     mowing_state: RapidState = field(default_factory=RapidState)

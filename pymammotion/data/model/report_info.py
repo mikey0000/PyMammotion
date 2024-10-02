@@ -11,6 +11,18 @@ class ConnectData(DataClassORJSONMixin):
 
 
 @dataclass
+class CollectorStatus(DataClassORJSONMixin):
+    collector_installation_status: int = 0
+
+
+@dataclass
+class MnetInfo(DataClassORJSONMixin):
+    model: str = ""
+    revision: str = ""
+    imei: str = ""
+
+
+@dataclass
 class DeviceData(DataClassORJSONMixin):
     sys_status: int = 0
     charge_state: int = 0
@@ -18,6 +30,8 @@ class DeviceData(DataClassORJSONMixin):
     sensor_status: int = 0
     last_status: int = 0
     sys_time_stamp: str = ""
+    collector_status: CollectorStatus = field(default_factory=CollectorStatus)
+    mnet_info: MnetInfo = field(default_factory=MnetInfo)
 
 
 @dataclass

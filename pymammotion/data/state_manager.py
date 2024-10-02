@@ -6,12 +6,15 @@ from typing import Any, Awaitable, Callable, Optional
 
 import betterproto
 
+from build.lib.pymammotion.proto.dev_net import WifiIotStatusReport
 from pymammotion.aliyun.cloud_gateway import SetupException
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
+from pymammotion.proto.mctrl_sys import TimeCtrlLight, DeviceProductTypeInfoT
 from pymammotion.utility.constant import WorkMode
 
 logger = logging.getLogger(__name__)
@@ -102,12 +105,23 @@ class StateManager:
                 self._device.mow_info(sys_msg[1])
             case "system_tard_state_tunnel":
                 self._device.run_state_update(sys_msg[1])
+            case "todev_time_ctrl_light":
+                ctrl_light: TimeCtrlLight = sys_msg[1]
+                side_led: SideLight = SideLight.from_dict(ctrl_light.to_dict(casing=betterproto.Casing.SNAKE))
+                self._device.mower_state.side_led = side_led
+            case "device_product_type_info":
+                device_product_type: DeviceProductTypeInfoT = sys_msg[1]
+                self._device.mower_state.model_id = device_product_type.main_product_type
 
     def _update_driver_data(self, message) -> None:
         pass
 
     def _update_net_data(self, message) -> None:
-        pass
+        net_msg = betterproto.which_one_of(message.net, "NetSubType")
+        match net_msg[0]:
+            case "toapp_wifi_iot_status":
+                wifi_iot_status: WifiIotStatusReport = net_msg[1]
+                self._device.mower_state.product_key = wifi_iot_status.productkey
 
     def _update_mul_data(self, message) -> None:
         pass

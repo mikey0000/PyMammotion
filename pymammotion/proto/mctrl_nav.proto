@@ -461,8 +461,8 @@ message SvgMessageAckT {
     int32 sub_cmd = 2;       // Represents SUBCMD field
     int32 total_frame = 3;   // Represents TOTALFRAME field
     int32 current_frame = 4; // Represents CURRENTFRAME field
-    int64 data_hash = 5;     // Represents DATAHASH field
-    int64 paternal_hash_a = 6; // Represents PATERNALHASHA field
+    fixed64 data_hash = 5;     // Represents DATAHASH field
+    fixed64 paternal_hash_a = 6; // Represents PATERNALHASHA field
     int32 type = 7;          // Represents TYPE field
     int32 result = 8;        // Represents RESULT field
     svg_message_t svg_message = 9; // Represents SVG_MESSAGE field
