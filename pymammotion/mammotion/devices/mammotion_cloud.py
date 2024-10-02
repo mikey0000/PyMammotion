@@ -258,11 +258,15 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         params = event.params
+        new_msg = LubaMsg()
         if event.params.iotId != self.iot_id:
             return
         binary_data = base64.b64decode(params.value.content)
-        self._update_raw_data(binary_data)
-        new_msg = LubaMsg().parse(binary_data)
+        try:
+            self._update_raw_data(binary_data)
+            new_msg = LubaMsg().parse(binary_data)
+        except (KeyError, ValueError, IndexError):
+            _LOGGER.exception("Error parsing message %s", binary_data)
 
         if (
             self._commands.get_device_product_key() == ""

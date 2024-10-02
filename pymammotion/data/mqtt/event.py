@@ -65,6 +65,13 @@ class DeviceNotificationEventValue(DataClassORJSONMixin):
 
 
 @dataclass
+class DeviceBizReqEventValue(DataClassORJSONMixin):
+    bizType: str
+    bizId: str
+    params: str
+
+
+@dataclass
 class GeneralParams(DataClassORJSONMixin):
     groupIdList: list[str]
     groupId: str
@@ -116,6 +123,13 @@ class DeviceNotificationEventParams(GeneralParams):
 
 
 @dataclass
+class DeviceBizReqEventParams(GeneralParams):
+    identifier: Literal["device_biz_req_event"]
+    type: Literal["info"]
+    value: DeviceBizReqEventValue
+
+
+@dataclass
 class DeviceWarningEventParams(GeneralParams):
     identifier: Literal["device_warning_event"]
     type: Literal["alert"]
@@ -152,6 +166,8 @@ class ThingEventMessage(DataClassORJSONMixin):
             params_obj = DeviceProtobufMsgEventParams.from_dict(params_dict)
         elif identifier == "device_warning_event":
             params_obj = DeviceWarningEventParams.from_dict(params_dict)
+        elif identifier == "device_biz_req_event":
+            params_obj = DeviceBizReqEventParams.from_dict(params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", {})
         elif identifier == "device_notification_event" or identifier == "device_warning_code_event":
