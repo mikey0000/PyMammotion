@@ -3,7 +3,7 @@ from enum import IntEnum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
 
 
 class PathType(IntEnum):
@@ -13,12 +13,13 @@ class PathType(IntEnum):
     OBSTACLE = 1
     PATH = 2
     DUMP = 12
+    SVG = 13
 
 
 @dataclass
 class FrameList(DataClassORJSONMixin):
     total_frame: int
-    data: list[NavGetCommDataAck]
+    data: list[NavGetCommDataAck | SvgMessageAckT]
 
 
 @dataclass
@@ -52,6 +53,7 @@ class HashList(DataClassORJSONMixin):
     path: dict = field(default_factory=dict)  # type 2
     obstacle: dict = field(default_factory=dict)  # type 1
     dump: dict = field(default_factory=dict)  # type 12?
+    svg: dict = field(default_factory=dict)  # type 13
     area_name: list[AreaHashNameList] = field(default_factory=list)
 
     def update_hash_lists(self, hashlist: list[int]) -> None:
@@ -59,6 +61,7 @@ class HashList(DataClassORJSONMixin):
         self.path = {hash_id: frames for hash_id, frames in self.path.items() if hash_id in hashlist}
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
         self.dump = {hash_id: frames for hash_id, frames in self.dump.items() if hash_id in hashlist}
+        self.svg = {hash_id: frames for hash_id, frames in self.svg.items() if hash_id in hashlist}
 
     @property
     def hashlist(self) -> list[int]:
@@ -72,7 +75,10 @@ class HashList(DataClassORJSONMixin):
             i
             for obj in self.root_hash_list.data
             for i in obj.data_couple
-            if i not in set(self.area.keys()).union(self.path.keys(), self.obstacle.keys(), self.dump.keys())
+            if i
+            not in set(self.area.keys()).union(
+                self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys()
+            )
         ]
 
     def update_root_hash_list(self, hash_list: NavGetHashListAck) -> None:
@@ -90,7 +96,7 @@ class HashList(DataClassORJSONMixin):
     def missing_hash_frame(self):
         return self._find_missing_frames(self.root_hash_list)
 
-    def missing_frame(self, hash_data: NavGetCommDataAck) -> list[int]:
+    def missing_frame(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> list[int]:
         if hash_data.type == PathType.AREA:
             return self._find_missing_frames(self.area.get(hash_data.hash))
 
@@ -103,12 +109,16 @@ class HashList(DataClassORJSONMixin):
         if hash_data.type == PathType.DUMP:
             return self._find_missing_frames(self.dump.get(hash_data.hash))
 
-    def update(self, hash_data: NavGetCommDataAck) -> bool:
+        if hash_data.type == PathType.SVG:
+            return self._find_missing_frames(self.svg.get(hash_data.data_hash))
+
+    def update(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> bool:
         """Update the map data."""
         if hash_data.type == PathType.AREA:
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
             if not existing_name:
-                self.area_name.append(AreaHashNameList(name=f"area {len(self.area_name)+1}", hash=hash_data.hash))
+                name = f"area {len(self.area_name)+1}" if hash_data.area_label is None else hash_data.area_label.label
+                self.area_name.append(AreaHashNameList(name=name, hash=hash_data.hash))
             return self._add_hash_data(self.area, hash_data)
 
         if hash_data.type == PathType.OBSTACLE:
@@ -119,6 +129,9 @@ class HashList(DataClassORJSONMixin):
 
         if hash_data.type == PathType.DUMP:
             return self._add_hash_data(self.dump, hash_data)
+
+        if hash_data.type == PathType.SVG:
+            return self._add_hash_data(self.svg, hash_data)
 
     @staticmethod
     def _find_missing_frames(frame_list: FrameList | RootHashList) -> list[int]:
@@ -131,7 +144,17 @@ class HashList(DataClassORJSONMixin):
         return missing_numbers
 
     @staticmethod
-    def _add_hash_data(hash_dict: dict, hash_data: NavGetCommDataAck) -> bool:
+    def _add_hash_data(hash_dict: dict, hash_data: NavGetCommDataAck | SvgMessageAckT) -> bool:
+        if isinstance(hash_data, SvgMessageAckT):
+            if hash_dict.get(hash_data.data_hash) is None:
+                hash_dict[hash_data.data_hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
+                return True
+
+            if hash_data not in hash_dict[hash_data.data_hash].data:
+                hash_dict[hash_data.data_hash].data.append(hash_data)
+                return True
+            return False
+
         if hash_dict.get(hash_data.hash) is None:
             hash_dict[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
             return True

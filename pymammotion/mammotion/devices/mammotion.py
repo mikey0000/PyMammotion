@@ -72,7 +72,7 @@ class MammotionMixedDeviceManager:
         if self.has_cloud() and self.preference == ConnectionPreference.WIFI:
             return not self.cloud()._mqtt.command_queue.empty()
         else:
-            return False
+            return not self.ble().command_queue.empty()
 
     def add_ble(self, ble_device: BLEDevice) -> None:
         if ble_device is not None:
@@ -116,8 +116,9 @@ class MammotionDevices:
     def get_device(self, mammotion_device_name: str) -> MammotionMixedDeviceManager:
         return self.devices.get(mammotion_device_name)
 
-    async def remove_device(self, name) -> None:
+    async def remove_device(self, name: str) -> None:
         device_for_removal = self.devices.pop(name)
+        loop = asyncio.get_running_loop()
         if device_for_removal.has_cloud():
             should_disconnect = {
                 device
@@ -125,7 +126,7 @@ class MammotionDevices:
                 if device.cloud() is not None and device.cloud()._mqtt == device_for_removal.cloud()._mqtt
             }
             if len(should_disconnect) == 0:
-                device_for_removal.cloud()._mqtt.disconnect()
+                await loop.run_in_executor(None, device_for_removal.cloud().mqtt.disconnect)
             await device_for_removal.cloud().stop()
         if device_for_removal.has_ble():
             await device_for_removal.ble().stop()

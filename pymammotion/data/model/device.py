@@ -36,7 +36,7 @@ class MowingDevice(DataClassORJSONMixin):
     """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
 
     mower_state: MowerInfo = field(default_factory=MowerInfo)
-    mqtt_properties: ThingPropertiesMessage = field(default_factory=ThingPropertiesMessage)
+    mqtt_properties: ThingPropertiesMessage | None = None
     map: HashList = field(default_factory=HashList)
     location: Location = field(default_factory=Location)
     mowing_state: RapidState = field(default_factory=RapidState)

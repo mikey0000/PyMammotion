@@ -10,7 +10,7 @@ from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.state_manager import StateManager
 from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck
+from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class MammotionBaseDevice:
             current_frame = missing_frames[0] - 1
         await self.queue_command("get_hash_response", total_frame=hash_ack.total_frame, current_frame=current_frame)
 
-    async def commdata_response(self, common_data: NavGetCommDataAck) -> None:
+    async def commdata_response(self, common_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         """Handle common data responses."""
         total_frame = common_data.total_frame
         current_frame = common_data.current_frame
@@ -84,8 +84,8 @@ class MammotionBaseDevice:
                 current_frame = missing_frames[0] - 1
 
             region_data = RegionData()
-            region_data.hash = common_data.hash
-            region_data.action = common_data.action
+            region_data.hash = common_data.data_hash if isinstance(common_data, SvgMessageAckT) else common_data.hash
+            region_data.action = common_data.action if isinstance(common_data, NavGetCommDataAck) else None
             region_data.type = common_data.type
             region_data.total_frame = total_frame
             region_data.current_frame = current_frame

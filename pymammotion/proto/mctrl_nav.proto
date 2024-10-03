@@ -150,6 +150,10 @@ message NavGetCommData {
   string reserved = 11;
 }
 
+message AreaLabel {
+  string label = 1;
+}
+
 message NavGetCommDataAck {
   int32 pver = 1;
   int32 subCmd = 2;
@@ -165,6 +169,7 @@ message NavGetCommDataAck {
   int32 dataLen = 12;
   repeated CommDataCouple dataCouple = 13;
   string reserved = 14;
+  AreaLabel areaLabel = 15;
 }
 
 message NavReqCoverPath {

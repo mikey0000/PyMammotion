@@ -9,7 +9,7 @@ from typing import Any, Awaitable, Callable, Optional, cast
 import betterproto
 
 from pymammotion import CloudIOTGateway, MammotionMQTT
-from pymammotion.aliyun.cloud_gateway import DeviceOfflineException, SetupException
+from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -182,15 +182,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 await self.on_ready_callback()
         except DeviceOfflineException:
             await self.stop()
-        except SetupException:
-            await self.stop()
 
     async def on_disconnect(self) -> None:
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
-        loop = asyncio.get_event_loop()
         self._mqtt.disconnect()
-        await loop.run_in_executor(None, self._mqtt.cloud_client.sign_out)
 
     async def stop(self) -> None:
         """Stop all tasks and disconnect."""
@@ -198,6 +194,13 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             self._ble_sync_task.cancel()
         self._mqtt.on_ready_event.remove_subscribers(self.on_ready)
         self.stopped = True
+
+    async def start(self) -> None:
+        await self._ble_sync()
+        if self._ble_sync_task is None or self._ble_sync_task.cancelled():
+            await self.run_periodic_sync_task()
+        self.stopped = False
+        self.mqtt.connect_async()
 
     async def _ble_sync(self) -> None:
         command_bytes = self._commands.send_todev_ble_sync(3)

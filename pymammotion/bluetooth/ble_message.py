@@ -141,17 +141,17 @@ class BleMessage:
         #     Log.d(TAG, "parseNotification Notification= " + Arrays.toString(response));
         # }
         if len(response) >= 4:
-            sequence = int(response[2])  # toInt
-            if sequence != next(self.mReadSequence):
-                _LOGGER.debug(
-                    "parseNotification read sequence wrong",
-                    sequence,
-                    self.mReadSequence,
-                )
-                self.mReadSequence = itertools.count(start=sequence)
-                # this is questionable
-                # self.mReadSequence = sequence
-                # self.mReadSequence_2.incrementAndGet()
+            # sequence = int(response[2])  # toInt
+            # if sequence != next(self.mReadSequence):
+            #     _LOGGER.debug(
+            #         "parseNotification read sequence wrong",
+            #         sequence,
+            #         self.mReadSequence,
+            #     )
+            #     self.mReadSequence = itertools.count(start=sequence)
+            # this is questionable
+            # self.mReadSequence = sequence
+            # self.mReadSequence_2.incrementAndGet()
 
             # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
             pkt_type = int(response[0])  # toInt

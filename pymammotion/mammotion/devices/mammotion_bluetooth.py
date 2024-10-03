@@ -83,17 +83,21 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
         self._commands: MammotionCommand = MammotionCommand(device.name)
+        self.command_queue = asyncio.Queue()
         self._expected_disconnect = False
         self._connect_lock = asyncio.Lock()
         self._operation_lock = asyncio.Lock()
         self._key: str | None = None
         self.set_queue_callback(self.queue_command)
+        loop = asyncio.get_event_loop()
+        loop.create_task(self.process_queue())
 
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""
         self._device = device
 
     async def _ble_sync(self) -> None:
+        _LOGGER.debug("BLE SYNC")
         command_bytes = self._commands.send_todev_ble_sync(2)
         await self._message.post_custom_data_bytes(command_bytes)
 
@@ -114,10 +118,35 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     async def stop(self) -> None:
         """Stop all tasks and disconnect."""
         self._ble_sync_task.cancel()
-        await self._client.disconnect()
+        if self._client is not None:
+            await self._client.disconnect()
 
     async def queue_command(self, key: str, **kwargs: Any) -> bytes | None:
-        return await self._send_command_with_args(key, **kwargs)
+        # Create a future to hold the result
+        _LOGGER.debug("Queueing command: %s", key)
+        future = asyncio.Future()
+        # Put the command in the queue as a tuple (key, command, future)
+        command_bytes = getattr(self._commands, key)(**kwargs)
+        await self.command_queue.put((key, command_bytes, future))
+        # Wait for the future to be resolved
+        return await future
+        # return await self._send_command_with_args(key, **kwargs)
+
+    async def process_queue(self) -> None:
+        while True:
+            # Get the next item from the queue
+            key, command, future = await self.command_queue.get()
+            try:
+                # Process the command using _execute_command_locked
+                result = await self._send_command_locked(key, command)
+                # Set the result on the future
+                future.set_result(result)
+            except Exception as ex:
+                # Set the exception on the future if something goes wrong
+                future.set_exception(ex)
+            finally:
+                # Mark the task as done
+                self.command_queue.task_done()
 
     async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
         """Send command to device and read response."""
@@ -255,8 +284,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
-            command_bytes = self._commands.send_todev_ble_sync(2)
-            await self._message.post_custom_data_bytes(command_bytes)
+            self._ble_sync()
             self.schedule_ble_sync()
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:

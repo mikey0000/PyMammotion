@@ -173,6 +173,9 @@ class NavGetCommData(betterproto.Message):
     data_hash: int = betterproto.fixed64_field(10)
     reserved: str = betterproto.string_field(11)
 
+@dataclass
+class AreaLabel(betterproto.Message):
+    label: str = betterproto.string_field(1)
 
 @dataclass
 class NavGetCommDataAck(betterproto.Message):
@@ -190,6 +193,7 @@ class NavGetCommDataAck(betterproto.Message):
     data_len: int = betterproto.int32_field(12)
     data_couple: list["CommDataCouple"] = betterproto.message_field(13)
     reserved: str = betterproto.string_field(14)
+    area_label: AreaLabel = betterproto.message_field(15)
 
 
 @dataclass

@@ -6,16 +6,14 @@ from typing import Any, Awaitable, Callable, Optional
 
 import betterproto
 
-from build.lib.pymammotion.proto.dev_net import WifiIotStatusReport
-from pymammotion.aliyun.cloud_gateway import SetupException
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.proto.dev_net import WifiIotStatusReport
 from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck
-from pymammotion.proto.mctrl_sys import TimeCtrlLight, DeviceProductTypeInfoT
-from pymammotion.utility.constant import WorkMode
+from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
+from pymammotion.proto.mctrl_sys import DeviceProductTypeInfoT, TimeCtrlLight
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,9 @@ class StateManager:
     def __init__(self, device: MowingDevice) -> None:
         self._device = device
         self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck], Awaitable[None]]] = None
-        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck], Awaitable[None]]] = None
+        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]]] = (
+            None
+        )
         self.on_notification_callback: Optional[Callable[[], Awaitable[None]]] = None
         self.queue_command_callback: Optional[Callable[[str, dict[str, Any]], Awaitable[bytes]]] = None
         self.last_updated_at = datetime.now()
@@ -81,6 +81,12 @@ class StateManager:
                 updated = self._device.map.update(common_data)
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
+            case "toapp_svg_msg":
+                common_data: SvgMessageAckT = nav_msg[1]
+                updated = self._device.map.update(common_data)
+                if updated:
+                    await self.get_commondata_ack_callback(common_data)
+
             case "toapp_all_hash_name":
                 hash_names: AppGetAllAreaHashName = nav_msg[1]
                 converted_list = [AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames]
@@ -94,13 +100,6 @@ class StateManager:
                 self._device.buffer(sys_msg[1])
             case "toapp_report_data":
                 self._device.update_report_data(sys_msg[1])
-                if self.queue_command_callback:
-                    if self._device.sys.toapp_report_data.dev.sys_status != WorkMode.MODE_WORKING:
-                        try:
-                            await self.queue_command_callback("get_report_cfg_stop")
-                        except SetupException as exc:
-                            # can't do anything about it yet
-                            logger.debug(exc)
             case "mow_to_app_info":
                 self._device.mow_info(sys_msg[1])
             case "system_tard_state_tunnel":
