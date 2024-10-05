@@ -284,7 +284,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             )
             self._reset_disconnect_timer()
             await self._start_notify()
-            self._ble_sync()
+            await self._ble_sync()
             self.schedule_ble_sync()
 
     async def _send_command_locked(self, key: str, command: bytes) -> bytes:
@@ -317,8 +317,13 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
-            self._update_raw_data(data)
-            self._message.clearNotification()
+            try:
+                self._update_raw_data(data)
+            except (KeyError, ValueError, IndexError, UnicodeDecodeError):
+                _LOGGER.exception("Error parsing message %s", data)
+            finally:
+                self._message.clearNotification()
+
             _LOGGER.debug("%s: Received notification: %s", self.name, data)
         else:
             return
@@ -398,6 +403,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             self.rssi,
         )
         self._cancel_disconnect_timer()
+        self._client = None
 
     def _disconnect_from_timer(self) -> None:
         """Disconnect from device."""

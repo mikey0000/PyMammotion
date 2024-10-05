@@ -200,6 +200,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         if self._ble_sync_task is None or self._ble_sync_task.cancelled():
             await self.run_periodic_sync_task()
         self.stopped = False
+        self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         self.mqtt.connect_async()
 
     async def _ble_sync(self) -> None:
@@ -268,7 +269,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         try:
             self._update_raw_data(binary_data)
             new_msg = LubaMsg().parse(binary_data)
-        except (KeyError, ValueError, IndexError):
+        except (KeyError, ValueError, IndexError, UnicodeDecodeError):
             _LOGGER.exception("Error parsing message %s", binary_data)
 
         if (
@@ -286,7 +287,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             if fut is None:
                 return
             while fut.fut.cancelled() and len(self._mqtt.waiting_queue) > 0:
-                fut: MammotionFuture = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
+                fut = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
             if not fut.fut.cancelled():
                 fut.resolve(cast(bytes, binary_data))
         await self._state_manager.notification(new_msg)

@@ -162,36 +162,23 @@ class MessageNetwork:
         logger.debug(f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
         return self.send_order_msg_net(build)
 
-    def wifi_connectinfo_update(self, device_name: str, is_binary: bool) -> bytes:
-        logger.debug(
-            f"Send command - get Wifi connection information.wifiConnectinfoUpdate().deviceName={device_name}.isBinary={is_binary}"
+    def wifi_connectinfo_update(self) -> bytes:
+        build = dev_net_pb2.DevNet(
+            todev_ble_sync=1,
+            todev_WifiMsgUpload=dev_net_pb2.DrvWifiUpload(wifi_msg_upload=1),
         )
-        if is_binary:
-            build = dev_net_pb2.DevNet(
-                todev_ble_sync=1,
-                todev_WifiMsgUpload=dev_net_pb2.DrvWifiUpload(wifi_msg_upload=1),
-            )
-            logger.debug("Send command - get Wifi connection information")
-            return self.send_order_msg_net(build)
-        self.wifi_connectinfo_update2()
+        logger.debug("Send command - get Wifi connection information")
+        return self.send_order_msg_net(build)
 
     def wifi_connectinfo_update2(self) -> None:
         hash_map = {"getMsgCmd": 1}
         # self.post_custom_data(self.get_json_string(
         #     68, hash_map))  # ToDo: Fix this
 
-    def get_record_wifi_list(self, is_binary: bool) -> bytes:
-        logger.debug(f"getRecordWifiList().isBinary={is_binary}")
-        if is_binary:
-            build = dev_net_pb2.DevNet(todev_ble_sync=1, todev_WifiListUpload=dev_net_pb2.DrvWifiList())
-            logger.debug("Send command - get memorized WiFi list upload command")
-            return self.send_order_msg_net(build)
-        self.get_record_wifi_list2()
-
-    def get_record_wifi_list2(self) -> None:
-        pass
-        # self.messageNavigation.post_custom_data(
-        #     self.get_json_string(69))  # ToDo: Fix this
+    def get_record_wifi_list(self) -> bytes:
+        build = dev_net_pb2.DevNet(todev_ble_sync=1, todev_WifiListUpload=dev_net_pb2.DrvWifiList())
+        logger.debug("Send command - get memorized WiFi list upload command")
+        return self.send_order_msg_net(build)
 
     def close_clear_connect_current_wifi(self, ssid: str, status: int, is_binary: bool) -> bytes:
         if is_binary:
@@ -205,8 +192,8 @@ class MessageNetwork:
             return self.send_order_msg_net(build)
         self.close_clear_connect_current_wifi2(ssid, status)
 
-    def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int) -> None:
-        data = {"ssid": ssid, "getMsgCmd": get_msg_cmd}
-        # self.messageNavigation.post_custom_data(
-        # ToDo: Fix this
-        # self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
+    # def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int) -> None:
+    #     data = {"ssid": ssid, "getMsgCmd": get_msg_cmd}
+    # self.messageNavigation.post_custom_data(
+    # ToDo: Fix this
+    # self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())

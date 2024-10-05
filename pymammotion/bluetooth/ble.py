@@ -33,6 +33,7 @@ class MammotionBLE:
         device = await scanner.find_device_by_filter(scanCallback)
         if device is not None:
             return await self.create_client(device)
+        return False
 
     async def create_client(self, device: BLEDevice):
         self.client = BleakClient(device.address)
