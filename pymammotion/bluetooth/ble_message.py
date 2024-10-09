@@ -18,8 +18,8 @@ from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.data.model.execute_boarder import ExecuteBorder
 from pymammotion.proto import (
     dev_net_pb2,
-    luba_msg_pb2,
 )
+from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 from pymammotion.utility.constant.device_constant import bleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,8 +51,8 @@ class BleMessage:
 
     def __init__(self, client: BleakClient) -> None:
         self.client = client
-        self.mSendSequence = itertools.count()
-        self.mReadSequence = itertools.count()
+        self.mSendSequence = itertools.count(start=0)
+        self.mReadSequence = itertools.count(start=0)
         self.mAck = queue.Queue()
         self.notification = BlufiNotifyData()
 
@@ -87,11 +87,11 @@ class BleMessage:
 
     async def send_device_info(self) -> None:
         """Currently not called"""
-        luba_msg = luba_msg_pb2.LubaMsg(
-            msgtype=luba_msg_pb2.MsgCmdType.MSG_CMD_TYPE_ESP,
-            sender=luba_msg_pb2.MsgDevice.DEV_MOBILEAPP,
-            rcver=luba_msg_pb2.MsgDevice.DEV_COMM_ESP,
-            msgattr=luba_msg_pb2.MsgAttr.MSG_ATTR_REQ,
+        luba_msg = LubaMsg(
+            msgtype=MsgCmdType.MSG_CMD_TYPE_ESP,
+            sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=MsgDevice.DEV_COMM_ESP,
+            msgattr=MsgAttr.MSG_ATTR_REQ,
             seqs=1,
             version=1,
             subtype=1,
@@ -140,69 +140,73 @@ class BleMessage:
         # if (this.mPrintDebug):
         #     Log.d(TAG, "parseNotification Notification= " + Arrays.toString(response));
         # }
-        if len(response) >= 4:
-            # sequence = int(response[2])  # toInt
-            # if sequence != next(self.mReadSequence):
-            #     _LOGGER.debug(
-            #         "parseNotification read sequence wrong",
-            #         sequence,
-            #         self.mReadSequence,
-            #     )
-            #     self.mReadSequence = itertools.count(start=sequence)
-            # this is questionable
-            # self.mReadSequence = sequence
-            # self.mReadSequence_2.incrementAndGet()
+        if len(response) < 4:
+            _LOGGER.debug("parseNotification data length less than 4")
+            return -2
 
-            # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
-            pkt_type = int(response[0])  # toInt
-            pkgType = self._getPackageType(pkt_type)
-            subType = self._getSubType(pkt_type)
-            self.notification.setType(pkt_type)
-            self.notification.setPkgType(pkgType)
-            self.notification.setSubType(subType)
-            frameCtrl = int(response[1])  # toInt
-            # _LOGGER.debug("frame ctrl")
-            # _LOGGER.debug(frameCtrl)
-            # _LOGGER.debug(response)
-            # _LOGGER.debug(f"pktType {pkt_type} pkgType {pkgType} subType {subType}")
-            self.notification.setFrameCtrl(frameCtrl)
-            frameCtrlData = FrameCtrlData(frameCtrl)
-            dataLen = int(response[3])  # toInt specifies length of data
+        sequence = int(response[2])  # toInt
 
-            try:
-                dataBytes = response[4 : 4 + dataLen]
-                if frameCtrlData.isEncrypted():
-                    _LOGGER.debug("is encrypted")
-                #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
-                #     dataBytes = aes.decrypt(dataBytes);
-                # }
-                if frameCtrlData.isChecksum():
-                    _LOGGER.debug("checksum")
-                #     int respChecksum1 = toInt(response[response.length - 1]);
-                #     int respChecksum2 = toInt(response[response.length - 2]);
-                #     int crc = BlufiCRC.calcCRC(BlufiCRC.calcCRC(0, new byte[]{(byte) sequence, (byte) dataLen}), dataBytes);
-                #     int calcChecksum1 = (crc >> 8) & 255;
-                #     int calcChecksum2 = crc & 255;
-                #     if (respChecksum1 != calcChecksum1 || respChecksum2 != calcChecksum2) {
-                #         Log.w(TAG, "parseNotification: read invalid checksum");
-                #         if (self.mPrintDebug) {
-                #             Log.d(TAG, "expect   checksum: " + respChecksum1 + ", " + respChecksum2);
-                #             Log.d(TAG, "received checksum: " + calcChecksum1 + ", " + calcChecksum2);
-                #             return -4;
-                #         }
-                #         return -4;
-                #     }
-                # }
-                if frameCtrlData.hasFrag():
-                    dataOffset = 2
-                else:
-                    dataOffset = 0
+        # Compare with the second counter, mod 255
+        if sequence != (next(self.mReadSequence) & 255):
+            _LOGGER.debug(
+                "parseNotification read sequence wrong %s %s",
+                sequence,
+                self.mReadSequence,
+            )
 
-                self.notification.addData(dataBytes, dataOffset)
-                return 1 if frameCtrlData.hasFrag() else 0
-            except Exception as e:
-                _LOGGER.debug(e)
-                return -100
+            # Set the value for mReadSequence manually
+            self.mReadSequence = itertools.count(start=sequence - 1)
+
+        # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
+        pkt_type = int(response[0])  # toInt
+        pkgType = self._getPackageType(pkt_type)
+        subType = self._getSubType(pkt_type)
+        self.notification.setType(pkt_type)
+        self.notification.setPkgType(pkgType)
+        self.notification.setSubType(subType)
+        frameCtrl = int(response[1])  # toInt
+        # _LOGGER.debug("frame ctrl")
+        # _LOGGER.debug(frameCtrl)
+        # _LOGGER.debug(response)
+        # _LOGGER.debug(f"pktType {pkt_type} pkgType {pkgType} subType {subType}")
+        self.notification.setFrameCtrl(frameCtrl)
+        frameCtrlData = FrameCtrlData(frameCtrl)
+        dataLen = int(response[3])  # toInt specifies length of data
+
+        try:
+            dataBytes = response[4 : 4 + dataLen]
+            if frameCtrlData.isEncrypted():
+                _LOGGER.debug("is encrypted")
+            #     BlufiAES aes = new BlufiAES(self.mAESKey, AES_TRANSFORMATION, generateAESIV(sequence));
+            #     dataBytes = aes.decrypt(dataBytes);
+            # }
+            if frameCtrlData.isChecksum():
+                _LOGGER.debug("checksum")
+            #     int respChecksum1 = toInt(response[response.length - 1]);
+            #     int respChecksum2 = toInt(response[response.length - 2]);
+            #     int crc = BlufiCRC.calcCRC(BlufiCRC.calcCRC(0, new byte[]{(byte) sequence, (byte) dataLen}), dataBytes);
+            #     int calcChecksum1 = (crc >> 8) & 255;
+            #     int calcChecksum2 = crc & 255;
+            #     if (respChecksum1 != calcChecksum1 || respChecksum2 != calcChecksum2) {
+            #         Log.w(TAG, "parseNotification: read invalid checksum");
+            #         if (self.mPrintDebug) {
+            #             Log.d(TAG, "expect   checksum: " + respChecksum1 + ", " + respChecksum2);
+            #             Log.d(TAG, "received checksum: " + calcChecksum1 + ", " + calcChecksum2);
+            #             return -4;
+            #         }
+            #         return -4;
+            #     }
+            # }
+            if frameCtrlData.hasFrag():
+                dataOffset = 2
+            else:
+                dataOffset = 0
+
+            self.notification.addData(dataBytes, dataOffset)
+            return 1 if frameCtrlData.hasFrag() else 0
+        except Exception as e:
+            _LOGGER.debug(e)
+            return -100
 
         # Log.w(TAG, "parseNotification data length less than 4");
         return -2
