@@ -36,7 +36,7 @@ pip install pymammotion
 PyMammotion uses `betterproto` and `protoc` for generating protobuf models. To set up the development environment:
 
 1. Clone the repository
-2. ???
+2. poetry install --with=dev
 3. Profit
 
 ## Contributing 🤝

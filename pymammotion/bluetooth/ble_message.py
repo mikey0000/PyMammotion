@@ -12,7 +12,6 @@ from jsonic.serializable import serialize
 
 from pymammotion.aliyun.tmp_constant import tmp_constant
 from pymammotion.bluetooth.const import UUID_WRITE_CHARACTERISTIC
-from pymammotion.bluetooth.data.convert import parse_custom_data
 from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.data.model.execute_boarder import ExecuteBorder
@@ -249,14 +248,8 @@ class BleMessage:
             #             return;
             case 19:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
-                luba_msg = parse_custom_data(data)  # parse to protobuf message
-                # really need some sort of callback
-                if luba_msg.HasField("net"):
-                    if luba_msg.net.HasField("toapp_wifi_iot_status"):
-                        # await sleep(1.5)
-                        _LOGGER.debug("sending ble sync")
-                        # await self.send_todev_ble_sync(2)
-                return luba_msg
+                # luba_msg = parse_custom_data(data)  # parse to protobuf message
+                return data
 
     # private void parseCtrlData(int i, byte[] bArr) {
     #     if (i == 0) {
@@ -310,6 +303,7 @@ class BleMessage:
             # onPostCustomDataResult(status, data)
             # _LOGGER.debug(suc)
         except Exception as err:
+            await self.client.disconnect()
             _LOGGER.debug(err)
 
     async def post_custom_data(self, data_str: str) -> None:
