@@ -97,9 +97,10 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._device = device
 
     async def _ble_sync(self) -> None:
-        _LOGGER.debug("BLE SYNC")
-        command_bytes = self._commands.send_todev_ble_sync(2)
-        await self._message.post_custom_data_bytes(command_bytes)
+        if self._client is not None and self._client.is_connected:
+            _LOGGER.debug("BLE SYNC")
+            command_bytes = self._commands.send_todev_ble_sync(2)
+            await self._message.post_custom_data_bytes(command_bytes)
 
     async def run_periodic_sync_task(self) -> None:
         """Send ble sync to robot."""
@@ -321,6 +322,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 self._update_raw_data(data)
             except (KeyError, ValueError, IndexError, UnicodeDecodeError):
                 _LOGGER.exception("Error parsing message %s", data)
+                data = b""
             finally:
                 self._message.clearNotification()
 
@@ -379,11 +381,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         """Resolve characteristics."""
         self._read_char = services.get_characteristic(READ_CHAR_UUID)
         if not self._read_char:
-            self._read_char = READ_CHAR_UUID
             _LOGGER.error(CharacteristicMissingError(READ_CHAR_UUID))
         self._write_char = services.get_characteristic(WRITE_CHAR_UUID)
         if not self._write_char:
-            self._write_char = WRITE_CHAR_UUID
             _LOGGER.error(CharacteristicMissingError(WRITE_CHAR_UUID))
 
     def _reset_disconnect_timer(self) -> None:

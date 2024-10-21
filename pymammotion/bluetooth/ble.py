@@ -7,9 +7,6 @@ from pymammotion.bluetooth.const import (
 )
 from pymammotion.event.event import BleNotificationEvent
 
-# TODO setup for each Luba
-address = "90:38:0C:6E:EE:9E"
-
 
 class MammotionBLE:
     client: BleakClient
@@ -24,9 +21,9 @@ class MammotionBLE:
             # TODO: do something with incoming data
             print(device)
             print(advertising_data)
-            if device.address == "90:38:0C:6E:EE:9E":
-                return True
-            if advertising_data.local_name and "Luba-" in advertising_data.local_name:
+            if advertising_data.local_name and (
+                "Luba-" in advertising_data.local_name or "Yuka-" in advertising_data.local_name
+            ):
                 return True
             return False
 

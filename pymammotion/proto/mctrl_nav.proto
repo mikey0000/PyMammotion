@@ -174,7 +174,7 @@ message NavGetCommDataAck {
 
 message NavReqCoverPath {
   int32 pver = 1;
-  int64 jobId = 2;
+  fixed64 jobId = 2;
   int32 jobVer = 3;
   int32 jobMode = 4;
   int32 subCmd = 5;
@@ -195,7 +195,7 @@ message NavReqCoverPath {
 
 message NavUploadZigZagResult {
   int32 pver = 1;
-  int64 jobId = 2;
+  fixed64 jobId = 2;
   int32 jobVer = 3;
   int32 result = 4;
   int32 area = 5;
