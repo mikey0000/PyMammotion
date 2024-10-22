@@ -75,7 +75,7 @@ class DeviceBizReqEventValue(DataClassORJSONMixin):
 class GeneralParams(DataClassORJSONMixin):
     groupIdList: list[str]
     groupId: str
-    categoryKey: Literal["LawnMower"]
+    categoryKey: Literal["LawnMower", "Tracker"]
     batchId: str
     gmtCreate: int
     productKey: str

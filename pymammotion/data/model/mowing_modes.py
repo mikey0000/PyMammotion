@@ -33,8 +33,8 @@ class ObstacleLapsMode(IntEnum):
 class MowOrder(IntEnum):
     """path_order"""
 
-    border_first = 0
-    grid_first = 1
+    grid_first = 0
+    border_first = 1
 
 
 class BypassStrategy(IntEnum):

@@ -42,11 +42,11 @@ class MammotionCommand(
     def move_left(self, angular: float) -> bytes:
         """Move forward. values 0.0 1.0."""
         angular_percent = get_percent(abs(angular * 100))
-        (linear_speed, angular_speed) = transform_both_speeds(0.0, 0.0, 0.0, angular_percent)
+        (linear_speed, angular_speed) = transform_both_speeds(0.0, 180.0, 0.0, angular_percent)
         return self.send_movement(linear_speed=linear_speed, angular_speed=angular_speed)
 
     def move_right(self, angular: float) -> bytes:
         """Move back. values 0.0 1.0."""
         angular_percent = get_percent(abs(angular * 100))
-        (linear_speed, angular_speed) = transform_both_speeds(0.0, 180.0, 0.0, angular_percent)
+        (linear_speed, angular_speed) = transform_both_speeds(0.0, 0.0, 0.0, angular_percent)
         return self.send_movement(linear_speed=linear_speed, angular_speed=angular_speed)
