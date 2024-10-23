@@ -36,6 +36,7 @@ class OperationSettings(DataClassORJSONMixin):
     toward: int = 0  # is just angle
     toward_included_angle: int = 90
     toward_mode: int = 0  # angle type relative etc
+    border_mode: int = 0
     obstacle_laps: int = 1
     mowing_laps: int = 1  # border laps
     start_progress: int = 0
@@ -46,7 +47,7 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
     # TODO add scheduling logic from getReserved() WorkSettingViewModel.java
     i2 = 0
     bArr = bytearray(8)
-    bArr[0] = operation_mode.mowing_laps
+    bArr[0] = operation_mode.border_mode
     bArr[1] = operation_mode.obstacle_laps
     bArr[3] = int(operation_mode.start_progress)
     bArr[2] = 0
