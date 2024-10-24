@@ -181,7 +181,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             if self.on_ready_callback:
                 await self.on_ready_callback()
         except DeviceOfflineException:
-            await self.stop()
+            _LOGGER.debug("Device is offline")
 
     async def on_disconnect(self) -> None:
         if self._ble_sync_task:
@@ -201,7 +201,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             await self.run_periodic_sync_task()
         self.stopped = False
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
-        self.mqtt.connect_async()
+        if not self.mqtt.is_connected():
+            self.mqtt.connect_async()
 
     async def _ble_sync(self) -> None:
         command_bytes = self._commands.send_todev_ble_sync(3)

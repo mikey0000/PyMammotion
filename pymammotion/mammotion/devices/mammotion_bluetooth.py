@@ -118,7 +118,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def stop(self) -> None:
         """Stop all tasks and disconnect."""
-        self._ble_sync_task.cancel()
+        if self._ble_sync_task:
+            self._ble_sync_task.cancel()
         if self._client is not None:
             await self._client.disconnect()
 
