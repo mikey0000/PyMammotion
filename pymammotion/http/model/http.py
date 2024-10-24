@@ -69,11 +69,11 @@ class LoginResponseUserInformation(DataClassORJSONMixin):
 @dataclass
 class LoginResponseData(DataClassORJSONMixin):
     access_token: str
-    token_type: Literal["bearer"]
+    token_type: Literal["bearer", "Bearer"]
     refresh_token: str
     expires_in: int
-    scope: Literal["read"]
-    grant_type: Literal["password"]
+    scope: Optional[Literal["read", "Read"]]
+    grant_type: Literal["password", "Password"]
     authorization_code: str
     userInformation: LoginResponseUserInformation
     jti: str
