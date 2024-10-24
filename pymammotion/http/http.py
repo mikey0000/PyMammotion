@@ -31,7 +31,7 @@ class MammotionHTTP:
                 reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
                 codes = []
                 for row in reader:
-                    codes.append(ErrorInfo(**cast(row, dict)))
+                    codes.append(ErrorInfo(**cast(dict, row)))
                 return codes
 
     async def oauth_check(self) -> None:
