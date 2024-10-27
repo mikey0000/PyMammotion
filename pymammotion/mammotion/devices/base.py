@@ -33,14 +33,11 @@ def find_next_integer(lst: list[int], current_hash: int) -> int | None:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
-    _state_manager: StateManager
-    _cloud_device: Device | None = None
-
-    def __init__(self, device: MowingDevice, cloud_device: Device | None = None) -> None:
+    def __init__(self, state_manager: StateManager, cloud_device: Device | None = None) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
-        self._state_manager = StateManager(device)
+        self._state_manager = state_manager
         self._state_manager.gethash_ack_callback = self.datahash_response
         self._state_manager.get_commondata_ack_callback = self.commdata_response
         self._notify_future: asyncio.Future[bytes] | None = None

@@ -13,6 +13,7 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.state_manager import StateManager
 from pymammotion.http.http import connect_http
 from pymammotion.mammotion.devices.mammotion_bluetooth import MammotionBaseBLEDevice
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionBaseCloudDevice, MammotionCloud
@@ -32,8 +33,6 @@ class ConnectionPreference(Enum):
 
 
 class MammotionMixedDeviceManager:
-    _ble_device: MammotionBaseBLEDevice | None = None
-    _cloud_device: MammotionBaseCloudDevice | None = None
     preference: ConnectionPreference
 
     def __init__(
@@ -45,22 +44,20 @@ class MammotionMixedDeviceManager:
         preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
     ) -> None:
         self.name = name
-        self._mower_state = MowingDevice()
+        self._state_manager = StateManager(MowingDevice())
+        self._ble_device: MammotionBaseBLEDevice | None = None
+        self._cloud_device: MammotionBaseCloudDevice | None = None
         self.add_ble(ble_device)
         self.add_cloud(cloud_device, mqtt)
         self.preference = preference
 
     @property
     def mower_state(self):
-        return self._mower_state
+        return self._state_manager.get_device()
 
     @mower_state.setter
     def mower_state(self, value: MowingDevice) -> None:
-        if self._cloud_device:
-            self._cloud_device.state_manager.set_device(value)
-        if self._ble_device:
-            self._ble_device.state_manager.set_device(value)
-        self._mower_state = value
+        self._state_manager.set_device(value)
 
     def ble(self) -> MammotionBaseBLEDevice | None:
         return self._ble_device
@@ -76,12 +73,12 @@ class MammotionMixedDeviceManager:
 
     def add_ble(self, ble_device: BLEDevice) -> None:
         if ble_device is not None:
-            self._ble_device = MammotionBaseBLEDevice(self.mower_state, ble_device)
+            self._ble_device = MammotionBaseBLEDevice(state_manager=self._state_manager, ble_device=ble_device)
 
     def add_cloud(self, cloud_device: Device | None = None, mqtt: MammotionCloud | None = None) -> None:
         if cloud_device is not None:
             self._cloud_device = MammotionBaseCloudDevice(
-                mqtt, cloud_device=cloud_device, mowing_state=self.mower_state
+                mqtt, cloud_device=cloud_device, state_manager=self._state_manager
             )
 
     def replace_cloud(self, cloud_device: MammotionBaseCloudDevice) -> None:

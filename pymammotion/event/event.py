@@ -66,4 +66,7 @@ class DataEvent:
         self.on_data_event += obj_method
 
     def remove_subscribers(self, obj_method) -> None:
-        self.on_data_event -= obj_method
+        try:
+            self.on_data_event -= obj_method
+        except ValueError:
+            """Subscription object no longer there."""

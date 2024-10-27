@@ -60,10 +60,13 @@ class Response(DataClassDictMixin, Generic[DataT]):
 class LoginResponseUserInformation(DataClassORJSONMixin):
     areaCode: str
     domainAbbreviation: str
-    email: Optional[str]
     userId: str
     userAccount: str
     authType: str
+    email: Optional[str] = None
+
+    class Config(BaseConfig):
+        omit_none = True
 
 
 @dataclass
@@ -72,8 +75,11 @@ class LoginResponseData(DataClassORJSONMixin):
     token_type: Literal["bearer", "Bearer"]
     refresh_token: str
     expires_in: int
-    scope: Optional[Literal["read", "Read"]]
-    grant_type: Literal["password", "Password"]
     authorization_code: str
     userInformation: LoginResponseUserInformation
-    jti: str
+    jti: str = None
+    grant_type: Literal["password", "Password"] = None
+    scope: Literal["read", "Read"] = None
+
+    class Config(BaseConfig):
+        omit_none = True

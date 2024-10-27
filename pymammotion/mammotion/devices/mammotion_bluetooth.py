@@ -14,7 +14,7 @@ from bleak_retry_connector import (
 )
 
 from pymammotion.bluetooth import BleMessage
-from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
 from pymammotion.proto import has_field
@@ -69,9 +69,9 @@ async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None
 class MammotionBaseBLEDevice(MammotionBaseDevice):
     """Base class for Mammotion BLE devices."""
 
-    def __init__(self, mowing_state: MowingDevice, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
+    def __init__(self, state_manager: StateManager, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
         """Initialize MammotionBaseBLEDevice."""
-        super().__init__(mowing_state)
+        super().__init__(state_manager)
         self._disconnect_strategy = True
         self._ble_sync_task = None
         self._prev_notification = None

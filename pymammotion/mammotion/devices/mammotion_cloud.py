@@ -11,9 +11,9 @@ import betterproto
 from pymammotion import CloudIOTGateway, MammotionMQTT
 from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
 from pymammotion.aliyun.model.dev_by_account_response import Device
-from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.data.state_manager import StateManager
 from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
@@ -37,6 +37,7 @@ class MammotionCloud:
         self.mqtt_properties_event = DataEvent()
         self.on_ready_event = DataEvent()
         self.on_disconnected_event = DataEvent()
+        self.on_connected_event = DataEvent()
         self._operation_lock = asyncio.Lock()
         self._mqtt_client = mqtt_client
         self._mqtt_client.on_connected = self.on_connected
@@ -66,6 +67,7 @@ class MammotionCloud:
 
     async def on_connected(self) -> None:
         """Callback for when MQTT connects."""
+        await self.on_connected_event.data_event(None)
 
     async def on_disconnected(self) -> None:
         """Callback for when MQTT disconnects."""
@@ -148,9 +150,9 @@ class MammotionCloud:
 class MammotionBaseCloudDevice(MammotionBaseDevice):
     """Base class for Mammotion Cloud devices."""
 
-    def __init__(self, mqtt: MammotionCloud, cloud_device: Device, mowing_state: MowingDevice) -> None:
+    def __init__(self, mqtt: MammotionCloud, cloud_device: Device, state_manager: StateManager) -> None:
         """Initialize MammotionBaseCloudDevice."""
-        super().__init__(mowing_state, cloud_device)
+        super().__init__(state_manager, cloud_device)
         self._ble_sync_task: TimerHandle | None = None
         self.stopped = False
         self.on_ready_callback: Optional[Callable[[], Awaitable[None]]] = None
@@ -165,19 +167,25 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.mqtt_properties_event.add_subscribers(self._parse_message_properties_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
+        self._mqtt.on_connected_event.add_subscribers(self.on_connect)
         self.set_queue_callback(self.queue_command)
 
         if self._mqtt.is_ready:
             self.run_periodic_sync_task()
+
+    def __del__(self) -> None:
+        self._mqtt.on_ready_event.remove_subscribers(self.on_ready)
+        self._mqtt.on_disconnected_event.remove_subscribers(self.on_disconnect)
+        self._mqtt.on_connected_event.remove_subscribers(self.on_connect)
+        self._mqtt.mqtt_message_event.remove_subscribers(self._parse_message_for_device)
+        if self._ble_sync_task:
+            self._ble_sync_task.cancel()
 
     async def on_ready(self) -> None:
         """Callback for when MQTT is subscribed to events."""
         if self.stopped:
             return
         try:
-            await self._ble_sync()
-            if self._ble_sync_task is None or self._ble_sync_task.cancelled():
-                await self.run_periodic_sync_task()
             if self.on_ready_callback:
                 await self.on_ready_callback()
         except DeviceOfflineException:
@@ -188,11 +196,15 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             self._ble_sync_task.cancel()
         self._mqtt.disconnect()
 
+    async def on_connect(self) -> None:
+        await self._ble_sync()
+        if self._ble_sync_task is None or self._ble_sync_task.cancelled():
+            await self.run_periodic_sync_task()
+
     async def stop(self) -> None:
         """Stop all tasks and disconnect."""
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
-        self._mqtt.on_ready_event.remove_subscribers(self.on_ready)
         self.stopped = True
 
     async def start(self) -> None:
@@ -200,7 +212,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         if self._ble_sync_task is None or self._ble_sync_task.cancelled():
             await self.run_periodic_sync_task()
         self.stopped = False
-        self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         if not self.mqtt.is_connected():
             self.mqtt.connect_async()
 
