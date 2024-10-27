@@ -73,7 +73,7 @@ class MammotionMixedDeviceManager:
 
     def add_ble(self, ble_device: BLEDevice) -> None:
         if ble_device is not None:
-            self._ble_device = MammotionBaseBLEDevice(state_manager=self._state_manager, ble_device=ble_device)
+            self._ble_device = MammotionBaseBLEDevice(state_manager=self._state_manager, device=ble_device)
 
     def add_cloud(self, cloud_device: Device | None = None, mqtt: MammotionCloud | None = None) -> None:
         if cloud_device is not None:
