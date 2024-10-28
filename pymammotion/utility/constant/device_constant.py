@@ -212,7 +212,18 @@ class WorkMode:
     MODE_WORKING = 13
 
 
-def device_mode(value) -> str:
+def device_connection(value: int, mnet_type: str) -> str:
+    """Return string representation of device connection."""
+    if value == 1:
+        return "BLE"
+
+    if mnet_type == "NET_USED_TYPE_WIFI":
+        return "WIFI"
+
+    return "3G/4G"
+
+
+def device_mode(value: int) -> str:
     """Return the mode corresponding to the given value.
 
     This function takes a value and returns the corresponding mode from a
