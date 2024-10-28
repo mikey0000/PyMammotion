@@ -14,7 +14,7 @@ class Event:
         self.__eventhandlers.remove(handler)
         return self
 
-    async def __call__(self, *args, **kwargs) -> None:
+    async def __call__(self, *args: Any, **kwargs: Any) -> None:
         await asyncio.gather(*[handler(*args, **kwargs) for handler in self.__eventhandlers])
 
 

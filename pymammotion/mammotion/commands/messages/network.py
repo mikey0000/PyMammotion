@@ -1,14 +1,19 @@
 # === sendOrderMsg_Net  ===
+import time
+from abc import ABC
+
 from pymammotion import logger
+from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
 from pymammotion.proto import dev_net_pb2, luba_msg_pb2
+from pymammotion.proto.dev_net import DevNet
 
 
-class MessageNetwork:
+class MessageNetwork(AbstractMessage, ABC):
     messageNavigation: MessageNavigation = MessageNavigation()
 
     @staticmethod
-    def send_order_msg_net(build) -> bytes:
+    def send_order_msg_net(build: DevNet) -> bytes:
         luba_msg = luba_msg_pb2.LubaMsg(
             msgtype=luba_msg_pb2.MSG_CMD_TYPE_ESP,
             sender=luba_msg_pb2.DEV_MOBILEAPP,
@@ -18,6 +23,7 @@ class MessageNetwork:
             version=1,
             subtype=1,
             net=build,
+            timestamp=round(time.time() * 1000),
         )
 
         return luba_msg.SerializeToString()
@@ -180,20 +186,12 @@ class MessageNetwork:
         logger.debug("Send command - get memorized WiFi list upload command")
         return self.send_order_msg_net(build)
 
-    def close_clear_connect_current_wifi(self, ssid: str, status: int, is_binary: bool) -> bytes:
-        if is_binary:
-            build = dev_net_pb2.DevNet(
-                todev_ble_sync=1,
-                todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(configParam=status, Confssid=ssid),
-            )
-            logger.debug(
-                f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})"
-            )
-            return self.send_order_msg_net(build)
-        self.close_clear_connect_current_wifi2(ssid, status)
-
-    # def close_clear_connect_current_wifi2(self, ssid: str, get_msg_cmd: int) -> None:
-    #     data = {"ssid": ssid, "getMsgCmd": get_msg_cmd}
-    # self.messageNavigation.post_custom_data(
-    # ToDo: Fix this
-    # self.get_json_string(bleOrderCmd.close_clear_connect_current_wifi, data).encode())
+    def close_clear_connect_current_wifi(self, ssid: str, status: int) -> bytes:
+        build = dev_net_pb2.DevNet(
+            todev_ble_sync=1,
+            todev_Wifi_Configuration=dev_net_pb2.DrvWifiSet(configParam=status, Confssid=ssid),
+        )
+        logger.debug(
+            f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})"
+        )
+        return self.send_order_msg_net(build)

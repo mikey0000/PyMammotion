@@ -704,25 +704,25 @@ class CloudIOTGateway:
         self.mammotion_http = mammotion_http
 
     @property
-    def region_response(self):
+    def region_response(self) -> RegionResponse:
         return self._region_response
 
     @property
-    def aep_response(self):
+    def aep_response(self) -> AepResponse:
         return self._aep_response
 
     @property
-    def session_by_authcode_response(self):
+    def session_by_authcode_response(self) -> SessionByAuthCodeResponse:
         return self._session_by_authcode_response
 
     @property
-    def client_id(self):
+    def client_id(self) -> str:
         return self._client_id
 
     @property
-    def login_by_oauth_response(self):
+    def login_by_oauth_response(self) -> LoginByOAuthResponse:
         return self._login_by_oauth_response
 
     @property
-    def connect_response(self):
+    def connect_response(self) -> ConnectResponse:
         return self._connect_response

@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -53,6 +53,24 @@ class LocationData(DataClassORJSONMixin):
 
 
 @dataclass
+class Maintain(DataClassORJSONMixin):
+    mileage: int = 0
+    work_time: int = 0
+    bat_cycles: int = 0
+
+
+@dataclass
+class VisionInfo(DataClassORJSONMixin):
+    x: float = 0.0
+    y: float = 0.0
+    heading: float = 0.0
+    vio_state: int = 0
+    brightness: int = 1
+    detect_feature_num: int = 0
+    track_feature_num: int = 0
+
+
+@dataclass
 class WorkData(DataClassORJSONMixin):
     path: int = 0
     path_hash: str = ""
@@ -80,6 +98,8 @@ class WorkData(DataClassORJSONMixin):
 class ReportData(DataClassORJSONMixin):
     connect: ConnectData = field(default_factory=ConnectData)
     dev: DeviceData = field(default_factory=DeviceData)
+    maintenance: Maintain = field(default_factory=Maintain)
+    vision_info: VisionInfo = field(default_factory=VisionInfo)
     rtk: RTKData = field(default_factory=RTKData)
     locations: list[LocationData] = field(default_factory=list)
     work: WorkData = field(default_factory=WorkData)
@@ -89,8 +109,10 @@ class ReportData(DataClassORJSONMixin):
         if data.get("locations") is not None:
             locations = [LocationData.from_dict(loc) for loc in data.get("locations", [])]
 
-        self.connect = ConnectData.from_dict(data.get("connect", asdict(self.connect)))
-        self.dev = DeviceData.from_dict(data.get("dev", asdict(self.dev)))
-        self.rtk = RTKData.from_dict(data.get("rtk", asdict(self.rtk)))
+        self.connect = ConnectData.from_dict(data.get("connect", self.connect.to_dict()))
+        self.dev = DeviceData.from_dict(data.get("dev", self.dev.to_dict()))
+        self.rtk = RTKData.from_dict(data.get("rtk", self.rtk.to_dict()))
+        self.maintenance = Maintain.from_dict(data.get("maintain", self.maintenance.to_dict()))
+        self.vision_info = VisionInfo.from_dict(data.get("vio_to_app_info", self.vision_info.to_dict()))
         self.locations = locations
-        self.work = WorkData.from_dict(data.get("work", asdict(self.work)))
+        self.work = WorkData.from_dict(data.get("work", self.work.to_dict()))

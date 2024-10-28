@@ -1,5 +1,6 @@
 # === sendOrderMsg_Sys ===
 import datetime
+import time
 from abc import ABC
 
 from pymammotion import logger
@@ -28,19 +29,30 @@ class MessageSystem(AbstractMessage, ABC):
     def send_order_msg_sys(self, sys):
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            msgattr=MsgAttr.MSG_ATTR_REQ,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=self.get_msg_device(MsgCmdType.MSG_CMD_TYPE_EMBED_SYS, MsgDevice.DEV_MAINCTL),
             sys=sys,
+            seqs=1,
+            version=1,
+            subtype=1,
+            timestamp=round(time.time() * 1000),
         )
 
         return luba_msg.SerializeToString()
 
-    def send_order_msg_sys_legacy(self, sys):
+    @staticmethod
+    def send_order_msg_sys_legacy(sys):
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            msgattr=MsgAttr.MSG_ATTR_REQ,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
             sys=sys,
+            seqs=1,
+            version=1,
+            subtype=1,
+            timestamp=round(time.time() * 1000),
         )
 
         return luba_msg.SerializeToString()
@@ -239,7 +251,7 @@ class MessageSystem(AbstractMessage, ABC):
 
     def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
         # TODO use send_order_msg_sys_legacy
-        mctlsys = MctlSys(
+        mctl_sys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
                 act=RptAct.RPT_STOP,
                 timeout=timeout,
@@ -249,30 +261,33 @@ class MessageSystem(AbstractMessage, ABC):
             )
         )
 
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
 
-        lubaMsg = LubaMsg()
-        lubaMsg.msgtype = MsgCmdType.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = MsgDevice.DEV_MOBILEAPP
-        lubaMsg.rcver = MsgDevice.DEV_MAINCTL
-        lubaMsg.msgattr = MsgAttr.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys = mctlsys
-        return lubaMsg.SerializeToString()
+        luba_msg = LubaMsg(
+            msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=MsgDevice.DEV_MAINCTL,
+            msgattr=MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            sys=mctl_sys,
+            timestamp=round(time.time() * 1000),
+        )
+
+        return luba_msg.SerializeToString()
 
     def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
         # TODO use send_order_msg_sys_legacy
-        mctlsys = MctlSys(
+        mctl_sys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
                 act=RptAct.RPT_START,
                 timeout=timeout,
@@ -282,24 +297,26 @@ class MessageSystem(AbstractMessage, ABC):
             )
         )
 
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
-        mctlsys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION_INFO)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION_INFO)
 
-        lubaMsg = LubaMsg()
-        lubaMsg.msgtype = MsgCmdType.MSG_CMD_TYPE_EMBED_SYS
-        lubaMsg.sender = MsgDevice.DEV_MOBILEAPP
-        lubaMsg.rcver = MsgDevice.DEV_MAINCTL
-        lubaMsg.msgattr = MsgAttr.MSG_ATTR_REQ
-        lubaMsg.seqs = 1
-        lubaMsg.version = 1
-        lubaMsg.subtype = 1
-        lubaMsg.sys = mctlsys
-        return lubaMsg.SerializeToString()
+        luba_msg = LubaMsg(
+            msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=MsgDevice.DEV_MAINCTL,
+            msgattr=MsgAttr.MSG_ATTR_REQ,
+            seqs=1,
+            version=1,
+            subtype=1,
+            sys=mctl_sys,
+            timestamp=round(time.time() * 1000),
+        )
+        return luba_msg.SerializeToString()
