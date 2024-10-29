@@ -17,9 +17,11 @@ from pymammotion.http.http import MammotionHTTP, connect_http
 # TODO make a working device that will work outside HA too.
 from pymammotion.mqtt import MammotionMQTT
 
-__all__ = ["MammotionBLE", "MammotionHTTP", "connect_http", "MammotionMQTT"]
-
 logger = logging.getLogger(__name__)
+
+
+__all__ = ["MammotionBLE", "MammotionHTTP", "connect_http", "MammotionMQTT", "logger"]
+
 
 # TODO provide interface to pick between mqtt/cloud/bluetooth
 
