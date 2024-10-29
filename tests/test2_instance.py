@@ -6,8 +6,9 @@ from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.state_manager import StateManager
 from pymammotion.event.event import BleNotificationEvent
-from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice, has_field
+from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice
 from pymammotion.proto.mctrl_sys import MctlSys, RptAct, RptInfoType
 
 bleNotificationEvt = BleNotificationEvent()
@@ -60,11 +61,11 @@ async def run(loop):
 
     luba_ble = MammotionBaseBLEDevice(
         device=luba_device,
-        mowing_state=MowingDevice()
+        state_manager=StateManager(MowingDevice())
     )
 
     await asyncio.sleep(2)
-    await luba_ble.start_sync(0)
+    # await luba_ble.start_sync(0)
     # await luba_ble.start_map_sync()
     #await asyncio.sleep(2)
     # print(luba_ble.luba_msg.sys.toapp_report_data.dev)
@@ -106,7 +107,7 @@ async def run(loop):
     # await luba_ble.command("synchronize_hash_data", hash_num=25410289481558284)
     await asyncio.sleep(20)
     print("end run?")
-    print(luba_ble.luba_msg.map)
+    print(luba_ble.mower.map)
 
 
 

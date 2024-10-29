@@ -71,7 +71,7 @@ class MessageSystem(AbstractMessage, ABC):
         return self.send_order_msg_sys(mctlsys)
 
     def get_device_product_model(self):
-        return self.send_order_msg_sys(MctlSys(device_product_type_info=DeviceProductTypeInfoT()))
+        return self.send_order_msg_sys(MctlSys(device_product_type_info=DeviceProductTypeInfoT(result=1)))
 
     def read_and_set_sidelight(self, is_sidelight: bool, operate: int):
         """Read state of sidelight as well as set it."""

@@ -1,10 +1,10 @@
 [project]
 name        = "pymammotion"
-version     = "0.2.92"
+version     = "0.2.94"
 
 [tool.poetry]
 name        = "pymammotion"
-version     = "0.2.92"
+version     = "0.2.94"
 license     = "GNU-3.0"
 description = ""
 readme      = "README.md"
@@ -61,7 +61,7 @@ mypy = "^1.11.2"
 autotyping = "^24.3.0"
 
 [tool.bumpver]
-current_version = "0.2.92"
+current_version = "0.2.94"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true

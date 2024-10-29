@@ -244,7 +244,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         command_bytes = getattr(self._commands, key)(**kwargs)
         await self._mqtt.command_queue.put((self.iot_id, key, command_bytes, future))
         # Wait for the future to be resolved
-        return await future
+        try:
+            return await future
+        except asyncio.CancelledError:
+            """Try again once."""
+            future = asyncio.Future()
+            await self._mqtt.command_queue.put((self.iot_id, key, command_bytes, future))
 
     def _extract_message_id(self, payload: dict) -> str:
         """Extract the message ID from the payload."""
