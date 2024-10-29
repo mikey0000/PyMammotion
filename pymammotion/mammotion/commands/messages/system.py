@@ -246,7 +246,7 @@ class MessageSystem(AbstractMessage, ABC):
             )
         )
         logger.debug(f"Send command==== IOT slim data Act {
-            build.todev_report_cfg.act} {build}")
+            build.todev_report_cfg.act}")
         return self.send_order_msg_sys_legacy(build)
 
     def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
