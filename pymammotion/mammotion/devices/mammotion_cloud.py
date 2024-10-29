@@ -102,6 +102,7 @@ class MammotionCloud:
         try:
             notify_msg = await future.async_get(timeout)
         except asyncio.TimeoutError:
+            _LOGGER.debug("command_locked TimeoutError")
             notify_msg = b""
 
         _LOGGER.debug("%s: Message received", iot_id)
@@ -278,6 +279,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.state_manager.properties(event)
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
+        _LOGGER.debug("_parse_message_for_device")
         params = event.params
         new_msg = LubaMsg()
         if event.params.iotId != self.iot_id:

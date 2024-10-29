@@ -76,7 +76,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._ble_sync_task = None
         self._prev_notification = None
         self._interface = f"hci{interface}"
-        self._device = device
+        self.ble_device = device
         self._client: BleakClientWithServiceCache | None = None
         self._read_char: BleakGATTCharacteristic | int | str | UUID = 0
         self._write_char: BleakGATTCharacteristic | int | str | UUID = 0
@@ -94,7 +94,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""
-        self._device = device
+        self.ble_device = device
 
     async def _ble_sync(self) -> None:
         if self._client is not None and self._client.is_connected:
@@ -215,7 +215,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     @property
     def name(self) -> str:
         """Return device name."""
-        return f"{self._device.name} ({self._device.address})"
+        return f"{self.ble_device.name} ({self.ble_device.address})"
 
     @property
     def rssi(self) -> int:
@@ -254,11 +254,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             _LOGGER.debug("%s: Connecting; RSSI: %s", self.name, self.rssi)
             client: BleakClientWithServiceCache = await establish_connection(
                 BleakClientWithServiceCache,
-                self._device,
+                self.ble_device,
                 self.name,
                 self._disconnected,
                 max_attempts=10,
-                ble_device_callback=lambda: self._device,
+                ble_device_callback=lambda: self.ble_device,
             )
             _LOGGER.debug("%s: Connected; RSSI: %s", self.name, self.rssi)
             self._client = client
@@ -376,7 +376,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     def get_address(self) -> str:
         """Return address of device."""
-        return self._device.address
+        return self.ble_device.address
 
     def _resolve_characteristics(self, services: BleakGATTServiceCollection) -> None:
         """Resolve characteristics."""

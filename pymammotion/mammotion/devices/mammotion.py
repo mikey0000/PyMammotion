@@ -67,7 +67,7 @@ class MammotionMixedDeviceManager:
 
     def has_queued_commands(self) -> bool:
         if self.has_cloud() and self.preference == ConnectionPreference.WIFI:
-            return not self.cloud()._mqtt.command_queue.empty()
+            return not self.cloud().mqtt.command_queue.empty()
         else:
             return not self.ble().command_queue.empty()
 
@@ -88,7 +88,8 @@ class MammotionMixedDeviceManager:
         self._ble_device = ble_device
 
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
-        self._cloud_device._mqtt = mqtt
+        device = self._cloud_device.device
+        self._cloud_device = MammotionBaseCloudDevice(mqtt, cloud_device=device, state_manager=self._state_manager)
 
     def has_cloud(self) -> bool:
         return self._cloud_device is not None
@@ -120,7 +121,7 @@ class MammotionDevices:
             should_disconnect = {
                 device
                 for key, device in self.devices.items()
-                if device.cloud() is not None and device.cloud()._mqtt == device_for_removal.cloud()._mqtt
+                if device.cloud() is not None and device.cloud().mqtt == device_for_removal.cloud().mqtt
             }
             if len(should_disconnect) == 0:
                 await loop.run_in_executor(None, device_for_removal.cloud().mqtt.disconnect)
@@ -153,9 +154,9 @@ class Mammotion:
     devices = MammotionDevices()
     mqtt_list: dict[str, MammotionCloud] = dict()
 
-    _instance = None
+    _instance: Mammotion = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any):
         if not cls._instance:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -181,9 +182,9 @@ class Mammotion:
 
     async def initiate_cloud_connection(self, account: str, cloud_client: CloudIOTGateway) -> None:
         loop = asyncio.get_running_loop()
-        if self.mqtt_list.get(account) is not None:
-            if self.mqtt_list.get(account).is_connected():
-                await loop.run_in_executor(None, self.mqtt_list.get(account).disconnect)
+        if mqtt := self.mqtt_list.get(account):
+            if mqtt.is_connected():
+                await loop.run_in_executor(None, mqtt.disconnect)
 
         mammotion_cloud = MammotionCloud(
             MammotionMQTT(
@@ -221,7 +222,7 @@ class Mammotion:
                     mower_device.replace_mqtt(mqtt_client)
 
     def set_disconnect_strategy(self, disconnect: bool) -> None:
-        for device_name, device in self.devices.devices:
+        for device_name, device in self.devices.devices.items():
             if device.ble() is not None:
                 ble_device: MammotionBaseBLEDevice = device.ble()
                 ble_device.set_disconnect_strategy(disconnect)
