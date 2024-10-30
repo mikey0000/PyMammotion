@@ -21,7 +21,7 @@ class MammotionHTTP:
         self.msg = response.msg
         self.code = response.code
 
-    async def get_all_error_codes(self) -> list[ErrorInfo]:
+    async def get_all_error_codes(self) -> dict[str, ErrorInfo]:
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/user-server/v1/code/record/export-data",
@@ -29,9 +29,10 @@ class MammotionHTTP:
             ) as resp:
                 data = await resp.json()
                 reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
-                codes = []
+                codes = dict()
                 for row in reader:
-                    codes.append(ErrorInfo(**cast(dict, row)))
+                    error_info = ErrorInfo(**cast(dict, row))
+                    codes[error_info.code] = error_info
                 return codes
 
     async def oauth_check(self) -> None:
