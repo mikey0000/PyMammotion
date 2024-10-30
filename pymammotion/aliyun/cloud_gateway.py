@@ -700,7 +700,7 @@ class CloudIOTGateway:
     def devices_by_account_response(self):
         return self._devices_by_account_response
 
-    def set_http(self, mammotion_http) -> None:
+    def set_http(self, mammotion_http: MammotionHTTP) -> None:
         self.mammotion_http = mammotion_http
 
     @property

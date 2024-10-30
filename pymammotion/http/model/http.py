@@ -9,7 +9,7 @@ DataT = TypeVar("DataT")
 
 
 @dataclass
-class ErrorInfo:
+class ErrorInfo(DataClassDictMixin):
     code: str
     platform: str
     module: str
@@ -44,6 +44,24 @@ class ErrorInfo:
     sl_solution: str
     pt_implication: str
     pt_solution: str
+    hu_implication: str
+    hu_solution: str
+    hr_implication: str
+    hr_solution: str
+    no_implication: str
+    no_solution: str
+    fi_implication: str
+    fi_solution: str
+    ro_implication: str
+    ro_solution: str
+    bg_implication: str
+    bg_solution: str
+    et_implication: str
+    et_solution: str
+    lv_implication: str
+    lv_solution: str
+    lt_implication: str
+    lt_solution: str
 
 
 @dataclass

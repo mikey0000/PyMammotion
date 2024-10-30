@@ -18,6 +18,7 @@ class MammotionHTTP:
         self._headers = dict()
         self.login_info = LoginResponseData.from_dict(response.data) if response.data else None
         self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if response.data else None
+        self.response = response
         self.msg = response.msg
         self.code = response.code
 
@@ -74,7 +75,7 @@ class MammotionHTTP:
             ),
         ) as resp:
             data = await resp.json()
-            response = Response.from_dict(data)
+            response = Response[LoginResponseData].from_dict(data)
             # TODO catch errors from mismatch user / password elsewhere
             # Assuming the data format matches the expected structure
             return response

@@ -12,6 +12,7 @@ from pymammotion.data.model.device_info import MowerInfo
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.http.model.http import ErrorInfo
 from pymammotion.proto.dev_net import DevNet
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.luba_mul import SocMul
@@ -45,6 +46,7 @@ class MowingDevice(DataClassORJSONMixin):
     err_code_list_time: Optional[list] = field(default_factory=list)
     limits: DeviceLimits = field(default_factory=DeviceLimits)
     device: Optional[LubaMsg] = field(default_factory=LubaMsg)
+    error_codes: dict[str, ErrorInfo] = field(default_factory=dict)
 
     @classmethod
     def from_raw(cls, raw: dict) -> "MowingDevice":
