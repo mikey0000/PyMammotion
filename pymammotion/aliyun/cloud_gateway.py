@@ -684,7 +684,7 @@ class CloudIOTGateway:
             logger.error(
                 "Error in sending cloud command: %s - %s",
                 str(response_body_dict.get("code")),
-                str(response_body_dict.get("msg")),
+                str(response_body_dict.get("message")),
             )
             if response_body_dict.get("code") == 29003:
                 logger.debug(self._session_by_authcode_response.data.identityId)
