@@ -478,7 +478,7 @@ class CloudIOTGateway:
 
     def check_or_refresh_session(self):
         """Check or refresh the session."""
-        logger.debug("Try to refresh token")
+        logger.debug("Trying to refresh token")
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
