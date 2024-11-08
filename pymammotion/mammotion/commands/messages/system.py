@@ -116,22 +116,26 @@ class MessageSystem(AbstractMessage, ABC):
             op}, cgf:{cgf}")
         return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf)))
 
-    def allpowerfull_rw(self, id: int, context: int, rw: int):
+    def allpowerfull_rw(self, id: int, context: int, rw: int) -> bytes:
         if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_2(self.get_device_name()):
-            self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
-            return
+            return self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=id, context=context, rw=rw))
         logger.debug(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
         if id == 5:
-            # This logic doesnt make snese, but its what they had so..
+            # TODO investigate if the original code makes any difference to this call.
+            """
+            LubaMsgOuterClass.LubaMsg.Builder protoBufBuilderSet = getProtoBufBuilderSet(LubaMsgOuterClass.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS, LubaMsgOuterClass.MsgDevice.DEV_MAINCTL, LubaMsgOuterClass.MsgAttr.MSG_ATTR_REQ);
+            protoBufBuilderSet.setSys(build);
+            sendMsg(protoBufBuilderSet, 122, true, "发送指令--9通用读写命令id=" + i + ",context=" + i2 + ",rw=" + i3);
+            """
             return self.send_order_msg_sys(build)
         return self.send_order_msg_sys(build)
 
-    def traverse_mode(self, id: int) -> None:
+    def traverse_mode(self, id: int) -> bytes:
         """Sets the traversal mode back to charger."""
         # 0 direct
         # 1 follow the perimeter
-        self.allpowerfull_rw(7, id, 1)
+        return self.allpowerfull_rw(7, id, 1)
 
     # Commented out as not needed and too many refs to try fix up
     # def factory_test_order(self, test_id: int, test_duration: int, expect: str):

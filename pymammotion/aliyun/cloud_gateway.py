@@ -627,6 +627,9 @@ class CloudIOTGateway:
     def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send a cloud command to the specified IoT device."""
 
+        if command is None:
+            raise Exception("Command is missing / None")
+
         """Check if iotToken is expired"""
         if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (
             int(time.time()) + (5 * 3600)
