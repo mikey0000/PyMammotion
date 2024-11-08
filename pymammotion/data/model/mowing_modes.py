@@ -37,6 +37,13 @@ class MowOrder(IntEnum):
     grid_first = 1
 
 
+class TraversalMode(IntEnum):
+    """Traversal mode when returning."""
+
+    direct = 0
+    follow_perimeter = 1
+
+
 class BypassStrategy(IntEnum):
     """Matches up with ultra_wave."""
 
