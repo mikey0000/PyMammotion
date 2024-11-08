@@ -204,7 +204,8 @@ class MammotionBaseDevice:
         await self.queue_command("get_device_product_model")
         await self.queue_command("get_report_cfg")
         """RTK and dock location."""
-        await self.queue_command("allpowerfull_rw", id=5, rw=1, context=1)
+        await self.queue_command("allpowerfull_rw", id=5, context=1, rw=1)
+        await self.async_read_settings()
 
     async def start_map_sync(self) -> None:
         """Start sync of map data."""
@@ -224,6 +225,18 @@ class MammotionBaseDevice:
         # sub_cmd 4 is dump location (yuka)
         # jobs list
         # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
+
+    async def async_read_settings(self) -> None:
+        """Read settings from device."""
+        await self.queue_command("allpowerfull_rw", id=3, context=1, rw=0)
+        await self.queue_command("allpowerfull_rw", id=4, context=1, rw=0)
+        await self.queue_command("allpowerfull_rw", id=6, context=1, rw=0)
+        # traversal mode
+        await self.queue_command("allpowerfull_rw", id=7, context=1, rw=0)
+
+        await self.queue_command("read_and_set_sidelight", is_sidelight=True, operate=1)
+
+        await self.queue_command("read_and_set_rtk_pairing_code", op=1, cfg="")
 
     async def async_get_errors(self) -> None:
         """Error codes."""

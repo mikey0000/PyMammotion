@@ -24,15 +24,22 @@ class MnetInfo(DataClassORJSONMixin):
 
 
 @dataclass
+class LockStateT(DataClassORJSONMixin):
+    lock_state: int = 0
+
+
+@dataclass
 class DeviceData(DataClassORJSONMixin):
     sys_status: int = 0
     charge_state: int = 0
     battery_val: int = 0
     sensor_status: int = 0
     last_status: int = 0
+    vslam_status: int = 0
     sys_time_stamp: str = ""
     collector_status: CollectorStatus = field(default_factory=CollectorStatus)
     mnet_info: MnetInfo = field(default_factory=MnetInfo)
+    lock_state: LockStateT = field(default_factory=LockStateT)
 
 
 @dataclass

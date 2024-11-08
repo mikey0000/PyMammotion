@@ -127,6 +127,12 @@ class MessageSystem(AbstractMessage, ABC):
             return self.send_order_msg_sys(build)
         return self.send_order_msg_sys(build)
 
+    def traverse_mode(self, id: int) -> None:
+        """Sets the traversal mode back to charger."""
+        # 0 direct
+        # 1 follow the perimeter
+        self.allpowerfull_rw(7, id, 1)
+
     # Commented out as not needed and too many refs to try fix up
     # def factory_test_order(self, test_id: int, test_duration: int, expect: str):
     #     new_builder = mow_to_app_qctools_info_t.Builder()
@@ -223,6 +229,9 @@ class MessageSystem(AbstractMessage, ABC):
 
     def get_device_version_info(self):
         return self.send_order_msg_sys(MctlSys(todev_get_dev_fw_info=1))
+
+    def read_and_set_rtk_pairing_code(self, op: int, cfg: str) -> bytes:
+        return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cfg)))
 
     # === sendOrderMsg_Sys2 ===
 

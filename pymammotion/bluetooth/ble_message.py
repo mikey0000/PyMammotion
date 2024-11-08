@@ -413,7 +413,6 @@ class BleMessage:
                 sequence,
                 self.mReadSequence.get(),
             )
-
             # Set the value for mReadSequence manually
             self.mReadSequence.set(sequence)
 
