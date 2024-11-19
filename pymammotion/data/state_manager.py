@@ -30,7 +30,7 @@ class StateManager:
         self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]]] = (
             None
         )
-        self.on_notification_callback: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_notification_callback: Optional[Callable[[tuple[str, Any | None]], Awaitable[None]]] = None
         self.queue_command_callback: Optional[Callable[[str, dict[str, Any]], Awaitable[bytes]]] = None
         self.last_updated_at = datetime.now()
 
@@ -66,7 +66,7 @@ class StateManager:
                 self._update_ota_data(message)
 
         if self.on_notification_callback:
-            await self.on_notification_callback()
+            await self.on_notification_callback(res)
 
     async def _update_nav_data(self, message) -> None:
         """Update nav data."""

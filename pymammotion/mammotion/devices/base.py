@@ -43,7 +43,7 @@ class MammotionBaseDevice:
         self._notify_future: asyncio.Future[bytes] | None = None
         self._cloud_device = cloud_device
 
-    def set_notification_callback(self, func: Callable[[], Awaitable[None]]) -> None:
+    def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
         self._state_manager.on_notification_callback = func
 
     def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:

@@ -262,6 +262,20 @@ class MessageSystem(AbstractMessage, ABC):
             build.todev_report_cfg.act}")
         return self.send_order_msg_sys_legacy(build)
 
+    def get_maintenance(self) -> None:
+        self.request_iot_sys(
+            rpt_act=RptAct.RPT_START,
+            rpt_info_type=[
+                RptInfoType.RIT_MAINTAIN,
+                RptInfoType.RIT_BASESTATION_INFO,
+                RptInfoType.RIT_FW_INFO,
+            ],
+            timeout=1000,
+            period=1000,
+            no_change_period=2000,
+            count=0,
+        )
+
     def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
         # TODO use send_order_msg_sys_legacy
         mctl_sys = MctlSys(
@@ -279,7 +293,6 @@ class MessageSystem(AbstractMessage, ABC):
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
@@ -315,7 +328,6 @@ class MessageSystem(AbstractMessage, ABC):
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_MAINTAIN)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)

@@ -281,9 +281,11 @@ class PosType(IntEnum):
     TURN_AREA_INSIDE = 4
     VIRTUAL_INSIDE = 6
 
-    def camera_brightness(value: int) -> str:
-        modes = {
-            0: "Dark",
-            1: "Light",
-        }
-        return modes.get(value, "Invalid mode")
+
+def camera_brightness(value: int) -> str:
+    """Return the brightness corresponding to the given value."""
+    modes = {
+        0: "Dark",
+        1: "Light",
+    }
+    return modes.get(value, "Invalid mode")
