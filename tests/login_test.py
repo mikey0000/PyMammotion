@@ -7,6 +7,7 @@ from aiohttp import ClientSession
 from pymammotion import MammotionHTTP
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.const import MAMMOTION_DOMAIN
+from pymammotion.http.http import connect_http
 from pymammotion.http.model.http import LoginResponseData
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT

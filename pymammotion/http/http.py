@@ -36,15 +36,55 @@ class MammotionHTTP:
                     codes[error_info.code] = error_info
                 return codes
 
-    async def oauth_check(self) -> None:
+    async def oauth_check(self) -> Response:
         """Check if token is valid.
 
         Returns 401 if token is invalid. We then need to re-authenticate, can try to refresh token first
         """
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
-            async with session.post("/user-server/v1/user/oauth/check") as resp:
+            async with session.post("/user-server/v1/user/oauth/check", headers=self._headers) as resp:
                 data = await resp.json()
-                response = Response.from_dict(data)
+                return Response.from_dict(data)
+
+    async def pair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post(
+                "/device-server/v1/iot/device/pairing",
+                headers=self._headers,
+                json={"mowerName": mower_name, "rtkName": rtk_name},
+            ) as resp:
+                data = await resp.json()
+                if data.get("status") == 200:
+                    print(data)
+                    return Response.from_dict(data)
+                else:
+                    print(data)
+
+    async def unpair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post(
+                "/device-server/v1/iot/device/unpairing",
+                headers=self._headers,
+                json={"mowerName": mower_name, "rtkName": rtk_name},
+            ) as resp:
+                data = await resp.json()
+                if data.get("status") == 200:
+                    print(data)
+                    return Response.from_dict(data)
+                else:
+                    print(data)
+
+    async def net_rtk_enable(self, device_id: str) -> Response:
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post(
+                "/device-server/v1/iot/net-rtk/enable", headers=self._headers, json={"deviceId": device_id}
+            ) as resp:
+                data = await resp.json()
+                if data.get("status") == 200:
+                    print(data)
+                    return Response.from_dict(data)
+                else:
+                    print(data)
 
     async def get_stream_subscription(self, iot_id: str) -> Response[StreamSubscriptionResponse]:
         """Get agora.io data for view camera stream"""
