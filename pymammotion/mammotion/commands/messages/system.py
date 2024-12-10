@@ -262,8 +262,8 @@ class MessageSystem(AbstractMessage, ABC):
             build.todev_report_cfg.act}")
         return self.send_order_msg_sys_legacy(build)
 
-    def get_maintenance(self) -> None:
-        self.request_iot_sys(
+    def get_maintenance(self) -> bytes:
+        return self.request_iot_sys(
             rpt_act=RptAct.RPT_START,
             rpt_info_type=[
                 RptInfoType.RIT_MAINTAIN,
@@ -273,7 +273,7 @@ class MessageSystem(AbstractMessage, ABC):
             timeout=1000,
             period=1000,
             no_change_period=2000,
-            count=0,
+            count=3,
         )
 
     def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
