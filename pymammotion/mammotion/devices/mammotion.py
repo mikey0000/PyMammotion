@@ -98,7 +98,7 @@ class MammotionMixedDeviceManager:
         return self._ble_device is not None
 
 
-class MammotionDevices:
+class MammotionDeviceManager:
     devices: dict[str, MammotionMixedDeviceManager] = {}
 
     def add_device(self, mammotion_device: MammotionMixedDeviceManager) -> None:
@@ -151,7 +151,7 @@ async def create_devices(
 class Mammotion:
     """Represents a Mammotion account and its devices."""
 
-    devices = MammotionDevices()
+    device_manager = MammotionDeviceManager()
     mqtt_list: dict[str, MammotionCloud] = dict()
 
     _instance: Mammotion = None
