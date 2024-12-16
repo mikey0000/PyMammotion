@@ -7,7 +7,6 @@ from aiohttp import ClientSession
 from pymammotion import MammotionHTTP
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.const import MAMMOTION_DOMAIN
-from pymammotion.http.http import connect_http
 from pymammotion.http.model.http import LoginResponseData
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mqtt import MammotionMQTT
@@ -23,8 +22,10 @@ async def run():
     
 
     async with ClientSession(MAMMOTION_DOMAIN) as session:
-        luba_http = await MammotionHTTP.login(session, EMAIL, PASSWORD)
-        data = LoginResponseData.from_dict(luba_http.data)
+        mammotion = MammotionHTTP()
+        luba_http = await mammotion.login(EMAIL, PASSWORD)
+        print(luba_http.data)
+        data = mammotion.login_info
         country_code = data.userInformation.domainAbbreviation
         logger.debug("CountryCode: " + country_code)
         logger.debug("AuthCode: " + data.authorization_code)

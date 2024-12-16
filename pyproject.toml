@@ -34,6 +34,7 @@ orjson = "^3.9.15"
 betterproto = "^1.2.5"
 numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
+cryptography = ">=43.0.1"
 
 [tool.poetry.group.extras]
 optional = true
