@@ -15,7 +15,7 @@ from pymammotion.http.model.http import ErrorInfo, LoginResponseData, Response
 
 class MammotionHTTP:
     def __init__(self, response: Response) -> None:
-        self._headers = dict()
+        self._headers = {"User-Agent": "okhttp/3.14.9", "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332"}
         self.login_info = LoginResponseData.from_dict(response.data) if response.data else None
         self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if response.data else None
         self.response = response
@@ -55,6 +55,7 @@ class MammotionHTTP:
                 headers={
                     "Authorization": f"{self._headers.get('Authorization', "")}",
                     "Content-Type": "application/json",
+                    "User-Agent": "okhttp/3.14.9",
                 },
             ) as resp:
                 data = await resp.json()
@@ -66,6 +67,7 @@ class MammotionHTTP:
     async def login(cls, session: ClientSession, username: str, password: str) -> Response[LoginResponseData]:
         async with session.post(
             "/oauth/token",
+            headers={"User-Agent": "okhttp/3.14.9", "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332"},
             params=dict(
                 username=username,
                 password=password,
