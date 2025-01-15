@@ -48,13 +48,13 @@ class MessageNetwork(AbstractMessage, ABC):
         comm_esp = DevNet(todev_ble_sync=sync_type)
         return self.send_order_msg_net(comm_esp)
 
-    def get_device_base_info(self) -> bytes:
+    def get_device_version_main(self) -> bytes:
         net = DevNet(todev_devinfo_req=DrvDevInfoReq())
         net.todev_devinfo_req.req_ids.append(DrvDevInfoReqId(id=1, type=6))
 
         return self.send_order_msg_net(net)
 
-    def get_device_version_main(self) -> bytes:
+    def get_device_base_info(self) -> bytes:
         net = DevNet(todev_devinfo_req=DrvDevInfoReq())
 
         for i in range(1, 8):

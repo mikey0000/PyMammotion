@@ -62,7 +62,7 @@ class MessageSystem(AbstractMessage, ABC):
         logger.debug("Send command - send factory reset")
         return self.send_order_msg_sys(build)
 
-    def set_blade_control(self, on_off: int):
+    def set_blade_control(self, on_off: int) -> bytes:
         mctlsys = MctlSys()
         sys_knife_control = SysKnifeControl()
         sys_knife_control.knife_status = on_off
@@ -70,10 +70,10 @@ class MessageSystem(AbstractMessage, ABC):
 
         return self.send_order_msg_sys(mctlsys)
 
-    def get_device_product_model(self):
+    def get_device_product_model(self) -> bytes:
         return self.send_order_msg_sys(MctlSys(device_product_type_info=DeviceProductTypeInfoT(result=1)))
 
-    def read_and_set_sidelight(self, is_sidelight: bool, operate: int):
+    def read_and_set_sidelight(self, is_sidelight: bool, operate: int) -> bytes:
         """Read state of sidelight as well as set it."""
         if is_sidelight:
             build = TimeCtrlLight(
@@ -197,7 +197,7 @@ class MessageSystem(AbstractMessage, ABC):
     #         test_id}, testDuration={test_duration}", "Factory tool logger.debug222", True)
     #     return self.send_order_msg_sys(build2)
 
-    def send_sys_set_date_time(self):
+    def send_sys_set_date_time(self) -> bytes:
         calendar = datetime.datetime.now()
         i = calendar.year
         i2 = calendar.month
@@ -231,7 +231,7 @@ class MessageSystem(AbstractMessage, ABC):
         )
         return self.send_order_msg_sys(build)
 
-    def get_device_version_info(self):
+    def get_device_version_info(self) -> bytes:
         return self.send_order_msg_sys(MctlSys(todev_get_dev_fw_info=1))
 
     def read_and_set_rtk_pairing_code(self, op: int, cfg: str) -> bytes:
