@@ -7,7 +7,6 @@ import betterproto
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
-from pymammotion.data.model.device_config import DeviceLimits
 from pymammotion.data.model.device_info import MowerInfo
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
@@ -36,7 +35,6 @@ class MowingDevice(DataClassORJSONMixin):
     report_data: ReportData = field(default_factory=ReportData)
     err_code_list: list = field(default_factory=list)
     err_code_list_time: Optional[list] = field(default_factory=list)
-    limits: DeviceLimits = field(default_factory=DeviceLimits)
     error_codes: dict[str, ErrorInfo] = field(default_factory=dict)
 
     def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:
