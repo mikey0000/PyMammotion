@@ -14,7 +14,7 @@ from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.state_manager import StateManager
-from pymammotion.http.http import connect_http
+from pymammotion.http.http import MammotionHTTP
 from pymammotion.mammotion.devices.mammotion_bluetooth import MammotionBaseBLEDevice
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionBaseCloudDevice, MammotionCloud
 from pymammotion.mqtt import MammotionMQTT
@@ -230,7 +230,8 @@ class Mammotion:
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
         cloud_client = CloudIOTGateway()
-        mammotion_http = await connect_http(account, password)
+        mammotion_http = MammotionHTTP()
+        await mammotion_http.login(account, password)
         country_code = mammotion_http.login_info.userInformation.domainAbbreviation
         _LOGGER.debug("CountryCode: " + country_code)
         _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
