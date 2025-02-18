@@ -1,17 +1,22 @@
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
 [project]
 name        = "pymammotion"
-version     = "0.4.0-alpha1"
-
-[tool.poetry]
-name        = "pymammotion"
-version     = "0.4.0-alpha1"
-license     = "GNU-3.0"
+version     = "0.4.0-alpha5"
+license     = "GPL-3.0"
 description = ""
 readme      = "README.md"
+requires-python = ">=3.10"
+dynamic     = ["classifiers", "dependencies"]
 authors     = [
-    "Michael Arthur <michael@jumblesoft.co.nz>",
-    "jLynx <@jlynx>"
+    { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
+    { name = "jLynx" },
 ]
+
+
+[tool.poetry]
 packages = [{include = "pymammotion"}]
 
 
@@ -20,10 +25,8 @@ python = ">=3.10,<3.13"
 bleak = ">=0.21.0"
 protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
-aliyun-python-sdk-iot = "^8.57.0"
-aliyun-iot-linkkit = "^1.2.12"
 aiohttp = "^3.9.1"
-paho-mqtt = "^1.6.1"
+paho-mqtt = "==2.1.0"
 alicloud-gateway-iot = "^1.0.0"
 alibabacloud-apigateway-util = "^0.0.2"
 alibabacloud-iot-api-gateway = "^0.0.4"
@@ -35,6 +38,7 @@ betterproto = "^1.2.5"
 numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
 cryptography = ">=43.0.1"
+crcmod = "^1.7"
 
 [tool.poetry.group.extras]
 optional = true
@@ -61,7 +65,7 @@ mypy = "^1.11.2"
 autotyping = "^24.3.0"
 
 [tool.bumpver]
-current_version = "0.4.0-alpha1"
+current_version = "0.4.0-alpha5"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true

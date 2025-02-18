@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -9,9 +9,9 @@ class RangeLimit:
 
 @dataclass
 class DeviceLimits:
-    cutter_height: RangeLimit = RangeLimit(min=30, max=100)
-    working_speed: RangeLimit = RangeLimit(min=0.2, max=1.2)
-    working_path: RangeLimit = RangeLimit(min=15, max=35)
+    cutter_height: RangeLimit = field(default_factory=RangeLimit)
+    working_speed: RangeLimit = field(default_factory=RangeLimit)
+    working_path: RangeLimit = field(default_factory=RangeLimit)
     work_area_num_max: int = 60
     display_image_type: int = 0
 

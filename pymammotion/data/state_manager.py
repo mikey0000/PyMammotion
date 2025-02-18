@@ -1,8 +1,9 @@
 """Manage state from notifications into MowingDevice."""
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 import betterproto
 
@@ -10,7 +11,7 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
-from pymammotion.proto.dev_net import WifiIotStatusReport
+from pymammotion.proto.dev_net import DrvDevInfoResp, WifiIotStatusReport
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
 from pymammotion.proto.mctrl_sys import DeviceProductTypeInfoT, TimeCtrlLight
@@ -26,12 +27,10 @@ class StateManager:
 
     def __init__(self, device: MowingDevice) -> None:
         self._device = device
-        self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck], Awaitable[None]]] = None
-        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]]] = (
-            None
-        )
-        self.on_notification_callback: Optional[Callable[[tuple[str, Any | None]], Awaitable[None]]] = None
-        self.queue_command_callback: Optional[Callable[[str, dict[str, Any]], Awaitable[bytes]]] = None
+        self.gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
+        self.get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = None
+        self.on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
+        self.queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
         self.last_updated_at = datetime.now()
 
     def get_device(self) -> MowingDevice:
@@ -121,6 +120,12 @@ class StateManager:
             case "toapp_wifi_iot_status":
                 wifi_iot_status: WifiIotStatusReport = net_msg[1]
                 self._device.mower_state.product_key = wifi_iot_status.productkey
+            case "toapp_devinfo_resp":
+                toapp_devinfo_resp: DrvDevInfoResp = net_msg[1]
+                for resp in toapp_devinfo_resp.resp_ids:
+                    if resp.res == "DRV_RESULT_SUC":
+                        self._device.mower_state.swversion = resp.info
+                        self._device.device_firmwares.device_version = resp.info
 
     def _update_mul_data(self, message) -> None:
         pass

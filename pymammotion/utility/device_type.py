@@ -1,5 +1,33 @@
 from enum import Enum
 
+LubaProductKey = [
+    "a1UBFdq6nNz",
+    "a1x0zHD3Xop",
+    "a1pvCnb3PPu",
+    "a1kweSOPylG",
+    "a1JFpmAV5Ur",
+    "a1BmXWlsdbA",
+    "a1jOhAYOIG8",
+    "a1K4Ki2L5rK",
+    "a1ae1QnXZGf",
+    "a1nf9kRBWoH",
+    "a1ZU6bdGjaM",
+]
+
+LubaVProductKey = ["a1iMygIwxFC", "a1LLmy1zc0j", "a1LLmy1zc0j"]
+
+LubaVProProductKey = ["a1mb8v6tnAa", "a1pHsTqyoPR"]
+
+Luba2MiniProductKey = ["a1L5ZfJIxGl", "a1dCWYFLROK"]
+
+YukaProductKey = ["a1kT0TlYEza", "a1IQV0BrnXb"]
+
+YukaPlusProductKey = ["a1lNESu9VST"]
+
+YukaMiniProductKey = ["a1BqmEWMRbX", "a1biqVGvxrE"]
+
+RTKProductKey = ["a1qXkZ5P39W", "a1Nc68bGZzX"]
+
 
 class DeviceType(Enum):
     UNKNOWN = (-1, "UNKNOWN", "Unknown")
@@ -226,7 +254,7 @@ class DeviceType(Enum):
 
         if not product_key:
             return False
-        return product_key in ["a1qXkZ5P39W", "a1Nc68bGZzX"]
+        return product_key in RTKProductKey
 
     @staticmethod
     def contain_luba_product_key(product_key) -> bool:
@@ -242,19 +270,7 @@ class DeviceType(Enum):
 
         if not product_key:
             return False
-        return product_key in [
-            "a1UBFdq6nNz",
-            "a1x0zHD3Xop",
-            "a1pvCnb3PPu",
-            "a1kweSOPylG",
-            "a1JFpmAV5Ur",
-            "a1BmXWlsdbA",
-            "a1jOhAYOIG8",
-            "a1K4Ki2L5rK",
-            "a1ae1QnXZGf",
-            "a1nf9kRBWoH",
-            "a1ZU6bdGjaM",
-        ]
+        return product_key in LubaProductKey
 
     @staticmethod
     def contain_luba_2_product_key(product_key) -> bool:
@@ -270,7 +286,7 @@ class DeviceType(Enum):
 
         if not product_key:
             return False
-        return product_key in ["a1iMygIwxFC", "a1LLmy1zc0j", "a1LLmy1zc0j"]
+        return product_key in LubaVProductKey
 
     @staticmethod
     def contain_yuka_product_key(product_key) -> bool:
@@ -286,7 +302,39 @@ class DeviceType(Enum):
 
         if not product_key:
             return False
-        return product_key in ["a1IQV0BrnXb"]
+        return product_key in YukaProductKey
+
+    @staticmethod
+    def contain_yuka_mini_product_key(product_key) -> bool:
+        """Check if the given product key is present in a predefined list.
+
+        Args:
+            product_key (str): The product key to be checked.
+
+        Returns:
+            bool: True if the product key is in the predefined list, False otherwise.
+
+        """
+
+        if not product_key:
+            return False
+        return product_key in YukaMiniProductKey
+
+    @staticmethod
+    def contain_yuka_plus_product_key(product_key) -> bool:
+        """Check if the given product key is present in a predefined list.
+
+        Args:
+            product_key (str): The product key to be checked.
+
+        Returns:
+            bool: True if the product key is in the predefined list, False otherwise.
+
+        """
+
+        if not product_key:
+            return False
+        return product_key in YukaPlusProductKey
 
     def is_support_video(self):
         return self != DeviceType.LUBA

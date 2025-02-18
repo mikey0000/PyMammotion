@@ -169,7 +169,7 @@ class Mammotion:
         self, ble_device: BLEDevice, preference: ConnectionPreference = ConnectionPreference.BLUETOOTH
     ) -> None:
         if ble_device:
-            self.devices.add_device(
+            self.device_manager.add_device(
                 MammotionMixedDeviceManager(name=ble_device.name, ble_device=ble_device, preference=preference)
             )
 
@@ -205,9 +205,9 @@ class Mammotion:
 
     def add_cloud_devices(self, mqtt_client: MammotionCloud) -> None:
         for device in mqtt_client.cloud_client.devices_by_account_response.data.data:
-            mower_device = self.devices.get_device(device.deviceName)
+            mower_device = self.device_manager.get_device(device.deviceName)
             if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
-                self.devices.add_device(
+                self.device_manager.add_device(
                     MammotionMixedDeviceManager(
                         name=device.deviceName,
                         cloud_device=device,
@@ -222,7 +222,7 @@ class Mammotion:
                     mower_device.replace_mqtt(mqtt_client)
 
     def set_disconnect_strategy(self, disconnect: bool) -> None:
-        for device_name, device in self.devices.devices.items():
+        for device_name, device in self.device_manager.devices.items():
             if device.ble() is not None:
                 ble_device: MammotionBaseBLEDevice = device.ble()
                 ble_device.set_disconnect_strategy(disconnect)
@@ -249,10 +249,10 @@ class Mammotion:
         return cloud_client
 
     async def remove_device(self, name: str) -> None:
-        await self.devices.remove_device(name)
+        await self.device_manager.remove_device(name)
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
-        return self.devices.get_device(name)
+        return self.device_manager.get_device(name)
 
     async def send_command(self, name: str, key: str):
         """Send a command to the device."""
