@@ -4,7 +4,8 @@ import json
 import logging
 from asyncio import TimerHandle
 from collections import deque
-from typing import Any, Awaitable, Callable, Optional, cast
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 import betterproto
 
@@ -13,6 +14,7 @@ from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.data.state_manager import StateManager
 from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
@@ -35,6 +37,7 @@ class MammotionCloud:
         self._waiting_queue = deque()
         self.mqtt_message_event = DataEvent()
         self.mqtt_properties_event = DataEvent()
+        self.mqtt_status_event = DataEvent()
         self.on_ready_event = DataEvent()
         self.on_disconnected_event = DataEvent()
         self.on_connected_event = DataEvent()
@@ -116,7 +119,7 @@ class MammotionCloud:
         json_str = json.dumps(payload)
         payload = json.loads(json_str)
 
-        await self._handle_mqtt_message(topic, payload)
+        await self._parse_mqtt_response(topic, payload)
 
     async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parse the MQTT response."""
@@ -134,10 +137,9 @@ class MammotionCloud:
             if event.method == "thing.properties":
                 await self.mqtt_properties_event.data_event(event)
                 _LOGGER.debug(event)
-
-    async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
-        """Async handler for incoming MQTT messages."""
-        await self._parse_mqtt_response(topic=topic, payload=payload)
+        elif topic.endswith("/app/down/thing/status"):
+            status = ThingStatusMessage.from_dict(payload)
+            await self.mqtt_status_event.data_event(status)
 
     def _disconnect(self) -> None:
         """Disconnect the MQTT client."""
@@ -156,7 +158,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         super().__init__(state_manager, cloud_device)
         self._ble_sync_task: TimerHandle | None = None
         self.stopped = False
-        self.on_ready_callback: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_ready_callback: Callable[[], Awaitable[None]] | None = None
         self.loop = asyncio.get_event_loop()
         self._mqtt = mqtt
         self.iot_id = cloud_device.iotId
@@ -166,6 +168,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.currentID = ""
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
         self._mqtt.mqtt_properties_event.add_subscribers(self._parse_message_properties_for_device)
+        self._mqtt.mqtt_status_event.add_subscribers(self._parse_message_status_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.add_subscribers(self.on_connect)
@@ -277,6 +280,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         if event.params.iotId != self.iot_id:
             return
         self.state_manager.properties(event)
+
+    async def _parse_message_status_for_device(self, status: ThingStatusMessage) -> None:
+        if status.params.iotId != self.iot_id:
+            return
+        self.state_manager.status(status)
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         _LOGGER.debug("_parse_message_for_device")

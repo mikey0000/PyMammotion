@@ -193,6 +193,10 @@ class MammotionMQTT:
             else:
                 logger.info("Unhandled event: %s", params.identifier)
         elif message.topic.endswith("/app/down/thing/status"):
+            # the tell if a device has come back online
+            # lastStatus
+            # 1 online?
+            # 3 offline?
             status = ThingStatusMessage(**payload)
             logger.debug(status.params.status.value)
         elif message.topic.endswith("/app/down/thing/properties"):

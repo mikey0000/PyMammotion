@@ -1,19 +1,11 @@
 import asyncio
 import logging
 import os
-
-from aiohttp import ClientSession
 import traceback
 
-from pymammotion import MammotionHTTP
-from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.const import MAMMOTION_DOMAIN
-from pymammotion.http.http import connect_http
-from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
-from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT, logger
-from pymammotion.mammotion.devices.mammotion import MammotionBaseCloudDevice
+from pymammotion.mqtt.mammotion_mqtt import logger
 from pymammotion.data.model.account import Credentials
-from pymammotion.mammotion.devices.mammotion import create_devices, ConnectionPreference, Mammotion
+from pymammotion.mammotion.devices.mammotion import create_devices, ConnectionPreference
 
 logger = logging.getLogger(__name__)
 

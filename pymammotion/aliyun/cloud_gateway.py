@@ -58,6 +58,10 @@ class DeviceOfflineException(Exception):
     """Raise exception when device is offline."""
 
 
+class GatewayTimeoutException(Exception):
+    """Raise exception when the gateway times out."""
+
+
 class LoginException(Exception):
     """Raise exception when library cannot log in."""
 
@@ -657,7 +661,7 @@ class CloudIOTGateway:
             iot_token=self._session_by_authcode_response.data.iotToken,
         )
 
-        # TODO move to using  InvokeThingServiceRequest()
+        # TODO move to using InvokeThingServiceRequest()
 
         message_id = str(uuid.uuid4())
 
@@ -689,6 +693,10 @@ class CloudIOTGateway:
                 str(response_body_dict.get("code")),
                 str(response_body_dict.get("message")),
             )
+            if response_body_dict.get("code") == 20056:
+                logger.debug("Gateway timeout.")
+                raise GatewayTimeoutException(response_body_dict.get("code"))
+
             if response_body_dict.get("code") == 29003:
                 logger.debug(self._session_by_authcode_response.data.identityId)
                 self.sign_out()

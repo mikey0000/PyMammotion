@@ -1,6 +1,6 @@
 from base64 import b64decode
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 from google.protobuf import json_format
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -91,16 +91,16 @@ class GeneralParams(DataClassORJSONMixin):
     tenantInstanceId: str
     value: Any
 
-    identifier: Optional[str] = None
-    checkFailedData: Optional[dict] = None
-    _tenantId: Optional[str] = None
-    generateTime: Optional[int] = None
-    JMSXDeliveryCount: Optional[int] = None
-    qos: Optional[int] = None
-    requestId: Optional[str] = None
-    _categoryKey: Optional[str] = None
-    deviceType: Optional[str] = None
-    _traceId: Optional[str] = None
+    identifier: str | None = None
+    checkFailedData: dict | None = None
+    _tenantId: str | None = None
+    generateTime: int | None = None
+    JMSXDeliveryCount: int | None = None
+    qos: int | None = None
+    requestId: str | None = None
+    _categoryKey: str | None = None
+    deviceType: str | None = None
+    _traceId: str | None = None
 
 
 @dataclass
@@ -117,7 +117,7 @@ class DeviceNotificationEventParams(GeneralParams):
     {'data': '{"localTime":1725159492000,"code":"1002"}'},
     """
 
-    identifier: Literal["device_notification_event", "device_warning_code_event"]
+    identifier: Literal["device_notification_event", "device_information_event", "device_warning_code_event"]
     type: Literal["info"]
     value: DeviceNotificationEventValue
 
@@ -146,7 +146,7 @@ class DeviceConfigurationRequestEvent(GeneralParams):
 class ThingEventMessage(DataClassORJSONMixin):
     method: Literal["thing.events", "thing.properties"]
     id: str
-    params: Union[DeviceProtobufMsgEventParams, DeviceWarningEventParams, dict]
+    params: DeviceProtobufMsgEventParams | DeviceWarningEventParams | dict
     version: Literal["1.0"]
 
     @classmethod
@@ -170,7 +170,11 @@ class ThingEventMessage(DataClassORJSONMixin):
             params_obj = DeviceBizReqEventParams.from_dict(params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", {})
-        elif identifier == "device_notification_event" or identifier == "device_warning_code_event":
+        elif (
+            identifier == "device_notification_event"
+            or identifier == "device_warning_code_event"
+            or identifier == "device_information_event"
+        ):
             params_obj = DeviceNotificationEventParams.from_dict(params_dict)
         else:
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")

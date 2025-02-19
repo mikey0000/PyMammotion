@@ -11,6 +11,7 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.proto.dev_net import DrvDevInfoResp, WifiIotStatusReport
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
@@ -42,8 +43,20 @@ class StateManager:
         self._device = device
 
     async def properties(self, properties: ThingPropertiesMessage) -> None:
-        params = properties.params
-        self._device.mqtt_properties = params
+        self._device.mqtt_properties = properties
+
+    async def status(self, status: ThingStatusMessage) -> None:
+        if not self._device.online:
+            self._device.online = True
+        self._device.status_properties = status
+
+    @property
+    def online(self) -> bool:
+        return self._device.online
+
+    @online.setter
+    def online(self, value: bool) -> None:
+        self._device.online = value
 
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""

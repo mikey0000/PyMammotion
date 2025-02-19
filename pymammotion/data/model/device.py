@@ -10,6 +10,7 @@ from pymammotion.data.model.device_info import DeviceFirmwares, MowerInfo
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.http.model.http import ErrorInfo
 from pymammotion.proto.mctrl_sys import (
     DeviceFwInfo,
@@ -27,8 +28,10 @@ from pymammotion.utility.map import CoordinateConverter
 class MowingDevice(DataClassORJSONMixin):
     """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
 
+    online: bool = True
     mower_state: MowerInfo = field(default_factory=MowerInfo)
     mqtt_properties: ThingPropertiesMessage | None = None
+    status_properties: ThingStatusMessage | None = None
     map: HashList = field(default_factory=HashList)
     location: Location = field(default_factory=Location)
     mowing_state: RapidState = field(default_factory=RapidState)
