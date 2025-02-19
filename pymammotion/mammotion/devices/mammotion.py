@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from enum import Enum
+import logging
 from typing import Any
 
 from bleak.backends.device import BLEDevice

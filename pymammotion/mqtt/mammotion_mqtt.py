@@ -2,11 +2,11 @@
 
 import asyncio
 import base64
+from collections.abc import Awaitable, Callable
 import hashlib
 import hmac
 import json
 import logging
-from collections.abc import Awaitable, Callable
 from logging import getLogger
 
 import betterproto

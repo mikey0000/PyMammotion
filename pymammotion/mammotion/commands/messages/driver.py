@@ -1,7 +1,7 @@
 # === sendOrderMsg_Driver ===
-import time
 from abc import ABC
 from logging import getLogger
+import time
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import mctrl_driver

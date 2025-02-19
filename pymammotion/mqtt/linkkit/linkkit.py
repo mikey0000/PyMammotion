@@ -16,6 +16,7 @@
 #
 #
 
+from enum import Enum
 import hashlib
 import hmac
 import json
@@ -31,7 +32,6 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from enum import Enum
 
 import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
@@ -1046,7 +1046,7 @@ UxeCp6
             raise LinkKit.StateError("not in INITIALIZED state")
         if port < 1 or port > 65535:
             raise ValueError("port wrong")
-        if protocol != "MQTTv311" and protocol != "MQTTv31":
+        if protocol not in ("MQTTv311", "MQTTv31"):
             raise ValueError("protocol wrong")
         if transport != "TCP":
             raise ValueError("transport wrong")

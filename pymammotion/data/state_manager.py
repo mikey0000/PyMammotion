@@ -1,8 +1,8 @@
 """Manage state from notifications into MowingDevice."""
 
-import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+import logging
 from typing import Any
 
 import betterproto

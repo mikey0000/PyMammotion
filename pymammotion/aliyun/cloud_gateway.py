@@ -5,11 +5,11 @@ import hashlib
 import hmac
 import itertools
 import json
+from logging import getLogger
 import random
 import string
 import time
 import uuid
-from logging import getLogger
 
 from aiohttp import ClientSession
 from alibabacloud_iot_api_gateway.client import Client
@@ -19,14 +19,10 @@ from alibabacloud_tea_util.models import RuntimeOptions
 
 from pymammotion.aliyun.model.aep_response import AepResponse
 from pymammotion.aliyun.model.connect_response import ConnectResponse
-from pymammotion.aliyun.model.dev_by_account_response import (
-    ListingDevByAccountResponse,
-)
+from pymammotion.aliyun.model.dev_by_account_response import ListingDevByAccountResponse
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.aliyun.model.regions_response import RegionResponse
-from pymammotion.aliyun.model.session_by_authcode_response import (
-    SessionByAuthCodeResponse,
-)
+from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.utility.datatype_converter import DatatypeConverter

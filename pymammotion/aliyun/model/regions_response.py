@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, TypeVar
+from typing import TypeVar
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -22,8 +22,8 @@ class RegionResponseData(DataClassORJSONMixin):
 class RegionResponse(DataClassORJSONMixin):
     data: RegionResponseData
     code: int
-    id: Optional[str] = None
-    msg: Optional[str] = None
+    id: str | None = None
+    msg: str | None = None
 
     class Config(BaseConfig):
         omit_default = True

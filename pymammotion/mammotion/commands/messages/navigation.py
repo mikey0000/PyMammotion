@@ -1,7 +1,7 @@
 # === sendOrderMsg_Nav ===
+from abc import ABC
 import logging
 import time
-from abc import ABC
 
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.plan import Plan

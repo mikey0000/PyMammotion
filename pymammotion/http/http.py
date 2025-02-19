@@ -4,12 +4,7 @@ from typing import cast
 from aiohttp import ClientSession
 
 from pymammotion.aliyun.model.stream_subscription_response import StreamSubscriptionResponse
-from pymammotion.const import (
-    MAMMOTION_API_DOMAIN,
-    MAMMOTION_CLIENT_ID,
-    MAMMOTION_CLIENT_SECRET,
-    MAMMOTION_DOMAIN,
-)
+from pymammotion.const import MAMMOTION_API_DOMAIN, MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET, MAMMOTION_DOMAIN
 from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.http import ErrorInfo, LoginResponseData, Response
 

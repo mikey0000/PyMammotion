@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Optional
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -15,7 +14,7 @@ from pymammotion.proto.mctrl_sys import MctlSys
 
 @dataclass
 class RawMowerData:
-    raw: Optional[LubaMsg] = field(default_factory=LubaMsg)
+    raw: LubaMsg | None = field(default_factory=LubaMsg)
 
     @classmethod
     def from_raw(cls, raw: dict) -> "RawMowerData":

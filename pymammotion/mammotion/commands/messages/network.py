@@ -1,6 +1,6 @@
 # === sendOrderMsg_Net  ===
-import time
 from abc import ABC
+import time
 
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
@@ -193,7 +193,7 @@ class MessageNetwork(AbstractMessage, ABC):
     def wifi_connectinfo_update2(self) -> None:
         hash_map = {"getMsgCmd": 1}
         # self.post_custom_data(self.get_json_string(
-        #     68, hash_map))  # ToDo: Fix this
+        #     68, hash_map))  # TODO: Fix this
 
     def get_record_wifi_list(self) -> bytes:
         build = DevNet(todev_ble_sync=1, todev__wifi_list_upload=DrvWifiList())

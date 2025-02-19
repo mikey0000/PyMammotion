@@ -1,7 +1,8 @@
-import asyncio
-import logging
 from abc import abstractmethod
-from typing import Any, Awaitable, Callable
+import asyncio
+from collections.abc import Awaitable, Callable
+import logging
+from typing import Any
 
 import betterproto
 

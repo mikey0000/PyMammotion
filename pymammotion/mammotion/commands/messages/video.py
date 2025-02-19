@@ -1,6 +1,6 @@
 # === sendOrderMsg_Video ===
-import time
 from abc import ABC
+import time
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import luba_msg_pb2, luba_mul_pb2

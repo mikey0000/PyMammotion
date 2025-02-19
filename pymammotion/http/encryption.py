@@ -2,7 +2,6 @@ import base64
 import logging
 import secrets
 import string
-from typing import Optional
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding, serialization
@@ -50,7 +49,7 @@ class EncryptionUtils:
             private_key_bytes = base64.b64decode(EncryptionUtils.PRIVATE_KEY)
             return serialization.load_der_private_key(private_key_bytes, password=None, backend=default_backend())
         except Exception as e:
-            raise Exception(f"Failed to load private key: {str(e)}")
+            raise Exception(f"Failed to load private key: {e!s}")
 
     @staticmethod
     def load_public_key(is_production: bool = True):
@@ -65,7 +64,7 @@ class EncryptionUtils:
             public_key_bytes = base64.b64decode(key_string)
             return serialization.load_der_public_key(public_key_bytes, backend=default_backend())
         except Exception as e:
-            raise Exception(f"Failed to load public key: {str(e)}")
+            raise Exception(f"Failed to load public key: {e!s}")
 
     @staticmethod
     def encrypt(plaintext: str, key: str, iv: str) -> str:
@@ -104,7 +103,7 @@ class EncryptionUtils:
             return base64.b64encode(encrypted_bytes).decode("utf-8")
 
         except Exception as e:
-            raise Exception(f"Encryption failed: {str(e)}")
+            raise Exception(f"Encryption failed: {e!s}")
 
     def encryption_by_aes(self, text: str) -> str:
         """Encrypt text using AES with class-level key and IV
@@ -123,10 +122,10 @@ class EncryptionUtils:
             return encrypted
 
         except Exception as e:
-            _LOGGER.error(f"Encryption failed: {str(e)}")
+            _LOGGER.error(f"Encryption failed: {e!s}")
             return None
 
-    def encrypt_by_public_key(self) -> Optional[str]:
+    def encrypt_by_public_key(self) -> str | None:
         """Encrypt data using RSA public key.
 
         Args:

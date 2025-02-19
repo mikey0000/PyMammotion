@@ -1,10 +1,10 @@
 import asyncio
-import base64
-import json
-import logging
 from asyncio import TimerHandle
+import base64
 from collections import deque
 from collections.abc import Awaitable, Callable
+import json
+import logging
 from typing import Any, cast
 
 import betterproto

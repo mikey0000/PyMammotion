@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, Literal, Optional, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from mashumaro import DataClassDictMixin
 from mashumaro.config import BaseConfig
@@ -83,7 +83,7 @@ class LoginResponseUserInformation(DataClassORJSONMixin):
     userId: str
     userAccount: str
     authType: str
-    email: Optional[str] = None
+    email: str | None = None
 
     class Config(BaseConfig):
         omit_none = True

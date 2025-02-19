@@ -24,11 +24,10 @@ import os
 import ssl
 import threading
 import time
+from types import TracebackType
 
 import crcmod
 import hyper
-from types import TracebackType
-from typing import Optional, Type
 
 
 def _assert_value(condition, error_msg):
@@ -60,7 +59,9 @@ class StreamHandler:
     def __enter__(self) -> None:
         pass
 
-    def __exit__(self, type: Optional[Type[BaseException]], value: Optional[BaseException], trace: Optional[TracebackType]) -> None:
+    def __exit__(
+        self, type: type[BaseException] | None, value: BaseException | None, trace: TracebackType | None
+    ) -> None:
         pass
 
     def get_content_length(self):
@@ -90,7 +91,9 @@ class FileStreamHandler(StreamHandler):
         self.__f = open(self.__filename, "rb")
         self.__read_size = 0
 
-    def __exit__(self, type: Optional[Type[BaseException]], value: Optional[BaseException], trace: Optional[TracebackType]) -> None:
+    def __exit__(
+        self, type: type[BaseException] | None, value: BaseException | None, trace: TracebackType | None
+    ) -> None:
         if self.__f:
             self.__f.close()
             self.__f = None

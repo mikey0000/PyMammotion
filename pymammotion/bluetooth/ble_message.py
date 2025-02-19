@@ -1,12 +1,11 @@
+from asyncio import sleep
+from io import BytesIO
 import itertools
 import json
 import logging
 import queue
 import sys
 import time
-from asyncio import sleep
-from io import BytesIO
-from typing import Union
 
 from bleak import BleakClient
 from jsonic.serializable import serialize
@@ -17,9 +16,7 @@ from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.bluetooth.model.atomic_integer import AtomicInteger
 from pymammotion.data.model.execute_boarder import ExecuteBorder
-from pymammotion.proto import (
-    dev_net_pb2,
-)
+from pymammotion.proto import dev_net_pb2
 from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 from pymammotion.utility.constant.device_constant import bleOrderCmd
 
@@ -656,7 +653,7 @@ class BleMessage:
         return byteOS.getvalue()
 
     @staticmethod
-    def calc_crc(initial: int, data: Union[bytes, bytearray]) -> int:
+    def calc_crc(initial: int, data: bytes | bytearray) -> int:
         """Calculate CRC value for given initial value and byte array.
 
         Args:
