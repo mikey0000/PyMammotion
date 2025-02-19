@@ -39,8 +39,6 @@ numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
 cryptography = ">=43.0.1"
 crcmod = "^1.7"
-aliyun-python-sdk-core = "^2.16.0"
-aliyun-python-sdk-iot = "^8.59.0"
 
 [tool.poetry.group.extras]
 optional = true
