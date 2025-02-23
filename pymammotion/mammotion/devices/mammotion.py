@@ -296,7 +296,9 @@ class Mammotion:
         device = self.get_device_by_name(name)
         if device.preference is ConnectionPreference.WIFI:
             if device.has_cloud():
-                _stream_response = await device.cloud().mqtt.cloud_client.get_stream_subscription(device.cloud().iot_id)
+                _stream_response = await device.cloud().mqtt.cloud_client.mammotion_http.get_stream_subscription(
+                    device.cloud().iot_id
+                )
                 _LOGGER.debug(_stream_response)
                 return _stream_response
 
