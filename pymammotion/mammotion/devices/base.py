@@ -1,13 +1,15 @@
-import asyncio
-import logging
 from abc import abstractmethod
-from typing import Any, Awaitable, Callable
+import asyncio
+from collections.abc import Awaitable, Callable
+import logging
+from typing import Any
 
 import betterproto
 
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.model.raw_data import RawMowerData
 from pymammotion.data.state_manager import StateManager
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
@@ -36,8 +38,9 @@ class MammotionBaseDevice:
     def __init__(self, state_manager: StateManager, cloud_device: Device | None = None) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
-        self._raw_data = LubaMsg().to_dict(casing=betterproto.Casing.SNAKE)
         self._state_manager = state_manager
+        self._raw_data = dict()
+        self._raw_mower_data: RawMowerData = RawMowerData()
         self._state_manager.gethash_ack_callback = self.datahash_response
         self._state_manager.get_commondata_ack_callback = self.commdata_response
         self._notify_future: asyncio.Future[bytes] | None = None
@@ -108,7 +111,7 @@ class MammotionBaseDevice:
             case "ota":
                 self._update_ota_data(tmp_msg)
 
-        self.mower.update_raw(self._raw_data)
+        self._raw_mower_data.update_raw(self._raw_data)
 
     def _update_nav_data(self, tmp_msg) -> None:
         """Update navigation data."""

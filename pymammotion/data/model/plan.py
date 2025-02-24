@@ -1,6 +1,3 @@
-from typing import List
-
-
 class Plan:
     def __init__(self) -> None:
         self.pver: int = 0

@@ -116,7 +116,7 @@ Items = Union[
 @dataclass
 class Item:
     time: int
-    value: Union[int, float, str, dict[str, Any]]  # Depending on the type of value
+    value: int | float | str | dict[str, Any]  # Depending on the type of value
 
 
 @dataclass
