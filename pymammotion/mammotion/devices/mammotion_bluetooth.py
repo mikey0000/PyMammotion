@@ -351,6 +351,9 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)
 
+        if self._execute_timed_disconnect is None:
+            await self._execute_forced_disconnect()
+
         self._reset_disconnect_timer()
         await self._state_manager.notification(new_msg)
 

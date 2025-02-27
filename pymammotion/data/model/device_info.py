@@ -35,4 +35,3 @@ class DeviceFirmwares(DataClassORJSONMixin):
     right_motor_driver: str = ""
     rtk_rover_station: str = ""
     rtk_version: str = ""
-    version: str = ""
