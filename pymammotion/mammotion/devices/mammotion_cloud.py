@@ -172,6 +172,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.add_subscribers(self.on_connect)
+        self._state_manager.cloud_gethash_ack_callback = self.datahash_response
+        self._state_manager.cloud_get_commondata_ack_callback = self.commdata_response
         self.set_queue_callback(self.queue_command)
 
         if self._mqtt.is_ready:
@@ -184,6 +186,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.mqtt_message_event.remove_subscribers(self._parse_message_for_device)
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
+
+    def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        self._state_manager.cloud_on_notification_callback = func
+
+    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
+        self._state_manager.cloud_queue_command_callback = func
 
     async def on_ready(self) -> None:
         """Callback for when MQTT is subscribed to events."""

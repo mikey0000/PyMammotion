@@ -1,6 +1,5 @@
 from abc import abstractmethod
 import asyncio
-from collections.abc import Awaitable, Callable
 import logging
 from typing import Any
 
@@ -41,16 +40,8 @@ class MammotionBaseDevice:
         self._state_manager = state_manager
         self._raw_data = dict()
         self._raw_mower_data: RawMowerData = RawMowerData()
-        self._state_manager.gethash_ack_callback = self.datahash_response
-        self._state_manager.get_commondata_ack_callback = self.commdata_response
         self._notify_future: asyncio.Future[bytes] | None = None
         self._cloud_device = cloud_device
-
-    def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
-        self._state_manager.on_notification_callback = func
-
-    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
-        self._state_manager.queue_command_callback = func
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses."""

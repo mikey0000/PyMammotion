@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 import logging
 from typing import Any, cast
 from uuid import UUID
@@ -89,8 +90,16 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._operation_lock = asyncio.Lock()
         self._key: str | None = None
         self.set_queue_callback(self.queue_command)
+        self._state_manager.ble_gethash_ack_callback = self.datahash_response
+        self._state_manager.ble_get_commondata_ack_callback = self.commdata_response
         loop = asyncio.get_event_loop()
         loop.create_task(self.process_queue())
+
+    def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        self._state_manager.ble_on_notification_callback = func
+
+    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
+        self._state_manager.ble_queue_command_callback = func
 
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""
