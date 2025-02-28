@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -7,14 +6,14 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 @dataclass
 class RegionData(DataClassORJSONMixin):
     def __init__(self) -> None:
-        self.hash: Optional[int] = None
+        self.hash: int | None = None
         self.action: int = 0
         self.current_frame: int = 0
-        self.data_hash: Optional[int] = None
+        self.data_hash: int | None = None
         self.data_len: int = 0
-        self.p_hash_a: Optional[int] = None
-        self.p_hash_b: Optional[int] = None
-        self.path: Optional[list[list[float]]] = None
+        self.p_hash_a: int | None = None
+        self.p_hash_b: int | None = None
+        self.path: list[list[float]] | None = None
         self.pver: int = 0
         self.result: int = 0
         self.sub_cmd: int = 0
@@ -72,31 +71,31 @@ class RegionData(DataClassORJSONMixin):
     def set_current_frame(self, current_frame: int) -> None:
         self.current_frame = current_frame
 
-    def get_path(self) -> Optional[list[list[float]]]:
+    def get_path(self) -> list[list[float]] | None:
         return self.path
 
     def set_path(self, path: list[list[float]]) -> None:
         self.path = path
 
-    def get_hash(self) -> Optional[int]:
+    def get_hash(self) -> int | None:
         return self.hash
 
     def set_data_hash(self, data_hash: int) -> None:
         self.data_hash = data_hash
 
-    def get_data_hash(self) -> Optional[int]:
+    def get_data_hash(self) -> int | None:
         return self.data_hash
 
     def set_p_hash_a(self, p_hash_a: int) -> None:
         self.p_hash_a = p_hash_a
 
-    def get_p_hash_a(self) -> Optional[int]:
+    def get_p_hash_a(self) -> int | None:
         return self.p_hash_a
 
     def set_p_hash_b(self, p_hash_b: int) -> None:
         self.p_hash_b = p_hash_b
 
-    def get_p_hash_b(self) -> Optional[int]:
+    def get_p_hash_b(self) -> int | None:
         return self.p_hash_b
 
     def __str__(self) -> str:

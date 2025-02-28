@@ -1,8 +1,9 @@
 """Manage state from notifications into MowingDevice."""
 
-import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Optional
+import logging
+from typing import Any
 
 import betterproto
 
@@ -10,10 +11,11 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
-from pymammotion.proto.dev_net import WifiIotStatusReport
+from pymammotion.data.mqtt.status import ThingStatusMessage
+from pymammotion.proto.dev_net import DrvDevInfoResp, DrvDevInfoResult, WifiIotStatusReport
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
-from pymammotion.proto.mctrl_sys import DeviceProductTypeInfoT, TimeCtrlLight
+from pymammotion.proto.mctrl_sys import DeviceFwInfo, DeviceProductTypeInfoT, TimeCtrlLight
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +25,22 @@ class StateManager:
 
     _device: MowingDevice
     last_updated_at: datetime = datetime.now()
+    cloud_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
+    cloud_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = None
+    cloud_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
+
+    # possibly don't need anymore
+    cloud_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
+
+    ble_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
+    ble_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = None
+    ble_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
+
+    # possibly don't need anymore
+    ble_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
 
     def __init__(self, device: MowingDevice) -> None:
         self._device = device
-        self.gethash_ack_callback: Optional[Callable[[NavGetHashListAck], Awaitable[None]]] = None
-        self.get_commondata_ack_callback: Optional[Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]]] = (
-            None
-        )
-        self.on_notification_callback: Optional[Callable[[tuple[str, Any | None]], Awaitable[None]]] = None
-        self.queue_command_callback: Optional[Callable[[str, dict[str, Any]], Awaitable[bytes]]] = None
         self.last_updated_at = datetime.now()
 
     def get_device(self) -> MowingDevice:
@@ -42,9 +51,39 @@ class StateManager:
         """Set device."""
         self._device = device
 
-    async def properties(self, properties: ThingPropertiesMessage) -> None:
-        params = properties.params
-        self._device.mqtt_properties = params
+    def properties(self, thing_properties: ThingPropertiesMessage) -> None:
+        self._device.mqtt_properties = thing_properties
+
+    def status(self, thing_status: ThingStatusMessage) -> None:
+        if not self._device.online:
+            self._device.online = True
+        self._device.status_properties = thing_status
+
+    @property
+    def online(self) -> bool:
+        return self._device.online
+
+    @online.setter
+    def online(self, value: bool) -> None:
+        self._device.online = value
+
+    async def gethash_ack_callback(self, msg: NavGetHashListAck) -> None:
+        if self.cloud_gethash_ack_callback:
+            await self.cloud_gethash_ack_callback(msg)
+        if self.ble_gethash_ack_callback:
+            await self.ble_gethash_ack_callback(msg)
+
+    async def on_notification_callback(self, res: tuple[str, Any | None]) -> None:
+        if self.cloud_on_notification_callback:
+            await self.cloud_on_notification_callback(res)
+        if self.ble_on_notification_callback:
+            await self.ble_on_notification_callback(res)
+
+    async def get_commondata_ack_callback(self, comm_data: NavGetCommDataAck | SvgMessageAckT) -> None:
+        if self.cloud_get_commondata_ack_callback:
+            await self.cloud_get_commondata_ack_callback(comm_data)
+        if self.ble_get_commondata_ack_callback:
+            await self.ble_get_commondata_ack_callback(comm_data)
 
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
@@ -65,8 +104,7 @@ class StateManager:
             case "ota":
                 self._update_ota_data(message)
 
-        if self.on_notification_callback:
-            await self.on_notification_callback(res)
+        await self.on_notification_callback(res)
 
     async def _update_nav_data(self, message) -> None:
         """Update nav data."""
@@ -111,6 +149,10 @@ class StateManager:
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]
                 self._device.mower_state.model_id = device_product_type.main_product_type
+            case "toapp_dev_fw_info":
+                device_fw_info: DeviceFwInfo = sys_msg[1]
+                self._device.device_firmwares.device_version = device_fw_info.version
+                self._device.mower_state.swversion = device_fw_info.version
 
     def _update_driver_data(self, message) -> None:
         pass
@@ -121,6 +163,12 @@ class StateManager:
             case "toapp_wifi_iot_status":
                 wifi_iot_status: WifiIotStatusReport = net_msg[1]
                 self._device.mower_state.product_key = wifi_iot_status.productkey
+            case "toapp_devinfo_resp":
+                toapp_devinfo_resp: DrvDevInfoResp = net_msg[1]
+                for resp in toapp_devinfo_resp.resp_ids:
+                    if resp.res == DrvDevInfoResult.DRV_RESULT_SUC and resp.id == 1 and resp.type == 6:
+                        self._device.mower_state.swversion = resp.info
+                        self._device.device_firmwares.device_version = resp.info
 
     def _update_mul_data(self, message) -> None:
         pass

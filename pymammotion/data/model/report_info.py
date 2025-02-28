@@ -8,7 +8,7 @@ class ConnectData(DataClassORJSONMixin):
     connect_type: int = 0
     ble_rssi: int = 0
     wifi_rssi: int = 0
-    used_net: str = ""
+    used_net: str = "None"
 
 
 @dataclass
