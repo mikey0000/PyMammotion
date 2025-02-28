@@ -9,6 +9,7 @@ import betterproto
 class MUL_LANGUAGE(betterproto.Enum):
     ENGLISH = 0
     GERMAN = 1
+    UNRECOGNIZED = -1
 
 
 class MUL_CAMERA_POSITION(betterproto.Enum):
