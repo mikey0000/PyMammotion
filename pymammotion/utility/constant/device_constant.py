@@ -216,11 +216,7 @@ class WorkMode:
 def device_connection(connect: ConnectData) -> str:
     """Return string representation of device connection."""
 
-    if (
-        connect.connect_type == 2
-        or connect.used_net == "NET_USED_TYPE_WIFI"
-        or (connect.wifi_rssi != 0 and connect.ble_rssi != 0)
-    ):
+    if connect.wifi_rssi != 0 and connect.ble_rssi != 0:
         return "WIFI/BLE"
 
     if connect.connect_type == 2 or connect.used_net == "NET_USED_TYPE_WIFI" or connect.wifi_rssi != 0:
