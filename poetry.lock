@@ -325,6 +325,21 @@ alibabacloud_tea_util = ">=0.3.8,<1.0.0"
 alibabacloud_url = ">=0.0.1,<1.0.0"
 
 [[package]]
+name = "aliyun-iot-linkkit"
+version = "1.2.13"
+description = "Aliyun IoT Linkkit SDK for Python"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "aliyun-iot-linkkit-1.2.13.tar.gz", hash = "sha256:e992703e3f665e0b5be2761a8c652c2e4402eaeedef05761ac86cb8a3195f251"},
+]
+
+[package.dependencies]
+crcmod = "*"
+paho-mqtt = "*"
+
+[[package]]
 name = "astroid"
 version = "3.3.8"
 description = "An abstract syntax tree for Python with inference support."
@@ -2189,18 +2204,17 @@ files = [
 
 [[package]]
 name = "paho-mqtt"
-version = "2.1.0"
+version = "1.6.1"
 description = "MQTT version 5.0/3.1.1 client class"
 optional = false
-python-versions = ">=3.7"
+python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "paho_mqtt-2.1.0-py3-none-any.whl", hash = "sha256:6db9ba9b34ed5bc6b6e3812718c7e06e2fd7444540df2455d2c51bd58808feee"},
-    {file = "paho_mqtt-2.1.0.tar.gz", hash = "sha256:12d6e7511d4137555a3f6ea167ae846af2c7357b10bc6fa4f7c3968fc1723834"},
+    {file = "paho-mqtt-1.6.1.tar.gz", hash = "sha256:2a8291c81623aec00372b5a85558a372c747cbca8e9934dfe218638b8eefc26f"},
 ]
 
 [package.extras]
-proxy = ["pysocks"]
+proxy = ["PySocks"]
 
 [[package]]
 name = "pathspec"
@@ -3423,4 +3437,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "4488d379676a70a3caf4a18d9d714067f6f8c7c8b8cba0ee1f963e38054c76cd"
+content-hash = "53ee3d047627d3343e435e29a35a5e8a050f63eee862850da27b8cbb9d305827"

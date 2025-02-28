@@ -10,13 +10,13 @@ import logging
 from logging import getLogger
 
 import betterproto
+from linkkit.linkkit import LinkKit
 from paho.mqtt.client import MQTTMessage
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.mqtt.linkkit.linkkit import LinkKit
 from pymammotion.proto.luba_msg import LubaMsg
 
 logger = getLogger(__name__)
