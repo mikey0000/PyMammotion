@@ -149,6 +149,7 @@ class StateManager:
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]
                 self._device.mower_state.model_id = device_product_type.main_product_type
+                self._device.mower_state.sub_model_id = device_product_type.sub_product_type
             case "toapp_dev_fw_info":
                 device_fw_info: DeviceFwInfo = sys_msg[1]
                 self._device.device_firmwares.device_version = device_fw_info.version

@@ -6,6 +6,8 @@ from pymammotion.event.event import BleNotificationEvent
 
 
 class MammotionBLE:
+    """Class for basic ble connections to mowers."""
+
     client: BleakClient
 
     def __init__(self, bleEvt: BleNotificationEvent) -> None:
@@ -57,5 +59,6 @@ class MammotionBLE:
             await self.client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self.notification_handler)
             await self.client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, self.service_changed_handler)
 
-    def getClient(self):
+    def get_client(self):
+        """Returns the ble client."""
         return self.client
