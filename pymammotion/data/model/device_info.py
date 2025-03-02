@@ -23,6 +23,7 @@ class MowerInfo(DataClassORJSONMixin):
     swversion: str = ""
     product_key: str = ""
     model_id: str = ""
+    sub_model_id: str = ""
 
 
 @dataclass

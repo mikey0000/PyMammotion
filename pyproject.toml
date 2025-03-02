@@ -470,6 +470,7 @@ max-complexity = 25
 # results.
 platform = "linux"
 python_version = "3.12"
+exclude = ['pymammotion/proto', 'tests', "scripts"]
 
 # show error messages from unrelated files
 follow_imports = "normal"

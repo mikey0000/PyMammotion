@@ -174,7 +174,7 @@ async def run():
         print("Couldn't establish connection with the device")
         return
     await bleLubaConn.notifications()
-    client = bleLubaConn.getClient()
+    client = bleLubaConn.get_client()
     luba_client = BleMessage(client)
 
     async def handle_notifications(data: bytearray):

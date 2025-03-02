@@ -33,7 +33,7 @@ async def run():
     if not did_connect:
         return
     await bleLubaConn.notifications()
-    client = bleLubaConn.getClient()
+    client = bleLubaConn.get_client()
     luba_client = BleMessage(client)
 
     async def handle_notifications(data:bytearray):
