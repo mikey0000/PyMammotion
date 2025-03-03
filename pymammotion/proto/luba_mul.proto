@@ -3,6 +3,7 @@ syntax = "proto3";
 enum MUL_LANGUAGE {
   ENGLISH = 0;
   GERMAN = 1;
+  UNRECOGNIZED = -1;
 }
 
 enum MUL_CAMERA_POSITION {

@@ -1,7 +1,7 @@
 # === sendOrderMsg_Sys ===
+from abc import ABC
 import datetime
 import time
-from abc import ABC
 
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage

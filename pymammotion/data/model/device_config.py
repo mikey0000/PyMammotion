@@ -6,16 +6,6 @@ from pymammotion.utility.device_type import DeviceType
 
 
 @dataclass
-class DeviceLimits(DataClassORJSONMixin):
-    blade_height_min: int = 30
-    blade_height_max: int = 100
-    working_speed_min: float = 0.2
-    working_speed_max: float = 1.2
-    working_path_min: int = 15
-    working_path_max: int = 35
-
-
-@dataclass
 class OperationSettings(DataClassORJSONMixin):
     """Operation settings for a device."""
 

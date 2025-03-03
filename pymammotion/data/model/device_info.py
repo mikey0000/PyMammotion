@@ -23,3 +23,16 @@ class MowerInfo(DataClassORJSONMixin):
     swversion: str = ""
     product_key: str = ""
     model_id: str = ""
+    sub_model_id: str = ""
+
+
+@dataclass
+class DeviceFirmwares(DataClassORJSONMixin):
+    device_version: str = ""
+    left_motor_driver: str = ""
+    lora_version: str = ""
+    main_controller: str = ""
+    model_name: str = ""
+    right_motor_driver: str = ""
+    rtk_rover_station: str = ""
+    rtk_version: str = ""
