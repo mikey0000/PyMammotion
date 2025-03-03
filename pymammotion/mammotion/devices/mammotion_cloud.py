@@ -184,6 +184,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.on_disconnected_event.remove_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.remove_subscribers(self.on_connect)
         self._mqtt.mqtt_message_event.remove_subscribers(self._parse_message_for_device)
+        self._state_manager.cloud_gethash_ack_callback = None
+        self._state_manager.cloud_get_commondata_ack_callback = None
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
 
@@ -317,6 +319,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 return
 
+        await self._state_manager.notification(new_msg)
+
         if len(self._mqtt.waiting_queue) > 0:
             fut: MammotionFuture = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
             if fut is None:
@@ -325,7 +329,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 fut = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
             if not fut.fut.cancelled():
                 fut.resolve(cast(bytes, binary_data))
-        await self._state_manager.notification(new_msg)
 
     @property
     def mqtt(self):

@@ -84,8 +84,14 @@ class MammotionMixedDeviceManager:
     def replace_cloud(self, cloud_device: MammotionBaseCloudDevice) -> None:
         self._cloud_device = cloud_device
 
+    def remove_cloud(self) -> None:
+        del self._cloud_device
+
     def replace_ble(self, ble_device: MammotionBaseBLEDevice) -> None:
         self._ble_device = ble_device
+
+    def remove_ble(self) -> None:
+        del self._ble_device
 
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
         device = self._cloud_device.device

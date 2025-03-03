@@ -52,6 +52,7 @@ class StateManager:
         self._device = device
 
     def properties(self, thing_properties: ThingPropertiesMessage) -> None:
+        # TODO update device based off thing properties
         self._device.mqtt_properties = thing_properties
 
     def status(self, thing_status: ThingStatusMessage) -> None:
@@ -70,19 +71,19 @@ class StateManager:
     async def gethash_ack_callback(self, msg: NavGetHashListAck) -> None:
         if self.cloud_gethash_ack_callback:
             await self.cloud_gethash_ack_callback(msg)
-        if self.ble_gethash_ack_callback:
+        elif self.ble_gethash_ack_callback:
             await self.ble_gethash_ack_callback(msg)
 
     async def on_notification_callback(self, res: tuple[str, Any | None]) -> None:
         if self.cloud_on_notification_callback:
             await self.cloud_on_notification_callback(res)
-        if self.ble_on_notification_callback:
+        elif self.ble_on_notification_callback:
             await self.ble_on_notification_callback(res)
 
     async def get_commondata_ack_callback(self, comm_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         if self.cloud_get_commondata_ack_callback:
             await self.cloud_get_commondata_ack_callback(comm_data)
-        if self.ble_get_commondata_ack_callback:
+        elif self.ble_get_commondata_ack_callback:
             await self.ble_get_commondata_ack_callback(comm_data)
 
     async def notification(self, message: LubaMsg) -> None:
@@ -94,7 +95,7 @@ class StateManager:
             case "nav":
                 await self._update_nav_data(message)
             case "sys":
-                await self._update_sys_data(message)
+                self._update_sys_data(message)
             case "driver":
                 self._update_driver_data(message)
             case "net":
@@ -130,7 +131,7 @@ class StateManager:
                 converted_list = [AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames]
                 self._device.map.area_name = converted_list
 
-    async def _update_sys_data(self, message) -> None:
+    def _update_sys_data(self, message) -> None:
         """Update system."""
         sys_msg = betterproto.which_one_of(message.sys, "SubSysMsg")
         match sys_msg[0]:
@@ -148,8 +149,9 @@ class StateManager:
                 self._device.mower_state.side_led = side_led
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]
-                self._device.mower_state.model_id = device_product_type.main_product_type
-                self._device.mower_state.sub_model_id = device_product_type.sub_product_type
+                if device_product_type.main_product_type != "" or device_product_type.sub_product_type != "":
+                    self._device.mower_state.model_id = device_product_type.main_product_type
+                    self._device.mower_state.sub_model_id = device_product_type.sub_product_type
             case "toapp_dev_fw_info":
                 device_fw_info: DeviceFwInfo = sys_msg[1]
                 self._device.device_firmwares.device_version = device_fw_info.version

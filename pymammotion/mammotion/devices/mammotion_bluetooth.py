@@ -347,6 +347,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
                 return
 
+        await self._state_manager.notification(new_msg)
         # may or may not be correct, some work could be done here to correctly match responses
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)
@@ -355,7 +356,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             await self._execute_forced_disconnect()
 
         self._reset_disconnect_timer()
-        await self._state_manager.notification(new_msg)
 
     async def _start_notify(self) -> None:
         """Start notification."""
