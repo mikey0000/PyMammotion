@@ -52,6 +52,7 @@ QC_APP_TEST_ULTRA_UNCOVER: QCAppTestId
 QC_APP_TEST_UNLOCK: QCAppTestId
 QC_APP_TEST_X3_SPEAKER: QCAppTestId
 READ: Operation
+RIT_BASESTATION_INFO: rpt_info_type
 RIT_CONNECT: rpt_info_type
 RIT_DEV_LOCAL: rpt_info_type
 RIT_DEV_STA: rpt_info_type
@@ -85,7 +86,7 @@ class LoraCfgRsp(_message.Message):
     fac_cfg: bytes
     op: int
     result: int
-    def __init__(self, result: _Optional[int] = ..., op: _Optional[int] = ..., cfg: _Optional[str] = ..., fac_cfg: _Optional[str] = ...) -> None: ...
+    def __init__(self, result: _Optional[int] = ..., op: _Optional[int] = ..., cfg: _Optional[str] = ..., fac_cfg: _Optional[bytes] = ...) -> None: ...
 
 class MctlSys(_message.Message):
     __slots__ = ["bidire_comm_cmd", "border", "device_product_type_info", "job_plan", "mow_to_app_info", "mow_to_app_qctools_info", "plan_job_del", "simulation_cmd", "systemRapidStateTunnel", "systemTardStateTunnel", "systemTmpCycleTx", "systemUpdateBuf", "toapp_batinfo", "toapp_dev_fw_info", "toapp_err_code", "toapp_lora_cfg_rsp", "toapp_mow_info", "toapp_plan_status", "toapp_report_data", "toapp_ul_fprogress", "toapp_work_state", "todev_data_time", "todev_deljobplan", "todev_get_dev_fw_info", "todev_job_plan_time", "todev_knife_ctrl", "todev_lora_cfg_req", "todev_mow_info_up", "todev_off_chip_flash", "todev_report_cfg", "todev_reset_system", "todev_reset_system_status", "todev_time_ctrl_light", "todev_time_zone"]
@@ -480,6 +481,22 @@ class mow_to_app_qctools_info_t(_message.Message):
     type: QCAppTestId
     def __init__(self, type: _Optional[_Union[QCAppTestId, str]] = ..., timeOfDuration: _Optional[int] = ..., result: _Optional[int] = ..., result_details: _Optional[str] = ..., **kwargs) -> None: ...
 
+class mqtt_rtk_connect(_message.Message):
+    __slots__ = ["rtk_base_num", "rtk_channel", "rtk_switch"]
+    RTK_BASE_NUM_FIELD_NUMBER: _ClassVar[int]
+    RTK_CHANNEL_FIELD_NUMBER: _ClassVar[int]
+    RTK_SWITCH_FIELD_NUMBER: _ClassVar[int]
+    rtk_base_num: str
+    rtk_channel: int
+    rtk_switch: int
+    def __init__(self, rtk_switch: _Optional[int] = ..., rtk_channel: _Optional[int] = ..., rtk_base_num: _Optional[str] = ...) -> None: ...
+
+class nav_heading_state_t(_message.Message):
+    __slots__ = ["heading_state"]
+    HEADING_STATE_FIELD_NUMBER: _ClassVar[int]
+    heading_state: int
+    def __init__(self, heading_state: _Optional[int] = ...) -> None: ...
+
 class report_info_cfg(_message.Message):
     __slots__ = ["act", "count", "no_change_period", "period", "sub", "timeout"]
     ACT_FIELD_NUMBER: _ClassVar[int]
@@ -521,10 +538,11 @@ class report_info_data(_message.Message):
     def __init__(self, connect: _Optional[_Union[rpt_connect_status, _Mapping]] = ..., dev: _Optional[_Union[rpt_dev_status, _Mapping]] = ..., rtk: _Optional[_Union[rpt_rtk, _Mapping]] = ..., locations: _Optional[_Iterable[_Union[rpt_dev_location, _Mapping]]] = ..., work: _Optional[_Union[rpt_work, _Mapping]] = ..., fw_info: _Optional[_Union[device_fw_info, _Mapping]] = ..., maintain: _Optional[_Union[rpt_maintain, _Mapping]] = ..., vision_point_info: _Optional[_Iterable[_Union[vision_point_info_msg, _Mapping]]] = ..., vio_to_app_info: _Optional[_Union[vio_to_app_info_msg, _Mapping]] = ..., vision_statistic_info: _Optional[_Union[vision_statistic_info_msg, _Mapping]] = ...) -> None: ...
 
 class rpt_connect_status(_message.Message):
-    __slots__ = ["ble_rssi", "connect_type", "link_type", "mnet_inet", "mnet_rssi", "used_net", "wifi_rssi"]
+    __slots__ = ["ble_rssi", "connect_type", "link_type", "mnet_cfg", "mnet_inet", "mnet_rssi", "used_net", "wifi_rssi"]
     BLE_RSSI_FIELD_NUMBER: _ClassVar[int]
     CONNECT_TYPE_FIELD_NUMBER: _ClassVar[int]
     LINK_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MNET_CFG_FIELD_NUMBER: _ClassVar[int]
     MNET_INET_FIELD_NUMBER: _ClassVar[int]
     MNET_RSSI_FIELD_NUMBER: _ClassVar[int]
     USED_NET_FIELD_NUMBER: _ClassVar[int]
@@ -532,11 +550,12 @@ class rpt_connect_status(_message.Message):
     ble_rssi: int
     connect_type: int
     link_type: int
+    mnet_cfg: _dev_net_pb2.MnetCfg
     mnet_inet: int
     mnet_rssi: int
     used_net: net_used_type
     wifi_rssi: int
-    def __init__(self, connect_type: _Optional[int] = ..., ble_rssi: _Optional[int] = ..., wifi_rssi: _Optional[int] = ..., link_type: _Optional[int] = ..., mnet_rssi: _Optional[int] = ..., mnet_inet: _Optional[int] = ..., used_net: _Optional[_Union[net_used_type, str]] = ...) -> None: ...
+    def __init__(self, connect_type: _Optional[int] = ..., ble_rssi: _Optional[int] = ..., wifi_rssi: _Optional[int] = ..., link_type: _Optional[int] = ..., mnet_rssi: _Optional[int] = ..., mnet_inet: _Optional[int] = ..., used_net: _Optional[_Union[net_used_type, str]] = ..., mnet_cfg: _Optional[_Union[_dev_net_pb2.MnetCfg, _Mapping]] = ...) -> None: ...
 
 class rpt_dev_location(_message.Message):
     __slots__ = ["bol_hash", "pos_type", "real_pos_x", "real_pos_y", "real_toward", "zone_hash"]
@@ -605,7 +624,7 @@ class rpt_maintain(_message.Message):
     def __init__(self, mileage: _Optional[int] = ..., work_time: _Optional[int] = ..., bat_cycles: _Optional[int] = ...) -> None: ...
 
 class rpt_rtk(_message.Message):
-    __slots__ = ["age", "co_view_stars", "dis_status", "gps_stars", "l2_stars", "lat_std", "lon_std", "lora_info", "pos_level", "reset", "status", "top4_total_mean"]
+    __slots__ = ["age", "co_view_stars", "dis_status", "gps_stars", "l2_stars", "lat_std", "lon_std", "lora_info", "mqtt_rtk_info", "pos_level", "reset", "status", "top4_total_mean"]
     AGE_FIELD_NUMBER: _ClassVar[int]
     CO_VIEW_STARS_FIELD_NUMBER: _ClassVar[int]
     DIS_STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -614,6 +633,7 @@ class rpt_rtk(_message.Message):
     LAT_STD_FIELD_NUMBER: _ClassVar[int]
     LON_STD_FIELD_NUMBER: _ClassVar[int]
     LORA_INFO_FIELD_NUMBER: _ClassVar[int]
+    MQTT_RTK_INFO_FIELD_NUMBER: _ClassVar[int]
     POS_LEVEL_FIELD_NUMBER: _ClassVar[int]
     RESET_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -626,14 +646,15 @@ class rpt_rtk(_message.Message):
     lat_std: int
     lon_std: int
     lora_info: rpt_lora
+    mqtt_rtk_info: mqtt_rtk_connect
     pos_level: int
     reset: int
     status: int
     top4_total_mean: int
-    def __init__(self, status: _Optional[int] = ..., pos_level: _Optional[int] = ..., gps_stars: _Optional[int] = ..., age: _Optional[int] = ..., lat_std: _Optional[int] = ..., lon_std: _Optional[int] = ..., l2_stars: _Optional[int] = ..., dis_status: _Optional[int] = ..., top4_total_mean: _Optional[int] = ..., co_view_stars: _Optional[int] = ..., reset: _Optional[int] = ..., lora_info: _Optional[_Union[rpt_lora, _Mapping]] = ...) -> None: ...
+    def __init__(self, status: _Optional[int] = ..., pos_level: _Optional[int] = ..., gps_stars: _Optional[int] = ..., age: _Optional[int] = ..., lat_std: _Optional[int] = ..., lon_std: _Optional[int] = ..., l2_stars: _Optional[int] = ..., dis_status: _Optional[int] = ..., top4_total_mean: _Optional[int] = ..., co_view_stars: _Optional[int] = ..., reset: _Optional[int] = ..., lora_info: _Optional[_Union[rpt_lora, _Mapping]] = ..., mqtt_rtk_info: _Optional[_Union[mqtt_rtk_connect, _Mapping]] = ...) -> None: ...
 
 class rpt_work(_message.Message):
-    __slots__ = ["area", "bp_hash", "bp_info", "bp_pos_x", "bp_pos_y", "init_cfg_hash", "knife_height", "man_run_speed", "nav_edit_status", "nav_run_mode", "path_hash", "path_pos_x", "path_pos_y", "plan", "progress", "real_path_num", "test_mode_status", "ub_ecode_hash", "ub_path_hash", "ub_zone_hash"]
+    __slots__ = ["area", "bp_hash", "bp_info", "bp_pos_x", "bp_pos_y", "init_cfg_hash", "knife_height", "man_run_speed", "nav_edit_status", "nav_heading_state", "nav_run_mode", "path_hash", "path_pos_x", "path_pos_y", "plan", "progress", "real_path_num", "test_mode_status", "ub_ecode_hash", "ub_path_hash", "ub_zone_hash"]
     AREA_FIELD_NUMBER: _ClassVar[int]
     BP_HASH_FIELD_NUMBER: _ClassVar[int]
     BP_INFO_FIELD_NUMBER: _ClassVar[int]
@@ -643,6 +664,7 @@ class rpt_work(_message.Message):
     KNIFE_HEIGHT_FIELD_NUMBER: _ClassVar[int]
     MAN_RUN_SPEED_FIELD_NUMBER: _ClassVar[int]
     NAV_EDIT_STATUS_FIELD_NUMBER: _ClassVar[int]
+    NAV_HEADING_STATE_FIELD_NUMBER: _ClassVar[int]
     NAV_RUN_MODE_FIELD_NUMBER: _ClassVar[int]
     PATH_HASH_FIELD_NUMBER: _ClassVar[int]
     PATH_POS_X_FIELD_NUMBER: _ClassVar[int]
@@ -663,6 +685,7 @@ class rpt_work(_message.Message):
     knife_height: int
     man_run_speed: int
     nav_edit_status: int
+    nav_heading_state: nav_heading_state_t
     nav_run_mode: int
     path_hash: int
     path_pos_x: int
@@ -674,7 +697,7 @@ class rpt_work(_message.Message):
     ub_ecode_hash: int
     ub_path_hash: int
     ub_zone_hash: int
-    def __init__(self, plan: _Optional[int] = ..., path_hash: _Optional[int] = ..., progress: _Optional[int] = ..., area: _Optional[int] = ..., bp_info: _Optional[int] = ..., bp_hash: _Optional[int] = ..., bp_pos_x: _Optional[int] = ..., bp_pos_y: _Optional[int] = ..., real_path_num: _Optional[int] = ..., path_pos_x: _Optional[int] = ..., path_pos_y: _Optional[int] = ..., ub_zone_hash: _Optional[int] = ..., ub_path_hash: _Optional[int] = ..., init_cfg_hash: _Optional[int] = ..., ub_ecode_hash: _Optional[int] = ..., nav_run_mode: _Optional[int] = ..., test_mode_status: _Optional[int] = ..., man_run_speed: _Optional[int] = ..., nav_edit_status: _Optional[int] = ..., knife_height: _Optional[int] = ...) -> None: ...
+    def __init__(self, plan: _Optional[int] = ..., path_hash: _Optional[int] = ..., progress: _Optional[int] = ..., area: _Optional[int] = ..., bp_info: _Optional[int] = ..., bp_hash: _Optional[int] = ..., bp_pos_x: _Optional[int] = ..., bp_pos_y: _Optional[int] = ..., real_path_num: _Optional[int] = ..., path_pos_x: _Optional[int] = ..., path_pos_y: _Optional[int] = ..., ub_zone_hash: _Optional[int] = ..., ub_path_hash: _Optional[int] = ..., init_cfg_hash: _Optional[int] = ..., ub_ecode_hash: _Optional[int] = ..., nav_run_mode: _Optional[int] = ..., test_mode_status: _Optional[int] = ..., man_run_speed: _Optional[int] = ..., nav_edit_status: _Optional[int] = ..., knife_height: _Optional[int] = ..., nav_heading_state: _Optional[_Union[nav_heading_state_t, _Mapping]] = ...) -> None: ...
 
 class systemRapidStateTunnel_msg(_message.Message):
     __slots__ = ["rapid_state_data", "vio_to_app_info", "vision_point_info", "vision_statistic_info"]
@@ -731,14 +754,14 @@ class vio_to_app_info_msg(_message.Message):
     def __init__(self, x: _Optional[float] = ..., y: _Optional[float] = ..., heading: _Optional[float] = ..., vio_state: _Optional[int] = ..., brightness: _Optional[int] = ..., detect_feature_num: _Optional[int] = ..., track_feature_num: _Optional[int] = ...) -> None: ...
 
 class vision_point_info_msg(_message.Message):
-    __slots__ = ["lable", "num", "vision_point"]
-    LABLE_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ["label", "num", "vision_point"]
+    LABEL_FIELD_NUMBER: _ClassVar[int]
     NUM_FIELD_NUMBER: _ClassVar[int]
     VISION_POINT_FIELD_NUMBER: _ClassVar[int]
-    lable: int
+    label: int
     num: int
     vision_point: _containers.RepeatedCompositeFieldContainer[vision_point_msg]
-    def __init__(self, lable: _Optional[int] = ..., num: _Optional[int] = ..., vision_point: _Optional[_Iterable[_Union[vision_point_msg, _Mapping]]] = ...) -> None: ...
+    def __init__(self, label: _Optional[int] = ..., num: _Optional[int] = ..., vision_point: _Optional[_Iterable[_Union[vision_point_msg, _Mapping]]] = ...) -> None: ...
 
 class vision_point_msg(_message.Message):
     __slots__ = ["x", "y", "z"]

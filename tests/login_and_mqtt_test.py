@@ -3,6 +3,7 @@ import logging
 import os
 
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.http.http import MammotionHTTP
@@ -43,11 +44,11 @@ async def run() -> CloudIOTGateway:
 
     _devices_list = []
     for device in cloud_client.devices_by_account_response.data.data:
-        if (device.deviceName.startswith(("Luba-MTAJTZ7T"))):
+        if (device.deviceName.startswith(("Luba-"))):
             dev = MammotionBaseCloudDevice(
                 mqtt=_mammotion_mqtt,
                 cloud_device=device,
-                mowing_state=MowingDevice()
+                state_manager=StateManager(MowingDevice())
             )
             _devices_list.append(dev)
     await _devices_list[0].queue_command("send_todev_ble_sync", sync_type=3)

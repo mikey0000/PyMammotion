@@ -22,6 +22,12 @@ class AreaHashName(_message.Message):
     name: str
     def __init__(self, name: _Optional[str] = ..., hash: _Optional[int] = ...) -> None: ...
 
+class AreaLabel(_message.Message):
+    __slots__ = ["label"]
+    LABEL_FIELD_NUMBER: _ClassVar[int]
+    label: str
+    def __init__(self, label: _Optional[str] = ...) -> None: ...
+
 class MctlNav(_message.Message):
     __slots__ = ["all_plan_task", "app_request_cover_paths", "bidire_reqconver_path", "bidire_taskid", "cover_path_upload", "nav_sys_param_cmd", "plan_task_execute", "plan_task_name_id", "simulation_cmd", "toapp_all_hash_name", "toapp_bp", "toapp_bstate", "toapp_chgpileto", "toapp_costmap", "toapp_get_commondata_ack", "toapp_gethash_ack", "toapp_lat_up", "toapp_map_name_msg", "toapp_opt_border_info", "toapp_opt_line_up", "toapp_opt_obs_info", "toapp_pos_up", "toapp_svg_msg", "toapp_task_info", "toapp_work_report_ack", "toapp_work_report_update_ack", "toapp_work_report_upload", "toapp_zigzag", "todev_cancel_draw_cmd", "todev_cancel_suscmd", "todev_chl_line", "todev_chl_line_data", "todev_chl_line_end", "todev_draw_border", "todev_draw_border_end", "todev_draw_obs", "todev_draw_obs_end", "todev_edgecmd", "todev_get_commondata", "todev_gethash", "todev_lat_up_ack", "todev_mow_task", "todev_one_touch_leave_pile", "todev_opt_border_info_ack", "todev_opt_line_up_ack", "todev_opt_obs_info_ack", "todev_planjob_set", "todev_rechgcmd", "todev_reset_chg_pile", "todev_save_task", "todev_sustask", "todev_svg_msg", "todev_task_info_ack", "todev_taskctrl", "todev_taskctrl_ack", "todev_unable_time_set", "todev_work_report_cmd", "todev_work_report_update_cmd", "todev_zigzag_ack", "vision_ctrl", "zone_start_precent"]
     ALL_PLAN_TASK_FIELD_NUMBER: _ClassVar[int]
@@ -195,12 +201,11 @@ class NavCHlLineDataAck(_message.Message):
     def __init__(self, startJobRI: _Optional[int] = ..., endJobRI: _Optional[int] = ..., currentFrame: _Optional[int] = ...) -> None: ...
 
 class NavGetCommData(_message.Message):
-    __slots__ = ["Hash", "action", "currentFrame", "dataHash", "paternalHashA", "paternalHashB", "pver", "reserved", "subCmd", "totalFrame", "type"]
+    __slots__ = ["action", "currentFrame", "dataHash", "hash", "paternalHashA", "paternalHashB", "pver", "reserved", "subCmd", "totalFrame", "type"]
     ACTION_FIELD_NUMBER: _ClassVar[int]
     CURRENTFRAME_FIELD_NUMBER: _ClassVar[int]
     DATAHASH_FIELD_NUMBER: _ClassVar[int]
     HASH_FIELD_NUMBER: _ClassVar[int]
-    Hash: int
     PATERNALHASHA_FIELD_NUMBER: _ClassVar[int]
     PATERNALHASHB_FIELD_NUMBER: _ClassVar[int]
     PVER_FIELD_NUMBER: _ClassVar[int]
@@ -211,6 +216,7 @@ class NavGetCommData(_message.Message):
     action: int
     currentFrame: int
     dataHash: int
+    hash: int
     paternalHashA: int
     paternalHashB: int
     pver: int
@@ -218,11 +224,12 @@ class NavGetCommData(_message.Message):
     subCmd: int
     totalFrame: int
     type: int
-    def __init__(self, pver: _Optional[int] = ..., subCmd: _Optional[int] = ..., action: _Optional[int] = ..., type: _Optional[int] = ..., Hash: _Optional[int] = ..., paternalHashA: _Optional[int] = ..., paternalHashB: _Optional[int] = ..., totalFrame: _Optional[int] = ..., currentFrame: _Optional[int] = ..., dataHash: _Optional[int] = ..., reserved: _Optional[str] = ...) -> None: ...
+    def __init__(self, pver: _Optional[int] = ..., subCmd: _Optional[int] = ..., action: _Optional[int] = ..., type: _Optional[int] = ..., hash: _Optional[int] = ..., paternalHashA: _Optional[int] = ..., paternalHashB: _Optional[int] = ..., totalFrame: _Optional[int] = ..., currentFrame: _Optional[int] = ..., dataHash: _Optional[int] = ..., reserved: _Optional[str] = ...) -> None: ...
 
 class NavGetCommDataAck(_message.Message):
-    __slots__ = ["Hash", "action", "currentFrame", "dataCouple", "dataHash", "dataLen", "paternalHashA", "paternalHashB", "pver", "reserved", "result", "subCmd", "totalFrame", "type"]
+    __slots__ = ["Hash", "action", "areaLabel", "currentFrame", "dataCouple", "dataHash", "dataLen", "paternalHashA", "paternalHashB", "pver", "reserved", "result", "subCmd", "totalFrame", "type"]
     ACTION_FIELD_NUMBER: _ClassVar[int]
+    AREALABEL_FIELD_NUMBER: _ClassVar[int]
     CURRENTFRAME_FIELD_NUMBER: _ClassVar[int]
     DATACOUPLE_FIELD_NUMBER: _ClassVar[int]
     DATAHASH_FIELD_NUMBER: _ClassVar[int]
@@ -238,6 +245,7 @@ class NavGetCommDataAck(_message.Message):
     TOTALFRAME_FIELD_NUMBER: _ClassVar[int]
     TYPE_FIELD_NUMBER: _ClassVar[int]
     action: int
+    areaLabel: AreaLabel
     currentFrame: int
     dataCouple: _containers.RepeatedCompositeFieldContainer[_common_pb2.CommDataCouple]
     dataHash: int
@@ -250,7 +258,7 @@ class NavGetCommDataAck(_message.Message):
     subCmd: int
     totalFrame: int
     type: int
-    def __init__(self, pver: _Optional[int] = ..., subCmd: _Optional[int] = ..., result: _Optional[int] = ..., action: _Optional[int] = ..., type: _Optional[int] = ..., Hash: _Optional[int] = ..., paternalHashA: _Optional[int] = ..., paternalHashB: _Optional[int] = ..., totalFrame: _Optional[int] = ..., currentFrame: _Optional[int] = ..., dataHash: _Optional[int] = ..., dataLen: _Optional[int] = ..., dataCouple: _Optional[_Iterable[_Union[_common_pb2.CommDataCouple, _Mapping]]] = ..., reserved: _Optional[str] = ...) -> None: ...
+    def __init__(self, pver: _Optional[int] = ..., subCmd: _Optional[int] = ..., result: _Optional[int] = ..., action: _Optional[int] = ..., type: _Optional[int] = ..., Hash: _Optional[int] = ..., paternalHashA: _Optional[int] = ..., paternalHashB: _Optional[int] = ..., totalFrame: _Optional[int] = ..., currentFrame: _Optional[int] = ..., dataHash: _Optional[int] = ..., dataLen: _Optional[int] = ..., dataCouple: _Optional[_Iterable[_Union[_common_pb2.CommDataCouple, _Mapping]]] = ..., reserved: _Optional[str] = ..., areaLabel: _Optional[_Union[AreaLabel, _Mapping]] = ...) -> None: ...
 
 class NavGetHashList(_message.Message):
     __slots__ = ["currentFrame", "dataHash", "pver", "reserved", "subCmd", "totalFrame"]
