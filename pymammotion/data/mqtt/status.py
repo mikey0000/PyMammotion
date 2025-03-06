@@ -26,7 +26,7 @@ class Status(DataClassORJSONMixin):
 @dataclass
 class Params(DataClassORJSONMixin):
     groupIdList: list[GroupIdListItem]
-    netType: Literal["NET_WIFI"]
+    netType: Literal["NET_WIFI", "NET_MNET"]
     activeTime: int
     ip: str
     aliyunCommodityCode: Literal["iothub_senior"]

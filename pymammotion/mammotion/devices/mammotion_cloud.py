@@ -1,10 +1,11 @@
 import asyncio
+from asyncio import TimerHandle
 import base64
+from collections import deque
+from collections.abc import Awaitable, Callable
 import json
 import logging
-from asyncio import TimerHandle
-from collections import deque
-from typing import Any, Awaitable, Callable, Optional, cast
+from typing import Any, cast
 
 import betterproto
 
@@ -13,13 +14,13 @@ from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.data.state_manager import StateManager
 from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
 from pymammotion.mqtt.mammotion_future import MammotionFuture
-from pymammotion.proto import has_field
-from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto import LubaMsg, has_field
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class MammotionCloud:
         self._waiting_queue = deque()
         self.mqtt_message_event = DataEvent()
         self.mqtt_properties_event = DataEvent()
+        self.mqtt_status_event = DataEvent()
         self.on_ready_event = DataEvent()
         self.on_disconnected_event = DataEvent()
         self.on_connected_event = DataEvent()
@@ -116,7 +118,7 @@ class MammotionCloud:
         json_str = json.dumps(payload)
         payload = json.loads(json_str)
 
-        await self._handle_mqtt_message(topic, payload)
+        await self._parse_mqtt_response(topic, payload)
 
     async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parse the MQTT response."""
@@ -134,10 +136,9 @@ class MammotionCloud:
             if event.method == "thing.properties":
                 await self.mqtt_properties_event.data_event(event)
                 _LOGGER.debug(event)
-
-    async def _handle_mqtt_message(self, topic: str, payload: dict) -> None:
-        """Async handler for incoming MQTT messages."""
-        await self._parse_mqtt_response(topic=topic, payload=payload)
+        elif topic.endswith("/app/down/thing/status"):
+            status = ThingStatusMessage.from_dict(payload)
+            await self.mqtt_status_event.data_event(status)
 
     def _disconnect(self) -> None:
         """Disconnect the MQTT client."""
@@ -156,7 +157,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         super().__init__(state_manager, cloud_device)
         self._ble_sync_task: TimerHandle | None = None
         self.stopped = False
-        self.on_ready_callback: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_ready_callback: Callable[[], Awaitable[None]] | None = None
         self.loop = asyncio.get_event_loop()
         self._mqtt = mqtt
         self.iot_id = cloud_device.iotId
@@ -166,9 +167,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.currentID = ""
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
         self._mqtt.mqtt_properties_event.add_subscribers(self._parse_message_properties_for_device)
+        self._mqtt.mqtt_status_event.add_subscribers(self._parse_message_status_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.add_subscribers(self.on_connect)
+        self._state_manager.cloud_gethash_ack_callback = self.datahash_response
+        self._state_manager.cloud_get_commondata_ack_callback = self.commdata_response
         self.set_queue_callback(self.queue_command)
 
         if self._mqtt.is_ready:
@@ -179,8 +183,16 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.on_disconnected_event.remove_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.remove_subscribers(self.on_connect)
         self._mqtt.mqtt_message_event.remove_subscribers(self._parse_message_for_device)
+        self._state_manager.cloud_gethash_ack_callback = None
+        self._state_manager.cloud_get_commondata_ack_callback = None
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
+
+    def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        self._state_manager.cloud_on_notification_callback = func
+
+    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
+        self._state_manager.cloud_queue_command_callback = func
 
     async def on_ready(self) -> None:
         """Callback for when MQTT is subscribed to events."""
@@ -278,6 +290,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             return
         self.state_manager.properties(event)
 
+    async def _parse_message_status_for_device(self, status: ThingStatusMessage) -> None:
+        if status.params.iotId != self.iot_id:
+            return
+        self.state_manager.status(status)
+
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         _LOGGER.debug("_parse_message_for_device")
         params = event.params
@@ -301,6 +318,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 return
 
+        await self._state_manager.notification(new_msg)
+
         if len(self._mqtt.waiting_queue) > 0:
             fut: MammotionFuture = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
             if fut is None:
@@ -309,7 +328,6 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
                 fut = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
             if not fut.fut.cancelled():
                 fut.resolve(cast(bytes, binary_data))
-        await self._state_manager.notification(new_msg)
 
     @property
     def mqtt(self):

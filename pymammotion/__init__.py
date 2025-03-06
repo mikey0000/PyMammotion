@@ -12,7 +12,7 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 
 # works outside HA on its own
 from pymammotion.bluetooth.ble import MammotionBLE
-from pymammotion.http.http import MammotionHTTP, connect_http
+from pymammotion.http.http import MammotionHTTP
 
 # TODO make a working device that will work outside HA too.
 from pymammotion.mqtt import MammotionMQTT
@@ -20,7 +20,7 @@ from pymammotion.mqtt import MammotionMQTT
 logger = logging.getLogger(__name__)
 
 
-__all__ = ["MammotionBLE", "MammotionHTTP", "connect_http", "MammotionMQTT", "logger"]
+__all__ = ["MammotionBLE", "MammotionHTTP", "MammotionMQTT", "logger"]
 
 
 # TODO provide interface to pick between mqtt/cloud/bluetooth

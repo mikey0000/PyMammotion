@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 import logging
 from typing import Any, cast
 from uuid import UUID
@@ -17,8 +18,7 @@ from pymammotion.bluetooth import BleMessage
 from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
-from pymammotion.proto import has_field
-from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto import LubaMsg, has_field
 
 DBUS_ERROR_BACKOFF_TIME = 0.25
 
@@ -89,8 +89,16 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._operation_lock = asyncio.Lock()
         self._key: str | None = None
         self.set_queue_callback(self.queue_command)
+        self._state_manager.ble_gethash_ack_callback = self.datahash_response
+        self._state_manager.ble_get_commondata_ack_callback = self.commdata_response
         loop = asyncio.get_event_loop()
         loop.create_task(self.process_queue())
+
+    def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        self._state_manager.ble_on_notification_callback = func
+
+    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
+        self._state_manager.ble_queue_command_callback = func
 
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""
@@ -325,7 +333,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.exception("Error parsing message %s", data)
                 data = b""
             finally:
-                self._message.clearNotification()
+                self._message.clear_notification()
 
             _LOGGER.debug("%s: Received notification: %s", self.name, data)
         else:
@@ -338,12 +346,15 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
                 return
 
+        await self._state_manager.notification(new_msg)
         # may or may not be correct, some work could be done here to correctly match responses
         if self._notify_future and not self._notify_future.done():
             self._notify_future.set_result(data)
 
+        if self._execute_timed_disconnect is None:
+            await self._execute_forced_disconnect()
+
         self._reset_disconnect_timer()
-        await self._state_manager.notification(new_msg)
 
     async def _start_notify(self) -> None:
         """Start notification."""

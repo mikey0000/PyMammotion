@@ -1,17 +1,20 @@
 # === sendOrderMsg_Sys ===
+from abc import ABC
 import datetime
 import time
-from abc import ABC
 
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
-from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
-from pymammotion.proto.mctrl_sys import (
+from pymammotion.proto import (
     DeviceProductTypeInfoT,
     LoraCfgReq,
+    LubaMsg,
     MctlSys,
     MCtrlSimulationCmdData,
+    MsgAttr,
+    MsgCmdType,
+    MsgDevice,
     ReportInfoCfg,
     RptAct,
     RptInfoType,
@@ -26,12 +29,12 @@ from pymammotion.utility.device_type import DeviceType
 class MessageSystem(AbstractMessage, ABC):
     messageNavigation: MessageNavigation = MessageNavigation()
 
-    def send_order_msg_sys(self, sys):
+    def send_order_msg_sys(self, sys) -> bytes:
         luba_msg = LubaMsg(
-            msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
-            msgattr=MsgAttr.MSG_ATTR_REQ,
+            msgtype=MsgCmdType.EMBED_SYS,
+            msgattr=MsgAttr.REQ,
             sender=MsgDevice.DEV_MOBILEAPP,
-            rcver=self.get_msg_device(MsgCmdType.MSG_CMD_TYPE_EMBED_SYS, MsgDevice.DEV_MAINCTL),
+            rcver=self.get_msg_device(MsgCmdType.EMBED_SYS, MsgDevice.DEV_MAINCTL),
             sys=sys,
             seqs=1,
             version=1,
@@ -42,10 +45,10 @@ class MessageSystem(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     @staticmethod
-    def send_order_msg_sys_legacy(sys):
+    def send_order_msg_sys_legacy(sys) -> bytes:
         luba_msg = LubaMsg(
-            msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
-            msgattr=MsgAttr.MSG_ATTR_REQ,
+            msgtype=MsgCmdType.EMBED_SYS,
+            msgattr=MsgAttr.REQ,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
             sys=sys,
@@ -57,7 +60,7 @@ class MessageSystem(AbstractMessage, ABC):
 
         return luba_msg.SerializeToString()
 
-    def reset_system(self):
+    def reset_system(self) -> bytes:
         build = MctlSys(todev_reset_system=1)
         logger.debug("Send command - send factory reset")
         return self.send_order_msg_sys(build)
@@ -102,7 +105,7 @@ class MessageSystem(AbstractMessage, ABC):
             is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
         return self.send_order_msg_sys(build2)
 
-    def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: list[int]):
+    def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: list[int]) -> bytes:
         build = MCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
         logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{
             param_id}, param_value={param_value}")
@@ -111,20 +114,20 @@ class MessageSystem(AbstractMessage, ABC):
             param_id}, param_value={param_value}")
         return self.send_order_msg_sys(build2)
 
-    def read_and_set_rtk_paring_code(self, op: int, cgf: str | None = None):
+    def read_and_set_rtk_paring_code(self, op: int, cgf: str | None = None) -> bytes:
         logger.debug(f"Send read and write base station configuration quality op:{
             op}, cgf:{cgf}")
         return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf)))
 
-    def allpowerfull_rw(self, id: int, context: int, rw: int) -> bytes:
-        if (id == 6 or id == 3 or id == 7) and DeviceType.is_luba_2(self.get_device_name()):
-            return self.messageNavigation.allpowerfull_rw_adapter_x3(id, context, rw)
-        build = MctlSys(bidire_comm_cmd=SysCommCmd(id=id, context=context, rw=rw))
-        logger.debug(f"Send command - 9 general read and write command id={id}, context={context}, rw={rw}")
-        if id == 5:
+    def allpowerfull_rw(self, rw_id: int, context: int, rw: int) -> bytes:
+        if (rw_id == 6 or rw_id == 3 or rw_id == 7) and DeviceType.is_luba_2(self.get_device_name()):
+            return self.messageNavigation.allpowerfull_rw_adapter_x3(rw_id, context, rw)
+        build = MctlSys(bidire_comm_cmd=SysCommCmd(id=rw_id, context=context, rw=rw))
+        logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")
+        if rw_id == 5:
             # TODO investigate if the original code makes any difference to this call.
             """
-            LubaMsgOuterClass.LubaMsg.Builder protoBufBuilderSet = getProtoBufBuilderSet(LubaMsgOuterClass.MsgCmdType.MSG_CMD_TYPE_EMBED_SYS, LubaMsgOuterClass.MsgDevice.DEV_MAINCTL, LubaMsgOuterClass.MsgAttr.MSG_ATTR_REQ);
+            LubaMsgOuterClass.LubaMsg.Builder protoBufBuilderSet = getProtoBufBuilderSet(LubaMsgOuterClass.MsgCmdType.EMBED_SYS, LubaMsgOuterClass.MsgDevice.DEV_MAINCTL, LubaMsgOuterClass.MsgAttr.REQ);
             protoBufBuilderSet.setSys(build);
             sendMsg(protoBufBuilderSet, 122, true, "发送指令--9通用读写命令id=" + i + ",context=" + i2 + ",rw=" + i3);
             """
@@ -298,10 +301,10 @@ class MessageSystem(AbstractMessage, ABC):
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
 
         luba_msg = LubaMsg(
-            msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            msgtype=MsgCmdType.EMBED_SYS,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
-            msgattr=MsgAttr.MSG_ATTR_REQ,
+            msgattr=MsgAttr.REQ,
             seqs=1,
             version=1,
             subtype=1,
@@ -334,10 +337,10 @@ class MessageSystem(AbstractMessage, ABC):
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION_INFO)
 
         luba_msg = LubaMsg(
-            msgtype=MsgCmdType.MSG_CMD_TYPE_EMBED_SYS,
+            msgtype=MsgCmdType.EMBED_SYS,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
-            msgattr=MsgAttr.MSG_ATTR_REQ,
+            msgattr=MsgAttr.REQ,
             seqs=1,
             version=1,
             subtype=1,

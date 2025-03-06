@@ -3,9 +3,10 @@ import logging
 import os
 
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.http.http import connect_http
+from pymammotion.http.http import MammotionHTTP
 from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT, logger
 from pymammotion.mammotion.devices.mammotion import MammotionBaseCloudDevice
 
@@ -17,7 +18,8 @@ async def run() -> CloudIOTGateway:
     PASSWORD = os.environ.get('PASSWORD')
     cloud_client = CloudIOTGateway()
 
-    mammotion_http = await connect_http(EMAIL, PASSWORD)
+    mammotion_http = MammotionHTTP()
+    await mammotion_http.login(EMAIL, PASSWORD)
     country_code = mammotion_http.login_info.userInformation.domainAbbreviation
     _LOGGER.debug("CountryCode: " + country_code)
     _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
@@ -26,7 +28,7 @@ async def run() -> CloudIOTGateway:
     await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
     cloud_client.aep_handle()
     cloud_client.session_by_auth_code()
-    # await mammotion_http.get_all_error_codes()
+    await mammotion_http.get_all_error_codes()
 
     print(cloud_client.list_binding_by_account())
 
@@ -42,11 +44,11 @@ async def run() -> CloudIOTGateway:
 
     _devices_list = []
     for device in cloud_client.devices_by_account_response.data.data:
-        if (device.deviceName.startswith(("Luba-MTAJTZ7T"))):
+        if (device.deviceName.startswith(("Luba-"))):
             dev = MammotionBaseCloudDevice(
                 mqtt=_mammotion_mqtt,
                 cloud_device=device,
-                mowing_state=MowingDevice()
+                state_manager=StateManager(MowingDevice())
             )
             _devices_list.append(dev)
     await _devices_list[0].queue_command("send_todev_ble_sync", sync_type=3)

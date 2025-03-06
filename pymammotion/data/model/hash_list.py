@@ -3,7 +3,7 @@ from enum import IntEnum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
+from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
 
 
 class PathType(IntEnum):
@@ -93,7 +93,7 @@ class HashList(DataClassORJSONMixin):
         # If no match was found, append the new item
         self.root_hash_list.data.append(hash_list)
 
-    def missing_hash_frame(self):
+    def missing_hash_frame(self) -> list[int]:
         return self._find_missing_frames(self.root_hash_list)
 
     def missing_frame(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> list[int]:
@@ -111,6 +111,8 @@ class HashList(DataClassORJSONMixin):
 
         if hash_data.type == PathType.SVG:
             return self._find_missing_frames(self.svg.get(hash_data.data_hash))
+
+        return []
 
     def update(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> bool:
         """Update the map data."""
@@ -132,6 +134,8 @@ class HashList(DataClassORJSONMixin):
 
         if hash_data.type == PathType.SVG:
             return self._add_hash_data(self.svg, hash_data)
+
+        return False
 
     @staticmethod
     def _find_missing_frames(frame_list: FrameList | RootHashList) -> list[int]:

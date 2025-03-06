@@ -1,17 +1,22 @@
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
 [project]
 name        = "pymammotion"
-version     = "0.3.8"
-
-[tool.poetry]
-name        = "pymammotion"
-version     = "0.3.8"
-license     = "GNU-3.0"
+version     = "0.4.0"
+license     = "GPL-3.0"
 description = ""
 readme      = "README.md"
+requires-python = ">=3.10"
+dynamic     = ["classifiers", "dependencies"]
 authors     = [
-    "Michael Arthur <michael@jumblesoft.co.nz>",
-    "jLynx <@jlynx>"
+    { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
+    { name = "jLynx" },
 ]
+
+
+[tool.poetry]
 packages = [{include = "pymammotion"}]
 
 
@@ -20,10 +25,8 @@ python = ">=3.10,<3.13"
 bleak = ">=0.21.0"
 protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
-aliyun-python-sdk-iot = "^8.57.0"
-aliyun-iot-linkkit = "^1.2.12"
 aiohttp = "^3.9.1"
-paho-mqtt = "^1.6.1"
+paho-mqtt = "^2.1.0"
 alicloud-gateway-iot = "^1.0.0"
 alibabacloud-apigateway-util = "^0.0.2"
 alibabacloud-iot-api-gateway = "^0.0.4"
@@ -31,9 +34,11 @@ bleak-retry-connector = "^3.5.0"
 jsonic = "^1.0.0"
 mashumaro = "^3.13"
 orjson = "^3.9.15"
-betterproto = "^1.2.5"
+betterproto = "^2.0.0b7"
 numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
+cryptography = ">=43.0.1"
+crcmod = "^1.7"
 
 [tool.poetry.group.extras]
 optional = true
@@ -52,7 +57,7 @@ twine = "^5.0.0"
 bumpver = "^2023.1129"
 frida-tools = "^12.3.0"
 grpcio-tools = "^1.63.0"
-betterproto = {extras = ["compiler"], version = "^1.2.5"}
+betterproto = {extras = ["compiler"], version = "^2.0.0b7"}
 pylint = "^3.2.2"
 ruff = "^0.4.6"
 pre-commit = "^3.8.0"
@@ -60,7 +65,7 @@ mypy = "^1.11.2"
 autotyping = "^24.3.0"
 
 [tool.bumpver]
-current_version = "0.3.8"
+current_version = "0.4.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -78,9 +83,13 @@ push            = false
 pymammotion = ["py.typed"]
 
 
-[tool.pylint.MAIN]
+[tool.pylint]
 py-version = "3.12"
-
+ignore = [
+    "tests",
+    "scripts",
+    "pymammotion/proto"
+]
 load-plugins = [
     "pylint.extensions.code_style",
     "pylint.extensions.typing"
@@ -351,11 +360,6 @@ enable = [
     #"useless-suppression",  # temporarily every now and then to clean them up
     "use-symbolic-message-instead",
 ]
-per-file-ignores = [
-    # hass-component-root-import: Tests test non-public APIs
-    # redefined-outer-name: Tests reference fixtures in the test function
-    "/tests/:hass-component-root-import,redefined-outer-name",
-]
 
 [tool.pylint.REPORTS]
 score = false
@@ -373,7 +377,6 @@ expected-line-ending-format = "LF"
 overgeneral-exceptions = [
     "builtins.BaseException",
     "builtins.Exception",
-    # "homeassistant.exceptions.HomeAssistantError",  # too many issues
 ]
 
 [tool.pylint.TYPING]
@@ -385,84 +388,11 @@ max-line-length-suggestions = 120
 
 [tool.ruff]
 required-version = ">=0.4.3"
-exclude = ['pymammotion/proto/*', 'tests/*']
+exclude = ['pymammotion/proto/*', 'tests/*', "scripts"]
 line-length = 120
 
 [tool.ruff.lint]
-select = [
-    "A001", # Variable {name} is shadowing a Python builtin
-    "B002", # Python does not support the unary prefix increment
-    "B005", # Using .strip() with multi-character strings is misleading
-    "B007", # Loop control variable {name} not used within loop body
-    "B014", # Exception handler with duplicate exception
-    "B015", # Pointless comparison. Did you mean to assign a value? Otherwise, prepend assert or remove it.
-    "B017", # pytest.raises(BaseException) should be considered evil
-    "B018", # Found useless attribute access. Either assign it to a variable or remove it.
-    "B023", # Function definition does not bind loop variable {name}
-    "B026", # Star-arg unpacking after a keyword argument is strongly discouraged
-    "B032", # Possible unintentional type annotation (using :). Did you mean to assign (using =)?
-    "B904", # Use raise from to specify exception cause
-    "B905", # zip() without an explicit strict= parameter
-    "BLE",
-    "C", # complexity
-    "COM818", # Trailing comma on bare tuple prohibited
-    "D", # docstrings
-    "DTZ003", # Use datetime.now(tz=) instead of datetime.utcnow()
-    "DTZ004", # Use datetime.fromtimestamp(ts, tz=) instead of datetime.utcfromtimestamp(ts)
-    "E", # pycodestyle
-    "F", # pyflakes/autoflake
-    "FLY", # flynt
-    "G", # flake8-logging-format
-    "I", # isort
-    "INP", # flake8-no-pep420
-    "ISC", # flake8-implicit-str-concat
-    "ICN001", # import concentions; {name} should be imported as {asname}
-    "LOG", # flake8-logging
-    "N804", # First argument of a class method should be named cls
-    "N805", # First argument of a method should be named self
-    "N815", # Variable {name} in class scope should not be mixedCase
-    "PERF", # Perflint
-    "PGH", # pygrep-hooks
-    "PIE", # flake8-pie
-    "PL", # pylint
-    "PT", # flake8-pytest-style
-    "PYI", # flake8-pyi
-    "RET", # flake8-return
-    "RSE", # flake8-raise
-    "RUF005", # Consider iterable unpacking instead of concatenation
-    "RUF006", # Store a reference to the return value of asyncio.create_task
-    "RUF013", # PEP 484 prohibits implicit Optional
-    "RUF018", # Avoid assignment expressions in assert statements
-    "RUF019", # Unnecessary key check before dictionary access
-    # "RUF100", # Unused `noqa` directive; temporarily every now and then to clean them up
-    "S102", # Use of exec detected
-    "S103", # bad-file-permissions
-    "S108", # hardcoded-temp-file
-    "S306", # suspicious-mktemp-usage
-    "S307", # suspicious-eval-usage
-    "S313", # suspicious-xmlc-element-tree-usage
-    "S314", # suspicious-xml-element-tree-usage
-    "S315", # suspicious-xml-expat-reader-usage
-    "S316", # suspicious-xml-expat-builder-usage
-    "S317", # suspicious-xml-sax-usage
-    "S318", # suspicious-xml-mini-dom-usage
-    "S319", # suspicious-xml-pull-dom-usage
-    "S320", # suspicious-xmle-tree-usage
-    "S601", # paramiko-call
-    "S602", # subprocess-popen-with-shell-equals-true
-    "S604", # call-with-shell-equals-true
-    "S608", # hardcoded-sql-expression
-    "S609", # unix-command-wildcard-injection
-    "SIM", # flake8-simplify
-    "SLF", # flake8-self
-    "SLOT", # flake8-slots
-    "T100", # Trace found: {name} used
-    "T20", # flake8-print
-    "TID251", # Banned imports
-    "TRY", # tryceratops
-    "UP", # pyupgrade
-    "W", # pycodestyle
-]
+select = ["ALL"]
 
 ignore = [
     "D202", # No blank lines allowed after function docstring
@@ -505,9 +435,7 @@ ignore = [
     "D206",
     "D300",
     "Q",
-    "COM812",
     "COM819",
-    "ISC001",
 
     # Disabled because ruff does not understand type of __all__ generated by a function
     "PLE0605",
@@ -519,5 +447,50 @@ ignore = [
     "RET502",
     "RET501",
     "TRY002",
-    "TRY301"
+    "TRY301",
+    "ANN401", # Opinioated warning on disallowing dynamically typed expressions
+    "COM812", # Conflicts with formatter
+    "D203", # Conflicts with other rules
+    "D417", # False positives in some occasions
+    "ISC001", # Conflicts with formatter
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pymammotion"]
+force-sort-within-sections = true
+split-on-trailing-comma = false
+combine-as-imports = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.mypy]
+# Specify the target platform details in config, so your developers are
+# free to run mypy on Windows, Linux, or macOS and get consistent
+# results.
+platform = "linux"
+python_version = "3.12"
+exclude = ['pymammotion/proto', 'tests', "scripts"]
+
+# show error messages from unrelated files
+follow_imports = "normal"
+
+# suppress errors about unsatisfied imports
+ignore_missing_imports = true
+
+# be strict
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+strict_optional = true
+warn_incomplete_stub = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true

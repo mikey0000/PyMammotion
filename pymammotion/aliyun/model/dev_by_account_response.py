@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -23,11 +22,11 @@ class Device(DataClassORJSONMixin):
     identityId: str
     thingType: str
     status: int
-    nickName: Optional[str] = None
-    description: Optional[str] = None
-    productImage: Optional[str] = None
-    categoryImage: Optional[str] = None
-    productModel: Optional[str] = None
+    nickName: str | None = None
+    description: str | None = None
+    productImage: str | None = None
+    categoryImage: str | None = None
+    productModel: str | None = None
 
     class Config(BaseConfig):
         omit_default = True
@@ -44,5 +43,5 @@ class Data(DataClassORJSONMixin):
 @dataclass
 class ListingDevByAccountResponse(DataClassORJSONMixin):
     code: int
-    data: Optional[Data]
-    id: Optional[str] = None
+    data: Data | None
+    id: str | None = None

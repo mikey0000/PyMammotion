@@ -1,12 +1,11 @@
+from asyncio import sleep
+from io import BytesIO
 import itertools
 import json
 import logging
 import queue
 import sys
 import time
-from asyncio import sleep
-from io import BytesIO
-from typing import Union
 
 from bleak import BleakClient
 from jsonic.serializable import serialize
@@ -17,10 +16,7 @@ from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.bluetooth.model.atomic_integer import AtomicInteger
 from pymammotion.data.model.execute_boarder import ExecuteBorder
-from pymammotion.proto import (
-    dev_net_pb2,
-)
-from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
+from pymammotion.proto import DevNet, DrvDevInfoReq, LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 from pymammotion.utility.constant.device_constant import bleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
@@ -320,7 +316,7 @@ class BleMessage:
         hash_map = {"ctrl": 1}
         await self.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
 
-    def get_json_string(self, cmd: int, hash_map: dict[str, object]) -> str:
+    def get_json_string(self, cmd: int, hash_map: dict[str, int]) -> str:
         jSONObject = {}
         try:
             jSONObject["cmd"] = cmd
@@ -334,7 +330,7 @@ class BleMessage:
             print(e)
             return ""
 
-    def clearNotification(self) -> None:
+    def clear_notification(self) -> None:
         self.notification = None
         self.notification = BlufiNotifyData()
 
@@ -344,14 +340,14 @@ class BleMessage:
     async def send_device_info(self) -> None:
         """Currently not called"""
         luba_msg = LubaMsg(
-            msgtype=MsgCmdType.MSG_CMD_TYPE_ESP,
+            msgtype=MsgCmdType.ESP,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_COMM_ESP,
-            msgattr=MsgAttr.MSG_ATTR_REQ,
+            msgattr=MsgAttr.REQ,
             seqs=1,
             version=1,
             subtype=1,
-            net=dev_net_pb2.DevNet(todev_ble_sync=1, todev_devinfo_req=dev_net_pb2.DrvDevInfoReq()),
+            net=DevNet(todev_ble_sync=1, todev_devinfo_req=DrvDevInfoReq()),
         )
         byte_arr = luba_msg.SerializeToString()
         await self.post_custom_data_bytes(byte_arr)
@@ -656,7 +652,7 @@ class BleMessage:
         return byteOS.getvalue()
 
     @staticmethod
-    def calc_crc(initial: int, data: Union[bytes, bytearray]) -> int:
+    def calc_crc(initial: int, data: bytes | bytearray) -> int:
         """Calculate CRC value for given initial value and byte array.
 
         Args:

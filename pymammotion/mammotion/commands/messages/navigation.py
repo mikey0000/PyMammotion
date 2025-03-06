@@ -1,16 +1,19 @@
 # === sendOrderMsg_Nav ===
+from abc import ABC
 import logging
 import time
-from abc import ABC
 
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.plan import Plan
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
-from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
-from pymammotion.proto.mctrl_nav import (
+from pymammotion.proto import (
     AppRequestCoverPathsT,
+    LubaMsg,
     MctlNav,
+    MsgAttr,
+    MsgCmdType,
+    MsgDevice,
     NavGetCommData,
     NavGetHashList,
     NavMapNameMsg,
@@ -32,10 +35,10 @@ logger = logging.getLogger(__name__)
 class MessageNavigation(AbstractMessage, ABC):
     def send_order_msg_nav(self, build) -> bytes:
         luba_msg = LubaMsg(
-            msgtype=MsgCmdType.MSG_CMD_TYPE_NAV,
+            msgtype=MsgCmdType.NAV,
             sender=MsgDevice.DEV_MOBILEAPP,
-            rcver=self.get_msg_device(MsgCmdType.MSG_CMD_TYPE_NAV, MsgDevice.DEV_MAINCTL),
-            msgattr=MsgAttr.MSG_ATTR_REQ,
+            rcver=self.get_msg_device(MsgCmdType.NAV, MsgDevice.DEV_MAINCTL),
+            msgattr=MsgAttr.REQ,
             seqs=1,
             version=1,
             subtype=1,
@@ -268,7 +271,7 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Send command--Get area name list")
         return self.send_order_msg_nav(mctl_nav)
 
-    def set_area_name(self, device_id, hash_id: int, name: str) -> bytes:
+    def set_area_name(self, device_id: str, hash_id: int, name: str) -> bytes:
         # Build the NavMapNameMsg with the specified parameters
         mctl_nav = MctlNav(
             toapp_map_name_msg=NavMapNameMsg(hash=hash_id, name=name, result=0, device_id=device_id, rw=1)
@@ -327,9 +330,9 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Send command--Send tool command id={param_id},values={values}")
         return self.send_order_msg_nav(build)
 
-    def end_draw_border(self, type: int) -> bytes:
+    def end_draw_border(self, type: int) -> bytes | None:
         if type == -1:
-            return
+            return None
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=1, type=type))
         logger.debug(f"Send command--End drawing boundary, obstacle, channel command type={type}")
         return self.send_order_msg_nav(build)
@@ -339,9 +342,9 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Send command--Cancel current recording (boundary, obstacle)")
         return self.send_order_msg_nav(build)
 
-    def delete_map_elements(self, type: int, hash_num: int) -> bytes:
+    def delete_map_elements(self, type: int, hash_num: int) -> bytes | None:
         if type == -1:
-            return
+            return None
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=type, hash=hash_num))
         logger.debug(f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash}")
         return self.send_order_msg_nav(build)

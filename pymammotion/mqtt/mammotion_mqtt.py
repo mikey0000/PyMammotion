@@ -2,22 +2,22 @@
 
 import asyncio
 import base64
+from collections.abc import Awaitable, Callable
 import hashlib
 import hmac
 import json
 import logging
 from logging import getLogger
-from typing import Awaitable, Callable, Optional
 
 import betterproto
-from linkkit.linkkit import LinkKit
 from paho.mqtt.client import MQTTMessage
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.mqtt.linkkit.linkkit import LinkKit
+from pymammotion.proto import LubaMsg
 
 logger = getLogger(__name__)
 
@@ -33,18 +33,18 @@ class MammotionMQTT:
         device_secret: str,
         iot_token: str,
         cloud_client: CloudIOTGateway,
-        client_id: Optional[str] = None,
+        client_id: str | None = None,
     ) -> None:
         """Create instance of MammotionMQTT."""
         super().__init__()
         self._cloud_client = cloud_client
         self.is_connected = False
         self.is_ready = False
-        self.on_connected: Optional[Callable[[], Awaitable[None]]] = None
-        self.on_ready: Optional[Callable[[], Awaitable[None]]] = None
-        self.on_error: Optional[Callable[[str], Awaitable[None]]] = None
-        self.on_disconnected: Optional[Callable[[], Awaitable[None]]] = None
-        self.on_message: Optional[Callable[[str, str, str], Awaitable[None]]] = None
+        self.on_connected: Callable[[], Awaitable[None]] | None = None
+        self.on_ready: Callable[[], Awaitable[None]] | None = None
+        self.on_error: Callable[[str], Awaitable[None]] | None = None
+        self.on_disconnected: Callable[[], Awaitable[None]] | None = None
+        self.on_message: Callable[[str, str, str], Awaitable[None]] | None = None
 
         self._product_key = product_key
         self._device_name = device_name
@@ -193,6 +193,10 @@ class MammotionMQTT:
             else:
                 logger.info("Unhandled event: %s", params.identifier)
         elif message.topic.endswith("/app/down/thing/status"):
+            # the tell if a device has come back online
+            # lastStatus
+            # 1 online?
+            # 3 offline?
             status = ThingStatusMessage(**payload)
             logger.debug(status.params.status.value)
         elif message.topic.endswith("/app/down/thing/properties"):

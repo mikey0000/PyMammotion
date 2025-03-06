@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -13,7 +12,7 @@ class Camera(DataClassORJSONMixin):
 @dataclass
 class StreamSubscriptionResponse(DataClassORJSONMixin):
     appid: str
-    cameras: List[Camera]
+    cameras: list[Camera]
     channelName: str
     token: str
     uid: int

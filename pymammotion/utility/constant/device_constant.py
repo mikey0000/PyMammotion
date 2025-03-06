@@ -1,5 +1,7 @@
 from enum import IntEnum
 
+from pymammotion.data.model.report_info import ConnectData
+
 
 class bleOrderCmd:
     allpowerfullRW = 67
@@ -211,15 +213,22 @@ class WorkMode:
     MODE_CHARGING_PAUSE = 39
 
 
-def device_connection(value: int, mnet_type: str) -> str:
+def device_connection(connect: ConnectData) -> str:
     """Return string representation of device connection."""
-    if value == 1:
-        return "BLE"
 
-    if mnet_type == "NET_USED_TYPE_WIFI":
+    if connect.wifi_rssi != 0 and connect.ble_rssi != 0:
+        return "WIFI/BLE"
+
+    if connect.connect_type == 2 or connect.used_net == "NET_USED_TYPE_WIFI" or connect.wifi_rssi != 0:
         return "WIFI"
 
-    return "3G/4G"
+    if connect.connect_type == 1 or connect.used_net == "NET_USED_TYPE_MNET":
+        return "3G/4G"
+
+    if connect.ble_rssi != 0:
+        return "BLE"
+
+    return "None"
 
 
 def device_mode(value: int) -> str:

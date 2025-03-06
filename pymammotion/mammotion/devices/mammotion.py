@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from enum import Enum
+import logging
 from typing import Any
 
 from bleak.backends.device import BLEDevice
@@ -14,7 +14,7 @@ from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.state_manager import StateManager
-from pymammotion.http.http import connect_http
+from pymammotion.http.http import MammotionHTTP
 from pymammotion.mammotion.devices.mammotion_bluetooth import MammotionBaseBLEDevice
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionBaseCloudDevice, MammotionCloud
 from pymammotion.mqtt import MammotionMQTT
@@ -84,8 +84,14 @@ class MammotionMixedDeviceManager:
     def replace_cloud(self, cloud_device: MammotionBaseCloudDevice) -> None:
         self._cloud_device = cloud_device
 
+    def remove_cloud(self) -> None:
+        del self._cloud_device
+
     def replace_ble(self, ble_device: MammotionBaseBLEDevice) -> None:
         self._ble_device = ble_device
+
+    def remove_ble(self) -> None:
+        del self._ble_device
 
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
         device = self._cloud_device.device
@@ -98,7 +104,7 @@ class MammotionMixedDeviceManager:
         return self._ble_device is not None
 
 
-class MammotionDevices:
+class MammotionDeviceManager:
     devices: dict[str, MammotionMixedDeviceManager] = {}
 
     def add_device(self, mammotion_device: MammotionMixedDeviceManager) -> None:
@@ -151,10 +157,10 @@ async def create_devices(
 class Mammotion:
     """Represents a Mammotion account and its devices."""
 
-    devices = MammotionDevices()
+    device_manager = MammotionDeviceManager()
     mqtt_list: dict[str, MammotionCloud] = dict()
 
-    _instance: Mammotion = None
+    _instance: Mammotion | None = None
 
     def __new__(cls, *args: Any, **kwargs: Any):
         if not cls._instance:
@@ -169,7 +175,7 @@ class Mammotion:
         self, ble_device: BLEDevice, preference: ConnectionPreference = ConnectionPreference.BLUETOOTH
     ) -> None:
         if ble_device:
-            self.devices.add_device(
+            self.device_manager.add_device(
                 MammotionMixedDeviceManager(name=ble_device.name, ble_device=ble_device, preference=preference)
             )
 
@@ -205,9 +211,9 @@ class Mammotion:
 
     def add_cloud_devices(self, mqtt_client: MammotionCloud) -> None:
         for device in mqtt_client.cloud_client.devices_by_account_response.data.data:
-            mower_device = self.devices.get_device(device.deviceName)
+            mower_device = self.device_manager.get_device(device.deviceName)
             if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
-                self.devices.add_device(
+                self.device_manager.add_device(
                     MammotionMixedDeviceManager(
                         name=device.deviceName,
                         cloud_device=device,
@@ -222,7 +228,7 @@ class Mammotion:
                     mower_device.replace_mqtt(mqtt_client)
 
     def set_disconnect_strategy(self, disconnect: bool) -> None:
-        for device_name, device in self.devices.devices.items():
+        for device_name, device in self.device_manager.devices.items():
             if device.ble() is not None:
                 ble_device: MammotionBaseBLEDevice = device.ble()
                 ble_device.set_disconnect_strategy(disconnect)
@@ -230,7 +236,8 @@ class Mammotion:
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
         cloud_client = CloudIOTGateway()
-        mammotion_http = await connect_http(account, password)
+        mammotion_http = MammotionHTTP()
+        await mammotion_http.login(account, password)
         country_code = mammotion_http.login_info.userInformation.domainAbbreviation
         _LOGGER.debug("CountryCode: " + country_code)
         _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
@@ -248,10 +255,10 @@ class Mammotion:
         return cloud_client
 
     async def remove_device(self, name: str) -> None:
-        await self.devices.remove_device(name)
+        await self.device_manager.remove_device(name)
 
     def get_device_by_name(self, name: str) -> MammotionMixedDeviceManager:
-        return self.devices.get_device(name)
+        return self.device_manager.get_device(name)
 
     async def send_command(self, name: str, key: str):
         """Send a command to the device."""
@@ -295,7 +302,9 @@ class Mammotion:
         device = self.get_device_by_name(name)
         if device.preference is ConnectionPreference.WIFI:
             if device.has_cloud():
-                _stream_response = await device.cloud().mqtt.cloud_client.get_stream_subscription(device.cloud().iot_id)
+                _stream_response = await device.cloud().mqtt.cloud_client.mammotion_http.get_stream_subscription(
+                    device.cloud().iot_id
+                )
                 _LOGGER.debug(_stream_response)
                 return _stream_response
 

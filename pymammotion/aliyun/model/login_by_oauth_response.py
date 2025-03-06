@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -18,7 +17,7 @@ class OpenAccount(DataClassORJSONMixin):
     domainId: int
     enableDevice: str
     status: int
-    country: Optional[str] = None
+    country: str | None = None
 
 
 @dataclass
@@ -54,7 +53,7 @@ class InnerData(DataClassORJSONMixin):
     subCode: int
     message: str
     successful: str
-    deviceId: Optional[str] = None
+    deviceId: str | None = None
 
 
 @dataclass
