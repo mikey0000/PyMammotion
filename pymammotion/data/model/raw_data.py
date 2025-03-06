@@ -2,14 +2,7 @@ from dataclasses import dataclass, field
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.proto.dev_net import DevNet
-from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.luba_mul import SocMul
-from pymammotion.proto.mctrl_driver import MctlDriver
-from pymammotion.proto.mctrl_nav import MctlNav
-from pymammotion.proto.mctrl_ota import MctlOta
-from pymammotion.proto.mctrl_pept import MctlPept
-from pymammotion.proto.mctrl_sys import MctlSys
+from pymammotion.proto import DevNet, LubaMsg, MctlDriver, MctlNav, MctlOta, MctlPept, MctlSys, SocMul
 
 
 @dataclass

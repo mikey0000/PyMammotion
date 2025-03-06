@@ -42,7 +42,7 @@ async def run():
         print(result)
         if (result == 0):
             await luba_client.parseBlufiNotifyData()
-            luba_client.clearNotification()
+            luba_client.clear_notification()
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
     # Run the ble heart beat in the background continuously which still doesn't quite work

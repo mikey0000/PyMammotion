@@ -183,7 +183,7 @@ async def run():
         print(result)
         if (result == 0):
             await luba_client.parseBlufiNotifyData()
-            luba_client.clearNotification()
+            luba_client.clear_notification()
 
     bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
     command_bytes = commands.send_todev_ble_sync(2)

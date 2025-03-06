@@ -2,23 +2,18 @@
 # sources: pymammotion/proto/basestation.proto, pymammotion/proto/common.proto, pymammotion/proto/dev_net.proto, pymammotion/proto/luba_msg.proto, pymammotion/proto/luba_mul.proto, pymammotion/proto/mctrl_driver.proto, pymammotion/proto/mctrl_nav.proto, pymammotion/proto/mctrl_ota.proto, pymammotion/proto/mctrl_pept.proto, pymammotion/proto/mctrl_sys.proto
 # plugin: python-betterproto
 # This file has been @generated
-
-from typing import TYPE_CHECKING
-
-
-if TYPE_CHECKING:
-    from pydantic.dataclasses import dataclass
-else:
-    from pydantic.dataclasses import dataclass
-
+from dataclasses import dataclass
 from typing import (
-    List,
     Optional,
 )
 
 import betterproto
-from pydantic import model_validator
-from pydantic.dataclasses import rebuild_dataclass
+
+
+
+def has_field(message: betterproto.Message) -> bool:
+    """Check if the message has any fields serialized on wire."""
+    return betterproto.serialized_on_wire(message)
 
 
 class WifiConfType(betterproto.Enum):
@@ -28,11 +23,6 @@ class WifiConfType(betterproto.Enum):
     ReconnectWifi = 3
     set_enable = 4
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class DrvUploadFileFileType(betterproto.Enum):
@@ -41,11 +31,6 @@ class DrvUploadFileFileType(betterproto.Enum):
     FILE_TYPE_NAVLOG = 2
     FILE_TYPE_RTKLOG = 3
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class DrvDevInfoResult(betterproto.Enum):
@@ -53,11 +38,6 @@ class DrvDevInfoResult(betterproto.Enum):
     DRV_RESULT_SUC = 1
     DRV_RESULT_NOTSUP = 2
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class SimCardSta(betterproto.Enum):
@@ -68,11 +48,6 @@ class SimCardSta(betterproto.Enum):
     SIM_INPUT_PUK = 4
     SIM_OK = 5
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MnetLinkType(betterproto.Enum):
@@ -81,11 +56,6 @@ class MnetLinkType(betterproto.Enum):
     MNET_LINK_3G = 2
     MNET_LINK_4G = 3
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class ApnAuthType(betterproto.Enum):
@@ -94,22 +64,12 @@ class ApnAuthType(betterproto.Enum):
     APN_AUTH_CHAP = 2
     APN_AUTH_PAP_CHAP = 3
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class NetType(betterproto.Enum):
     WIFI = 0
     MNET = 1
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class IotConctrlType(betterproto.Enum):
@@ -117,11 +77,6 @@ class IotConctrlType(betterproto.Enum):
     IOT_TYPE_ONLINE = 1
     IOT_TYPE_RESET = 2
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class Operation(betterproto.Enum):
@@ -129,11 +84,6 @@ class Operation(betterproto.Enum):
     READ = 1
     ERASE = 2
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class OffPartId(betterproto.Enum):
@@ -149,11 +99,6 @@ class OffPartId(betterproto.Enum):
     OFF_PART_NAKEDB_BACK = 9
     OFF_PART_MAX = 10
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class QcAppTestId(betterproto.Enum):
@@ -188,11 +133,6 @@ class QcAppTestId(betterproto.Enum):
     QC_APP_TEST_LOCATION_STATE = 28
     QC_APP_TEST_MAX = 29
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class NetUsedType(betterproto.Enum):
@@ -200,11 +140,6 @@ class NetUsedType(betterproto.Enum):
     WIFI = 1
     MNET = 2
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class RptInfoType(betterproto.Enum):
@@ -220,11 +155,6 @@ class RptInfoType(betterproto.Enum):
     RIT_VISION_STATISTIC = 9
     RIT_BASESTATION_INFO = 10
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class RptAct(betterproto.Enum):
@@ -232,22 +162,12 @@ class RptAct(betterproto.Enum):
     RPT_STOP = 1
     RPT_KEEP = 2
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class InfoType(betterproto.Enum):
     IT_BASE = 0
     IT_OTA = 1
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MulLanguage(betterproto.Enum):
@@ -255,11 +175,6 @@ class MulLanguage(betterproto.Enum):
     GERMAN = 1
     UNRECOGNIZED = -1
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MulCameraPosition(betterproto.Enum):
@@ -268,11 +183,6 @@ class MulCameraPosition(betterproto.Enum):
     REAR = 2
     ALL = 3
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MulVideoErrorCode(betterproto.Enum):
@@ -283,11 +193,6 @@ class MulVideoErrorCode(betterproto.Enum):
     PARAM_INVAILD = 4
     CELLULAR_RESTRICTION = 5
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MulWiperErrorCode(betterproto.Enum):
@@ -295,11 +200,6 @@ class MulWiperErrorCode(betterproto.Enum):
     HW_ERROR = 1
     NAVIGATION_WORK_FORBID = 2
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MsgCmdType(betterproto.Enum):
@@ -316,11 +216,6 @@ class MsgCmdType(betterproto.Enum):
     MUL = 249
     PEPT = 250
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MsgAttr(betterproto.Enum):
@@ -329,11 +224,6 @@ class MsgAttr(betterproto.Enum):
     RESP = 2
     REPORT = 3
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 class MsgDevice(betterproto.Enum):
@@ -353,11 +243,6 @@ class MsgDevice(betterproto.Enum):
     SOC_MODULE_MULTIMEDIA = 21
     DEV_IOTCTRL = 25
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        from pydantic_core import core_schema
-
-        return core_schema.int_schema(ge=0)
 
 
 @dataclass(eq=False, repr=False)
@@ -412,9 +297,6 @@ class BaseStation(betterproto.Message):
         4, optional=True, group="BaseStationSubType"
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -516,12 +398,12 @@ class DrvDevInfoRespId(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class DrvDevInfoReq(betterproto.Message):
-    req_ids: List["DrvDevInfoReqId"] = betterproto.message_field(1)
+    req_ids: list["DrvDevInfoReqId"] = betterproto.message_field(1)
 
 
 @dataclass(eq=False, repr=False)
 class DrvDevInfoResp(betterproto.Message):
-    resp_ids: List["DrvDevInfoRespId"] = betterproto.message_field(1)
+    resp_ids: list["DrvDevInfoRespId"] = betterproto.message_field(1)
 
 
 @dataclass(eq=False, repr=False)
@@ -546,7 +428,7 @@ class WifiIotStatusReport(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class BleTestBytes(betterproto.Message):
     seqs: int = betterproto.int32_field(1)
-    data: List[int] = betterproto.fixed32_field(2)
+    data: list[int] = betterproto.fixed32_field(2)
 
 
 @dataclass(eq=False, repr=False)
@@ -610,7 +492,7 @@ class MnetApn(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class MnetApnCfg(betterproto.Message):
     apn_used_idx: int = betterproto.int32_field(1)
-    apn: List["MnetApn"] = betterproto.message_field(2)
+    apn: list["MnetApn"] = betterproto.message_field(2)
 
 
 @dataclass(eq=False, repr=False)
@@ -751,9 +633,6 @@ class DevNet(betterproto.Message):
         28, optional=True, group="NetSubType"
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -813,7 +692,7 @@ class RtkSysMaskQueryT(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class RtkSysMaskQueryAckT(betterproto.Message):
     sat_system: int = betterproto.uint32_field(1)
-    system_mask_bits: List[int] = betterproto.uint32_field(2)
+    system_mask_bits: list[int] = betterproto.uint32_field(2)
 
 
 @dataclass(eq=False, repr=False)
@@ -852,9 +731,6 @@ class MctlDriver(betterproto.Message):
         betterproto.message_field(11, optional=True, group="SubDrvMsg")
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -925,7 +801,7 @@ class NavTaskInfo(betterproto.Message):
     all_frame: int = betterproto.int32_field(3)
     current_frame: int = betterproto.int32_field(4)
     pathlen: int = betterproto.int32_field(5)
-    dc: List["CommDataCouple"] = betterproto.message_field(6)
+    dc: list["CommDataCouple"] = betterproto.message_field(6)
 
 
 @dataclass(eq=False, repr=False)
@@ -942,7 +818,7 @@ class NavOptLineUp(betterproto.Message):
     all_frame: int = betterproto.int32_field(3)
     current_frame: int = betterproto.int32_field(4)
     channel_data_len: int = betterproto.int32_field(5)
-    dc: List["CommDataCouple"] = betterproto.message_field(6)
+    dc: list["CommDataCouple"] = betterproto.message_field(6)
 
 
 @dataclass(eq=False, repr=False)
@@ -951,7 +827,7 @@ class NavOptiBorderInfo(betterproto.Message):
     all_frame: int = betterproto.int32_field(2)
     current_frame: int = betterproto.int32_field(3)
     border_data_len: int = betterproto.int32_field(4)
-    dc: List["CommDataCouple"] = betterproto.message_field(5)
+    dc: list["CommDataCouple"] = betterproto.message_field(5)
 
 
 @dataclass(eq=False, repr=False)
@@ -960,7 +836,7 @@ class NavOptObsInfo(betterproto.Message):
     all_frame: int = betterproto.int32_field(2)
     current_frame: int = betterproto.int32_field(3)
     obstacle_data_len: int = betterproto.int32_field(4)
-    dc: List["CommDataCouple"] = betterproto.message_field(5)
+    dc: list["CommDataCouple"] = betterproto.message_field(5)
 
 
 @dataclass(eq=False, repr=False)
@@ -1006,7 +882,7 @@ class NavGetHashListAck(betterproto.Message):
     hash_len: int = betterproto.int32_field(6)
     reserved: str = betterproto.string_field(7)
     result: int = betterproto.int32_field(8)
-    data_couple: List[int] = betterproto.int64_field(13)
+    data_couple: list[int] = betterproto.int64_field(13)
 
 
 @dataclass(eq=False, repr=False)
@@ -1043,7 +919,7 @@ class NavGetCommDataAck(betterproto.Message):
     current_frame: int = betterproto.int32_field(10)
     data_hash: int = betterproto.fixed64_field(11)
     data_len: int = betterproto.int32_field(12)
-    data_couple: List["CommDataCouple"] = betterproto.message_field(13)
+    data_couple: list["CommDataCouple"] = betterproto.message_field(13)
     reserved: str = betterproto.string_field(14)
     area_label: "AreaLabel" = betterproto.message_field(15)
 
@@ -1062,7 +938,7 @@ class NavReqCoverPath(betterproto.Message):
     channel_mode: int = betterproto.int32_field(10)
     toward: int = betterproto.int32_field(11)
     speed: float = betterproto.float_field(12)
-    zone_hashs: List[int] = betterproto.fixed64_field(13)
+    zone_hashs: list[int] = betterproto.fixed64_field(13)
     path_hash: int = betterproto.fixed64_field(14)
     reserved: str = betterproto.string_field(15)
     result: int = betterproto.int32_field(16)
@@ -1090,7 +966,7 @@ class NavUploadZigZagResult(betterproto.Message):
     data_hash: int = betterproto.fixed64_field(16)
     data_len: int = betterproto.int32_field(17)
     reserved: str = betterproto.string_field(18)
-    data_couple: List["CommDataCouple"] = betterproto.message_field(19)
+    data_couple: list["CommDataCouple"] = betterproto.message_field(19)
     sub_cmd: int = betterproto.int32_field(20)
 
 
@@ -1170,13 +1046,13 @@ class NavPlanJobSet(betterproto.Message):
     speed: float = betterproto.float_field(26)
     task_name: str = betterproto.string_field(27)
     job_name: str = betterproto.string_field(28)
-    zone_hashs: List[int] = betterproto.fixed64_field(29)
+    zone_hashs: list[int] = betterproto.fixed64_field(29)
     reserved: str = betterproto.string_field(30)
     start_date: str = betterproto.string_field(31)
     end_date: str = betterproto.string_field(32)
     trigger_type: int = betterproto.int32_field(33)
     day: int = betterproto.int32_field(34)
-    weeks: List[int] = betterproto.fixed32_field(35)
+    weeks: list[int] = betterproto.fixed32_field(35)
     remained_seconds: int = betterproto.int64_field(36)
     toward_mode: int = betterproto.int32_field(37)
     toward_included_angle: int = betterproto.int32_field(38)
@@ -1203,7 +1079,7 @@ class ChargePileType(betterproto.Message):
 class SimulationCmdData(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(1)
     param_id: int = betterproto.int32_field(2)
-    param_value: List[int] = betterproto.int32_field(3)
+    param_value: list[int] = betterproto.int32_field(3)
 
 
 @dataclass(eq=False, repr=False)
@@ -1246,8 +1122,8 @@ class AppRequestCoverPathsT(betterproto.Message):
     current_frame: int = betterproto.int32_field(4)
     data_hash: int = betterproto.fixed64_field(5)
     transaction_id: int = betterproto.int64_field(6)
-    reserved: List[int] = betterproto.int64_field(7)
-    hash_list: List[int] = betterproto.fixed64_field(8)
+    reserved: list[int] = betterproto.int64_field(7)
+    hash_list: list[int] = betterproto.fixed64_field(8)
 
 
 @dataclass(eq=False, repr=False)
@@ -1257,7 +1133,7 @@ class CoverPathPacketT(betterproto.Message):
     path_total: int = betterproto.int32_field(3)
     path_cur: int = betterproto.int32_field(4)
     zone_hash: int = betterproto.fixed64_field(5)
-    data_couple: List["CommDataCouple"] = betterproto.message_field(6)
+    data_couple: list["CommDataCouple"] = betterproto.message_field(6)
 
 
 @dataclass(eq=False, repr=False)
@@ -1273,9 +1149,9 @@ class CoverPathUploadT(betterproto.Message):
     vaild_path_num: int = betterproto.int32_field(9)
     data_hash: int = betterproto.fixed64_field(10)
     transaction_id: int = betterproto.int64_field(11)
-    reserved: List[int] = betterproto.int64_field(12)
+    reserved: list[int] = betterproto.int64_field(12)
     data_len: int = betterproto.int32_field(13)
-    path_packets: List["CoverPathPacketT"] = betterproto.message_field(14)
+    path_packets: list["CoverPathPacketT"] = betterproto.message_field(14)
 
 
 @dataclass(eq=False, repr=False)
@@ -1315,7 +1191,7 @@ class CostmapT(betterproto.Message):
     center_y: float = betterproto.float_field(4)
     yaw: float = betterproto.float_field(5)
     res: float = betterproto.float_field(6)
-    costmap: List[int] = betterproto.int32_field(7)
+    costmap: list[int] = betterproto.int32_field(7)
 
 
 @dataclass(eq=False, repr=False)
@@ -1326,7 +1202,7 @@ class PlanTaskNameIdT(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class NavGetAllPlanTask(betterproto.Message):
-    tasks: List["PlanTaskNameIdT"] = betterproto.message_field(1)
+    tasks: list["PlanTaskNameIdT"] = betterproto.message_field(1)
 
 
 @dataclass(eq=False, repr=False)
@@ -1388,7 +1264,7 @@ class AreaHashName(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class AppGetAllAreaHashName(betterproto.Message):
     device_id: str = betterproto.string_field(1)
-    hashnames: List["AreaHashName"] = betterproto.message_field(2)
+    hashnames: list["AreaHashName"] = betterproto.message_field(2)
 
 
 @dataclass(eq=False, repr=False)
@@ -1577,9 +1453,6 @@ class MctlNav(betterproto.Message):
         61, optional=True, group="SubNavMsg"
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -1652,8 +1525,8 @@ class SysJobPlanTime(betterproto.Message):
     time_in_day: int = betterproto.int32_field(4)
     job_plan_mode: int = betterproto.int32_field(5)
     job_plan_enable: int = betterproto.int32_field(6)
-    week_day: List[int] = betterproto.int32_field(7)
-    time_in_week_day: List[int] = betterproto.int32_field(8)
+    week_day: list[int] = betterproto.int32_field(7)
+    time_in_week_day: list[int] = betterproto.int32_field(8)
     every_day: int = betterproto.int32_field(9)
     job_plan: "SysJobPlan" = betterproto.message_field(10)
 
@@ -1735,7 +1608,7 @@ class VisionPointMsg(betterproto.Message):
 class VisionPointInfoMsg(betterproto.Message):
     label: int = betterproto.int32_field(1)
     num: int = betterproto.int32_field(2)
-    vision_point: List["VisionPointMsg"] = betterproto.message_field(3)
+    vision_point: list["VisionPointMsg"] = betterproto.message_field(3)
 
 
 @dataclass(eq=False, repr=False)
@@ -1759,25 +1632,25 @@ class VisionStatisticMsg(betterproto.Message):
 class VisionStatisticInfoMsg(betterproto.Message):
     timestamp: float = betterproto.double_field(1)
     num: int = betterproto.int32_field(2)
-    vision_statistics: List["VisionStatisticMsg"] = betterproto.message_field(3)
+    vision_statistics: list["VisionStatisticMsg"] = betterproto.message_field(3)
 
 
 @dataclass(eq=False, repr=False)
 class SystemRapidStateTunnelMsg(betterproto.Message):
-    rapid_state_data: List[int] = betterproto.int64_field(1)
-    vision_point_info: List["VisionPointInfoMsg"] = betterproto.message_field(2)
+    rapid_state_data: list[int] = betterproto.int64_field(1)
+    vision_point_info: list["VisionPointInfoMsg"] = betterproto.message_field(2)
     vio_to_app_info: "VioToAppInfoMsg" = betterproto.message_field(3)
     vision_statistic_info: "VisionStatisticInfoMsg" = betterproto.message_field(4)
 
 
 @dataclass(eq=False, repr=False)
 class SystemTardStateTunnelMsg(betterproto.Message):
-    tard_state_data: List[int] = betterproto.int64_field(1)
+    tard_state_data: list[int] = betterproto.int64_field(1)
 
 
 @dataclass(eq=False, repr=False)
 class SystemUpdateBufMsg(betterproto.Message):
-    update_buf_data: List[int] = betterproto.int64_field(1)
+    update_buf_data: list[int] = betterproto.int64_field(1)
 
 
 @dataclass(eq=False, repr=False)
@@ -1794,7 +1667,7 @@ class SysOffChipFlash(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SystemTmpCycleTxMsg(betterproto.Message):
-    cycle_tx_data: List[int] = betterproto.int64_field(1)
+    cycle_tx_data: list[int] = betterproto.int64_field(1)
 
 
 @dataclass(eq=False, repr=False)
@@ -1822,14 +1695,14 @@ class ModFwInfo(betterproto.Message):
 class DeviceFwInfo(betterproto.Message):
     result: int = betterproto.int32_field(1)
     version: str = betterproto.string_field(2)
-    mod: List["ModFwInfo"] = betterproto.message_field(3)
+    mod: list["ModFwInfo"] = betterproto.message_field(3)
 
 
 @dataclass(eq=False, repr=False)
 class MowToAppInfoT(betterproto.Message):
     type: int = betterproto.int32_field(1)
     cmd: int = betterproto.int32_field(2)
-    mow_data: List[int] = betterproto.int32_field(3)
+    mow_data: list[int] = betterproto.int32_field(3)
 
 
 @dataclass(eq=False, repr=False)
@@ -1842,7 +1715,7 @@ class DeviceProductTypeInfoT(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class QcAppTestExcept(betterproto.Message):
     except_type: str = betterproto.string_field(1)
-    conditions: List["QcAppTestConditions"] = betterproto.message_field(2)
+    conditions: list["QcAppTestConditions"] = betterproto.message_field(2)
 
 
 @dataclass(eq=False, repr=False)
@@ -1860,14 +1733,14 @@ class MowToAppQctoolsInfoT(betterproto.Message):
     time_of_duration: int = betterproto.int32_field(2)
     result: int = betterproto.int32_field(3)
     result_details: str = betterproto.string_field(4)
-    except_: List["QcAppTestExcept"] = betterproto.message_field(5)
+    except_: list["QcAppTestExcept"] = betterproto.message_field(5)
 
 
 @dataclass(eq=False, repr=False)
 class MCtrlSimulationCmdData(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(1)
     param_id: int = betterproto.int32_field(2)
-    param_value: List[int] = betterproto.int32_field(3)
+    param_value: list[int] = betterproto.int32_field(3)
 
 
 @dataclass(eq=False, repr=False)
@@ -1999,7 +1872,7 @@ class ReportInfoCfg(betterproto.Message):
     period: int = betterproto.int32_field(3)
     no_change_period: int = betterproto.int32_field(4)
     count: int = betterproto.int32_field(5)
-    sub: List["RptInfoType"] = betterproto.enum_field(6)
+    sub: list["RptInfoType"] = betterproto.enum_field(6)
 
 
 @dataclass(eq=False, repr=False)
@@ -2007,11 +1880,11 @@ class ReportInfoData(betterproto.Message):
     connect: "RptConnectStatus" = betterproto.message_field(1)
     dev: "RptDevStatus" = betterproto.message_field(2)
     rtk: "RptRtk" = betterproto.message_field(3)
-    locations: List["RptDevLocation"] = betterproto.message_field(4)
+    locations: list["RptDevLocation"] = betterproto.message_field(4)
     work: "RptWork" = betterproto.message_field(5)
     fw_info: "DeviceFwInfo" = betterproto.message_field(6)
     maintain: "RptMaintain" = betterproto.message_field(7)
-    vision_point_info: List["VisionPointInfoMsg"] = betterproto.message_field(8)
+    vision_point_info: list["VisionPointInfoMsg"] = betterproto.message_field(8)
     vio_to_app_info: "VioToAppInfoMsg" = betterproto.message_field(9)
     vision_statistic_info: "VisionStatisticInfoMsg" = betterproto.message_field(10)
 
@@ -2121,9 +1994,6 @@ class MctlSys(betterproto.Message):
         42, optional=True, group="SubSysMsg"
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -2158,9 +2028,6 @@ class GetInfoRsp(betterproto.Message):
     )
     ota: Optional["OtaInfo"] = betterproto.message_field(4, optional=True, group="info")
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -2172,9 +2039,6 @@ class MctlOta(betterproto.Message):
         2, optional=True, group="SubOtaMsg"
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -2186,9 +2050,6 @@ class MulSetAudio(betterproto.Message):
         2, optional=True, group="AudioCfg_u"
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -2239,24 +2100,21 @@ class SocMul(betterproto.Message):
         6, optional=True, group="SubMul"
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
 class PerceptionObstaclesT(betterproto.Message):
     label: int = betterproto.int32_field(1)
     num: int = betterproto.int32_field(2)
-    points_x: List[int] = betterproto.int32_field(3)
-    points_y: List[int] = betterproto.int32_field(4)
+    points_x: list[int] = betterproto.int32_field(3)
+    points_y: list[int] = betterproto.int32_field(4)
 
 
 @dataclass(eq=False, repr=False)
 class PerceptionObstaclesVisualizationT(betterproto.Message):
     is_heart_beat: int = betterproto.int32_field(1)
     num: int = betterproto.int32_field(2)
-    obstacles: List["PerceptionObstaclesT"] = betterproto.message_field(3)
+    obstacles: list["PerceptionObstaclesT"] = betterproto.message_field(3)
     timestamp: float = betterproto.double_field(4)
     scale: float = betterproto.float_field(5)
 
@@ -2265,7 +2123,7 @@ class PerceptionObstaclesVisualizationT(betterproto.Message):
 class PerceptionUniversalBuffT(betterproto.Message):
     perception_type: int = betterproto.int32_field(1)
     perception_len: int = betterproto.int32_field(2)
-    universal_buff: List[int] = betterproto.int64_field(3)
+    universal_buff: list[int] = betterproto.int64_field(3)
 
 
 @dataclass(eq=False, repr=False)
@@ -2277,9 +2135,6 @@ class MctlPept(betterproto.Message):
         betterproto.message_field(2, optional=True, group="SubPeptMsg")
     )
 
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
 
 
 @dataclass(eq=False, repr=False)
@@ -2324,62 +2179,3 @@ class LubaMsg(betterproto.Message):
         18, optional=True, group="LubaSubMsg"
     )
     timestamp: Optional[int] = betterproto.uint64_field(15, optional=True)
-
-    @model_validator(mode="after")
-    def check_oneof(cls, values):
-        return cls._validate_field_groups(values)
-
-
-rebuild_dataclass(BaseStation)  # type: ignore
-rebuild_dataclass(DrvDevInfoRespId)  # type: ignore
-rebuild_dataclass(DrvDevInfoReq)  # type: ignore
-rebuild_dataclass(DrvDevInfoResp)  # type: ignore
-rebuild_dataclass(MnetInfo)  # type: ignore
-rebuild_dataclass(GetMnetInfoRsp)  # type: ignore
-rebuild_dataclass(MnetApn)  # type: ignore
-rebuild_dataclass(MnetApnCfg)  # type: ignore
-rebuild_dataclass(MnetApnSetCfg)  # type: ignore
-rebuild_dataclass(MnetCfg)  # type: ignore
-rebuild_dataclass(GetMnetCfgRsp)  # type: ignore
-rebuild_dataclass(SetMnetCfgReq)  # type: ignore
-rebuild_dataclass(DevNet)  # type: ignore
-rebuild_dataclass(MctlDriver)  # type: ignore
-rebuild_dataclass(NavTaskInfo)  # type: ignore
-rebuild_dataclass(NavOptLineUp)  # type: ignore
-rebuild_dataclass(NavOptiBorderInfo)  # type: ignore
-rebuild_dataclass(NavOptObsInfo)  # type: ignore
-rebuild_dataclass(NavGetCommDataAck)  # type: ignore
-rebuild_dataclass(NavUploadZigZagResult)  # type: ignore
-rebuild_dataclass(CoverPathPacketT)  # type: ignore
-rebuild_dataclass(CoverPathUploadT)  # type: ignore
-rebuild_dataclass(NavGetAllPlanTask)  # type: ignore
-rebuild_dataclass(SvgMessageAckT)  # type: ignore
-rebuild_dataclass(AppGetAllAreaHashName)  # type: ignore
-rebuild_dataclass(MctlNav)  # type: ignore
-rebuild_dataclass(SysJobPlanTime)  # type: ignore
-rebuild_dataclass(VisionPointInfoMsg)  # type: ignore
-rebuild_dataclass(VisionStatisticInfoMsg)  # type: ignore
-rebuild_dataclass(SystemRapidStateTunnelMsg)  # type: ignore
-rebuild_dataclass(SysOffChipFlash)  # type: ignore
-rebuild_dataclass(DeviceFwInfo)  # type: ignore
-rebuild_dataclass(QcAppTestExcept)  # type: ignore
-rebuild_dataclass(MowToAppQctoolsInfoT)  # type: ignore
-rebuild_dataclass(RptRtk)  # type: ignore
-rebuild_dataclass(RptDevStatus)  # type: ignore
-rebuild_dataclass(RptConnectStatus)  # type: ignore
-rebuild_dataclass(RptWork)  # type: ignore
-rebuild_dataclass(ReportInfoCfg)  # type: ignore
-rebuild_dataclass(ReportInfoData)  # type: ignore
-rebuild_dataclass(MctlSys)  # type: ignore
-rebuild_dataclass(GetInfoReq)  # type: ignore
-rebuild_dataclass(GetInfoRsp)  # type: ignore
-rebuild_dataclass(MctlOta)  # type: ignore
-rebuild_dataclass(MulSetAudio)  # type: ignore
-rebuild_dataclass(MulSetVideo)  # type: ignore
-rebuild_dataclass(MulSetVideoAck)  # type: ignore
-rebuild_dataclass(MulAudioCfg)  # type: ignore
-rebuild_dataclass(MulSetWiperAck)  # type: ignore
-rebuild_dataclass(SocMul)  # type: ignore
-rebuild_dataclass(PerceptionObstaclesVisualizationT)  # type: ignore
-rebuild_dataclass(MctlPept)  # type: ignore
-rebuild_dataclass(LubaMsg)  # type: ignore

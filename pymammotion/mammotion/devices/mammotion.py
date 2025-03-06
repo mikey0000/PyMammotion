@@ -160,7 +160,7 @@ class Mammotion:
     device_manager = MammotionDeviceManager()
     mqtt_list: dict[str, MammotionCloud] = dict()
 
-    _instance: Mammotion = None
+    _instance: Mammotion | None = None
 
     def __new__(cls, *args: Any, **kwargs: Any):
         if not cls._instance:

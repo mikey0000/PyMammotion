@@ -17,7 +17,7 @@ from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.mqtt.linkkit.linkkit import LinkKit
-from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto import LubaMsg
 
 logger = getLogger(__name__)
 

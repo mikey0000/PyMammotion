@@ -18,8 +18,7 @@ from pymammotion.bluetooth import BleMessage
 from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
-from pymammotion.proto import has_field
-from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto import LubaMsg, has_field
 
 DBUS_ERROR_BACKOFF_TIME = 0.25
 
@@ -334,7 +333,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.exception("Error parsing message %s", data)
                 data = b""
             finally:
-                self._message.clearNotification()
+                self._message.clear_notification()
 
             _LOGGER.debug("%s: Received notification: %s", self.name, data)
         else:

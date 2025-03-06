@@ -20,8 +20,7 @@ from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
 from pymammotion.mqtt.mammotion_future import MammotionFuture
-from pymammotion.proto import has_field
-from pymammotion.proto.luba_msg import LubaMsg
+from pymammotion.proto import LubaMsg, has_field
 
 _LOGGER = logging.getLogger(__name__)
 

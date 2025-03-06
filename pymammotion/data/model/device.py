@@ -12,13 +12,7 @@ from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.http.model.http import ErrorInfo
-from pymammotion.proto.mctrl_sys import (
-    DeviceFwInfo,
-    MowToAppInfoT,
-    ReportInfoData,
-    SystemRapidStateTunnelMsg,
-    SystemUpdateBufMsg,
-)
+from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemRapidStateTunnelMsg, SystemUpdateBufMsg
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
 from pymammotion.utility.map import CoordinateConverter

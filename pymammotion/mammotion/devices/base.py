@@ -10,8 +10,7 @@ from pymammotion.data.model import RegionData
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.raw_data import RawMowerData
 from pymammotion.data.state_manager import StateManager
-from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.mctrl_nav import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
+from pymammotion.proto import LubaMsg, NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
 
 _LOGGER = logging.getLogger(__name__)
 

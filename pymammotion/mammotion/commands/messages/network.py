@@ -5,7 +5,7 @@ import time
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
-from pymammotion.proto.dev_net import (
+from pymammotion.proto import (
     DevNet,
     DrvDebugDdsZmq,
     DrvDevInfoReq,
@@ -18,11 +18,14 @@ from pymammotion.proto.dev_net import (
     DrvWifiUpload,
     GetNetworkInfoReq,
     IotConctrlType,
+    LubaMsg,
     MnetCfg,
+    MsgAttr,
+    MsgCmdType,
+    MsgDevice,
     NetType,
     SetMnetCfgReq,
 )
-from pymammotion.proto.luba_msg import LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 
 
 class MessageNetwork(AbstractMessage, ABC):
@@ -31,10 +34,10 @@ class MessageNetwork(AbstractMessage, ABC):
     @staticmethod
     def send_order_msg_net(build: DevNet) -> bytes:
         luba_msg = LubaMsg(
-            msgtype=MsgCmdType.MSG_CMD_TYPE_ESP,
+            msgtype=MsgCmdType.ESP,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_COMM_ESP,
-            msgattr=MsgAttr.MSG_ATTR_REQ,
+            msgattr=MsgAttr.REQ,
             seqs=1,
             version=1,
             subtype=1,
@@ -76,7 +79,7 @@ class MessageNetwork(AbstractMessage, ABC):
 
     def set_zmq_enable(self) -> bytes:
         build = DevNet(
-            todev_set_dds2zmq=DrvDebugDdsZmq(
+            todev_set_dds2_zmq=DrvDebugDdsZmq(
                 is_enable=True,
                 rx_topic_name="perception_post_result",
                 tx_zmq_url="tcp://0.0.0.0:5555",
@@ -164,7 +167,7 @@ class MessageNetwork(AbstractMessage, ABC):
             todev_ble_sync=1,
             todev_set_mnet_cfg_req=SetMnetCfgReq(
                 cfg=MnetCfg(
-                    type=NetType.NET_TYPE_WIFI,
+                    type=NetType.WIFI,
                     inet_enable=new_4g_status,
                     mnet_enable=new_4g_status,
                 )
@@ -177,7 +180,7 @@ class MessageNetwork(AbstractMessage, ABC):
     def set_device_wifi_enable_status(self, new_wifi_status: bool) -> bytes:
         build = DevNet(
             todev_ble_sync=1,
-            todev__wifi__configuration=DrvWifiSet(config_param=4, wifi_enable=new_wifi_status),
+            todev_wifi_configuration=DrvWifiSet(config_param=4, wifi_enable=new_wifi_status),
         )
         logger.debug(f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
         return self.send_order_msg_net(build)
@@ -185,7 +188,7 @@ class MessageNetwork(AbstractMessage, ABC):
     def wifi_connectinfo_update(self) -> bytes:
         build = DevNet(
             todev_ble_sync=1,
-            todev__wifi_msg_upload=DrvWifiUpload(wifi_msg_upload=1),
+            todev_wifi_msg_upload=DrvWifiUpload(wifi_msg_upload=1),
         )
         logger.debug("Send command - get Wifi connection information")
         return self.send_order_msg_net(build)
@@ -196,14 +199,14 @@ class MessageNetwork(AbstractMessage, ABC):
         #     68, hash_map))  # TODO: Fix this
 
     def get_record_wifi_list(self) -> bytes:
-        build = DevNet(todev_ble_sync=1, todev__wifi_list_upload=DrvWifiList())
+        build = DevNet(todev_ble_sync=1, todev_wifi_list_upload=DrvWifiList())
         logger.debug("Send command - get memorized WiFi list upload command")
         return self.send_order_msg_net(build)
 
     def close_clear_connect_current_wifi(self, ssid: str, status: int) -> bytes:
         build = DevNet(
             todev_ble_sync=1,
-            todev__wifi__configuration=DrvWifiSet(config_param=status, confssid=ssid),
+            todev_wifi_configuration=DrvWifiSet(config_param=status, confssid=ssid),
         )
         logger.debug(
             f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})"

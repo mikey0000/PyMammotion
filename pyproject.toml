@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name        = "pymammotion"
-version     = "0.4.0-beta8"
+version     = "0.4.0"
 license     = "GPL-3.0"
 description = ""
 readme      = "README.md"
@@ -34,7 +34,7 @@ bleak-retry-connector = "^3.5.0"
 jsonic = "^1.0.0"
 mashumaro = "^3.13"
 orjson = "^3.9.15"
-betterproto = "^1.2.5"
+betterproto = "^2.0.0b7"
 numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
 cryptography = ">=43.0.1"
@@ -57,7 +57,7 @@ twine = "^5.0.0"
 bumpver = "^2023.1129"
 frida-tools = "^12.3.0"
 grpcio-tools = "^1.63.0"
-betterproto = {extras = ["compiler"], version = "^1.2.5"}
+betterproto = {extras = ["compiler"], version = "^2.0.0b7"}
 pylint = "^3.2.2"
 ruff = "^0.4.6"
 pre-commit = "^3.8.0"
@@ -65,7 +65,7 @@ mypy = "^1.11.2"
 autotyping = "^24.3.0"
 
 [tool.bumpver]
-current_version = "0.4.0-beta8"
+current_version = "0.4.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true

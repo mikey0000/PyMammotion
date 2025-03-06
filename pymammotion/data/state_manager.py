@@ -12,10 +12,19 @@ from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.hash_list import AreaHashNameList
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.proto.dev_net import DrvDevInfoResp, DrvDevInfoResult, WifiIotStatusReport
-from pymammotion.proto.luba_msg import LubaMsg
-from pymammotion.proto.mctrl_nav import AppGetAllAreaHashName, NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
-from pymammotion.proto.mctrl_sys import DeviceFwInfo, DeviceProductTypeInfoT, TimeCtrlLight
+from pymammotion.proto import (
+    AppGetAllAreaHashName,
+    DeviceFwInfo,
+    DeviceProductTypeInfoT,
+    DrvDevInfoResp,
+    DrvDevInfoResult,
+    LubaMsg,
+    NavGetCommDataAck,
+    NavGetHashListAck,
+    SvgMessageAckT,
+    TimeCtrlLight,
+    WifiIotStatusReport,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +130,10 @@ class StateManager:
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
             case "toapp_svg_msg":
-                common_data: SvgMessageAckT = nav_msg[1]
-                updated = self._device.map.update(common_data)
+                common_svg_data: SvgMessageAckT = nav_msg[1]
+                updated = self._device.map.update(common_svg_data)
                 if updated:
-                    await self.get_commondata_ack_callback(common_data)
+                    await self.get_commondata_ack_callback(common_svg_data)
 
             case "toapp_all_hash_name":
                 hash_names: AppGetAllAreaHashName = nav_msg[1]
