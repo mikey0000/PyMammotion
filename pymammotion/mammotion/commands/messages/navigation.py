@@ -48,8 +48,8 @@ class MessageNavigation(AbstractMessage, ABC):
 
         return luba_msg.SerializeToString()
 
-    def allpowerfull_rw_adapter_x3(self, id: int, context: int, rw: int) -> bytes:
-        build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=id, context=context, rw=rw))
+    def allpowerfull_rw_adapter_x3(self, rw_id: int, context: int, rw: int) -> bytes:
+        build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=rw_id, context=context, rw=rw))
         logger.debug(f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
         return self.send_order_msg_nav(build)
 
@@ -283,7 +283,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def get_all_boundary_hash_list(self, sub_cmd: int) -> bytes:
         build = MctlNav(todev_gethash=NavGetHashList(pver=1, sub_cmd=sub_cmd))
-        logger.debug(f"Area loading=====================:Get area hash list++Bluetooth:{sub_cmd}")
+        logger.debug(f"Area loading=====================:Get area hash list:{sub_cmd}")
         return self.send_order_msg_nav(build)
 
     def get_hash_response(self, total_frame: int, current_frame: int) -> bytes:

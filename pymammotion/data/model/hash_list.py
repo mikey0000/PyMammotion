@@ -3,7 +3,7 @@ from enum import IntEnum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
+from pymammotion.proto import NavGetCommDataAck, SvgMessageAckT
 
 
 class PathType(IntEnum):
@@ -17,20 +17,90 @@ class PathType(IntEnum):
 
 
 @dataclass
-class FrameList(DataClassORJSONMixin):
-    total_frame: int
-    data: list[NavGetCommDataAck | SvgMessageAckT]
+class CommDataCouple:
+    x: float = 0.0
+    y: float = 0.0
 
 
 @dataclass
-class NavGetHashListData(DataClassORJSONMixin, NavGetHashListAck):
+class AreaLabelName(DataClassORJSONMixin):
+    label: str = ""
+
+
+@dataclass
+class NavGetCommData(DataClassORJSONMixin):
+    pver: int = 0
+    sub_cmd: int = 0
+    result: int = 0
+    action: int = 0
+    type: int = 0
+    hash: int = 0
+    paternal_hash_a: int = 0
+    paternal_hash_b: int = 0
+    total_frame: int = 0
+    current_frame: int = 0
+    data_hash: int = 0
+    data_len: int = 0
+    data_couple: list["CommDataCouple"] = field(default_factory=list)
+    reserved: str = ""
+    area_label: "AreaLabelName" = field(default_factory=AreaLabelName)
+
+
+@dataclass
+class SvgMessageData(DataClassORJSONMixin):
+    x_move: float = 0.0
+    y_move: float = 0.0
+    scale: float = 0.0
+    rotate: float = 0.0
+    base_width_m: float = 0.0
+    base_width_pix: int = 0
+    base_height_m: float = 0.0
+    base_height_pix: int = 0
+    data_count: int = 0
+    hide_svg: bool = False
+    name_count: int = 0
+    svg_file_name: str = ""
+    svg_file_data: str = ""
+
+
+@dataclass
+class SvgMessage(DataClassORJSONMixin):
+    pver: int = 0
+    sub_cmd: int = 0
+    total_frame: int = 0
+    current_frame: int = 0
+    data_hash: int = 0
+    paternal_hash_a: int = 0
+    type: int = 0
+    result: int = 0
+    svg_message: "SvgMessageData" = field(default_factory=SvgMessageData)
+
+
+@dataclass
+class FrameList(DataClassORJSONMixin):
+    total_frame: int
+    data: list[NavGetCommData | SvgMessage]
+
+
+@dataclass(eq=False, repr=False)
+class NavGetHashListData(DataClassORJSONMixin):
     """Dataclass for NavGetHashListData."""
+
+    pver: int = 0
+    sub_cmd: int = 0
+    total_frame: int = 0
+    current_frame: int = 0
+    data_hash: int = 0
+    hash_len: int = 0
+    reserved: str = ""
+    result: int = 0
+    data_couple: list[int] = field(default_factory=list)
 
 
 @dataclass
 class RootHashList(DataClassORJSONMixin):
     total_frame: int = 0
-    data: list[NavGetHashListAck] = field(default_factory=list)
+    data: list[NavGetHashListData] = field(default_factory=list)
 
 
 @dataclass
@@ -81,7 +151,7 @@ class HashList(DataClassORJSONMixin):
             )
         ]
 
-    def update_root_hash_list(self, hash_list: NavGetHashListAck) -> None:
+    def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
         self.root_hash_list.total_frame = hash_list.total_frame
 
         for index, obj in enumerate(self.root_hash_list.data):
@@ -114,7 +184,7 @@ class HashList(DataClassORJSONMixin):
 
         return []
 
-    def update(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> bool:
+    def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
         """Update the map data."""
         if hash_data.type == PathType.AREA:
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
@@ -148,8 +218,8 @@ class HashList(DataClassORJSONMixin):
         return missing_numbers
 
     @staticmethod
-    def _add_hash_data(hash_dict: dict, hash_data: NavGetCommDataAck | SvgMessageAckT) -> bool:
-        if isinstance(hash_data, SvgMessageAckT):
+    def _add_hash_data(hash_dict: dict, hash_data: NavGetCommData | SvgMessage) -> bool:
+        if isinstance(hash_data, SvgMessage):
             if hash_dict.get(hash_data.data_hash) is None:
                 hash_dict[hash_data.data_hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
                 return True

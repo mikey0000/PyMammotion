@@ -9,7 +9,7 @@ import betterproto
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
-from pymammotion.data.model.hash_list import AreaHashNameList
+from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, SvgMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.proto import (
@@ -68,6 +68,8 @@ class StateManager:
         if not self._device.online:
             self._device.online = True
         self._device.status_properties = thing_status
+        if self._device.mower_state.product_key == "":
+            self._device.mower_state.product_key = thing_status.params.productKey
 
     @property
     def online(self) -> bool:
@@ -99,6 +101,9 @@ class StateManager:
         """Handle protobuf notifications."""
         res = betterproto.which_one_of(message, "LubaSubMsg")
         self.last_updated_at = datetime.now()
+        # additional catch all if we don't get a status update
+        if not self._device.online:
+            self._device.online = True
 
         match res[0]:
             case "nav":
@@ -122,16 +127,22 @@ class StateManager:
         match nav_msg[0]:
             case "toapp_gethash_ack":
                 hashlist_ack: NavGetHashListAck = nav_msg[1]
-                self._device.map.update_root_hash_list(hashlist_ack)
+                self._device.map.update_root_hash_list(
+                    NavGetHashListData.from_dict(hashlist_ack.to_dict(casing=betterproto.Casing.SNAKE))
+                )
                 await self.gethash_ack_callback(nav_msg[1])
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]
-                updated = self._device.map.update(common_data)
+                updated = self._device.map.update(
+                    NavGetCommData.from_dict(common_data.to_dict(casing=betterproto.Casing.SNAKE))
+                )
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
             case "toapp_svg_msg":
                 common_svg_data: SvgMessageAckT = nav_msg[1]
-                updated = self._device.map.update(common_svg_data)
+                updated = self._device.map.update(
+                    SvgMessage.from_dict(common_svg_data.to_dict(casing=betterproto.Casing.SNAKE))
+                )
                 if updated:
                     await self.get_commondata_ack_callback(common_svg_data)
 
