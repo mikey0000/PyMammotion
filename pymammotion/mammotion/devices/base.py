@@ -11,6 +11,7 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.raw_data import RawMowerData
 from pymammotion.data.state_manager import StateManager
 from pymammotion.proto import LubaMsg, NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
+from pymammotion.utility.device_type import DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -197,13 +198,13 @@ class MammotionBaseDevice:
         await self.queue_command("get_device_product_model")
         await self.queue_command("get_report_cfg")
         """RTK and dock location."""
-        await self.queue_command("allpowerfull_rw", id=5, context=1, rw=1)
+        await self.queue_command("allpowerfull_rw", rw_id=5, context=1, rw=1)
         await self.async_read_settings()
 
     async def start_map_sync(self) -> None:
         """Start sync of map data."""
 
-        if self._cloud_device and len(self.mower.map.area_name) == 0:
+        if self._cloud_device and len(self.mower.map.area_name) == 0 and not DeviceType.is_luba1(self.mower.name):
             await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
 
         await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
@@ -221,11 +222,11 @@ class MammotionBaseDevice:
 
     async def async_read_settings(self) -> None:
         """Read settings from device."""
-        await self.queue_command("allpowerfull_rw", id=3, context=1, rw=0)
-        await self.queue_command("allpowerfull_rw", id=4, context=1, rw=0)
-        await self.queue_command("allpowerfull_rw", id=6, context=1, rw=0)
+        await self.queue_command("allpowerfull_rw", rw_id=3, context=1, rw=0)
+        await self.queue_command("allpowerfull_rw", rw_id=4, context=1, rw=0)
+        await self.queue_command("allpowerfull_rw", rw_id=6, context=1, rw=0)
         # traversal mode
-        await self.queue_command("allpowerfull_rw", id=7, context=1, rw=0)
+        await self.queue_command("allpowerfull_rw", rw_id=7, context=1, rw=0)
 
         await self.queue_command("read_and_set_sidelight", is_sidelight=True, operate=1)
 
@@ -233,8 +234,8 @@ class MammotionBaseDevice:
 
     async def async_get_errors(self) -> None:
         """Error codes."""
-        await self.queue_command("allpowerfull_rw", id=5, rw=1, context=2)
-        await self.queue_command("allpowerfull_rw", id=5, rw=1, context=3)
+        await self.queue_command("allpowerfull_rw", rw_id=5, rw=1, context=2)
+        await self.queue_command("allpowerfull_rw", rw_id=5, rw=1, context=3)
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""

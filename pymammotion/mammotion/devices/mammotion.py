@@ -34,6 +34,8 @@ class ConnectionPreference(Enum):
 
 class MammotionMixedDeviceManager:
     preference: ConnectionPreference
+    _ble_device: MammotionBaseBLEDevice | None = None
+    _cloud_device: MammotionBaseCloudDevice | None = None
 
     def __init__(
         self,
@@ -45,8 +47,7 @@ class MammotionMixedDeviceManager:
     ) -> None:
         self.name = name
         self._state_manager = StateManager(MowingDevice())
-        self._ble_device: MammotionBaseBLEDevice | None = None
-        self._cloud_device: MammotionBaseCloudDevice | None = None
+        self._state_manager.get_device().name = name
         self.add_ble(ble_device)
         self.add_cloud(cloud_device, mqtt)
         self.preference = preference
@@ -213,14 +214,17 @@ class Mammotion:
         for device in mqtt_client.cloud_client.devices_by_account_response.data.data:
             mower_device = self.device_manager.get_device(device.deviceName)
             if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
-                self.device_manager.add_device(
-                    MammotionMixedDeviceManager(
-                        name=device.deviceName,
-                        cloud_device=device,
-                        mqtt=mqtt_client,
-                        preference=ConnectionPreference.WIFI,
-                    )
+                mixed_device = MammotionMixedDeviceManager(
+                    name=device.deviceName,
+                    cloud_device=device,
+                    mqtt=mqtt_client,
+                    preference=ConnectionPreference.WIFI,
                 )
+                mixed_device.mower_state.mower_state.product_key = device.productKey
+                mixed_device.mower_state.mower_state.model = (
+                    device.productName if device.productModel is None else device.productModel
+                )
+                self.device_manager.add_device(mixed_device)
             elif device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device:
                 if mower_device.cloud() is None:
                     mower_device.add_cloud(cloud_device=device, mqtt=mqtt_client)
@@ -264,7 +268,7 @@ class Mammotion:
         """Send a command to the device."""
         device = self.get_device_by_name(name)
         if device:
-            if device.preference is ConnectionPreference.BLUETOOTH:
+            if device.preference is ConnectionPreference.BLUETOOTH and device.has_ble():
                 return await device.ble().command(key)
             if device.preference is ConnectionPreference.WIFI:
                 return await device.cloud().command(key)
@@ -274,7 +278,7 @@ class Mammotion:
         """Send a command with args to the device."""
         device = self.get_device_by_name(name)
         if device:
-            if device.preference is ConnectionPreference.BLUETOOTH:
+            if device.preference is ConnectionPreference.BLUETOOTH and device.has_ble():
                 return await device.ble().command(key, **kwargs)
             if device.preference is ConnectionPreference.WIFI:
                 return await device.cloud().command(key, **kwargs)
@@ -283,7 +287,7 @@ class Mammotion:
     async def start_sync(self, name: str, retry: int):
         device = self.get_device_by_name(name)
         if device:
-            if device.preference is ConnectionPreference.BLUETOOTH:
+            if device.preference is ConnectionPreference.BLUETOOTH and device.has_ble():
                 return await device.ble().start_sync(retry)
             if device.preference is ConnectionPreference.WIFI:
                 return await device.cloud().start_sync(retry)
@@ -292,7 +296,7 @@ class Mammotion:
     async def start_map_sync(self, name: str):
         device = self.get_device_by_name(name)
         if device:
-            if device.preference is ConnectionPreference.BLUETOOTH:
+            if device.preference is ConnectionPreference.BLUETOOTH and device.has_ble():
                 return await device.ble().start_map_sync()
             if device.preference is ConnectionPreference.WIFI:
                 return await device.cloud().start_map_sync()

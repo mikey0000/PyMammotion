@@ -284,17 +284,17 @@ class BaseToAppMqttRtkT(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class BaseStation(betterproto.Message):
-    to_dev: Optional["RequestBasestationInfoT"] = betterproto.message_field(
-        1, optional=True, group="BaseStationSubType"
+    to_dev: "RequestBasestationInfoT" = betterproto.message_field(
+        1, group="BaseStationSubType"
     )
-    to_app: Optional["ResponseBasestationInfoT"] = betterproto.message_field(
-        2, optional=True, group="BaseStationSubType"
+    to_app: "ResponseBasestationInfoT" = betterproto.message_field(
+        2, group="BaseStationSubType"
     )
-    app_to_base_mqtt_rtk_msg: Optional["AppToBaseMqttRtkT"] = betterproto.message_field(
-        3, optional=True, group="BaseStationSubType"
+    app_to_base_mqtt_rtk_msg: "AppToBaseMqttRtkT" = betterproto.message_field(
+        3, group="BaseStationSubType"
     )
-    base_to_app_mqtt_rtk_msg: Optional["BaseToAppMqttRtkT"] = betterproto.message_field(
-        4, optional=True, group="BaseStationSubType"
+    base_to_app_mqtt_rtk_msg: "BaseToAppMqttRtkT" = betterproto.message_field(
+        4, group="BaseStationSubType"
     )
 
 
@@ -548,89 +548,89 @@ class SetDrvBleMtu(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class DevNet(betterproto.Message):
-    todev_ble_sync: Optional[int] = betterproto.int32_field(
-        1, optional=True, group="NetSubType"
+    todev_ble_sync: int = betterproto.int32_field(
+        1, group="NetSubType"
     )
-    todev_conf_type: Optional["WifiConfType"] = betterproto.enum_field(
-        2, optional=True, group="NetSubType"
+    todev_conf_type: "WifiConfType" = betterproto.enum_field(
+        2, group="NetSubType"
     )
-    todev_wifi_msg_upload: Optional["DrvWifiUpload"] = betterproto.message_field(
-        3, optional=True, group="NetSubType"
+    todev_wifi_msg_upload: "DrvWifiUpload" = betterproto.message_field(
+        3, group="NetSubType"
     )
-    todev_wifi_list_upload: Optional["DrvWifiList"] = betterproto.message_field(
-        4, optional=True, group="NetSubType"
+    todev_wifi_list_upload: "DrvWifiList" = betterproto.message_field(
+        4, group="NetSubType"
     )
-    todev_wifi_configuration: Optional["DrvWifiSet"] = betterproto.message_field(
-        5, optional=True, group="NetSubType"
+    todev_wifi_configuration: "DrvWifiSet" = betterproto.message_field(
+        5, group="NetSubType"
     )
-    toapp_wifi_msg: Optional["DrvWifiMsg"] = betterproto.message_field(
-        6, optional=True, group="NetSubType"
+    toapp_wifi_msg: "DrvWifiMsg" = betterproto.message_field(
+        6, group="NetSubType"
     )
-    toapp_wifi_conf: Optional["DrvWifiConf"] = betterproto.message_field(
-        7, optional=True, group="NetSubType"
+    toapp_wifi_conf: "DrvWifiConf" = betterproto.message_field(
+        7, group="NetSubType"
     )
-    toapp_list_upload: Optional["DrvListUpload"] = betterproto.message_field(
-        8, optional=True, group="NetSubType"
+    toapp_list_upload: "DrvListUpload" = betterproto.message_field(
+        8, group="NetSubType"
     )
-    todev_req_log_info: Optional["DrvUploadFileReq"] = betterproto.message_field(
-        9, optional=True, group="NetSubType"
+    todev_req_log_info: "DrvUploadFileReq" = betterproto.message_field(
+        9, group="NetSubType"
     )
-    todev_log_data_cancel: Optional["DrvUploadFileCancel"] = betterproto.message_field(
-        10, optional=True, group="NetSubType"
+    todev_log_data_cancel: "DrvUploadFileCancel" = betterproto.message_field(
+        10, group="NetSubType"
     )
-    todev_devinfo_req: Optional["DrvDevInfoReq"] = betterproto.message_field(
-        11, optional=True, group="NetSubType"
+    todev_devinfo_req: "DrvDevInfoReq" = betterproto.message_field(
+        11, group="NetSubType"
     )
-    toapp_devinfo_resp: Optional["DrvDevInfoResp"] = betterproto.message_field(
-        12, optional=True, group="NetSubType"
+    toapp_devinfo_resp: "DrvDevInfoResp" = betterproto.message_field(
+        12, group="NetSubType"
     )
-    toapp_upgrade_report: Optional["DrvUpgradeReport"] = betterproto.message_field(
-        13, optional=True, group="NetSubType"
+    toapp_upgrade_report: "DrvUpgradeReport" = betterproto.message_field(
+        13, group="NetSubType"
     )
-    toapp_wifi_iot_status: Optional["WifiIotStatusReport"] = betterproto.message_field(
-        14, optional=True, group="NetSubType"
+    toapp_wifi_iot_status: "WifiIotStatusReport" = betterproto.message_field(
+        14, group="NetSubType"
     )
-    todev_uploadfile_req: Optional["DrvUploadFileToAppReq"] = betterproto.message_field(
-        15, optional=True, group="NetSubType"
+    todev_uploadfile_req: "DrvUploadFileToAppReq" = betterproto.message_field(
+        15, group="NetSubType"
     )
-    toapp_uploadfile_rsp: Optional["DrvUploadFileToAppRsp"] = betterproto.message_field(
-        16, optional=True, group="NetSubType"
+    toapp_uploadfile_rsp: "DrvUploadFileToAppRsp" = betterproto.message_field(
+        16, group="NetSubType"
     )
-    todev_networkinfo_req: Optional["GetNetworkInfoReq"] = betterproto.message_field(
-        17, optional=True, group="NetSubType"
+    todev_networkinfo_req: "GetNetworkInfoReq" = betterproto.message_field(
+        17, group="NetSubType"
     )
-    toapp_networkinfo_rsp: Optional["GetNetworkInfoRsp"] = betterproto.message_field(
-        18, optional=True, group="NetSubType"
+    toapp_networkinfo_rsp: "GetNetworkInfoRsp" = betterproto.message_field(
+        18, group="NetSubType"
     )
-    bir_testdata: Optional["BleTestBytes"] = betterproto.message_field(
-        19, optional=True, group="NetSubType"
+    bir_testdata: "BleTestBytes" = betterproto.message_field(
+        19, group="NetSubType"
     )
-    todev_mnet_info_req: Optional["GetMnetInfoReq"] = betterproto.message_field(
-        20, optional=True, group="NetSubType"
+    todev_mnet_info_req: "GetMnetInfoReq" = betterproto.message_field(
+        20, group="NetSubType"
     )
-    toapp_mnet_info_rsp: Optional["GetMnetInfoRsp"] = betterproto.message_field(
-        21, optional=True, group="NetSubType"
+    toapp_mnet_info_rsp: "GetMnetInfoRsp" = betterproto.message_field(
+        21, group="NetSubType"
     )
-    todev_get_mnet_cfg_req: Optional["GetMnetCfgReq"] = betterproto.message_field(
-        22, optional=True, group="NetSubType"
+    todev_get_mnet_cfg_req: "GetMnetCfgReq" = betterproto.message_field(
+        22, group="NetSubType"
     )
-    toapp_get_mnet_cfg_rsp: Optional["GetMnetCfgRsp"] = betterproto.message_field(
-        23, optional=True, group="NetSubType"
+    toapp_get_mnet_cfg_rsp: "GetMnetCfgRsp" = betterproto.message_field(
+        23, group="NetSubType"
     )
-    todev_set_mnet_cfg_req: Optional["SetMnetCfgReq"] = betterproto.message_field(
-        24, optional=True, group="NetSubType"
+    todev_set_mnet_cfg_req: "SetMnetCfgReq" = betterproto.message_field(
+        24, group="NetSubType"
     )
-    toapp_set_mnet_cfg_rsp: Optional["SetMnetCfgRsp"] = betterproto.message_field(
-        25, optional=True, group="NetSubType"
+    toapp_set_mnet_cfg_rsp: "SetMnetCfgRsp" = betterproto.message_field(
+        25, group="NetSubType"
     )
-    todev_set_dds2_zmq: Optional["DrvDebugDdsZmq"] = betterproto.message_field(
-        26, optional=True, group="NetSubType"
+    todev_set_dds2_zmq: "DrvDebugDdsZmq" = betterproto.message_field(
+        26, group="NetSubType"
     )
-    todev_set_ble_mtu: Optional["SetDrvBleMtu"] = betterproto.message_field(
-        27, optional=True, group="NetSubType"
+    todev_set_ble_mtu: "SetDrvBleMtu" = betterproto.message_field(
+        27, group="NetSubType"
     )
-    todev_set_iot_offline_req: Optional["IotConctrlType"] = betterproto.enum_field(
-        28, optional=True, group="NetSubType"
+    todev_set_iot_offline_req: "IotConctrlType" = betterproto.enum_field(
+        28, group="NetSubType"
     )
 
 
@@ -697,38 +697,38 @@ class RtkSysMaskQueryAckT(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class MctlDriver(betterproto.Message):
-    todev_devmotion_ctrl: Optional["DrvMotionCtrl"] = betterproto.message_field(
-        1, optional=True, group="SubDrvMsg"
+    todev_devmotion_ctrl: "DrvMotionCtrl" = betterproto.message_field(
+        1, group="SubDrvMsg"
     )
-    todev_knife_height_set: Optional["DrvKnifeHeight"] = betterproto.message_field(
-        2, optional=True, group="SubDrvMsg"
+    todev_knife_height_set: "DrvKnifeHeight" = betterproto.message_field(
+        2, group="SubDrvMsg"
     )
-    bidire_speed_read_set: Optional["DrvSrSpeed"] = betterproto.message_field(
-        3, optional=True, group="SubDrvMsg"
+    bidire_speed_read_set: "DrvSrSpeed" = betterproto.message_field(
+        3, group="SubDrvMsg"
     )
-    bidire_knife_height_report: Optional["DrvKnifeHeight"] = betterproto.message_field(
-        4, optional=True, group="SubDrvMsg"
+    bidire_knife_height_report: "DrvKnifeHeight" = betterproto.message_field(
+        4, group="SubDrvMsg"
     )
-    toapp_knife_status: Optional["DrvKnifeStatus"] = betterproto.message_field(
-        5, optional=True, group="SubDrvMsg"
+    toapp_knife_status: "DrvKnifeStatus" = betterproto.message_field(
+        5, group="SubDrvMsg"
     )
-    mow_ctrl_by_hand: Optional["DrvMowCtrlByHand"] = betterproto.message_field(
-        6, optional=True, group="SubDrvMsg"
+    mow_ctrl_by_hand: "DrvMowCtrlByHand" = betterproto.message_field(
+        6, group="SubDrvMsg"
     )
-    rtk_cfg_req: Optional["RtkCfgReqT"] = betterproto.message_field(
-        7, optional=True, group="SubDrvMsg"
+    rtk_cfg_req: "RtkCfgReqT" = betterproto.message_field(
+        7, group="SubDrvMsg"
     )
-    rtk_cfg_req_ack: Optional["RtkCfgReqAckT"] = betterproto.message_field(
-        8, optional=True, group="SubDrvMsg"
+    rtk_cfg_req_ack: "RtkCfgReqAckT" = betterproto.message_field(
+        8, group="SubDrvMsg"
     )
-    rtk_sys_mask_query: Optional["RtkSysMaskQueryT"] = betterproto.message_field(
-        9, optional=True, group="SubDrvMsg"
+    rtk_sys_mask_query: "RtkSysMaskQueryT" = betterproto.message_field(
+        9, group="SubDrvMsg"
     )
-    rtk_sys_mask_query_ack: Optional["RtkSysMaskQueryAckT"] = betterproto.message_field(
-        10, optional=True, group="SubDrvMsg"
+    rtk_sys_mask_query_ack: "RtkSysMaskQueryAckT" = betterproto.message_field(
+        10, group="SubDrvMsg"
     )
-    toapp_knife_status_change: Optional["DrvKnifeChangeReport"] = (
-        betterproto.message_field(11, optional=True, group="SubDrvMsg")
+    toapp_knife_status_change: "DrvKnifeChangeReport" = (
+        betterproto.message_field(11, group="SubDrvMsg")
     )
 
 
@@ -891,7 +891,7 @@ class NavGetCommData(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(2)
     action: int = betterproto.int32_field(3)
     type: int = betterproto.int32_field(4)
-    hash: int = betterproto.int64_field(5)
+    hash: int = betterproto.fixed64_field(5)
     paternal_hash_a: int = betterproto.int64_field(6)
     paternal_hash_b: int = betterproto.int64_field(7)
     total_frame: int = betterproto.int32_field(8)
@@ -1219,7 +1219,7 @@ class NavTaskCtrlAck(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class NavMapNameMsg(betterproto.Message):
     rw: int = betterproto.int32_field(1)
-    hash: int = betterproto.int64_field(2)
+    hash: int = betterproto.fixed64_field(2)
     name: str = betterproto.string_field(3)
     result: int = betterproto.int32_field(4)
     device_id: str = betterproto.string_field(5)
@@ -1258,7 +1258,7 @@ class SvgMessageAckT(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class AreaHashName(betterproto.Message):
     name: str = betterproto.string_field(2)
-    hash: int = betterproto.int64_field(1)
+    hash: int = betterproto.fixed64_field(1)
 
 
 @dataclass(eq=False, repr=False)
@@ -1269,188 +1269,188 @@ class AppGetAllAreaHashName(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class MctlNav(betterproto.Message):
-    toapp_lat_up: Optional["NavLatLonUp"] = betterproto.message_field(
-        1, optional=True, group="SubNavMsg"
+    toapp_lat_up: "NavLatLonUp" = betterproto.message_field(
+        1, group="SubNavMsg"
     )
-    toapp_pos_up: Optional["NavPosUp"] = betterproto.message_field(
-        2, optional=True, group="SubNavMsg"
+    toapp_pos_up: "NavPosUp" = betterproto.message_field(
+        2, group="SubNavMsg"
     )
-    todev_chl_line_data: Optional["NavCHlLineData"] = betterproto.message_field(
-        3, optional=True, group="SubNavMsg"
+    todev_chl_line_data: "NavCHlLineData" = betterproto.message_field(
+        3, group="SubNavMsg"
     )
-    toapp_task_info: Optional["NavTaskInfo"] = betterproto.message_field(
-        4, optional=True, group="SubNavMsg"
+    toapp_task_info: "NavTaskInfo" = betterproto.message_field(
+        4, group="SubNavMsg"
     )
-    toapp_opt_line_up: Optional["NavOptLineUp"] = betterproto.message_field(
-        5, optional=True, group="SubNavMsg"
+    toapp_opt_line_up: "NavOptLineUp" = betterproto.message_field(
+        5, group="SubNavMsg"
     )
-    toapp_opt_border_info: Optional["NavOptiBorderInfo"] = betterproto.message_field(
-        6, optional=True, group="SubNavMsg"
+    toapp_opt_border_info: "NavOptiBorderInfo" = betterproto.message_field(
+        6, group="SubNavMsg"
     )
-    toapp_opt_obs_info: Optional["NavOptObsInfo"] = betterproto.message_field(
-        7, optional=True, group="SubNavMsg"
+    toapp_opt_obs_info: "NavOptObsInfo" = betterproto.message_field(
+        7, group="SubNavMsg"
     )
-    todev_task_info_ack: Optional["NavResFrame"] = betterproto.message_field(
-        8, optional=True, group="SubNavMsg"
+    todev_task_info_ack: "NavResFrame" = betterproto.message_field(
+        8, group="SubNavMsg"
     )
-    todev_opt_border_info_ack: Optional["NavResFrame"] = betterproto.message_field(
-        9, optional=True, group="SubNavMsg"
+    todev_opt_border_info_ack: "NavResFrame" = betterproto.message_field(
+        9, group="SubNavMsg"
     )
-    todev_opt_obs_info_ack: Optional["NavResFrame"] = betterproto.message_field(
-        10, optional=True, group="SubNavMsg"
+    todev_opt_obs_info_ack: "NavResFrame" = betterproto.message_field(
+        10, group="SubNavMsg"
     )
-    todev_opt_line_up_ack: Optional["NavResFrame"] = betterproto.message_field(
-        11, optional=True, group="SubNavMsg"
+    todev_opt_line_up_ack: "NavResFrame" = betterproto.message_field(
+        11, group="SubNavMsg"
     )
-    toapp_chgpileto: Optional["ChargePileType"] = betterproto.message_field(
-        12, optional=True, group="SubNavMsg"
+    toapp_chgpileto: "ChargePileType" = betterproto.message_field(
+        12, group="SubNavMsg"
     )
-    todev_sustask: Optional[int] = betterproto.int32_field(
-        13, optional=True, group="SubNavMsg"
+    todev_sustask: int = betterproto.int32_field(
+        13, group="SubNavMsg"
     )
-    todev_rechgcmd: Optional[int] = betterproto.int32_field(
-        14, optional=True, group="SubNavMsg"
+    todev_rechgcmd: int = betterproto.int32_field(
+        14, group="SubNavMsg"
     )
-    todev_edgecmd: Optional[int] = betterproto.int32_field(
-        15, optional=True, group="SubNavMsg"
+    todev_edgecmd: int = betterproto.int32_field(
+        15, group="SubNavMsg"
     )
-    todev_draw_border: Optional[int] = betterproto.int32_field(
-        16, optional=True, group="SubNavMsg"
+    todev_draw_border: int = betterproto.int32_field(
+        16, group="SubNavMsg"
     )
-    todev_draw_border_end: Optional[int] = betterproto.int32_field(
-        17, optional=True, group="SubNavMsg"
+    todev_draw_border_end: int = betterproto.int32_field(
+        17, group="SubNavMsg"
     )
-    todev_draw_obs: Optional[int] = betterproto.int32_field(
-        18, optional=True, group="SubNavMsg"
+    todev_draw_obs: int = betterproto.int32_field(
+        18, group="SubNavMsg"
     )
-    todev_draw_obs_end: Optional[int] = betterproto.int32_field(
-        19, optional=True, group="SubNavMsg"
+    todev_draw_obs_end: int = betterproto.int32_field(
+        19, group="SubNavMsg"
     )
-    todev_chl_line: Optional[int] = betterproto.int32_field(
-        20, optional=True, group="SubNavMsg"
+    todev_chl_line: int = betterproto.int32_field(
+        20, group="SubNavMsg"
     )
-    todev_chl_line_end: Optional[int] = betterproto.int32_field(
-        21, optional=True, group="SubNavMsg"
+    todev_chl_line_end: int = betterproto.int32_field(
+        21, group="SubNavMsg"
     )
-    todev_save_task: Optional[int] = betterproto.int32_field(
-        22, optional=True, group="SubNavMsg"
+    todev_save_task: int = betterproto.int32_field(
+        22, group="SubNavMsg"
     )
-    todev_cancel_suscmd: Optional[int] = betterproto.int32_field(
-        23, optional=True, group="SubNavMsg"
+    todev_cancel_suscmd: int = betterproto.int32_field(
+        23, group="SubNavMsg"
     )
-    todev_reset_chg_pile: Optional[int] = betterproto.int32_field(
-        24, optional=True, group="SubNavMsg"
+    todev_reset_chg_pile: int = betterproto.int32_field(
+        24, group="SubNavMsg"
     )
-    todev_cancel_draw_cmd: Optional[int] = betterproto.int32_field(
-        25, optional=True, group="SubNavMsg"
+    todev_cancel_draw_cmd: int = betterproto.int32_field(
+        25, group="SubNavMsg"
     )
-    todev_one_touch_leave_pile: Optional[int] = betterproto.int32_field(
-        26, optional=True, group="SubNavMsg"
+    todev_one_touch_leave_pile: int = betterproto.int32_field(
+        26, group="SubNavMsg"
     )
-    todev_mow_task: Optional["NavStartJob"] = betterproto.message_field(
-        27, optional=True, group="SubNavMsg"
+    todev_mow_task: "NavStartJob" = betterproto.message_field(
+        27, group="SubNavMsg"
     )
-    toapp_bstate: Optional["NavBorderState"] = betterproto.message_field(
-        28, optional=True, group="SubNavMsg"
+    toapp_bstate: "NavBorderState" = betterproto.message_field(
+        28, group="SubNavMsg"
     )
-    todev_lat_up_ack: Optional[int] = betterproto.int32_field(
-        29, optional=True, group="SubNavMsg"
+    todev_lat_up_ack: int = betterproto.int32_field(
+        29, group="SubNavMsg"
     )
-    todev_gethash: Optional["NavGetHashList"] = betterproto.message_field(
-        30, optional=True, group="SubNavMsg"
+    todev_gethash: "NavGetHashList" = betterproto.message_field(
+        30, group="SubNavMsg"
     )
-    toapp_gethash_ack: Optional["NavGetHashListAck"] = betterproto.message_field(
-        31, optional=True, group="SubNavMsg"
+    toapp_gethash_ack: "NavGetHashListAck" = betterproto.message_field(
+        31, group="SubNavMsg"
     )
-    todev_get_commondata: Optional["NavGetCommData"] = betterproto.message_field(
-        32, optional=True, group="SubNavMsg"
+    todev_get_commondata: "NavGetCommData" = betterproto.message_field(
+        32, group="SubNavMsg"
     )
-    toapp_get_commondata_ack: Optional["NavGetCommDataAck"] = betterproto.message_field(
-        33, optional=True, group="SubNavMsg"
+    toapp_get_commondata_ack: "NavGetCommDataAck" = betterproto.message_field(
+        33, group="SubNavMsg"
     )
-    bidire_reqconver_path: Optional["NavReqCoverPath"] = betterproto.message_field(
-        34, optional=True, group="SubNavMsg"
+    bidire_reqconver_path: "NavReqCoverPath" = betterproto.message_field(
+        34, group="SubNavMsg"
     )
-    toapp_zigzag: Optional["NavUploadZigZagResult"] = betterproto.message_field(
-        35, optional=True, group="SubNavMsg"
+    toapp_zigzag: "NavUploadZigZagResult" = betterproto.message_field(
+        35, group="SubNavMsg"
     )
-    todev_zigzag_ack: Optional["NavUploadZigZagResultAck"] = betterproto.message_field(
-        36, optional=True, group="SubNavMsg"
+    todev_zigzag_ack: "NavUploadZigZagResultAck" = betterproto.message_field(
+        36, group="SubNavMsg"
     )
-    todev_taskctrl: Optional["NavTaskCtrl"] = betterproto.message_field(
-        37, optional=True, group="SubNavMsg"
+    todev_taskctrl: "NavTaskCtrl" = betterproto.message_field(
+        37, group="SubNavMsg"
     )
-    bidire_taskid: Optional["NavTaskIdRw"] = betterproto.message_field(
-        38, optional=True, group="SubNavMsg"
+    bidire_taskid: "NavTaskIdRw" = betterproto.message_field(
+        38, group="SubNavMsg"
     )
-    toapp_bp: Optional["NavTaskBreakPoint"] = betterproto.message_field(
-        39, optional=True, group="SubNavMsg"
+    toapp_bp: "NavTaskBreakPoint" = betterproto.message_field(
+        39, group="SubNavMsg"
     )
-    todev_planjob_set: Optional["NavPlanJobSet"] = betterproto.message_field(
-        40, optional=True, group="SubNavMsg"
+    todev_planjob_set: "NavPlanJobSet" = betterproto.message_field(
+        40, group="SubNavMsg"
     )
-    todev_unable_time_set: Optional["NavUnableTimeSet"] = betterproto.message_field(
-        41, optional=True, group="SubNavMsg"
+    todev_unable_time_set: "NavUnableTimeSet" = betterproto.message_field(
+        41, group="SubNavMsg"
     )
-    simulation_cmd: Optional["SimulationCmdData"] = betterproto.message_field(
-        42, optional=True, group="SubNavMsg"
+    simulation_cmd: "SimulationCmdData" = betterproto.message_field(
+        42, group="SubNavMsg"
     )
-    todev_work_report_update_cmd: Optional["WorkReportUpdateCmd"] = (
-        betterproto.message_field(43, optional=True, group="SubNavMsg")
+    todev_work_report_update_cmd: "WorkReportUpdateCmd" = (
+        betterproto.message_field(43, group="SubNavMsg")
     )
-    toapp_work_report_update_ack: Optional["WorkReportUpdateAck"] = (
-        betterproto.message_field(44, optional=True, group="SubNavMsg")
+    toapp_work_report_update_ack: "WorkReportUpdateAck" = (
+        betterproto.message_field(44, group="SubNavMsg")
     )
-    todev_work_report_cmd: Optional["WorkReportCmdData"] = betterproto.message_field(
-        45, optional=True, group="SubNavMsg"
+    todev_work_report_cmd: "WorkReportCmdData" = betterproto.message_field(
+        45, group="SubNavMsg"
     )
-    toapp_work_report_ack: Optional["WorkReportInfoAck"] = betterproto.message_field(
-        46, optional=True, group="SubNavMsg"
+    toapp_work_report_ack: "WorkReportInfoAck" = betterproto.message_field(
+        46, group="SubNavMsg"
     )
-    toapp_work_report_upload: Optional["WorkReportInfoAck"] = betterproto.message_field(
-        47, optional=True, group="SubNavMsg"
+    toapp_work_report_upload: "WorkReportInfoAck" = betterproto.message_field(
+        47, group="SubNavMsg"
     )
-    app_request_cover_paths: Optional["AppRequestCoverPathsT"] = (
-        betterproto.message_field(48, optional=True, group="SubNavMsg")
+    app_request_cover_paths: "AppRequestCoverPathsT" = (
+        betterproto.message_field(48, group="SubNavMsg")
     )
-    cover_path_upload: Optional["CoverPathUploadT"] = betterproto.message_field(
-        49, optional=True, group="SubNavMsg"
+    cover_path_upload: "CoverPathUploadT" = betterproto.message_field(
+        49, group="SubNavMsg"
     )
-    zone_start_precent: Optional["ZoneStartPrecentT"] = betterproto.message_field(
-        50, optional=True, group="SubNavMsg"
+    zone_start_precent: "ZoneStartPrecentT" = betterproto.message_field(
+        50, group="SubNavMsg"
     )
-    vision_ctrl: Optional["VisionCtrlMsg"] = betterproto.message_field(
-        51, optional=True, group="SubNavMsg"
+    vision_ctrl: "VisionCtrlMsg" = betterproto.message_field(
+        51, group="SubNavMsg"
     )
-    nav_sys_param_cmd: Optional["NavSysParamMsg"] = betterproto.message_field(
-        52, optional=True, group="SubNavMsg"
+    nav_sys_param_cmd: "NavSysParamMsg" = betterproto.message_field(
+        52, group="SubNavMsg"
     )
-    plan_task_execute: Optional["NavPlanTaskExecute"] = betterproto.message_field(
-        53, optional=True, group="SubNavMsg"
+    plan_task_execute: "NavPlanTaskExecute" = betterproto.message_field(
+        53, group="SubNavMsg"
     )
-    toapp_costmap: Optional["CostmapT"] = betterproto.message_field(
-        54, optional=True, group="SubNavMsg"
+    toapp_costmap: "CostmapT" = betterproto.message_field(
+        54, group="SubNavMsg"
     )
-    plan_task_name_id: Optional["PlanTaskNameIdT"] = betterproto.message_field(
-        55, optional=True, group="SubNavMsg"
+    plan_task_name_id: "PlanTaskNameIdT" = betterproto.message_field(
+        55, group="SubNavMsg"
     )
-    all_plan_task: Optional["NavGetAllPlanTask"] = betterproto.message_field(
-        56, optional=True, group="SubNavMsg"
+    all_plan_task: "NavGetAllPlanTask" = betterproto.message_field(
+        56, group="SubNavMsg"
     )
-    todev_taskctrl_ack: Optional["NavTaskCtrlAck"] = betterproto.message_field(
-        57, optional=True, group="SubNavMsg"
+    todev_taskctrl_ack: "NavTaskCtrlAck" = betterproto.message_field(
+        57, group="SubNavMsg"
     )
-    toapp_map_name_msg: Optional["NavMapNameMsg"] = betterproto.message_field(
-        58, optional=True, group="SubNavMsg"
+    toapp_map_name_msg: "NavMapNameMsg" = betterproto.message_field(
+        58, group="SubNavMsg"
     )
-    todev_svg_msg: Optional["SvgMessageAckT"] = betterproto.message_field(
-        59, optional=True, group="SubNavMsg"
+    todev_svg_msg: "SvgMessageAckT" = betterproto.message_field(
+        59, group="SubNavMsg"
     )
-    toapp_svg_msg: Optional["SvgMessageAckT"] = betterproto.message_field(
-        60, optional=True, group="SubNavMsg"
+    toapp_svg_msg: "SvgMessageAckT" = betterproto.message_field(
+        60, group="SubNavMsg"
     )
-    toapp_all_hash_name: Optional["AppGetAllAreaHashName"] = betterproto.message_field(
-        61, optional=True, group="SubNavMsg"
+    toapp_all_hash_name: "AppGetAllAreaHashName" = betterproto.message_field(
+        61, group="SubNavMsg"
     )
 
 
@@ -1891,107 +1891,107 @@ class ReportInfoData(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class MctlSys(betterproto.Message):
-    toapp_batinfo: Optional["SysBatUp"] = betterproto.message_field(
-        1, optional=True, group="SubSysMsg"
+    toapp_batinfo: "SysBatUp" = betterproto.message_field(
+        1, group="SubSysMsg"
     )
-    toapp_work_state: Optional["SysWorkState"] = betterproto.message_field(
-        2, optional=True, group="SubSysMsg"
+    toapp_work_state: "SysWorkState" = betterproto.message_field(
+        2, group="SubSysMsg"
     )
-    todev_time_zone: Optional["SysSetTimeZone"] = betterproto.message_field(
-        3, optional=True, group="SubSysMsg"
+    todev_time_zone: "SysSetTimeZone" = betterproto.message_field(
+        3, group="SubSysMsg"
     )
-    todev_data_time: Optional["SysSetDateTime"] = betterproto.message_field(
-        4, optional=True, group="SubSysMsg"
+    todev_data_time: "SysSetDateTime" = betterproto.message_field(
+        4, group="SubSysMsg"
     )
-    job_plan: Optional["SysJobPlan"] = betterproto.message_field(
-        6, optional=True, group="SubSysMsg"
+    job_plan: "SysJobPlan" = betterproto.message_field(
+        6, group="SubSysMsg"
     )
-    toapp_err_code: Optional["SysDevErrCode"] = betterproto.message_field(
-        7, optional=True, group="SubSysMsg"
+    toapp_err_code: "SysDevErrCode" = betterproto.message_field(
+        7, group="SubSysMsg"
     )
-    todev_job_plan_time: Optional["SysJobPlanTime"] = betterproto.message_field(
-        10, optional=True, group="SubSysMsg"
+    todev_job_plan_time: "SysJobPlanTime" = betterproto.message_field(
+        10, group="SubSysMsg"
     )
-    toapp_mow_info: Optional["SysMowInfo"] = betterproto.message_field(
-        11, optional=True, group="SubSysMsg"
+    toapp_mow_info: "SysMowInfo" = betterproto.message_field(
+        11, group="SubSysMsg"
     )
-    bidire_comm_cmd: Optional["SysCommCmd"] = betterproto.message_field(
-        12, optional=True, group="SubSysMsg"
+    bidire_comm_cmd: "SysCommCmd" = betterproto.message_field(
+        12, group="SubSysMsg"
     )
-    plan_job_del: Optional[int] = betterproto.int64_field(
-        14, optional=True, group="SubSysMsg"
+    plan_job_del: int = betterproto.int64_field(
+        14, group="SubSysMsg"
     )
-    border: Optional["SysBorder"] = betterproto.message_field(
-        15, optional=True, group="SubSysMsg"
+    border: "SysBorder" = betterproto.message_field(
+        15, group="SubSysMsg"
     )
-    toapp_plan_status: Optional["SysPlanJobStatus"] = betterproto.message_field(
-        18, optional=True, group="SubSysMsg"
+    toapp_plan_status: "SysPlanJobStatus" = betterproto.message_field(
+        18, group="SubSysMsg"
     )
-    toapp_ul_fprogress: Optional["SysUploadFileProgress"] = betterproto.message_field(
-        19, optional=True, group="SubSysMsg"
+    toapp_ul_fprogress: "SysUploadFileProgress" = betterproto.message_field(
+        19, group="SubSysMsg"
     )
-    todev_deljobplan: Optional["SysDelJobPlan"] = betterproto.message_field(
-        20, optional=True, group="SubSysMsg"
+    todev_deljobplan: "SysDelJobPlan" = betterproto.message_field(
+        20, group="SubSysMsg"
     )
-    todev_mow_info_up: Optional[int] = betterproto.int32_field(
-        21, optional=True, group="SubSysMsg"
+    todev_mow_info_up: int = betterproto.int32_field(
+        21, group="SubSysMsg"
     )
-    todev_knife_ctrl: Optional["SysKnifeControl"] = betterproto.message_field(
-        22, optional=True, group="SubSysMsg"
+    todev_knife_ctrl: "SysKnifeControl" = betterproto.message_field(
+        22, group="SubSysMsg"
     )
-    todev_reset_system: Optional[int] = betterproto.int32_field(
-        23, optional=True, group="SubSysMsg"
+    todev_reset_system: int = betterproto.int32_field(
+        23, group="SubSysMsg"
     )
-    todev_reset_system_status: Optional["SysResetSystemStatus"] = (
-        betterproto.message_field(24, optional=True, group="SubSysMsg")
+    todev_reset_system_status: "SysResetSystemStatus" = (
+        betterproto.message_field(24, group="SubSysMsg")
     )
-    system_rapid_state_tunnel: Optional["SystemRapidStateTunnelMsg"] = (
-        betterproto.message_field(25, optional=True, group="SubSysMsg")
+    system_rapid_state_tunnel: "SystemRapidStateTunnelMsg" = (
+        betterproto.message_field(25, group="SubSysMsg")
     )
-    system_tard_state_tunnel: Optional["SystemTardStateTunnelMsg"] = (
-        betterproto.message_field(26, optional=True, group="SubSysMsg")
+    system_tard_state_tunnel: "SystemTardStateTunnelMsg" = (
+        betterproto.message_field(26, group="SubSysMsg")
     )
-    system_update_buf: Optional["SystemUpdateBufMsg"] = betterproto.message_field(
-        27, optional=True, group="SubSysMsg"
+    system_update_buf: "SystemUpdateBufMsg" = betterproto.message_field(
+        27, group="SubSysMsg"
     )
-    todev_time_ctrl_light: Optional["TimeCtrlLight"] = betterproto.message_field(
-        28, optional=True, group="SubSysMsg"
+    todev_time_ctrl_light: "TimeCtrlLight" = betterproto.message_field(
+        28, group="SubSysMsg"
     )
-    system_tmp_cycle_tx: Optional["SystemTmpCycleTxMsg"] = betterproto.message_field(
-        29, optional=True, group="SubSysMsg"
+    system_tmp_cycle_tx: "SystemTmpCycleTxMsg" = betterproto.message_field(
+        29, group="SubSysMsg"
     )
-    todev_off_chip_flash: Optional["SysOffChipFlash"] = betterproto.message_field(
-        30, optional=True, group="SubSysMsg"
+    todev_off_chip_flash: "SysOffChipFlash" = betterproto.message_field(
+        30, group="SubSysMsg"
     )
-    todev_get_dev_fw_info: Optional[int] = betterproto.int32_field(
-        31, optional=True, group="SubSysMsg"
+    todev_get_dev_fw_info: int = betterproto.int32_field(
+        31, group="SubSysMsg"
     )
-    toapp_dev_fw_info: Optional["DeviceFwInfo"] = betterproto.message_field(
-        32, optional=True, group="SubSysMsg"
+    toapp_dev_fw_info: "DeviceFwInfo" = betterproto.message_field(
+        32, group="SubSysMsg"
     )
-    todev_lora_cfg_req: Optional["LoraCfgReq"] = betterproto.message_field(
-        33, optional=True, group="SubSysMsg"
+    todev_lora_cfg_req: "LoraCfgReq" = betterproto.message_field(
+        33, group="SubSysMsg"
     )
-    toapp_lora_cfg_rsp: Optional["LoraCfgRsp"] = betterproto.message_field(
-        34, optional=True, group="SubSysMsg"
+    toapp_lora_cfg_rsp: "LoraCfgRsp" = betterproto.message_field(
+        34, group="SubSysMsg"
     )
-    mow_to_app_info: Optional["MowToAppInfoT"] = betterproto.message_field(
-        35, optional=True, group="SubSysMsg"
+    mow_to_app_info: "MowToAppInfoT" = betterproto.message_field(
+        35, group="SubSysMsg"
     )
-    device_product_type_info: Optional["DeviceProductTypeInfoT"] = (
-        betterproto.message_field(36, optional=True, group="SubSysMsg")
+    device_product_type_info: "DeviceProductTypeInfoT" = (
+        betterproto.message_field(36, group="SubSysMsg")
     )
-    mow_to_app_qctools_info: Optional["MowToAppQctoolsInfoT"] = (
-        betterproto.message_field(37, optional=True, group="SubSysMsg")
+    mow_to_app_qctools_info: "MowToAppQctoolsInfoT" = (
+        betterproto.message_field(37, group="SubSysMsg")
     )
-    todev_report_cfg: Optional["ReportInfoCfg"] = betterproto.message_field(
-        38, optional=True, group="SubSysMsg"
+    todev_report_cfg: "ReportInfoCfg" = betterproto.message_field(
+        38, group="SubSysMsg"
     )
-    toapp_report_data: Optional["ReportInfoData"] = betterproto.message_field(
-        39, optional=True, group="SubSysMsg"
+    toapp_report_data: "ReportInfoData" = betterproto.message_field(
+        39, group="SubSysMsg"
     )
-    simulation_cmd: Optional["MCtrlSimulationCmdData"] = betterproto.message_field(
-        42, optional=True, group="SubSysMsg"
+    simulation_cmd: "MCtrlSimulationCmdData" = betterproto.message_field(
+        42, group="SubSysMsg"
     )
 
 
@@ -2023,31 +2023,31 @@ class GetInfoReq(betterproto.Message):
 class GetInfoRsp(betterproto.Message):
     result: int = betterproto.int32_field(1)
     type: "InfoType" = betterproto.enum_field(2)
-    base: Optional["BaseInfo"] = betterproto.message_field(
-        3, optional=True, group="info"
+    base: "BaseInfo" = betterproto.message_field(
+        3, group="info"
     )
-    ota: Optional["OtaInfo"] = betterproto.message_field(4, optional=True, group="info")
+    ota: "OtaInfo" = betterproto.message_field(4, group="info")
 
 
 
 @dataclass(eq=False, repr=False)
 class MctlOta(betterproto.Message):
-    todev_get_info_req: Optional["GetInfoReq"] = betterproto.message_field(
-        1, optional=True, group="SubOtaMsg"
+    todev_get_info_req: "GetInfoReq" = betterproto.message_field(
+        1, group="SubOtaMsg"
     )
-    toapp_get_info_rsp: Optional["GetInfoRsp"] = betterproto.message_field(
-        2, optional=True, group="SubOtaMsg"
+    toapp_get_info_rsp: "GetInfoRsp" = betterproto.message_field(
+        2, group="SubOtaMsg"
     )
 
 
 
 @dataclass(eq=False, repr=False)
 class MulSetAudio(betterproto.Message):
-    at_switch: Optional[int] = betterproto.int32_field(
-        1, optional=True, group="AudioCfg_u"
+    at_switch: int = betterproto.int32_field(
+        1, group="AudioCfg_u"
     )
-    au_language: Optional["MulLanguage"] = betterproto.enum_field(
-        2, optional=True, group="AudioCfg_u"
+    au_language: "MulLanguage" = betterproto.enum_field(
+        2, group="AudioCfg_u"
     )
 
 
@@ -2081,23 +2081,23 @@ class MulSetWiperAck(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class SocMul(betterproto.Message):
-    set_audio: Optional["MulSetAudio"] = betterproto.message_field(
-        1, optional=True, group="SubMul"
+    set_audio: "MulSetAudio" = betterproto.message_field(
+        1, group="SubMul"
     )
-    audio_cfg: Optional["MulAudioCfg"] = betterproto.message_field(
-        2, optional=True, group="SubMul"
+    audio_cfg: "MulAudioCfg" = betterproto.message_field(
+        2, group="SubMul"
     )
-    set_video: Optional["MulSetVideo"] = betterproto.message_field(
-        3, optional=True, group="SubMul"
+    set_video: "MulSetVideo" = betterproto.message_field(
+        3, group="SubMul"
     )
-    set_video_ack: Optional["MulSetVideoAck"] = betterproto.message_field(
-        4, optional=True, group="SubMul"
+    set_video_ack: "MulSetVideoAck" = betterproto.message_field(
+        4, group="SubMul"
     )
-    set_wiper: Optional["MulSetWiper"] = betterproto.message_field(
-        5, optional=True, group="SubMul"
+    set_wiper: "MulSetWiper" = betterproto.message_field(
+        5, group="SubMul"
     )
-    set_wiper_ack: Optional["MulSetWiperAck"] = betterproto.message_field(
-        6, optional=True, group="SubMul"
+    set_wiper_ack: "MulSetWiperAck" = betterproto.message_field(
+        6, group="SubMul"
     )
 
 
@@ -2128,11 +2128,9 @@ class PerceptionUniversalBuffT(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class MctlPept(betterproto.Message):
-    perception_obstacles_visualization: Optional[
-        "PerceptionObstaclesVisualizationT"
-    ] = betterproto.message_field(1, optional=True, group="SubPeptMsg")
-    perception_universal_buff: Optional["PerceptionUniversalBuffT"] = (
-        betterproto.message_field(2, optional=True, group="SubPeptMsg")
+    perception_obstacles_visualization: "PerceptionObstaclesVisualizationT" = betterproto.message_field(1, group="SubPeptMsg")
+    perception_universal_buff: "PerceptionUniversalBuffT" = (
+        betterproto.message_field(2, group="SubPeptMsg")
     )
 
 
@@ -2144,38 +2142,38 @@ class MsgNull(betterproto.Message):
 
 @dataclass(eq=False, repr=False)
 class LubaMsg(betterproto.Message):
-    msgtype: Optional["MsgCmdType"] = betterproto.enum_field(1, optional=True)
-    sender: Optional["MsgDevice"] = betterproto.enum_field(2, optional=True)
-    rcver: Optional["MsgDevice"] = betterproto.enum_field(3, optional=True)
-    msgattr: Optional["MsgAttr"] = betterproto.enum_field(4, optional=True)
-    seqs: Optional[int] = betterproto.int32_field(5, optional=True)
-    version: Optional[int] = betterproto.int32_field(6, optional=True)
-    subtype: Optional[int] = betterproto.int32_field(7, optional=True)
-    net: Optional["DevNet"] = betterproto.message_field(
-        8, optional=True, group="LubaSubMsg"
+    msgtype: "MsgCmdType" = betterproto.enum_field(1)
+    sender: "MsgDevice" = betterproto.enum_field(2)
+    rcver: "MsgDevice" = betterproto.enum_field(3)
+    msgattr: "MsgAttr" = betterproto.enum_field(4)
+    seqs: int = betterproto.int32_field(5)
+    version: int = betterproto.int32_field(6)
+    subtype: int = betterproto.int32_field(7)
+    net: "DevNet" = betterproto.message_field(
+        8, group="LubaSubMsg"
     )
-    sys: Optional["MctlSys"] = betterproto.message_field(
-        10, optional=True, group="LubaSubMsg"
+    sys: "MctlSys" = betterproto.message_field(
+        10, group="LubaSubMsg"
     )
-    nav: Optional["MctlNav"] = betterproto.message_field(
-        11, optional=True, group="LubaSubMsg"
+    nav: "MctlNav" = betterproto.message_field(
+        11, group="LubaSubMsg"
     )
-    driver: Optional["MctlDriver"] = betterproto.message_field(
-        12, optional=True, group="LubaSubMsg"
+    driver: "MctlDriver" = betterproto.message_field(
+        12, group="LubaSubMsg"
     )
-    ota: Optional["MctlOta"] = betterproto.message_field(
-        13, optional=True, group="LubaSubMsg"
+    ota: "MctlOta" = betterproto.message_field(
+        13, group="LubaSubMsg"
     )
-    mul: Optional["SocMul"] = betterproto.message_field(
-        14, optional=True, group="LubaSubMsg"
+    mul: "SocMul" = betterproto.message_field(
+        14, group="LubaSubMsg"
     )
-    null: Optional["MsgNull"] = betterproto.message_field(
-        16, optional=True, group="LubaSubMsg"
+    null: "MsgNull" = betterproto.message_field(
+        16, group="LubaSubMsg"
     )
-    pept: Optional["MctlPept"] = betterproto.message_field(
-        17, optional=True, group="LubaSubMsg"
+    pept: "MctlPept" = betterproto.message_field(
+        17, group="LubaSubMsg"
     )
-    base: Optional["BaseStation"] = betterproto.message_field(
-        18, optional=True, group="LubaSubMsg"
+    base: "BaseStation" = betterproto.message_field(
+        18, group="LubaSubMsg"
     )
-    timestamp: Optional[int] = betterproto.uint64_field(15, optional=True)
+    timestamp: int = betterproto.uint64_field(15)

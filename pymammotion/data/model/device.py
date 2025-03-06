@@ -22,6 +22,7 @@ from pymammotion.utility.map import CoordinateConverter
 class MowingDevice(DataClassORJSONMixin):
     """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
 
+    name: str = ""
     online: bool = True
     mower_state: MowerInfo = field(default_factory=MowerInfo)
     mqtt_properties: ThingPropertiesMessage | None = None
