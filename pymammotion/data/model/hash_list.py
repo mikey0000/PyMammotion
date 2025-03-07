@@ -141,11 +141,12 @@ class HashList(DataClassORJSONMixin):
 
     @property
     def missing_hashlist(self) -> list[int]:
+        """Return missing hashlist."""
         return [
             i
             for obj in self.root_hash_list.data
             for i in obj.data_couple
-            if i
+            if f"{i}"
             not in set(self.area.keys()).union(
                 self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys()
             )

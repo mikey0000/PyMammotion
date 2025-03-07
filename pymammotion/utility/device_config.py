@@ -4,7 +4,7 @@ from pymammotion.utility.device_type import DeviceType
 default_luba_config = {
     "blade_height": {"min": 20, "max": 35},
     "working_speed": {"min": 0.2, "max": 1.2},
-    "working_path": {"min": 8, "max": 14},
+    "path_spacing": {"min": 8, "max": 14},
     "work_area_num_max": 60,
     "display_image_type": 0,
 }
@@ -12,7 +12,7 @@ default_luba_config = {
 default_yuka_config = {
     "blade_height": {"min": 0, "max": 0},
     "working_speed": {"min": 0.2, "max": 0.6},
-    "working_path": {"min": 8, "max": 30},
+    "path_spacing": {"min": 8, "max": 30},
     "work_area_num_max": 60,
     "display_image_type": 0,
 }
@@ -31,8 +31,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.4,
                 "work_area_num_max": 3,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "a1nf9kRBWoH": {
@@ -42,8 +42,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 6,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "a1ae1QnXZGf": {
@@ -53,8 +53,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 3,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "a1K4Ki2L5rK": {
@@ -64,8 +64,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "a1jOhAYOIG8": {
@@ -75,8 +75,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "a1BmXWlsdbA": {
@@ -86,8 +86,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "a1JFpmAV5Ur": {
@@ -97,8 +97,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "a1kweSOPylG": {
@@ -108,8 +108,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 6,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "a1pvCnb3PPu": {
@@ -119,8 +119,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 3,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "a1x0zHD3Xop": {
@@ -130,8 +130,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "a1UBFdq6nNz": {
@@ -141,8 +141,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "a1FbaU4Bqk5": {
@@ -152,8 +152,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
         }
@@ -166,8 +166,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 3,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "HM030080LBAWD30": {
@@ -177,8 +177,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 6,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "HM050080LBAWD50": {
@@ -188,8 +188,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030060LBAWD50OMNI": {
@@ -199,8 +199,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 1,
             },
             "HM060100LBAWD50OMNIH": {
@@ -210,8 +210,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030070LBVAWD10OMNI": {
@@ -221,8 +221,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM060100LBVAWD10OMNIH": {
@@ -232,8 +232,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 10,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030070LBVAWD30OMNI": {
@@ -243,8 +243,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 20,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM060100LBVAWD30OMNIH": {
@@ -254,8 +254,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 20,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030070LBVAWD50OMNI": {
@@ -265,8 +265,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 30,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM060100LBVAWD50OMNIH": {
@@ -276,8 +276,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 30,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030070LBVAWD100OMNI": {
@@ -287,8 +287,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM060100LBVAWD100OMNIH": {
@@ -298,8 +298,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030070LB2PAWD30OMNI": {
@@ -309,8 +309,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.8,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM060100LB2PAWD30OMNIH": {
@@ -320,8 +320,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.8,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030070LB2PAWD50OMNI": {
@@ -331,8 +331,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 1.0,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM060100LB2PAWD50OMNIH": {
@@ -342,8 +342,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 1.0,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM030070LB2PAWD100OMNI": {
@@ -353,8 +353,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 1.0,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM060100LB2PAWD100OMNIH": {
@@ -364,8 +364,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 1.0,
                 "work_area_num_max": 60,
-                "working_path_min": 20,
-                "working_path_max": 35,
+                "path_spacing_min": 20,
+                "path_spacing_max": 35,
                 "display_image_type": 0,
             },
             "HM020065LB2MINIAWD08OMNI": {
@@ -375,8 +375,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 5,
-                "working_path_max": 20,
+                "path_spacing_min": 5,
+                "path_spacing_max": 20,
                 "display_image_type": 0,
             },
             "HM020065LB2MINIAWD15OMNI": {
@@ -386,8 +386,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 5,
-                "working_path_max": 20,
+                "path_spacing_min": 5,
+                "path_spacing_max": 20,
                 "display_image_type": 0,
             },
             "HM020065LB2MINIAWD15OMNILD": {
@@ -397,8 +397,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 5,
-                "working_path_max": 20,
+                "path_spacing_min": 5,
+                "path_spacing_max": 20,
                 "display_image_type": 0,
             },
             "HM055100LB2MINIAWD08OMNIH": {
@@ -408,8 +408,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 5,
-                "working_path_max": 20,
+                "path_spacing_min": 5,
+                "path_spacing_max": 20,
                 "display_image_type": 0,
             },
             "HM055100LB2MINIAWD15OMNIH": {
@@ -419,8 +419,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 5,
-                "working_path_max": 20,
+                "path_spacing_min": 5,
+                "path_spacing_max": 20,
                 "display_image_type": 0,
             },
             "HM055100LB2MINIAWD15OMNIHLD": {
@@ -430,8 +430,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 5,
-                "working_path_max": 20,
+                "path_spacing_min": 5,
+                "path_spacing_max": 20,
                 "display_image_type": 0,
             },
             "HM030070YK06": {
@@ -441,8 +441,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030100YK06H": {
@@ -452,8 +452,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030070YK10": {
@@ -463,8 +463,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030100YK10H": {
@@ -474,8 +474,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030070YK15": {
@@ -485,8 +485,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030100YK15H": {
@@ -496,8 +496,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM020090YK20": {
@@ -507,8 +507,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030100YK20H": {
@@ -518,8 +518,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM020080YKMINI05": {
@@ -529,8 +529,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM050090YKMINI05H": {
@@ -540,8 +540,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM020080YKMINI08": {
@@ -551,8 +551,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM050090YKMINI08H": {
@@ -562,8 +562,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM020080YKMINI06": {
@@ -573,8 +573,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM020080YKMINI07": {
@@ -584,8 +584,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM050090YKMINI06H": {
@@ -595,8 +595,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM050090YKMINI07H": {
@@ -606,8 +606,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
             "HM020090YKPLUS15": {
@@ -617,8 +617,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM020090YKPLUS20": {
@@ -628,8 +628,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030100YKPLUS15H": {
@@ -639,8 +639,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM030100YKPLUS20H": {
@@ -650,8 +650,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 15,
-                "working_path_max": 30,
+                "path_spacing_min": 15,
+                "path_spacing_max": 30,
                 "display_image_type": 0,
             },
             "HM020080MN23103": {
@@ -661,8 +661,8 @@ class DeviceConfig:
                 "working_speed_min": 0.2,
                 "working_speed_max": 0.6,
                 "work_area_num_max": 60,
-                "working_path_min": 8,
-                "working_path_max": 14,
+                "path_spacing_min": 8,
+                "path_spacing_max": 14,
                 "display_image_type": 0,
             },
         }
@@ -696,7 +696,7 @@ class DeviceConfig:
         config = self.get_device_config(int_mod)
         return config.get("extMod") if config else None
 
-    def get_working_parameters(self, int_mod_or_key: str) -> DeviceLimits:
+    def get_working_parameters(self, int_mod_or_key: str) -> DeviceLimits | None:
         """Get working parameters for given internal model code
 
         Args:
@@ -704,6 +704,7 @@ class DeviceConfig:
 
         Returns:
             dict: Working parameters or None if not found
+            :param int_mod_or_key:
 
         """
         config = self.get_device_config(int_mod_or_key)
@@ -714,7 +715,7 @@ class DeviceConfig:
             {
                 "blade_height": {"min": config["blade_height_min"], "max": config["blade_height_max"]},
                 "working_speed": {"min": config["working_speed_min"], "max": config["working_speed_max"]},
-                "working_path": {"min": config["working_path_min"], "max": config["working_path_max"]},
+                "path_spacing": {"min": config["path_spacing_min"], "max": config["path_spacing_max"]},
                 "work_area_num_max": config["work_area_num_max"],
                 "display_image_type": config["display_image_type"],
             }
