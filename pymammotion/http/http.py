@@ -130,6 +130,9 @@ class MammotionHTTP:
                     return Response.from_dict({"status": resp.status, "msg": "Login failed"})
                 data = await resp.json()
                 login_response = Response[LoginResponseData].from_dict(data)
+                if login_response.data is None:
+                    print(login_response)
+                    return Response.from_dict({"status": resp.status, "msg": "Login failed"})
                 self.login_info = LoginResponseData.from_dict(login_response.data)
                 self._headers["Authorization"] = (
                     f"Bearer {self.login_info.access_token}" if login_response.data else None

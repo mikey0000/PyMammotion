@@ -24,6 +24,7 @@ class MowingDevice(DataClassORJSONMixin):
 
     name: str = ""
     online: bool = True
+    enabled: bool = True
     mower_state: MowerInfo = field(default_factory=MowerInfo)
     mqtt_properties: ThingPropertiesMessage | None = None
     status_properties: ThingStatusMessage | None = None
