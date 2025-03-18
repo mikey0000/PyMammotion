@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name        = "pymammotion"
-version     = "0.4.5"
+version     = "0.4.6"
 license     = "GPL-3.0"
 description = ""
 readme      = "README.md"
@@ -65,7 +65,7 @@ mypy = "^1.11.2"
 autotyping = "^24.3.0"
 
 [tool.bumpver]
-current_version = "0.4.5"
+current_version = "0.4.6"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
