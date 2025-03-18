@@ -38,6 +38,13 @@ class DeviceType(Enum):
     YUKA_MINI = (4, "Yuka-MN", "Yuka Mini")
     YUKA_MINI2 = (5, "Yuka-YM", "Yuka Mini 2")
     LUBA_VP = (6, "Luba-VP", "Luba VP")
+    LUBA_MN = (7, "Luba-MN", "HM430")
+    YUKA_VP = (8, "Yuka-VP", "MN241")
+    SPINO = (9, "Spino", "Spino")
+    RTK3A1 = (10, "RBSA1", "RBS03A1")
+    LUBA_LD = (11, "Luba-LD", "HM431")
+    RTK3A0 = (12, "RBSA0", "RBS03A0")
+    RTK3A2 = (13, "RBSA2", "RBS03A2")
 
     def __init__(self, value: int, name: str, model: str) -> None:
         self._value = value
@@ -195,7 +202,10 @@ class DeviceType(Enum):
         else:
             device_type = DeviceType.value_of_str(device_name, product_key)
 
-        return device_type.get_value() >= DeviceType.LUBA_2.get_value()
+        return (
+            device_type.get_value() >= DeviceType.LUBA_2.get_value()
+            and device_type.get_value() != DeviceType.SPINO.get_value()
+        )
 
     @staticmethod
     def is_yuka(device_name: str):
@@ -213,6 +223,26 @@ class DeviceType(Enum):
             DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_YUKA.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
+        )
+
+    @staticmethod
+    def is_yuka_mini(device_name: str):
+        return (
+            DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
+        )
+
+    @staticmethod
+    def is_mini_or_x_series(device_name: str):
+        """IsNewDeviceType returns if a device is part of the x or mini series."""
+
+        return (
+            DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_VP.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_MN.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_VP.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_LD.get_value()
         )
 
     @staticmethod

@@ -29,16 +29,22 @@ class LockStateT(DataClassORJSONMixin):
 
 
 @dataclass
+class VioSurvivalInfo(DataClassORJSONMixin):
+    vio_survival_distance: float = 0.0
+
+
+@dataclass
 class DeviceData(DataClassORJSONMixin):
     sys_status: int = 0
     charge_state: int = 0
     battery_val: int = 0
     sensor_status: int = 0
     last_status: int = 0
-    vslam_status: int = 0
     sys_time_stamp: str = ""
-    collector_status: CollectorStatus = field(default_factory=CollectorStatus)
+    vslam_status: int = 0
     mnet_info: MnetInfo = field(default_factory=MnetInfo)
+    vio_survival_info: VioSurvivalInfo = field(default_factory=VioSurvivalInfo)
+    collector_status: CollectorStatus = field(default_factory=CollectorStatus)
     lock_state: LockStateT = field(default_factory=LockStateT)
 
 
@@ -73,7 +79,7 @@ class VisionInfo(DataClassORJSONMixin):
     y: float = 0.0
     heading: float = 0.0
     vio_state: int = 0
-    brightness: int = 1
+    brightness: int = 0
     detect_feature_num: int = 0
     track_feature_num: int = 0
 

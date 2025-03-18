@@ -43,7 +43,7 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
     bArr[2] = 0
     if not DeviceType.is_luba1(device_name):
         bArr[4] = 0
-        if DeviceType.is_yuka(device_name):
+        if DeviceType.is_yuka(device_name) and not DeviceType.is_yuka_mini(device_name):
             bArr[5] = calculate_yuka_mode(operation_mode)
         else:
             bArr[5] = 8 if DeviceType.is_luba_2(device_name) else 0

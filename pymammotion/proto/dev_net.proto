@@ -1,5 +1,60 @@
 syntax = "proto3";
 
+enum WifiConfType {
+  DisconnectWifi = 0;
+  ForgetWifi = 1;
+  DirectConnectWifi = 2;
+  ReconnectWifi = 3;
+  set_enable = 4;
+}
+
+enum DrvUploadFileFileType {
+  FILE_TYPE_ALL = 0;
+  FILE_TYPE_SYSLOG = 1;
+  FILE_TYPE_NAVLOG = 2;
+  FILE_TYPE_RTKLOG = 3;
+}
+
+enum DrvDevInfoResult {
+  DRV_RESULT_FAIL = 0;
+  DRV_RESULT_SUC = 1;
+  DRV_RESULT_NOTSUP = 2;
+}
+
+enum sim_card_sta {
+  SIM_NONE = 0;
+  SIM_NO_CARD = 1;
+  SIM_INVALID = 2;
+  SIM_INPUT_PIN = 3;
+  SIM_INPUT_PUK = 4;
+  SIM_OK = 5;
+}
+
+enum mnet_link_type {
+  MNET_LINK_NONE = 0;
+  MNET_LINK_2G = 1;
+  MNET_LINK_3G = 2;
+  MNET_LINK_4G = 3;
+}
+
+enum apn_auth_type {
+  APN_AUTH_NONE = 0;
+  APN_AUTH_PAP = 1;
+  APN_AUTH_CHAP = 2;
+  APN_AUTH_PAP_CHAP = 3;
+}
+
+enum net_type {
+  NET_TYPE_WIFI = 0;
+  NET_TYPE_MNET = 1;
+}
+
+enum iot_conctrl_type {
+  IOT_TYPE_OFFLINE = 0;
+  IOT_TYPE_ONLINE = 1;
+  IOT_TYPE_RESET = 2;
+}
+
 message DrvWifiUpload {
   int32 wifi_msg_upload = 1;
 }
@@ -139,6 +194,7 @@ message MnetInfo {
   mnet_link_type link_type = 6;
   int32 rssi = 7;
   mnet_inet_status inet = 8;
+  string iccid = 9;
 }
 
 message GetMnetInfoReq {
@@ -208,6 +264,24 @@ message SetDrvBleMTU {
   int32 mtu_count = 1;
 }
 
+message BleSignatureReq {
+  string signature_data = 1;
+  string random_data = 2;
+}
+
+message BleLogUploadUpdateProgress {
+  int32 ver = 1;
+  int32 status = 2;
+  string bizId = 3;
+  int32 prog = 4;
+  int32 subProg = 5;
+  int32 fNum = 6;
+  int32 speed = 7;
+  int32 fIdx = 8;
+  string fPath = 9;
+  int32 fSize = 10;
+}
+
 message DevNet {
   oneof NetSubType {
     int32 todev_ble_sync = 1;
@@ -238,60 +312,7 @@ message DevNet {
     DrvDebugDdsZmq todev_set_dds2zmq = 26;
     SetDrvBleMTU todev_set_ble_mtu = 27;
     iot_conctrl_type todev_set_iot_offline_req = 28;
+    BleSignatureReq todev_verify_signature_req = 29;
+    BleLogUploadUpdateProgress toapp_log_upload_update_progress = 30;
   }
-}
-
-enum WifiConfType {
-  DisconnectWifi = 0;
-  ForgetWifi = 1;
-  DirectConnectWifi = 2;
-  ReconnectWifi = 3;
-  set_enable = 4;
-}
-
-enum DrvUploadFileFileType {
-  FILE_TYPE_ALL = 0;
-  FILE_TYPE_SYSLOG = 1;
-  FILE_TYPE_NAVLOG = 2;
-  FILE_TYPE_RTKLOG = 3;
-}
-
-enum DrvDevInfoResult {
-  DRV_RESULT_FAIL = 0;
-  DRV_RESULT_SUC = 1;
-  DRV_RESULT_NOTSUP = 2;
-}
-
-enum sim_card_sta {
-  SIM_NONE = 0;
-  SIM_NO_CARD = 1;
-  SIM_INVALID = 2;
-  SIM_INPUT_PIN = 3;
-  SIM_INPUT_PUK = 4;
-  SIM_OK = 5;
-}
-
-enum mnet_link_type {
-  MNET_LINK_NONE = 0;
-  MNET_LINK_2G = 1;
-  MNET_LINK_3G = 2;
-  MNET_LINK_4G = 3;
-}
-
-enum apn_auth_type {
-  APN_AUTH_NONE = 0;
-  APN_AUTH_PAP = 1;
-  APN_AUTH_CHAP = 2;
-  APN_AUTH_PAP_CHAP = 3;
-}
-
-enum net_type {
-  NET_TYPE_WIFI = 0;
-  NET_TYPE_MNET = 1;
-}
-
-enum iot_conctrl_type {
-  IOT_TYPE_OFFLINE = 0;
-  IOT_TYPE_ONLINE = 1;
-  IOT_TYPE_RESET = 2;
 }

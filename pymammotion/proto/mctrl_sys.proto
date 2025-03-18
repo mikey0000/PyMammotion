@@ -313,6 +313,8 @@ message rpt_dev_status {
   vio_survival_info_t vio_survival_info = 9;
   collector_status_t collector_status = 10;
   lock_state_t lock_state = 11;
+  uint32 self_check_status = 12;
+  fpv_to_app_info_t fpv_info = 13;
 }
 
 message rpt_connect_status {
@@ -355,10 +357,35 @@ message rpt_work {
   nav_heading_state_t nav_heading_state = 21;
 }
 
+message blade_used {
+  int32 blade_used_time = 1;
+  int32 blade_used_warn_time = 2;
+}
+
+message user_set_blade_used_warn_time {
+  int32 blade_used_warn_time = 1;
+}
+
 message rpt_maintain {
   int64 mileage = 1;
   int32 work_time = 2;
   int32 bat_cycles = 3;
+  blade_used blade_used_time = 4;
+}
+
+message fpv_to_app_info_t {
+  int32 fpv_flag = 1;
+  int32 wifi_available = 2;
+  int32 mobile_net_available = 3;
+}
+
+message rpt_basestation_info {
+  uint32 ver_major = 1;
+  uint32 ver_minor = 2;
+  uint32 ver_patch = 3;
+  uint32 ver_build = 4;
+  uint32 basestation_status = 5;
+  uint32 connect_status_since_poweron = 6;
 }
 
 message report_info_cfg {
@@ -381,6 +408,7 @@ message report_info_data {
   repeated vision_point_info_msg vision_point_info = 8;
   vio_to_app_info_msg vio_to_app_info = 9;
   vision_statistic_info_msg vision_statistic_info = 10;
+  rpt_basestation_info basestation_info = 11;
 }
 
 message MctlSys {

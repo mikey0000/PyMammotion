@@ -465,6 +465,7 @@ class MnetInfo(betterproto.Message):
     link_type: "MnetLinkType" = betterproto.enum_field(6)
     rssi: int = betterproto.int32_field(7)
     inet: "MnetInetStatus" = betterproto.message_field(8)
+    iccid: str = betterproto.string_field(9)
 
 
 @dataclass(eq=False, repr=False)
@@ -1859,10 +1860,18 @@ class RptWork(betterproto.Message):
 
 
 @dataclass(eq=False, repr=False)
+class BladeUsed(betterproto.Message):
+    blade_used_time: int = betterproto.int32_field(1)
+    blade_used_warn_time: int = betterproto.int32_field(2)
+
+
+
+@dataclass(eq=False, repr=False)
 class RptMaintain(betterproto.Message):
     mileage: int = betterproto.int64_field(1)
     work_time: int = betterproto.int32_field(2)
     bat_cycles: int = betterproto.int32_field(3)
+    blade_used_time: BladeUsed = betterproto.message_field(4)
 
 
 @dataclass(eq=False, repr=False)
