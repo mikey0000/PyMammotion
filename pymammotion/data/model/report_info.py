@@ -4,7 +4,7 @@ from enum import StrEnum
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
-class NetUsedType(str, StrEnum):
+class NetUsedType(StrEnum):
     NONE = "NONE"
     WIFI = "WIFI"
     MNET = "MNET"
