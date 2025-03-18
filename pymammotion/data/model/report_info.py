@@ -1,6 +1,13 @@
 from dataclasses import dataclass, field
+from enum import Enum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+
+
+class NetUsedType(str, Enum):
+    NONE = 0
+    WIFI = 1
+    MNET = 2
 
 
 @dataclass
@@ -8,7 +15,13 @@ class ConnectData(DataClassORJSONMixin):
     connect_type: int = 0
     ble_rssi: int = 0
     wifi_rssi: int = 0
-    used_net: str = "None"
+    link_type: int = 0
+    mnet_rssi: int = 0
+    mnet_inet: int = 0
+    used_net: NetUsedType = NetUsedType.NONE
+
+
+#    mnet_cfg:
 
 
 @dataclass

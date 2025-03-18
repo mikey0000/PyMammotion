@@ -35,7 +35,6 @@ class OperationSettings(DataClassORJSONMixin):
 
 def create_path_order(operation_mode: OperationSettings, device_name: str) -> str:
     # TODO add scheduling logic from getReserved() WorkSettingViewModel.java
-    i2 = 0
     bArr = bytearray(8)
     bArr[0] = operation_mode.border_mode
     bArr[1] = operation_mode.obstacle_laps

@@ -121,6 +121,12 @@ class DeviceType(Enum):
                 return DeviceType.RTK
             elif DeviceType.LUBA_2.get_name() in substring2 or DeviceType.contain_luba_2_product_key(product_key):
                 return DeviceType.LUBA_2
+            elif DeviceType.LUBA_LD.get_name() in substring2:
+                return DeviceType.LUBA_LD
+            elif DeviceType.LUBA_VP.get_name() in substring2:
+                return DeviceType.LUBA_VP
+            elif DeviceType.LUBA_MN.get_name() in substring2:
+                return DeviceType.LUBA_MN
             elif DeviceType.LUBA_YUKA.get_name() in substring2:
                 return DeviceType.LUBA_YUKA
             elif DeviceType.YUKA_MINI.get_name() in substring2:

@@ -44,13 +44,14 @@ class TraversalMode(IntEnum):
     follow_perimeter = 1
 
 
-class BypassStrategy(IntEnum):
+class DetectionStrategy(IntEnum):
     """Matches up with ultra_wave."""
 
     direct_touch = 0
     slow_touch = 1
     less_touch = 2
     no_touch = 10  # luba 2 yuka only or possibly value of 10
+    sensitive = 11  # x series
 
 
 class PathAngleSetting(IntEnum):
