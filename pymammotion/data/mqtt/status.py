@@ -8,7 +8,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 @dataclass
 class GroupIdListItem(DataClassORJSONMixin):
     groupId: str
-    groupType: Literal["ISOLATION"]
+    groupType: Literal["ISOLATION", "ILOP_APP"]
 
 
 # are there other values?

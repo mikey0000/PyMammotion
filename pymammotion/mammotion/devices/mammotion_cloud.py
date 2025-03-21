@@ -8,6 +8,7 @@ import logging
 from typing import Any, cast
 
 import betterproto
+from Tea.exceptions import UnretryableException
 
 from pymammotion import CloudIOTGateway, MammotionMQTT
 from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
@@ -201,7 +202,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         try:
             if self.on_ready_callback:
                 await self.on_ready_callback()
-        except DeviceOfflineException:
+        except (DeviceOfflineException, UnretryableException):
             _LOGGER.debug("Device is offline")
 
     async def on_disconnect(self) -> None:

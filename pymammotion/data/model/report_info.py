@@ -140,6 +140,6 @@ class ReportData(DataClassORJSONMixin):
         self.dev = DeviceData.from_dict(data.get("dev", self.dev.to_dict()))
         self.rtk = RTKData.from_dict(data.get("rtk", self.rtk.to_dict()))
         self.maintenance = Maintain.from_dict(data.get("maintain", self.maintenance.to_dict()))
-        self.vision_info = VisionInfo.from_dict(data.get("vio_to_app_info", VisionInfo(0, 0, 0, 0, 0, 0, 0).to_dict()))
+        self.vision_info = VisionInfo.from_dict(data.get("vio_to_app_info", VisionInfo().to_dict()))
         self.locations = locations
         self.work = WorkData.from_dict(data.get("work", self.work.to_dict()))

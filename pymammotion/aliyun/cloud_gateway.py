@@ -16,6 +16,7 @@ from alibabacloud_iot_api_gateway.client import Client
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
+from Tea.exceptions import UnretryableException
 
 from pymammotion.aliyun.model.aep_response import AepResponse
 from pymammotion.aliyun.model.connect_response import ConnectResponse
@@ -52,6 +53,10 @@ class AuthRefreshException(Exception):
 
 class DeviceOfflineException(Exception):
     """Raise exception when device is offline."""
+
+
+class NoConnectionException(UnretryableException):
+    """Raise exception when device is unreachable."""
 
 
 class GatewayTimeoutException(Exception):
