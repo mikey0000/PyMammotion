@@ -44,6 +44,13 @@ class TraversalMode(IntEnum):
     follow_perimeter = 1
 
 
+class TurningMode(IntEnum):
+    """Turning mode on corners."""
+
+    multipoint = 0
+    zero_turn = 1
+
+
 class DetectionStrategy(IntEnum):
     """Matches up with ultra_wave."""
 
