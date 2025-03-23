@@ -142,6 +142,31 @@ class MammotionMQTT:
         # command = MammotionCommand(device_name="Luba")
         # self._cloud_client.send_cloud_command(command.get_report_cfg())
 
+    def unsubscribe(self) -> None:
+        self._linkkit_client.unsubscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
+        )
+        self._linkkit_client.unsubscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/event/property/post_reply"
+        )
+        self._linkkit_client.unsubscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/status/notify"
+        )
+        self._linkkit_client.unsubscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/connect/event/notify"
+        )
+        self._linkkit_client.unsubscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/_thing/event/notify"
+        )
+        self._linkkit_client.unsubscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events")
+        self._linkkit_client.unsubscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status")
+        self._linkkit_client.unsubscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties"
+        )
+        self._linkkit_client.unsubscribe_topic(
+            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/model/down_raw"
+        )
+
     def _thing_on_topic_message(self, topic, payload, qos, user_data) -> None:
         """Is called when thing topic comes in."""
         logger.debug(

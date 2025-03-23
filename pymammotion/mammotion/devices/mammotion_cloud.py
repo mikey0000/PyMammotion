@@ -219,6 +219,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         """Stop all tasks and disconnect."""
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
+        # self._mqtt._mqtt_client.unsubscribe()
         self.stopped = True
 
     async def start(self) -> None:
@@ -227,7 +228,10 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             await self.run_periodic_sync_task()
         self.stopped = False
         if not self.mqtt.is_connected():
-            self.mqtt.connect_async()
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self.mqtt.connect_async)
+        # else:
+        #     self.mqtt._mqtt_client.thing_on_thing_enable(None)
 
     async def _ble_sync(self) -> None:
         command_bytes = self._commands.send_todev_ble_sync(3)
