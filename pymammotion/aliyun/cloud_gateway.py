@@ -46,6 +46,10 @@ MOVE_HEADERS = (
 class SetupException(Exception):
     """Raise when mqtt expires token or token is invalid."""
 
+    def __init__(self, *args: object) -> None:
+        super().__init__(args)
+        self.iot_id = args[1]
+
 
 class AuthRefreshException(Exception):
     """Raise exception when library cannot refresh token."""
@@ -54,6 +58,10 @@ class AuthRefreshException(Exception):
 class DeviceOfflineException(Exception):
     """Raise exception when device is offline."""
 
+    def __init__(self, *args: object) -> None:
+        super().__init__(args)
+        self.iot_id = args[1]
+
 
 class NoConnectionException(UnretryableException):
     """Raise exception when device is unreachable."""
@@ -61,6 +69,10 @@ class NoConnectionException(UnretryableException):
 
 class GatewayTimeoutException(Exception):
     """Raise exception when the gateway times out."""
+
+    def __init__(self, *args: object) -> None:
+        super().__init__(args)
+        self.iot_id = args[1]
 
 
 class LoginException(Exception):
@@ -696,14 +708,14 @@ class CloudIOTGateway:
             )
             if response_body_dict.get("code") == 20056:
                 logger.debug("Gateway timeout.")
-                raise GatewayTimeoutException(response_body_dict.get("code"))
+                raise GatewayTimeoutException(response_body_dict.get("code"), iot_id)
 
             if response_body_dict.get("code") == 29003:
                 logger.debug(self._session_by_authcode_response.data.identityId)
                 self.sign_out()
-                raise SetupException(response_body_dict.get("code"))
+                raise SetupException(response_body_dict.get("code"), iot_id)
             if response_body_dict.get("code") == 6205:
-                raise DeviceOfflineException(response_body_dict.get("code"))
+                raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
 
         return message_id
 
