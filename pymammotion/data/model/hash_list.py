@@ -118,7 +118,7 @@ class HashList(DataClassORJSONMixin):
     hashlist for all our hashIDs for verification
     """
 
-    root_hash_list: RootHashList = field(default_factory=RootHashList)
+    root_hash_lists: list[RootHashList] = field(default_factory=list)
     area: dict = field(default_factory=dict)  # type 0
     path: dict = field(default_factory=dict)  # type 2
     obstacle: dict = field(default_factory=dict)  # type 1
@@ -135,37 +135,51 @@ class HashList(DataClassORJSONMixin):
 
     @property
     def hashlist(self) -> list[int]:
-        if len(self.root_hash_list.data) == 0:
+        if not self.root_hash_lists:
             return []
-        return [i for obj in self.root_hash_list.data for i in obj.data_couple]
+        # Combine data_couple from all RootHashLists
+        return [i for root_list in self.root_hash_lists for obj in root_list.data for i in obj.data_couple]
 
     @property
     def missing_hashlist(self) -> list[int]:
         """Return missing hashlist."""
+        all_hash_ids = set(self.area.keys()).union(
+            self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys()
+        )
         return [
             i
-            for obj in self.root_hash_list.data
+            for root_list in self.root_hash_lists
+            for obj in root_list.data
             for i in obj.data_couple
-            if f"{i}"
-            not in set(self.area.keys()).union(
-                self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys()
-            )
+            if f"{i}" not in all_hash_ids
         ]
 
     def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
-        self.root_hash_list.total_frame = hash_list.total_frame
+        target_root_list = next((rhl for rhl in self.root_hash_lists if rhl.total_frame == hash_list.total_frame), None)
 
-        for index, obj in enumerate(self.root_hash_list.data):
+        if target_root_list is None:
+            # Create new RootHashList if none exists for this total_frame
+            new_root_list = RootHashList(total_frame=hash_list.total_frame, data=[hash_list])
+            self.root_hash_lists.append(new_root_list)
+            return
+
+        for index, obj in enumerate(target_root_list.data):
             if obj.current_frame == hash_list.current_frame:
                 # Replace the item if current_frame matches
-                self.root_hash_list.data[index] = hash_list
+                target_root_list.data[index] = hash_list
                 return
 
         # If no match was found, append the new item
-        self.root_hash_list.data.append(hash_list)
+        target_root_list.data.append(hash_list)
 
     def missing_hash_frame(self) -> list[int]:
-        return self._find_missing_frames(self.root_hash_list)
+        """Returns a combined list of all missing frames across all RootHashLists."""
+        missing_frames = []
+        for root_list in self.root_hash_lists:
+            missing = self._find_missing_frames(root_list)
+            if missing:
+                missing_frames.extend(missing)
+        return missing_frames
 
     def missing_frame(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> list[int]:
         if hash_data.type == PathType.AREA:
