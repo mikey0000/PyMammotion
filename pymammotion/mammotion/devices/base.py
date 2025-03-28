@@ -46,7 +46,7 @@ class MammotionBaseDevice:
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses."""
 
-        missing_frames = self.mower.map.missing_hash_frame(hash_ack)
+        missing_frames = self.mower.map.missing_root_hash_frame(hash_ack)
         if len(missing_frames) == 0:
             if len(self.mower.map.missing_hashlist) > 0:
                 data_hash = self.mower.map.missing_hashlist.pop()

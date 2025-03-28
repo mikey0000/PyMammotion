@@ -157,6 +157,18 @@ class HashList(DataClassORJSONMixin):
             if i not in all_hash_ids
         ]
 
+    def missing_root_hash_frame(self, hash_list: NavGetHashListAck) -> list[int]:
+        """Return missing root hash frame."""
+        target_root_list = next(
+            (
+                rhl
+                for rhl in self.root_hash_lists
+                if rhl.total_frame == hash_list.total_frame and rhl.sub_cmd == hash_list.sub_cmd
+            ),
+            None,
+        )
+        return self._find_missing_frames(target_root_list)
+
     def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
         target_root_list = next(
             (
@@ -235,6 +247,9 @@ class HashList(DataClassORJSONMixin):
 
     @staticmethod
     def _find_missing_frames(frame_list: FrameList | RootHashList) -> list[int]:
+        if frame_list is None:
+            return []
+
         if frame_list.total_frame == len(frame_list.data):
             return []
         number_list = list(range(1, frame_list.total_frame + 1))
