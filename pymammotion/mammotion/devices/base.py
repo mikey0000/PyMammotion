@@ -45,18 +45,18 @@ class MammotionBaseDevice:
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses."""
-        current_frame = hash_ack.current_frame
 
-        missing_frames = self.mower.map.missing_hash_frame()
+        missing_frames = self.mower.map.missing_hash_frame(hash_ack)
         if len(missing_frames) == 0:
             if len(self.mower.map.missing_hashlist) > 0:
                 data_hash = self.mower.map.missing_hashlist.pop()
                 return await self.queue_command("synchronize_hash_data", hash_num=data_hash)
             return
 
-        if current_frame != missing_frames[0] - 1:
-            current_frame = missing_frames[0] - 1
-        await self.queue_command("get_hash_response", total_frame=hash_ack.total_frame, current_frame=current_frame)
+        for frame in missing_frames:
+            await self.queue_command(
+                "get_hash_response", sub_cmd=hash_ack.sub_cmd, total_frame=hash_ack.total_frame, current_frame=frame - 1
+            )
 
     async def commdata_response(self, common_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         """Handle common data responses."""
@@ -80,6 +80,7 @@ class MammotionBaseDevice:
             region_data.hash = common_data.data_hash if isinstance(common_data, SvgMessageAckT) else common_data.hash
             region_data.action = common_data.action if isinstance(common_data, NavGetCommDataAck) else None
             region_data.type = common_data.type
+            region_data.sub_cmd = common_data.sub_cmd
             region_data.total_frame = total_frame
             region_data.current_frame = current_frame
             await self.queue_command("get_regional_data", regional_data=region_data)
@@ -210,7 +211,6 @@ class MammotionBaseDevice:
         await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
         await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-        await self.queue_command("get_hash_response", total_frame=1, current_frame=1)
         if len(self.mower.map.missing_hashlist) > 0:
             data_hash = self.mower.map.missing_hashlist.pop()
             await self.queue_command("synchronize_hash_data", hash_num=data_hash)
@@ -218,6 +218,7 @@ class MammotionBaseDevice:
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
         # jobs list
+        #
         # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
 
     async def async_read_settings(self) -> None:

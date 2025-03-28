@@ -82,7 +82,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._write_char: BleakGATTCharacteristic | int | str | UUID = 0
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
-        self._commands: MammotionCommand = MammotionCommand(device.name)
+        self._commands: MammotionCommand = MammotionCommand(device.name, 1)
         self.command_queue = asyncio.Queue()
         self._expected_disconnect = False
         self._connect_lock = asyncio.Lock()

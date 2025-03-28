@@ -36,25 +36,24 @@ class MessageSystem(AbstractMessage, ABC):
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=self.get_msg_device(MsgCmdType.EMBED_SYS, MsgDevice.DEV_MAINCTL),
             sys=sys,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             timestamp=round(time.time() * 1000),
         )
 
         return luba_msg.SerializeToString()
 
-    @staticmethod
-    def send_order_msg_sys_legacy(sys) -> bytes:
+    def send_order_msg_sys_legacy(self, sys) -> bytes:
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,
             msgattr=MsgAttr.REQ,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
             sys=sys,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             timestamp=round(time.time() * 1000),
         )
 
@@ -315,9 +314,9 @@ class MessageSystem(AbstractMessage, ABC):
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
             msgattr=MsgAttr.REQ,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             sys=mctl_sys,
             timestamp=round(time.time() * 1000),
         )
@@ -351,9 +350,9 @@ class MessageSystem(AbstractMessage, ABC):
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_MAINCTL,
             msgattr=MsgAttr.REQ,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             sys=mctl_sys,
             timestamp=round(time.time() * 1000),
         )

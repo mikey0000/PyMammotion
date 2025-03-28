@@ -15,9 +15,9 @@ class MessageVideo(AbstractMessage, ABC):
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=self.get_msg_device(MsgCmdType.MUL, MsgDevice.SOC_MODULE_MULTIMEDIA),
             mul=mul,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             timestamp=round(time.time() * 1000),
         )
 

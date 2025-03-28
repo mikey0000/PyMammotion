@@ -3,7 +3,7 @@ from enum import IntEnum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.proto import NavGetCommDataAck, SvgMessageAckT
+from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
 
 
 class PathType(IntEnum):
@@ -78,8 +78,9 @@ class SvgMessage(DataClassORJSONMixin):
 
 @dataclass
 class FrameList(DataClassORJSONMixin):
-    total_frame: int
-    data: list[NavGetCommData | SvgMessage]
+    total_frame: int = 0
+    sub_cmd: int = 0
+    data: list[NavGetCommData | SvgMessage] = field(default_factory=list)
 
 
 @dataclass(eq=False, repr=False)
@@ -100,6 +101,7 @@ class NavGetHashListData(DataClassORJSONMixin):
 @dataclass
 class RootHashList(DataClassORJSONMixin):
     total_frame: int = 0
+    sub_cmd: int = 0
     data: list[NavGetHashListData] = field(default_factory=list)
 
 
@@ -118,12 +120,13 @@ class HashList(DataClassORJSONMixin):
     hashlist for all our hashIDs for verification
     """
 
+    bol_hash: str = ""
     root_hash_lists: list[RootHashList] = field(default_factory=list)
-    area: dict = field(default_factory=dict)  # type 0
-    path: dict = field(default_factory=dict)  # type 2
-    obstacle: dict = field(default_factory=dict)  # type 1
-    dump: dict = field(default_factory=dict)  # type 12?
-    svg: dict = field(default_factory=dict)  # type 13
+    area: dict[int, FrameList] = field(default_factory=dict)  # type 0
+    path: dict[int, FrameList] = field(default_factory=dict)  # type 2
+    obstacle: dict[int, FrameList] = field(default_factory=dict)  # type 1
+    dump: dict[int, FrameList] = field(default_factory=dict)  # type 12?
+    svg: dict[int, FrameList] = field(default_factory=dict)  # type 13
     area_name: list[AreaHashNameList] = field(default_factory=list)
 
     def update_hash_lists(self, hashlist: list[int]) -> None:
@@ -151,15 +154,22 @@ class HashList(DataClassORJSONMixin):
             for root_list in self.root_hash_lists
             for obj in root_list.data
             for i in obj.data_couple
-            if f"{i}" not in all_hash_ids
+            if i not in all_hash_ids
         ]
 
     def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
-        target_root_list = next((rhl for rhl in self.root_hash_lists if rhl.total_frame == hash_list.total_frame), None)
+        target_root_list = next(
+            (
+                rhl
+                for rhl in self.root_hash_lists
+                if rhl.total_frame == hash_list.total_frame and rhl.sub_cmd == hash_list.sub_cmd
+            ),
+            None,
+        )
 
         if target_root_list is None:
             # Create new RootHashList if none exists for this total_frame
-            new_root_list = RootHashList(total_frame=hash_list.total_frame, data=[hash_list])
+            new_root_list = RootHashList(total_frame=hash_list.total_frame, sub_cmd=hash_list.sub_cmd, data=[hash_list])
             self.root_hash_lists.append(new_root_list)
             return
 
@@ -172,10 +182,11 @@ class HashList(DataClassORJSONMixin):
         # If no match was found, append the new item
         target_root_list.data.append(hash_list)
 
-    def missing_hash_frame(self) -> list[int]:
+    def missing_hash_frame(self, hash_ack: NavGetHashListAck) -> list[int]:
         """Returns a combined list of all missing frames across all RootHashLists."""
         missing_frames = []
-        for root_list in self.root_hash_lists:
+        filtered_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd == hash_ack.sub_cmd]
+        for root_list in filtered_lists:
             missing = self._find_missing_frames(root_list)
             if missing:
                 missing_frames.extend(missing)

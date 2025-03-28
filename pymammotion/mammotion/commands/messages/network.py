@@ -31,16 +31,15 @@ from pymammotion.proto import (
 class MessageNetwork(AbstractMessage, ABC):
     messageNavigation: MessageNavigation = MessageNavigation()
 
-    @staticmethod
-    def send_order_msg_net(build: DevNet) -> bytes:
+    def send_order_msg_net(self, build: DevNet) -> bytes:
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.ESP,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=MsgDevice.DEV_COMM_ESP,
             msgattr=MsgAttr.REQ,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             net=build,
             timestamp=round(time.time() * 1000),
         )

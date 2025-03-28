@@ -12,9 +12,9 @@ class MessageMedia(AbstractMessage, ABC):
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=self.get_msg_device(MsgCmdType.MUL, MsgDevice.SOC_MODULE_MULTIMEDIA),
             msgattr=MsgAttr.REQ,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             mul=mul,
         )
 

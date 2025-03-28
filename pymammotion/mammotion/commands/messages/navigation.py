@@ -39,9 +39,9 @@ class MessageNavigation(AbstractMessage, ABC):
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=self.get_msg_device(MsgCmdType.NAV, MsgDevice.DEV_MAINCTL),
             msgattr=MsgAttr.REQ,
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             nav=build,
             timestamp=round(time.time() * 1000),
         )

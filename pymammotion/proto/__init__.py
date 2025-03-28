@@ -892,7 +892,7 @@ class NavGetCommData(betterproto.Message):
     sub_cmd: int = betterproto.int32_field(2)
     action: int = betterproto.int32_field(3)
     type: int = betterproto.int32_field(4)
-    hash: int = betterproto.fixed64_field(5)
+    hash: int = betterproto.int64_field(5)
     paternal_hash_a: int = betterproto.int64_field(6)
     paternal_hash_b: int = betterproto.int64_field(7)
     total_frame: int = betterproto.int32_field(8)

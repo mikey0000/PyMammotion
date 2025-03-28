@@ -29,9 +29,9 @@ class MessageDriver(AbstractMessage, ABC):
             rcver=self.get_msg_device(MsgCmdType.EMBED_DRIVER, MsgDevice.DEV_MAINCTL),
             msgattr=MsgAttr.REQ,
             timestamp=round(time.time() * 1000),
-            seqs=1,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             driver=driver,
         ).SerializeToString()
 

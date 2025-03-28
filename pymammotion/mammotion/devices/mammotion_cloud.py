@@ -164,7 +164,10 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.iot_id = cloud_device.iotId
         self.device = cloud_device
         self._command_futures = {}
-        self._commands: MammotionCommand = MammotionCommand(cloud_device.deviceName)
+        self._commands: MammotionCommand = MammotionCommand(
+            cloud_device.deviceName,
+            int(mqtt.cloud_client.mammotion_http.response.data.get("userInformation").get("userAccount")),
+        )
         self.currentID = ""
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
         self._mqtt.mqtt_properties_event.add_subscribers(self._parse_message_properties_for_device)
@@ -329,9 +332,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             fut: MammotionFuture = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
             if fut is None:
                 return
-            while fut.fut.cancelled() and len(self._mqtt.waiting_queue) > 0:
+            while fut is None or fut.fut.cancelled() and len(self._mqtt.waiting_queue) > 0:
                 fut = self.dequeue_by_iot_id(self._mqtt.waiting_queue, self.iot_id)
-            if not fut.fut.cancelled():
+            if fut is not None and not fut.fut.cancelled():
                 fut.resolve(cast(bytes, binary_data))
 
     @property

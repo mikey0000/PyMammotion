@@ -21,7 +21,7 @@ packages = [{include = "pymammotion"}]
 
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.11,<3.13"
 bleak = ">=0.21.0"
 protobuf = ">=4.23.1"
 py-jsonic = "^0.0.2"
@@ -39,6 +39,7 @@ numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
 cryptography = ">=43.0.1"
 crcmod = "^1.7"
+ipython = "^9.0.2"
 
 [tool.poetry.group.extras]
 optional = true
@@ -63,6 +64,7 @@ ruff = "^0.9.3"
 pre-commit = "^3.8.0"
 mypy = "^1.11.2"
 autotyping = "^24.3.0"
+ipython = "^9.0.2"
 
 [tool.bumpver]
 current_version = "0.4.11-beta1"

@@ -13,9 +13,10 @@ class MammotionCommand(
 ):
     """MQTT commands for Luba."""
 
-    def __init__(self, device_name: str) -> None:
+    def __init__(self, device_name: str, user_account: int) -> None:
         self._device_name = device_name
         self._product_key = ""
+        self.user_account = user_account
 
     def get_device_name(self) -> str:
         """Get device name."""

@@ -6,15 +6,17 @@ from pymammotion.proto import GetInfoReq, InfoType, LubaMsg, MctlOta, MsgAttr, M
 
 
 class MessageOta(AbstractMessage, ABC):
+    """Message OTA class."""
+
     def send_order_msg_ota(self, ota):
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_OTA,
             sender=MsgDevice.DEV_MOBILEAPP,
             rcver=self.get_msg_device(MsgCmdType.EMBED_OTA, MsgDevice.DEV_MAINCTL),
-            msgattr=MsgAttr.MSG_ATTR_REQ,
-            seqs=1,
+            msgattr=MsgAttr.REQ,
+            seqs=self.seqs.increment_and_get() & 255,
             version=1,
-            subtype=1,
+            subtype=self.user_account,
             ota=ota,
         )
 
