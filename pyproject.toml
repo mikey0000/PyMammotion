@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name        = "pymammotion"
-version     = "0.4.11-beta1"
+version     = "0.4.11"
 license     = "GPL-3.0"
 description = ""
 readme      = "README.md"
@@ -39,7 +39,6 @@ numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
 cryptography = ">=43.0.1"
 crcmod = "^1.7"
-ipython = "^9.0.2"
 
 [tool.poetry.group.extras]
 optional = true
@@ -67,7 +66,7 @@ autotyping = "^24.3.0"
 ipython = "^9.0.2"
 
 [tool.bumpver]
-current_version = "0.4.11-beta1"
+current_version = "0.4.11"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
