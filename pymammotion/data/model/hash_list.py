@@ -120,7 +120,6 @@ class HashList(DataClassORJSONMixin):
     hashlist for all our hashIDs for verification
     """
 
-    bol_hash: str = ""
     root_hash_lists: list[RootHashList] = field(default_factory=list)
     area: dict[int, FrameList] = field(default_factory=dict)  # type 0
     path: dict[int, FrameList] = field(default_factory=dict)  # type 2
@@ -135,6 +134,11 @@ class HashList(DataClassORJSONMixin):
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
         self.dump = {hash_id: frames for hash_id, frames in self.dump.items() if hash_id in hashlist}
         self.svg = {hash_id: frames for hash_id, frames in self.svg.items() if hash_id in hashlist}
+        self.area_name = [
+            area_item
+            for area_item in self.area_name
+            if area_item.hash in self.area.keys() or area_item.hash in self.hashlist
+        ]
 
     @property
     def hashlist(self) -> list[int]:
@@ -143,8 +147,7 @@ class HashList(DataClassORJSONMixin):
         # Combine data_couple from all RootHashLists
         return [i for root_list in self.root_hash_lists for obj in root_list.data for i in obj.data_couple]
 
-    @property
-    def missing_hashlist(self) -> list[int]:
+    def missing_hashlist(self, sub_cmd: int = 0) -> list[int]:
         """Return missing hashlist."""
         all_hash_ids = set(self.area.keys()).union(
             self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys()
@@ -153,6 +156,7 @@ class HashList(DataClassORJSONMixin):
             i
             for root_list in self.root_hash_lists
             for obj in root_list.data
+            if root_list.sub_cmd == sub_cmd
             for i in obj.data_couple
             if i not in all_hash_ids
         ]
@@ -167,6 +171,9 @@ class HashList(DataClassORJSONMixin):
             ),
             None,
         )
+        if target_root_list is None:
+            return []
+
         return self._find_missing_frames(target_root_list)
 
     def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
@@ -224,12 +231,15 @@ class HashList(DataClassORJSONMixin):
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
         """Update the map data."""
+
         if hash_data.type == PathType.AREA:
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
             if not existing_name:
                 name = f"area {len(self.area_name)+1}" if hash_data.area_label is None else hash_data.area_label.label
                 self.area_name.append(AreaHashNameList(name=name, hash=hash_data.hash))
-            return self._add_hash_data(self.area, hash_data)
+            result = self._add_hash_data(self.area, hash_data)
+            self.update_hash_lists(self.hashlist)
+            return result
 
         if hash_data.type == PathType.OBSTACLE:
             return self._add_hash_data(self.obstacle, hash_data)

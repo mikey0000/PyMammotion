@@ -36,12 +36,10 @@ class MammotionBLE:
         return await self.connect()
 
     async def connect(self) -> bool:
-        if self.client is not None:
-            return await self.client.connect()
+        return await self.client.connect() if self.client is not None else False
 
     async def disconnect(self) -> bool:
-        if self.client is not None:
-            return await self.client.disconnect()
+        return await self.client.disconnect() if self.client is not None else False
 
     async def notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Simple notification handler which prints the data received."""

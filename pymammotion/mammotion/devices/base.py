@@ -48,8 +48,8 @@ class MammotionBaseDevice:
 
         missing_frames = self.mower.map.missing_root_hash_frame(hash_ack)
         if len(missing_frames) == 0:
-            if len(self.mower.map.missing_hashlist) > 0:
-                data_hash = self.mower.map.missing_hashlist.pop()
+            if len(self.mower.map.missing_hashlist(hash_ack.sub_cmd)) > 0:
+                data_hash = self.mower.map.missing_hashlist(hash_ack.sub_cmd).pop()
                 return await self.queue_command("synchronize_hash_data", hash_num=data_hash)
             return
 
@@ -67,7 +67,11 @@ class MammotionBaseDevice:
         if len(missing_frames) == 0:
             # get next in hash ack list
 
-            data_hash = self.mower.map.missing_hashlist.pop() if len(self.mower.map.missing_hashlist) > 0 else None
+            data_hash = (
+                self.mower.map.missing_hashlist(common_data.sub_cmd).pop()
+                if len(self.mower.map.missing_hashlist(common_data.sub_cmd)) > 0
+                else None
+            )
             if data_hash is None:
                 return
 
@@ -211,8 +215,8 @@ class MammotionBaseDevice:
         await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
         await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-        if len(self.mower.map.missing_hashlist) > 0:
-            data_hash = self.mower.map.missing_hashlist.pop()
+        if len(self.mower.map.missing_hashlist()) > 0:
+            data_hash = self.mower.map.missing_hashlist().pop()
             await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
