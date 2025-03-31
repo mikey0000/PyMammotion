@@ -137,7 +137,7 @@ class HashList(DataClassORJSONMixin):
         self.area_name = [
             area_item
             for area_item in self.area_name
-            if area_item.hash in self.area.keys() or area_item.hash in self.hashlist
+            if area_item.hash in self.area.keys() or area_item.hash in hashlist
         ]
 
     @property

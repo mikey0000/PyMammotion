@@ -209,6 +209,8 @@ class MammotionBaseDevice:
     async def start_map_sync(self) -> None:
         """Start sync of map data."""
 
+        self.mower.map.update_hash_lists(self.mower.map.hashlist)
+
         if self._cloud_device and len(self.mower.map.area_name) == 0 and not DeviceType.is_luba1(self.mower.name):
             await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
 
