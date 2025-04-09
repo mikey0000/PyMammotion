@@ -11,7 +11,7 @@ import betterproto
 from Tea.exceptions import UnretryableException
 
 from pymammotion import CloudIOTGateway, MammotionMQTT
-from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
+from pymammotion.aliyun.cloud_gateway import CheckSessionException, DeviceOfflineException, SetupException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -239,7 +239,10 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _ble_sync(self) -> None:
         command_bytes = self._commands.send_todev_ble_sync(3)
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._mqtt.send_command, self.iot_id, command_bytes)
+        try:
+            await loop.run_in_executor(None, self._mqtt.send_command, self.iot_id, command_bytes)
+        except (CheckSessionException, SetupException):
+            self._ble_sync_task.cancel()
 
     async def run_periodic_sync_task(self) -> None:
         """Send ble sync to robot."""
