@@ -146,6 +146,10 @@ class CloudIOTGateway:
 
     def get_region(self, country_code: str, auth_code: str):
         """Get the region based on country code and auth code."""
+
+        if self._region_response is not None:
+            return self._region_response
+
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,

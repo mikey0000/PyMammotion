@@ -1,5 +1,5 @@
 import asyncio
-from asyncio import TimerHandle
+from asyncio import InvalidStateError, TimerHandle
 import base64
 from collections import deque
 from collections.abc import Awaitable, Callable
@@ -87,7 +87,11 @@ class MammotionCloud:
                 future.set_result(result)
             except Exception as ex:
                 # Set the exception on the future if something goes wrong
-                future.set_exception(ex)
+                try:
+                    future.set_exception(ex)
+                except InvalidStateError:
+                    """Dead end, log an error."""
+                    _LOGGER.exception("InvalidStateError while trying to bubble up exception")
             finally:
                 # Mark the task as done
                 self.command_queue.task_done()
