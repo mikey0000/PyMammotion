@@ -269,13 +269,23 @@ class HashList(DataClassORJSONMixin):
         return missing_numbers
 
     @staticmethod
-    def _add_hash_data(hash_dict: dict, hash_data: NavGetCommData | SvgMessage) -> bool:
+    def _add_hash_data(hash_dict: dict[int, FrameList], hash_data: NavGetCommData | SvgMessage) -> bool:
         if isinstance(hash_data, SvgMessage):
             if hash_dict.get(hash_data.data_hash) is None:
                 hash_dict[hash_data.data_hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
                 return True
 
             if hash_data not in hash_dict[hash_data.data_hash].data:
+                exists = next(
+                    (
+                        rhl
+                        for rhl in hash_dict[hash_data.data_hash].data
+                        if rhl.current_frame == hash_data.current_frame
+                    ),
+                    None,
+                )
+                if exists:
+                    return True
                 hash_dict[hash_data.data_hash].data.append(hash_data)
                 return True
             return False
@@ -285,6 +295,12 @@ class HashList(DataClassORJSONMixin):
             return True
 
         if hash_data not in hash_dict[hash_data.hash].data:
+            exists = next(
+                (rhl for rhl in hash_dict[hash_data.hash].data if rhl.current_frame == hash_data.current_frame),
+                None,
+            )
+            if exists:
+                return True
             hash_dict[hash_data.hash].data.append(hash_data)
             return True
         return False
