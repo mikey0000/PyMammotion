@@ -48,9 +48,11 @@ class MammotionBaseDevice:
 
         missing_frames = self.mower.map.missing_root_hash_frame(hash_ack)
         if len(missing_frames) == 0:
-            if len(self.mower.map.missing_hashlist(hash_ack.sub_cmd)) > 0:
-                data_hash = self.mower.map.missing_hashlist(hash_ack.sub_cmd).pop()
-                return await self.queue_command("synchronize_hash_data", hash_num=data_hash)
+            for sub_cmd in [0, 3]:
+                if len(self.mower.map.missing_hashlist(sub_cmd)) > 0:
+                    # data_hash = self.mower.map.missing_hashlist(hash_ack.sub_cmd).pop()
+                    for data_hash in self.mower.map.missing_hashlist(hash_ack.sub_cmd):
+                        await self.queue_command("synchronize_hash_data", hash_num=data_hash)
             return
 
         for frame in missing_frames:
@@ -218,6 +220,10 @@ class MammotionBaseDevice:
 
         await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
         if len(self.mower.map.missing_hashlist()) > 0:
+            data_hash = self.mower.map.missing_hashlist().pop()
+            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
+
+        if len(self.mower.map.missing_hashlist(3)) > 0:
             data_hash = self.mower.map.missing_hashlist().pop()
             await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
