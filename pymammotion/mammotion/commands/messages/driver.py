@@ -88,10 +88,10 @@ class MessageDriver(AbstractMessage, ABC):
         return self.send_order_msg_driver(build)
 
     def send_movement(self, linear_speed: int, angular_speed: int) -> bytes:
-        logger.debug(f"Control command print, linearSpeed={
-        linear_speed} // angularSpeed={angular_speed}")
-        return self.send_order_msg_driver(
-            MctlDriver(
-                todev_devmotion_ctrl=DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)
-            )
+    # Corrected: Properly formatted f-string on one line
+    logger.debug(f"Control command print, linearSpeed={linear_speed} // angularSpeed={angular_speed}")
+    return self.send_order_msg_driver(
+        MctlDriver(
+            todev_devmotion_ctrl=DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)
         )
+    )

@@ -97,11 +97,9 @@ class MessageSystem(AbstractMessage, ABC):
                 end_hour=0,
                 end_min=0,
             )
-        logger.debug(f"Send read and write sidelight command is_sidelight:{
-            is_sidelight}, operate:{operate}")
+        logger.debug(f"Send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}")
         build2 = MctlSys(todev_time_ctrl_light=build)
-        logger.debug(f"Send command - send read and write sidelight command is_sidelight:{
-            is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
+        logger.debug(f"Send command - send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
         return self.send_order_msg_sys(build2)
 
     def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: list[int]) -> bytes:

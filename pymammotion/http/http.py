@@ -96,7 +96,7 @@ class MammotionHTTP:
                 "/device-server/v1/stream/subscription",
                 json={"deviceId": iot_id},
                 headers={
-                    "Authorization": f"{self._headers.get('Authorization', "")}",
+                    "Authorization": f"{self._headers.get('Authorization', '')}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/3.14.9",
                 },

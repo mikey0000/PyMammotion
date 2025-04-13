@@ -386,8 +386,7 @@ class MessageNavigation(AbstractMessage, ABC):
             reserved=generate_route_information.path_order,
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
-        logger.debug(f"Send command--Generate route information generateRouteInformation={
-        generate_route_information}")
+        logger.debug(f"Send command--Generate route information generateRouteInformation={generate_route_information}")
         return self.send_order_msg_nav(MctlNav(bidire_reqconver_path=build))
 
     def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation) -> bytes:
