@@ -56,9 +56,7 @@ class MammotionBaseDevice:
             return
 
         for frame in missing_frames:
-            await self.queue_command(
-                "get_hash_response", sub_cmd=hash_ack.sub_cmd, total_frame=hash_ack.total_frame, current_frame=frame - 1
-            )
+            await self.queue_command("get_hash_response", total_frame=hash_ack.total_frame, current_frame=frame - 1)
 
     async def commdata_response(self, common_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         """Handle common data responses."""
