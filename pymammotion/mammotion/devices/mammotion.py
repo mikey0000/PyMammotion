@@ -187,6 +187,18 @@ class Mammotion:
                 cloud_client = await self.login(account, password)
                 await self.initiate_cloud_connection(account, cloud_client)
 
+    async def refresh_login(self, account: str) -> None:
+        async with self._login_lock:
+            exists: MammotionCloud | None = self.mqtt_list.get(account)
+            if not exists:
+                return
+            mammotion_http = exists.cloud_client.mammotion_http
+            await mammotion_http.refresh_login()
+            await self.connect_iot(mammotion_http, exists.cloud_client)
+            if not exists.is_connected():
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, exists.connect_async)
+
     async def initiate_cloud_connection(self, account: str, cloud_client: CloudIOTGateway) -> None:
         loop = asyncio.get_running_loop()
         if mqtt := self.mqtt_list.get(account):
@@ -242,21 +254,19 @@ class Mammotion:
         cloud_client = CloudIOTGateway()
         mammotion_http = MammotionHTTP()
         await mammotion_http.login(account, password)
+        await cloud_client.list_binding_by_account()
+        await self.connect_iot(mammotion_http, cloud_client)
+        return cloud_client
+
+    @staticmethod
+    async def connect_iot(mammotion_http: MammotionHTTP, cloud_client: CloudIOTGateway) -> None:
         country_code = mammotion_http.login_info.userInformation.domainAbbreviation
-        _LOGGER.debug("CountryCode: " + country_code)
-        _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
         cloud_client.set_http(mammotion_http)
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None, cloud_client.get_region, country_code, mammotion_http.login_info.authorization_code
-        )
+        await cloud_client.get_region(country_code, mammotion_http.login_info.authorization_code)
         await cloud_client.connect()
         await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
-        await loop.run_in_executor(None, cloud_client.aep_handle)
-        await loop.run_in_executor(None, cloud_client.session_by_auth_code)
-
-        await loop.run_in_executor(None, cloud_client.list_binding_by_account)
-        return cloud_client
+        await cloud_client.aep_handle()
+        await cloud_client.session_by_auth_code()
 
     async def remove_device(self, name: str) -> None:
         await self.device_manager.remove_device(name)

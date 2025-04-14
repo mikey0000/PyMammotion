@@ -65,8 +65,8 @@ class MammotionCloud:
     def connect_async(self) -> None:
         self._mqtt_client.connect_async()
 
-    def send_command(self, iot_id: str, command: bytes) -> None:
-        self._mqtt_client.get_cloud_client().send_cloud_command(iot_id, command)
+    async def send_command(self, iot_id: str, command: bytes) -> None:
+        await self._mqtt_client.get_cloud_client().send_cloud_command(iot_id, command)
 
     async def on_connected(self) -> None:
         """Callback for when MQTT connects."""
@@ -102,7 +102,7 @@ class MammotionCloud:
         self._key = key
         _LOGGER.debug("Sending command: %s", key)
 
-        await self.loop.run_in_executor(None, self._mqtt_client.get_cloud_client().send_cloud_command, iot_id, command)
+        await self._mqtt_client.get_cloud_client().send_cloud_command(iot_id, command)
         future = MammotionFuture(iot_id)
         self._waiting_queue.append(future)
         timeout = 5
@@ -244,7 +244,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         command_bytes = self._commands.send_todev_ble_sync(3)
         loop = asyncio.get_running_loop()
         try:
-            await loop.run_in_executor(None, self._mqtt.send_command, self.iot_id, command_bytes)
+            await self._mqtt.send_command(self.iot_id, command_bytes)
         except (CheckSessionException, SetupException):
             self._ble_sync_task.cancel()
 

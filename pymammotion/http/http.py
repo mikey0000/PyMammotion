@@ -13,6 +13,8 @@ class MammotionHTTP:
     def __init__(self) -> None:
         self.code = None
         self.msg = None
+        self.account = None
+        self._password = None
         self.response: Response | None = None
         self.login_info: LoginResponseData | None = None
         self._headers = {"User-Agent": "okhttp/3.14.9", "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332"}
@@ -106,7 +108,12 @@ class MammotionHTTP:
                 # Assuming the data format matches the expected structure
                 return Response[StreamSubscriptionResponse].from_dict(data)
 
-    async def login(self, username: str, password: str) -> Response[LoginResponseData]:
+    async def refresh_login(self) -> Response[LoginResponseData]:
+        return await self.login(self.account, self._password)
+
+    async def login(self, account: str, password: str) -> Response[LoginResponseData]:
+        self.account = account
+        self._password = password
         async with ClientSession(MAMMOTION_DOMAIN) as session:
             async with session.post(
                 "/oauth/token",
@@ -118,7 +125,7 @@ class MammotionHTTP:
                     "Ec-Version": "v1",
                 },
                 params=dict(
-                    username=self.encryption_utils.encryption_by_aes(username),
+                    username=self.encryption_utils.encryption_by_aes(account),
                     password=self.encryption_utils.encryption_by_aes(password),
                     client_id=self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_ID),
                     client_secret=self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_SECRET),

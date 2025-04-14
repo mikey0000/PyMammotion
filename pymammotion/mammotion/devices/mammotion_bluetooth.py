@@ -106,7 +106,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _ble_sync(self) -> None:
         if self._client is not None and self._client.is_connected:
-            _LOGGER.debug("BLE SYNC")
             command_bytes = self._commands.send_todev_ble_sync(2)
             await self._message.post_custom_data_bytes(command_bytes)
 

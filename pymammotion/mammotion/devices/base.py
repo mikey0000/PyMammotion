@@ -229,7 +229,7 @@ class MammotionBaseDevice:
         # sub_cmd 4 is dump location (yuka)
         # jobs list
         #
-        # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
+        await self.queue_command("get_all_boundary_hash_list", sub_cmd=3)
 
     async def async_read_settings(self) -> None:
         """Read settings from device."""
