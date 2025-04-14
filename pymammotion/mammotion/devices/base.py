@@ -56,9 +56,7 @@ class MammotionBaseDevice:
             return
 
         for frame in missing_frames:
-            await self.queue_command(
-                "get_hash_response", sub_cmd=hash_ack.sub_cmd, total_frame=hash_ack.total_frame, current_frame=frame - 1
-            )
+            await self.queue_command("get_hash_response", total_frame=hash_ack.total_frame, current_frame=frame - 1)
 
     async def commdata_response(self, common_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         """Handle common data responses."""
@@ -231,7 +229,7 @@ class MammotionBaseDevice:
         # sub_cmd 4 is dump location (yuka)
         # jobs list
         #
-        # hash_list_result = await self._send_command_with_args("get_all_boundary_hash_list", sub_cmd=3)
+        await self.queue_command("get_all_boundary_hash_list", sub_cmd=3)
 
     async def async_read_settings(self) -> None:
         """Read settings from device."""
