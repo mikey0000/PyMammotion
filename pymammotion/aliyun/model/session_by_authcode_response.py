@@ -16,3 +16,4 @@ class SessionOauthToken(DataClassORJSONMixin):
 class SessionByAuthCodeResponse(DataClassORJSONMixin):
     code: int
     data: SessionOauthToken | None = None
+    token_issued_at: int | None = None

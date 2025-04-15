@@ -194,12 +194,13 @@ class MammotionMQTT:
 
     def _on_disconnect(self, _client, _userdata) -> None:
         """Is called on disconnect."""
-        logger.info("Disconnected")
-        self.is_connected = False
-        self.is_ready = False
-        if self.on_disconnected:
-            future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
-            asyncio.wrap_future(future, loop=self.loop)
+        if self._linkkit_client.check_state() is LinkKit.LinkKitState.DISCONNECTED:
+            logger.info("Disconnected")
+            self.is_connected = False
+            self.is_ready = False
+            if self.on_disconnected:
+                future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
+                asyncio.wrap_future(future, loop=self.loop)
 
     def _on_message(self, _client, _userdata, message: MQTTMessage) -> None:
         """Is called when message is received."""

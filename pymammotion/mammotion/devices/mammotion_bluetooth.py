@@ -368,7 +368,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         await self._message.post_custom_data_bytes(command)
 
-        timeout = 2
+        timeout = 1
         timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
         timeout_expired = False
         try:

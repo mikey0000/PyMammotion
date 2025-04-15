@@ -102,7 +102,6 @@ class CloudIOTGateway:
         dev_by_account: ListingDevByAccountResponse | None = None,
     ) -> None:
         """Initialize the CloudIOTGateway."""
-        self._iot_token_issued_at = None
         self.mammotion_http: MammotionHTTP | None = None
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
@@ -117,6 +116,13 @@ class CloudIOTGateway:
         self._session_by_authcode_response = session_by_authcode_response
         self._region_response = region_response
         self._devices_by_account_response = dev_by_account
+        self._iot_token_issued_at = int(time.time())
+        if self._session_by_authcode_response:
+            self._iot_token_issued_at = (
+                self._session_by_authcode_response.token_issued_at
+                if self._session_by_authcode_response.token_issued_at is not None
+                else int(time.time())
+            )
 
     @staticmethod
     def generate_random_string(length: int):

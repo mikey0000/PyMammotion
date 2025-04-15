@@ -254,8 +254,8 @@ class Mammotion:
         cloud_client = CloudIOTGateway()
         mammotion_http = MammotionHTTP()
         await mammotion_http.login(account, password)
-        await cloud_client.list_binding_by_account()
         await self.connect_iot(mammotion_http, cloud_client)
+        await cloud_client.list_binding_by_account()
         return cloud_client
 
     @staticmethod

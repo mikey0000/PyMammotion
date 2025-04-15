@@ -297,7 +297,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def synchronize_hash_data(self, hash_num: int) -> bytes:
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=8, hash=hash_num, sub_cmd=1))
-        logger.debug(f"Send command--209,hash synchronize area data hash:{hash}")
+        logger.debug(f"Send command--209,hash synchronize area data hash:{hash_num}")
         return self.send_order_msg_nav(build)
 
     def get_area_to_be_transferred(self) -> bytes:
