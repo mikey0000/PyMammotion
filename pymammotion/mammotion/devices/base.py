@@ -218,28 +218,31 @@ class MammotionBaseDevice:
 
         await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
-        if len(self.mower.map.root_hash_lists) == 0:
-            await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-
-        for hash, frame in self.mower.map.area.items():
+        for hash, frame in list(self.mower.map.area.items()):
             missing_frames = self.mower.map.find_missing_frames(frame)
             if len(missing_frames) > 0:
                 del self.mower.map.area[hash]
 
-        for hash, frame in self.mower.map.path.items():
+        for hash, frame in list(self.mower.map.path.items()):
             missing_frames = self.mower.map.find_missing_frames(frame)
             if len(missing_frames) > 0:
                 del self.mower.map.path[hash]
 
-        for hash, frame in self.mower.map.obstacle.items():
+        for hash, frame in list(self.mower.map.obstacle.items()):
             missing_frames = self.mower.map.find_missing_frames(frame)
             if len(missing_frames) > 0:
                 del self.mower.map.obstacle[hash]
 
+        # don't know why but total frame on svg is wrong
         # for hash, frame in self.mower.map.svg.items():
         #     missing_frames = self.mower.map.find_missing_frames(frame)
         #     if len(missing_frames) > 0:
         #         del self.mower.map.svg[hash]
+
+        if len(self.mower.map.root_hash_lists) == 0:
+            await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
+            # add a small delay to allow result to come through if it does.
+            await asyncio.sleep(1)
 
         if len(self.mower.map.missing_hashlist()) > 0:
             data_hash = self.mower.map.missing_hashlist().pop()
