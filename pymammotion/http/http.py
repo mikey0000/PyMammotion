@@ -108,8 +108,12 @@ class MammotionHTTP:
                 # Assuming the data format matches the expected structure
                 return Response[StreamSubscriptionResponse].from_dict(data)
 
-    async def refresh_login(self) -> Response[LoginResponseData]:
-        return await self.login(self.account, self._password)
+    async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
+        if self._password is None and password is not None:
+            self._password = password
+        if self._password is None:
+            raise ValueError("Password is required for refresh login")
+        return await self.login(account, self._password)
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
         self.account = account
