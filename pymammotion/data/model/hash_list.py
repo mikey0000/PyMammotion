@@ -12,6 +12,7 @@ class PathType(IntEnum):
     AREA = 0
     OBSTACLE = 1
     PATH = 2
+    LINE = 10
     DUMP = 12
     SVG = 13
 
@@ -83,6 +84,32 @@ class FrameList(DataClassORJSONMixin):
     data: list[NavGetCommData | SvgMessage] = field(default_factory=list)
 
 
+@dataclass
+class Plan(DataClassORJSONMixin):
+    sub_cmd: int = 2
+    version: str = ""
+    user_id: str = ""
+    device_id: str = ""
+    plan_id: str = ""
+    task_id: str = ""
+    start_time: str = "00:00"
+    knife_height: int = 0
+    model: int = 0
+    edge_mode: int = 0
+    route_model: int = 0
+    route_spacing: int = 0
+    ultrasonic_barrier: int = 0
+    total_plan_num: int = 0
+    speed: float = 0.0
+    task_name: str = ""
+    zone_hashs: list[str] = field(default_factory=list)
+    reserved: str = ""
+    start_date: str = ""
+    trigger_type: int = 0
+    remained_seconds: str = "-1"
+    toward_included_angle: int = 0
+
+
 @dataclass(eq=False, repr=False)
 class NavGetHashListData(DataClassORJSONMixin):
     """Dataclass for NavGetHashListData."""
@@ -124,8 +151,10 @@ class HashList(DataClassORJSONMixin):
     area: dict[int, FrameList] = field(default_factory=dict)  # type 0
     path: dict[int, FrameList] = field(default_factory=dict)  # type 2
     obstacle: dict[int, FrameList] = field(default_factory=dict)  # type 1
-    dump: dict[int, FrameList] = field(default_factory=dict)  # type 12?
+    dump: dict[int, FrameList] = field(default_factory=dict)  # type 12? / sub cmd 4
     svg: dict[int, FrameList] = field(default_factory=dict)  # type 13
+    line: dict[int, FrameList] = field(default_factory=dict)  # type 10 possibly breakpoint? / sub cmd 3
+    plan: dict[int, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
 
     def update_hash_lists(self, hashlist: list[int]) -> None:
@@ -152,6 +181,8 @@ class HashList(DataClassORJSONMixin):
         all_hash_ids = set(self.area.keys()).union(
             self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys()
         )
+        if sub_cmd == 3:
+            all_hash_ids = set(self.line.keys())
         return [
             i
             for root_list in self.root_hash_lists
@@ -174,7 +205,7 @@ class HashList(DataClassORJSONMixin):
         if target_root_list is None:
             return []
 
-        return self._find_missing_frames(target_root_list)
+        return self.find_missing_frames(target_root_list)
 
     def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
         target_root_list = next(
@@ -206,26 +237,29 @@ class HashList(DataClassORJSONMixin):
         missing_frames = []
         filtered_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd == hash_ack.sub_cmd]
         for root_list in filtered_lists:
-            missing = self._find_missing_frames(root_list)
+            missing = self.find_missing_frames(root_list)
             if missing:
                 missing_frames.extend(missing)
         return missing_frames
 
     def missing_frame(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> list[int]:
         if hash_data.type == PathType.AREA:
-            return self._find_missing_frames(self.area.get(hash_data.hash))
+            return self.find_missing_frames(self.area.get(hash_data.hash))
 
         if hash_data.type == PathType.OBSTACLE:
-            return self._find_missing_frames(self.obstacle.get(hash_data.hash))
+            return self.find_missing_frames(self.obstacle.get(hash_data.hash))
 
         if hash_data.type == PathType.PATH:
-            return self._find_missing_frames(self.path.get(hash_data.hash))
+            return self.find_missing_frames(self.path.get(hash_data.hash))
+
+        if hash_data.type == PathType.LINE:
+            return self.find_missing_frames(self.line.get(hash_data.hash))
 
         if hash_data.type == PathType.DUMP:
-            return self._find_missing_frames(self.dump.get(hash_data.hash))
+            return self.find_missing_frames(self.dump.get(hash_data.hash))
 
         if hash_data.type == PathType.SVG:
-            return self._find_missing_frames(self.svg.get(hash_data.data_hash))
+            return self.find_missing_frames(self.svg.get(hash_data.data_hash))
 
         return []
 
@@ -247,6 +281,9 @@ class HashList(DataClassORJSONMixin):
         if hash_data.type == PathType.PATH:
             return self._add_hash_data(self.path, hash_data)
 
+        if hash_data.type == PathType.LINE:
+            return self._add_hash_data(self.line, hash_data)
+
         if hash_data.type == PathType.DUMP:
             return self._add_hash_data(self.dump, hash_data)
 
@@ -256,7 +293,7 @@ class HashList(DataClassORJSONMixin):
         return False
 
     @staticmethod
-    def _find_missing_frames(frame_list: FrameList | RootHashList) -> list[int]:
+    def find_missing_frames(frame_list: FrameList | RootHashList) -> list[int]:
         if frame_list is None:
             return []
 

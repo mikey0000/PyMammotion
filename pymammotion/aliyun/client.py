@@ -1,8 +1,9 @@
 import time
 
-from Tea.core import TeaCore
 from Tea.exceptions import UnretryableException
 from Tea.request import TeaRequest
+
+from pymammotion.aliyun.tea.core import TeaCore
 
 try:
     from typing import Dict

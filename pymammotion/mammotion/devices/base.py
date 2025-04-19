@@ -44,19 +44,19 @@ class MammotionBaseDevice:
         self._cloud_device = cloud_device
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
-        """Handle datahash responses."""
+        """Handle datahash responses for root level hashs."""
+        current_frame = hash_ack.current_frame
 
         missing_frames = self.mower.map.missing_root_hash_frame(hash_ack)
         if len(missing_frames) == 0:
-            for sub_cmd in [0, 3]:
-                if len(self.mower.map.missing_hashlist(sub_cmd)) > 0:
-                    # data_hash = self.mower.map.missing_hashlist(hash_ack.sub_cmd).pop()
-                    for data_hash in self.mower.map.missing_hashlist(hash_ack.sub_cmd):
-                        await self.queue_command("synchronize_hash_data", hash_num=data_hash)
+            if len(self.mower.map.missing_hashlist(0)) > 0:
+                data_hash = self.mower.map.missing_hashlist(hash_ack.sub_cmd).pop()
+                await self.queue_command("synchronize_hash_data", hash_num=data_hash)
             return
 
-        for frame in missing_frames:
-            await self.queue_command("get_hash_response", total_frame=hash_ack.total_frame, current_frame=frame - 1)
+        if current_frame != missing_frames[0] - 1:
+            current_frame = missing_frames[0] - 1
+        await self.queue_command("get_hash_response", total_frame=hash_ack.total_frame, current_frame=current_frame)
 
     async def commdata_response(self, common_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         """Handle common data responses."""
@@ -211,25 +211,52 @@ class MammotionBaseDevice:
 
         self.mower.map.update_hash_lists(self.mower.map.hashlist)
 
+        await self.queue_command("send_todev_ble_sync", sync_type=3)
+
         if self._cloud_device and len(self.mower.map.area_name) == 0 and not DeviceType.is_luba1(self.mower.name):
             await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
 
         await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
-        await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
+        for hash, frame in list(self.mower.map.area.items()):
+            missing_frames = self.mower.map.find_missing_frames(frame)
+            if len(missing_frames) > 0:
+                del self.mower.map.area[hash]
+
+        for hash, frame in list(self.mower.map.path.items()):
+            missing_frames = self.mower.map.find_missing_frames(frame)
+            if len(missing_frames) > 0:
+                del self.mower.map.path[hash]
+
+        for hash, frame in list(self.mower.map.obstacle.items()):
+            missing_frames = self.mower.map.find_missing_frames(frame)
+            if len(missing_frames) > 0:
+                del self.mower.map.obstacle[hash]
+
+        # don't know why but total frame on svg is wrong
+        # for hash, frame in self.mower.map.svg.items():
+        #     missing_frames = self.mower.map.find_missing_frames(frame)
+        #     if len(missing_frames) > 0:
+        #         del self.mower.map.svg[hash]
+
+        if len(self.mower.map.root_hash_lists) == 0:
+            await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
+            # add a small delay to allow result to come through if it does.
+            await asyncio.sleep(1)
+
         if len(self.mower.map.missing_hashlist()) > 0:
             data_hash = self.mower.map.missing_hashlist().pop()
             await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
-        if len(self.mower.map.missing_hashlist(3)) > 0:
-            data_hash = self.mower.map.missing_hashlist().pop()
-            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
+        # if len(self.mower.map.missing_hashlist(3)) > 0:
+        #     data_hash = self.mower.map.missing_hashlist(3).pop()
+        #     await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)
         # jobs list
         #
-        await self.queue_command("get_all_boundary_hash_list", sub_cmd=3)
+        # await self.queue_command("get_all_boundary_hash_list", sub_cmd=3)
 
     async def async_read_settings(self) -> None:
         """Read settings from device."""

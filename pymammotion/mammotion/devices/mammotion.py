@@ -187,14 +187,15 @@ class Mammotion:
                 cloud_client = await self.login(account, password)
                 await self.initiate_cloud_connection(account, cloud_client)
 
-    async def refresh_login(self, account: str) -> None:
+    async def refresh_login(self, account: str, password: str | None = None) -> None:
         async with self._login_lock:
             exists: MammotionCloud | None = self.mqtt_list.get(account)
             if not exists:
                 return
             mammotion_http = exists.cloud_client.mammotion_http
-            await mammotion_http.refresh_login()
+            await mammotion_http.refresh_login(account, password)
             await self.connect_iot(mammotion_http, exists.cloud_client)
+
             if not exists.is_connected():
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, exists.connect_async)
@@ -254,8 +255,8 @@ class Mammotion:
         cloud_client = CloudIOTGateway()
         mammotion_http = MammotionHTTP()
         await mammotion_http.login(account, password)
-        await cloud_client.list_binding_by_account()
         await self.connect_iot(mammotion_http, cloud_client)
+        await cloud_client.list_binding_by_account()
         return cloud_client
 
     @staticmethod
