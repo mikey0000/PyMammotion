@@ -227,6 +227,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         #     self.mqtt._mqtt_client.thing_on_thing_enable(None)
 
     async def _ble_sync(self) -> None:
+        if self.stopped or self._mqtt.is_connected is False:
+            return
+        
         command_bytes = self._commands.send_todev_ble_sync(3)
         try:
             await self._mqtt.send_command(self.iot_id, command_bytes)
