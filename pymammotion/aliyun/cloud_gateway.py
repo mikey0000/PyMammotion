@@ -11,7 +11,7 @@ import string
 import time
 import uuid
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
@@ -24,6 +24,7 @@ from pymammotion.aliyun.model.dev_by_account_response import ListingDevByAccount
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
+from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.utility.datatype_converter import DatatypeConverter
@@ -178,14 +179,28 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = await client.async_do_request(
-            "/living/account/region/get", "https", "POST", None, body, RuntimeOptions()
-        )
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        try:
+            response = await client.async_do_request(
+                "/living/account/region/get", "https", "POST", None, body, RuntimeOptions()
+            )
+            logger.debug(response.status_message)
+            logger.debug(response.headers)
+            logger.debug(response.status_code)
+            logger.debug(response.body)
+        except ConnectionTimeoutError:
+            body = {"data": {}, "code": 200}
 
+            region = region_mappings.get(country_code, "US")
+            body["data"]["shortRegionId"] = region
+            body["data"]["regionEnglishName"] = ""
+            body["data"]["oaApiGatewayEndpoint"] = f"living-account.{region}.aliyuncs.com"
+            body["data"]["regionId"] = region
+            body["data"]["mqttEndpoint"] = f"public.itls.{region}.aliyuncs.com:1883"
+            body["data"]["pushChannelEndpoint"] = f"living-accs.{region}.aliyuncs.com"
+            body["data"]["apiGatewayEndpoint"] = f"{region}.api-iot.aliyuncs.com"
+
+            RegionResponse.from_dict(body)
+            return body
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
 
