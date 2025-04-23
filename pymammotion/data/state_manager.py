@@ -9,7 +9,7 @@ import betterproto
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
-from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, SvgMessage
+from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, Plan, SvgMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.proto import (
@@ -21,6 +21,7 @@ from pymammotion.proto import (
     LubaMsg,
     NavGetCommDataAck,
     NavGetHashListAck,
+    NavPlanJobSet,
     SvgMessageAckT,
     TimeCtrlLight,
     WifiIotStatusReport,
@@ -36,6 +37,7 @@ class StateManager:
     last_updated_at: datetime = datetime.now()
     cloud_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
     cloud_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = None
+    cloud_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
     cloud_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
 
     # possibly don't need anymore
@@ -43,6 +45,7 @@ class StateManager:
 
     ble_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
     ble_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = None
+    ble_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
     ble_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
 
     # possibly don't need anymore
@@ -97,6 +100,12 @@ class StateManager:
         elif self.ble_get_commondata_ack_callback:
             await self.ble_get_commondata_ack_callback(comm_data)
 
+    async def get_plan_callback(self, planjob: NavPlanJobSet) -> None:
+        if self.cloud_get_plan_callback:
+            await self.get_plan_callback(planjob)
+        elif self.ble_get_plan_callback:
+            await self.ble_get_plan_callback(planjob)
+
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
         res = betterproto.which_one_of(message, "LubaSubMsg")
@@ -138,6 +147,11 @@ class StateManager:
                 )
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
+            case "todev_planjob_set":
+                planjob: NavPlanJobSet = nav_msg[1]
+                self._device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto.Casing.SNAKE)))
+                await self.get_plan_callback(planjob)
+
             case "toapp_svg_msg":
                 common_svg_data: SvgMessageAckT = nav_msg[1]
                 updated = self._device.map.update(

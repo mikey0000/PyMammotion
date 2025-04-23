@@ -86,27 +86,43 @@ class FrameList(DataClassORJSONMixin):
 
 @dataclass
 class Plan(DataClassORJSONMixin):
+    pver: int = 0
     sub_cmd: int = 2
+    area: int = 0
+    work_time: int = 0
     version: str = ""
+    id: str = ""
     user_id: str = ""
     device_id: str = ""
     plan_id: str = ""
     task_id: str = ""
-    start_time: str = "00:00"
+    job_id: str = ""
+    start_time: str = ""
+    end_time: str = ""
+    week: int = 0
     knife_height: int = 0
     model: int = 0
     edge_mode: int = 0
+    required_time: int = 0
+    route_angle: int = 0
     route_model: int = 0
     route_spacing: int = 0
     ultrasonic_barrier: int = 0
     total_plan_num: int = 0
+    plan_index: int = 0
+    result: int = 0
     speed: float = 0.0
     task_name: str = ""
-    zone_hashs: list[str] = field(default_factory=list)
+    job_name: str = ""
+    zone_hashs: list[int] = field(default_factory=list)
     reserved: str = ""
     start_date: str = ""
+    end_date: str = ""
     trigger_type: int = 0
-    remained_seconds: str = "-1"
+    day: int = 0
+    weeks: list[int] = field(default_factory=list)
+    remained_seconds: int = 0
+    toward_mode: int = 0
     toward_included_angle: int = 0
 
 
@@ -262,6 +278,9 @@ class HashList(DataClassORJSONMixin):
             return self.find_missing_frames(self.svg.get(hash_data.data_hash))
 
         return []
+
+    def update_plan(self, plan: Plan) -> None:
+        self.plan[plan.plan_index] = plan
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
         """Update the map data."""

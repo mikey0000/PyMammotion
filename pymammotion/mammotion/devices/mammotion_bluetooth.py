@@ -91,6 +91,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self.set_queue_callback(self.queue_command)
         self._state_manager.ble_gethash_ack_callback = self.datahash_response
         self._state_manager.ble_get_commondata_ack_callback = self.commdata_response
+        self._state_manager.ble_get_plan_callback = self.plan_callback
         loop = asyncio.get_event_loop()
         loop.create_task(self.process_queue())
 

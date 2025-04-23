@@ -167,6 +167,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.on_connected_event.add_subscribers(self.on_connect)
         self._state_manager.cloud_gethash_ack_callback = self.datahash_response
         self._state_manager.cloud_get_commondata_ack_callback = self.commdata_response
+        self._state_manager.cloud_get_plan_callback = self.plan_callback
         self.set_queue_callback(self.queue_command)
 
         if self._mqtt.is_ready:
@@ -229,7 +230,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _ble_sync(self) -> None:
         if self.stopped or self._mqtt.is_connected is False:
             return
-        
+
         command_bytes = self._commands.send_todev_ble_sync(3)
         try:
             await self._mqtt.send_command(self.iot_id, command_bytes)
