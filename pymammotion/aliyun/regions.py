@@ -48,6 +48,7 @@ region_mappings = {
     "BE": "eu-central-1",  # Belgium -> Germany
     "CH": "eu-central-1",  # Switzerland -> Germany
     "AT": "eu-central-1",  # Austria -> Germany
+    "PL": "eu-central-1",  # poland -> Germany
     # North America
     "US": "us-east-1",  # USA
     "CA": "us-east-1",  # Canada -> US East
