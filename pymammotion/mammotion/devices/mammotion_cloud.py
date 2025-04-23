@@ -234,7 +234,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         command_bytes = self._commands.send_todev_ble_sync(3)
         try:
             await self._mqtt.send_command(self.iot_id, command_bytes)
-        except (CheckSessionException, SetupException):
+        except (CheckSessionException, SetupException, DeviceOfflineException):
             if self._ble_sync_task:
                 self._ble_sync_task.cancel()
 

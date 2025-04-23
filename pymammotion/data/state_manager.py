@@ -102,7 +102,7 @@ class StateManager:
 
     async def get_plan_callback(self, planjob: NavPlanJobSet) -> None:
         if self.cloud_get_plan_callback:
-            await self.get_plan_callback(planjob)
+            await self.cloud_get_plan_callback(planjob)
         elif self.ble_get_plan_callback:
             await self.ble_get_plan_callback(planjob)
 
