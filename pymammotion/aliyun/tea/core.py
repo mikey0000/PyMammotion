@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import socket
 import ssl
 import time
 from typing import Any
@@ -123,6 +124,7 @@ class TeaCore:
             await loop.run_in_executor(None, ssl_context.load_verify_locations, ca_cert)
             connector = aiohttp.TCPConnector(
                 ssl=ssl_context,
+                family=socket.AF_INET,
             )
         else:
             verify = False
