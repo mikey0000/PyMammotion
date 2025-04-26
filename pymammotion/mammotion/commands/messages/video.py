@@ -8,7 +8,7 @@ from pymammotion.utility.device_type import DeviceType
 
 
 class MessageVideo(AbstractMessage, ABC):
-    async def send_order_msg_video(self, mul):
+    def send_order_msg_video(self, mul):
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.MUL,
             msgattr=MsgAttr.REQ,
