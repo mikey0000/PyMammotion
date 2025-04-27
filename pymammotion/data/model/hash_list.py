@@ -280,7 +280,8 @@ class HashList(DataClassORJSONMixin):
         return []
 
     def update_plan(self, plan: Plan) -> None:
-        self.plan[plan.plan_index] = plan
+        if plan.total_plan_num != 0:
+            self.plan[plan.plan_index] = plan
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
         """Update the map data."""

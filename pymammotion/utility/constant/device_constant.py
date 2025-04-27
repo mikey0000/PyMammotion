@@ -213,6 +213,19 @@ class WorkMode:
     MODE_CHARGING_PAUSE = 39
 
 
+NO_REQUEST_MODES = (
+    WorkMode.MODE_JOB_DRAW,
+    WorkMode.MODE_OBSTACLE_DRAW,
+    WorkMode.MODE_CHANNEL_DRAW,
+    WorkMode.MODE_ERASER_DRAW,
+    WorkMode.MODE_UPDATING,
+    WorkMode.MODE_EDIT_BOUNDARY,
+    WorkMode.MODE_UPDATING,
+    WorkMode.MODE_LOCK,
+    WorkMode.MODE_MANUAL_MOWING,
+)
+
+
 def device_connection(connect: ConnectData) -> str:
     """Return string representation of device connection."""
 

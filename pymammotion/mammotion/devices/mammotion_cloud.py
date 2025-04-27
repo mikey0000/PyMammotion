@@ -21,6 +21,7 @@ from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
 from pymammotion.proto import LubaMsg, has_field
+from pymammotion.utility.constant.device_constant import NO_REQUEST_MODES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -228,7 +229,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         #     self.mqtt._mqtt_client.thing_on_thing_enable(None)
 
     async def _ble_sync(self) -> None:
-        if self.stopped or self._mqtt.is_connected is False:
+        if self.stopped or self.mqtt.is_connected is False or self.state_manager.get_device().report_data.dev.sys_status in NO_REQUEST_MODES:
             return
 
         command_bytes = self._commands.send_todev_ble_sync(3)
