@@ -35,24 +35,24 @@ class MessageDriver(AbstractMessage, ABC):
             driver=driver,
         ).SerializeToString()
 
-    def set_blade_height(self, height: int):
+    def set_blade_height(self, height: int) -> bytes:
         logger.debug(f"Send knife height height={height}")
         build = MctlDriver(todev_knife_height_set=DrvKnifeHeight(knife_height=height))
         logger.debug(f"Send command--Knife motor height setting height={height}")
         return self.send_order_msg_driver(build)
 
-    def set_speed(self, speed: float):
+    def set_speed(self, speed: float) -> bytes:
         logger.debug(f"{self.get_device_name()} set speed, {speed}")
         build = MctlDriver(bidire_speed_read_set=DrvSrSpeed(speed=speed, rw=1))
         logger.debug(f"Send command--Speed setting speed={speed}")
         return self.send_order_msg_driver(build)
 
-    def syn_nav_star_point_data(self, sat_system: int):
+    def syn_nav_star_point_data(self, sat_system: int) -> bytes:
         build = MctlDriver(rtk_sys_mask_query=RtkSysMaskQueryT(sat_system=sat_system))
         logger.debug(f"Send command--Navigation satellite frequency point synchronization={sat_system}")
         return self.send_order_msg_driver(build)
 
-    def set_nav_star_point(self, cmd_req: str):
+    def set_nav_star_point(self, cmd_req: str) -> bytes:
         build = MctlDriver(rtk_cfg_req=RtkCfgReqT(cmd_req=cmd_req, cmd_length=len(cmd_req) - 1))
         logger.debug(f"Send command--Navigation satellite frequency point setting={cmd_req}")
         logger.debug(
@@ -60,7 +60,7 @@ class MessageDriver(AbstractMessage, ABC):
         )
         return self.send_order_msg_driver(build)
 
-    def get_speed(self):
+    def get_speed(self) -> bytes:
         build = MctlDriver(bidire_speed_read_set=DrvSrSpeed(rw=0))
         logger.debug("Send command--Get speed value")
         return self.send_order_msg_driver(build)
@@ -71,7 +71,7 @@ class MessageDriver(AbstractMessage, ABC):
         cut_knife_ctrl: int,
         cut_knife_height: int,
         max_run_speed: float,
-    ):
+    ) -> bytes:
         build = MctlDriver(
             mow_ctrl_by_hand=DrvMowCtrlByHand(
                 main_ctrl=main_ctrl,

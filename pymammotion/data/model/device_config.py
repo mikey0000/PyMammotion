@@ -45,7 +45,7 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
         if DeviceType.is_yuka(device_name) and not DeviceType.is_yuka_mini(device_name):
             bArr[5] = calculate_yuka_mode(operation_mode)
         else:
-            bArr[5] = 8 if DeviceType.is_luba_2(device_name) else 0
+            bArr[5] = 8 if DeviceType.is_luba_pro(device_name) else 0
 
         bArr[6] = int(operation_mode.collect_grass_frequency) if operation_mode.is_dump else 10
     if DeviceType.is_luba1(device_name):

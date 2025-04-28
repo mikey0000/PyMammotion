@@ -121,7 +121,7 @@ class MessageSystem(AbstractMessage, ABC):
     def allpowerfull_rw(self, rw_id: int, context: int, rw: int) -> bytes:
         if (
             rw_id == 6 or rw_id == 3 or rw_id == 7 or rw_id == 8 or rw_id == 10 or rw_id == 11
-        ) and DeviceType.is_luba_2(self.get_device_name()):
+        ) and DeviceType.is_luba_pro(self.get_device_name()):
             return self.messageNavigation.allpowerfull_rw_adapter_x3(rw_id, context, rw)
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=rw_id, context=context, rw=rw))
         logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")

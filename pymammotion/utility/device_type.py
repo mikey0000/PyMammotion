@@ -190,7 +190,7 @@ class DeviceType(Enum):
         return device_type.get_value() == DeviceType.LUBA.get_value()
 
     @staticmethod
-    def is_luba_2(device_name: str, product_key: str = ""):
+    def is_luba_pro(device_name: str, product_key: str = ""):
         """Check if the device type is LUBA 2 or higher based on the device name
         and optional product key.
 
@@ -211,6 +211,7 @@ class DeviceType(Enum):
         return (
             device_type.get_value() >= DeviceType.LUBA_2.get_value()
             and device_type.get_value() != DeviceType.SPINO.get_value()
+            and not DeviceType.is_rtk(device_name, product_key)
         )
 
     @staticmethod
@@ -273,7 +274,12 @@ class DeviceType(Enum):
         else:
             device_type = DeviceType.value_of_str(device_name, product_key)
 
-        return DeviceType.RTK.get_value() <= device_type.get_value() < DeviceType.LUBA.get_value()
+        return (
+            DeviceType.RTK.get_value() != device_type.get_value()
+            and DeviceType.RTK3A0.get_value() != device_type.get_value()
+            and DeviceType.RTK3A1.get_value() != device_type.get_value()
+            and DeviceType.RTK3A2.get_value() != device_type.get_value()
+        )
 
     @staticmethod
     def contain_rtk_product_key(product_key) -> bool:

@@ -60,7 +60,7 @@ grpcio-tools = "^1.63.0"
 betterproto = {extras = ["compiler"], version = "^1.2.5"}
 pylint = "^3.2.2"
 ruff = "^0.9.3"
-pre-commit = "^3.8.0"
+pre-commit = "^4.2.0"
 mypy = "^1.11.2"
 autotyping = "^24.3.0"
 ipython = "^9.0.2"
