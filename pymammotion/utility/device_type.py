@@ -275,10 +275,10 @@ class DeviceType(Enum):
             device_type = DeviceType.value_of_str(device_name, product_key)
 
         return (
-            DeviceType.RTK.get_value() != device_type.get_value()
-            and DeviceType.RTK3A0.get_value() != device_type.get_value()
-            and DeviceType.RTK3A1.get_value() != device_type.get_value()
-            and DeviceType.RTK3A2.get_value() != device_type.get_value()
+            DeviceType.RTK.get_value() == device_type.get_value()
+            or DeviceType.RTK3A0.get_value() == device_type.get_value()
+            or DeviceType.RTK3A1.get_value() == device_type.get_value()
+            or DeviceType.RTK3A2.get_value() == device_type.get_value()
         )
 
     @staticmethod
