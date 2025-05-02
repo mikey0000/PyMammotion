@@ -11,6 +11,9 @@ from bleak.backends.device import BLEDevice
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.model.dev_by_account_response import Device
+from pymammotion.aliyun.model.stream_subscription_response import StreamSubscriptionResponse
+from pymammotion.aliyun.model.video_resource_response import VideoResourceResponse
+from pymammotion.utility.device_type import DeviceType
 from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.state_manager import StateManager
@@ -313,15 +316,35 @@ class Mammotion:
                 return await device.cloud().start_map_sync()
             # TODO work with both with EITHER
 
-    async def get_stream_subscription(self, name: str):
+    async def get_stream_subscription(self, name: str) -> StreamSubscriptionResponse | None:
         device = self.get_device_by_name(name)
         if device.preference is ConnectionPreference.WIFI:
             if device.has_cloud():
-                _stream_response = await device.cloud().mqtt.cloud_client.mammotion_http.get_stream_subscription(
-                    device.cloud().iot_id
-                )
-                _LOGGER.debug(_stream_response)
-                return _stream_response
+                if DeviceType.is_mini_or_x_series(name):
+                    _stream_response = await device.cloud().mqtt.cloud_client.mammotion_http.get_stream_subscription_mini_or_x_series(
+                        device.cloud().iot_id, DeviceType.is_yuka(name)
+                    )
+                    _LOGGER.debug(_stream_response)
+                    return _stream_response
+                else:
+                    _stream_response = await device.cloud().mqtt.cloud_client.mammotion_http.get_stream_subscription(
+                        device.cloud().iot_id
+                    )
+                    _LOGGER.debug(_stream_response)
+                    return _stream_response
+        return None
+    
+    async def get_video_resource(self, name: str) -> VideoResourceResponse | None:
+        device = self.get_device_by_name(name)
+        if device.preference is ConnectionPreference.WIFI:
+            if device.has_cloud():
+                if DeviceType.is_mini_or_x_series(name):
+                    _video_resource_response = await device.cloud().mqtt.cloud_client.mammotion_http.get_video_resource(
+                        device.cloud().iot_id
+                    )
+                    _LOGGER.debug(_video_resource_response)
+                    return _video_resource_response
+        return None
 
     def mower(self, name: str) -> MowingDevice | None:
         device = self.get_device_by_name(name)
