@@ -10,6 +10,7 @@ import betterproto
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, Plan, SvgMessage
+from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.proto import (
@@ -22,6 +23,7 @@ from pymammotion.proto import (
     NavGetCommDataAck,
     NavGetHashListAck,
     NavPlanJobSet,
+    NavReqCoverPath,
     SvgMessageAckT,
     TimeCtrlLight,
     WifiIotStatusReport,
@@ -206,6 +208,11 @@ class StateManager:
                     if resp.res == DrvDevInfoResult.DRV_RESULT_SUC and resp.id == 1 and resp.type == 6:
                         self._device.mower_state.swversion = resp.info
                         self._device.device_firmwares.device_version = resp.info
+            case "bidire_reqconver_path":
+                work_settings: NavReqCoverPath = net_msg[1]
+                self._device.work = CurrentTaskSettings.from_dict(
+                    work_settings.to_dict(casing=betterproto.Casing.SNAKE)
+                )
 
     def _update_mul_data(self, message) -> None:
         pass

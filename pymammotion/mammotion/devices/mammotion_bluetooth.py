@@ -297,7 +297,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             await self._ble_sync()
             self.schedule_ble_sync()
 
-    async def _send_command_locked(self, key: str, command: bytes) -> bytes:
+    async def _send_command_locked(self, key: str, command: bytes) -> None:
         """Send command to device and read response."""
         await self._ensure_connected()
         try:
@@ -344,12 +344,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 if has_field(new_msg.net.toapp_wifi_iot_status) and self._commands.get_device_product_key() == "":
                     self._commands.set_device_product_key(new_msg.net.toapp_wifi_iot_status.productkey)
 
-                return
-
         await self._state_manager.notification(new_msg)
-        # may or may not be correct, some work could be done here to correctly match responses
-        if self._notify_future and not self._notify_future.done():
-            self._notify_future.set_result(data)
 
         if self._execute_timed_disconnect is None:
             await self._execute_forced_disconnect()
@@ -361,29 +356,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         _LOGGER.debug("%s: Subscribe to notifications; RSSI: %s", self.name, self.rssi)
         await self._client.start_notify(self._read_char, self._notification_handler)
 
-    async def _execute_command_locked(self, key: str, command: bytes) -> bytes:
+    async def _execute_command_locked(self, key: str, command: bytes) -> None:
         """Execute command and read response."""
         assert self._client is not None
-        self._notify_future = self.loop.create_future()
-        self._key = key
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         await self._message.post_custom_data_bytes(command)
-
-        timeout = 1
-        timeout_handle = self.loop.call_at(self.loop.time() + timeout, _handle_timeout, self._notify_future)
-        timeout_expired = False
-        try:
-            notify_msg = await self._notify_future
-        except asyncio.TimeoutError:
-            timeout_expired = True
-            notify_msg = b""
-        finally:
-            if not timeout_expired:
-                timeout_handle.cancel()
-            self._notify_future = None
-
-        _LOGGER.debug("%s: Notification received: %s", self.name, notify_msg.hex())
-        return notify_msg
 
     def get_address(self) -> str:
         """Return address of device."""

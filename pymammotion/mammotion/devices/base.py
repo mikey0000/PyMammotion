@@ -90,12 +90,9 @@ class MammotionBaseDevice:
             await self.queue_command("get_regional_data", regional_data=region_data)
 
     async def plan_callback(self, plan: NavPlanJobSet) -> None:
-        if plan.plan_index != 0 and plan.total_plan_num - 1 != plan.plan_index:
-            index = plan.plan_index
-            while index in self.mower.map.plan and index < plan.total_plan_num:
-                index += 1
-            if index < plan.total_plan_num:
-                await self.queue_command("read_plan", plan_index=index)
+        if plan.plan_index < plan.total_plan_num - 1:
+            index = plan.plan_index + 1
+            await self.queue_command("read_plan", sub_cmd=2, plan_index=index)
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
@@ -224,7 +221,9 @@ class MammotionBaseDevice:
         if self._cloud_device and len(self.mower.map.area_name) == 0 and not DeviceType.is_luba1(self.mower.name):
             await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
 
-        if len(self.mower.map.plan) == 0 or self.mower.map.plan[0].total_plan_num != len(self.mower.map.plan):
+        if len(self.mower.map.plan) == 0 or list(self.mower.map.plan.values())[0].total_plan_num != len(
+            self.mower.map.plan
+        ):
             await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
         for hash, frame in list(self.mower.map.area.items()):
