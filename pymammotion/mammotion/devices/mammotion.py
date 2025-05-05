@@ -36,6 +36,8 @@ class MammotionMixedDeviceManager:
         mqtt: MammotionCloud | None = None,
         preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
     ) -> None:
+        self._ble_device: MammotionBaseBLEDevice | None = None
+        self._cloud_device: MammotionBaseCloudDevice | None = None
         self.name = name
         self._state_manager = StateManager(MowingDevice())
         self._state_manager.get_device().name = name
