@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
@@ -17,5 +16,16 @@ class StreamSubscriptionResponse(DataClassORJSONMixin):
     channelName: str
     token: str
     uid: int
-    license: Optional[str] = None
-    availableTime: Optional[int] = None
+    license: str | None = None
+    availableTime: int | None = None
+
+
+@dataclass
+class VideoResourceResponse(DataClassORJSONMixin):
+    id: str
+    deviceId: str
+    deviceName: str
+    cycleType: int
+    usageYearMonth: str
+    totalTime: int
+    availableTime: int
