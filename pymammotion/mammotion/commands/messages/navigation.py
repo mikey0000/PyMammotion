@@ -4,7 +4,7 @@ import logging
 import time
 
 from pymammotion.data.model import GenerateRouteInformation
-from pymammotion.data.model.plan import Plan
+from pymammotion.data.model.hash_list import Plan
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
