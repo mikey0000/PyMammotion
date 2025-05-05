@@ -11,8 +11,8 @@ from bleak.backends.device import BLEDevice
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.model.dev_by_account_response import Device
-from pymammotion.data.model.account import Credentials
 from pymammotion.data.model.device import MowingDevice
+from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.data.state_manager import StateManager
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.mammotion.devices.mammotion_bluetooth import MammotionBaseBLEDevice
@@ -48,9 +48,10 @@ class MammotionMixedDeviceManager:
         self.name = name
         self._state_manager = StateManager(MowingDevice())
         self._state_manager.get_device().name = name
-        self.add_ble(ble_device)
+        self.add_ble(cloud_device, ble_device)
         self.add_cloud(cloud_device, mqtt)
         self.preference = preference
+        self._state_manager.preference = preference
 
     @property
     def mower_state(self):
@@ -72,11 +73,13 @@ class MammotionMixedDeviceManager:
         else:
             return not self.ble().command_queue.empty()
 
-    def add_ble(self, ble_device: BLEDevice) -> None:
+    def add_ble(self, cloud_device: Device, ble_device: BLEDevice) -> None:
         if ble_device is not None:
-            self._ble_device = MammotionBaseBLEDevice(state_manager=self._state_manager, device=ble_device)
+            self._ble_device = MammotionBaseBLEDevice(
+                state_manager=self._state_manager, cloud_device=cloud_device, device=ble_device
+            )
 
-    def add_cloud(self, cloud_device: Device | None = None, mqtt: MammotionCloud | None = None) -> None:
+    def add_cloud(self, cloud_device: Device, mqtt: MammotionCloud) -> None:
         if cloud_device is not None:
             self._cloud_device = MammotionBaseCloudDevice(
                 mqtt, cloud_device=cloud_device, state_manager=self._state_manager
@@ -86,12 +89,22 @@ class MammotionMixedDeviceManager:
         self._cloud_device = cloud_device
 
     def remove_cloud(self) -> None:
+        self._state_manager.cloud_get_commondata_ack_callback = None
+        self._state_manager.cloud_get_hashlist_ack_callback = None
+        self._state_manager.cloud_get_plan_callback = None
+        self._state_manager.cloud_on_notification_callback = None
+        self._state_manager.cloud_gethash_ack_callback = None
         del self._cloud_device
 
     def replace_ble(self, ble_device: MammotionBaseBLEDevice) -> None:
         self._ble_device = ble_device
 
     def remove_ble(self) -> None:
+        self._state_manager.ble_get_commondata_ack_callback = None
+        self._state_manager.ble_get_hashlist_ack_callback = None
+        self._state_manager.ble_get_plan_callback = None
+        self._state_manager.ble_on_notification_callback = None
+        self._state_manager.ble_gethash_ack_callback = None
         del self._ble_device
 
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
@@ -139,22 +152,6 @@ class MammotionDeviceManager:
         del device_for_removal
 
 
-async def create_devices(
-    ble_device: BLEDevice,
-    cloud_credentials: Credentials | None = None,
-    preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
-):
-    mammotion = Mammotion()
-    mammotion.add_ble_device(ble_device, preference)
-
-    if cloud_credentials and preference == ConnectionPreference.EITHER or preference == ConnectionPreference.WIFI:
-        await mammotion.login_and_initiate_cloud(
-            cloud_credentials.account_id or cloud_credentials.email, cloud_credentials.password
-        )
-
-    return mammotion
-
-
 class Mammotion:
     """Represents a Mammotion account and its devices."""
 
@@ -173,11 +170,16 @@ class Mammotion:
         self._login_lock = asyncio.Lock()
 
     def add_ble_device(
-        self, ble_device: BLEDevice, preference: ConnectionPreference = ConnectionPreference.BLUETOOTH
+        self,
+        cloud_device: Device,
+        ble_device: BLEDevice,
+        preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
     ) -> None:
         if ble_device:
             self.device_manager.add_device(
-                MammotionMixedDeviceManager(name=ble_device.name, ble_device=ble_device, preference=preference)
+                MammotionMixedDeviceManager(
+                    name=ble_device.name, cloud_device=cloud_device, ble_device=ble_device, preference=preference
+                )
             )
 
     async def login_and_initiate_cloud(self, account, password, force: bool = False) -> None:

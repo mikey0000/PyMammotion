@@ -34,7 +34,7 @@ def find_next_integer(lst: list[int], current_hash: int) -> int | None:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
-    def __init__(self, state_manager: StateManager, cloud_device: Device | None = None) -> None:
+    def __init__(self, state_manager: StateManager, cloud_device: Device) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._state_manager = state_manager
@@ -247,18 +247,8 @@ class MammotionBaseDevice:
         #     if len(missing_frames) > 0:
         #         del self.mower.map.svg[hash]
 
-        if len(self.mower.map.root_hash_lists) == 0:
+        if len(self.mower.map.root_hash_lists) == 0 or len(self.mower.map.missing_hashlist()) > 0:
             await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-            # add a small delay to allow result to come through if it does.
-            await asyncio.sleep(1)
-
-        if len(self.mower.map.missing_hashlist()) > 0:
-            data_hash = self.mower.map.missing_hashlist().pop()
-            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
-
-        # if len(self.mower.map.missing_hashlist(3)) > 0:
-        #     data_hash = self.mower.map.missing_hashlist(3).pop()
-        #     await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)

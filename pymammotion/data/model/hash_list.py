@@ -170,7 +170,7 @@ class HashList(DataClassORJSONMixin):
     dump: dict[int, FrameList] = field(default_factory=dict)  # type 12? / sub cmd 4
     svg: dict[int, FrameList] = field(default_factory=dict)  # type 13
     line: dict[int, FrameList] = field(default_factory=dict)  # type 10 possibly breakpoint? / sub cmd 3
-    plan: dict[int, Plan] = field(default_factory=dict)
+    plan: dict[str, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
 
     def update_hash_lists(self, hashlist: list[int]) -> None:
@@ -281,7 +281,7 @@ class HashList(DataClassORJSONMixin):
 
     def update_plan(self, plan: Plan) -> None:
         if plan.total_plan_num != 0:
-            self.plan[plan.plan_index] = plan
+            self.plan[plan.plan_id] = plan
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
         """Update the map data."""

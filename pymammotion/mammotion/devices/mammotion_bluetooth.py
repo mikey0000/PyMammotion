@@ -14,6 +14,7 @@ from bleak_retry_connector import (
     establish_connection,
 )
 
+from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.bluetooth import BleMessage
 from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
@@ -69,9 +70,11 @@ async def _handle_retry(fut: asyncio.Future[None], func, command: bytes) -> None
 class MammotionBaseBLEDevice(MammotionBaseDevice):
     """Base class for Mammotion BLE devices."""
 
-    def __init__(self, state_manager: StateManager, device: BLEDevice, interface: int = 0, **kwargs: Any) -> None:
+    def __init__(
+        self, state_manager: StateManager, cloud_device: Device, device: BLEDevice, interface: int = 0, **kwargs: Any
+    ) -> None:
         """Initialize MammotionBaseBLEDevice."""
-        super().__init__(state_manager)
+        super().__init__(state_manager, cloud_device)
         self._disconnect_strategy = True
         self._ble_sync_task = None
         self._prev_notification = None
@@ -88,6 +91,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._connect_lock = asyncio.Lock()
         self._operation_lock = asyncio.Lock()
         self._key: str | None = None
+        self._cloud_device = cloud_device
         self.set_queue_callback(self.queue_command)
         self._state_manager.ble_gethash_ack_callback = self.datahash_response
         self._state_manager.ble_get_commondata_ack_callback = self.commdata_response
@@ -322,22 +326,23 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle notification responses."""
+
         if self._message is None:
             return
         result = self._message.parseNotification(data)
         if result == 0:
             data = await self._message.parseBlufiNotifyData(True)
+            self._message.clear_notification()
             try:
                 self._update_raw_data(data)
             except (KeyError, ValueError, IndexError, UnicodeDecodeError):
                 _LOGGER.exception("Error parsing message %s", data)
                 data = b""
-            finally:
-                self._message.clear_notification()
 
             _LOGGER.debug("%s: Received notification: %s", self.name, data)
         else:
             return
+
         new_msg = LubaMsg().parse(data)
         if betterproto.serialized_on_wire(new_msg.net):
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
