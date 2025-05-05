@@ -9,6 +9,7 @@ from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_info import DeviceFirmwares, MowerInfo
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
+from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.http.model.http import ErrorInfo
@@ -29,6 +30,7 @@ class MowingDevice(DataClassORJSONMixin):
     mqtt_properties: ThingPropertiesMessage | None = None
     status_properties: ThingStatusMessage | None = None
     map: HashList = field(default_factory=HashList)
+    work: CurrentTaskSettings = field(default_factory=CurrentTaskSettings)
     location: Location = field(default_factory=Location)
     mowing_state: RapidState = field(default_factory=RapidState)
     report_data: ReportData = field(default_factory=ReportData)

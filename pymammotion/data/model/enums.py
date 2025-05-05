@@ -1,6 +1,14 @@
 from enum import Enum
 
 
+class ConnectionPreference(Enum):
+    """Enum for connection preference."""
+
+    EITHER = 0
+    WIFI = 1
+    BLUETOOTH = 2
+
+
 class PositionMode(Enum):
     FIX = 0
     SINGLE = 1

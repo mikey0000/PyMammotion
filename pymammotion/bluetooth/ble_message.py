@@ -399,7 +399,7 @@ class BleMessage:
         sequence = int(response[2])  # toInt
         current_sequence = self.mReadSequence.get() & 255
         if sequence == current_sequence:
-            _LOGGER.debug(f"Received bluetooth data 1: {response.hex()}, object: {self}")
+            # _LOGGER.debug(f"Received bluetooth data 1: {response.hex()}, object: {self}")
             return 2
 
         # Compare with the second counter, mod 255

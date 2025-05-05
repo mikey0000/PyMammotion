@@ -34,7 +34,7 @@ def find_next_integer(lst: list[int], current_hash: int) -> int | None:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
-    def __init__(self, state_manager: StateManager, cloud_device: Device | None = None) -> None:
+    def __init__(self, state_manager: StateManager, cloud_device: Device) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
         self._state_manager = state_manager
@@ -90,12 +90,9 @@ class MammotionBaseDevice:
             await self.queue_command("get_regional_data", regional_data=region_data)
 
     async def plan_callback(self, plan: NavPlanJobSet) -> None:
-        if plan.plan_index != 0 and plan.total_plan_num - 1 != plan.plan_index:
-            index = plan.plan_index
-            while index in self.mower.map.plan and index < plan.total_plan_num:
-                index += 1
-            if index < plan.total_plan_num:
-                await self.queue_command("read_plan", plan_index=index)
+        if plan.plan_index < plan.total_plan_num - 1:
+            index = plan.plan_index + 1
+            await self.queue_command("read_plan", sub_cmd=2, plan_index=index)
 
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
@@ -224,7 +221,9 @@ class MammotionBaseDevice:
         if self._cloud_device and len(self.mower.map.area_name) == 0 and not DeviceType.is_luba1(self.mower.name):
             await self.queue_command("get_area_name_list", device_id=self._cloud_device.iotId)
 
-        if len(self.mower.map.plan) == 0 or self.mower.map.plan[0].total_plan_num != len(self.mower.map.plan):
+        if len(self.mower.map.plan) == 0 or list(self.mower.map.plan.values())[0].total_plan_num != len(
+            self.mower.map.plan
+        ):
             await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
         for hash, frame in list(self.mower.map.area.items()):
@@ -248,18 +247,8 @@ class MammotionBaseDevice:
         #     if len(missing_frames) > 0:
         #         del self.mower.map.svg[hash]
 
-        if len(self.mower.map.root_hash_lists) == 0:
+        if len(self.mower.map.root_hash_lists) == 0 or len(self.mower.map.missing_hashlist()) > 0:
             await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-            # add a small delay to allow result to come through if it does.
-            await asyncio.sleep(1)
-
-        if len(self.mower.map.missing_hashlist()) > 0:
-            data_hash = self.mower.map.missing_hashlist().pop()
-            await self.queue_command("synchronize_hash_data", hash_num=data_hash)
-
-        # if len(self.mower.map.missing_hashlist(3)) > 0:
-        #     data_hash = self.mower.map.missing_hashlist(3).pop()
-        #     await self.queue_command("synchronize_hash_data", hash_num=data_hash)
 
         # sub_cmd 3 is job hashes??
         # sub_cmd 4 is dump location (yuka)

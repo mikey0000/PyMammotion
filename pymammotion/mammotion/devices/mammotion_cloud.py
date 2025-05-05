@@ -181,6 +181,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.mqtt_message_event.remove_subscribers(self._parse_message_for_device)
         self._state_manager.cloud_gethash_ack_callback = None
         self._state_manager.cloud_get_commondata_ack_callback = None
+        self._state_manager.cloud_get_plan_callback = None
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
 
@@ -229,7 +230,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         #     self.mqtt._mqtt_client.thing_on_thing_enable(None)
 
     async def _ble_sync(self) -> None:
-        if self.stopped or self.mqtt.is_connected is False or self.state_manager.get_device().report_data.dev.sys_status in NO_REQUEST_MODES:
+        if (
+            self.stopped
+            or self.mqtt.is_connected is False
+            or self.state_manager.get_device().report_data.dev.sys_status in NO_REQUEST_MODES
+        ):
             return
 
         command_bytes = self._commands.send_todev_ble_sync(3)

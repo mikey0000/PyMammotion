@@ -9,7 +9,9 @@ import betterproto
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
+from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, Plan, SvgMessage
+from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.proto import (
@@ -22,6 +24,7 @@ from pymammotion.proto import (
     NavGetCommDataAck,
     NavGetHashListAck,
     NavPlanJobSet,
+    NavReqCoverPath,
     SvgMessageAckT,
     TimeCtrlLight,
     WifiIotStatusReport,
@@ -33,27 +36,27 @@ logger = logging.getLogger(__name__)
 class StateManager:
     """Manage state."""
 
-    _device: MowingDevice
-    last_updated_at: datetime = datetime.now()
-    cloud_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
-    cloud_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = None
-    cloud_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
-    cloud_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
-
-    # possibly don't need anymore
-    cloud_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
-
-    ble_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
-    ble_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = None
-    ble_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
-    ble_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
-
-    # possibly don't need anymore
-    ble_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
-
     def __init__(self, device: MowingDevice) -> None:
-        self._device = device
+        self._device: MowingDevice = device
         self.last_updated_at = datetime.now()
+        self.preference = ConnectionPreference.WIFI
+        self.cloud_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
+        self.cloud_get_commondata_ack_callback: (
+            Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None
+        ) = None
+        self.cloud_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
+        self.cloud_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
+
+        self.cloud_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
+
+        self.ble_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
+        self.ble_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = (
+            None
+        )
+        self.ble_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
+        self.ble_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
+
+        self.ble_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
 
     def get_device(self) -> MowingDevice:
         """Get device."""
@@ -206,6 +209,11 @@ class StateManager:
                     if resp.res == DrvDevInfoResult.DRV_RESULT_SUC and resp.id == 1 and resp.type == 6:
                         self._device.mower_state.swversion = resp.info
                         self._device.device_firmwares.device_version = resp.info
+            case "bidire_reqconver_path":
+                work_settings: NavReqCoverPath = net_msg[1]
+                self._device.work = CurrentTaskSettings.from_dict(
+                    work_settings.to_dict(casing=betterproto.Casing.SNAKE)
+                )
 
     def _update_mul_data(self, message) -> None:
         pass

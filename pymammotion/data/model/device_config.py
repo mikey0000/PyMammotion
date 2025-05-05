@@ -40,6 +40,7 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
     bArr[1] = operation_mode.obstacle_laps
     bArr[3] = int(operation_mode.start_progress)
     bArr[2] = 0
+    bArr[5] = 0
     if not DeviceType.is_luba1(device_name):
         bArr[4] = 0
         if DeviceType.is_yuka(device_name) and not DeviceType.is_yuka_mini(device_name):
