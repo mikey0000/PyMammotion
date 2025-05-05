@@ -3,9 +3,9 @@ from typing import cast
 
 from aiohttp import ClientSession
 
-from pymammotion.aliyun.model.stream_subscription_response import StreamSubscriptionResponse
 from pymammotion.const import MAMMOTION_API_DOMAIN, MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET, MAMMOTION_DOMAIN
 from pymammotion.http.encryption import EncryptionUtils
+from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
 from pymammotion.http.model.http import ErrorInfo, LoginResponseData, Response
 
 
@@ -107,6 +107,51 @@ class MammotionHTTP:
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
                 return Response[StreamSubscriptionResponse].from_dict(data)
+
+    async def get_stream_subscription_mini_or_x_series(
+        self, iot_id: str, is_yuka: bool
+    ) -> Response[StreamSubscriptionResponse]:
+        """Get agora.io data for view camera stream (New models 2025)"""
+
+        # Prepare the payload with cameraStates based on is_yuka flag
+        payload = {"deviceId": iot_id, "mode": 0, "cameraStates": []}
+
+        # Add appropriate cameraStates based on the is_yuka flag
+        if is_yuka:
+            payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 1}]
+        else:
+            payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 0}]
+
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post(
+                "/device-server/v1/stream/token",
+                json=payload,
+                headers={
+                    "Authorization": f"{self._headers.get('Authorization', "")}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/3.14.9",
+                },
+            ) as resp:
+                data = await resp.json()
+                # TODO catch errors from mismatch like token expire etc
+                # Assuming the data format matches the expected structure
+                return Response[StreamSubscriptionResponse].from_dict(data)
+
+    async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
+        """Get video resource for new models (2025 series)"""
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.get(
+                f"/device-server/v1/video-resource/{iot_id}",
+                headers={
+                    "Authorization": f"{self._headers.get('Authorization', '')}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/3.14.9",
+                },
+            ) as resp:
+                data = await resp.json()
+                # TODO catch errors from mismatch like token expire etc
+                # Assuming the data format matches the expected structure
+                return Response[VideoResourceResponse].from_dict(data)
 
     async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
         if self._password is None and password is not None:

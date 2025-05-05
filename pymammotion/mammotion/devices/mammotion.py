@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from enum import Enum
 import logging
 from typing import Any
 
@@ -15,41 +14,36 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.data.state_manager import StateManager
 from pymammotion.http.http import MammotionHTTP
+from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
+from pymammotion.http.model.http import Response
 from pymammotion.mammotion.devices.mammotion_bluetooth import MammotionBaseBLEDevice
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionBaseCloudDevice, MammotionCloud
 from pymammotion.mqtt import MammotionMQTT
+from pymammotion.utility.device_type import DeviceType
 
 TIMEOUT_CLOUD_RESPONSE = 10
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class ConnectionPreference(Enum):
-    """Enum for connection preference."""
-
-    EITHER = 0
-    WIFI = 1
-    BLUETOOTH = 2
-
-
 class MammotionMixedDeviceManager:
-    preference: ConnectionPreference
-    _ble_device: MammotionBaseBLEDevice | None = None
-    _cloud_device: MammotionBaseCloudDevice | None = None
-
     def __init__(
         self,
         name: str,
+        mammotion_http: MammotionHTTP,
         cloud_device: Device | None = None,
         ble_device: BLEDevice | None = None,
         mqtt: MammotionCloud | None = None,
         preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
     ) -> None:
+        self._ble_device: MammotionBaseBLEDevice | None = None
+        self._cloud_device: MammotionBaseCloudDevice | None = None
         self.name = name
         self._state_manager = StateManager(MowingDevice())
         self._state_manager.get_device().name = name
         self.add_ble(cloud_device, ble_device)
         self.add_cloud(cloud_device, mqtt)
+        self.mammotion_http = mammotion_http
         self.preference = preference
         self._state_manager.preference = preference
 
@@ -169,19 +163,6 @@ class Mammotion:
         """Initialize MammotionDevice."""
         self._login_lock = asyncio.Lock()
 
-    def add_ble_device(
-        self,
-        cloud_device: Device,
-        ble_device: BLEDevice,
-        preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
-    ) -> None:
-        if ble_device:
-            self.device_manager.add_device(
-                MammotionMixedDeviceManager(
-                    name=ble_device.name, cloud_device=cloud_device, ble_device=ble_device, preference=preference
-                )
-            )
-
     async def login_and_initiate_cloud(self, account, password, force: bool = False) -> None:
         async with self._login_lock:
             exists: MammotionCloud | None = self.mqtt_list.get(account)
@@ -231,6 +212,7 @@ class Mammotion:
             if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
                 mixed_device = MammotionMixedDeviceManager(
                     name=device.deviceName,
+                    mammotion_http=mqtt_client.cloud_client.mammotion_http,
                     cloud_device=device,
                     mqtt=mqtt_client,
                     preference=ConnectionPreference.WIFI,
@@ -315,15 +297,27 @@ class Mammotion:
                 return await device.cloud().start_map_sync()
             # TODO work with both with EITHER
 
-    async def get_stream_subscription(self, name: str):
+    async def get_stream_subscription(self, name: str, iot_id: str) -> Response[StreamSubscriptionResponse] | Any:
         device = self.get_device_by_name(name)
-        if device.preference is ConnectionPreference.WIFI:
-            if device.has_cloud():
-                _stream_response = await device.cloud().mqtt.cloud_client.mammotion_http.get_stream_subscription(
-                    device.cloud().iot_id
-                )
-                _LOGGER.debug(_stream_response)
-                return _stream_response
+        if DeviceType.is_mini_or_x_series(name):
+            _stream_response = await device.mammotion_http.get_stream_subscription_mini_or_x_series(
+                iot_id, DeviceType.is_yuka(name)
+            )
+            _LOGGER.debug(_stream_response)
+            return _stream_response
+        else:
+            _stream_response = await device.mammotion_http.get_stream_subscription(iot_id)
+            _LOGGER.debug(_stream_response)
+            return _stream_response
+
+    async def get_video_resource(self, name: str, iot_id: str) -> Response[VideoResourceResponse] | None:
+        device = self.get_device_by_name(name)
+
+        if DeviceType.is_mini_or_x_series(name):
+            _video_resource_response = await device.mammotion_http.get_video_resource(iot_id)
+            _LOGGER.debug(_video_resource_response)
+            return _video_resource_response
+        return None
 
     def mower(self, name: str) -> MowingDevice | None:
         device = self.get_device_by_name(name)

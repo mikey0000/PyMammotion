@@ -16,3 +16,16 @@ class StreamSubscriptionResponse(DataClassORJSONMixin):
     channelName: str
     token: str
     uid: int
+    license: str | None = None
+    availableTime: int | None = None
+
+
+@dataclass
+class VideoResourceResponse(DataClassORJSONMixin):
+    id: str
+    deviceId: str
+    deviceName: str
+    cycleType: int
+    usageYearMonth: str
+    totalTime: int
+    availableTime: int
