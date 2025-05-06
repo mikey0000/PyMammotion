@@ -98,7 +98,7 @@ class MammotionHTTP:
                 "/device-server/v1/stream/subscription",
                 json={"deviceId": iot_id},
                 headers={
-                    "Authorization": f"{self._headers.get('Authorization', "")}",
+                    "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/3.14.9",
                 },
@@ -127,7 +127,7 @@ class MammotionHTTP:
                 "/device-server/v1/stream/token",
                 json=payload,
                 headers={
-                    "Authorization": f"{self._headers.get('Authorization', "")}",
+                    "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/3.14.9",
                 },
@@ -143,7 +143,7 @@ class MammotionHTTP:
             async with session.get(
                 f"/device-server/v1/video-resource/{iot_id}",
                 headers={
-                    "Authorization": f"{self._headers.get('Authorization', '')}",
+                    "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/3.14.9",
                 },

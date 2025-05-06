@@ -88,7 +88,7 @@ class MammotionMixedDeviceManager:
         self._state_manager.cloud_get_plan_callback = None
         self._state_manager.cloud_on_notification_callback = None
         self._state_manager.cloud_gethash_ack_callback = None
-        del self._cloud_device
+        self._cloud_device = None
 
     def replace_ble(self, ble_device: MammotionBaseBLEDevice) -> None:
         self._ble_device = ble_device
@@ -99,7 +99,7 @@ class MammotionMixedDeviceManager:
         self._state_manager.ble_get_plan_callback = None
         self._state_manager.ble_on_notification_callback = None
         self._state_manager.ble_gethash_ack_callback = None
-        del self._ble_device
+        self._ble_device = None
 
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
         device = self._cloud_device.device
