@@ -3,7 +3,18 @@ syntax = "proto3";
 enum MUL_LANGUAGE {
   ENGLISH = 0;
   GERMAN = 1;
-  UNRECOGNIZED = -1;
+  FRENCH = 2;
+  ITALIAN = 3;
+  SPANISH = 4;
+  PORTUGUESE = 5;
+  DUTCH = 6;
+  NONE_LAN = 7;
+}
+
+enum MUL_SEX {
+  MAN = 0;
+  WOMAN = 1;
+  NONE_SEX = 2;
 }
 
 enum MUL_CAMERA_POSITION {
@@ -28,10 +39,22 @@ enum MUL_WIPER_ERROR_CODE {
   NAVIGATION_WORK_FORBID = 2;
 }
 
+enum lamp_ctrl_sta {
+  power_off = 0;
+  power_on = 1;
+  power_ctrl_on = 2;
+}
+
+enum lamp_manual_ctrl_sta {
+  manual_power_off = 0;
+  manual_power_on = 1;
+}
+
 message MulSetAudio {
   oneof AudioCfg_u {
     int32 at_switch = 1;
     MUL_LANGUAGE au_language = 2;
+    MUL_SEX sex = 3;
   }
 }
 
@@ -47,10 +70,38 @@ message MulSetVideoAck {
 message MulAudioCfg {
   int32 au_switch = 1;
   MUL_LANGUAGE au_language = 2;
+  MUL_SEX sex = 3;
 }
 
 message MulSetWiper {
   int32 round = 1;
+}
+
+message GetHeadlamp {
+  int32 get_ids = 1;
+}
+
+
+message SetHeadlamp {
+  int32 set_ids = 1;
+  int32 lamp_power_ctrl = 2;
+  lamp_ctrl_sta lamp_ctrl = 3;
+  bool ctrl_lamp_bright = 4;
+  int32 lamp_bright = 5;
+  lamp_manual_ctrl_sta lamp_manual_ctrl = 6;
+}
+
+message Setlamprsp {
+  int32 set_ids = 1;
+  int32 result = 2;
+}
+
+message Getlamprsp {
+  int32 get_ids = 1;
+  int32 result = 2;
+  lamp_ctrl_sta lamp_ctrl = 3;
+  int32 lamp_bright = 4;
+  lamp_manual_ctrl_sta lamp_manual_ctrl = 5;
 }
 
 message MulSetWiperAck {
@@ -65,5 +116,9 @@ message SocMul {
     MulSetVideoAck set_video_ack = 4;
     MulSetWiper set_wiper = 5;
     MulSetWiperAck set_wiper_ack = 6;
+    GetHeadlamp get_lamp = 7;
+    SetHeadlamp set_lamp = 8;
+    Setlamprsp set_lamp_rsp = 9;
+    Getlamprsp get_lamp_rsp = 10;
   }
 }

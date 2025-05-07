@@ -169,23 +169,31 @@ class InfoType(betterproto.Enum):
     IT_OTA = 1
 
 
-
-class MulLanguage(betterproto.Enum):
+class MUL_LANGUAGE(betterproto.Enum):
     ENGLISH = 0
     GERMAN = 1
-    UNRECOGNIZED = -1
+    FRENCH = 2
+    ITALIAN = 3
+    SPANISH = 4
+    PORTUGUESE = 5
+    DUTCH = 6
+    NONE_LAN = 7
 
 
+class MUL_SEX(betterproto.Enum):
+    MAN = 0
+    WOMAN = 1
+    NONE_SEX = 2
 
-class MulCameraPosition(betterproto.Enum):
+
+class MUL_CAMERA_POSITION(betterproto.Enum):
     LEFT = 0
     RIGHT = 1
     REAR = 2
     ALL = 3
 
 
-
-class MulVideoErrorCode(betterproto.Enum):
+class MUL_VIDEO_ERROR_CODE(betterproto.Enum):
     SUCCESS = 0
     ACTIVATION_FAILED = 1
     NETWORK_NOT_AVAILABLE = 2
@@ -194,11 +202,22 @@ class MulVideoErrorCode(betterproto.Enum):
     CELLULAR_RESTRICTION = 5
 
 
-
-class MulWiperErrorCode(betterproto.Enum):
+class MUL_WIPER_ERROR_CODE(betterproto.Enum):
     SET_SUCCESS = 0
     HW_ERROR = 1
     NAVIGATION_WORK_FORBID = 2
+
+
+class LampCtrlSta(betterproto.Enum):
+    power_off = 0
+    power_on = 1
+    power_ctrl_on = 2
+
+
+class LampManualCtrlSta(betterproto.Enum):
+    manual_power_off = 0
+    manual_power_on = 1
+
 
 
 
@@ -2049,65 +2068,84 @@ class MctlOta(betterproto.Message):
     )
 
 
-
-@dataclass(eq=False, repr=False)
+@dataclass
 class MulSetAudio(betterproto.Message):
-    at_switch: int = betterproto.int32_field(
-        1, group="AudioCfg_u"
-    )
-    au_language: "MulLanguage" = betterproto.enum_field(
-        2, group="AudioCfg_u"
-    )
+    at_switch: int = betterproto.int32_field(1, group="AudioCfg_u")
+    au_language: "MUL_LANGUAGE" = betterproto.enum_field(2, group="AudioCfg_u")
+    sex: "MUL_SEX" = betterproto.enum_field(3, group="AudioCfg_u")
 
 
-
-@dataclass(eq=False, repr=False)
+@dataclass
 class MulSetVideo(betterproto.Message):
-    position: "MulCameraPosition" = betterproto.enum_field(1)
+    position: "MUL_CAMERA_POSITION" = betterproto.enum_field(1)
     vi_switch: int = betterproto.int32_field(2)
 
 
-@dataclass(eq=False, repr=False)
+@dataclass
 class MulSetVideoAck(betterproto.Message):
-    error_code: "MulVideoErrorCode" = betterproto.enum_field(1)
+    error_code: "MUL_VIDEO_ERROR_CODE" = betterproto.enum_field(1)
 
 
-@dataclass(eq=False, repr=False)
+@dataclass
 class MulAudioCfg(betterproto.Message):
     au_switch: int = betterproto.int32_field(1)
-    au_language: "MulLanguage" = betterproto.enum_field(2)
+    au_language: "MUL_LANGUAGE" = betterproto.enum_field(2)
+    sex: "MUL_SEX" = betterproto.enum_field(3)
 
 
-@dataclass(eq=False, repr=False)
+@dataclass
 class MulSetWiper(betterproto.Message):
     round: int = betterproto.int32_field(1)
 
 
-@dataclass(eq=False, repr=False)
+@dataclass
+class GetHeadlamp(betterproto.Message):
+    get_ids: int = betterproto.int32_field(1)
+
+
+@dataclass
+class SetHeadlamp(betterproto.Message):
+    set_ids: int = betterproto.int32_field(1)
+    lamp_power_ctrl: int = betterproto.int32_field(2)
+    lamp_ctrl: "LampCtrlSta" = betterproto.enum_field(3)
+    ctrl_lamp_bright: bool = betterproto.bool_field(4)
+    lamp_bright: int = betterproto.int32_field(5)
+    lamp_manual_ctrl: "LampManualCtrlSta" = betterproto.enum_field(6)
+
+
+@dataclass
+class Setlamprsp(betterproto.Message):
+    set_ids: int = betterproto.int32_field(1)
+    result: int = betterproto.int32_field(2)
+
+
+@dataclass
+class Getlamprsp(betterproto.Message):
+    get_ids: int = betterproto.int32_field(1)
+    result: int = betterproto.int32_field(2)
+    lamp_ctrl: "LampCtrlSta" = betterproto.enum_field(3)
+    lamp_bright: int = betterproto.int32_field(4)
+    lamp_manual_ctrl: "LampManualCtrlSta" = betterproto.enum_field(5)
+
+
+@dataclass
 class MulSetWiperAck(betterproto.Message):
-    error_code: "MulWiperErrorCode" = betterproto.enum_field(1)
+    error_code: "MUL_WIPER_ERROR_CODE" = betterproto.enum_field(1)
 
 
-@dataclass(eq=False, repr=False)
+@dataclass
 class SocMul(betterproto.Message):
-    set_audio: "MulSetAudio" = betterproto.message_field(
-        1, group="SubMul"
-    )
-    audio_cfg: "MulAudioCfg" = betterproto.message_field(
-        2, group="SubMul"
-    )
-    set_video: "MulSetVideo" = betterproto.message_field(
-        3, group="SubMul"
-    )
-    set_video_ack: "MulSetVideoAck" = betterproto.message_field(
-        4, group="SubMul"
-    )
-    set_wiper: "MulSetWiper" = betterproto.message_field(
-        5, group="SubMul"
-    )
-    set_wiper_ack: "MulSetWiperAck" = betterproto.message_field(
-        6, group="SubMul"
-    )
+    set_audio: "MulSetAudio" = betterproto.message_field(1, group="SubMul")
+    audio_cfg: "MulAudioCfg" = betterproto.message_field(2, group="SubMul")
+    set_video: "MulSetVideo" = betterproto.message_field(3, group="SubMul")
+    set_video_ack: "MulSetVideoAck" = betterproto.message_field(4, group="SubMul")
+    set_wiper: "MulSetWiper" = betterproto.message_field(5, group="SubMul")
+    set_wiper_ack: "MulSetWiperAck" = betterproto.message_field(6, group="SubMul")
+    get_lamp: "GetHeadlamp" = betterproto.message_field(7, group="SubMul")
+    set_lamp: "SetHeadlamp" = betterproto.message_field(8, group="SubMul")
+    set_lamp_rsp: "Setlamprsp" = betterproto.message_field(9, group="SubMul")
+    get_lamp_rsp: "Getlamprsp" = betterproto.message_field(10, group="SubMul")
+
 
 
 

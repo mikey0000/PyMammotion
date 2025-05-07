@@ -93,6 +93,22 @@ class DeviceType(Enum):
             return DeviceType.YUKA_MINI
         elif value == 5:
             return DeviceType.YUKA_MINI2
+        elif value == 6:
+            return DeviceType.LUBA_VP
+        elif value == 7:
+            return DeviceType.LUBA_MN
+        elif value == 8:
+            return DeviceType.YUKA_VP
+        elif value == 9:
+            return DeviceType.SPINO
+        elif value == 10:
+            return DeviceType.RTK3A1
+        elif value == 11:
+            return DeviceType.LUBA_LD
+        elif value == 12:
+            return DeviceType.RTK3A0
+        elif value == 13:
+            return DeviceType.RTK3A2
         else:
             return DeviceType.UNKNOWN
 
@@ -127,6 +143,8 @@ class DeviceType(Enum):
                 return DeviceType.LUBA_VP
             elif DeviceType.LUBA_MN.get_name() in substring2:
                 return DeviceType.LUBA_MN
+            elif DeviceType.YUKA_VP.get_name() in substring2:
+                return DeviceType.YUKA_VP
             elif DeviceType.YUKA_MINI.get_name() in substring2:
                 return DeviceType.YUKA_MINI
             elif DeviceType.YUKA_MINI2.get_name() in substring2:
@@ -228,6 +246,7 @@ class DeviceType(Enum):
 
         return (
             DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_YUKA.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_VP.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
         )

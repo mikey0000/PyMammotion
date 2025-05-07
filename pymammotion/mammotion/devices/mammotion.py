@@ -301,7 +301,7 @@ class Mammotion:
         device = self.get_device_by_name(name)
         if DeviceType.is_mini_or_x_series(name):
             _stream_response = await device.mammotion_http.get_stream_subscription_mini_or_x_series(
-                iot_id, DeviceType.is_yuka(name)
+                iot_id, DeviceType.is_yuka(name) and not DeviceType.is_yuka_mini(name)
             )
             _LOGGER.debug(_stream_response)
             return _stream_response

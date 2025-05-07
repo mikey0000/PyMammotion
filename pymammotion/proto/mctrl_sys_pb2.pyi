@@ -406,6 +406,14 @@ class TimeCtrlLight(_message.Message):
     start_min: int
     def __init__(self, operate: _Optional[int] = ..., enable: _Optional[int] = ..., start_hour: _Optional[int] = ..., start_min: _Optional[int] = ..., end_hour: _Optional[int] = ..., end_min: _Optional[int] = ..., action: _Optional[int] = ...) -> None: ...
 
+class blade_used(_message.Message):
+    __slots__ = ["blade_used_time", "blade_used_warn_time"]
+    BLADE_USED_TIME_FIELD_NUMBER: _ClassVar[int]
+    BLADE_USED_WARN_TIME_FIELD_NUMBER: _ClassVar[int]
+    blade_used_time: int
+    blade_used_warn_time: int
+    def __init__(self, blade_used_time: _Optional[int] = ..., blade_used_warn_time: _Optional[int] = ...) -> None: ...
+
 class collector_status_t(_message.Message):
     __slots__ = ["collector_installation_status"]
     COLLECTOR_INSTALLATION_STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -431,6 +439,16 @@ class device_product_type_info_t(_message.Message):
     result: int
     sub_product_type: str
     def __init__(self, result: _Optional[int] = ..., main_product_type: _Optional[str] = ..., sub_product_type: _Optional[str] = ...) -> None: ...
+
+class fpv_to_app_info_t(_message.Message):
+    __slots__ = ["fpv_flag", "mobile_net_available", "wifi_available"]
+    FPV_FLAG_FIELD_NUMBER: _ClassVar[int]
+    MOBILE_NET_AVAILABLE_FIELD_NUMBER: _ClassVar[int]
+    WIFI_AVAILABLE_FIELD_NUMBER: _ClassVar[int]
+    fpv_flag: int
+    mobile_net_available: int
+    wifi_available: int
+    def __init__(self, fpv_flag: _Optional[int] = ..., wifi_available: _Optional[int] = ..., mobile_net_available: _Optional[int] = ...) -> None: ...
 
 class lock_state_t(_message.Message):
     __slots__ = ["lock_state"]
@@ -514,7 +532,8 @@ class report_info_cfg(_message.Message):
     def __init__(self, act: _Optional[_Union[rpt_act, str]] = ..., timeout: _Optional[int] = ..., period: _Optional[int] = ..., no_change_period: _Optional[int] = ..., count: _Optional[int] = ..., sub: _Optional[_Iterable[_Union[rpt_info_type, str]]] = ...) -> None: ...
 
 class report_info_data(_message.Message):
-    __slots__ = ["connect", "dev", "fw_info", "locations", "maintain", "rtk", "vio_to_app_info", "vision_point_info", "vision_statistic_info", "work"]
+    __slots__ = ["basestation_info", "connect", "dev", "fw_info", "locations", "maintain", "rtk", "vio_to_app_info", "vision_point_info", "vision_statistic_info", "work"]
+    BASESTATION_INFO_FIELD_NUMBER: _ClassVar[int]
     CONNECT_FIELD_NUMBER: _ClassVar[int]
     DEV_FIELD_NUMBER: _ClassVar[int]
     FW_INFO_FIELD_NUMBER: _ClassVar[int]
@@ -525,6 +544,7 @@ class report_info_data(_message.Message):
     VISION_POINT_INFO_FIELD_NUMBER: _ClassVar[int]
     VISION_STATISTIC_INFO_FIELD_NUMBER: _ClassVar[int]
     WORK_FIELD_NUMBER: _ClassVar[int]
+    basestation_info: rpt_basestation_info
     connect: rpt_connect_status
     dev: rpt_dev_status
     fw_info: device_fw_info
@@ -535,7 +555,23 @@ class report_info_data(_message.Message):
     vision_point_info: _containers.RepeatedCompositeFieldContainer[vision_point_info_msg]
     vision_statistic_info: vision_statistic_info_msg
     work: rpt_work
-    def __init__(self, connect: _Optional[_Union[rpt_connect_status, _Mapping]] = ..., dev: _Optional[_Union[rpt_dev_status, _Mapping]] = ..., rtk: _Optional[_Union[rpt_rtk, _Mapping]] = ..., locations: _Optional[_Iterable[_Union[rpt_dev_location, _Mapping]]] = ..., work: _Optional[_Union[rpt_work, _Mapping]] = ..., fw_info: _Optional[_Union[device_fw_info, _Mapping]] = ..., maintain: _Optional[_Union[rpt_maintain, _Mapping]] = ..., vision_point_info: _Optional[_Iterable[_Union[vision_point_info_msg, _Mapping]]] = ..., vio_to_app_info: _Optional[_Union[vio_to_app_info_msg, _Mapping]] = ..., vision_statistic_info: _Optional[_Union[vision_statistic_info_msg, _Mapping]] = ...) -> None: ...
+    def __init__(self, connect: _Optional[_Union[rpt_connect_status, _Mapping]] = ..., dev: _Optional[_Union[rpt_dev_status, _Mapping]] = ..., rtk: _Optional[_Union[rpt_rtk, _Mapping]] = ..., locations: _Optional[_Iterable[_Union[rpt_dev_location, _Mapping]]] = ..., work: _Optional[_Union[rpt_work, _Mapping]] = ..., fw_info: _Optional[_Union[device_fw_info, _Mapping]] = ..., maintain: _Optional[_Union[rpt_maintain, _Mapping]] = ..., vision_point_info: _Optional[_Iterable[_Union[vision_point_info_msg, _Mapping]]] = ..., vio_to_app_info: _Optional[_Union[vio_to_app_info_msg, _Mapping]] = ..., vision_statistic_info: _Optional[_Union[vision_statistic_info_msg, _Mapping]] = ..., basestation_info: _Optional[_Union[rpt_basestation_info, _Mapping]] = ...) -> None: ...
+
+class rpt_basestation_info(_message.Message):
+    __slots__ = ["basestation_status", "connect_status_since_poweron", "ver_build", "ver_major", "ver_minor", "ver_patch"]
+    BASESTATION_STATUS_FIELD_NUMBER: _ClassVar[int]
+    CONNECT_STATUS_SINCE_POWERON_FIELD_NUMBER: _ClassVar[int]
+    VER_BUILD_FIELD_NUMBER: _ClassVar[int]
+    VER_MAJOR_FIELD_NUMBER: _ClassVar[int]
+    VER_MINOR_FIELD_NUMBER: _ClassVar[int]
+    VER_PATCH_FIELD_NUMBER: _ClassVar[int]
+    basestation_status: int
+    connect_status_since_poweron: int
+    ver_build: int
+    ver_major: int
+    ver_minor: int
+    ver_patch: int
+    def __init__(self, ver_major: _Optional[int] = ..., ver_minor: _Optional[int] = ..., ver_patch: _Optional[int] = ..., ver_build: _Optional[int] = ..., basestation_status: _Optional[int] = ..., connect_status_since_poweron: _Optional[int] = ...) -> None: ...
 
 class rpt_connect_status(_message.Message):
     __slots__ = ["ble_rssi", "connect_type", "link_type", "mnet_cfg", "mnet_inet", "mnet_rssi", "used_net", "wifi_rssi"]
@@ -574,13 +610,15 @@ class rpt_dev_location(_message.Message):
     def __init__(self, real_pos_x: _Optional[int] = ..., real_pos_y: _Optional[int] = ..., real_toward: _Optional[int] = ..., pos_type: _Optional[int] = ..., zone_hash: _Optional[int] = ..., bol_hash: _Optional[int] = ...) -> None: ...
 
 class rpt_dev_status(_message.Message):
-    __slots__ = ["battery_val", "charge_state", "collector_status", "last_status", "lock_state", "mnet_info", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
+    __slots__ = ["battery_val", "charge_state", "collector_status", "fpv_info", "last_status", "lock_state", "mnet_info", "self_check_status", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
     BATTERY_VAL_FIELD_NUMBER: _ClassVar[int]
     CHARGE_STATE_FIELD_NUMBER: _ClassVar[int]
     COLLECTOR_STATUS_FIELD_NUMBER: _ClassVar[int]
+    FPV_INFO_FIELD_NUMBER: _ClassVar[int]
     LAST_STATUS_FIELD_NUMBER: _ClassVar[int]
     LOCK_STATE_FIELD_NUMBER: _ClassVar[int]
     MNET_INFO_FIELD_NUMBER: _ClassVar[int]
+    SELF_CHECK_STATUS_FIELD_NUMBER: _ClassVar[int]
     SENSOR_STATUS_FIELD_NUMBER: _ClassVar[int]
     SYS_STATUS_FIELD_NUMBER: _ClassVar[int]
     SYS_TIME_STAMP_FIELD_NUMBER: _ClassVar[int]
@@ -589,15 +627,17 @@ class rpt_dev_status(_message.Message):
     battery_val: int
     charge_state: int
     collector_status: collector_status_t
+    fpv_info: fpv_to_app_info_t
     last_status: int
     lock_state: lock_state_t
     mnet_info: _dev_net_pb2.MnetInfo
+    self_check_status: int
     sensor_status: int
     sys_status: int
     sys_time_stamp: int
     vio_survival_info: vio_survival_info_t
     vslam_status: int
-    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ...) -> None: ...
+    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ..., self_check_status: _Optional[int] = ..., fpv_info: _Optional[_Union[fpv_to_app_info_t, _Mapping]] = ...) -> None: ...
 
 class rpt_lora(_message.Message):
     __slots__ = ["lora_connection_status", "pair_code_channel", "pair_code_locid", "pair_code_netid", "pair_code_scan"]
@@ -614,14 +654,16 @@ class rpt_lora(_message.Message):
     def __init__(self, pair_code_scan: _Optional[int] = ..., pair_code_channel: _Optional[int] = ..., pair_code_locid: _Optional[int] = ..., pair_code_netid: _Optional[int] = ..., lora_connection_status: _Optional[int] = ...) -> None: ...
 
 class rpt_maintain(_message.Message):
-    __slots__ = ["bat_cycles", "mileage", "work_time"]
+    __slots__ = ["bat_cycles", "blade_used_time", "mileage", "work_time"]
     BAT_CYCLES_FIELD_NUMBER: _ClassVar[int]
+    BLADE_USED_TIME_FIELD_NUMBER: _ClassVar[int]
     MILEAGE_FIELD_NUMBER: _ClassVar[int]
     WORK_TIME_FIELD_NUMBER: _ClassVar[int]
     bat_cycles: int
+    blade_used_time: blade_used
     mileage: int
     work_time: int
-    def __init__(self, mileage: _Optional[int] = ..., work_time: _Optional[int] = ..., bat_cycles: _Optional[int] = ...) -> None: ...
+    def __init__(self, mileage: _Optional[int] = ..., work_time: _Optional[int] = ..., bat_cycles: _Optional[int] = ..., blade_used_time: _Optional[_Union[blade_used, _Mapping]] = ...) -> None: ...
 
 class rpt_rtk(_message.Message):
     __slots__ = ["age", "co_view_stars", "dis_status", "gps_stars", "l2_stars", "lat_std", "lon_std", "lora_info", "mqtt_rtk_info", "pos_level", "reset", "status", "top4_total_mean"]
@@ -728,6 +770,12 @@ class systemUpdateBuf_msg(_message.Message):
     UPDATE_BUF_DATA_FIELD_NUMBER: _ClassVar[int]
     update_buf_data: _containers.RepeatedScalarFieldContainer[int]
     def __init__(self, update_buf_data: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class user_set_blade_used_warn_time(_message.Message):
+    __slots__ = ["blade_used_warn_time"]
+    BLADE_USED_WARN_TIME_FIELD_NUMBER: _ClassVar[int]
+    blade_used_warn_time: int
+    def __init__(self, blade_used_warn_time: _Optional[int] = ...) -> None: ...
 
 class vio_survival_info_t(_message.Message):
     __slots__ = ["vio_survival_distance"]

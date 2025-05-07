@@ -37,6 +37,38 @@ SIM_NO_CARD: sim_card_sta
 SIM_OK: sim_card_sta
 set_enable: WifiConfType
 
+class BleLogUploadUpdateProgress(_message.Message):
+    __slots__ = ["bizId", "fIdx", "fNum", "fPath", "fSize", "prog", "speed", "status", "subProg", "ver"]
+    BIZID_FIELD_NUMBER: _ClassVar[int]
+    FIDX_FIELD_NUMBER: _ClassVar[int]
+    FNUM_FIELD_NUMBER: _ClassVar[int]
+    FPATH_FIELD_NUMBER: _ClassVar[int]
+    FSIZE_FIELD_NUMBER: _ClassVar[int]
+    PROG_FIELD_NUMBER: _ClassVar[int]
+    SPEED_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    SUBPROG_FIELD_NUMBER: _ClassVar[int]
+    VER_FIELD_NUMBER: _ClassVar[int]
+    bizId: str
+    fIdx: int
+    fNum: int
+    fPath: str
+    fSize: int
+    prog: int
+    speed: int
+    status: int
+    subProg: int
+    ver: int
+    def __init__(self, ver: _Optional[int] = ..., status: _Optional[int] = ..., bizId: _Optional[str] = ..., prog: _Optional[int] = ..., subProg: _Optional[int] = ..., fNum: _Optional[int] = ..., speed: _Optional[int] = ..., fIdx: _Optional[int] = ..., fPath: _Optional[str] = ..., fSize: _Optional[int] = ...) -> None: ...
+
+class BleSignatureReq(_message.Message):
+    __slots__ = ["random_data", "signature_data"]
+    RANDOM_DATA_FIELD_NUMBER: _ClassVar[int]
+    SIGNATURE_DATA_FIELD_NUMBER: _ClassVar[int]
+    random_data: str
+    signature_data: str
+    def __init__(self, signature_data: _Optional[str] = ..., random_data: _Optional[str] = ...) -> None: ...
+
 class BleTestBytes(_message.Message):
     __slots__ = ["data", "seqs"]
     DATA_FIELD_NUMBER: _ClassVar[int]
@@ -46,11 +78,12 @@ class BleTestBytes(_message.Message):
     def __init__(self, seqs: _Optional[int] = ..., data: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class DevNet(_message.Message):
-    __slots__ = ["bir_testdata", "toapp_ListUpload", "toapp_WifiConf", "toapp_WifiMsg", "toapp_devinfo_resp", "toapp_get_mnet_cfg_rsp", "toapp_mnet_info_rsp", "toapp_networkinfo_rsp", "toapp_set_mnet_cfg_rsp", "toapp_upgrade_report", "toapp_uploadfile_rsp", "toapp_wifi_iot_status", "todev_ConfType", "todev_WifiListUpload", "todev_WifiMsgUpload", "todev_Wifi_Configuration", "todev_ble_sync", "todev_devinfo_req", "todev_get_mnet_cfg_req", "todev_log_data_cancel", "todev_mnet_info_req", "todev_networkinfo_req", "todev_req_log_info", "todev_set_ble_mtu", "todev_set_dds2zmq", "todev_set_iot_offline_req", "todev_set_mnet_cfg_req", "todev_uploadfile_req"]
+    __slots__ = ["bir_testdata", "toapp_ListUpload", "toapp_WifiConf", "toapp_WifiMsg", "toapp_devinfo_resp", "toapp_get_mnet_cfg_rsp", "toapp_log_upload_update_progress", "toapp_mnet_info_rsp", "toapp_networkinfo_rsp", "toapp_set_mnet_cfg_rsp", "toapp_upgrade_report", "toapp_uploadfile_rsp", "toapp_wifi_iot_status", "todev_ConfType", "todev_WifiListUpload", "todev_WifiMsgUpload", "todev_Wifi_Configuration", "todev_ble_sync", "todev_devinfo_req", "todev_get_mnet_cfg_req", "todev_log_data_cancel", "todev_mnet_info_req", "todev_networkinfo_req", "todev_req_log_info", "todev_set_ble_mtu", "todev_set_dds2zmq", "todev_set_iot_offline_req", "todev_set_mnet_cfg_req", "todev_uploadfile_req", "todev_verify_signature_req"]
     BIR_TESTDATA_FIELD_NUMBER: _ClassVar[int]
     TOAPP_DEVINFO_RESP_FIELD_NUMBER: _ClassVar[int]
     TOAPP_GET_MNET_CFG_RSP_FIELD_NUMBER: _ClassVar[int]
     TOAPP_LISTUPLOAD_FIELD_NUMBER: _ClassVar[int]
+    TOAPP_LOG_UPLOAD_UPDATE_PROGRESS_FIELD_NUMBER: _ClassVar[int]
     TOAPP_MNET_INFO_RSP_FIELD_NUMBER: _ClassVar[int]
     TOAPP_NETWORKINFO_RSP_FIELD_NUMBER: _ClassVar[int]
     TOAPP_SET_MNET_CFG_RSP_FIELD_NUMBER: _ClassVar[int]
@@ -72,6 +105,7 @@ class DevNet(_message.Message):
     TODEV_SET_IOT_OFFLINE_REQ_FIELD_NUMBER: _ClassVar[int]
     TODEV_SET_MNET_CFG_REQ_FIELD_NUMBER: _ClassVar[int]
     TODEV_UPLOADFILE_REQ_FIELD_NUMBER: _ClassVar[int]
+    TODEV_VERIFY_SIGNATURE_REQ_FIELD_NUMBER: _ClassVar[int]
     TODEV_WIFILISTUPLOAD_FIELD_NUMBER: _ClassVar[int]
     TODEV_WIFIMSGUPLOAD_FIELD_NUMBER: _ClassVar[int]
     TODEV_WIFI_CONFIGURATION_FIELD_NUMBER: _ClassVar[int]
@@ -81,6 +115,7 @@ class DevNet(_message.Message):
     toapp_WifiMsg: DrvWifiMsg
     toapp_devinfo_resp: DrvDevInfoResp
     toapp_get_mnet_cfg_rsp: GetMnetCfgRsp
+    toapp_log_upload_update_progress: BleLogUploadUpdateProgress
     toapp_mnet_info_rsp: GetMnetInfoRsp
     toapp_networkinfo_rsp: GetNetworkInfoRsp
     toapp_set_mnet_cfg_rsp: SetMnetCfgRsp
@@ -103,7 +138,8 @@ class DevNet(_message.Message):
     todev_set_iot_offline_req: iot_conctrl_type
     todev_set_mnet_cfg_req: SetMnetCfgReq
     todev_uploadfile_req: DrvUploadFileToAppReq
-    def __init__(self, todev_ble_sync: _Optional[int] = ..., todev_ConfType: _Optional[_Union[WifiConfType, str]] = ..., todev_WifiMsgUpload: _Optional[_Union[DrvWifiUpload, _Mapping]] = ..., todev_WifiListUpload: _Optional[_Union[DrvWifiList, _Mapping]] = ..., todev_Wifi_Configuration: _Optional[_Union[DrvWifiSet, _Mapping]] = ..., toapp_WifiMsg: _Optional[_Union[DrvWifiMsg, _Mapping]] = ..., toapp_WifiConf: _Optional[_Union[DrvWifiConf, _Mapping]] = ..., toapp_ListUpload: _Optional[_Union[DrvListUpload, _Mapping]] = ..., todev_req_log_info: _Optional[_Union[DrvUploadFileReq, _Mapping]] = ..., todev_log_data_cancel: _Optional[_Union[DrvUploadFileCancel, _Mapping]] = ..., todev_devinfo_req: _Optional[_Union[DrvDevInfoReq, _Mapping]] = ..., toapp_devinfo_resp: _Optional[_Union[DrvDevInfoResp, _Mapping]] = ..., toapp_upgrade_report: _Optional[_Union[DrvUpgradeReport, _Mapping]] = ..., toapp_wifi_iot_status: _Optional[_Union[WifiIotStatusReport, _Mapping]] = ..., todev_uploadfile_req: _Optional[_Union[DrvUploadFileToAppReq, _Mapping]] = ..., toapp_uploadfile_rsp: _Optional[_Union[DrvUploadFileToAppRsp, _Mapping]] = ..., todev_networkinfo_req: _Optional[_Union[GetNetworkInfoReq, _Mapping]] = ..., toapp_networkinfo_rsp: _Optional[_Union[GetNetworkInfoRsp, _Mapping]] = ..., bir_testdata: _Optional[_Union[BleTestBytes, _Mapping]] = ..., todev_mnet_info_req: _Optional[_Union[GetMnetInfoReq, _Mapping]] = ..., toapp_mnet_info_rsp: _Optional[_Union[GetMnetInfoRsp, _Mapping]] = ..., todev_get_mnet_cfg_req: _Optional[_Union[GetMnetCfgReq, _Mapping]] = ..., toapp_get_mnet_cfg_rsp: _Optional[_Union[GetMnetCfgRsp, _Mapping]] = ..., todev_set_mnet_cfg_req: _Optional[_Union[SetMnetCfgReq, _Mapping]] = ..., toapp_set_mnet_cfg_rsp: _Optional[_Union[SetMnetCfgRsp, _Mapping]] = ..., todev_set_dds2zmq: _Optional[_Union[DrvDebugDdsZmq, _Mapping]] = ..., todev_set_ble_mtu: _Optional[_Union[SetDrvBleMTU, _Mapping]] = ..., todev_set_iot_offline_req: _Optional[_Union[iot_conctrl_type, str]] = ...) -> None: ...
+    todev_verify_signature_req: BleSignatureReq
+    def __init__(self, todev_ble_sync: _Optional[int] = ..., todev_ConfType: _Optional[_Union[WifiConfType, str]] = ..., todev_WifiMsgUpload: _Optional[_Union[DrvWifiUpload, _Mapping]] = ..., todev_WifiListUpload: _Optional[_Union[DrvWifiList, _Mapping]] = ..., todev_Wifi_Configuration: _Optional[_Union[DrvWifiSet, _Mapping]] = ..., toapp_WifiMsg: _Optional[_Union[DrvWifiMsg, _Mapping]] = ..., toapp_WifiConf: _Optional[_Union[DrvWifiConf, _Mapping]] = ..., toapp_ListUpload: _Optional[_Union[DrvListUpload, _Mapping]] = ..., todev_req_log_info: _Optional[_Union[DrvUploadFileReq, _Mapping]] = ..., todev_log_data_cancel: _Optional[_Union[DrvUploadFileCancel, _Mapping]] = ..., todev_devinfo_req: _Optional[_Union[DrvDevInfoReq, _Mapping]] = ..., toapp_devinfo_resp: _Optional[_Union[DrvDevInfoResp, _Mapping]] = ..., toapp_upgrade_report: _Optional[_Union[DrvUpgradeReport, _Mapping]] = ..., toapp_wifi_iot_status: _Optional[_Union[WifiIotStatusReport, _Mapping]] = ..., todev_uploadfile_req: _Optional[_Union[DrvUploadFileToAppReq, _Mapping]] = ..., toapp_uploadfile_rsp: _Optional[_Union[DrvUploadFileToAppRsp, _Mapping]] = ..., todev_networkinfo_req: _Optional[_Union[GetNetworkInfoReq, _Mapping]] = ..., toapp_networkinfo_rsp: _Optional[_Union[GetNetworkInfoRsp, _Mapping]] = ..., bir_testdata: _Optional[_Union[BleTestBytes, _Mapping]] = ..., todev_mnet_info_req: _Optional[_Union[GetMnetInfoReq, _Mapping]] = ..., toapp_mnet_info_rsp: _Optional[_Union[GetMnetInfoRsp, _Mapping]] = ..., todev_get_mnet_cfg_req: _Optional[_Union[GetMnetCfgReq, _Mapping]] = ..., toapp_get_mnet_cfg_rsp: _Optional[_Union[GetMnetCfgRsp, _Mapping]] = ..., todev_set_mnet_cfg_req: _Optional[_Union[SetMnetCfgReq, _Mapping]] = ..., toapp_set_mnet_cfg_rsp: _Optional[_Union[SetMnetCfgRsp, _Mapping]] = ..., todev_set_dds2zmq: _Optional[_Union[DrvDebugDdsZmq, _Mapping]] = ..., todev_set_ble_mtu: _Optional[_Union[SetDrvBleMTU, _Mapping]] = ..., todev_set_iot_offline_req: _Optional[_Union[iot_conctrl_type, str]] = ..., todev_verify_signature_req: _Optional[_Union[BleSignatureReq, _Mapping]] = ..., toapp_log_upload_update_progress: _Optional[_Union[BleLogUploadUpdateProgress, _Mapping]] = ...) -> None: ...
 
 class DrvDebugDdsZmq(_message.Message):
     __slots__ = ["is_enable", "rx_topic_name", "tx_zmq_url"]
@@ -382,7 +418,8 @@ class MnetCfg(_message.Message):
     def __init__(self, mnet_enable: bool = ..., inet_enable: bool = ..., type: _Optional[_Union[net_type, str]] = ..., apn: _Optional[_Union[MnetApnSetCfg, _Mapping]] = ..., auto_select: bool = ...) -> None: ...
 
 class MnetInfo(_message.Message):
-    __slots__ = ["imei", "imsi", "inet", "link_type", "model", "revision", "rssi", "sim"]
+    __slots__ = ["iccid", "imei", "imsi", "inet", "link_type", "model", "revision", "rssi", "sim"]
+    ICCID_FIELD_NUMBER: _ClassVar[int]
     IMEI_FIELD_NUMBER: _ClassVar[int]
     IMSI_FIELD_NUMBER: _ClassVar[int]
     INET_FIELD_NUMBER: _ClassVar[int]
@@ -391,6 +428,7 @@ class MnetInfo(_message.Message):
     REVISION_FIELD_NUMBER: _ClassVar[int]
     RSSI_FIELD_NUMBER: _ClassVar[int]
     SIM_FIELD_NUMBER: _ClassVar[int]
+    iccid: str
     imei: str
     imsi: str
     inet: mnet_inet_status
@@ -399,7 +437,7 @@ class MnetInfo(_message.Message):
     revision: str
     rssi: int
     sim: sim_card_sta
-    def __init__(self, model: _Optional[str] = ..., revision: _Optional[str] = ..., imei: _Optional[str] = ..., sim: _Optional[_Union[sim_card_sta, str]] = ..., imsi: _Optional[str] = ..., link_type: _Optional[_Union[mnet_link_type, str]] = ..., rssi: _Optional[int] = ..., inet: _Optional[_Union[mnet_inet_status, _Mapping]] = ...) -> None: ...
+    def __init__(self, model: _Optional[str] = ..., revision: _Optional[str] = ..., imei: _Optional[str] = ..., sim: _Optional[_Union[sim_card_sta, str]] = ..., imsi: _Optional[str] = ..., link_type: _Optional[_Union[mnet_link_type, str]] = ..., rssi: _Optional[int] = ..., inet: _Optional[_Union[mnet_inet_status, _Mapping]] = ..., iccid: _Optional[str] = ...) -> None: ...
 
 class SetDrvBleMTU(_message.Message):
     __slots__ = ["mtu_count"]
