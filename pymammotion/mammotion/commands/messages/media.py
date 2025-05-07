@@ -2,8 +2,17 @@
 from abc import ABC
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
-from pymammotion.proto import (LubaMsg, MsgAttr, MsgCmdType, MsgDevice, MulSetAudio, MulSetWiper, SocMul,
-    MUL_SEX, MUL_LANGUAGE)
+from pymammotion.proto import (
+    MUL_LANGUAGE,
+    MUL_SEX,
+    LubaMsg,
+    MsgAttr,
+    MsgCmdType,
+    MsgDevice,
+    MulSetAudio,
+    MulSetWiper,
+    SocMul,
+)
 
 
 class MessageMedia(AbstractMessage, ABC):

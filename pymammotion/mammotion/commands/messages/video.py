@@ -3,7 +3,7 @@ from abc import ABC
 import time
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
-from pymammotion.proto import LubaMsg, MsgAttr, MsgCmdType, MsgDevice, MulCameraPosition, MulSetVideo, SocMul
+from pymammotion.proto import LubaMsg, MsgAttr, MsgCmdType, MsgDevice, MUL_CAMERA_POSITION, MulSetVideo, SocMul
 from pymammotion.utility.device_type import DeviceType
 
 
@@ -24,6 +24,6 @@ class MessageVideo(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def device_agora_join_channel_with_position(self, enter_state: int):
-        position = MulCameraPosition.ALL if DeviceType.is_yuka(self.get_device_name()) else MulCameraPosition.LEFT
+        position = MUL_CAMERA_POSITION.ALL if DeviceType.value_of_str(self.get_device_name()).get_value() == DeviceType.LUBA_YUKA.get_value() else MUL_CAMERA_POSITION.LEFT
         mctl_sys = SocMul(set_video=MulSetVideo(position=position, vi_switch=enter_state))
         return self.send_order_msg_video(mctl_sys)
