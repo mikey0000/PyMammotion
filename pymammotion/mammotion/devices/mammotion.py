@@ -240,7 +240,6 @@ class Mammotion:
         mammotion_http = MammotionHTTP()
         await mammotion_http.login(account, password)
         await self.connect_iot(mammotion_http, cloud_client)
-        await cloud_client.list_binding_by_account()
         return cloud_client
 
     @staticmethod
@@ -252,6 +251,7 @@ class Mammotion:
         await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
         await cloud_client.aep_handle()
         await cloud_client.session_by_auth_code()
+        await cloud_client.list_binding_by_account()
 
     async def remove_device(self, name: str) -> None:
         await self.device_manager.remove_device(name)
