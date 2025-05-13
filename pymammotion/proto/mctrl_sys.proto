@@ -2,6 +2,91 @@ syntax = "proto3";
 
 import "pymammotion/proto/dev_net.proto";
 
+enum Operation {
+  WRITE = 0;
+  READ = 1;
+  ERASE = 2;
+}
+
+enum OffPartId {
+  OFF_PART_DL_IMG = 0;
+  OFF_PART_UPDINFO_BACK = 1;
+  OFF_PART_UPDINFO = 2;
+  OFF_PART_NAKEDB = 3;
+  OFF_PART_FLASHDB = 4;
+  OFF_PART_UPD_APP_IMG = 5;
+  OFF_PART_UPD_BMS_IMG = 6;
+  OFF_PART_UPD_TMP_IMG = 7;
+  OFF_PART_DEV_INFO = 8;
+  OFF_PART_NAKEDB_BACK = 9;
+  OFF_PART_MAX = 10;
+}
+
+enum QCAppTestId {
+  QC_APP_ITEM_ON_CHARGESATSTION = 0;
+  QC_APP_TEST_X3_SPEAKER = 1;
+  QC_APP_TEST_STATIC_OBSTACLE_DETECTION = 2;
+  QC_APP_TEST_CHARGESTATION_TEMP = 3;
+  QC_APP_ITEM_KEY = 4;
+  QC_APP_TEST_BUMPER_FRONTLEFT = 5;
+  QC_APP_TEST_BUMPER_FRONTRIGHT = 6;
+  QC_APP_TEST_STOP = 7;
+  QC_APP_TEST_UNLOCK = 8;
+  QC_APP_TEST_BUZZ = 9;
+  QC_APP_TEST_LIFT = 10;
+  QC_APP_ITEM_SENEOR = 11;
+  QC_APP_TEST_ROLL_LEFT = 12;
+  QC_APP_TEST_ROLL_RIGHT = 13;
+  QC_APP_TEST_ULTRA_UNCOVER = 14;
+  QC_APP_TEST_ULTRA0_COVER = 15;
+  QC_APP_TEST_ULTRA1_COVER = 16;
+  QC_APP_TEST_ULTRA2_COVER = 17;
+  QC_APP_TEST_RAIN = 18;
+  QC_APP_ITEM_SQ = 19;
+  QC_APP_TEST_BLE_RSSI = 20;
+  QC_APP_TEST_SATELLITES_ROVER = 21;
+  QC_APP_TEST_SATELLITES_REF_STATION_L1 = 22;
+  QC_APP_TEST_SATELLITES_REF_STATION_L2 = 23;
+  QC_APP_TEST_SATELLITES_COMMON_VIEW = 24;
+  QC_APP_TEST_CNO_ROVER = 25;
+  QC_APP_TEST_CNO_REF_STATION = 26;
+  QC_APP_TEST_REF_STATION_LINK_STATUS = 27;
+  QC_APP_TEST_LOCATION_STATE = 28;
+  QC_APP_TEST_MAX = 29;
+}
+
+enum rtk_used_type {
+  RTK_USED_LORA = 0;
+  RTK_USED_INTERNET = 1;
+  RTK_USED_NRTK = 2;
+}
+
+enum net_used_type {
+  NET_USED_TYPE_NONE = 0;
+  NET_USED_TYPE_WIFI = 1;
+  NET_USED_TYPE_MNET = 2;
+}
+
+enum rpt_info_type {
+  RIT_CONNECT = 0;
+  RIT_DEV_STA = 1;
+  RIT_RTK = 2;
+  RIT_DEV_LOCAL = 3;
+  RIT_WORK = 4;
+  RIT_FW_INFO = 5;
+  RIT_MAINTAIN = 6;
+  RIT_VISION_POINT = 7;
+  RIT_VIO = 8;
+  RIT_VISION_STATISTIC = 9;
+  RIT_BASESTATION_INFO = 10;
+}
+
+enum rpt_act {
+  RPT_START = 0;
+  RPT_STOP = 1;
+  RPT_KEEP = 2;
+}
+
 message SysBatUp {
   int32 batVal = 1;
 }
@@ -114,6 +199,10 @@ message SysResetSystemStatus {
   int32 reset_staus = 1;
 }
 
+message SysResetBladeUsedTimeStatus {
+  int32 reset_blade_used_time_status = 1;
+}
+
 message TimeCtrlLight {
   int32 operate = 1;
   int32 enable = 2;
@@ -196,7 +285,7 @@ message LoraCfgRsp {
   int32 result = 1;
   int32 op = 2;
   string cfg = 3;
-  bytes fac_cfg = 4;
+  string fac_cfg = 4;
 }
 
 message mod_fw_info {
@@ -250,6 +339,25 @@ message mCtrlSimulationCmdData {
   repeated int32 param_value = 3;
 }
 
+message app_to_dev_get_mqtt_config_t {
+  int32 get_mqtt_config = 1;
+}
+
+message dev_to_app_get_mqtt_config_t {
+  int32 rtk_status = 1;
+  string rtk_base_num = 2;
+}
+
+message app_to_dev_set_mqtt_rtk_t {
+  rtk_used_type set_rtk_mode = 1;
+  int32 stop_nrtk_flag = 2;
+  int32 set_nrtk_net_mode = 3;
+}
+
+message dev_to_app_set_mqtt_rtk_t {
+  int32 set_rtk_mode_error = 1;
+}
+
 message rpt_lora {
   int32 pair_code_scan = 1;
   int32 pair_code_channel = 2;
@@ -259,9 +367,13 @@ message rpt_lora {
 }
 
 message mqtt_rtk_connect {
-    int32 rtk_switch = 1;
-    int32 rtk_channel = 2;
-    string rtk_base_num = 3;
+  rtk_used_type rtk_switch = 1;
+  int32 rtk_channel = 2;
+  string rtk_base_num = 3;
+  double latitude = 4;
+  double longitude = 5;
+  int32 nrtk_map_convert_status = 6;
+  int32 nrtk_net_mode = 7;
 }
 
 message rpt_rtk {
@@ -317,6 +429,11 @@ message rpt_dev_status {
   fpv_to_app_info_t fpv_info = 13;
 }
 
+message net_speed {
+  uint32 download = 1;
+  uint32 upload = 2;
+}
+
 message rpt_connect_status {
   int32 connect_type = 1;
   int32 ble_rssi = 2;
@@ -326,11 +443,15 @@ message rpt_connect_status {
   int32 mnet_inet = 6;
   net_used_type used_net = 7;
   MnetCfg mnet_cfg = 8;
+  net_speed dev_net_speed = 9;
+  bool iot_wifi_report = 10;
+  int32 iot_con_status = 11;
+  int32 wifi_con_status = 12;
+  int32 wifi_is_available = 13;
 }
 
-
 message nav_heading_state_t {
-    int32 heading_state = 1;
+  uint32 heading_state = 1;
 }
 
 message rpt_work {
@@ -411,6 +532,83 @@ message report_info_data {
   rpt_basestation_info basestation_info = 11;
 }
 
+message debug_common_report_t {
+  string m_name = 1;
+  string key = 2;
+  string value = 3;
+  int64 gen_time = 4;
+}
+
+message debug_errocode_report_t {
+  int32 code = 1;
+  string mname = 2;
+  string value = 3;
+  int64 gen_time = 4;
+}
+
+message debug_enable_t {
+  int32 enbale = 1;
+}
+
+message debug_res_cfg_ability_t {
+  int32 total_keys = 1;
+  int32 cur_key_id = 2;
+  string keys = 3;
+  string value = 4;
+}
+
+message debug_cfg_read_t {
+  string key = 1;
+  string value = 2;
+}
+
+message debug_cfg_write_t {
+  string key = 1;
+  string value = 2;
+}
+
+message msgbus_pkt {
+  int32 type = 1;
+  int32 typeCommand = 2;
+  int32 recvDeviceId = 3;
+  int32 sendDeviceId = 4;
+  int32 dataLength = 5;
+  string data = 6;
+  int32 ctrl = 7;
+  int32 flag = 8;
+  int32 seqs = 9;
+}
+
+message response_set_mode_t {
+  int32 statue = 1;
+  int32 set_work_mode = 2;
+  int32 cur_work_mode = 3;
+}
+
+message dev_statue_t {
+  int32 sys_status = 1;
+  int32 charge_status = 2;
+  int32 bat_val = 3;
+  int32 wheel_status = 4;
+  int32 pump_status = 5;
+  int32 work_mode = 6;
+  int32 model = 7;
+}
+
+message report_info_t {
+  dev_statue_t dev_status = 1;
+  int32 ota_status = 2;
+  string dev_version = 3;
+  int32 ota_progress = 4;
+  int32 ota_fw_code = 5;
+  int32 ota_fw_seq = 6;
+  int32 ota_fw_downloaded = 7;
+}
+
+message work_mode_t {
+  int32 work_mode = 1;
+}
+
 message MctlSys {
   oneof SubSysMsg {
     SysBatUp toapp_batinfo = 1;
@@ -447,84 +645,24 @@ message MctlSys {
     report_info_cfg todev_report_cfg = 38;
     report_info_data toapp_report_data = 39;
     mCtrlSimulationCmdData simulation_cmd = 42;
+    app_to_dev_get_mqtt_config_t app_to_dev_get_mqtt_config_msg = 43;
+    dev_to_app_get_mqtt_config_t dev_to_app_get_mqtt_config_msg = 44;
+    app_to_dev_set_mqtt_rtk_t app_to_dev_set_mqtt_rtk_msg = 45;
+    dev_to_app_set_mqtt_rtk_t dev_to_app_set_mqtt_rtk_msg = 46;
+    int32 todev_reset_blade_used_time = 47;
+    SysResetBladeUsedTimeStatus todev_reset_blade_used_time_status = 48;
+    int32 todev_factor_reset_system = 49;
+    user_set_blade_used_warn_time blade_used_warn_time = 50;
+    debug_common_report_t debug_common_report = 51;
+    debug_errocode_report_t debug_errocode_report = 52;
+    debug_enable_t debug_enable = 53;
+    debug_cfg_read_t debug_cfg_read = 54;
+    debug_cfg_write_t debug_cfg_write = 55;
+    debug_res_cfg_ability_t debug_res_cfg_ability = 56;
+    msgbus_pkt to_dev_msgbus = 57;
+    msgbus_pkt to_app_msgbus = 58;
+    response_set_mode_t response_set_mode = 59;
+    report_info_t report_info = 60;
+    work_mode_t set_work_mode = 61;
   }
-}
-
-enum Operation {
-  WRITE = 0;
-  READ = 1;
-  ERASE = 2;
-}
-
-enum OffPartId {
-  OFF_PART_DL_IMG = 0;
-  OFF_PART_UPDINFO_BACK = 1;
-  OFF_PART_UPDINFO = 2;
-  OFF_PART_NAKEDB = 3;
-  OFF_PART_FLASHDB = 4;
-  OFF_PART_UPD_APP_IMG = 5;
-  OFF_PART_UPD_BMS_IMG = 6;
-  OFF_PART_UPD_TMP_IMG = 7;
-  OFF_PART_DEV_INFO = 8;
-  OFF_PART_NAKEDB_BACK = 9;
-  OFF_PART_MAX = 10;
-}
-
-enum QCAppTestId {
-  QC_APP_ITEM_ON_CHARGESATSTION = 0;
-  QC_APP_TEST_X3_SPEAKER = 1;
-  QC_APP_TEST_STATIC_OBSTACLE_DETECTION = 2;
-  QC_APP_TEST_CHARGESTATION_TEMP = 3;
-  QC_APP_ITEM_KEY = 4;
-  QC_APP_TEST_BUMPER_FRONTLEFT = 5;
-  QC_APP_TEST_BUMPER_FRONTRIGHT = 6;
-  QC_APP_TEST_STOP = 7;
-  QC_APP_TEST_UNLOCK = 8;
-  QC_APP_TEST_BUZZ = 9;
-  QC_APP_TEST_LIFT = 10;
-  QC_APP_ITEM_SENEOR = 11;
-  QC_APP_TEST_ROLL_LEFT = 12;
-  QC_APP_TEST_ROLL_RIGHT = 13;
-  QC_APP_TEST_ULTRA_UNCOVER = 14;
-  QC_APP_TEST_ULTRA0_COVER = 15;
-  QC_APP_TEST_ULTRA1_COVER = 16;
-  QC_APP_TEST_ULTRA2_COVER = 17;
-  QC_APP_TEST_RAIN = 18;
-  QC_APP_ITEM_SQ = 19;
-  QC_APP_TEST_BLE_RSSI = 20;
-  QC_APP_TEST_SATELLITES_ROVER = 21;
-  QC_APP_TEST_SATELLITES_REF_STATION_L1 = 22;
-  QC_APP_TEST_SATELLITES_REF_STATION_L2 = 23;
-  QC_APP_TEST_SATELLITES_COMMON_VIEW = 24;
-  QC_APP_TEST_CNO_ROVER = 25;
-  QC_APP_TEST_CNO_REF_STATION = 26;
-  QC_APP_TEST_REF_STATION_LINK_STATUS = 27;
-  QC_APP_TEST_LOCATION_STATE = 28;
-  QC_APP_TEST_MAX = 29;
-}
-
-enum net_used_type {
-  NET_USED_TYPE_NONE = 0;
-  NET_USED_TYPE_WIFI = 1;
-  NET_USED_TYPE_MNET = 2;
-}
-
-enum rpt_info_type {
-  RIT_CONNECT = 0;
-  RIT_DEV_STA = 1;
-  RIT_RTK = 2;
-  RIT_DEV_LOCAL = 3;
-  RIT_WORK = 4;
-  RIT_FW_INFO = 5;
-  RIT_MAINTAIN = 6;
-  RIT_VISION_POINT = 7;
-  RIT_VIO = 8;
-  RIT_VISION_STATISTIC = 9;
-  RIT_BASESTATION_INFO = 10;
-}
-
-enum rpt_act {
-  RPT_START = 0;
-  RPT_STOP = 1;
-  RPT_KEEP = 2;
 }

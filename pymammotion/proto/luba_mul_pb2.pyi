@@ -74,6 +74,12 @@ class MulSetAudio(_message.Message):
     sex: MUL_SEX
     def __init__(self, at_switch: _Optional[int] = ..., au_language: _Optional[_Union[MUL_LANGUAGE, str]] = ..., sex: _Optional[_Union[MUL_SEX, str]] = ...) -> None: ...
 
+class MulSetEncode(_message.Message):
+    __slots__ = ["encode"]
+    ENCODE_FIELD_NUMBER: _ClassVar[int]
+    encode: bool
+    def __init__(self, encode: bool = ...) -> None: ...
+
 class MulSetVideo(_message.Message):
     __slots__ = ["position", "vi_switch"]
     POSITION_FIELD_NUMBER: _ClassVar[int]
@@ -125,10 +131,11 @@ class Setlamprsp(_message.Message):
     def __init__(self, set_ids: _Optional[int] = ..., result: _Optional[int] = ...) -> None: ...
 
 class SocMul(_message.Message):
-    __slots__ = ["audio_cfg", "get_lamp", "get_lamp_rsp", "set_audio", "set_lamp", "set_lamp_rsp", "set_video", "set_video_ack", "set_wiper", "set_wiper_ack"]
+    __slots__ = ["audio_cfg", "get_lamp", "get_lamp_rsp", "req_encode", "set_audio", "set_lamp", "set_lamp_rsp", "set_video", "set_video_ack", "set_wiper", "set_wiper_ack"]
     AUDIO_CFG_FIELD_NUMBER: _ClassVar[int]
     GET_LAMP_FIELD_NUMBER: _ClassVar[int]
     GET_LAMP_RSP_FIELD_NUMBER: _ClassVar[int]
+    REQ_ENCODE_FIELD_NUMBER: _ClassVar[int]
     SET_AUDIO_FIELD_NUMBER: _ClassVar[int]
     SET_LAMP_FIELD_NUMBER: _ClassVar[int]
     SET_LAMP_RSP_FIELD_NUMBER: _ClassVar[int]
@@ -139,6 +146,7 @@ class SocMul(_message.Message):
     audio_cfg: MulAudioCfg
     get_lamp: GetHeadlamp
     get_lamp_rsp: Getlamprsp
+    req_encode: MulSetEncode
     set_audio: MulSetAudio
     set_lamp: SetHeadlamp
     set_lamp_rsp: Setlamprsp
@@ -146,7 +154,7 @@ class SocMul(_message.Message):
     set_video_ack: MulSetVideoAck
     set_wiper: MulSetWiper
     set_wiper_ack: MulSetWiperAck
-    def __init__(self, set_audio: _Optional[_Union[MulSetAudio, _Mapping]] = ..., audio_cfg: _Optional[_Union[MulAudioCfg, _Mapping]] = ..., set_video: _Optional[_Union[MulSetVideo, _Mapping]] = ..., set_video_ack: _Optional[_Union[MulSetVideoAck, _Mapping]] = ..., set_wiper: _Optional[_Union[MulSetWiper, _Mapping]] = ..., set_wiper_ack: _Optional[_Union[MulSetWiperAck, _Mapping]] = ..., get_lamp: _Optional[_Union[GetHeadlamp, _Mapping]] = ..., set_lamp: _Optional[_Union[SetHeadlamp, _Mapping]] = ..., set_lamp_rsp: _Optional[_Union[Setlamprsp, _Mapping]] = ..., get_lamp_rsp: _Optional[_Union[Getlamprsp, _Mapping]] = ...) -> None: ...
+    def __init__(self, set_audio: _Optional[_Union[MulSetAudio, _Mapping]] = ..., audio_cfg: _Optional[_Union[MulAudioCfg, _Mapping]] = ..., set_video: _Optional[_Union[MulSetVideo, _Mapping]] = ..., set_video_ack: _Optional[_Union[MulSetVideoAck, _Mapping]] = ..., set_wiper: _Optional[_Union[MulSetWiper, _Mapping]] = ..., set_wiper_ack: _Optional[_Union[MulSetWiperAck, _Mapping]] = ..., get_lamp: _Optional[_Union[GetHeadlamp, _Mapping]] = ..., set_lamp: _Optional[_Union[SetHeadlamp, _Mapping]] = ..., set_lamp_rsp: _Optional[_Union[Setlamprsp, _Mapping]] = ..., get_lamp_rsp: _Optional[_Union[Getlamprsp, _Mapping]] = ..., req_encode: _Optional[_Union[MulSetEncode, _Mapping]] = ...) -> None: ...
 
 class MUL_LANGUAGE(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = []

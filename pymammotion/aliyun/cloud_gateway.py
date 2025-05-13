@@ -95,6 +95,7 @@ class CloudIOTGateway:
 
     def __init__(
         self,
+        mammotion_http: MammotionHTTP,
         connect_response: ConnectResponse | None = None,
         login_by_oauth_response: LoginByOAuthResponse | None = None,
         aep_response: AepResponse | None = None,
@@ -103,7 +104,7 @@ class CloudIOTGateway:
         dev_by_account: ListingDevByAccountResponse | None = None,
     ) -> None:
         """Initialize the CloudIOTGateway."""
-        self.mammotion_http: MammotionHTTP | None = None
+        self.mammotion_http: MammotionHTTP = mammotion_http
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
         self.domain = ALIYUN_DOMAIN
@@ -152,8 +153,9 @@ class CloudIOTGateway:
             hashlib.sha1,
         ).hexdigest()
 
-    async def get_region(self, country_code: str, auth_code: str):
+    async def get_region(self, country_code: str):
         """Get the region based on country code and auth code."""
+        auth_code = self.mammotion_http.login_info.authorization_code
 
         if self._region_response is not None:
             return self._region_response
@@ -347,8 +349,9 @@ class CloudIOTGateway:
                     return self._connect_response
                 raise LoginException(data)
 
-    async def login_by_oauth(self, country_code: str, auth_code: str):
+    async def login_by_oauth(self, country_code: str):
         """Login by OAuth."""
+        auth_code = self.mammotion_http.login_info.authorization_code
         region_url = self._region_response.data.oaApiGatewayEndpoint
 
         async with ClientSession() as session:

@@ -5,6 +5,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 import json
 import logging
+import time
 from typing import Any
 
 import betterproto
@@ -102,6 +103,7 @@ class MammotionCloud:
         self._key = key
         _LOGGER.debug("Sending command: %s", key)
         await self._mqtt_client.get_cloud_client().send_cloud_command(iot_id, command)
+        self.command_sent_time = time.time()
 
     async def _on_mqtt_message(self, topic: str, payload: str, iot_id: str) -> None:
         """Handle incoming MQTT messages."""

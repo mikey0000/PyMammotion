@@ -1,19 +1,38 @@
 from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
+COLLECT_ABNORMAL: CollectMotorState
+COLLECT_CLOSE: CollectMotorState
+COLLECT_OPEN: CollectMotorState
+COLLECT_STUCK: CollectMotorState
 DESCRIPTOR: _descriptor.FileDescriptor
+UNLOAD_CLOSE: UnloadMotorState
+UNLOAD_OPEN: UnloadMotorState
+UNLOAD_RUNNING: UnloadMotorState
+UNLOAD_STOP: UnloadMotorState
+
+class DrvCollectCtrlByHand(_message.Message):
+    __slots__ = ["collect_ctrl", "unload_ctrl"]
+    COLLECT_CTRL_FIELD_NUMBER: _ClassVar[int]
+    UNLOAD_CTRL_FIELD_NUMBER: _ClassVar[int]
+    collect_ctrl: int
+    unload_ctrl: int
+    def __init__(self, collect_ctrl: _Optional[int] = ..., unload_ctrl: _Optional[int] = ...) -> None: ...
 
 class DrvKnifeChangeReport(_message.Message):
-    __slots__ = ["end_high", "is_start", "start_high"]
+    __slots__ = ["cur_high", "end_high", "is_start", "start_high"]
+    CUR_HIGH_FIELD_NUMBER: _ClassVar[int]
     END_HIGH_FIELD_NUMBER: _ClassVar[int]
     IS_START_FIELD_NUMBER: _ClassVar[int]
     START_HIGH_FIELD_NUMBER: _ClassVar[int]
+    cur_high: int
     end_high: int
     is_start: int
     start_high: int
-    def __init__(self, is_start: _Optional[int] = ..., start_high: _Optional[int] = ..., end_high: _Optional[int] = ...) -> None: ...
+    def __init__(self, is_start: _Optional[int] = ..., start_high: _Optional[int] = ..., end_high: _Optional[int] = ..., cur_high: _Optional[int] = ...) -> None: ...
 
 class DrvKnifeHeight(_message.Message):
     __slots__ = ["knifeHeight"]
@@ -56,9 +75,10 @@ class DrvSrSpeed(_message.Message):
     def __init__(self, rw: _Optional[int] = ..., speed: _Optional[float] = ...) -> None: ...
 
 class MctlDriver(_message.Message):
-    __slots__ = ["bidire_knife_height_report", "bidire_speed_read_set", "mow_ctrl_by_hand", "rtk_cfg_req", "rtk_cfg_req_ack", "rtk_sys_mask_query", "rtk_sys_mask_query_ack", "toapp_knife_status", "toapp_knife_status_change", "todev_devmotion_ctrl", "todev_knife_height_set"]
+    __slots__ = ["bidire_knife_height_report", "bidire_speed_read_set", "collect_ctrl_by_hand", "mow_ctrl_by_hand", "rtk_cfg_req", "rtk_cfg_req_ack", "rtk_sys_mask_query", "rtk_sys_mask_query_ack", "toapp_knife_status", "toapp_knife_status_change", "todev_devmotion_ctrl", "todev_knife_height_set"]
     BIDIRE_KNIFE_HEIGHT_REPORT_FIELD_NUMBER: _ClassVar[int]
     BIDIRE_SPEED_READ_SET_FIELD_NUMBER: _ClassVar[int]
+    COLLECT_CTRL_BY_HAND_FIELD_NUMBER: _ClassVar[int]
     MOW_CTRL_BY_HAND_FIELD_NUMBER: _ClassVar[int]
     RTK_CFG_REQ_ACK_FIELD_NUMBER: _ClassVar[int]
     RTK_CFG_REQ_FIELD_NUMBER: _ClassVar[int]
@@ -70,6 +90,7 @@ class MctlDriver(_message.Message):
     TODEV_KNIFE_HEIGHT_SET_FIELD_NUMBER: _ClassVar[int]
     bidire_knife_height_report: DrvKnifeHeight
     bidire_speed_read_set: DrvSrSpeed
+    collect_ctrl_by_hand: DrvCollectCtrlByHand
     mow_ctrl_by_hand: DrvMowCtrlByHand
     rtk_cfg_req: rtk_cfg_req_t
     rtk_cfg_req_ack: rtk_cfg_req_ack_t
@@ -79,7 +100,7 @@ class MctlDriver(_message.Message):
     toapp_knife_status_change: DrvKnifeChangeReport
     todev_devmotion_ctrl: DrvMotionCtrl
     todev_knife_height_set: DrvKnifeHeight
-    def __init__(self, todev_devmotion_ctrl: _Optional[_Union[DrvMotionCtrl, _Mapping]] = ..., todev_knife_height_set: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., bidire_speed_read_set: _Optional[_Union[DrvSrSpeed, _Mapping]] = ..., bidire_knife_height_report: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., toapp_knife_status: _Optional[_Union[DrvKnifeStatus, _Mapping]] = ..., mow_ctrl_by_hand: _Optional[_Union[DrvMowCtrlByHand, _Mapping]] = ..., rtk_cfg_req: _Optional[_Union[rtk_cfg_req_t, _Mapping]] = ..., rtk_cfg_req_ack: _Optional[_Union[rtk_cfg_req_ack_t, _Mapping]] = ..., rtk_sys_mask_query: _Optional[_Union[rtk_sys_mask_query_t, _Mapping]] = ..., rtk_sys_mask_query_ack: _Optional[_Union[rtk_sys_mask_query_ack_t, _Mapping]] = ..., toapp_knife_status_change: _Optional[_Union[DrvKnifeChangeReport, _Mapping]] = ...) -> None: ...
+    def __init__(self, todev_devmotion_ctrl: _Optional[_Union[DrvMotionCtrl, _Mapping]] = ..., todev_knife_height_set: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., bidire_speed_read_set: _Optional[_Union[DrvSrSpeed, _Mapping]] = ..., bidire_knife_height_report: _Optional[_Union[DrvKnifeHeight, _Mapping]] = ..., toapp_knife_status: _Optional[_Union[DrvKnifeStatus, _Mapping]] = ..., mow_ctrl_by_hand: _Optional[_Union[DrvMowCtrlByHand, _Mapping]] = ..., rtk_cfg_req: _Optional[_Union[rtk_cfg_req_t, _Mapping]] = ..., rtk_cfg_req_ack: _Optional[_Union[rtk_cfg_req_ack_t, _Mapping]] = ..., rtk_sys_mask_query: _Optional[_Union[rtk_sys_mask_query_t, _Mapping]] = ..., rtk_sys_mask_query_ack: _Optional[_Union[rtk_sys_mask_query_ack_t, _Mapping]] = ..., toapp_knife_status_change: _Optional[_Union[DrvKnifeChangeReport, _Mapping]] = ..., collect_ctrl_by_hand: _Optional[_Union[DrvCollectCtrlByHand, _Mapping]] = ...) -> None: ...
 
 class rtk_cfg_req_ack_t(_message.Message):
     __slots__ = ["cmd_length", "cmd_response"]
@@ -110,3 +131,9 @@ class rtk_sys_mask_query_t(_message.Message):
     SAT_SYSTEM_FIELD_NUMBER: _ClassVar[int]
     sat_system: int
     def __init__(self, sat_system: _Optional[int] = ...) -> None: ...
+
+class CollectMotorState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class UnloadMotorState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []

@@ -35,7 +35,8 @@ if __name__ == "__main__":
     CLIENT_ID = os.environ.get("CLIENT_ID")
     IOT_TOKEN = os.environ.get("IOT_TOKEN")
     REGION = os.environ.get("REGION")
-    cloud_client = CloudIOTGateway()
+    mammotion_http = MammotionHTTP()
+    cloud_client = CloudIOTGateway(mammotion_http)
     luba = MammotionMQTT(
         iot_token=IOT_TOKEN or "",
         region_id=REGION or "",

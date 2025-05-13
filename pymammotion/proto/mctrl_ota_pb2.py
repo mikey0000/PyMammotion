@@ -13,23 +13,33 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!pymammotion/proto/mctrl_ota.proto\"k\n\x08\x62\x61seInfo\x12\x13\n\x0b\x64\x65v_version\x18\x01 \x01(\t\x12\x12\n\ndev_status\x18\x02 \x01(\x05\x12\x10\n\x08\x62\x61tt_val\x18\x03 \x01(\x05\x12\x13\n\x0binit_status\x18\x04 \x01(\x05\x12\x0f\n\x07is_tilt\x18\x05 \x01(\x05\"\\\n\x07otaInfo\x12\r\n\x05otaid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x10\n\x08progress\x18\x03 \x01(\x05\x12\x0e\n\x06result\x18\x04 \x01(\x05\x12\x0f\n\x07message\x18\x05 \x01(\t\"%\n\ngetInfoReq\x12\x17\n\x04type\x18\x01 \x01(\x0e\x32\t.infoType\"q\n\ngetInfoRsp\x12\x0e\n\x06result\x18\x01 \x01(\x05\x12\x17\n\x04type\x18\x02 \x01(\x0e\x32\t.infoType\x12\x19\n\x04\x62\x61se\x18\x03 \x01(\x0b\x32\t.baseInfoH\x00\x12\x17\n\x03ota\x18\x04 \x01(\x0b\x32\x08.otaInfoH\x00\x42\x06\n\x04info\"l\n\x07MctlOta\x12)\n\x12todev_get_info_req\x18\x01 \x01(\x0b\x32\x0b.getInfoReqH\x00\x12)\n\x12toapp_get_info_rsp\x18\x02 \x01(\x0b\x32\x0b.getInfoRspH\x00\x42\x0b\n\tSubOtaMsg*#\n\x08infoType\x12\x0b\n\x07IT_BASE\x10\x00\x12\n\n\x06IT_OTA\x10\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!pymammotion/proto/mctrl_ota.proto\"+\n\x08uplink_t\x12\x0f\n\x07pkg_seq\x18\x01 \x01(\x05\x12\x0e\n\x06status\x18\x02 \x01(\x05\":\n\ndownlink_t\x12\r\n\x05\x66w_id\x18\x01 \x01(\x05\x12\x0f\n\x07pkg_seq\x18\x02 \x01(\x05\x12\x0c\n\x04\x64\x61ta\x18\x03 \x03(\x05\"p\n\x0e\x66wDownloadCtrl\x12\x1b\n\x06uplink\x18\x02 \x01(\x0b\x32\t.uplink_tH\x00\x12\x1f\n\x08\x64ownlink\x18\x03 \x01(\x0b\x32\x0b.downlink_tH\x00\x12\x0b\n\x03\x63md\x18\x01 \x01(\x05\x42\x13\n\x11SubFwDownloadCtrl\"k\n\x08\x62\x61seInfo\x12\x13\n\x0b\x64\x65v_version\x18\x01 \x01(\t\x12\x12\n\ndev_status\x18\x02 \x01(\x05\x12\x10\n\x08\x62\x61tt_val\x18\x03 \x01(\x05\x12\x13\n\x0binit_status\x18\x04 \x01(\x05\x12\x0f\n\x07is_tilt\x18\x05 \x01(\x05\"\\\n\x07otaInfo\x12\r\n\x05otaid\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x10\n\x08progress\x18\x03 \x01(\x05\x12\x0e\n\x06result\x18\x04 \x01(\x05\x12\x0f\n\x07message\x18\x05 \x01(\t\"%\n\ngetInfoReq\x12\x17\n\x04type\x18\x01 \x01(\x0e\x32\t.infoType\"q\n\ngetInfoRsp\x12\x19\n\x04\x62\x61se\x18\x03 \x01(\x0b\x32\t.baseInfoH\x00\x12\x17\n\x03ota\x18\x04 \x01(\x0b\x32\x08.otaInfoH\x00\x12\x0e\n\x06result\x18\x01 \x01(\x05\x12\x17\n\x04type\x18\x02 \x01(\x0e\x32\t.infoTypeB\x06\n\x04info\"v\n\nFotaInfo_t\x12\x14\n\x0cneed_ota_num\x18\x01 \x01(\x05\x12\x19\n\x11need_ota_img_size\x18\x02 \x01(\x05\x12\x11\n\tota_otype\x18\x03 \x01(\x05\x12\x0f\n\x07ota_oid\x18\x04 \x01(\t\x12\x13\n\x0bota_version\x18\x05 \x01(\t\"\x81\x01\n\rFotaSubInfo_t\x12\x18\n\x10sub_mod_ota_flag\x18\x01 \x01(\x05\x12\x12\n\nsub_mod_id\x18\x02 \x01(\x05\x12\x14\n\x0csub_img_size\x18\x03 \x01(\x05\x12\x17\n\x0fsub_mod_version\x18\x04 \x01(\t\x12\x13\n\x0bsub_img_url\x18\x05 \x01(\t\"\xe4\x01\n\x07MctlOta\x12)\n\x12todev_get_info_req\x18\x01 \x01(\x0b\x32\x0b.getInfoReqH\x00\x12)\n\x12toapp_get_info_rsp\x18\x02 \x01(\x0b\x32\x0b.getInfoRspH\x00\x12+\n\x10\x66w_download_ctrl\x18\x03 \x01(\x0b\x32\x0f.fwDownloadCtrlH\x00\x12 \n\tfota_info\x18\x04 \x01(\x0b\x32\x0b.FotaInfo_tH\x00\x12\'\n\rfota_sub_info\x18\x05 \x01(\x0b\x32\x0e.FotaSubInfo_tH\x00\x42\x0b\n\tSubOtaMsg*#\n\x08infoType\x12\x0b\n\x07IT_BASE\x10\x00\x12\n\n\x06IT_OTA\x10\x01\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'pymammotion.proto.mctrl_ota_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _INFOTYPE._serialized_start=504
-  _INFOTYPE._serialized_end=539
-  _BASEINFO._serialized_start=37
-  _BASEINFO._serialized_end=144
-  _OTAINFO._serialized_start=146
-  _OTAINFO._serialized_end=238
-  _GETINFOREQ._serialized_start=240
-  _GETINFOREQ._serialized_end=277
-  _GETINFORSP._serialized_start=279
-  _GETINFORSP._serialized_end=392
-  _MCTLOTA._serialized_start=394
-  _MCTLOTA._serialized_end=502
+  _INFOTYPE._serialized_start=1096
+  _INFOTYPE._serialized_end=1131
+  _UPLINK_T._serialized_start=37
+  _UPLINK_T._serialized_end=80
+  _DOWNLINK_T._serialized_start=82
+  _DOWNLINK_T._serialized_end=140
+  _FWDOWNLOADCTRL._serialized_start=142
+  _FWDOWNLOADCTRL._serialized_end=254
+  _BASEINFO._serialized_start=256
+  _BASEINFO._serialized_end=363
+  _OTAINFO._serialized_start=365
+  _OTAINFO._serialized_end=457
+  _GETINFOREQ._serialized_start=459
+  _GETINFOREQ._serialized_end=496
+  _GETINFORSP._serialized_start=498
+  _GETINFORSP._serialized_end=611
+  _FOTAINFO_T._serialized_start=613
+  _FOTAINFO_T._serialized_end=731
+  _FOTASUBINFO_T._serialized_start=734
+  _FOTASUBINFO_T._serialized_end=863
+  _MCTLOTA._serialized_start=866
+  _MCTLOTA._serialized_end=1094
 # @@protoc_insertion_point(module_scope)

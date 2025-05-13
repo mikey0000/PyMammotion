@@ -5,7 +5,7 @@ import traceback
 
 from pymammotion.mqtt.mammotion_mqtt import logger
 from pymammotion.data.model.account import Credentials
-from pymammotion.mammotion.devices.mammotion import create_devices, ConnectionPreference
+from pymammotion.mammotion.devices.mammotion import ConnectionPreference
 
 logger = logging.getLogger(__name__)
 

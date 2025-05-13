@@ -300,6 +300,7 @@ class PosType(IntEnum):
     DUMPING_AREA_INSIDE = 8
     DUMPING_OUTSIDE = 10
     UNKNOWN = 11
+    NO_AREAS = 100
     OBS_ON = 2
     TURN_AREA_INSIDE = 4
     VIRTUAL_INSIDE = 6

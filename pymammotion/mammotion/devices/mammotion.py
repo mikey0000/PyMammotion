@@ -30,6 +30,8 @@ class MammotionMixedDeviceManager:
     def __init__(
         self,
         name: str,
+        iot_id: str,
+        cloud_client: CloudIOTGateway,
         mammotion_http: MammotionHTTP,
         cloud_device: Device | None = None,
         ble_device: BLEDevice | None = None,
@@ -39,6 +41,8 @@ class MammotionMixedDeviceManager:
         self._ble_device: MammotionBaseBLEDevice | None = None
         self._cloud_device: MammotionBaseCloudDevice | None = None
         self.name = name
+        self.iot_id = iot_id
+        self.cloud_client = cloud_client
         self._state_manager = StateManager(MowingDevice())
         self._state_manager.get_device().name = name
         self.add_ble(cloud_device, ble_device)
@@ -177,7 +181,7 @@ class Mammotion:
                 return
             mammotion_http = exists.cloud_client.mammotion_http
             await mammotion_http.refresh_login(account, password)
-            await self.connect_iot(mammotion_http, exists.cloud_client)
+            await self.connect_iot(exists.cloud_client)
 
             if not exists.is_connected():
                 loop = asyncio.get_running_loop()
@@ -212,6 +216,8 @@ class Mammotion:
             if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
                 mixed_device = MammotionMixedDeviceManager(
                     name=device.deviceName,
+                    iot_id=device.iotId,
+                    cloud_client=mqtt_client.cloud_client,
                     mammotion_http=mqtt_client.cloud_client.mammotion_http,
                     cloud_device=device,
                     mqtt=mqtt_client,
@@ -236,19 +242,19 @@ class Mammotion:
 
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
-        cloud_client = CloudIOTGateway()
         mammotion_http = MammotionHTTP()
+        cloud_client = CloudIOTGateway(mammotion_http)
         await mammotion_http.login(account, password)
-        await self.connect_iot(mammotion_http, cloud_client)
+        await self.connect_iot(cloud_client)
         return cloud_client
 
     @staticmethod
-    async def connect_iot(mammotion_http: MammotionHTTP, cloud_client: CloudIOTGateway) -> None:
+    async def connect_iot(cloud_client: CloudIOTGateway) -> None:
+        mammotion_http = cloud_client.mammotion_http
         country_code = mammotion_http.login_info.userInformation.domainAbbreviation
-        cloud_client.set_http(mammotion_http)
-        await cloud_client.get_region(country_code, mammotion_http.login_info.authorization_code)
+        await cloud_client.get_region(country_code)
         await cloud_client.connect()
-        await cloud_client.login_by_oauth(country_code, mammotion_http.login_info.authorization_code)
+        await cloud_client.login_by_oauth(country_code)
         await cloud_client.aep_handle()
         await cloud_client.session_by_auth_code()
         await cloud_client.list_binding_by_account()

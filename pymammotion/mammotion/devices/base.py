@@ -1,6 +1,8 @@
 from abc import abstractmethod
 import asyncio
+import datetime
 import logging
+import time
 from typing import Any
 
 import betterproto
@@ -33,6 +35,8 @@ def find_next_integer(lst: list[int], current_hash: int) -> int | None:
 
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
+
+    command_sent_time: datetime = time.time()
 
     def __init__(self, state_manager: StateManager, cloud_device: Device) -> None:
         """Initialize MammotionBaseDevice."""

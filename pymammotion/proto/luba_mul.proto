@@ -108,6 +108,10 @@ message MulSetWiperAck {
   MUL_WIPER_ERROR_CODE error_code = 1;
 }
 
+message MulSetEncode {
+  bool encode = 1;
+}
+
 message SocMul {
   oneof SubMul {
     MulSetAudio set_audio = 1;
@@ -120,5 +124,6 @@ message SocMul {
     SetHeadlamp set_lamp = 8;
     Setlamprsp set_lamp_rsp = 9;
     Getlamprsp get_lamp_rsp = 10;
+    MulSetEncode req_encode = 11;
   }
 }

@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 import logging
+import time
 from typing import Any, cast
 from uuid import UUID
 
@@ -366,6 +367,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         assert self._client is not None
         _LOGGER.debug("%s: Sending command: %s", self.name, key)
         await self._message.post_custom_data_bytes(command)
+        self.command_sent_time = time.time()
 
     def get_address(self) -> str:
         """Return address of device."""

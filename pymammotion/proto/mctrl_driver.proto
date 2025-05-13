@@ -1,5 +1,19 @@
 syntax = "proto3";
 
+enum CollectMotorState {
+  COLLECT_CLOSE = 0;
+  COLLECT_OPEN = 1;
+  COLLECT_STUCK = 2;
+  COLLECT_ABNORMAL = 3;
+}
+
+enum UnloadMotorState {
+  UNLOAD_CLOSE = 0;
+  UNLOAD_OPEN = 1;
+  UNLOAD_STOP = 2;
+  UNLOAD_RUNNING = 3;
+}
+
 message DrvMotionCtrl {
   int32 setLinearSpeed = 1;
   int32 setAngularSpeed = 2;
@@ -22,6 +36,12 @@ message DrvKnifeChangeReport {
   int32 is_start = 1;
   int32 start_high = 2;
   int32 end_high = 3;
+  int32 cur_high = 4;
+}
+
+message DrvCollectCtrlByHand {
+  int32 collect_ctrl = 1;
+  int32 unload_ctrl = 2;
 }
 
 message DrvMowCtrlByHand {
@@ -63,5 +83,6 @@ message MctlDriver {
     rtk_sys_mask_query_t rtk_sys_mask_query = 9;
     rtk_sys_mask_query_ack_t rtk_sys_mask_query_ack = 10;
     DrvKnifeChangeReport toapp_knife_status_change = 11;
+    DrvCollectCtrlByHand collect_ctrl_by_hand = 12;
   }
 }

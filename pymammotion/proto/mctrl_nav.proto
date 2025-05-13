@@ -150,8 +150,10 @@ message NavGetCommData {
   string reserved = 11;
 }
 
-message AreaLabel {
-  string label = 1;
+message NavGetNameTime {
+  string name = 1;
+  fixed64 create_time = 2;
+  fixed64 modify_time = 3;
 }
 
 message NavGetCommDataAck {
@@ -169,7 +171,7 @@ message NavGetCommDataAck {
   int32 dataLen = 12;
   repeated CommDataCouple dataCouple = 13;
   string reserved = 14;
-  AreaLabel areaLabel = 15;
+  NavGetNameTime nameTime = 15;
 }
 
 message NavReqCoverPath {
@@ -305,6 +307,7 @@ message NavUnableTimeSet {
   string unableEndTime = 4;
   int32 result = 5;
   string reserved = 6;
+  int32 trigger = 7;
 }
 
 message chargePileType {
@@ -345,6 +348,7 @@ message WorkReportInfoAck {
   int32 work_result = 9;
   int32 total_ack_num = 10;
   int32 current_ack_num = 11;
+  int32 job_content = 12;
 }
 
 message app_request_cover_paths_t {
@@ -419,6 +423,34 @@ message costmap_t {
   repeated int32 costmap = 7;
 }
 
+message svg_message_t {
+  double x_move = 1;
+  double y_move = 2;
+  double scale = 3;
+  double rotate = 4;
+  double base_width_m = 5;
+  double base_height_m = 6;
+  int32 base_width_pix = 7;
+  int32 base_height_pix = 8;
+  string svg_file_name = 9;
+  string svg_file_data = 10;
+  int32 name_count = 11;
+  int32 data_count = 12;
+  bool hide_svg = 13;
+}
+
+message svg_message_ack_t {
+  int32 pver = 1;
+  int32 subCmd = 2;
+  int32 totalFrame = 3;
+  int32 currentFrame = 4;
+  fixed64 dataHash = 5;
+  fixed64 paternalHashA = 6;
+  int32 type = 7;
+  int32 result = 8;
+  svg_message_t svg_message = 9;
+}
+
 message plan_task_name_id_t {
   string id = 1;
   string name = 2;
@@ -428,59 +460,49 @@ message nav_get_all_plan_task {
   repeated plan_task_name_id_t tasks = 1;
 }
 
-// Define the NavTaskCtrlAck message
-message NavTaskCtrlAck {
-    int32 type = 1;
-    int32 action = 2;
-    int32 result = 3;
-    int32 nav_state = 4;
-    string reserved = 5;
-}
-
-message NavMapNameMsg {
-    int32 rw = 1;  // Represents RW field
-    fixed64 hash = 2;  // Represents HASH field
-    string name = 3;  // Represents NAME field
-    int32 result = 4;  // Represents RESULT field
-    string device_id = 5;  // Represents DEVICEID field
-}
-
-message svg_message_t {
-    double x_move = 1;
-    double y_move = 2;
-    double scale = 3;
-    double rotate = 4;
-    double base_width_m = 5;
-    int32 base_width_pix = 7;
-    double base_height_m = 6;
-    int32 base_height_pix = 8;
-    int32 data_count = 12;
-    bool hide_svg = 13;
-    int32 name_count = 11;
-    string svg_file_name = 9;
-    string svg_file_data = 10;
-}
-
-message SvgMessageAckT {
-    int32 pver = 1;          // Represents PVER field
-    int32 sub_cmd = 2;       // Represents SUBCMD field
-    int32 total_frame = 3;   // Represents TOTALFRAME field
-    int32 current_frame = 4; // Represents CURRENTFRAME field
-    fixed64 data_hash = 5;     // Represents DATAHASH field
-    fixed64 paternal_hash_a = 6; // Represents PATERNALHASHA field
-    int32 type = 7;          // Represents TYPE field
-    int32 result = 8;        // Represents RESULT field
-    svg_message_t svg_message = 9; // Represents SVG_MESSAGE field
-}
-
-message AreaHashName {
-    string name = 2;
-    fixed64 hash = 1;
+message area_hash_name {
+  fixed64 hash = 1;
+  string name = 2;
 }
 
 message AppGetAllAreaHashName {
-    string device_id = 1;           // Represents DEVICEID field
-    repeated AreaHashName hashnames = 2; // Represents HASHNAMES field
+  string deviceId = 1;
+  repeated area_hash_name hashnames = 2;
+}
+
+message NavTaskCtrlAck {
+  int32 type = 1;
+  int32 action = 2;
+  int32 result = 3;
+  int32 nav_state = 4;
+  string reserved = 5;
+}
+
+message NavMapNameMsg {
+  int32 rw = 1;
+  fixed64 hash = 2;
+  string name = 3;
+  int32 result = 4;
+  string deviceId = 5;
+}
+
+message NavEdgePoints {
+  int32 result = 1;
+  int32 action = 2;
+  int32 type = 3;
+  fixed64 Hash = 4;
+  int32 totalFrame = 5;
+  int32 currentFrame = 6;
+  repeated CommDataCouple dataCouple = 7;
+}
+
+message NavEdgePointsAck {
+  int32 result = 1;
+  int32 action = 2;
+  int32 type = 3;
+  fixed64 Hash = 4;
+  int32 totalFrame = 5;
+  int32 currentFrame = 6;
 }
 
 message MctlNav {
@@ -543,8 +565,10 @@ message MctlNav {
     nav_get_all_plan_task all_plan_task = 56;
     NavTaskCtrlAck todev_taskctrl_ack = 57;
     NavMapNameMsg toapp_map_name_msg = 58;
-    SvgMessageAckT todev_svg_msg = 59;
-    SvgMessageAckT toapp_svg_msg = 60;
+    svg_message_ack_t todev_svg_msg = 59;
+    svg_message_ack_t toapp_svg_msg = 60;
     AppGetAllAreaHashName toapp_all_hash_name = 61;
+    NavEdgePoints toapp_edge_points = 62;
+    NavEdgePointsAck toapp_edge_points_ack = 63;
   }
 }

@@ -3,8 +3,8 @@ syntax = "proto3";
 message perception_obstacles_t {
   int32 label = 1;
   int32 num = 2;
-  repeated int32 points_x = 3;
-  repeated int32 points_y = 4;
+  repeated sint32 points_x = 3;
+  repeated sint32 points_y = 4;
 }
 
 message perception_obstacles_visualization_t {
