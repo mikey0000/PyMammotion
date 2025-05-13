@@ -168,6 +168,12 @@ class StateManager:
                 converted_list = [AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames]
                 self._device.map.area_name = converted_list
 
+            case "bidire_reqconver_path":
+                work_settings: NavReqCoverPath = nav_msg[1]
+                self._device.work = CurrentTaskSettings.from_dict(
+                    work_settings.to_dict(casing=betterproto.Casing.SNAKE)
+                )
+
     def _update_sys_data(self, message) -> None:
         """Update system."""
         sys_msg = betterproto.which_one_of(message.sys, "SubSysMsg")
@@ -209,11 +215,6 @@ class StateManager:
                     if resp.res == DrvDevInfoResult.DRV_RESULT_SUC and resp.id == 1 and resp.type == 6:
                         self._device.mower_state.swversion = resp.info
                         self._device.device_firmwares.device_version = resp.info
-            case "bidire_reqconver_path":
-                work_settings: NavReqCoverPath = net_msg[1]
-                self._device.work = CurrentTaskSettings.from_dict(
-                    work_settings.to_dict(casing=betterproto.Casing.SNAKE)
-                )
 
     def _update_mul_data(self, message) -> None:
         pass

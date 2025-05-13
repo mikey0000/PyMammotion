@@ -94,9 +94,17 @@ class MowingDevice(DataClassORJSONMixin):
                     self.location.work_zone = (
                         location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
                     )
+                # if location.bol_hash:
+                #     for loc in toapp_report_data.locations:
+                #         if loc.bol_hash:
+                #             if loc.bol_hash != location.bol_hash:
+                #                 self.map = HashList()
+                    #MurMurHashUtil.hash_unsigned_list(list(self.map.area.keys()))
 
         if toapp_report_data.fw_info:
             self.update_device_firmwares(toapp_report_data.fw_info)
+
+
 
         self.report_data.update(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 
