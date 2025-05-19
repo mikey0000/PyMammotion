@@ -125,14 +125,6 @@ class MessageSystem(AbstractMessage, ABC):
             return self.messageNavigation.allpowerfull_rw_adapter_x3(rw_id, context, rw)
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=rw_id, context=context, rw=rw))
         logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")
-        if rw_id == 5:
-            # TODO investigate if the original code makes any difference to this call.
-            """
-            LubaMsgOuterClass.LubaMsg.Builder protoBufBuilderSet = getProtoBufBuilderSet(LubaMsgOuterClass.MsgCmdType.EMBED_SYS, LubaMsgOuterClass.MsgDevice.DEV_MAINCTL, LubaMsgOuterClass.MsgAttr.REQ);
-            protoBufBuilderSet.setSys(build);
-            sendMsg(protoBufBuilderSet, 122, true, "发送指令--9通用读写命令id=" + i + ",context=" + i2 + ",rw=" + i3);
-            """
-            return self.send_order_msg_sys(build)
         return self.send_order_msg_sys(build)
 
     def traverse_mode(self, context: int) -> bytes:
@@ -145,8 +137,8 @@ class MessageSystem(AbstractMessage, ABC):
     def turning_mode(self, context: int) -> bytes:
         """Sets the traversal mode back to charger."""
         # setTurnAroundMode
-        # 0 multipoint turn
-        # 1 zero turn
+        # 0 zero turn
+        # 1 multipoint turn
         return self.allpowerfull_rw(6, context, 1)
 
     # Commented out as not needed and too many refs to try fix up
