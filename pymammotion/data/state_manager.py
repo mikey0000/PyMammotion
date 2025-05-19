@@ -11,7 +11,6 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, Plan, SvgMessage
-from pymammotion.data.model.mowing_modes import TraversalMode, TurningMode
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
@@ -181,9 +180,9 @@ class StateManager:
                     case 3:
                         self._device.mower_state.rain_detection = bool(settings.context)
                     case 6:
-                        self._device.mower_state.turning_mode = TurningMode(settings.context)
+                        self._device.mower_state.turning_mode = settings.context
                     case 7:
-                        self._device.mower_state.traversal_mode = TraversalMode(settings.context)
+                        self._device.mower_state.traversal_mode = settings.context
 
     def _update_sys_data(self, message) -> None:
         """Update system."""
