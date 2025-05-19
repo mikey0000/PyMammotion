@@ -43,12 +43,14 @@ class MowingDevice(DataClassORJSONMixin):
         """Update the device based on which buffer we are reading from."""
         match buffer_list.update_buf_data[0]:
             case 1:
-                # 4 speed
-                self.location.RTK.latitude = parse_double(buffer_list.update_buf_data[5], 8.0)
-                self.location.RTK.longitude = parse_double(buffer_list.update_buf_data[6], 8.0)
-                self.location.dock.latitude = parse_double(buffer_list.update_buf_data[7], 4.0)
-                self.location.dock.longitude = parse_double(buffer_list.update_buf_data[8], 4.0)
-                self.location.dock.rotation = buffer_list.update_buf_data[3] + 180
+                # 4 speed?
+                if buffer_list.update_buf_data[5] != 0:
+                    self.location.RTK.latitude = parse_double(buffer_list.update_buf_data[5], 8.0)
+                    self.location.RTK.longitude = parse_double(buffer_list.update_buf_data[6], 8.0)
+                if buffer_list.update_buf_data[7] != 0:
+                    self.location.dock.latitude = parse_double(buffer_list.update_buf_data[7], 4.0)
+                    self.location.dock.longitude = parse_double(buffer_list.update_buf_data[8], 4.0)
+                    self.location.dock.rotation = buffer_list.update_buf_data[3] + 180
             case 2:
                 self.err_code_list.clear()
                 self.err_code_list_time.clear()
@@ -99,12 +101,10 @@ class MowingDevice(DataClassORJSONMixin):
                 #         if loc.bol_hash:
                 #             if loc.bol_hash != location.bol_hash:
                 #                 self.map = HashList()
-                    #MurMurHashUtil.hash_unsigned_list(list(self.map.area.keys()))
+                # MurMurHashUtil.hash_unsigned_list(list(self.map.area.keys()))
 
         if toapp_report_data.fw_info:
             self.update_device_firmwares(toapp_report_data.fw_info)
-
-
 
         self.report_data.update(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 

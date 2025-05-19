@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pymammotion.data.model.mowing_modes import TraversalMode, TurningMode
+
 
 @dataclass
 class SideLight(DataClassORJSONMixin):
@@ -17,6 +19,9 @@ class SideLight(DataClassORJSONMixin):
 @dataclass
 class MowerInfo(DataClassORJSONMixin):
     blade_status: bool = False
+    rain_detection: bool = False
+    traversal_mode: TraversalMode = TraversalMode.direct
+    turning_mode: TurningMode = TurningMode.zero_turn
     side_led: SideLight = field(default_factory=SideLight)
     collector_installation_status: bool = False
     model: str = ""

@@ -262,8 +262,11 @@ class MammotionBaseDevice:
 
     async def async_read_settings(self) -> None:
         """Read settings from device."""
+        # no cutting in rain nav_sys_param_cmd (id 3 context 1/0)
         await self.queue_command("allpowerfull_rw", rw_id=3, context=1, rw=0)
+        # ??
         await self.queue_command("allpowerfull_rw", rw_id=4, context=1, rw=0)
+        # turning mode nav_sys_param_cmd (id 6, context 1/0)
         await self.queue_command("allpowerfull_rw", rw_id=6, context=1, rw=0)
         # traversal mode
         await self.queue_command("allpowerfull_rw", rw_id=7, context=1, rw=0)

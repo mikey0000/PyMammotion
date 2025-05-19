@@ -47,8 +47,8 @@ class TraversalMode(IntEnum):
 class TurningMode(IntEnum):
     """Turning mode on corners."""
 
-    multipoint = 0
-    zero_turn = 1
+    zero_turn = 0
+    multipoint = 1
 
 
 class DetectionStrategy(IntEnum):

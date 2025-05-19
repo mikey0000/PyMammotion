@@ -11,6 +11,7 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
 from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, Plan, SvgMessage
+from pymammotion.data.model.mowing_modes import TraversalMode, TurningMode
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
@@ -25,6 +26,7 @@ from pymammotion.proto import (
     NavGetHashListAck,
     NavPlanJobSet,
     NavReqCoverPath,
+    NavSysParamMsg,
     SvgMessageAckT,
     TimeCtrlLight,
     WifiIotStatusReport,
@@ -173,6 +175,15 @@ class StateManager:
                 self._device.work = CurrentTaskSettings.from_dict(
                     work_settings.to_dict(casing=betterproto.Casing.SNAKE)
                 )
+            case "nav_sys_param_cmd":
+                settings: NavSysParamMsg = nav_msg[1]
+                match settings.id:
+                    case 3:
+                        self._device.mower_state.rain_detection = bool(settings.context)
+                    case 6:
+                        self._device.mower_state.turning_mode = TurningMode(settings.context)
+                    case 7:
+                        self._device.mower_state.traversal_mode = TraversalMode(settings.context)
 
     def _update_sys_data(self, message) -> None:
         """Update system."""
