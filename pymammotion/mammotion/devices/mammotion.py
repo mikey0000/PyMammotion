@@ -133,21 +133,22 @@ class MammotionDeviceManager:
         return self.devices.get(mammotion_device_name)
 
     async def remove_device(self, name: str) -> None:
-        device_for_removal = self.devices.pop(name)
-        loop = asyncio.get_running_loop()
-        if device_for_removal.has_cloud():
-            should_disconnect = {
-                device
-                for key, device in self.devices.items()
-                if device.cloud() is not None and device.cloud().mqtt == device_for_removal.cloud().mqtt
-            }
-            if len(should_disconnect) == 0:
-                await loop.run_in_executor(None, device_for_removal.cloud().mqtt.disconnect)
-            await device_for_removal.cloud().stop()
-        if device_for_removal.has_ble():
-            await device_for_removal.ble().stop()
+        if self.devices.get(name):
+            device_for_removal = self.devices.pop(name)
+            loop = asyncio.get_running_loop()
+            if device_for_removal.has_cloud():
+                should_disconnect = {
+                    device
+                    for key, device in self.devices.items()
+                    if device.cloud() is not None and device.cloud().mqtt == device_for_removal.cloud().mqtt
+                }
+                if len(should_disconnect) == 0:
+                    await loop.run_in_executor(None, device_for_removal.cloud().mqtt.disconnect)
+                await device_for_removal.cloud().stop()
+            if device_for_removal.has_ble():
+                await device_for_removal.ble().stop()
 
-        del device_for_removal
+            del device_for_removal
 
 
 class Mammotion:

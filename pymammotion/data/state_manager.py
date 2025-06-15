@@ -20,12 +20,14 @@ from pymammotion.proto import (
     DeviceProductTypeInfoT,
     DrvDevInfoResp,
     DrvDevInfoResult,
+    GetNetworkInfoRsp,
     LubaMsg,
     NavGetCommDataAck,
     NavGetHashListAck,
     NavPlanJobSet,
     NavReqCoverPath,
     NavSysParamMsg,
+    NavUnableTimeSet,
     SvgMessageAckT,
     TimeCtrlLight,
     WifiIotStatusReport,
@@ -183,6 +185,10 @@ class StateManager:
                         self._device.mower_state.turning_mode = settings.context
                     case 7:
                         self._device.mower_state.traversal_mode = settings.context
+            case "todev_unable_time_set":
+                nav_non_work_time: NavUnableTimeSet = nav_msg[1]
+                self._device.non_work_hours.start_time = nav_non_work_time.unable_start_time
+                self._device.non_work_hours.end_time = nav_non_work_time.unable_end_time
 
     def _update_sys_data(self, message) -> None:
         """Update system."""
@@ -225,6 +231,9 @@ class StateManager:
                     if resp.res == DrvDevInfoResult.DRV_RESULT_SUC and resp.id == 1 and resp.type == 6:
                         self._device.mower_state.swversion = resp.info
                         self._device.device_firmwares.device_version = resp.info
+            case "toapp_networkinfo_rsp":
+                get_network_info_resp: GetNetworkInfoRsp = net_msg[1]
+                self._device.mower_state.wifi_mac = get_network_info_resp.wifi_mac
 
     def _update_mul_data(self, message) -> None:
         pass

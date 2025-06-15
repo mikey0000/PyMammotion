@@ -15,6 +15,12 @@ class SideLight(DataClassORJSONMixin):
 
 
 @dataclass
+class DeviceNonWorkingHours(DataClassORJSONMixin):
+    start_time: str = ""
+    end_time: str = ""
+
+
+@dataclass
 class MowerInfo(DataClassORJSONMixin):
     blade_status: bool = False
     rain_detection: bool = False
@@ -27,6 +33,8 @@ class MowerInfo(DataClassORJSONMixin):
     product_key: str = ""
     model_id: str = ""
     sub_model_id: str = ""
+    ble_mac: str = ""
+    wifi_mac: str = ""
 
 
 @dataclass

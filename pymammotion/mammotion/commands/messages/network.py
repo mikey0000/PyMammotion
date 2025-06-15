@@ -192,11 +192,6 @@ class MessageNetwork(AbstractMessage, ABC):
         logger.debug("Send command - get Wifi connection information")
         return self.send_order_msg_net(build)
 
-    def wifi_connectinfo_update2(self) -> None:
-        hash_map = {"getMsgCmd": 1}
-        # self.post_custom_data(self.get_json_string(
-        #     68, hash_map))  # TODO: Fix this
-
     def get_record_wifi_list(self) -> bytes:
         build = DevNet(todev_ble_sync=1, todev_wifi_list_upload=DrvWifiList())
         logger.debug("Send command - get memorized WiFi list upload command")

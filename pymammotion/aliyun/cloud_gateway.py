@@ -732,7 +732,7 @@ class CloudIOTGateway:
         logger.debug(iot_id)
 
         response_body_str = response.body.decode("utf-8")
-        response_body_dict = json.loads(response_body_str)
+        response_body_dict = json.loads(response_body_str) if response_body_str is not None else {}
 
         if int(response_body_dict.get("code")) != 200:
             logger.error(

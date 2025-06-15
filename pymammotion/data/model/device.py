@@ -6,7 +6,7 @@ import betterproto
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
-from pymammotion.data.model.device_info import DeviceFirmwares, MowerInfo
+from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorkingHours, MowerInfo
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.model.work import CurrentTaskSettings
@@ -38,6 +38,7 @@ class MowingDevice(DataClassORJSONMixin):
     err_code_list: list = field(default_factory=list)
     err_code_list_time: list | None = field(default_factory=list)
     error_codes: dict[str, ErrorInfo] = field(default_factory=dict)
+    non_work_hours: DeviceNonWorkingHours = field(default_factory=DeviceNonWorkingHours)
 
     def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:
         """Update the device based on which buffer we are reading from."""
