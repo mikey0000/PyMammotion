@@ -183,7 +183,7 @@ class Client:
             if _retry_times > 0:
                 _backoff_time = TeaCore.get_backoff_time(_runtime.get("backoff"), _retry_times)
                 if _backoff_time > 0:
-                    TeaCore.sleep(_backoff_time)
+                    await TeaCore.sleep_async(_backoff_time)
             _retry_times = _retry_times + 1
             try:
                 _request = TeaRequest()
