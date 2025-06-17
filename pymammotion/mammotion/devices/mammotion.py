@@ -33,7 +33,7 @@ class MammotionMixedDeviceManager:
         iot_id: str,
         cloud_client: CloudIOTGateway,
         mammotion_http: MammotionHTTP,
-        cloud_device: Device | None = None,
+        cloud_device: Device,
         ble_device: BLEDevice | None = None,
         mqtt: MammotionCloud | None = None,
         preference: ConnectionPreference = ConnectionPreference.BLUETOOTH,
@@ -45,8 +45,9 @@ class MammotionMixedDeviceManager:
         self.cloud_client = cloud_client
         self._state_manager = StateManager(MowingDevice())
         self._state_manager.get_device().name = name
-        self.add_ble(cloud_device, ble_device)
-        self.add_cloud(cloud_device, mqtt)
+        self._device: Device = cloud_device
+        self.add_ble(ble_device)
+        self.add_cloud(mqtt)
         self.mammotion_http = mammotion_http
         self.preference = preference
         self._state_manager.preference = preference
@@ -71,17 +72,16 @@ class MammotionMixedDeviceManager:
         else:
             return not self.ble().command_queue.empty()
 
-    def add_ble(self, cloud_device: Device, ble_device: BLEDevice) -> None:
+    def add_ble(self, ble_device: BLEDevice) -> None:
         if ble_device is not None:
             self._ble_device = MammotionBaseBLEDevice(
-                state_manager=self._state_manager, cloud_device=cloud_device, device=ble_device
+                state_manager=self._state_manager, cloud_device=self._device, device=ble_device
             )
 
-    def add_cloud(self, cloud_device: Device, mqtt: MammotionCloud) -> None:
-        if cloud_device is not None:
-            self._cloud_device = MammotionBaseCloudDevice(
-                mqtt, cloud_device=cloud_device, state_manager=self._state_manager
-            )
+    def add_cloud(self, mqtt: MammotionCloud) -> None:
+        self._cloud_device = MammotionBaseCloudDevice(
+            mqtt, cloud_device=self._device, state_manager=self._state_manager
+        )
 
     def replace_cloud(self, cloud_device: MammotionBaseCloudDevice) -> None:
         self._cloud_device = cloud_device
@@ -231,7 +231,7 @@ class Mammotion:
                 self.device_manager.add_device(mixed_device)
             elif device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device:
                 if mower_device.cloud() is None:
-                    mower_device.add_cloud(cloud_device=device, mqtt=mqtt_client)
+                    mower_device.add_cloud(mqtt=mqtt_client)
                 else:
                     mower_device.replace_mqtt(mqtt_client)
 

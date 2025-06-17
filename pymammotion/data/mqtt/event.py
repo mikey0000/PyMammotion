@@ -143,6 +143,13 @@ class DeviceConfigurationRequestEvent(GeneralParams):
 
 
 @dataclass
+class DeviceLogProgressEventParams(GeneralParams):
+    identifier: Literal["device_log_progress_event"]
+    type: Literal["info"]
+    value: DeviceNotificationEventValue
+
+
+@dataclass
 class ThingEventMessage(DataClassORJSONMixin):
     method: Literal["thing.events", "thing.properties"]
     id: str
@@ -157,7 +164,6 @@ class ThingEventMessage(DataClassORJSONMixin):
         params_dict = payload.get("params", {})
         version = payload.get("version")
 
-        # Determina quale classe usare per i parametri
         identifier = params_dict.get("identifier")
         if identifier is None:
             """Request configuration event."""
@@ -168,6 +174,8 @@ class ThingEventMessage(DataClassORJSONMixin):
             params_obj = DeviceWarningEventParams.from_dict(params_dict)
         elif identifier == "device_biz_req_event":
             params_obj = DeviceBizReqEventParams.from_dict(params_dict)
+        elif identifier == "device_log_progress_event":
+            params_obj = DeviceLogProgressEventParams.from_dict(params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", {})
         elif (
