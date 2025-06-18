@@ -36,8 +36,6 @@ def find_next_integer(lst: list[int], current_hash: int) -> int | None:
 class MammotionBaseDevice:
     """Base class for Mammotion devices."""
 
-    command_sent_time: datetime = time.time()
-
     def __init__(self, state_manager: StateManager, cloud_device: Device) -> None:
         """Initialize MammotionBaseDevice."""
         self.loop = asyncio.get_event_loop()
@@ -46,6 +44,7 @@ class MammotionBaseDevice:
         self._raw_mower_data: RawMowerData = RawMowerData()
         self._notify_future: asyncio.Future[bytes] | None = None
         self._cloud_device = cloud_device
+        self.command_sent_time: datetime = time.time()
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses for root level hashs."""
