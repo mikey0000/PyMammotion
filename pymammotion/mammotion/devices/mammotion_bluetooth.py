@@ -133,7 +133,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         """Stop all tasks and disconnect."""
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
-        if self._client is not None:
+        if self._client is not None and self._client.is_connected:
             await self._client.disconnect()
 
     async def queue_command(self, key: str, **kwargs: Any) -> bytes | None:
