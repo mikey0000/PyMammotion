@@ -141,6 +141,8 @@ class CloudIOTGateway:
 
     @staticmethod
     def parse_json_response(response_body_str: str) -> dict:
+        """Parses a JSON string into a dictionary, returning an empty dictionary on
+        failure."""
         try:
             return json.loads(response_body_str) if response_body_str is not None else {}
         except JSONDecodeError:
@@ -227,7 +229,7 @@ class CloudIOTGateway:
         return response.body
 
     async def aep_handle(self):
-        """Handle AEP authentication."""
+        """Handles AEP authentication."""
         aep_domain = self.domain
 
         if self._region_response.data.apiGatewayEndpoint is not None:
@@ -432,7 +434,7 @@ class CloudIOTGateway:
                 raise LoginException(data)
 
     async def session_by_auth_code(self):
-        """Create a session by auth code."""
+        """Create a session using an auth code."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -489,6 +491,7 @@ class CloudIOTGateway:
         return response.body
 
     async def sign_out(self) -> dict:
+        """Sign out from the IoT service."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -533,7 +536,20 @@ class CloudIOTGateway:
         return response_body_dict
 
     async def check_or_refresh_session(self):
-        """Check or refresh the session."""
+        """Check or refresh the user session.
+        
+        This function attempts to refresh the user's session by sending a request to
+        the IoT API endpoint. It constructs a request with necessary parameters such as
+        refreshToken and identityId, sends it asynchronously using a client configured
+        with app credentials, and processes the response. If the response indicates an
+        error (code not equal to 200), it logs the error, signs out the user, and
+        raises a CheckSessionException. Upon successful validation of the session
+        parameters, it updates internal session data and records the token issuance
+        time.
+        
+        Args:
+            self: The instance of the class containing the session management logic.
+        """
         logger.debug("Trying to refresh token")
         config = Config(
             app_key=self._app_key,
@@ -598,7 +614,7 @@ class CloudIOTGateway:
         self._iot_token_issued_at = int(time.time())
 
     async def list_binding_by_account(self) -> ListingDevByAccountResponse:
-        """List bindings by account."""
+        """Lists bindings by account."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -642,6 +658,7 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def list_binding_by_dev(self, iot_id: str):
+        """Lists bindings by device ID."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -683,8 +700,21 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
-        """Send a cloud command to the specified IoT device."""
 
+        """Sends a cloud command to the specified IoT device.
+        
+        This function checks if the IoT token is expired and attempts to refresh it if
+        possible. It constructs a request with necessary parameters and sends it to the
+        cloud service. The function handles various exceptions related to
+        authentication and device status, logging appropriate error messages.
+        
+        Args:
+            iot_id (str): The ID of the IoT device.
+            command (bytes): The command to be sent to the IoT device.
+        
+        Returns:
+            str: A unique message ID for the sent command.
+        """
         if command is None:
             raise Exception("Command is missing / None")
 
