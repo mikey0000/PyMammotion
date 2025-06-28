@@ -16,6 +16,7 @@ from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequ
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
 from Tea.exceptions import UnretryableException
+from orjson.orjson import JSONDecodeError
 
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.model.aep_response import AepResponse
@@ -138,6 +139,14 @@ class CloudIOTGateway:
         hashed_uuid = hashlib.sha1(f"{uuid.getnode()}".encode()).hexdigest()
         return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
 
+    @staticmethod
+    def parse_json_response(response_body_str: str) -> dict:
+        try:
+            return json.loads(response_body_str) if response_body_str is not None else {}
+        except JSONDecodeError:
+            logger.error("Couldn't decode message %s", response_body_str)
+            return {}
+
     def sign(self, data):
         """Generate signature for the given data."""
         keys = ["appKey", "clientId", "deviceSn", "timestamp"]
@@ -207,7 +216,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Load the JSON string into a dictionary
-        response_body_dict = json.loads(response_body_str)
+        response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in getting regions: " + response_body_dict["msg"])
@@ -264,7 +273,7 @@ class CloudIOTGateway:
 
         response_body_str = response.body.decode("utf-8")
 
-        response_body_dict = json.loads(response_body_str)
+        response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in getting mqtt credentials: " + response_body_dict["msg"])
@@ -464,7 +473,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Load the JSON string into a dictionary
-        response_body_dict = json.loads(response_body_str)
+        response_body_dict = self.parse_json_response(response_body_str)
 
         session_by_auth = SessionByAuthCodeResponse.from_dict(response_body_dict)
 
@@ -479,7 +488,7 @@ class CloudIOTGateway:
 
         return response.body
 
-    async def sign_out(self) -> None:
+    async def sign_out(self) -> dict:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -520,8 +529,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Load the JSON string into a dictionary
-        response_body_dict = json.loads(response_body_str)
-        logger.debug(response_body_dict)
+        response_body_dict = self.parse_json_response(response_body_str)
         return response_body_dict
 
     async def check_or_refresh_session(self):
@@ -567,7 +575,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Load the JSON string into a dictionary
-        response_body_dict = json.loads(response_body_str)
+        response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             logger.error(response_body_dict)
@@ -625,7 +633,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Load the JSON string into a dictionary
-        response_body_dict = json.loads(response_body_str)
+        response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
@@ -666,7 +674,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Load the JSON string into a dictionary
-        response_body_dict = json.loads(response_body_str)
+        response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
@@ -731,8 +739,9 @@ class CloudIOTGateway:
         logger.debug(response.body)
         logger.debug(iot_id)
 
+
         response_body_str = response.body.decode("utf-8")
-        response_body_dict = json.loads(response_body_str) if response_body_str is not None else {}
+        response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
             logger.error(
