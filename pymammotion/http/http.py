@@ -106,7 +106,9 @@ class MammotionHTTP:
                 data = await resp.json()
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
-                return Response[StreamSubscriptionResponse].from_dict(data)
+                response = Response[StreamSubscriptionResponse].from_dict(data)
+                response.data = StreamSubscriptionResponse.from_dict(data["data"])
+                return response
 
     async def get_stream_subscription_mini_or_x_series(
         self, iot_id: str, is_yuka: bool
@@ -135,7 +137,9 @@ class MammotionHTTP:
                 data = await resp.json()
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
-                return Response[StreamSubscriptionResponse].from_dict(data)
+                response = Response[StreamSubscriptionResponse].from_dict(data)
+                response.data = StreamSubscriptionResponse.from_dict(data["data"])
+                return response
 
     async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
         """Get video resource for new models (2025 series)"""
