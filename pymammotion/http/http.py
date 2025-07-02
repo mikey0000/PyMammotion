@@ -107,7 +107,9 @@ class MammotionHTTP:
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
                 response = Response[StreamSubscriptionResponse].from_dict(data)
-                response.data = StreamSubscriptionResponse.from_dict(data["data"])
+                if response.code != 0:
+                    return response
+                response.data = StreamSubscriptionResponse.from_dict(data.get("data", {}))
                 return response
 
     async def get_stream_subscription_mini_or_x_series(
@@ -138,7 +140,9 @@ class MammotionHTTP:
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
                 response = Response[StreamSubscriptionResponse].from_dict(data)
-                response.data = StreamSubscriptionResponse.from_dict(data["data"])
+                if response.code != 0:
+                    return response
+                response.data = StreamSubscriptionResponse.from_dict(data.get("data", {}))
                 return response
 
     async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
@@ -155,7 +159,11 @@ class MammotionHTTP:
                 data = await resp.json()
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
-                return Response[VideoResourceResponse].from_dict(data)
+                response = Response[VideoResourceResponse].from_dict(data)
+                if response.code != 0:
+                    return response
+                response.data = VideoResourceResponse.from_dict(data.get("data", {}))
+                return response
 
     async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
         if self._password is None and password is not None:

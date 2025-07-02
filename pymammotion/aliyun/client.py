@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 import time
 
 from Tea.exceptions import UnretryableException
@@ -103,7 +104,7 @@ class Client:
                 _request.headers = TeaCore.merge(
                     {
                         "host": self._domain,
-                        "date": UtilClient.get_date_utcstring(),
+                        "date": datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S GMT"),
                         "x-ca-nonce": UtilClient.get_nonce(),
                         "x-ca-key": self._app_key,
                         "x-ca-signaturemethod": "HmacSHA256",

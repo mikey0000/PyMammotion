@@ -326,7 +326,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         ):
             self._commands.set_device_product_key(event.params.productKey)
 
-        if betterproto.serialized_on_wire(new_msg.net):
+        res = betterproto.which_one_of(new_msg, "LubaSubMsg")
+        if res[0] == "net":
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 return
 

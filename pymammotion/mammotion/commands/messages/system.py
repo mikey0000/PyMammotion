@@ -202,6 +202,7 @@ class MessageSystem(AbstractMessage, ABC):
     #     return self.send_order_msg_sys(build2)
 
     def send_sys_set_date_time(self) -> bytes:
+        # TODO get HA timezone
         calendar = datetime.datetime.now()
         i = calendar.year
         i2 = calendar.month

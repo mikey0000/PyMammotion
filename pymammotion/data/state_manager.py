@@ -1,7 +1,7 @@
 """Manage state from notifications into MowingDevice."""
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 import logging
 from typing import Any
 
@@ -41,7 +41,7 @@ class StateManager:
 
     def __init__(self, device: MowingDevice) -> None:
         self._device: MowingDevice = device
-        self.last_updated_at = datetime.now()
+        self.last_updated_at = datetime.now(UTC)
         self.preference = ConnectionPreference.WIFI
         self.cloud_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
         self.cloud_get_commondata_ack_callback: (
@@ -115,7 +115,7 @@ class StateManager:
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
         res = betterproto.which_one_of(message, "LubaSubMsg")
-        self.last_updated_at = datetime.now()
+        self.last_updated_at = datetime.now(UTC)
         # additional catch all if we don't get a status update
         if not self._device.online:
             self._device.online = True
