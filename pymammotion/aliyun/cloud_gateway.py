@@ -141,6 +141,7 @@ class CloudIOTGateway:
 
     @staticmethod
     def parse_json_response(response_body_str: str) -> dict:
+        """Parses a JSON string into a dictionary, handling decoding errors."""
         try:
             return json.loads(response_body_str) if response_body_str is not None else {}
         except JSONDecodeError:
@@ -163,7 +164,7 @@ class CloudIOTGateway:
         ).hexdigest()
 
     async def get_region(self, country_code: str):
-        """Get the region based on country code and auth code."""
+        """Fetches and returns the region based on country code."""
         auth_code = self.mammotion_http.login_info.authorization_code
 
         if self._region_response is not None:
@@ -432,7 +433,7 @@ class CloudIOTGateway:
                 raise LoginException(data)
 
     async def session_by_auth_code(self):
-        """Create a session by auth code."""
+        """Create a session using an authentication code."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -489,6 +490,7 @@ class CloudIOTGateway:
         return response.body
 
     async def sign_out(self) -> dict:
+        """Signs out a user by invalidating their session."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -533,7 +535,15 @@ class CloudIOTGateway:
         return response_body_dict
 
     async def check_or_refresh_session(self):
-        """Check or refresh the session."""
+        """Checks or refreshes the user session.
+        
+        This function attempts to refresh the session token using the provided
+        configuration and client setup. It constructs a request with necessary
+        parameters, sends it asynchronously, and processes the response. If the
+        response indicates an error, it logs the error, signs out the user, and raises
+        a `CheckSessionException`. Otherwise, it updates the internal session data with
+        the new session information.
+        """
         logger.debug("Trying to refresh token")
         config = Config(
             app_key=self._app_key,
@@ -642,6 +652,7 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def list_binding_by_dev(self, iot_id: str):
+        """Fetches device bindings by IoT ID."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -683,8 +694,19 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
-        """Send a cloud command to the specified IoT device."""
 
+        """Sends a cloud command to a specified IoT device.
+        
+        This function checks if the IoT token is expired and attempts to refresh it
+        using the refresh token if available. It then constructs and sends a request to
+        the IoT API endpoint with the provided command. The function handles different
+        error codes and exceptions, such as gateway timeouts, setup issues, and device
+        offline scenarios.
+        
+        Args:
+            iot_id (str): The identifier of the IoT device to which the command is sent.
+            command (bytes): The binary command data to be sent to the IoT device.
+        """
         if command is None:
             raise Exception("Command is missing / None")
 
