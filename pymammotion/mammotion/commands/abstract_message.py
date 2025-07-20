@@ -17,7 +17,8 @@ class AbstractMessage:
         """Get device name."""
 
     def get_msg_device(self, msg_type: MsgCmdType, msg_device: MsgDevice) -> MsgDevice:
-        """Changes the rcver name if it's not a luba1."""
+        """Changes the message device to DEV_NAVIGATION if it's a Luba Pro and the message
+        type is NAV."""
         if DeviceType.is_luba_pro(self.get_device_name(), self.get_device_product_key()) and msg_type == MsgCmdType.NAV:
             return MsgDevice.DEV_NAVIGATION
         return msg_device
