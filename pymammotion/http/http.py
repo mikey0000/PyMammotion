@@ -166,7 +166,7 @@ class MammotionHTTP:
                 return response
 
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
-        """Device firmware upgrade check."""
+        """Check device firmware upgrade status."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/device-server/v1/devices/version/check",
@@ -183,7 +183,7 @@ class MammotionHTTP:
                 return Response[list[CheckDeviceVersion]].from_dict(data)
 
     async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
-        """Device firmware upgrade."""
+        """Initiates an OTA upgrade for a device."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/device-server/v1/ota/device/upgrade",
@@ -200,6 +200,7 @@ class MammotionHTTP:
                 return Response[str].from_dict(data)
 
     async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
+        """Refresh login with provided account and optional password."""
         if self._password is None and password is not None:
             self._password = password
         if self._password is None:
