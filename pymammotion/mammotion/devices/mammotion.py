@@ -211,6 +211,17 @@ class Mammotion:
         await loop.run_in_executor(None, self.mqtt_list[account].connect_async)
 
     def add_cloud_devices(self, mqtt_client: MammotionCloud) -> None:
+        """Adds cloud devices to the device manager based on their names and existing
+        device states.
+        
+        This function iterates over the devices retrieved from the MQTT client's cloud
+        client. For each device, it checks if the device name starts with "Luba-" or
+        "Yuka-". If no corresponding local device exists, it creates a new
+        `MammotionMixedDeviceManager` instance and adds it to the device manager. If a
+        local device already exists, it either adds cloud connectivity to the device or
+        replaces its MQTT client depending on whether the device is already connected
+        to the cloud.
+        """
         for device in mqtt_client.cloud_client.devices_by_account_response.data.data:
             mower_device = self.device_manager.get_device(device.deviceName)
             if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
@@ -265,6 +276,7 @@ class Mammotion:
         return self.device_manager.get_device(name)
 
     def get_or_create_device_by_name(self, device: Device, mqtt_client: MammotionCloud) -> MammotionMixedDeviceManager:
+        """Retrieve or create a device by its name."""
         if mow_device := self.device_manager.get_device(device.deviceName):
             return mow_device
         return MammotionMixedDeviceManager(
@@ -277,7 +289,17 @@ class Mammotion:
         )
 
     async def send_command(self, name: str, key: str):
-        """Send a command to the device."""
+        """Send a command to a device based on its connection preference.
+        
+        This function retrieves a device by its name and sends a command using the
+        appropriate connection method. If the device prefers Bluetooth and supports
+        BLE, it uses the BLE interface. If the device prefers WiFi, it uses the cloud
+        interface. If no suitable connection method is found, it returns None.
+        
+        Args:
+            name (str): The name of the device.
+            key (str): The command key to be sent to the device.
+        """
         device = self.get_device_by_name(name)
         if device:
             if device.preference is ConnectionPreference.BLUETOOTH and device.has_ble():
