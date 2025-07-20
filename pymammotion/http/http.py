@@ -6,7 +6,7 @@ from aiohttp import ClientSession
 from pymammotion.const import MAMMOTION_API_DOMAIN, MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET, MAMMOTION_DOMAIN
 from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
-from pymammotion.http.model.http import ErrorInfo, LoginResponseData, Response
+from pymammotion.http.model.http import CheckDeviceVersion, ErrorInfo, LoginResponseData, Response
 
 
 class MammotionHTTP:
@@ -164,6 +164,40 @@ class MammotionHTTP:
                     return response
                 response.data = VideoResourceResponse.from_dict(data.get("data", {}))
                 return response
+
+    async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
+        """Device firmware upgrade check."""
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post(
+                "/device-server/v1/devices/version/check",
+                json={"deviceIds": iot_ids},
+                headers={
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/3.14.9",
+                },
+            ) as resp:
+                data = await resp.json()
+                # TODO catch errors from mismatch like token expire etc
+                # Assuming the data format matches the expected structure
+                return Response[list[CheckDeviceVersion]].from_dict(data)
+
+    async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
+        """Device firmware upgrade."""
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post(
+                "/device-server/v1/ota/device/upgrade",
+                json={"deviceId": iot_id, "version": version},
+                headers={
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/3.14.9",
+                },
+            ) as resp:
+                data = await resp.json()
+                # TODO catch errors from mismatch like token expire etc
+                # Assuming the data format matches the expected structure
+                return Response[str].from_dict(data)
 
     async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
         if self._password is None and password is not None:

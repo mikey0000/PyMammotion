@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Generic, Literal, TypeVar
 
 from mashumaro import DataClassDictMixin
@@ -103,3 +103,48 @@ class LoginResponseData(DataClassORJSONMixin):
 
     class Config(BaseConfig):
         omit_none = True
+
+
+@dataclass
+class FirmwareVersions(DataClassORJSONMixin):
+    firmware_version: str
+    firmware_code: str
+    firmware_latest_version: str
+    firmware_type: str
+
+
+@dataclass
+class ProductVersionInfo(DataClassORJSONMixin):
+    data_location: str
+    release_note: str
+    release_version: str
+
+
+@dataclass
+class CheckDeviceVersion(DataClassORJSONMixin):
+    cause_code: int = 0
+    firmware_lastest_versions: list[FirmwareVersions] | None = field(default_factory=list)
+    product_version_info_vo: ProductVersionInfo | None = None
+    progress: int | None = 0
+    upgradeable: bool = False
+    device_id: str = ""
+    device_name: str | None = ""
+    current_version: str = ""
+    isupgrading: bool | None = False
+    cause_msg: str = ""
+
+    def __eq__(self, other):
+        if not isinstance(other, CheckDeviceVersion):
+            return NotImplemented
+
+        if self.device_id != other.device_id or self.current_version != other.current_version:
+            return False
+
+        if self.product_version_info_vo and other.product_version_info_vo:
+            if self.product_version_info_vo.release_version != other.product_version_info_vo.release_version:
+                return False
+            return True
+        elif self.product_version_info_vo is None and other.product_version_info_vo is None:
+            return False
+        else:
+            return True

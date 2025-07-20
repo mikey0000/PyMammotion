@@ -28,6 +28,8 @@ YukaMiniProductKey = ["a1BqmEWMRbX", "a1biqVGvxrE"]
 
 RTKProductKey = ["a1qXkZ5P39W", "a1Nc68bGZzX"]
 
+YukaMVProductKey = ["a1jFe8HzcDb"]
+
 
 class DeviceType(Enum):
     UNKNOWN = (-1, "UNKNOWN", "Unknown")
@@ -45,6 +47,7 @@ class DeviceType(Enum):
     LUBA_LD = (11, "Luba-LD", "HM431")
     RTK3A0 = (12, "RBSA0", "RBS03A0")
     RTK3A2 = (13, "RBSA2", "RBS03A2")
+    YUKA_MINIVP = (14, "Yuka-MV", "MN231")
 
     def __init__(self, value: int, name: str, model: str) -> None:
         self._value = value

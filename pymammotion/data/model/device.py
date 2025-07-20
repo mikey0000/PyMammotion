@@ -12,7 +12,7 @@ from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.http.model.http import ErrorInfo
+from pymammotion.http.model.http import CheckDeviceVersion, ErrorInfo
 from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemRapidStateTunnelMsg, SystemUpdateBufMsg
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
@@ -26,6 +26,7 @@ class MowingDevice(DataClassORJSONMixin):
     name: str = ""
     online: bool = True
     enabled: bool = True
+    update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
     mower_state: MowerInfo = field(default_factory=MowerInfo)
     mqtt_properties: ThingPropertiesMessage | None = None
     status_properties: ThingStatusMessage | None = None
