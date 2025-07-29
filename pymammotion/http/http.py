@@ -7,6 +7,7 @@ from pymammotion.const import MAMMOTION_API_DOMAIN, MAMMOTION_CLIENT_ID, MAMMOTI
 from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
 from pymammotion.http.model.http import CheckDeviceVersion, ErrorInfo, LoginResponseData, Response
+from pymammotion.http.model.response_factory import response_factory
 
 
 class MammotionHTTP:
@@ -17,7 +18,7 @@ class MammotionHTTP:
         self._password = None
         self.response: Response | None = None
         self.login_info: LoginResponseData | None = None
-        self._headers = {"User-Agent": "okhttp/3.14.9", "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332"}
+        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332"}
         self.encryption_utils = EncryptionUtils()
 
     @staticmethod
@@ -100,7 +101,7 @@ class MammotionHTTP:
                 headers={
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
-                    "User-Agent": "okhttp/3.14.9",
+                    "User-Agent": "okhttp/4.9.3",
                 },
             ) as resp:
                 data = await resp.json()
@@ -133,7 +134,7 @@ class MammotionHTTP:
                 headers={
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
-                    "User-Agent": "okhttp/3.14.9",
+                    "User-Agent": "okhttp/4.9.3",
                 },
             ) as resp:
                 data = await resp.json()
@@ -153,7 +154,7 @@ class MammotionHTTP:
                 headers={
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
-                    "User-Agent": "okhttp/3.14.9",
+                    "User-Agent": "okhttp/4.9.3",
                 },
             ) as resp:
                 data = await resp.json()
@@ -174,13 +175,13 @@ class MammotionHTTP:
                 headers={
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
-                    "User-Agent": "okhttp/3.14.9",
+                    "User-Agent": "okhttp/4.9.3",
                 },
             ) as resp:
                 data = await resp.json()
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
-                return Response[list[CheckDeviceVersion]].from_dict(data)
+                return response_factory(Response[list[CheckDeviceVersion]], data)
 
     async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
         """Device firmware upgrade."""
@@ -191,13 +192,13 @@ class MammotionHTTP:
                 headers={
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
-                    "User-Agent": "okhttp/3.14.9",
+                    "User-Agent": "okhttp/4.9.3",
                 },
             ) as resp:
                 data = await resp.json()
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
-                return Response[str].from_dict(data)
+                return response_factory(Response[str], data)
 
     async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
         if self._password is None and password is not None:
@@ -213,7 +214,7 @@ class MammotionHTTP:
             async with session.post(
                 "/oauth/token",
                 headers={
-                    "User-Agent": "okhttp/3.14.9",
+                    "User-Agent": "okhttp/4.9.3",
                     "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332",
                     "Encrypt-Key": self.encryption_utils.encrypt_by_public_key(),
                     "Decrypt-Type": "3",
@@ -231,11 +232,11 @@ class MammotionHTTP:
                     print(resp.json())
                     return Response.from_dict({"code": resp.status, "msg": "Login failed"})
                 data = await resp.json()
-                login_response = Response[LoginResponseData].from_dict(data)
+                login_response = response_factory(Response[LoginResponseData], data)
                 if login_response.data is None:
                     print(login_response)
                     return Response.from_dict({"code": resp.status, "msg": "Login failed"})
-                self.login_info = LoginResponseData.from_dict(login_response.data)
+                self.login_info = login_response.data
                 self._headers["Authorization"] = (
                     f"Bearer {self.login_info.access_token}" if login_response.data else None
                 )

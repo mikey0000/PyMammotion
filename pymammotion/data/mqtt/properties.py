@@ -15,85 +15,95 @@ class Item(DataClassDictMixin, Generic[DataT]):
 
 @dataclass
 class BatteryPercentageItems(DataClassORJSONMixin):
-    batteryPercentage: Item[int]
+    batteryPercentage: int
 
 
 @dataclass
 class BMSHardwareVersionItems(DataClassORJSONMixin):
-    bmsHardwareVersion: Item[str]
+    bmsHardwareVersion: str
 
 
 @dataclass
 class CoordinateItems(DataClassORJSONMixin):
-    coordinate: Item[str]  # '{"lon":0.303903,"lat":1.051868}'
+    coordinate: str  # '{"lon":0.303903,"lat":1.051868}'
 
 
 @dataclass
 class DeviceStateItems(DataClassORJSONMixin):
-    deviceState: Item[int]
+    deviceState: int
 
 
 @dataclass
 class DeviceVersionItems(DataClassORJSONMixin):
-    deviceVersion: Item[str]
+    deviceVersion: str
 
 
 @dataclass
 class DeviceVersionInfoItems(DataClassORJSONMixin):
-    deviceVersionInfo: Item[str]
+    deviceVersionInfo: str
 
 
 @dataclass
 class ESP32VersionItems(DataClassORJSONMixin):
-    esp32Version: Item[str]
+    esp32Version: str
 
 
 @dataclass
 class LeftMotorBootVersionItems(DataClassORJSONMixin):
-    leftMotorBootVersion: Item[str]
+    leftMotorBootVersion: str
 
 
 @dataclass
 class LeftMotorVersionItems(DataClassORJSONMixin):
-    leftMotorVersion: Item[str]
+    leftMotorVersion: str
 
 
 @dataclass
 class MCBootVersionItems(DataClassORJSONMixin):
-    mcBootVersion: Item[str]
+    mcBootVersion: str
 
 
 @dataclass
 class NetworkInfoItems(DataClassORJSONMixin):
-    networkInfo: Item[str]
+    networkInfo: str
 
 
 @dataclass
 class RightMotorBootVersionItems(DataClassORJSONMixin):
-    rightMotorBootVersion: Item[str]
+    rightMotorBootVersion: str
 
 
 @dataclass
 class RightMotorVersionItems(DataClassORJSONMixin):
-    rightMotorVersion: Item[str]
+    rightMotorVersion: str
 
 
 @dataclass
 class RTKVersionItems(DataClassORJSONMixin):
-    rtkVersion: Item[str]
+    rtkVersion: str
 
 
 @dataclass
 class StationRTKVersionItems(DataClassORJSONMixin):
-    stationRtkVersion: Item[str]
+    stationRtkVersion: str
 
 
 @dataclass
 class STM32H7VersionItems(DataClassORJSONMixin):
-    stm32H7Version: Item[str]
+    stm32H7Version: str
 
 
-Items = Union[
+@dataclass
+class OTAProgressItems(DataClassORJSONMixin):
+    result: int
+    otaId: str
+    progress: int
+    message: str
+    version: str
+    properties: str
+
+
+ItemTypes = Union[
     BatteryPercentageItems,
     BMSHardwareVersionItems,
     CoordinateItems,
@@ -110,43 +120,45 @@ Items = Union[
     RTKVersionItems,
     StationRTKVersionItems,
     STM32H7VersionItems,
+    OTAProgressItems,
 ]
 
 
 @dataclass
 class Item:
     time: int
-    value: int | float | str | dict[str, Any]  # Depending on the type of value
+    value: int | float | str | dict[str, Any] | ItemTypes  # Depending on the type of value
 
 
 @dataclass
 class Items:
-    iotState: Item
-    extMod: Item
-    deviceVersionInfo: Item
-    leftMotorBootVersion: Item
-    knifeHeight: Item
-    rtMrMod: Item
-    iotMsgHz: Item
-    iotMsgTotal: Item
-    loraRawConfig: Item
-    loraGeneralConfig: Item
-    leftMotorVersion: Item
-    intMod: Item
-    coordinate: Item
-    bmsVersion: Item
-    rightMotorVersion: Item
-    stm32H7Version: Item
-    rightMotorBootVersion: Item
-    deviceVersion: Item
-    rtkVersion: Item
-    ltMrMod: Item
-    networkInfo: Item
-    bmsHardwareVersion: Item
-    batteryPercentage: Item
-    deviceState: Item
-    deviceOtherInfo: Item
-    mcBootVersion: Item
+    iotState: Item | None = None
+    extMod: Item | None = None
+    deviceVersionInfo: Item | None = None
+    leftMotorBootVersion: Item | None = None
+    knifeHeight: Item | None = None
+    rtMrMod: Item | None = None
+    iotMsgHz: Item | None = None
+    iotMsgTotal: Item | None = None
+    loraRawConfig: Item | None = None
+    loraGeneralConfig: Item | None = None
+    leftMotorVersion: Item | None = None
+    intMod: Item | None = None
+    coordinate: Item | None = None
+    bmsVersion: Item | None = None
+    rightMotorVersion: Item | None = None
+    stm32H7Version: Item | None = None
+    rightMotorBootVersion: Item | None = None
+    deviceVersion: Item | None = None
+    rtkVersion: Item | None = None
+    ltMrMod: Item | None = None
+    networkInfo: Item | None = None
+    bmsHardwareVersion: Item | None = None
+    batteryPercentage: Item | None = None
+    deviceState: Item | None = None
+    deviceOtherInfo: Item | None = None
+    mcBootVersion: Item | None = None
+    otaProgress: Item | None = None
 
 
 @dataclass

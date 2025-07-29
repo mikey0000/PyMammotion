@@ -133,6 +133,9 @@ class MammotionCloud:
         elif topic.endswith("/app/down/thing/status"):
             status = ThingStatusMessage.from_dict(payload)
             await self.mqtt_status_event.data_event(status)
+        elif topic.endswith("app/down/thing/properties"):
+            property_event = ThingPropertiesMessage.from_dict(payload)
+            await self.mqtt_properties_event.data_event(property_event)
 
     def _disconnect(self) -> None:
         """Disconnect the MQTT client."""
@@ -159,7 +162,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._command_futures = {}
         self._commands: MammotionCommand = MammotionCommand(
             cloud_device.deviceName,
-            int(mqtt.cloud_client.mammotion_http.response.data.get("userInformation").get("userAccount")),
+            int(mqtt.cloud_client.mammotion_http.response.data.userInformation.userAccount),
         )
         self.currentID = ""
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
@@ -181,6 +184,8 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.on_disconnected_event.remove_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.remove_subscribers(self.on_connect)
         self._mqtt.mqtt_message_event.remove_subscribers(self._parse_message_for_device)
+        self._mqtt.mqtt_properties_event.remove_subscribers(self._parse_message_properties_for_device)
+        self._mqtt.mqtt_status_event.remove_subscribers(self._parse_message_status_for_device)
         self._state_manager.cloud_gethash_ack_callback = None
         self._state_manager.cloud_get_commondata_ack_callback = None
         self._state_manager.cloud_get_plan_callback = None
@@ -190,7 +195,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
         self._state_manager.cloud_on_notification_callback = func
 
-    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
+    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
         self._state_manager.cloud_queue_command_callback = func
 
     async def on_ready(self) -> None:

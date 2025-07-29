@@ -1,9 +1,10 @@
-from dataclasses import dataclass, field
-from typing import Generic, Literal, TypeVar
+from dataclasses import dataclass
+from typing import Annotated, Generic, Literal, TypeVar
 
 from mashumaro import DataClassDictMixin
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+from mashumaro.types import Alias
 
 DataT = TypeVar("DataT")
 
@@ -107,31 +108,30 @@ class LoginResponseData(DataClassORJSONMixin):
 
 @dataclass
 class FirmwareVersions(DataClassORJSONMixin):
-    firmware_version: str
-    firmware_code: str
-    firmware_latest_version: str
-    firmware_type: str
+    firmware_version: Annotated[str, Alias("firmwareVersion")] = ""
+    firmware_code: Annotated[str, Alias("firmwareCode")] = ""
+    firmware_latest_version: Annotated[str, Alias("firmwareLatestVersion")] = ""
+    firmware_type: Annotated[str, Alias("firmwareType")] = ""
 
 
 @dataclass
 class ProductVersionInfo(DataClassORJSONMixin):
-    data_location: str
-    release_note: str
-    release_version: str
+    release_note: Annotated[str, Alias("releaseNote")] = ""
+    release_version: Annotated[str, Alias("releaseVersion")] = ""
+    data_location: str | None = None
 
 
 @dataclass
 class CheckDeviceVersion(DataClassORJSONMixin):
-    cause_code: int = 0
-    firmware_lastest_versions: list[FirmwareVersions] | None = field(default_factory=list)
-    product_version_info_vo: ProductVersionInfo | None = None
+    cause_code: Annotated[int, Alias("causeCode")] = 0
+    product_version_info_vo: Annotated[ProductVersionInfo | None, Alias("productVersionInfoVo")] = None
     progress: int | None = 0
     upgradeable: bool = False
-    device_id: str = ""
-    device_name: str | None = ""
-    current_version: str = ""
+    device_id: Annotated[str, Alias("deviceId")] = ""
+    device_name: Annotated[str | None, Alias("deviceName")] = ""
+    current_version: Annotated[str, Alias("currentVersion")] = ""
     isupgrading: bool | None = False
-    cause_msg: str = ""
+    cause_msg: Annotated[str, Alias("causeMsg")] = ""
 
     def __eq__(self, other):
         if not isinstance(other, CheckDeviceVersion):

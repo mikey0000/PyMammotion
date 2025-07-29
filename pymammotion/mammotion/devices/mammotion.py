@@ -52,11 +52,17 @@ class MammotionMixedDeviceManager:
         self._state_manager.preference = preference
 
     @property
-    def mower_state(self):
+    def state_manager(self) -> StateManager:
+        """Return the state manager."""
+        return self._state_manager
+
+    @property
+    def state(self):
+        """Return the state of the device."""
         return self._state_manager.get_device()
 
-    @mower_state.setter
-    def mower_state(self, value: MowingDevice) -> None:
+    @state.setter
+    def state(self, value: MowingDevice) -> None:
         self._state_manager.set_device(value)
 
     def ble(self) -> MammotionBaseBLEDevice | None:
@@ -222,8 +228,8 @@ class Mammotion:
                     mqtt=mqtt_client,
                     preference=ConnectionPreference.WIFI,
                 )
-                mixed_device.mower_state.mower_state.product_key = device.productKey
-                mixed_device.mower_state.mower_state.model = (
+                mixed_device.state.mower_state.product_key = device.productKey
+                mixed_device.state.mower_state.model = (
                     device.productName if device.productModel is None else device.productModel
                 )
                 self.device_manager.add_device(mixed_device)
@@ -343,5 +349,5 @@ class Mammotion:
     def mower(self, name: str) -> MowingDevice | None:
         device = self.get_device_by_name(name)
         if device:
-            return device.mower_state
+            return device.state
         return None

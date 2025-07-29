@@ -49,8 +49,7 @@ class StateManager:
         ) = None
         self.cloud_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
         self.cloud_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
-
-        self.cloud_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
+        self.cloud_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
 
         self.ble_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
         self.ble_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = (
@@ -58,8 +57,10 @@ class StateManager:
         )
         self.ble_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
         self.ble_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
+        self.ble_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
 
-        self.ble_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[bytes]] | None = None
+        self.properties_callback: Callable[[ThingPropertiesMessage], Awaitable[None]] | None = None
+        self.status_callback: Callable[[ThingStatusMessage], Awaitable[None]] | None = None
 
     def get_device(self) -> MowingDevice:
         """Get device."""
@@ -72,6 +73,7 @@ class StateManager:
     def properties(self, thing_properties: ThingPropertiesMessage) -> None:
         # TODO update device based off thing properties
         self._device.mqtt_properties = thing_properties
+        self.on_properties_callback(thing_properties)
 
     def status(self, thing_status: ThingStatusMessage) -> None:
         if not self._device.online:
@@ -79,6 +81,7 @@ class StateManager:
         self._device.status_properties = thing_status
         if self._device.mower_state.product_key == "":
             self._device.mower_state.product_key = thing_status.params.productKey
+        self.on_status_callback(thing_status)
 
     @property
     def online(self) -> bool:
@@ -99,6 +102,16 @@ class StateManager:
             await self.cloud_on_notification_callback(res)
         elif self.ble_on_notification_callback:
             await self.ble_on_notification_callback(res)
+
+    async def on_properties_callback(self, thing_properties: ThingPropertiesMessage) -> None:
+        """Check if we have a callback for properties."""
+        if self.properties_callback:
+            await self.properties_callback(thing_properties)
+
+    async def on_status_callback(self, thing_status: ThingStatusMessage) -> None:
+        """Check if we have a callback for status."""
+        if self.status_callback:
+            await self.status_callback(thing_status)
 
     async def get_commondata_ack_callback(self, comm_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         if self.cloud_get_commondata_ack_callback:

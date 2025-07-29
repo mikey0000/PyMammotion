@@ -15,8 +15,8 @@ from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
-from Tea.exceptions import UnretryableException
 from orjson.orjson import JSONDecodeError
+from Tea.exceptions import UnretryableException
 
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.model.aep_response import AepResponse
@@ -63,6 +63,14 @@ class DeviceOfflineException(Exception):
     def __init__(self, *args: object) -> None:
         super().__init__(args)
         self.iot_id = args[1]
+
+
+class FailedRequestException(Exception):
+    """Raise exception when request response is bad."""
+
+    def __init__(self, *args: object) -> None:
+        super().__init__(args)
+        self.iot_id = args[0]
 
 
 class NoConnectionException(UnretryableException):
@@ -145,7 +153,7 @@ class CloudIOTGateway:
             return json.loads(response_body_str) if response_body_str is not None else {}
         except JSONDecodeError:
             logger.error("Couldn't decode message %s", response_body_str)
-            return {}
+            return {'code': 22000}
 
     def sign(self, data):
         """Generate signature for the given data."""
@@ -739,7 +747,6 @@ class CloudIOTGateway:
         logger.debug(response.body)
         logger.debug(iot_id)
 
-
         response_body_str = response.body.decode("utf-8")
         response_body_dict = self.parse_json_response(response_body_str)
 
@@ -749,6 +756,9 @@ class CloudIOTGateway:
                 str(response_body_dict.get("code")),
                 str(response_body_dict.get("message")),
             )
+            if response_body_dict.get("code") == 22000:
+                logger.error(response)
+                raise FailedRequestException(iot_id)
             if response_body_dict.get("code") == 20056:
                 logger.debug("Gateway timeout.")
                 raise GatewayTimeoutException(response_body_dict.get("code"), iot_id)

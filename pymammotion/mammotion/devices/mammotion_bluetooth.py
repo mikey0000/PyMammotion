@@ -103,7 +103,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
         self._state_manager.ble_on_notification_callback = func
 
-    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[bytes]]) -> None:
+    def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
         self._state_manager.ble_queue_command_callback = func
 
     def update_device(self, device: BLEDevice) -> None:
@@ -136,7 +136,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         if self._client is not None and self._client.is_connected:
             await self._client.disconnect()
 
-    async def queue_command(self, key: str, **kwargs: Any) -> bytes | None:
+    async def queue_command(self, key: str, **kwargs: Any) -> None:
         # Create a future to hold the result
         _LOGGER.debug("Queueing command: %s", key)
         future = asyncio.Future()
@@ -144,7 +144,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         command_bytes = getattr(self._commands, key)(**kwargs)
         await self.command_queue.put((key, command_bytes, future))
         # Wait for the future to be resolved
-        return await future
+        await future
         # return await self._send_command_with_args(key, **kwargs)
 
     async def process_queue(self) -> None:
