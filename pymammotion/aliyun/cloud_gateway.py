@@ -691,8 +691,22 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
-        """Send a cloud command to the specified IoT device."""
 
+        """Sends a cloud command to a specified IoT device.
+        
+        This function checks if the IoT token is expired and attempts to refresh it if
+        possible. It then constructs a request using the provided command and sends it
+        to the IoT device via an asynchronous HTTP POST request. The function handles
+        various error codes and exceptions based on the response from the cloud
+        service.
+        
+        Args:
+            iot_id (str): The unique identifier of the IoT device.
+            command (bytes): The command to be sent to the IoT device in binary format.
+        
+        Returns:
+            str: A unique message ID for the sent command.
+        """
         if command is None:
             raise Exception("Command is missing / None")
 

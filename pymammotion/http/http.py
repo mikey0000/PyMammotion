@@ -93,7 +93,7 @@ class MammotionHTTP:
                     print(data)
 
     async def get_stream_subscription(self, iot_id: str) -> Response[StreamSubscriptionResponse]:
-        """Get agora.io data for view camera stream"""
+        """Fetches stream subscription data from agora.io for a given IoT device."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/device-server/v1/stream/subscription",
@@ -116,9 +116,9 @@ class MammotionHTTP:
     async def get_stream_subscription_mini_or_x_series(
         self, iot_id: str, is_yuka: bool
     ) -> Response[StreamSubscriptionResponse]:
-        """Get agora.io data for view camera stream (New models 2025)"""
 
         # Prepare the payload with cameraStates based on is_yuka flag
+        """Fetches stream subscription data for a given IoT device."""
         payload = {"deviceId": iot_id, "mode": 0, "cameraStates": []}
 
         # Add appropriate cameraStates based on the is_yuka flag
@@ -147,7 +147,7 @@ class MammotionHTTP:
                 return response
 
     async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
-        """Get video resource for new models (2025 series)"""
+        """Fetch video resource for a given IoT ID."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.get(
                 f"/device-server/v1/video-resource/{iot_id}",
@@ -167,7 +167,7 @@ class MammotionHTTP:
                 return response
 
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
-        """Device firmware upgrade check."""
+        """Checks device firmware versions for a list of IoT IDs."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/device-server/v1/devices/version/check",
@@ -184,7 +184,7 @@ class MammotionHTTP:
                 return response_factory(Response[list[CheckDeviceVersion]], data)
 
     async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
-        """Device firmware upgrade."""
+        """Initiates an OTA upgrade for a device."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/device-server/v1/ota/device/upgrade",
@@ -208,6 +208,7 @@ class MammotionHTTP:
         return await self.login(account, self._password)
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
+        """Logs in to the service using provided account and password."""
         self.account = account
         self._password = password
         async with ClientSession(MAMMOTION_DOMAIN) as session:

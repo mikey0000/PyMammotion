@@ -104,16 +104,17 @@ class StateManager:
             await self.ble_on_notification_callback(res)
 
     async def on_properties_callback(self, thing_properties: ThingPropertiesMessage) -> None:
-        """Check if we have a callback for properties."""
+        """Call properties callback if it exists."""
         if self.properties_callback:
             await self.properties_callback(thing_properties)
 
     async def on_status_callback(self, thing_status: ThingStatusMessage) -> None:
-        """Check if we have a callback for status."""
+        """Execute the status callback if it is set."""
         if self.status_callback:
             await self.status_callback(thing_status)
 
     async def get_commondata_ack_callback(self, comm_data: NavGetCommDataAck | SvgMessageAckT) -> None:
+        """Asynchronously calls the appropriate callback based on available handlers."""
         if self.cloud_get_commondata_ack_callback:
             await self.cloud_get_commondata_ack_callback(comm_data)
         elif self.ble_get_commondata_ack_callback:
