@@ -505,6 +505,22 @@ message NavEdgePointsAck {
   int32 currentFrame = 6;
 }
 
+message ManualElementMessage {
+  int32 pver = 1;
+  int32 type = 2;
+  int32 shape = 3;
+  int32 result = 4;
+  int32 subCmd = 5;
+  fixed64 dataHash = 6;
+  bool ifHide = 7;
+  string reserved = 8;
+  double point1_center_x = 9;
+  double point1_center_y = 10;
+  double point2_width_x = 11;
+  double point2_height_y = 12;
+  double rotate_radius = 13;
+}
+
 message MctlNav {
   oneof SubNavMsg {
     NavLatLonUp toapp_lat_up = 1;
@@ -570,5 +586,6 @@ message MctlNav {
     AppGetAllAreaHashName toapp_all_hash_name = 61;
     NavEdgePoints toapp_edge_points = 62;
     NavEdgePointsAck toapp_edge_points_ack = 63;
+    ManualElementMessage toapp_manual_element = 64;
   }
 }

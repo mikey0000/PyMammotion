@@ -198,12 +198,13 @@ class DrvListUpload(_message.Message):
     def __init__(self, sum: _Optional[int] = ..., current: _Optional[int] = ..., status: _Optional[int] = ..., Memssid: _Optional[str] = ..., rssi: _Optional[int] = ...) -> None: ...
 
 class DrvUpgradeReport(_message.Message):
-    __slots__ = ["devname", "message", "otaid", "progress", "properties", "result", "version"]
+    __slots__ = ["devname", "message", "otaid", "progress", "properties", "recv_cnt", "result", "version"]
     DEVNAME_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     OTAID_FIELD_NUMBER: _ClassVar[int]
     PROGRESS_FIELD_NUMBER: _ClassVar[int]
     PROPERTIES_FIELD_NUMBER: _ClassVar[int]
+    RECV_CNT_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
     devname: str
@@ -211,9 +212,10 @@ class DrvUpgradeReport(_message.Message):
     otaid: str
     progress: int
     properties: str
+    recv_cnt: int
     result: int
     version: str
-    def __init__(self, devname: _Optional[str] = ..., otaid: _Optional[str] = ..., version: _Optional[str] = ..., progress: _Optional[int] = ..., result: _Optional[int] = ..., message: _Optional[str] = ..., properties: _Optional[str] = ...) -> None: ...
+    def __init__(self, devname: _Optional[str] = ..., otaid: _Optional[str] = ..., version: _Optional[str] = ..., progress: _Optional[int] = ..., result: _Optional[int] = ..., message: _Optional[str] = ..., properties: _Optional[str] = ..., recv_cnt: _Optional[int] = ...) -> None: ...
 
 class DrvUploadFileCancel(_message.Message):
     __slots__ = ["bizId"]
@@ -418,13 +420,14 @@ class MnetCfg(_message.Message):
     def __init__(self, mnet_enable: bool = ..., inet_enable: bool = ..., type: _Optional[_Union[net_type, str]] = ..., apn: _Optional[_Union[MnetApnSetCfg, _Mapping]] = ..., auto_select: bool = ...) -> None: ...
 
 class MnetInfo(_message.Message):
-    __slots__ = ["iccid", "imei", "imsi", "inet", "link_type", "model", "revision", "rssi", "sim"]
+    __slots__ = ["iccid", "imei", "imsi", "inet", "link_type", "model", "operator", "revision", "rssi", "sim"]
     ICCID_FIELD_NUMBER: _ClassVar[int]
     IMEI_FIELD_NUMBER: _ClassVar[int]
     IMSI_FIELD_NUMBER: _ClassVar[int]
     INET_FIELD_NUMBER: _ClassVar[int]
     LINK_TYPE_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
+    OPERATOR_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
     RSSI_FIELD_NUMBER: _ClassVar[int]
     SIM_FIELD_NUMBER: _ClassVar[int]
@@ -434,10 +437,11 @@ class MnetInfo(_message.Message):
     inet: mnet_inet_status
     link_type: mnet_link_type
     model: str
+    operator: str
     revision: str
     rssi: int
     sim: sim_card_sta
-    def __init__(self, model: _Optional[str] = ..., revision: _Optional[str] = ..., imei: _Optional[str] = ..., sim: _Optional[_Union[sim_card_sta, str]] = ..., imsi: _Optional[str] = ..., link_type: _Optional[_Union[mnet_link_type, str]] = ..., rssi: _Optional[int] = ..., inet: _Optional[_Union[mnet_inet_status, _Mapping]] = ..., iccid: _Optional[str] = ...) -> None: ...
+    def __init__(self, model: _Optional[str] = ..., revision: _Optional[str] = ..., imei: _Optional[str] = ..., sim: _Optional[_Union[sim_card_sta, str]] = ..., imsi: _Optional[str] = ..., link_type: _Optional[_Union[mnet_link_type, str]] = ..., rssi: _Optional[int] = ..., inet: _Optional[_Union[mnet_inet_status, _Mapping]] = ..., iccid: _Optional[str] = ..., operator: _Optional[str] = ...) -> None: ...
 
 class SetDrvBleMTU(_message.Message):
     __slots__ = ["mtu_count"]

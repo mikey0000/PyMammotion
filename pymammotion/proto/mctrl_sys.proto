@@ -52,7 +52,14 @@ enum QCAppTestId {
   QC_APP_TEST_CNO_REF_STATION = 26;
   QC_APP_TEST_REF_STATION_LINK_STATUS = 27;
   QC_APP_TEST_LOCATION_STATE = 28;
-  QC_APP_TEST_MAX = 29;
+  QC_APP_TEST_CHARGE_STATUS = 29;
+  QC_APP_TEST_PPS_EXTI_COUNT = 30;
+  QC_APP_TEST_SAFE_KEY = 50;
+  QC_APP_TEST_LORA_RSSI = 60;
+  QC_APP_TEST_WIPER_TEST = 80;
+  QC_APP_TEST_HEADLAMP_TEST = 81;
+  QC_APP_TEST_COMPLETE_SIGNAL = 99;
+  QC_APP_TEST_MAX = 100;
 }
 
 enum rtk_used_type {
@@ -79,12 +86,20 @@ enum rpt_info_type {
   RIT_VIO = 8;
   RIT_VISION_STATISTIC = 9;
   RIT_BASESTATION_INFO = 10;
+  RIT_CUTTER_INFO = 11;
 }
 
 enum rpt_act {
   RPT_START = 0;
   RPT_STOP = 1;
   RPT_KEEP = 2;
+}
+
+enum Command_Result {
+  RS_OK = 0;
+  RS_FAIL_MAGIC = 1;
+  RS_FAIL_OTA = 2;
+  RS_FAIL_SLOPE = 3;
 }
 
 message SysBatUp {
@@ -157,8 +172,8 @@ message SysMowInfo {
   int32 deviceState = 1;
   int32 batVal = 2;
   int32 knifeHeight = 3;
-  int32 rtk_status = 4;
-  int32 rtk_stars = 5;
+  int32 RTKstatus = 4;
+  int32 RTKstars = 5;
 }
 
 message SysOptiLineAck {
@@ -374,6 +389,16 @@ message mqtt_rtk_connect {
   double longitude = 5;
   int32 nrtk_map_convert_status = 6;
   int32 nrtk_net_mode = 7;
+  int32 new_rtk_mode = 8;
+}
+
+message pos_score {
+  uint32 rover_score = 1;
+  uint32 rover_level = 2;
+  uint32 base_score = 3;
+  uint32 base_level = 4;
+  uint32 base_moved = 5;
+  uint32 base_moving = 6;
 }
 
 message rpt_rtk {
@@ -390,6 +415,7 @@ message rpt_rtk {
   int32 reset = 11;
   rpt_lora lora_info = 12;
   mqtt_rtk_connect mqtt_rtk_info = 13;
+  pos_score score_info = 14;
 }
 
 message rpt_dev_location {
@@ -476,6 +502,8 @@ message rpt_work {
   int32 nav_edit_status = 19;
   int32 knife_height = 20;
   nav_heading_state_t nav_heading_state = 21;
+  float cutter_offset = 22;
+  float cutter_width = 23;
 }
 
 message blade_used {
@@ -530,6 +558,7 @@ message report_info_data {
   vio_to_app_info_msg vio_to_app_info = 9;
   vision_statistic_info_msg vision_statistic_info = 10;
   rpt_basestation_info basestation_info = 11;
+  rpt_cutter_rpm cutter_work_mode_info = 12;
 }
 
 message debug_common_report_t {
@@ -583,6 +612,15 @@ message response_set_mode_t {
   int32 statue = 1;
   int32 set_work_mode = 2;
   int32 cur_work_mode = 3;
+  int64 start_work_time = 4;
+  int64 end_work_time = 5;
+  int32 interruptflag = 6;
+  int32 cur_work_time = 7;
+}
+
+message rpt_cutter_rpm {
+  int32 current_cutter_mode = 1;
+  int32 current_cutter_rpm = 2;
 }
 
 message dev_statue_t {
@@ -593,20 +631,49 @@ message dev_statue_t {
   int32 pump_status = 5;
   int32 work_mode = 6;
   int32 model = 7;
+  int32 ble_rssi = 8;
+  int32 wifi_rssi = 9;
+  int32 wifi_connect_status = 10;
+  int32 iot_connect_status = 11;
+  int32 wifi_available = 12;
 }
 
 message report_info_t {
   dev_statue_t dev_status = 1;
-  int32 ota_status = 2;
-  string dev_version = 3;
-  int32 ota_progress = 4;
-  int32 ota_fw_code = 5;
-  int32 ota_fw_seq = 6;
-  int32 ota_fw_downloaded = 7;
 }
 
 message work_mode_t {
   int32 work_mode = 1;
+}
+
+message special_mode_t {
+  int32 stair_mode = 1;
+  int32 violent_mode = 2;
+  int32 berthing_mode = 3;
+}
+
+message set_peripherals_t {
+  int32 buzz_enable = 1;
+}
+
+message debug_sun_time_t {
+  int32 subCmd = 1;
+  int32 sunRiseTime = 2;
+  int32 sunSetTime = 3;
+}
+
+message remote_reset_req_t {
+  int32 magic = 1;
+  int64 bizid = 2;
+  int32 reset_mode = 3;
+  int32 force_reset = 4;
+  int64 account = 5;
+}
+
+message remote_reset_rsp_t {
+  int32 magic = 1;
+  int64 bizid = 2;
+  Command_Result result = 3;
 }
 
 message MctlSys {
@@ -664,5 +731,11 @@ message MctlSys {
     response_set_mode_t response_set_mode = 59;
     report_info_t report_info = 60;
     work_mode_t set_work_mode = 61;
+    special_mode_t set_special_mode = 62;
+    set_peripherals_t set_peripherals = 63;
+    debug_sun_time_t to_dev_set_sun_time = 64;
+    remote_reset_req_t to_dev_remote_reset = 65;
+    remote_reset_rsp_t to_app_remote_reset = 66;
+    rpt_cutter_rpm current_cutter_mode = 67;
   }
 }

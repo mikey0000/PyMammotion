@@ -6,12 +6,20 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class MctlPept(_message.Message):
-    __slots__ = ["perception_obstacles_visualization", "perception_universal_buff"]
+    __slots__ = ["perception_local_map_visualization", "perception_obstacles_visualization", "perception_universal_buff"]
+    PERCEPTION_LOCAL_MAP_VISUALIZATION_FIELD_NUMBER: _ClassVar[int]
     PERCEPTION_OBSTACLES_VISUALIZATION_FIELD_NUMBER: _ClassVar[int]
     PERCEPTION_UNIVERSAL_BUFF_FIELD_NUMBER: _ClassVar[int]
+    perception_local_map_visualization: perception_local_map_visualization_t
     perception_obstacles_visualization: perception_obstacles_visualization_t
     perception_universal_buff: perception_universal_buff_t
-    def __init__(self, perception_obstacles_visualization: _Optional[_Union[perception_obstacles_visualization_t, _Mapping]] = ..., perception_universal_buff: _Optional[_Union[perception_universal_buff_t, _Mapping]] = ...) -> None: ...
+    def __init__(self, perception_obstacles_visualization: _Optional[_Union[perception_obstacles_visualization_t, _Mapping]] = ..., perception_universal_buff: _Optional[_Union[perception_universal_buff_t, _Mapping]] = ..., perception_local_map_visualization: _Optional[_Union[perception_local_map_visualization_t, _Mapping]] = ...) -> None: ...
+
+class perception_local_map_visualization_t(_message.Message):
+    __slots__ = ["map"]
+    MAP_FIELD_NUMBER: _ClassVar[int]
+    map: bytes
+    def __init__(self, map: _Optional[bytes] = ...) -> None: ...
 
 class perception_obstacles_t(_message.Message):
     __slots__ = ["label", "num", "points_x", "points_y"]
@@ -26,18 +34,18 @@ class perception_obstacles_t(_message.Message):
     def __init__(self, label: _Optional[int] = ..., num: _Optional[int] = ..., points_x: _Optional[_Iterable[int]] = ..., points_y: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class perception_obstacles_visualization_t(_message.Message):
-    __slots__ = ["is_heart_beat", "num", "obstacles", "scale", "timestamp"]
-    IS_HEART_BEAT_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ["num", "obstacles", "scale", "status", "timestamp"]
     NUM_FIELD_NUMBER: _ClassVar[int]
     OBSTACLES_FIELD_NUMBER: _ClassVar[int]
     SCALE_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
     TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
-    is_heart_beat: int
     num: int
     obstacles: _containers.RepeatedCompositeFieldContainer[perception_obstacles_t]
     scale: float
+    status: int
     timestamp: float
-    def __init__(self, is_heart_beat: _Optional[int] = ..., num: _Optional[int] = ..., obstacles: _Optional[_Iterable[_Union[perception_obstacles_t, _Mapping]]] = ..., timestamp: _Optional[float] = ..., scale: _Optional[float] = ...) -> None: ...
+    def __init__(self, status: _Optional[int] = ..., num: _Optional[int] = ..., obstacles: _Optional[_Iterable[_Union[perception_obstacles_t, _Mapping]]] = ..., timestamp: _Optional[float] = ..., scale: _Optional[float] = ...) -> None: ...
 
 class perception_universal_buff_t(_message.Message):
     __slots__ = ["perception_len", "perception_type", "universal_buff"]

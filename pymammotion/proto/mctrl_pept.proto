@@ -8,7 +8,7 @@ message perception_obstacles_t {
 }
 
 message perception_obstacles_visualization_t {
-  int32 is_heart_beat = 1;
+  int32 status = 1;
   int32 num = 2;
   repeated perception_obstacles_t obstacles = 3;
   double timestamp = 4;
@@ -21,9 +21,14 @@ message perception_universal_buff_t {
   repeated int64 universal_buff = 3;
 }
 
+message perception_local_map_visualization_t {
+  bytes map = 1;
+}
+
 message MctlPept {
   oneof SubPeptMsg {
     perception_obstacles_visualization_t perception_obstacles_visualization = 1;
     perception_universal_buff_t perception_universal_buff = 2;
+    perception_local_map_visualization_t perception_local_map_visualization = 3;
   }
 }

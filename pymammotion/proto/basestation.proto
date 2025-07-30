@@ -4,6 +4,13 @@ message request_basestation_info_t {
     uint32 request_type = 1;
 }
 
+message base_score {
+    uint32 base_score = 1;
+    uint32 base_leve = 2;
+    uint32 base_moved = 3;
+    uint32 base_moving = 4;
+}
+
 message response_basestation_info_t {
     uint64 system_status = 1;
     uint32 app_connect_type = 2;
@@ -19,6 +26,7 @@ message response_basestation_info_t {
     int32 mqtt_rtk_status = 12;
     int32 rtk_channel = 13;
     int32 rtk_switch = 14;
+    base_score score_info = 15;
 }
 
 message app_to_base_mqtt_rtk_t {

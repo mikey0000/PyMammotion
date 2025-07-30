@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"pymammotion/proto/mctrl_pept.proto\"X\n\x16perception_obstacles_t\x12\r\n\x05label\x18\x01 \x01(\x05\x12\x0b\n\x03num\x18\x02 \x01(\x05\x12\x10\n\x08points_x\x18\x03 \x03(\x11\x12\x10\n\x08points_y\x18\x04 \x03(\x11\"\x98\x01\n$perception_obstacles_visualization_t\x12\x15\n\ris_heart_beat\x18\x01 \x01(\x05\x12\x0b\n\x03num\x18\x02 \x01(\x05\x12*\n\tobstacles\x18\x03 \x03(\x0b\x32\x17.perception_obstacles_t\x12\x11\n\ttimestamp\x18\x04 \x01(\x01\x12\r\n\x05scale\x18\x05 \x01(\x02\"f\n\x1bperception_universal_buff_t\x12\x17\n\x0fperception_type\x18\x01 \x01(\x05\x12\x16\n\x0eperception_len\x18\x02 \x01(\x05\x12\x16\n\x0euniversal_buff\x18\x03 \x03(\x03\"\xb0\x01\n\x08MctlPept\x12S\n\"perception_obstacles_visualization\x18\x01 \x01(\x0b\x32%.perception_obstacles_visualization_tH\x00\x12\x41\n\x19perception_universal_buff\x18\x02 \x01(\x0b\x32\x1c.perception_universal_buff_tH\x00\x42\x0c\n\nSubPeptMsgb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"pymammotion/proto/mctrl_pept.proto\"X\n\x16perception_obstacles_t\x12\r\n\x05label\x18\x01 \x01(\x05\x12\x0b\n\x03num\x18\x02 \x01(\x05\x12\x10\n\x08points_x\x18\x03 \x03(\x11\x12\x10\n\x08points_y\x18\x04 \x03(\x11\"\x91\x01\n$perception_obstacles_visualization_t\x12\x0e\n\x06status\x18\x01 \x01(\x05\x12\x0b\n\x03num\x18\x02 \x01(\x05\x12*\n\tobstacles\x18\x03 \x03(\x0b\x32\x17.perception_obstacles_t\x12\x11\n\ttimestamp\x18\x04 \x01(\x01\x12\r\n\x05scale\x18\x05 \x01(\x02\"f\n\x1bperception_universal_buff_t\x12\x17\n\x0fperception_type\x18\x01 \x01(\x05\x12\x16\n\x0eperception_len\x18\x02 \x01(\x05\x12\x16\n\x0euniversal_buff\x18\x03 \x03(\x03\"3\n$perception_local_map_visualization_t\x12\x0b\n\x03map\x18\x01 \x01(\x0c\"\x85\x02\n\x08MctlPept\x12S\n\"perception_obstacles_visualization\x18\x01 \x01(\x0b\x32%.perception_obstacles_visualization_tH\x00\x12\x41\n\x19perception_universal_buff\x18\x02 \x01(\x0b\x32\x1c.perception_universal_buff_tH\x00\x12S\n\"perception_local_map_visualization\x18\x03 \x01(\x0b\x32%.perception_local_map_visualization_tH\x00\x42\x0c\n\nSubPeptMsgb\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'pymammotion.proto.mctrl_pept_pb2', globals())
@@ -23,9 +23,11 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _PERCEPTION_OBSTACLES_T._serialized_start=38
   _PERCEPTION_OBSTACLES_T._serialized_end=126
   _PERCEPTION_OBSTACLES_VISUALIZATION_T._serialized_start=129
-  _PERCEPTION_OBSTACLES_VISUALIZATION_T._serialized_end=281
-  _PERCEPTION_UNIVERSAL_BUFF_T._serialized_start=283
-  _PERCEPTION_UNIVERSAL_BUFF_T._serialized_end=385
-  _MCTLPEPT._serialized_start=388
-  _MCTLPEPT._serialized_end=564
+  _PERCEPTION_OBSTACLES_VISUALIZATION_T._serialized_end=274
+  _PERCEPTION_UNIVERSAL_BUFF_T._serialized_start=276
+  _PERCEPTION_UNIVERSAL_BUFF_T._serialized_end=378
+  _PERCEPTION_LOCAL_MAP_VISUALIZATION_T._serialized_start=380
+  _PERCEPTION_LOCAL_MAP_VISUALIZATION_T._serialized_end=431
+  _MCTLPEPT._serialized_start=434
+  _MCTLPEPT._serialized_end=695
 # @@protoc_insertion_point(module_scope)

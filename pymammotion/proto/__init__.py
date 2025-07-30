@@ -290,10 +290,6 @@ class ResponseBasestationInfoT(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class AppToBaseMqttRtkT(betterproto.Message):
     rtk_switch: int = betterproto.int32_field(1)
-    rtk_url: str = betterproto.string_field(2)
-    rtk_port: int = betterproto.int32_field(3)
-    rtk_username: str = betterproto.string_field(4)
-    rtk_password: str = betterproto.string_field(5)
 
 
 @dataclass(eq=False, repr=False)
@@ -680,8 +676,8 @@ class DrvKnifeStatus(betterproto.Message):
 @dataclass(eq=False, repr=False)
 class DrvKnifeChangeReport(betterproto.Message):
     is_start: int = betterproto.int32_field(1)
-    start_high: int = betterproto.int32_field(2)
-    end_high: int = betterproto.int32_field(3)
+    start_height: int = betterproto.int32_field(2)
+    end_height: int = betterproto.int32_field(3)
 
 
 @dataclass(eq=False, repr=False)

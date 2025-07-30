@@ -1,5 +1,11 @@
 syntax = "proto3";
 
+enum CutterWorkMode {
+  CUTTER_STANDARD = 0;
+  CUTTER_PERFORMANCE = 1;
+  CUTTER_ECONOMIC = 2;
+}
+
 enum CollectMotorState {
   COLLECT_CLOSE = 0;
   COLLECT_OPEN = 1;
@@ -34,9 +40,9 @@ message DrvKnifeStatus {
 
 message DrvKnifeChangeReport {
   int32 is_start = 1;
-  int32 start_high = 2;
-  int32 end_high = 3;
-  int32 cur_high = 4;
+  int32 start_height = 2;
+  int32 end_height = 3;
+  int32 cur_height = 4;
 }
 
 message DrvCollectCtrlByHand {
@@ -70,6 +76,17 @@ message rtk_sys_mask_query_ack_t {
   repeated uint32 system_mask_bits = 2;
 }
 
+message AppSetCutterWorkMode {
+  int32 CutterMode = 1;
+  int32 SetResult = 2;
+}
+
+message AppGetCutterWorkMode {
+  int32 current_cutter_mode = 1;
+  int32 current_cutter_rpm = 2;
+  int32 QueryResult = 3;
+}
+
 message MctlDriver {
   oneof SubDrvMsg {
     DrvMotionCtrl todev_devmotion_ctrl = 1;
@@ -84,5 +101,7 @@ message MctlDriver {
     rtk_sys_mask_query_ack_t rtk_sys_mask_query_ack = 10;
     DrvKnifeChangeReport toapp_knife_status_change = 11;
     DrvCollectCtrlByHand collect_ctrl_by_hand = 12;
+    AppSetCutterWorkMode cutter_mode_ctrl_by_hand = 13;
+    AppGetCutterWorkMode current_cutter_mode = 14;
   }
 }

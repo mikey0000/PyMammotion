@@ -150,6 +150,7 @@ message DrvUpgradeReport {
   int32 result = 5;
   string message = 6;
   string properties = 7;
+  int32 recv_cnt = 8;
 }
 
 message WifiIotStatusReport {
@@ -195,6 +196,7 @@ message MnetInfo {
   int32 rssi = 7;
   mnet_inet_status inet = 8;
   string iccid = 9;
+  string operator = 10;
 }
 
 message GetMnetInfoReq {
