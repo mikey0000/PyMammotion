@@ -6,6 +6,21 @@ T = TypeVar("T")
 
 
 def deserialize_data(value, target_type):
+    """Deserialize data into a specified target type.
+    
+    The function handles deserialization of basic types, lists, and unions. It
+    recursively processes list elements and supports optional types by handling
+    Union[T, None]. For custom types with a `from_dict` method, it calls this
+    method for deserialization. If the target type is unknown or unsupported, it
+    returns the value unchanged.
+    
+    Args:
+        value: The data to be deserialized.
+        target_type (type): The desired type into which the data should be deserialized.
+    
+    Returns:
+        The deserialized data in the specified target type.
+    """
     if value is None:
         return None
 
@@ -30,6 +45,7 @@ def deserialize_data(value, target_type):
 
 def response_factory(response_cls: type[Response[T]], raw_dict: dict) -> Response[T]:
     # Extract the type of the generic `data` field
+    """Create a Response instance from a dictionary."""
     data_type = get_args(response_cls)[0] if get_args(response_cls) else None
 
     if data_type:
