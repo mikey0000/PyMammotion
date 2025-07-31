@@ -186,7 +186,7 @@ class MammotionHTTP:
                 return response_factory(Response[list[CheckDeviceVersion]], data)
 
     async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
-        """Initiates an OTA upgrade for a device."""
+        """Starts an OTA upgrade for a specified device."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/device-server/v1/ota/device/upgrade",
