@@ -197,6 +197,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._state_manager.cloud_queue_command_callback.remove_subscribers(self.queue_command)
 
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        """Sets a callback function for cloud notifications."""
         self._state_manager.cloud_on_notification_callback.add_subscribers(func)
 
     def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
