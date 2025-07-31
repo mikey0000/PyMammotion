@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name        = "pymammotion"
-version     = "0.4.57"
+version     = "0.5.0"
 license     = "GPL-3.0"
 description = ""
 readme      = "README.md"
@@ -30,7 +30,7 @@ paho-mqtt = "^2.1.0"
 alicloud-gateway-iot = "^1.0.0"
 alibabacloud-apigateway-util = "^0.0.2"
 alibabacloud-iot-api-gateway = "^0.0.4"
-bleak-retry-connector = "^3.5.0"
+bleak-retry-connector = ">=3.5.0"
 jsonic = "^1.0.0"
 mashumaro = "^3.13"
 orjson = "^3.9.15"
@@ -66,7 +66,7 @@ autotyping = "^24.3.0"
 ipython = "^9.0.2"
 
 [tool.bumpver]
-current_version = "0.4.57"
+current_version = "0.5.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
