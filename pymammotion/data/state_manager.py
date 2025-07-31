@@ -99,6 +99,7 @@ class StateManager:
             await self.ble_gethash_ack_callback(msg)
 
     async def on_notification_callback(self, res: tuple[str, Any | None]) -> None:
+        """Calls the appropriate notification callback with the given result."""
         if self.cloud_on_notification_callback:
             await self.cloud_on_notification_callback.data_event(res)
         elif self.ble_on_notification_callback:

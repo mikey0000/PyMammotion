@@ -110,6 +110,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._state_manager.ble_queue_command_callback.remove_subscribers(self.queue_command)
 
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        """Adds a notification callback to the state manager."""
         self._state_manager.ble_on_notification_callback.add_subscribers(func)
 
     def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
@@ -246,7 +247,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
 
     @property
     def client(self) -> BleakClientWithServiceCache | None:
-        """Return client."""
+        """Get the BLEAK client."""
         return self._client
 
     async def _ensure_connected(self) -> None:
