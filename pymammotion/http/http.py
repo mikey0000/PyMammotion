@@ -18,7 +18,7 @@ class MammotionHTTP:
         self._password = None
         self.response: Response | None = None
         self.login_info: LoginResponseData | None = None
-        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332"}
+        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,1.14.2.29"}
         self.encryption_utils = EncryptionUtils()
 
     @staticmethod
@@ -99,6 +99,7 @@ class MammotionHTTP:
                 "/device-server/v1/stream/subscription",
                 json={"deviceId": iot_id},
                 headers={
+                    **self._headers,
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
@@ -116,7 +117,6 @@ class MammotionHTTP:
     async def get_stream_subscription_mini_or_x_series(
         self, iot_id: str, is_yuka: bool
     ) -> Response[StreamSubscriptionResponse]:
-
         # Prepare the payload with cameraStates based on is_yuka flag
         """Fetches stream subscription data for a given IoT device."""
         payload = {"deviceId": iot_id, "mode": 0, "cameraStates": []}
@@ -132,6 +132,7 @@ class MammotionHTTP:
                 "/device-server/v1/stream/token",
                 json=payload,
                 headers={
+                    **self._headers,
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
@@ -173,6 +174,7 @@ class MammotionHTTP:
                 "/device-server/v1/devices/version/check",
                 json={"deviceIds": iot_ids},
                 headers={
+                    **self._headers,
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
@@ -190,6 +192,7 @@ class MammotionHTTP:
                 "/device-server/v1/ota/device/upgrade",
                 json={"deviceId": iot_id, "version": version},
                 headers={
+                    **self._headers,
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
@@ -215,8 +218,7 @@ class MammotionHTTP:
             async with session.post(
                 "/oauth/token",
                 headers={
-                    "User-Agent": "okhttp/4.9.3",
-                    "App-Version": "google Pixel 2 XL taimen-Android 11,1.11.332",
+                    **self._headers,
                     "Encrypt-Key": self.encryption_utils.encrypt_by_public_key(),
                     "Decrypt-Type": "3",
                     "Ec-Version": "v1",
