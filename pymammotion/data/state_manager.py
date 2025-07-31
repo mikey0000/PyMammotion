@@ -73,10 +73,12 @@ class StateManager:
 
     async def properties(self, thing_properties: ThingPropertiesMessage) -> None:
         # TODO update device based off thing properties
+        """Updates device MQTT properties and calls on_properties_callback."""
         self._device.mqtt_properties = thing_properties
         await self.on_properties_callback(thing_properties)
 
     async def status(self, thing_status: ThingStatusMessage) -> None:
+        """Update device status and handle online state."""
         if not self._device.online:
             self._device.online = True
         self._device.status_properties = thing_status
