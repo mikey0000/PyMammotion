@@ -310,12 +310,12 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def _parse_message_properties_for_device(self, event: ThingPropertiesMessage) -> None:
         if event.params.iotId != self.iot_id:
             return
-        self.state_manager.properties(event)
+        await self.state_manager.properties(event)
 
     async def _parse_message_status_for_device(self, status: ThingStatusMessage) -> None:
         if status.params.iotId != self.iot_id:
             return
-        self.state_manager.status(status)
+        await self.state_manager.status(status)
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         params = event.params

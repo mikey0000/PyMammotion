@@ -71,18 +71,18 @@ class StateManager:
         """Set device."""
         self._device = device
 
-    def properties(self, thing_properties: ThingPropertiesMessage) -> None:
+    async def properties(self, thing_properties: ThingPropertiesMessage) -> None:
         # TODO update device based off thing properties
         self._device.mqtt_properties = thing_properties
-        self.on_properties_callback(thing_properties)
+        await self.on_properties_callback(thing_properties)
 
-    def status(self, thing_status: ThingStatusMessage) -> None:
+    async def status(self, thing_status: ThingStatusMessage) -> None:
         if not self._device.online:
             self._device.online = True
         self._device.status_properties = thing_status
         if self._device.mower_state.product_key == "":
             self._device.mower_state.product_key = thing_status.params.productKey
-        self.on_status_callback(thing_status)
+        await self.on_status_callback(thing_status)
 
     @property
     def online(self) -> bool:
