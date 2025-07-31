@@ -14,6 +14,7 @@ from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, N
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
+from pymammotion.event.event import DataEvent
 from pymammotion.proto import (
     AppGetAllAreaHashName,
     DeviceFwInfo,
@@ -47,20 +48,20 @@ class StateManager:
         self.cloud_get_commondata_ack_callback: (
             Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None
         ) = None
-        self.cloud_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
-        self.cloud_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
-        self.cloud_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
+        self.cloud_on_notification_callback = DataEvent()
+        self.cloud_queue_command_callback = DataEvent()
 
+        self.cloud_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
         self.ble_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
         self.ble_get_commondata_ack_callback: Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None = (
             None
         )
         self.ble_get_plan_callback: Callable[[NavPlanJobSet], Awaitable[None]] | None = None
-        self.ble_on_notification_callback: Callable[[tuple[str, Any | None]], Awaitable[None]] | None = None
-        self.ble_queue_command_callback: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
+        self.ble_on_notification_callback = DataEvent()
+        self.ble_queue_command_callback = DataEvent()
 
-        self.properties_callback: Callable[[ThingPropertiesMessage], Awaitable[None]] | None = None
-        self.status_callback: Callable[[ThingStatusMessage], Awaitable[None]] | None = None
+        self.properties_callback = DataEvent()
+        self.status_callback = DataEvent()
 
     def get_device(self) -> MowingDevice:
         """Get device."""
@@ -99,19 +100,19 @@ class StateManager:
 
     async def on_notification_callback(self, res: tuple[str, Any | None]) -> None:
         if self.cloud_on_notification_callback:
-            await self.cloud_on_notification_callback(res)
+            await self.cloud_on_notification_callback.data_event(res)
         elif self.ble_on_notification_callback:
-            await self.ble_on_notification_callback(res)
+            await self.ble_on_notification_callback.data_event(res)
 
     async def on_properties_callback(self, thing_properties: ThingPropertiesMessage) -> None:
         """Check if we have a callback for properties."""
         if self.properties_callback:
-            await self.properties_callback(thing_properties)
+            await self.properties_callback.data_event(thing_properties)
 
     async def on_status_callback(self, thing_status: ThingStatusMessage) -> None:
         """Check if we have a callback for status."""
         if self.status_callback:
-            await self.status_callback(thing_status)
+            await self.status_callback.data_event(thing_status)
 
     async def get_commondata_ack_callback(self, comm_data: NavGetCommDataAck | SvgMessageAckT) -> None:
         if self.cloud_get_commondata_ack_callback:

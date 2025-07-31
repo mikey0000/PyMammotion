@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 import logging
 import time
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 import betterproto
@@ -100,11 +100,20 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         loop = asyncio.get_event_loop()
         loop.create_task(self.process_queue())
 
+    def __del__(self) -> None:
+        """Cleanup."""
+        if self._disconnect_timer:
+            self._disconnect_timer.cancel()
+        if self._ble_sync_task:
+            self._ble_sync_task.cancel()
+
+        self._state_manager.ble_queue_command_callback.remove_subscribers(self.queue_command)
+
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
-        self._state_manager.ble_on_notification_callback = func
+        self._state_manager.ble_on_notification_callback.add_subscribers(func)
 
     def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
-        self._state_manager.ble_queue_command_callback = func
+        self._state_manager.ble_queue_command_callback.add_subscribers(func)
 
     def update_device(self, device: BLEDevice) -> None:
         """Update the BLE device."""
@@ -233,10 +242,12 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     @property
     def rssi(self) -> int:
         """Return RSSI of device."""
-        try:
-            return cast(self.mower.sys.toapp_report_data.connect.ble_rssi, int)
-        finally:
-            return 0
+        return self.mower.report_data.connect.ble_rssi
+
+    @property
+    def client(self) -> BleakClientWithServiceCache | None:
+        """Return client."""
+        return self._client
 
     async def _ensure_connected(self) -> None:
         """Ensure connection to device is established."""

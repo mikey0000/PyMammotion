@@ -192,11 +192,15 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         if self._ble_sync_task:
             self._ble_sync_task.cancel()
 
+    def __del__(self) -> None:
+        """Cleanup."""
+        self._state_manager.cloud_queue_command_callback.remove_subscribers(self.queue_command)
+
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
-        self._state_manager.cloud_on_notification_callback = func
+        self._state_manager.cloud_on_notification_callback.add_subscribers(func)
 
     def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
-        self._state_manager.cloud_queue_command_callback = func
+        self._state_manager.cloud_queue_command_callback.add_subscribers(func)
 
     async def on_ready(self) -> None:
         """Callback for when MQTT is subscribed to events."""
