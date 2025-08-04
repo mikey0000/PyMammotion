@@ -271,6 +271,7 @@ class Mammotion:
         return self.device_manager.get_device(name)
 
     def get_or_create_device_by_name(self, device: Device, mqtt_client: MammotionCloud) -> MammotionMixedDeviceManager:
+        """Retrieve or create a device by its name."""
         if mow_device := self.device_manager.get_device(device.deviceName):
             return mow_device
         mow_device = MammotionMixedDeviceManager(
