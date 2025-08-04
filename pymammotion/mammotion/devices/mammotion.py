@@ -273,7 +273,7 @@ class Mammotion:
     def get_or_create_device_by_name(self, device: Device, mqtt_client: MammotionCloud) -> MammotionMixedDeviceManager:
         if mow_device := self.device_manager.get_device(device.deviceName):
             return mow_device
-        return MammotionMixedDeviceManager(
+        mow_device = MammotionMixedDeviceManager(
             name=device.deviceName,
             iot_id=device.iotId,
             cloud_client=mqtt_client.cloud_client,
@@ -281,6 +281,8 @@ class Mammotion:
             cloud_device=device,
             ble_device=None,
         )
+        self.device_manager.add_device(mow_device)
+        return mow_device
 
     async def send_command(self, name: str, key: str):
         """Send a command to the device."""
