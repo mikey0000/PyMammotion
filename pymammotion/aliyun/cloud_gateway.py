@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import itertools
 import json
+from json.decoder import JSONDecodeError
 from logging import getLogger
 import random
 import string
@@ -15,7 +16,6 @@ from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
-from orjson.orjson import JSONDecodeError
 from Tea.exceptions import UnretryableException
 
 from pymammotion.aliyun.client import Client
@@ -153,7 +153,7 @@ class CloudIOTGateway:
             return json.loads(response_body_str) if response_body_str is not None else {}
         except JSONDecodeError:
             logger.error("Couldn't decode message %s", response_body_str)
-            return {'code': 22000}
+            return {"code": 22000}
 
     def sign(self, data):
         """Generate signature for the given data."""
@@ -691,21 +691,21 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
-
         """Sends a cloud command to a specified IoT device.
-        
+
         This function checks if the IoT token is expired and attempts to refresh it if
         possible. It then constructs a request using the provided command and sends it
         to the IoT device via an asynchronous HTTP POST request. The function handles
         various error codes and exceptions based on the response from the cloud
         service.
-        
+
         Args:
             iot_id (str): The unique identifier of the IoT device.
             command (bytes): The command to be sent to the IoT device in binary format.
-        
+
         Returns:
             str: A unique message ID for the sent command.
+
         """
         if command is None:
             raise Exception("Command is missing / None")
