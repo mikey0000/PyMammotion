@@ -61,7 +61,7 @@ class MammotionCloud:
         return self._mqtt_client.is_connected
 
     def disconnect(self) -> None:
-        """Disconnect the MQTT client."""
+        """Disconnects the MQTT client if it is currently connected."""
         if self.is_connected:
             self._mqtt_client.disconnect()
 
