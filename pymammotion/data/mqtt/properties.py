@@ -125,13 +125,13 @@ ItemTypes = Union[
 
 
 @dataclass
-class Item:
+class Item(DataClassDictMixin):
     time: int
     value: int | float | str | dict[str, Any] | ItemTypes  # Depending on the type of value
 
 
 @dataclass
-class Items:
+class Items(DataClassDictMixin):
     iotState: Item | None = None
     extMod: Item | None = None
     deviceVersionInfo: Item | None = None
@@ -163,12 +163,12 @@ class Items:
 
 @dataclass
 class Params(DataClassORJSONMixin):
-    deviceType: Literal["LawnMower"]
+    deviceType: Literal["LawnMower", "Tracker"]
     checkFailedData: dict
     groupIdList: list[str]
     _tenantId: str
     groupId: str
-    categoryKey: Literal["LawnMower"]
+    categoryKey: Literal["LawnMower", "Tracker"]
     batchId: str
     gmtCreate: int
     productKey: str

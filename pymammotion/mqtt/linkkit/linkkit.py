@@ -713,7 +713,7 @@ UxeCp6
         self.__on_ota_message_arrived = None
 
         if self.__just_for_pycharm_autocomplete:
-            self.__mqtt_client = mqtt.Client(CallbackAPIVersion.VERSION2)
+            self.__mqtt_client = mqtt.Client(CallbackAPIVersion.VERSION1)
 
         # device interface info
         self.__device_info_topic = "/sys/%s/%s/thing/deviceinfo/update" % (self.__product_key, self.__device_name)
@@ -1311,10 +1311,7 @@ UxeCp6
         elif self.__mqtt_protocol == "MQTTv31":
             mqtt_protocol_version = mqtt.MQTTv31
         self.__mqtt_client = mqtt.Client(
-            callback_api_version=CallbackAPIVersion.VERSION2,
-            client_id=client_id,
-            clean_session=self.__mqtt_clean_session,
-            protocol=mqtt_protocol_version,
+            client_id=client_id, clean_session=self.__mqtt_clean_session, protocol=mqtt_protocol_version
         )
 
         if self.__link_log.is_enabled():
@@ -1570,13 +1567,13 @@ UxeCp6
             else:
                 return 1, None
 
-    def __on_internal_connect_safe(self, client, userdata, flags, reason_code, properties) -> None:
-        if reason_code == 0:
+    def __on_internal_connect_safe(self, client, user_data, session_flag, rc) -> None:
+        if rc == 0:
             self.__reset_reconnect_wait()
             self.__force_reconnect = False
-        session_flag_internal = {"session present": flags}
+        session_flag_internal = {"session present": session_flag}
         self.__handler_task.post_message(
-            self.__handler_task_cmd_on_connect, (client, userdata, session_flag_internal, reason_code, properties)
+            self.__handler_task_cmd_on_connect, (client, user_data, session_flag_internal, rc)
         )
 
     def __loop_forever_internal(self):
@@ -1609,7 +1606,7 @@ UxeCp6
         except ssl.SSLError as e:
             self.__link_log.error("config mqtt raise exception:" + str(e))
             self.__linkkit_state = LinkKit.LinkKitState.INITIALIZED
-            self.__on_internal_connect_safe(None, None, 0, 6, {})
+            self.__on_internal_connect_safe(None, None, 0, 6)
             return
 
         try:
@@ -1619,7 +1616,7 @@ UxeCp6
         except Exception as e:
             self.__link_log.error("__loop_forever_internal connect raise exception:" + str(e))
             self.__linkkit_state = LinkKit.LinkKitState.INITIALIZED
-            self.__on_internal_connect_safe(None, None, 0, 7, {})
+            self.__on_internal_connect_safe(None, None, 0, 7)
             return
         while True:
             if self.__worker_loop_exit_req:
@@ -1642,7 +1639,7 @@ UxeCp6
                 #     return
                 if self.__linkkit_state == LinkKit.LinkKitState.CONNECTING:
                     self.__linkkit_state = LinkKit.LinkKitState.DISCONNECTED
-                self.__on_internal_connect_safe(None, None, 0, 9, {})
+                self.__on_internal_connect_safe(None, None, 0, 9)
                 if self.__linkkit_state == LinkKit.LinkKitState.DESTRUCTING:
                     self.__handler_task.stop()
                     self.__linkkit_state = LinkKit.LinkKitState.DESTRUCTED
@@ -1664,7 +1661,7 @@ UxeCp6
                     break
 
             if self.__linkkit_state == LinkKit.LinkKitState.CONNECTED:
-                self.__on_internal_disconnect(None, None, 1, {})
+                self.__on_internal_disconnect(None, None, 1)
             self.__link_log.info("loop return:%r" % rc)
 
             if self.__worker_loop_exit_req:
@@ -2539,25 +2536,23 @@ UxeCp6
         client, user_data, message = value
         self.__on_internal_async_message(message)
 
-    def __on_internal_connect(self, client, userdata, flags, reason_code, properties) -> None:
+    def __on_internal_connect(self, client, user_data, session_flag, rc) -> None:
         self.__link_log.info("__on_internal_connect")
-        if reason_code == 0:
+        if rc == 0:
             self.__reset_reconnect_wait()
             # self.__upload_device_interface_info()
-            self.__handler_task.post_message(
-                self.__handler_task_cmd_on_connect, (client, userdata, flags, reason_code, properties)
-            )
+            self.__handler_task.post_message(self.__handler_task_cmd_on_connect, (client, user_data, session_flag, rc))
 
     def __handler_task_on_connect_callback(self, value) -> None:
-        client, userdata, flags, reason_code = value
+        client, user_data, session_flag, rc = value
         self.__link_log.info("__on_internal_connect enter")
-        self.__link_log.debug("session:%d, return code:%d" % (flags["session present"], reason_code))
+        self.__link_log.debug("session:%d, return code:%d" % (session_flag["session present"], rc))
         if rc == 0:
             self.__linkkit_state = LinkKit.LinkKitState.CONNECTED
             # self.__worker_thread.start()
         if self.__on_connect is not None:
             try:
-                self.__on_connect(flags["session present"], reason_code, self.__user_data)
+                self.__on_connect(session_flag["session present"], rc, self.__user_data)
             except Exception as e:
                 self.__link_log.error("on_connect process raise exception:%r" % e)
         if self.__thing_setup_state:
@@ -2565,7 +2560,7 @@ UxeCp6
             if self.__on_thing_enable:
                 self.__on_thing_enable(self.__user_data)
 
-    def __on_internal_disconnect(self, client, userdata, flags, reason_code, properties) -> None:
+    def __on_internal_disconnect(self, client, user_data, rc) -> None:
         self.__link_log.info("__on_internal_disconnect enter")
         if self.__linkkit_state == LinkKit.LinkKitState.DESTRUCTING:
             self.__linkkit_state = LinkKit.LinkKitState.DESTRUCTED
@@ -2598,15 +2593,13 @@ UxeCp6
         self.__device_info_mid.clear()
         self.__thing_update_device_info_up_mid.clear()
         self.__thing_delete_device_info_up_mid.clear()
-        self.__handler_task.post_message(
-            self.__handler_task_cmd_on_disconnect, (client, userdata, reason_code, properties)
-        )
+        self.__handler_task.post_message(self.__handler_task_cmd_on_disconnect, (client, user_data, rc))
         if self.__linkkit_state == LinkKit.LinkKitState.DESTRUCTED:
             self.__handler_task.stop()
 
     def __handler_task_on_disconnect_callback(self, value) -> None:
         self.__link_log.info("__handler_task_on_disconnect_callback enter")
-        client, userdata, reason_code = value
+        client, user_data, rc = value
         if self.__thing_setup_state:
             if self.__thing_enable_state:
                 self.__thing_enable_state = False
@@ -2617,7 +2610,7 @@ UxeCp6
                         self.__link_log.error("on_thing_disable process raise exception:%r" % e)
         if self.__on_disconnect is not None:
             try:
-                self.__on_disconnect(reason_code, self.__user_data)
+                self.__on_disconnect(rc, self.__user_data)
             except Exception as e:
                 self.__link_log.error("on_disconnect process raise exception:%r" % e)
 
