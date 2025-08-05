@@ -166,7 +166,7 @@ class MammotionMQTT:
         )
 
     def _thing_on_topic_message(self, topic, payload, qos, user_data) -> None:
-        """Is called when thing topic comes in."""
+        """Handles incoming messages on a specific topic."""
         logger.debug(
             "on_topic_message, receive message, topic:%s, payload:%s, qos:%d",
             topic,
@@ -180,7 +180,7 @@ class MammotionMQTT:
             asyncio.wrap_future(future, loop=self.loop)
 
     def _thing_on_connect(self, userdata, flags, reason_code, properties) -> None:
-        """Is called on thing connect."""
+        """Handle connection event and execute on_connected callback."""
         self.is_connected = True
         if self.on_connected is not None:
             future = asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)

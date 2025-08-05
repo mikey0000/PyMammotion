@@ -1354,6 +1354,8 @@ UxeCp6
         raise LinkKit.StateError("not supported")
 
     def connect_async(self):
+        """Starts the connection process if not already connected."""
+        """Initiates an asynchronous connection if not already connected."""
         self.__link_log.debug("connect_async")
         if self.__linkkit_state == LinkKit.LinkKitState.CONNECTED:
             self.__link_log.info("already connected, returning")
