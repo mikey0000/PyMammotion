@@ -7,12 +7,14 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorkingHours, MowerInfo
+from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.model.work import CurrentTaskSettings
+from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.http.model.http import CheckDeviceVersion, ErrorInfo
+from pymammotion.http.model.http import CheckDeviceVersion
 from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemRapidStateTunnelMsg, SystemUpdateBufMsg
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
@@ -30,15 +32,14 @@ class MowingDevice(DataClassORJSONMixin):
     mower_state: MowerInfo = field(default_factory=MowerInfo)
     mqtt_properties: ThingPropertiesMessage | None = None
     status_properties: ThingStatusMessage | None = None
+    device_event: ThingEventMessage | None = None
     map: HashList = field(default_factory=HashList)
     work: CurrentTaskSettings = field(default_factory=CurrentTaskSettings)
     location: Location = field(default_factory=Location)
     mowing_state: RapidState = field(default_factory=RapidState)
     report_data: ReportData = field(default_factory=ReportData)
     device_firmwares: DeviceFirmwares = field(default_factory=DeviceFirmwares)
-    err_code_list: list = field(default_factory=list)
-    err_code_list_time: list | None = field(default_factory=list)
-    error_codes: dict[str, ErrorInfo] = field(default_factory=dict)
+    errors: DeviceErrors = field(default_factory=DeviceErrors)
     non_work_hours: DeviceNonWorkingHours = field(default_factory=DeviceNonWorkingHours)
 
     def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:

@@ -31,6 +31,7 @@ class MammotionCloud:
     """Per account MQTT cloud."""
 
     def __init__(self, mqtt_client: MammotionMQTT, cloud_client: CloudIOTGateway) -> None:
+        """Initialize MammotionCloud."""
         self.cloud_client = cloud_client
         self.loop = asyncio.get_event_loop()
         self.is_ready = False
@@ -39,6 +40,7 @@ class MammotionCloud:
         self.mqtt_message_event = DataEvent()
         self.mqtt_properties_event = DataEvent()
         self.mqtt_status_event = DataEvent()
+        self.mqtt_device_event = DataEvent()
         self.on_ready_event = DataEvent()
         self.on_disconnected_event = DataEvent()
         self.on_connected_event = DataEvent()
@@ -48,9 +50,6 @@ class MammotionCloud:
         self._mqtt_client.on_disconnected = self.on_disconnected
         self._mqtt_client.on_message = self._on_mqtt_message
         self._mqtt_client.on_ready = self.on_ready
-
-        # temporary for testing only
-        # self._start_sync_task = self.loop.call_later(30, lambda: asyncio.ensure_future(self.start_sync(0)))
 
     async def on_ready(self) -> None:
         loop = asyncio.get_event_loop()
@@ -129,6 +128,8 @@ class MammotionCloud:
                 _LOGGER.debug("Protobuf event")
                 # Call the callbacks for each cloudDevice
                 await self.mqtt_message_event.data_event(event)
+            if event.method == "thing.events":
+                await self.mqtt_device_event.data_event(event)
             if event.method == "thing.properties":
                 await self.mqtt_properties_event.data_event(event)
                 _LOGGER.debug(event)
@@ -170,6 +171,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.mqtt_message_event.add_subscribers(self._parse_message_for_device)
         self._mqtt.mqtt_properties_event.add_subscribers(self._parse_message_properties_for_device)
         self._mqtt.mqtt_status_event.add_subscribers(self._parse_message_status_for_device)
+        self._mqtt.mqtt_device_event.add_subscribers(self._parse_device_event_for_device)
         self._mqtt.on_ready_event.add_subscribers(self.on_ready)
         self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.add_subscribers(self.on_connect)
@@ -188,6 +190,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.mqtt_message_event.remove_subscribers(self._parse_message_for_device)
         self._mqtt.mqtt_properties_event.remove_subscribers(self._parse_message_properties_for_device)
         self._mqtt.mqtt_status_event.remove_subscribers(self._parse_message_status_for_device)
+        self._mqtt.mqtt_device_event.remove_subscribers(self._parse_device_event_for_device)
         self._state_manager.cloud_gethash_ack_callback = None
         self._state_manager.cloud_get_commondata_ack_callback = None
         self._state_manager.cloud_get_plan_callback = None
@@ -318,6 +321,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         if status.params.iotId != self.iot_id:
             return
         await self.state_manager.status(status)
+
+    async def _parse_device_event_for_device(self, status: ThingStatusMessage) -> None:
+        if status.params.iotId != self.iot_id:
+            return
+        await self.state_manager.device_event(status)
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         params = event.params
