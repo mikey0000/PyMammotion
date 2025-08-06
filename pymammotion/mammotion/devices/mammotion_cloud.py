@@ -52,6 +52,7 @@ class MammotionCloud:
         self._mqtt_client.on_ready = self.on_ready
 
     async def on_ready(self) -> None:
+        """Starts processing the queue and emits the ready event."""
         loop = asyncio.get_event_loop()
         loop.create_task(self.process_queue())
         await self.on_ready_event.data_event(None)
@@ -116,7 +117,16 @@ class MammotionCloud:
         await self._parse_mqtt_response(topic, payload)
 
     async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
-        """Parse the MQTT response."""
+        """Parse and handle MQTT responses based on the topic.
+        
+        This function processes different types of MQTT messages received from various
+        topics. It logs debug information and calls appropriate callback methods for
+        each event type.
+        
+        Args:
+            topic (str): The MQTT topic from which the message was received.
+            payload (dict): The payload data of the MQTT message.
+        """
         if topic.endswith("/app/down/thing/events"):
             _LOGGER.debug("Thing event received")
             event = ThingEventMessage.from_dicts(payload)
@@ -323,11 +333,23 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         await self.state_manager.status(status)
 
     async def _parse_device_event_for_device(self, status: ThingStatusMessage) -> None:
+        """Process device event if it matches the device's IoT ID."""
         if status.params.iotId != self.iot_id:
             return
         await self.state_manager.device_event(status)
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
+        """Parses a message received from a device and updates internal state.
+        
+        This function processes an incoming `ThingEventMessage`, checks if the message
+        is intended for this device, decodes the binary data, and updates raw data. It
+        then attempts to parse the binary data into a `LubaMsg`. If parsing fails, it
+        logs the exception. The function also handles setting the device product key if
+        not already set and processes specific sub-messages based on their types.
+        
+        Args:
+            event (ThingEventMessage): The event message received from the device.
+        """
         params = event.params
         new_msg = LubaMsg()
         if event.params.iotId != self.iot_id:

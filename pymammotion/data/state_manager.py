@@ -87,6 +87,7 @@ class StateManager:
         await self.on_status_callback(thing_status)
 
     async def device_event(self, device_event: ThingEventMessage) -> None:
+        """Sets MQTT event and calls callback."""
         self._device.mqtt_device_event = device_event
         await self.on_device_event_callback(device_event)
 
@@ -121,7 +122,7 @@ class StateManager:
             await self.status_callback.data_event(thing_status)
 
     async def on_device_event_callback(self, device_event: ThingEventMessage) -> None:
-        """Execute the status callback if it is set."""
+        """Executes the status callback if it is set."""
         if self.device_event_callback:
             await self.device_event_callback.data_event(device_event)
 
