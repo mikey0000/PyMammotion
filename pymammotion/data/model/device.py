@@ -55,9 +55,9 @@ class MowingDevice(DataClassORJSONMixin):
                     self.location.dock.longitude = parse_double(buffer_list.update_buf_data[8], 4.0)
                     self.location.dock.rotation = buffer_list.update_buf_data[3] + 180
             case 2:
-                self.err_code_list.clear()
-                self.err_code_list_time.clear()
-                self.err_code_list.extend(
+                self.errors.err_code_list.clear()
+                self.errors.err_code_list_time.clear()
+                self.errors.err_code_list.extend(
                     [
                         buffer_list.update_buf_data[3],
                         buffer_list.update_buf_data[5],
@@ -71,7 +71,7 @@ class MowingDevice(DataClassORJSONMixin):
                         buffer_list.update_buf_data[21],
                     ]
                 )
-                self.err_code_list_time.extend(
+                self.errors.err_code_list_time.extend(
                     [
                         buffer_list.update_buf_data[4],
                         buffer_list.update_buf_data[6],
@@ -87,6 +87,7 @@ class MowingDevice(DataClassORJSONMixin):
                 )
 
     def update_report_data(self, toapp_report_data: ReportInfoData) -> None:
+        """Set report data for the mower."""
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):
             if index == 0 and location.real_pos_y != 0:
@@ -112,6 +113,7 @@ class MowingDevice(DataClassORJSONMixin):
         self.report_data.update(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
 
     def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
+        """Set lat long, work zone of RTK and robot."""
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         self.mowing_state = RapidState().from_raw(rapid_state.rapid_state_data)
         self.location.position_type = self.mowing_state.pos_type
@@ -125,13 +127,13 @@ class MowingDevice(DataClassORJSONMixin):
             )
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
-        pass
+        """Set mow info."""
 
     def report_missing_data(self) -> None:
         """Report missing data so we can refetch it."""
 
     def update_device_firmwares(self, fw_info: DeviceFwInfo) -> None:
-        """Sets firmware versions on all parts of the robot or RTK."""
+        """Set firmware versions on all parts of the robot or RTK."""
         for mod in fw_info.mod:
             match mod.type:
                 case 1:
