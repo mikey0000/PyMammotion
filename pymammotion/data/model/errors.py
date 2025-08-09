@@ -1,4 +1,4 @@
-from dataclasses import field, dataclass
+from dataclasses import dataclass, field
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
