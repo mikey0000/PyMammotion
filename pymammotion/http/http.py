@@ -32,7 +32,12 @@ class MammotionHTTP:
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/user-server/v1/code/record/export-data",
-                headers=self._headers,
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
             ) as resp:
                 data = await resp.json()
                 reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")

@@ -153,7 +153,15 @@ class DeviceLogProgressEventParams(GeneralParams):
 class ThingEventMessage(DataClassORJSONMixin):
     method: Literal["thing.events", "thing.properties"]
     id: str
-    params: DeviceProtobufMsgEventParams | DeviceWarningEventParams | dict
+    params: (
+        DeviceProtobufMsgEventParams
+        | DeviceWarningEventParams
+        | DeviceNotificationEventParams
+        | DeviceLogProgressEventParams
+        | DeviceBizReqEventParams
+        | DeviceConfigurationRequestEvent
+        | dict
+    )
     version: Literal["1.0"]
 
     @classmethod

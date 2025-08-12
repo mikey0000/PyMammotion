@@ -179,14 +179,14 @@ class MammotionMQTT:
             future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
-    def _thing_on_connect(self, userdata, flags, reason_code, properties) -> None:
+    def _thing_on_connect(self, session_flag, rc, user_data) -> None:
         """Is called on thing connect."""
         self.is_connected = True
         if self.on_connected is not None:
             future = asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
-        logger.debug("on_connect, session_flag:%d, rc:%d", flags, reason_code)
+        logger.debug("on_connect, session_flag:%d, rc:%d", session_flag, rc)
 
         # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
 
