@@ -29,6 +29,7 @@ class MammotionHTTP:
         return await self.login(email, password)
 
     async def get_all_error_codes(self) -> dict[str, ErrorInfo]:
+        """Retrieves and parses all error codes from the MAMMOTION API."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.post(
                 "/user-server/v1/code/record/export-data",
