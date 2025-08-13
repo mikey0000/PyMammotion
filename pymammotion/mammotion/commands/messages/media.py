@@ -5,12 +5,16 @@ from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
     MUL_LANGUAGE,
     MUL_SEX,
+    GetHeadlamp,
+    LampCtrlSta,
+    LampManualCtrlSta,
     LubaMsg,
     MsgAttr,
     MsgCmdType,
     MsgDevice,
     MulSetAudio,
     MulSetWiper,
+    SetHeadlamp,
     SocMul,
 )
 
@@ -45,4 +49,33 @@ class MessageMedia(AbstractMessage, ABC):
         # 2
         return self.send_order_msg_media(SocMul(set_wiper=MulSetWiper(round=round_num)))
 
-    # TODO add lamp methods
+    def get_car_light(self, ids: int):
+        return self.send_order_msg_media(SocMul(get_lamp=GetHeadlamp(get_ids=ids)))
+
+    def set_car_light(self, on_off: bool = False):
+        """Set mower light.
+        set whether light is on during the night during mowing
+        auto night on true, id=1121, power_ctrl=1
+        auto night off false, id=1121, power_ctrl=1
+        """
+
+        ctrl_state = LampCtrlSta.power_ctrl_on if on_off else LampCtrlSta.power_off
+        return self.send_order_msg_media(
+            SocMul(
+                set_lamp=SetHeadlamp(
+                    set_ids=1121, lamp_power_ctrl=1, lamp_ctrl=ctrl_state, ctrl_lamp_bright=False, lamp_bright=0
+                )
+            )
+        )
+
+    def set_car_manual_light(self, manual_ctrl: bool = False):
+        """Set mower light.
+        set whether light is on manually
+        manual on: true, id=1125, power_ctrl=2
+        manual off: false, id=1127, power_ctrl=2
+        """
+        ids = 1125 if manual_ctrl else 1127
+        manual_light_ctrl = LampManualCtrlSta.manual_power_off if manual_ctrl else LampManualCtrlSta.manual_power_on
+        return self.send_order_msg_media(
+            SocMul(set_lamp=SetHeadlamp(set_ids=ids, lamp_power_ctrl=2, lamp_manual_ctrl=manual_light_ctrl))
+        )
