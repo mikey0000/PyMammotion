@@ -25,6 +25,7 @@ IOT_TYPE_RESET: iot_conctrl_type
 MNET_LINK_2G: mnet_link_type
 MNET_LINK_3G: mnet_link_type
 MNET_LINK_4G: mnet_link_type
+MNET_LINK_5G: mnet_link_type
 MNET_LINK_NONE: mnet_link_type
 NET_TYPE_MNET: net_type
 NET_TYPE_WIFI: net_type

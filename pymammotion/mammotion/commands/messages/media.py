@@ -50,10 +50,15 @@ class MessageMedia(AbstractMessage, ABC):
         return self.send_order_msg_media(SocMul(set_wiper=MulSetWiper(round=round_num)))
 
     def get_car_light(self, ids: int):
+        """Get mower light settings.
+        1126 for manual
+        1123 for night time settings
+        """
         return self.send_order_msg_media(SocMul(get_lamp=GetHeadlamp(get_ids=ids)))
 
     def set_car_light(self, on_off: bool = False):
         """Set mower light.
+
         set whether light is on during the night during mowing
         auto night on true, id=1121, power_ctrl=1
         auto night off false, id=1121, power_ctrl=1
@@ -70,6 +75,7 @@ class MessageMedia(AbstractMessage, ABC):
 
     def set_car_manual_light(self, manual_ctrl: bool = False):
         """Set mower light.
+
         set whether light is on manually
         manual on: true, id=1125, power_ctrl=2
         manual off: false, id=1127, power_ctrl=2

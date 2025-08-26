@@ -12,7 +12,7 @@ repos:
     rev: master
     hooks:
       - id: autotyping
-        stages: [ commit ]
+        stages: [ pre-commit ]
         types: [ python ]
         args: [ --safe ]
         files: ^((pymammotion)/.+)?[^/]+\.(py|pyi)$

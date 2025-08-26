@@ -45,8 +45,8 @@ class MammotionMixedDeviceManager:
         self._state_manager = StateManager(MowingDevice())
         self._state_manager.get_device().name = name
         self._device: Device = cloud_device
-        self.add_ble(ble_device)
-        self.add_cloud(mqtt)
+        self.add_ble(ble_device) if ble_device else None
+        self.add_cloud(mqtt) if mqtt else None
         self.mammotion_http = cloud_client.mammotion_http
         self.preference = preference
         self._state_manager.preference = preference
@@ -77,16 +77,17 @@ class MammotionMixedDeviceManager:
         else:
             return not self.ble().command_queue.empty()
 
-    def add_ble(self, ble_device: BLEDevice) -> None:
-        if ble_device is not None:
-            self._ble_device = MammotionBaseBLEDevice(
-                state_manager=self._state_manager, cloud_device=self._device, device=ble_device
-            )
+    def add_ble(self, ble_device: BLEDevice) -> MammotionBaseBLEDevice:
+        self._ble_device = MammotionBaseBLEDevice(
+            state_manager=self._state_manager, cloud_device=self._device, device=ble_device
+        )
+        return self._ble_device
 
-    def add_cloud(self, mqtt: MammotionCloud) -> None:
+    def add_cloud(self, mqtt: MammotionCloud) -> MammotionBaseCloudDevice:
         self._cloud_device = MammotionBaseCloudDevice(
             mqtt, cloud_device=self._device, state_manager=self._state_manager
         )
+        return self._cloud_device
 
     def replace_cloud(self, cloud_device: MammotionBaseCloudDevice) -> None:
         self._cloud_device = cloud_device
@@ -122,9 +123,13 @@ class MammotionMixedDeviceManager:
 
 
 class MammotionDeviceManager:
-    devices: dict[str, MammotionMixedDeviceManager] = {}
+    """Manage devices."""
+
+    def __init__(self) -> None:
+        self.devices: dict[str, MammotionMixedDeviceManager] = {}
 
     def add_device(self, mammotion_device: MammotionMixedDeviceManager) -> None:
+        """Add a device."""
         exists: MammotionMixedDeviceManager | None = self.devices.get(mammotion_device.name)
         if exists is None:
             self.devices[mammotion_device.name] = mammotion_device
@@ -135,9 +140,11 @@ class MammotionDeviceManager:
             exists.replace_ble(mammotion_device.ble())
 
     def get_device(self, mammotion_device_name: str) -> MammotionMixedDeviceManager:
+        """Get a device."""
         return self.devices.get(mammotion_device_name)
 
     async def remove_device(self, name: str) -> None:
+        """Remove a device."""
         if self.devices.get(name):
             device_for_removal = self.devices.pop(name)
             loop = asyncio.get_running_loop()
@@ -160,11 +167,11 @@ class Mammotion:
     """Represents a Mammotion account and its devices."""
 
     device_manager = MammotionDeviceManager()
-    mqtt_list: dict[str, MammotionCloud] = dict()
 
     _instance: Mammotion | None = None
 
-    def __new__(cls, *args: Any, **kwargs: Any):
+    def __new__(cls) -> Mammotion:
+        """Create a singleton."""
         if not cls._instance:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -172,6 +179,7 @@ class Mammotion:
     def __init__(self) -> None:
         """Initialize MammotionDevice."""
         self._login_lock = asyncio.Lock()
+        self.mqtt_list: dict[str, MammotionCloud] = {}
 
     async def login_and_initiate_cloud(self, account, password, force: bool = False) -> None:
         async with self._login_lock:
@@ -181,6 +189,7 @@ class Mammotion:
                 await self.initiate_cloud_connection(account, cloud_client)
 
     async def refresh_login(self, account: str, password: str | None = None) -> None:
+        """Refresh login."""
         async with self._login_lock:
             exists: MammotionCloud | None = self.mqtt_list.get(account)
             if not exists:
@@ -194,6 +203,7 @@ class Mammotion:
                 await loop.run_in_executor(None, exists.connect_async)
 
     async def initiate_cloud_connection(self, account: str, cloud_client: CloudIOTGateway) -> None:
+        """Initiate cloud connection."""
         loop = asyncio.get_running_loop()
         if mqtt := self.mqtt_list.get(account):
             if mqtt.is_connected():
@@ -217,6 +227,7 @@ class Mammotion:
         await loop.run_in_executor(None, self.mqtt_list[account].connect_async)
 
     def add_cloud_devices(self, mqtt_client: MammotionCloud) -> None:
+        """Add devices from cloud."""
         for device in mqtt_client.cloud_client.devices_by_account_response.data.data:
             mower_device = self.device_manager.get_device(device.deviceName)
             if device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device is None:
@@ -239,11 +250,11 @@ class Mammotion:
                 else:
                     mower_device.replace_mqtt(mqtt_client)
 
-    def set_disconnect_strategy(self, disconnect: bool) -> None:
-        for device_name, device in self.device_manager.devices.items():
+    def set_disconnect_strategy(self, *, disconnect: bool) -> None:
+        for device in self.device_manager.devices.values():
             if device.ble() is not None:
                 ble_device: MammotionBaseBLEDevice = device.ble()
-                ble_device.set_disconnect_strategy(disconnect)
+                ble_device.set_disconnect_strategy(disconnect=disconnect)
 
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""

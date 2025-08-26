@@ -55,6 +55,7 @@ class MnetLinkType(betterproto.Enum):
     MNET_LINK_2G = 1
     MNET_LINK_3G = 2
     MNET_LINK_4G = 3
+    MNET_LINK_5G = 4
 
 
 

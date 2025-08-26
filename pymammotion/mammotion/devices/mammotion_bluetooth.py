@@ -490,5 +490,5 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             _LOGGER.debug("%s: Disconnect completed successfully", self.name)
         self._client = None
 
-    def set_disconnect_strategy(self, disconnect: bool) -> None:
+    def set_disconnect_strategy(self, *, disconnect: bool) -> None:
         self._disconnect_strategy = disconnect
