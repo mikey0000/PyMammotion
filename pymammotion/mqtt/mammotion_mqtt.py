@@ -180,7 +180,7 @@ class MammotionMQTT:
             asyncio.wrap_future(future, loop=self.loop)
 
     def _thing_on_connect(self, session_flag, rc, user_data) -> None:
-        """Is called on thing connect."""
+        """Handle connection event and execute callback if set."""
         self.is_connected = True
         if self.on_connected is not None:
             future = asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)
