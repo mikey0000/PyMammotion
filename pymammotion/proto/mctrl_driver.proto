@@ -2,8 +2,8 @@ syntax = "proto3";
 
 enum CutterWorkMode {
   CUTTER_STANDARD = 0;
-  CUTTER_PERFORMANCE = 1;
-  CUTTER_ECONOMIC = 2;
+  CUTTER_ECONOMIC = 1;
+  CUTTER_PERFORMANCE = 2;
 }
 
 enum CollectMotorState {
