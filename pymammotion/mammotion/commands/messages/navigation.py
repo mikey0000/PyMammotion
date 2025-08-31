@@ -50,7 +50,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def allpowerfull_rw_adapter_x3(self, rw_id: int, context: int, rw: int) -> bytes:
         build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=rw_id, context=context, rw=rw))
-        logger.debug(f"Send command--9 general read and write command id={id}, context={context}, rw={rw}")
+        logger.debug(f"Send command--x3 general read and write command id={rw_id}, context={context}, rw={rw}")
         return self.send_order_msg_nav(build)
 
     def along_border(self) -> bytes:

@@ -5,7 +5,6 @@ import time
 
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
-from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
 from pymammotion.proto import (
     DeviceProductTypeInfoT,
     LoraCfgReq,
@@ -23,12 +22,9 @@ from pymammotion.proto import (
     SysSetDateTime,
     TimeCtrlLight,
 )
-from pymammotion.utility.device_type import DeviceType
 
 
 class MessageSystem(AbstractMessage, ABC):
-    messageNavigation: MessageNavigation = MessageNavigation()
-
     def send_order_msg_sys(self, sys) -> bytes:
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,
@@ -119,10 +115,6 @@ class MessageSystem(AbstractMessage, ABC):
         return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf)))
 
     def allpowerfull_rw(self, rw_id: int, context: int, rw: int) -> bytes:
-        if (
-            rw_id == 6 or rw_id == 3 or rw_id == 7 or rw_id == 8 or rw_id == 10 or rw_id == 11
-        ) and DeviceType.is_luba_pro(self.get_device_name()):
-            return self.messageNavigation.allpowerfull_rw_adapter_x3(rw_id, context, rw)
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=rw_id, context=context, rw=rw))
         logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")
         return self.send_order_msg_sys(build)

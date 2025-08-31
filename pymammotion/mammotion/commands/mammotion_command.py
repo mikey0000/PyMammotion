@@ -5,6 +5,7 @@ from pymammotion.mammotion.commands.messages.network import MessageNetwork
 from pymammotion.mammotion.commands.messages.ota import MessageOta
 from pymammotion.mammotion.commands.messages.system import MessageSystem
 from pymammotion.mammotion.commands.messages.video import MessageVideo
+from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 
@@ -21,6 +22,13 @@ class MammotionCommand(
     def get_device_name(self) -> str:
         """Get device name."""
         return self._device_name
+
+    def read_write_device(self, rw_id: int, context: int, rw: int):
+        if (
+            rw_id == 6 or rw_id == 3 or rw_id == 7 or rw_id == 8 or rw_id == 10 or rw_id == 11
+        ) and DeviceType.is_luba_pro(self.get_device_name()):
+            return self.allpowerfull_rw_adapter_x3(rw_id, context, rw)
+        return self.allpowerfull_rw(rw_id, context, rw)
 
     def get_device_product_key(self) -> str:
         return self._product_key

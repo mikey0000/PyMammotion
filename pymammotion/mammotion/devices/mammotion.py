@@ -140,8 +140,10 @@ class MammotionDeviceManager:
             exists.replace_ble(mammotion_device.ble())
 
     def get_device(self, mammotion_device_name: str) -> MammotionMixedDeviceManager:
-        """Get a device."""
-        return self.devices.get(mammotion_device_name)
+        if device := self.devices[mammotion_device_name]:
+            return device
+        else:
+            raise KeyError
 
     async def remove_device(self, name: str) -> None:
         """Remove a device."""
