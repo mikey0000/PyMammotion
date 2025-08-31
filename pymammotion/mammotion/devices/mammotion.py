@@ -248,7 +248,8 @@ class Mammotion:
                     device.productName if device.productModel is None else device.productModel
                 )
                 self.device_manager.add_device(mixed_device)
-            elif device.deviceName.startswith(("Luba-", "Yuka-")) and mower_device:
+            elif device.deviceName.startswith(("Luba-", "Yuka-")) and has_device:
+                mower_device = self.device_manager.get_device(device.deviceName)
                 if mower_device.cloud() is None:
                     mower_device.add_cloud(mqtt=mqtt_client)
                 else:
