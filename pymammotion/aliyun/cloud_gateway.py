@@ -25,6 +25,7 @@ from pymammotion.aliyun.model.dev_by_account_response import ListingDevByAccount
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
+from pymammotion.aliyun.model.thing_response import ThingPropertiesResponse
 from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
@@ -771,7 +772,7 @@ class CloudIOTGateway:
                 str(response_body_dict.get("message")),
             )
             if response_body_dict.get("code") == 22000:
-                logger.error(response)
+                logger.error(response.body)
                 raise FailedRequestException(iot_id)
             if response_body_dict.get("code") == 20056:
                 logger.debug("Gateway timeout.")
@@ -785,6 +786,49 @@ class CloudIOTGateway:
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
 
         return message_id
+
+    async def get_device_properties(self, iot_id: str) -> ThingPropertiesResponse:
+        """List bindings by account."""
+        config = Config(
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,
+        )
+
+        client = Client(config)
+
+        # build request
+        request = CommonParams(
+            api_ver="1.0.0",
+            language="en-US",
+            iot_token=self._session_by_authcode_response.data.iotToken,
+        )
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params={
+                "iotId": f"{iot_id}",
+            },
+            request=request,
+            version="1.0",
+        )
+
+        # send request
+        response = await client.async_do_request("/thing/properties/get", "https", "POST", None, body, RuntimeOptions())
+        logger.debug(response.status_message)
+        logger.debug(response.headers)
+        logger.debug(response.status_code)
+        logger.debug(response.body)
+
+        # Decode the response body
+        response_body_str = response.body.decode("utf-8")
+
+        # Load the JSON string into a dictionary
+        response_body_dict = self.parse_json_response(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
+            raise Exception("Error in getting properties: " + response_body_dict["msg"])
+
+        return ThingPropertiesResponse.from_dict(response_body_dict)
 
     @property
     def devices_by_account_response(self):

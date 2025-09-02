@@ -30,7 +30,7 @@ class Params(DataClassORJSONMixin):
     activeTime: int
     ip: str
     aliyunCommodityCode: Literal["iothub_senior"]
-    categoryKey: Literal["LawnMower"]
+    categoryKey: Literal["LawnMower", "Tracker"]
     nodeType: Literal["DEVICE"]
     productKey: str
     statusLast: int

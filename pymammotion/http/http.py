@@ -8,6 +8,7 @@ from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
 from pymammotion.http.model.http import CheckDeviceVersion, ErrorInfo, LoginResponseData, Response
 from pymammotion.http.model.response_factory import response_factory
+from pymammotion.http.model.rtk import RTK
 
 
 class MammotionHTTP:
@@ -209,6 +210,22 @@ class MammotionHTTP:
                 # Assuming the data format matches the expected structure
                 return response_factory(Response[str], data)
 
+    async def get_rtk_devices(self) -> Response[list[RTK]]:
+        """Fetches stream subscription data from agora.io for a given IoT device."""
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.get(
+                "/device-server/v1/rtk/devices",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            ) as resp:
+                data = await resp.json()
+
+                return response_factory(Response[list[RTK]], data)
+
     async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
         if self._password is None and password is not None:
             self._password = password
@@ -229,13 +246,13 @@ class MammotionHTTP:
                     "Decrypt-Type": "3",
                     "Ec-Version": "v1",
                 },
-                params=dict(
-                    username=self.encryption_utils.encryption_by_aes(account),
-                    password=self.encryption_utils.encryption_by_aes(password),
-                    client_id=self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_ID),
-                    client_secret=self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_SECRET),
-                    grant_type=self.encryption_utils.encryption_by_aes("password"),
-                ),
+                params={
+                    "username": self.encryption_utils.encryption_by_aes(account),
+                    "password": self.encryption_utils.encryption_by_aes(password),
+                    "client_id": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_ID),
+                    "client_secret": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_SECRET),
+                    "grant_type": self.encryption_utils.encryption_by_aes("password"),
+                },
             ) as resp:
                 if resp.status != 200:
                     print(resp.json())

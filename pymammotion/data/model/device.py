@@ -151,3 +151,20 @@ class MowingDevice(DataClassORJSONMixin):
                     self.device_firmwares.rtk_version = mod.version
                 case 103:
                     self.device_firmwares.lora_version = mod.version
+
+
+@dataclass
+class RTKDevice(DataClassORJSONMixin):
+    name: str
+    iot_id: str
+    product_key: str
+    online: bool = True
+    lat: float = 0.0
+    lon: float = 0.0
+    lora: str = ""
+    wifi_rssi: int = 0
+    device_version: str = ""
+    lora_version: str = ""
+    wifi_sta_mac: str = ""
+    bt_mac: str = ""
+    update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
