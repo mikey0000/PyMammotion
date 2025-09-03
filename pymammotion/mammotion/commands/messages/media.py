@@ -81,7 +81,7 @@ class MessageMedia(AbstractMessage, ABC):
         manual off: false, id=1127, power_ctrl=2
         """
         ids = 1125 if manual_ctrl else 1127
-        manual_light_ctrl = LampManualCtrlSta.manual_power_off if manual_ctrl else LampManualCtrlSta.manual_power_on
+        manual_light_ctrl = LampManualCtrlSta.manual_power_on if manual_ctrl else LampManualCtrlSta.manual_power_off
         return self.send_order_msg_media(
             SocMul(set_lamp=SetHeadlamp(set_ids=ids, lamp_power_ctrl=2, lamp_manual_ctrl=manual_light_ctrl))
         )

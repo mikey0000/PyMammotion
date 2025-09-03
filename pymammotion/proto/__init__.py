@@ -235,6 +235,7 @@ class MsgCmdType(betterproto.Enum):
     ESP = 248
     MUL = 249
     PEPT = 250
+    BASESTATION = 251
 
 
 
