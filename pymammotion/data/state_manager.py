@@ -32,7 +32,7 @@ from pymammotion.proto import (
     NavUnableTimeSet,
     SvgMessageAckT,
     TimeCtrlLight,
-    WifiIotStatusReport,
+    WifiIotStatusReport, Getlamprsp,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,7 +263,14 @@ class StateManager:
                 self._device.mower_state.wifi_mac = get_network_info_resp.wifi_mac
 
     def _update_mul_data(self, message) -> None:
-        pass
+        """Media and video states."""
+        mul_msg = betterproto.which_one_of(message.net, "SubMul")
+        match mul_msg[0]:
+            case "Getlamprsp":
+                lamp_resp: Getlamprsp = mul_msg[1]
+                self._device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
+                self._device.mower_state.lamp_info.night_light = True if lamp_resp.lamp_ctrl.value > 0 else False
+                self._device.mower_state.lamp_info.manual_light = True if lamp_resp.lamp_manual_ctrl.value > 0 else False
 
     def _update_ota_data(self, message) -> None:
         pass

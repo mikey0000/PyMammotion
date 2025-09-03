@@ -19,6 +19,11 @@ class DeviceNonWorkingHours(DataClassORJSONMixin):
     start_time: str = ""
     end_time: str = ""
 
+@dataclass
+class LampInfo(DataClassORJSONMixin):
+    lamp_bright: int = 0
+    manual_light: bool = False
+    night_light: bool = False
 
 @dataclass
 class MowerInfo(DataClassORJSONMixin):
@@ -35,6 +40,7 @@ class MowerInfo(DataClassORJSONMixin):
     sub_model_id: str = ""
     ble_mac: str = ""
     wifi_mac: str = ""
+    lamp_info: LampInfo = field(default_factory=LampInfo)
 
 
 @dataclass
