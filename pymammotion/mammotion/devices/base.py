@@ -1,11 +1,10 @@
 from abc import abstractmethod
 import asyncio
-import datetime
 import logging
 import time
 from typing import Any
 
-import betterproto
+import betterproto2
 
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model import RegionData
@@ -44,7 +43,7 @@ class MammotionBaseDevice:
         self._raw_mower_data: RawMowerData = RawMowerData()
         self._notify_future: asyncio.Future[bytes] | None = None
         self._cloud_device = cloud_device
-        self.command_sent_time: datetime = time.time()
+        self.command_sent_time: float = time.time()
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses for root level hashs."""
@@ -100,7 +99,7 @@ class MammotionBaseDevice:
     def _update_raw_data(self, data: bytes) -> None:
         """Update raw and model data from notifications."""
         tmp_msg = LubaMsg().parse(data)
-        res = betterproto.which_one_of(tmp_msg, "LubaSubMsg")
+        res = betterproto2.which_one_of(tmp_msg, "LubaSubMsg")
         match res[0]:
             case "nav":
                 self._update_nav_data(tmp_msg)
@@ -119,7 +118,7 @@ class MammotionBaseDevice:
 
     def _update_nav_data(self, tmp_msg) -> None:
         """Update navigation data."""
-        nav_sub_msg = betterproto.which_one_of(tmp_msg.nav, "SubNavMsg")
+        nav_sub_msg = betterproto2.which_one_of(tmp_msg.nav, "SubNavMsg")
         if nav_sub_msg[1] is None:
             _LOGGER.debug("Sub message was NoneType %s", nav_sub_msg[0])
             return
@@ -127,32 +126,32 @@ class MammotionBaseDevice:
         if isinstance(nav_sub_msg[1], int):
             nav[nav_sub_msg[0]] = nav_sub_msg[1]
         else:
-            nav[nav_sub_msg[0]] = nav_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+            nav[nav_sub_msg[0]] = nav_sub_msg[1].to_dict(casing=betterproto2.Casing.SNAKE)
         self._raw_data["nav"] = nav
 
     def _update_sys_data(self, tmp_msg) -> None:
         """Update system data."""
-        sys_sub_msg = betterproto.which_one_of(tmp_msg.sys, "SubSysMsg")
+        sys_sub_msg = betterproto2.which_one_of(tmp_msg.sys, "SubSysMsg")
         if sys_sub_msg[1] is None:
             _LOGGER.debug("Sub message was NoneType %s", sys_sub_msg[0])
             return
         sys = self._raw_data.get("sys", {})
-        sys[sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        sys[sys_sub_msg[0]] = sys_sub_msg[1].to_dict(casing=betterproto2.Casing.SNAKE)
         self._raw_data["sys"] = sys
 
     def _update_driver_data(self, tmp_msg) -> None:
         """Update driver data."""
-        drv_sub_msg = betterproto.which_one_of(tmp_msg.driver, "SubDrvMsg")
+        drv_sub_msg = betterproto2.which_one_of(tmp_msg.driver, "SubDrvMsg")
         if drv_sub_msg[1] is None:
             _LOGGER.debug("Sub message was NoneType %s", drv_sub_msg[0])
             return
         drv = self._raw_data.get("driver", {})
-        drv[drv_sub_msg[0]] = drv_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        drv[drv_sub_msg[0]] = drv_sub_msg[1].to_dict(casing=betterproto2.Casing.SNAKE)
         self._raw_data["driver"] = drv
 
     def _update_net_data(self, tmp_msg) -> None:
         """Update network data."""
-        net_sub_msg = betterproto.which_one_of(tmp_msg.net, "NetSubType")
+        net_sub_msg = betterproto2.which_one_of(tmp_msg.net, "NetSubType")
         if net_sub_msg[1] is None:
             _LOGGER.debug("Sub message was NoneType %s", net_sub_msg[0])
             return
@@ -160,27 +159,27 @@ class MammotionBaseDevice:
         if isinstance(net_sub_msg[1], int):
             net[net_sub_msg[0]] = net_sub_msg[1]
         else:
-            net[net_sub_msg[0]] = net_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+            net[net_sub_msg[0]] = net_sub_msg[1].to_dict(casing=betterproto2.Casing.SNAKE)
         self._raw_data["net"] = net
 
     def _update_mul_data(self, tmp_msg) -> None:
         """Update mul data."""
-        mul_sub_msg = betterproto.which_one_of(tmp_msg.mul, "SubMul")
+        mul_sub_msg = betterproto2.which_one_of(tmp_msg.mul, "SubMul")
         if mul_sub_msg[1] is None:
             _LOGGER.debug("Sub message was NoneType %s", mul_sub_msg[0])
             return
         mul = self._raw_data.get("mul", {})
-        mul[mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        mul[mul_sub_msg[0]] = mul_sub_msg[1].to_dict(casing=betterproto2.Casing.SNAKE)
         self._raw_data["mul"] = mul
 
     def _update_ota_data(self, tmp_msg) -> None:
         """Update OTA data."""
-        ota_sub_msg = betterproto.which_one_of(tmp_msg.ota, "SubOtaMsg")
+        ota_sub_msg = betterproto2.which_one_of(tmp_msg.ota, "SubOtaMsg")
         if ota_sub_msg[1] is None:
             _LOGGER.debug("Sub message was NoneType %s", ota_sub_msg[0])
             return
         ota = self._raw_data.get("ota", {})
-        ota[ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto.Casing.SNAKE)
+        ota[ota_sub_msg[0]] = ota_sub_msg[1].to_dict(casing=betterproto2.Casing.SNAKE)
         self._raw_data["ota"] = ota
 
     @property
@@ -229,20 +228,20 @@ class MammotionBaseDevice:
         ):
             await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
-        for hash, frame in list(self.mower.map.area.items()):
+        for hash_id, frame in list(self.mower.map.area.items()):
             missing_frames = self.mower.map.find_missing_frames(frame)
             if len(missing_frames) > 0:
-                del self.mower.map.area[hash]
+                del self.mower.map.area[hash_id]
 
-        for hash, frame in list(self.mower.map.path.items()):
+        for hash_id, frame in list(self.mower.map.path.items()):
             missing_frames = self.mower.map.find_missing_frames(frame)
             if len(missing_frames) > 0:
-                del self.mower.map.path[hash]
+                del self.mower.map.path[hash_id]
 
-        for hash, frame in list(self.mower.map.obstacle.items()):
+        for hash_id, frame in list(self.mower.map.obstacle.items()):
             missing_frames = self.mower.map.find_missing_frames(frame)
             if len(missing_frames) > 0:
-                del self.mower.map.obstacle[hash]
+                del self.mower.map.obstacle[hash_id]
 
         # don't know why but total frame on svg is wrong
         # for hash, frame in self.mower.map.svg.items():

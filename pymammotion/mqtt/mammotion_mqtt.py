@@ -2,14 +2,14 @@
 
 import asyncio
 import base64
-from collections.abc import Awaitable, Callable
+from typing import Awaitable, Callable
 import hashlib
 import hmac
 import json
 import logging
 from logging import getLogger
 
-import betterproto
+import betterproto2
 from paho.mqtt.client import MQTTMessage
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
@@ -138,7 +138,6 @@ class MammotionMQTT:
             self.is_ready = True
             future = asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
-        # self._linkkit_client.query_ota_firmware()
 
     def unsubscribe(self) -> None:
         self._linkkit_client.unsubscribe_topic(
@@ -188,8 +187,6 @@ class MammotionMQTT:
 
         logger.debug("on_connect, session_flag:%d, rc:%d", session_flag, rc)
 
-        # self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/#")
-
     def _on_disconnect(self, _client, _userdata) -> None:
         """Is called on disconnect."""
         if self._linkkit_client.check_state() is LinkKit.LinkKitState.DISCONNECTED:
@@ -211,7 +208,7 @@ class MammotionMQTT:
             if params.identifier == "device_protobuf_msg_event":
                 content = LubaMsg().parse(base64.b64decode(params.value.content))
 
-                logger.info("Unhandled protobuf event: %s", betterproto.which_one_of(content, "LubaSubMsg"))
+                logger.info("Unhandled protobuf event: %s", betterproto2.which_one_of(content, "LubaSubMsg"))
             elif params.identifier == "device_warning_event":
                 logger.debug("identifier event: %s", params.identifier)
             else:

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-import betterproto
+import betterproto2
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
@@ -110,7 +110,7 @@ class MowingDevice(DataClassORJSONMixin):
         if toapp_report_data.fw_info:
             self.update_device_firmwares(toapp_report_data.fw_info)
 
-        self.report_data.update(toapp_report_data.to_dict(casing=betterproto.Casing.SNAKE))
+        self.report_data.update(toapp_report_data.to_dict(casing=betterproto2.Casing.SNAKE))
 
     def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
         """Set lat long, work zone of RTK and robot."""

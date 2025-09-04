@@ -5,7 +5,7 @@ import time
 from typing import Any
 from uuid import UUID
 
-import betterproto
+import betterproto2
 from bleak import BleakGATTCharacteristic, BleakGATTServiceCollection, BLEDevice
 from bleak.exc import BleakDBusError
 from bleak_retry_connector import (
@@ -356,7 +356,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             return
 
         new_msg = LubaMsg().parse(data)
-        res = betterproto.which_one_of(new_msg, "LubaSubMsg")
+        res = betterproto2.which_one_of(new_msg, "LubaSubMsg")
         if res[0] == "net":
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 if has_field(new_msg.net.toapp_wifi_iot_status) and self._commands.get_device_product_key() == "":

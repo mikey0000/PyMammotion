@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Any
 
-import betterproto
+import betterproto2
 from Tea.exceptions import UnretryableException
 
 from pymammotion import CloudIOTGateway, MammotionMQTT
@@ -118,14 +118,15 @@ class MammotionCloud:
 
     async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
         """Parse and handle MQTT responses based on the topic.
-        
+
         This function processes different types of MQTT messages received from various
         topics. It logs debug information and calls appropriate callback methods for
         each event type.
-        
+
         Args:
             topic (str): The MQTT topic from which the message was received.
             payload (dict): The payload data of the MQTT message.
+
         """
         if topic.endswith("/app/down/thing/events"):
             _LOGGER.debug("Thing event received")
@@ -340,15 +341,16 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
         """Parses a message received from a device and updates internal state.
-        
+
         This function processes an incoming `ThingEventMessage`, checks if the message
         is intended for this device, decodes the binary data, and updates raw data. It
         then attempts to parse the binary data into a `LubaMsg`. If parsing fails, it
         logs the exception. The function also handles setting the device product key if
         not already set and processes specific sub-messages based on their types.
-        
+
         Args:
             event (ThingEventMessage): The event message received from the device.
+
         """
         params = event.params
         new_msg = LubaMsg()
@@ -367,7 +369,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         ):
             self._commands.set_device_product_key(event.params.productKey)
 
-        res = betterproto.which_one_of(new_msg, "LubaSubMsg")
+        res = betterproto2.which_one_of(new_msg, "LubaSubMsg")
         if res[0] == "net":
             if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
                 return

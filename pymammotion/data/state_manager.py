@@ -1,11 +1,10 @@
 """Manage state from notifications into MowingDevice."""
 
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 import logging
-from typing import Any
+from typing import Any, Awaitable, Callable
 
-import betterproto
+import betterproto2
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
@@ -142,7 +141,7 @@ class StateManager:
 
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
-        res = betterproto.which_one_of(message, "LubaSubMsg")
+        res = betterproto2.which_one_of(message, "LubaSubMsg")
         self.last_updated_at = datetime.now(UTC)
         # additional catch all if we don't get a status update
         if not self._device.online:
@@ -166,30 +165,30 @@ class StateManager:
 
     async def _update_nav_data(self, message) -> None:
         """Update nav data."""
-        nav_msg = betterproto.which_one_of(message.nav, "SubNavMsg")
+        nav_msg = betterproto2.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
             case "toapp_gethash_ack":
                 hashlist_ack: NavGetHashListAck = nav_msg[1]
                 self._device.map.update_root_hash_list(
-                    NavGetHashListData.from_dict(hashlist_ack.to_dict(casing=betterproto.Casing.SNAKE))
+                    NavGetHashListData.from_dict(hashlist_ack.to_dict(casing=betterproto2.Casing.SNAKE))
                 )
                 await self.gethash_ack_callback(nav_msg[1])
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]
                 updated = self._device.map.update(
-                    NavGetCommData.from_dict(common_data.to_dict(casing=betterproto.Casing.SNAKE))
+                    NavGetCommData.from_dict(common_data.to_dict(casing=betterproto2.Casing.SNAKE))
                 )
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]
-                self._device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto.Casing.SNAKE)))
+                self._device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))
                 await self.get_plan_callback(planjob)
 
             case "toapp_svg_msg":
                 common_svg_data: SvgMessageAckT = nav_msg[1]
                 updated = self._device.map.update(
-                    SvgMessage.from_dict(common_svg_data.to_dict(casing=betterproto.Casing.SNAKE))
+                    SvgMessage.from_dict(common_svg_data.to_dict(casing=betterproto2.Casing.SNAKE))
                 )
                 if updated:
                     await self.get_commondata_ack_callback(common_svg_data)
@@ -202,7 +201,7 @@ class StateManager:
             case "bidire_reqconver_path":
                 work_settings: NavReqCoverPath = nav_msg[1]
                 self._device.work = CurrentTaskSettings.from_dict(
-                    work_settings.to_dict(casing=betterproto.Casing.SNAKE)
+                    work_settings.to_dict(casing=betterproto2.Casing.SNAKE)
                 )
             case "nav_sys_param_cmd":
                 settings: NavSysParamMsg = nav_msg[1]
@@ -220,7 +219,7 @@ class StateManager:
 
     def _update_sys_data(self, message) -> None:
         """Update system."""
-        sys_msg = betterproto.which_one_of(message.sys, "SubSysMsg")
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
         match sys_msg[0]:
             case "system_update_buf":
                 self._device.buffer(sys_msg[1])
@@ -232,7 +231,7 @@ class StateManager:
                 self._device.run_state_update(sys_msg[1])
             case "todev_time_ctrl_light":
                 ctrl_light: TimeCtrlLight = sys_msg[1]
-                side_led: SideLight = SideLight.from_dict(ctrl_light.to_dict(casing=betterproto.Casing.SNAKE))
+                side_led: SideLight = SideLight.from_dict(ctrl_light.to_dict(casing=betterproto2.Casing.SNAKE))
                 self._device.mower_state.side_led = side_led
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]
@@ -248,7 +247,7 @@ class StateManager:
         pass
 
     def _update_net_data(self, message) -> None:
-        net_msg = betterproto.which_one_of(message.net, "NetSubType")
+        net_msg = betterproto2.which_one_of(message.net, "NetSubType")
         match net_msg[0]:
             case "toapp_wifi_iot_status":
                 wifi_iot_status: WifiIotStatusReport = net_msg[1]
@@ -265,17 +264,15 @@ class StateManager:
 
     def _update_mul_data(self, message) -> None:
         """Media and video states."""
-        mul_msg = betterproto.which_one_of(message.net, "SubMul")
+        mul_msg = betterproto2.which_one_of(message.net, "SubMul")
         match mul_msg[0]:
             case "Getlamprsp":
                 lamp_resp: Getlamprsp = mul_msg[1]
                 self._device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
                 if lamp_resp.get_ids == 1126:
-                    self._device.mower_state.lamp_info.manual_light = (
-                        True if lamp_resp.lamp_manual_ctrl.value > 0 else False
-                    )
+                    self._device.mower_state.lamp_info.manual_light = bool(lamp_resp.lamp_manual_ctrl.value)
                 if lamp_resp.get_ids == 1123:
-                    self._device.mower_state.lamp_info.night_light = True if lamp_resp.lamp_ctrl.value > 0 else False
+                    self._device.mower_state.lamp_info.night_light = bool(lamp_resp.lamp_ctrl.value)
 
     def _update_ota_data(self, message) -> None:
         pass
