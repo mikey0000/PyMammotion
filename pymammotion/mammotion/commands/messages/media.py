@@ -3,8 +3,6 @@ from abc import ABC
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
-    MUL_LANGUAGE,
-    MUL_SEX,
     GetHeadlamp,
     LampCtrlSta,
     LampManualCtrlSta,
@@ -12,8 +10,10 @@ from pymammotion.proto import (
     MsgAttr,
     MsgCmdType,
     MsgDevice,
+    MulLanguage,
     MulSetAudio,
     MulSetWiper,
+    MulSex,
     SetHeadlamp,
     SocMul,
 )
@@ -38,10 +38,10 @@ class MessageMedia(AbstractMessage, ABC):
         """Set the car volume. 0 - 100"""
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(at_switch=volume)))
 
-    def set_car_voice_language(self, language_type: MUL_LANGUAGE | str | None):
+    def set_car_voice_language(self, language_type: MulLanguage | str | None):
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(au_language=language_type)))
 
-    def set_car_volume_sex(self, sex: MUL_SEX):
+    def set_car_volume_sex(self, sex: MulSex):
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(sex=sex)))
 
     def set_car_wiper(self, round_num: int):

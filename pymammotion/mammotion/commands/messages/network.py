@@ -4,7 +4,6 @@ import time
 
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
-from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
 from pymammotion.proto import (
     DevNet,
     DrvDebugDdsZmq,
@@ -29,8 +28,6 @@ from pymammotion.proto import (
 
 
 class MessageNetwork(AbstractMessage, ABC):
-    messageNavigation: MessageNavigation = MessageNavigation()
-
     def send_order_msg_net(self, build: DevNet) -> bytes:
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.ESP,

@@ -1527,7 +1527,7 @@ class DrvMowCtrlByHand(betterproto2.Message):
 
     cut_knife_height: "int" = betterproto2.field(3, betterproto2.TYPE_INT32)
 
-    max_run_Speed: "float" = betterproto2.field(4, betterproto2.TYPE_FLOAT)
+    max_run_speed: "float" = betterproto2.field(4, betterproto2.TYPE_FLOAT)
 
 
 default_message_pool.register_message("", "DrvMowCtrlByHand", DrvMowCtrlByHand)

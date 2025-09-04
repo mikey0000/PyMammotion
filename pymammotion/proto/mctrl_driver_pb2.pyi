@@ -76,7 +76,7 @@ class DrvMotionCtrl(_message.Message):
     def __init__(self, setLinearSpeed: _Optional[int] = ..., setAngularSpeed: _Optional[int] = ...) -> None: ...
 
 class DrvMowCtrlByHand(_message.Message):
-    __slots__ = ["cut_knife_ctrl", "cut_knife_height", "main_ctrl", "max_run_Speed"]
+    __slots__ = ["cut_knife_ctrl", "cut_knife_height", "main_ctrl", "max_run_speed"]
     CUT_KNIFE_CTRL_FIELD_NUMBER: _ClassVar[int]
     CUT_KNIFE_HEIGHT_FIELD_NUMBER: _ClassVar[int]
     MAIN_CTRL_FIELD_NUMBER: _ClassVar[int]
@@ -84,8 +84,8 @@ class DrvMowCtrlByHand(_message.Message):
     cut_knife_ctrl: int
     cut_knife_height: int
     main_ctrl: int
-    max_run_Speed: float
-    def __init__(self, main_ctrl: _Optional[int] = ..., cut_knife_ctrl: _Optional[int] = ..., cut_knife_height: _Optional[int] = ..., max_run_Speed: _Optional[float] = ...) -> None: ...
+    max_run_speed: float
+    def __init__(self, main_ctrl: _Optional[int] = ..., cut_knife_ctrl: _Optional[int] = ..., cut_knife_height: _Optional[int] = ..., max_run_speed: _Optional[float] = ...) -> None: ...
 
 class DrvSrSpeed(_message.Message):
     __slots__ = ["rw", "speed"]

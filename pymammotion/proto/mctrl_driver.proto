@@ -54,7 +54,7 @@ message DrvMowCtrlByHand {
   int32 main_ctrl = 1;
   int32 cut_knife_ctrl = 2;
   int32 cut_knife_height = 3;
-  float max_run_Speed = 4;
+  float max_run_speed = 4;
 }
 
 message rtk_cfg_req_t {
