@@ -19,6 +19,7 @@ from pymammotion.event.event import DataEvent
 from pymammotion.proto import (
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
+    AppSetCutterWorkMode,
     DeviceFwInfo,
     DeviceProductTypeInfoT,
     DrvDevInfoResp,
@@ -261,6 +262,9 @@ class StateManager:
                 cutter_work_mode: AppGetCutterWorkMode = driver_msg[1]
                 self._device.mower_state.cutter_mode = cutter_work_mode.current_cutter_mode
                 self._device.mower_state.cutter_rpm = cutter_work_mode.current_cutter_rpm
+            case "cutter_mode_ctrl_by_hand":
+                cutter_work_mode: AppSetCutterWorkMode = driver_msg[1]
+                self._device.mower_state.cutter_mode = cutter_work_mode.cutter_mode
 
     def _update_net_data(self, message) -> None:
         """Update network data."""
