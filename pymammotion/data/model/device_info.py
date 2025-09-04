@@ -19,11 +19,13 @@ class DeviceNonWorkingHours(DataClassORJSONMixin):
     start_time: str = ""
     end_time: str = ""
 
+
 @dataclass
 class LampInfo(DataClassORJSONMixin):
     lamp_bright: int = 0
     manual_light: bool = False
     night_light: bool = False
+
 
 @dataclass
 class MowerInfo(DataClassORJSONMixin):
@@ -31,6 +33,8 @@ class MowerInfo(DataClassORJSONMixin):
     rain_detection: bool = False
     traversal_mode: int = 0
     turning_mode: int = 0
+    blade_mode: int = 0
+    blade_rpm: int = 0
     side_led: SideLight = field(default_factory=SideLight)
     collector_installation_status: bool = False
     model: str = ""

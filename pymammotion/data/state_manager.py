@@ -18,6 +18,7 @@ from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.event.event import DataEvent
 from pymammotion.proto import (
     AppGetAllAreaHashName,
+    AppGetCutterWorkMode,
     DeviceFwInfo,
     DeviceProductTypeInfoT,
     DrvDevInfoResp,
@@ -254,6 +255,12 @@ class StateManager:
 
     def _update_driver_data(self, message) -> None:
         """Update driver data."""
+        driver_msg = betterproto2.which_one_of(message.driver, "SubDrvMsg")
+        match driver_msg[0]:
+            case "current_cutter_mode":
+                cutter_work_mode: AppGetCutterWorkMode = driver_msg[1]
+                self._device.mower_state.cutter_mode = cutter_work_mode.current_cutter_mode
+                self._device.mower_state.cutter_rpm = cutter_work_mode.current_cutter_rpm
 
     def _update_net_data(self, message) -> None:
         """Update network data."""
@@ -276,7 +283,7 @@ class StateManager:
         """Media and video states."""
         mul_msg = betterproto2.which_one_of(message.mul, "SubMul")
         match mul_msg[0]:
-            case "Getlamprsp":
+            case "get_lamp_rsp":
                 lamp_resp: Getlamprsp = mul_msg[1]
                 self._device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
                 if lamp_resp.get_ids in (1126, 1127):
