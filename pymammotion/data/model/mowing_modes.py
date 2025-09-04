@@ -10,6 +10,14 @@ class CuttingMode(IntEnum):
     no_grid = 3
 
 
+class CuttingSpeedMode(IntEnum):
+    """speed"""
+
+    normal = 0
+    slow = 1
+    fast = 2
+
+
 class BorderPatrolMode(IntEnum):
     """"""
 
