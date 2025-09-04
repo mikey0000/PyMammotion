@@ -22,6 +22,7 @@ from pymammotion.proto import (
     DeviceProductTypeInfoT,
     DrvDevInfoResp,
     DrvDevInfoResult,
+    Getlamprsp,
     GetNetworkInfoRsp,
     LubaMsg,
     NavGetCommDataAck,
@@ -32,7 +33,7 @@ from pymammotion.proto import (
     NavUnableTimeSet,
     SvgMessageAckT,
     TimeCtrlLight,
-    WifiIotStatusReport, Getlamprsp,
+    WifiIotStatusReport,
 )
 
 logger = logging.getLogger(__name__)
@@ -269,8 +270,12 @@ class StateManager:
             case "Getlamprsp":
                 lamp_resp: Getlamprsp = mul_msg[1]
                 self._device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
-                self._device.mower_state.lamp_info.night_light = True if lamp_resp.lamp_ctrl.value > 0 else False
-                self._device.mower_state.lamp_info.manual_light = True if lamp_resp.lamp_manual_ctrl.value > 0 else False
+                if lamp_resp.get_ids == 1126:
+                    self._device.mower_state.lamp_info.manual_light = (
+                        True if lamp_resp.lamp_manual_ctrl.value > 0 else False
+                    )
+                if lamp_resp.get_ids == 1123:
+                    self._device.mower_state.lamp_info.night_light = True if lamp_resp.lamp_ctrl.value > 0 else False
 
     def _update_ota_data(self, message) -> None:
         pass
