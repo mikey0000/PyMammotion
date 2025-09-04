@@ -20,7 +20,7 @@ from pymammotion.bluetooth import BleMessage
 from pymammotion.data.state_manager import StateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
-from pymammotion.proto import LubaMsg, has_field
+from pymammotion.proto import LubaMsg
 
 DBUS_ERROR_BACKOFF_TIME = 0.25
 
@@ -358,8 +358,8 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         new_msg = LubaMsg().parse(data)
         res = betterproto2.which_one_of(new_msg, "LubaSubMsg")
         if res[0] == "net":
-            if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
-                if has_field(new_msg.net.toapp_wifi_iot_status) and self._commands.get_device_product_key() == "":
+            if new_msg.net.todev_ble_sync != 0 or new_msg.net.toapp_wifi_iot_status is not None:
+                if new_msg.net.toapp_wifi_iot_status is not None and self._commands.get_device_product_key() == "":
                     self._commands.set_device_product_key(new_msg.net.toapp_wifi_iot_status.productkey)
 
         await self._state_manager.notification(new_msg)

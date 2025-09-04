@@ -21,7 +21,7 @@ from pymammotion.data.state_manager import StateManager
 from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
-from pymammotion.proto import LubaMsg, has_field
+from pymammotion.proto import LubaMsg
 from pymammotion.utility.constant.device_constant import NO_REQUEST_MODES
 
 _LOGGER = logging.getLogger(__name__)
@@ -371,7 +371,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
         res = betterproto2.which_one_of(new_msg, "LubaSubMsg")
         if res[0] == "net":
-            if new_msg.net.todev_ble_sync != 0 or has_field(new_msg.net.toapp_wifi_iot_status):
+            if new_msg.net.todev_ble_sync != 0 or new_msg.net.toapp_wifi_iot_status is not None:
                 return
 
         await self._state_manager.notification(new_msg)
