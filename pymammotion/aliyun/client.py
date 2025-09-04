@@ -81,7 +81,7 @@ class Client:
                 "maxAttempts": UtilClient.default_number(runtime.max_attempts, 3),
             },
             "backoff": {
-                "policy": UtilClient.default_string(runtime.backoff_policy, "no"),
+                "policy": UtilClient.default_string(runtime.backoff_policy, "yes"),
                 "period": UtilClient.default_number(runtime.backoff_period, 1),
             },
             "ignoreSSL": runtime.ignore_ssl,
@@ -171,7 +171,7 @@ class Client:
                 "maxAttempts": UtilClient.default_number(runtime.max_attempts, 3),
             },
             "backoff": {
-                "policy": UtilClient.default_string(runtime.backoff_policy, "no"),
+                "policy": UtilClient.default_string(runtime.backoff_policy, "yes"),
                 "period": UtilClient.default_number(runtime.backoff_period, 1),
             },
             "ignoreSSL": runtime.ignore_ssl,

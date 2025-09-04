@@ -1,5 +1,6 @@
 """Module for interacting with Aliyun Cloud IoT Gateway."""
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -86,6 +87,14 @@ class GatewayTimeoutException(Exception):
         self.iot_id = args[1]
 
 
+class TooManyRequestsException(Exception):
+    """Raise exception when the gateway times out."""
+
+    def __init__(self, *args: object) -> None:
+        super().__init__(args)
+        self.iot_id = args[1]
+
+
 class LoginException(Exception):
     """Raise exception when library cannot log in."""
 
@@ -118,7 +127,7 @@ class CloudIOTGateway:
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
         self.domain = ALIYUN_DOMAIN
-
+        self.message_delay = 1
         self._client_id = self.generate_hardware_string(8)  # 8 characters
         self._device_sn = self.generate_hardware_string(32)  # 32 characters
         self._utdid = self.generate_hardware_string(32)  # 32 characters
@@ -730,7 +739,6 @@ class CloudIOTGateway:
         )
 
         client = Client(config)
-
         # build request
         request = CommonParams(
             api_ver="1.0.5",
@@ -762,6 +770,14 @@ class CloudIOTGateway:
         logger.debug(response.body)
         logger.debug(iot_id)
 
+        if response.status_code == 429:
+            logger.debug("too many requests.")
+            if self.message_delay > 8:
+                raise TooManyRequestsException(response.status_message, iot_id)
+            asyncio.get_event_loop().call_later(self.message_delay, self.send_cloud_command, iot_id, command)
+            self.message_delay = self.message_delay * 2
+            return message_id
+
         response_body_str = response.body.decode("utf-8")
         response_body_dict = self.parse_json_response(response_body_str)
 
@@ -784,6 +800,9 @@ class CloudIOTGateway:
                 raise SetupException(response_body_dict.get("code"), iot_id)
             if response_body_dict.get("code") == 6205:
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
+
+        if self.message_delay != 1:
+            self.message_delay = 1
 
         return message_id
 

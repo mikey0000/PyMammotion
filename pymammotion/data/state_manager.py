@@ -1,8 +1,9 @@
 """Manage state from notifications into MowingDevice."""
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 import logging
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import betterproto2
 
@@ -42,6 +43,7 @@ class StateManager:
     """Manage state."""
 
     def __init__(self, device: MowingDevice) -> None:
+        """Initialize state manager with a device."""
         self._device: MowingDevice = device
         self.last_updated_at = datetime.now(UTC)
         self.preference = ConnectionPreference.WIFI
@@ -74,11 +76,13 @@ class StateManager:
         self._device = device
 
     async def properties(self, thing_properties: ThingPropertiesMessage) -> None:
+        """Update device properties and invoke callback."""
         # TODO update device based off thing properties
         self._device.mqtt_properties = thing_properties
         await self.on_properties_callback(thing_properties)
 
     async def status(self, thing_status: ThingStatusMessage) -> None:
+        """Update device status and invoke callback."""
         if not self._device.online:
             self._device.online = True
         self._device.status_properties = thing_status
@@ -93,19 +97,23 @@ class StateManager:
 
     @property
     def online(self) -> bool:
+        """Return online status."""
         return self._device.online
 
     @online.setter
     def online(self, value: bool) -> None:
+        """Set online status."""
         self._device.online = value
 
     async def gethash_ack_callback(self, msg: NavGetHashListAck) -> None:
+        """Dispatch hash list acknowledgment to available callback."""
         if self.cloud_gethash_ack_callback:
             await self.cloud_gethash_ack_callback(msg)
         elif self.ble_gethash_ack_callback:
             await self.ble_gethash_ack_callback(msg)
 
     async def on_notification_callback(self, res: tuple[str, Any | None]) -> None:
+        """Dispatch notification to available callback."""
         if self.cloud_on_notification_callback:
             await self.cloud_on_notification_callback.data_event(res)
         elif self.ble_on_notification_callback:
@@ -134,6 +142,7 @@ class StateManager:
             await self.ble_get_commondata_ack_callback(comm_data)
 
     async def get_plan_callback(self, planjob: NavPlanJobSet) -> None:
+        """Dispatch plan job to available callback."""
         if self.cloud_get_plan_callback:
             await self.cloud_get_plan_callback(planjob)
         elif self.ble_get_plan_callback:
@@ -244,9 +253,10 @@ class StateManager:
                 self._device.mower_state.swversion = device_fw_info.version
 
     def _update_driver_data(self, message) -> None:
-        pass
+        """Update driver data."""
 
     def _update_net_data(self, message) -> None:
+        """Update network data."""
         net_msg = betterproto2.which_one_of(message.net, "NetSubType")
         match net_msg[0]:
             case "toapp_wifi_iot_status":
@@ -269,10 +279,16 @@ class StateManager:
             case "Getlamprsp":
                 lamp_resp: Getlamprsp = mul_msg[1]
                 self._device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
-                if lamp_resp.get_ids == 1126:
-                    self._device.mower_state.lamp_info.manual_light = bool(lamp_resp.lamp_manual_ctrl.value)
+                if lamp_resp.get_ids in (1126, 1127):
+                    self._device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
+                    self._device.mower_state.lamp_info.manual_light = bool(lamp_resp.lamp_manual_ctrl.value) or bool(
+                        lamp_resp.lamp_bright
+                    )
                 if lamp_resp.get_ids == 1123:
-                    self._device.mower_state.lamp_info.night_light = bool(lamp_resp.lamp_ctrl.value)
+                    self._device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
+                    self._device.mower_state.lamp_info.night_light = bool(lamp_resp.lamp_ctrl.value) or bool(
+                        lamp_resp.lamp_bright
+                    )
 
     def _update_ota_data(self, message) -> None:
-        pass
+        """Update OTA data."""
