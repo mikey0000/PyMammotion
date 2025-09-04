@@ -264,7 +264,7 @@ class StateManager:
 
     def _update_mul_data(self, message) -> None:
         """Media and video states."""
-        mul_msg = betterproto2.which_one_of(message.net, "SubMul")
+        mul_msg = betterproto2.which_one_of(message.mul, "SubMul")
         match mul_msg[0]:
             case "Getlamprsp":
                 lamp_resp: Getlamprsp = mul_msg[1]
