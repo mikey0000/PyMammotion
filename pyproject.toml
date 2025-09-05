@@ -39,6 +39,7 @@ numpy = ">=1.26.0"
 async-timeout = "^4.0.3"
 cryptography = ">=43.0.1"
 crcmod = "^1.7"
+grpclib = "^0.4.8"
 
 [tool.poetry.group.extras]
 optional = true
