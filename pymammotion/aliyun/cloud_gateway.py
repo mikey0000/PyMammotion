@@ -774,7 +774,9 @@ class CloudIOTGateway:
             logger.debug("too many requests.")
             if self.message_delay > 8:
                 raise TooManyRequestsException(response.status_message, iot_id)
-            asyncio.get_event_loop().call_later(self.message_delay, self.send_cloud_command, iot_id, command)
+            asyncio.get_event_loop().call_later(
+                self.message_delay, lambda: asyncio.ensure_future(self.send_cloud_command(iot_id, command))
+            )
             self.message_delay = self.message_delay * 2
             return message_id
 
