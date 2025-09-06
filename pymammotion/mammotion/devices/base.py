@@ -210,7 +210,7 @@ class MammotionBaseDevice:
         await self.queue_command("get_device_product_model")
         await self.queue_command("get_report_cfg")
         """RTK and dock location."""
-        await self.queue_command("allpowerfull_rw", rw_id=5, context=1, rw=1)
+        await self.queue_command("read_write_device", rw_id=5, context=1, rw=1)
         await self.async_read_settings()
 
     async def start_map_sync(self) -> None:
@@ -261,13 +261,13 @@ class MammotionBaseDevice:
     async def async_read_settings(self) -> None:
         """Read settings from device."""
         # no cutting in rain nav_sys_param_cmd (id 3 context 1/0)
-        await self.queue_command("allpowerfull_rw", rw_id=3, context=1, rw=0)
+        await self.queue_command("read_write_device", rw_id=3, context=1, rw=0)
         # ??
-        await self.queue_command("allpowerfull_rw", rw_id=4, context=1, rw=0)
+        await self.queue_command("read_write_device", rw_id=4, context=1, rw=0)
         # turning mode nav_sys_param_cmd (id 6, context 1/0)
-        await self.queue_command("allpowerfull_rw", rw_id=6, context=1, rw=0)
+        await self.queue_command("read_write_device", rw_id=6, context=1, rw=0)
         # traversal mode
-        await self.queue_command("allpowerfull_rw", rw_id=7, context=1, rw=0)
+        await self.queue_command("read_write_device", rw_id=7, context=1, rw=0)
 
         await self.queue_command("read_and_set_sidelight", is_sidelight=True, operate=1)
 
@@ -275,8 +275,8 @@ class MammotionBaseDevice:
 
     async def async_get_errors(self) -> None:
         """Error codes."""
-        await self.queue_command("allpowerfull_rw", rw_id=5, rw=1, context=2)
-        await self.queue_command("allpowerfull_rw", rw_id=5, rw=1, context=3)
+        await self.queue_command("read_write_device", rw_id=5, rw=1, context=2)
+        await self.queue_command("read_write_device", rw_id=5, rw=1, context=3)
 
     async def command(self, key: str, **kwargs):
         """Send a command to the device."""

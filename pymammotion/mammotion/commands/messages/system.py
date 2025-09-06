@@ -119,20 +119,6 @@ class MessageSystem(AbstractMessage, ABC):
         logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")
         return self.send_order_msg_sys(build)
 
-    def traverse_mode(self, context: int) -> bytes:
-        """Sets the traversal mode back to charger."""
-        # setReChargeMode
-        # 0 direct
-        # 1 follow the perimeter
-        return self.allpowerfull_rw(7, context, 1)
-
-    def turning_mode(self, context: int) -> bytes:
-        """Sets the traversal mode back to charger."""
-        # setTurnAroundMode
-        # 0 zero turn
-        # 1 multipoint turn
-        return self.allpowerfull_rw(6, context, 1)
-
     # Commented out as not needed and too many refs to try fix up
     # def factory_test_order(self, test_id: int, test_duration: int, expect: str):
     #     new_builder = mow_to_app_qctools_info_t.Builder()

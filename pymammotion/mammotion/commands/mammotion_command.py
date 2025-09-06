@@ -30,6 +30,20 @@ class MammotionCommand(
             return self.allpowerfull_rw_adapter_x3(rw_id, context, rw)
         return self.allpowerfull_rw(rw_id, context, rw)
 
+    def traverse_mode(self, context: int) -> bytes:
+        """Sets the traversal mode back to charger."""
+        # setReChargeMode
+        # 0 direct
+        # 1 follow the perimeter
+        return self.read_write_device(7, context, 1)
+
+    def turning_mode(self, context: int) -> bytes:
+        """Sets the traversal mode back to charger."""
+        # setTurnAroundMode
+        # 0 zero turn
+        # 1 multipoint turn
+        return self.read_write_device(6, context, 1)
+
     def get_device_product_key(self) -> str:
         return self._product_key
 

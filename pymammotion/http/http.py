@@ -26,6 +26,11 @@ class MammotionHTTP:
     def generate_headers(token: str) -> dict:
         return {"Authorization": f"Bearer {token}"}
 
+    async def handle_expiry(self, resp: Response) -> Response:
+        if resp.code == 401:
+            return await self.login(self.account, self._password)
+        return resp
+
     async def login_by_email(self, email: str, password: str) -> Response[LoginResponseData]:
         return await self.login(email, password)
 
@@ -54,9 +59,35 @@ class MammotionHTTP:
 
         Returns 401 if token is invalid. We then need to re-authenticate, can try to refresh token first
         """
-        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
-            async with session.post("/user-server/v1/user/oauth/check", headers=self._headers) as resp:
+        async with ClientSession(MAMMOTION_DOMAIN) as session:
+            async with session.post(
+                "/user-server/v1/user/oauth/check",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            ) as resp:
                 data = await resp.json()
+                return Response.from_dict(data)
+
+    async def refresh_token(self) -> Response:
+        """Refresh token."""
+        async with ClientSession(MAMMOTION_DOMAIN) as session:
+            async with session.post(
+                "/authorization/code",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+                json={"clientId": MAMMOTION_CLIENT_ID},
+            ) as resp:
+                data = await resp.json()
+
+                self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
                 return Response.from_dict(data)
 
     async def pair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
@@ -72,6 +103,7 @@ class MammotionHTTP:
                     return Response.from_dict(data)
                 else:
                     print(data)
+                    return Response.from_dict(data)
 
     async def unpair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
@@ -86,6 +118,7 @@ class MammotionHTTP:
                     return Response.from_dict(data)
                 else:
                     print(data)
+                    return Response.from_dict(data)
 
     async def net_rtk_enable(self, device_id: str) -> Response:
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
@@ -98,6 +131,7 @@ class MammotionHTTP:
                     return Response.from_dict(data)
                 else:
                     print(data)
+                    return Response.from_dict(data)
 
     async def get_stream_subscription(self, iot_id: str) -> Response[StreamSubscriptionResponse]:
         """Fetches stream subscription data from agora.io for a given IoT device."""
@@ -116,6 +150,7 @@ class MammotionHTTP:
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
                 response = Response[StreamSubscriptionResponse].from_dict(data)
+                await self.handle_expiry(response)
                 if response.code != 0:
                     return response
                 response.data = StreamSubscriptionResponse.from_dict(data.get("data", {}))
@@ -231,6 +266,9 @@ class MammotionHTTP:
             self._password = password
         if self._password is None:
             raise ValueError("Password is required for refresh login")
+        res = await self.refresh_token()
+        if res.code == 0:
+            return res
         return await self.login(account, self._password)
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
