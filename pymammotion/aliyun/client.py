@@ -124,6 +124,9 @@ class Client:
                 _request.headers["x-ca-signature"] = APIGatewayUtilClient.get_signature(_request, self._app_secret)
                 _last_request = _request
                 _response = TeaCore.do_action(_request, _runtime)
+                if _response.body.get("code") == 20056:
+                    raise Exception("Gateway timeout.")
+
                 return _response
             except Exception as e:
                 if TeaCore.is_retryable(e):

@@ -51,8 +51,8 @@ class MammotionBaseDevice:
 
         missing_frames = self.mower.map.missing_root_hash_frame(hash_ack)
         if len(missing_frames) == 0:
-            if len(self.mower.map.missing_hashlist(0)) > 0:
-                data_hash = self.mower.map.missing_hashlist(hash_ack.sub_cmd).pop()
+            if len(self.mower.map.missing_hashlist(hash_ack.sub_cmd)) > 0:
+                data_hash = self.mower.map.missing_hashlist(hash_ack.sub_cmd).pop(0)
                 await self.queue_command("synchronize_hash_data", hash_num=data_hash)
             return
 
@@ -70,7 +70,7 @@ class MammotionBaseDevice:
             # get next in hash ack list
 
             data_hash = (
-                self.mower.map.missing_hashlist(common_data.sub_cmd).pop()
+                self.mower.map.missing_hashlist(common_data.sub_cmd).pop(0)
                 if len(self.mower.map.missing_hashlist(common_data.sub_cmd)) > 0
                 else None
             )

@@ -141,7 +141,7 @@ message NavGetCommData {
   int32 subCmd = 2;
   int32 action = 3;
   int32 type = 4;
-  fixed64 hash = 5;
+  int64 hash = 5;
   int64 paternalHashA = 6;
   int64 paternalHashB = 7;
   int32 totalFrame = 8;

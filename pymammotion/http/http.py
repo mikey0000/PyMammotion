@@ -1,4 +1,5 @@
 import csv
+import time
 from typing import cast
 
 from aiohttp import ClientSession
@@ -13,7 +14,8 @@ from pymammotion.http.model.rtk import RTK
 
 class MammotionHTTP:
     def __init__(self) -> None:
-        self.code = None
+        self.expires_in = 0
+        self.code = 0
         self.msg = None
         self.account = None
         self._password = None
@@ -184,6 +186,7 @@ class MammotionHTTP:
                 # TODO catch errors from mismatch like token expire etc
                 # Assuming the data format matches the expected structure
                 response = Response[StreamSubscriptionResponse].from_dict(data)
+                await self.handle_expiry(response)
                 if response.code != 0:
                     return response
                 response.data = StreamSubscriptionResponse.from_dict(data.get("data", {}))
@@ -261,15 +264,12 @@ class MammotionHTTP:
 
                 return response_factory(Response[list[RTK]], data)
 
-    async def refresh_login(self, account: str, password: str | None = None) -> Response[LoginResponseData]:
-        if self._password is None and password is not None:
-            self._password = password
-        if self._password is None:
-            raise ValueError("Password is required for refresh login")
-        res = await self.refresh_token()
-        if res.code == 0:
-            return res
-        return await self.login(account, self._password)
+    async def refresh_login(self) -> Response[LoginResponseData]:
+        if self.expires_in > time.time():
+            res = await self.refresh_token()
+            if res.code == 0:
+                return res
+        return await self.login(self.account, self._password)
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
         """Logs in to the service using provided account and password."""
@@ -301,6 +301,7 @@ class MammotionHTTP:
                     print(login_response)
                     return Response.from_dict({"code": resp.status, "msg": "Login failed"})
                 self.login_info = login_response.data
+                self.expires_in = login_response.data.expires_in + time.time()
                 self._headers["Authorization"] = (
                     f"Bearer {self.login_info.access_token}" if login_response.data else None
                 )

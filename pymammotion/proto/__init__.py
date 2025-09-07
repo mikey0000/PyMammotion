@@ -3020,7 +3020,7 @@ class NavGetCommData(betterproto2.Message):
 
     type: "int" = betterproto2.field(4, betterproto2.TYPE_INT32)
 
-    hash: "int" = betterproto2.field(5, betterproto2.TYPE_FIXED64)
+    hash: "int" = betterproto2.field(5, betterproto2.TYPE_INT64)
 
     paternal_hash_a: "int" = betterproto2.field(6, betterproto2.TYPE_INT64)
 

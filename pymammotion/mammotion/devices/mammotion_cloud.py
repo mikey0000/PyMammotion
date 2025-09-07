@@ -104,8 +104,8 @@ class MammotionCloud:
         assert self._mqtt_client is not None
         self._key = key
         _LOGGER.debug("Sending command: %s", key)
-        await self._mqtt_client.get_cloud_client().send_cloud_command(iot_id, command)
         self.command_sent_time = time.time()
+        await self._mqtt_client.get_cloud_client().send_cloud_command(iot_id, command)
 
     async def _on_mqtt_message(self, topic: str, payload: str, iot_id: str) -> None:
         """Handle incoming MQTT messages."""

@@ -199,7 +199,7 @@ class Mammotion:
             if not exists:
                 return
             mammotion_http = exists.cloud_client.mammotion_http
-            await mammotion_http.refresh_login(account, password)
+            await mammotion_http.refresh_login()
             await self.connect_iot(exists.cloud_client)
 
             if not exists.is_connected():
@@ -273,7 +273,8 @@ class Mammotion:
     async def connect_iot(cloud_client: CloudIOTGateway) -> None:
         mammotion_http = cloud_client.mammotion_http
         country_code = mammotion_http.login_info.userInformation.domainAbbreviation
-        await cloud_client.get_region(country_code)
+        if cloud_client.region_response is None:
+            await cloud_client.get_region(country_code)
         await cloud_client.connect()
         await cloud_client.login_by_oauth(country_code)
         await cloud_client.aep_handle()
