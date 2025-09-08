@@ -76,6 +76,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     ) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__(state_manager, cloud_device)
+        self.command_sent_time = 0
         self._disconnect_strategy = True
         self._ble_sync_task = None
         self._prev_notification = None

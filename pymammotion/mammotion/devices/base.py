@@ -43,7 +43,6 @@ class MammotionBaseDevice:
         self._raw_mower_data: RawMowerData = RawMowerData()
         self._notify_future: asyncio.Future[bytes] | None = None
         self._cloud_device = cloud_device
-        self.command_sent_time: float = time.time()
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses for root level hashs."""
