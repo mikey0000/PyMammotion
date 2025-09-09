@@ -600,6 +600,10 @@ class CloudIOTGateway:
             await self.sign_out()
             raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
 
+        if response_body_dict.get("code") == 2401:
+            await self.sign_out()
+            raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
+
         session = SessionByAuthCodeResponse.from_dict(response_body_dict)
         session_data = session.data
 
@@ -802,6 +806,10 @@ class CloudIOTGateway:
                 raise SetupException(response_body_dict.get("code"), iot_id)
             if response_body_dict.get("code") == 6205:
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
+
+            if response_body_dict.get("code") == 460:
+                logger.debug("iotToken expired, must re-login.")
+                raise CheckSessionException(response_body_dict.get("message"))
 
         if self.message_delay != 1:
             self.message_delay = 1
