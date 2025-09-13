@@ -13,12 +13,12 @@ from pymammotion.http.model.rtk import RTK
 
 
 class MammotionHTTP:
-    def __init__(self) -> None:
+    def __init__(self, account: str | None = None, password: str | None = None) -> None:
         self.expires_in = 0
         self.code = 0
         self.msg = None
-        self.account = None
-        self._password = None
+        self.account = account
+        self._password = password
         self.response: Response | None = None
         self.login_info: LoginResponseData | None = None
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,1.14.2.29"}
