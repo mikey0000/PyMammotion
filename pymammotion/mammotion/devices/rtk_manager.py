@@ -21,7 +21,6 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
         self,
         name: str,
         iot_id: str,
-        product_key: str,
         cloud_client: CloudIOTGateway,
         cloud_device: Device,
         ble_device: BLEDevice | None = None,
@@ -43,7 +42,7 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
         self._rtk_state = RTKDevice(
             name=name,
             iot_id=iot_id,
-            product_key=product_key,
+            product_key=cloud_device.product_key,
         )
 
         # Add connection types if provided

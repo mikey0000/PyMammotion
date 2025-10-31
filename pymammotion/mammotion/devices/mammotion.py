@@ -15,7 +15,7 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
-from pymammotion.http.model.http import Response
+from pymammotion.http.model.http import DeviceRecord, Response
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 from pymammotion.mammotion.devices.mammotion_mower_ble import MammotionMowerBLEDevice
 from pymammotion.mammotion.devices.managers.managers import AbstractDeviceManager
@@ -188,12 +188,39 @@ class Mammotion:
             if len(mammotion_http.device_records.records) != 0:
                 await mammotion_http.get_mqtt_credentials()
 
-            if not exists_aliyun.is_connected():
+            if exists_aliyun and not exists_aliyun.is_connected():
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, exists_aliyun.connect_async)
-            if not exists_mammotion.is_connected():
+            if exists_mammotion and not exists_mammotion.is_connected():
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, exists_mammotion.connect_async)
+
+    @staticmethod
+    def shim_cloud_devices(devices: list[DeviceRecord]) -> list[Device]:
+        device_list: list[Device] = []
+        for device in devices:
+            device_list.append(
+                Device(
+                    gmt_modified=0,
+                    product_name="",
+                    status=0,
+                    net_type="NET_WIFI",
+                    is_edge_gateway=False,
+                    category_name="",
+                    owned=1,
+                    identity_alias="UNKNOW",
+                    thing_type="DEVICE",
+                    identity_id=device.identity_id,
+                    device_name=device.device_name,
+                    product_key=device.product_key,
+                    iot_id=device.iot_id,
+                    bind_time=device.bind_time,
+                    node_type="DEVICE",
+                    category_key="LawnMower",
+                )
+            )
+
+        return device_list
 
     async def initiate_ble_connection(self, devices: dict[str, BLEDevice], cloud_devices: list[Device]) -> None:
         """Initiate BLE connection."""
@@ -208,6 +235,7 @@ class Mammotion:
                                 cloud_device=device,
                                 ble_device=ble_device,
                                 preference=ConnectionPreference.BLUETOOTH,
+                                cloud_client=CloudIOTGateway(MammotionHTTP()),
                             )
                         )
                     else:
@@ -221,6 +249,7 @@ class Mammotion:
                                 cloud_device=device,
                                 ble_device=ble_device,
                                 preference=ConnectionPreference.BLUETOOTH,
+                                cloud_client=CloudIOTGateway(MammotionHTTP()),
                             )
                         )
                     else:
@@ -262,15 +291,58 @@ class Mammotion:
                 MammotionMQTT(
                     product_key=cloud_client.aep_response.data.productKey,
                     device_name=cloud_client.aep_response.data.deviceName,
-                    mammotion_http=cloud_client.mammotion_http,
-                    mqtt_connection=cloud_client.mammotion_http.mqtt_credentials,
+                    mammotion_http=mammotion_http,
+                    mqtt_connection=mammotion_http.mqtt_credentials,
                 ),
                 cloud_client,
             )
             self.mqtt_list[f"{account}_mammotion"] = mammotion_cloud
-            self.add_cloud_devices(mammotion_cloud)
+            self.add_mammotion_devices(mammotion_cloud, mammotion_http.device_records.records)
 
             await loop.run_in_executor(None, self.mqtt_list[f"{account}_mammotion"].connect_async)
+
+    def add_mammotion_devices(self, mqtt_client: MammotionCloud, devices: list[DeviceRecord]) -> None:
+        """Add devices from mammotion cloud."""
+        for device in devices:
+            if device.device_name.startswith(("Luba-", "Yuka-")):
+                has_device = self.device_manager.has_device(device.device_name)
+                if has_device:
+                    mower_device = self.device_manager.get_device(device.device_name)
+                    if mower_device.cloud is None:
+                        mower_device.add_cloud(mqtt=mqtt_client)
+                    else:
+                        mower_device.replace_mqtt(mqtt_client)
+
+                else:
+                    cloud_device_shim = Device(
+                        gmt_modified=0,
+                        product_name="",
+                        status=0,
+                        net_type="NET_WIFI",
+                        is_edge_gateway=False,
+                        category_name="",
+                        owned=1,
+                        identity_alias="UNKNOW",
+                        thing_type="DEVICE",
+                        identity_id=device.identity_id,
+                        device_name=device.device_name,
+                        product_key=device.product_key,
+                        iot_id=device.iot_id,
+                        bind_time=device.bind_time,
+                        node_type="DEVICE",
+                        category_key="LawnMower",
+                    )
+
+                    mixed_device = MammotionMowerDeviceManager(
+                        name=device.device_name,
+                        iot_id=device.iot_id,
+                        cloud_client=mqtt_client.cloud_client,
+                        cloud_device=cloud_device_shim,
+                        mqtt=mqtt_client,
+                        preference=ConnectionPreference.WIFI,
+                    )
+                    mixed_device.state.mower_state.product_key = device.product_key
+                    self.device_manager.add_device(mixed_device)
 
     def add_cloud_devices(self, mqtt_client: MammotionCloud) -> None:
         """Add devices from cloud - both mowers and RTK."""
@@ -308,7 +380,6 @@ class Mammotion:
                     rtk_device = MammotionRTKDeviceManager(
                         name=device.device_name,
                         iot_id=device.iot_id,
-                        product_key=device.product_key,
                         cloud_client=mqtt_client.cloud_client,
                         cloud_device=device,
                         mqtt=mqtt_client,
@@ -340,13 +411,15 @@ class Mammotion:
         await mammotion_http.login(account, password)
         await mammotion_http.get_user_device_page()
         device_list = await mammotion_http.get_user_device_list()
+        await mammotion_http.get_mqtt_credentials()
         cloud_client = CloudIOTGateway(mammotion_http)
-        if len(device_list.data) != 0:
+        if len(device_list.data or []) != 0:
             await self.connect_iot(cloud_client)
         return cloud_client
 
     @staticmethod
     async def connect_iot(cloud_client: CloudIOTGateway) -> None:
+        """Connect to aliyun cloud and fetch device info."""
         mammotion_http = cloud_client.mammotion_http
         country_code = mammotion_http.login_info.userInformation.domainAbbreviation
         if cloud_client.region_response is None:
@@ -376,6 +449,7 @@ class Mammotion:
     def get_or_create_device_by_name(
         self, device: Device, mqtt_client: MammotionCloud | None, ble_device: BLEDevice | None
     ) -> MammotionMowerDeviceManager:
+        """Get or create a mower device by name."""
         if self.device_manager.has_device(device.device_name):
             return self.device_manager.get_device(device.device_name)
         mow_device = MammotionMowerDeviceManager(
@@ -413,6 +487,7 @@ class Mammotion:
         return None
 
     async def start_map_sync(self, name: str):
+        """Start map sync."""
         device = self.get_device_by_name(name)
         if device:
             if device.preference is ConnectionPreference.BLUETOOTH and device.ble:
@@ -423,6 +498,7 @@ class Mammotion:
         return None
 
     async def get_stream_subscription(self, name: str, iot_id: str) -> Response[StreamSubscriptionResponse] | Any:
+        """Get stream subscription."""
         device = self.get_device_by_name(name)
         if DeviceType.is_mini_or_x_series(name):
             _stream_response = await device.mammotion_http.get_stream_subscription_mini_or_x_series(
@@ -436,6 +512,7 @@ class Mammotion:
             return _stream_response
 
     async def get_video_resource(self, name: str, iot_id: str) -> Response[VideoResourceResponse] | None:
+        """Get video resource."""
         device = self.get_device_by_name(name)
 
         if DeviceType.is_mini_or_x_series(name):
@@ -445,6 +522,7 @@ class Mammotion:
         return None
 
     def mower(self, name: str) -> MowingDevice | None:
+        """Get a mower device by name."""
         device = self.get_device_by_name(name)
         if device:
             return device.state
