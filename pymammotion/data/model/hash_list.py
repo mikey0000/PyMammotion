@@ -218,6 +218,14 @@ class HashList(DataClassORJSONMixin):
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
         self.dump = {hash_id: frames for hash_id, frames in self.dump.items() if hash_id in hashlist}
         self.svg = {hash_id: frames for hash_id, frames in self.svg.items() if hash_id in hashlist}
+
+        area_hashes = list(self.area.keys())
+        for hash_id, plan_task in self.plan.items():
+            for item in plan_task.zone_hashs:
+                if item not in area_hashes:
+                    self.plan.pop(hash_id)
+                    break
+
         self.area_name = [
             area_item
             for area_item in self.area_name
