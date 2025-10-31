@@ -1088,7 +1088,7 @@ class CoverPathUploadT(betterproto2.Message):
 
     total_path_num: "int" = betterproto2.field(8, betterproto2.TYPE_INT32)
 
-    vaild_path_num: "int" = betterproto2.field(9, betterproto2.TYPE_INT32)
+    valid_path_num: "int" = betterproto2.field(9, betterproto2.TYPE_INT32)
 
     data_hash: "int" = betterproto2.field(10, betterproto2.TYPE_FIXED64)
 

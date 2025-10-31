@@ -1,35 +1,58 @@
 import csv
+import random
 import time
 from typing import cast
 
 from aiohttp import ClientSession
+import jwt
 
 from pymammotion.const import MAMMOTION_API_DOMAIN, MAMMOTION_CLIENT_ID, MAMMOTION_CLIENT_SECRET, MAMMOTION_DOMAIN
 from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
-from pymammotion.http.model.http import CheckDeviceVersion, ErrorInfo, LoginResponseData, Response
+from pymammotion.http.model.http import (
+    CheckDeviceVersion,
+    DeviceInfo,
+    DeviceRecords,
+    ErrorInfo,
+    JWTTokenInfo,
+    LoginResponseData,
+    MQTTConnection,
+    Response,
+)
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
 
 
 class MammotionHTTP:
     def __init__(self, account: str | None = None, password: str | None = None) -> None:
-        self.expires_in = 0
+        self.device_info: list[DeviceInfo] = []
+        self.mqtt_credentials: MQTTConnection | None = None
+        self.device_records: DeviceRecords = DeviceRecords(records=[], current=0, total=0, size=0, pages=0)
+        self.expires_in = 0.0
         self.code = 0
         self.msg = None
         self.account = account
         self._password = password
         self.response: Response | None = None
         self.login_info: LoginResponseData | None = None
+        self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,1.14.2.29"}
         self.encryption_utils = EncryptionUtils()
+
+        # Add this method to generate a 10-digit random number
+        def get_10_random() -> str:
+            """Generate a 10-digit random number as a string."""
+            return "".join([str(random.randint(0, 9)) for _ in range(7)])
+
+        # Replace the line in the __init__ method with:
+        self.client_id = f"{int(time.time() * 1000)}_{get_10_random()}_1"
 
     @staticmethod
     def generate_headers(token: str) -> dict:
         return {"Authorization": f"Bearer {token}"}
 
     async def handle_expiry(self, resp: Response) -> Response:
-        if resp.code == 401:
+        if resp.code == 401 and self.account and self._password:
             return await self.login(self.account, self._password)
         return resp
 
@@ -89,7 +112,9 @@ class MammotionHTTP:
             ) as resp:
                 data = await resp.json()
 
+                self.login_info.access_token = data["data"].get("accessToken", self.login_info.access_token)
                 self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
+                await self.get_mqtt_credentials()
                 return Response.from_dict(data)
 
     async def pair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
@@ -163,6 +188,7 @@ class MammotionHTTP:
     ) -> Response[StreamSubscriptionResponse]:
         # Prepare the payload with cameraStates based on is_yuka flag
         """Fetches stream subscription data for a given IoT device."""
+
         payload = {"deviceId": iot_id, "mode": 0, "cameraStates": []}
 
         # Add appropriate cameraStates based on the is_yuka flag
@@ -264,6 +290,88 @@ class MammotionHTTP:
 
                 return response_factory(Response[list[RTK]], data)
 
+    async def get_user_device_list(self) -> Response[list[DeviceInfo]]:
+        """Fetches device list for a user, older devices / aliyun."""
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.get(
+                "/device-server/v1/device/list",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            ) as resp:
+                resp_dict = await resp.json()
+                response = response_factory(Response[list[DeviceInfo]], resp_dict)
+                self.device_info = response.data if response.data else self.device_info
+                return response
+
+    async def get_user_device_page(self) -> Response[DeviceRecords]:
+        """Fetches device list for a user, is either new API or for newer devices."""
+        async with ClientSession(self.jwt_info.iot) as session:
+            async with session.post(
+                "/v1/user/device/page",
+                json={
+                    "iotId": "",
+                    "pageNumber": 1,
+                    "pageSize": 100,
+                },
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            ) as resp:
+                if resp.status != 200:
+                    return Response.from_dict({"code": resp.status, "msg": "get device list failed"})
+                resp_dict = await resp.json()
+                response = response_factory(Response[DeviceRecords], resp_dict)
+                self.device_records = response.data if response.data else self.device_records
+                return response
+
+    async def get_mqtt_credentials(self) -> Response[MQTTConnection]:
+        """Get mammotion mqtt credentials"""
+        async with ClientSession(self.jwt_info.iot) as session:
+            async with session.post(
+                "/v1/mqtt/auth/jwt",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            ) as resp:
+                if resp.status != 200:
+                    return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
+                resp_dict = await resp.json()
+                response = response_factory(Response[MQTTConnection], resp_dict)
+                self.mqtt_credentials = response.data
+                return response
+
+    async def mqtt_invoke(self, content: str, device_name: str, iot_id: str) -> Response[dict]:
+        """Send mqtt commands to devices."""
+        async with ClientSession(self.jwt_info.iot) as session:
+            async with session.post(
+                "/v1/mqtt/rpc/thing/service/invoke",
+                json={"args": {"content": content, "deviceName": device_name, "iotId": iot_id, "productKey": ""}},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            ) as resp:
+                if resp.status != 200:
+                    return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
+                resp_dict = await resp.json()
+                return response_factory(Response[dict], resp_dict)
+
     async def refresh_login(self) -> Response[LoginResponseData]:
         if self.expires_in > time.time():
             res = await self.refresh_token()
@@ -297,7 +405,7 @@ class MammotionHTTP:
                     return Response.from_dict({"code": resp.status, "msg": "Login failed"})
                 data = await resp.json()
                 login_response = response_factory(Response[LoginResponseData], data)
-                if login_response.data is None:
+                if login_response is None or login_response.data is None:
                     print(login_response)
                     return Response.from_dict({"code": resp.status, "msg": "Login failed"})
                 self.login_info = login_response.data
@@ -308,6 +416,9 @@ class MammotionHTTP:
                 self.response = login_response
                 self.msg = login_response.msg
                 self.code = login_response.code
+                decoded_token = jwt.decode(self.response.data.access_token, options={"verify_signature": False})
+                if isinstance(decoded_token, dict):
+                    self.jwt_info = JWTTokenInfo(iot=decoded_token.get("iot", ""), robot=decoded_token.get("robot", ""))
                 # TODO catch errors from mismatch user / password elsewhere
                 # Assuming the data format matches the expected structure
                 return login_response

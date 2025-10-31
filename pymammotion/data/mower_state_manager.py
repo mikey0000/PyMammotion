@@ -9,8 +9,14 @@ import betterproto2
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
-from pymammotion.data.model.enums import ConnectionPreference
-from pymammotion.data.model.hash_list import AreaHashNameList, NavGetCommData, NavGetHashListData, Plan, SvgMessage
+from pymammotion.data.model.hash_list import (
+    AreaHashNameList,
+    MowPath,
+    NavGetCommData,
+    NavGetHashListData,
+    Plan,
+    SvgMessage,
+)
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -20,6 +26,7 @@ from pymammotion.proto import (
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
+    CoverPathUploadT,
     DeviceFwInfo,
     DeviceProductTypeInfoT,
     DrvDevInfoResp,
@@ -41,14 +48,13 @@ from pymammotion.proto import (
 logger = logging.getLogger(__name__)
 
 
-class StateManager:
+class MowerStateManager:
     """Manage state."""
 
     def __init__(self, device: MowingDevice) -> None:
         """Initialize state manager with a device."""
         self._device: MowingDevice = device
         self.last_updated_at = datetime.now(UTC)
-        self.preference = ConnectionPreference.WIFI
         self.cloud_gethash_ack_callback: Callable[[NavGetHashListAck], Awaitable[None]] | None = None
         self.cloud_get_commondata_ack_callback: (
             Callable[[NavGetCommDataAck | SvgMessageAckT], Awaitable[None]] | None
@@ -132,7 +138,7 @@ class StateManager:
             await self.status_callback.data_event(thing_status)
 
     async def on_device_event_callback(self, device_event: ThingEventMessage) -> None:
-        """Executes the status callback if it is set."""
+        """Executes the event callback if it is set."""
         if self.device_event_callback:
             await self.device_event_callback.data_event(device_event)
 
@@ -191,6 +197,10 @@ class StateManager:
                 )
                 if updated:
                     await self.get_commondata_ack_callback(common_data)
+            case "cover_path_upload":
+                mow_path: CoverPathUploadT = nav_msg[1]
+                self._device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
+
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]
                 self._device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))
@@ -263,8 +273,8 @@ class StateManager:
                 self._device.mower_state.cutter_mode = cutter_work_mode.current_cutter_mode
                 self._device.mower_state.cutter_rpm = cutter_work_mode.current_cutter_rpm
             case "cutter_mode_ctrl_by_hand":
-                cutter_work_mode: AppSetCutterWorkMode = driver_msg[1]
-                self._device.mower_state.cutter_mode = cutter_work_mode.cutter_mode
+                cutter_work_mode_set: AppSetCutterWorkMode = driver_msg[1]
+                self._device.mower_state.cutter_mode = cutter_work_mode_set.cutter_mode
 
     def _update_net_data(self, message) -> None:
         """Update network data."""

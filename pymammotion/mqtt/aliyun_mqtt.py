@@ -2,7 +2,7 @@
 
 import asyncio
 import base64
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 import hashlib
 import hmac
 import json
@@ -22,7 +22,7 @@ from pymammotion.proto import LubaMsg
 logger = getLogger(__name__)
 
 
-class MammotionMQTT:
+class AliyunMQTT:
     """MQTT client for pymammotion."""
 
     def __init__(
@@ -164,7 +164,7 @@ class MammotionMQTT:
             f"/sys/{self._product_key}/{self._device_name}/app/down/thing/model/down_raw"
         )
 
-    def _thing_on_topic_message(self, topic, payload, qos, user_data) -> None:
+    def _thing_on_topic_message(self, topic: str, payload: str, qos, user_data) -> None:
         """Is called when thing topic comes in."""
         logger.debug(
             "on_topic_message, receive message, topic:%s, payload:%s, qos:%d",
@@ -172,8 +172,8 @@ class MammotionMQTT:
             payload,
             qos,
         )
-        payload = json.loads(payload)
-        iot_id = payload.get("params", {}).get("iotId", "")
+        json_payload = json.loads(payload)
+        iot_id = json_payload.get("params", {}).get("iotId", "")
         if iot_id != "" and self.on_message is not None:
             future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
@@ -199,7 +199,7 @@ class MammotionMQTT:
 
     def _on_message(self, _client, _userdata, message: MQTTMessage) -> None:
         """Is called when message is received."""
-        logger.info("Message on topic %s", message.topic)
+        logger.debug("Message on topic %s", message.topic)
 
         payload = json.loads(message.payload)
         if message.topic.endswith("/app/down/thing/events"):
@@ -227,6 +227,6 @@ class MammotionMQTT:
             logger.debug("Unhandled topic: %s", message.topic)
             logger.debug(payload)
 
-    def get_cloud_client(self) -> CloudIOTGateway:
+    async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Return internal cloud client."""
-        return self._cloud_client
+        return await self._cloud_client.send_cloud_command(iot_id, command)

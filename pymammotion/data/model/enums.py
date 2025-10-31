@@ -4,9 +4,11 @@ from enum import Enum
 class ConnectionPreference(Enum):
     """Enum for connection preference."""
 
-    EITHER = 0
+    ANY = 0
     WIFI = 1
     BLUETOOTH = 2
+    PREFER_WIFI = 3
+    PREFER_BLUETOOTH = 4
 
 
 class PositionMode(Enum):

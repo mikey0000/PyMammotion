@@ -7,12 +7,12 @@ import time
 from typing import Optional
 
 from pymammotion.data.model.device import MowingDevice
-from pymammotion.data.state_manager import StateManager
+from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT, logger
-from pymammotion.mammotion.devices.mammotion import MammotionBaseCloudDevice
+from pymammotion.mqtt.aliyun_mqtt import AliyunMQTT, logger
+from pymammotion.mammotion.devices import MammotionBaseCloudDevice, Mammotion
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ async def run() -> CloudIOTGateway:
     if missing_fields:
         raise ValueError(f"Missing required fields in cloud client responses: {', '.join(missing_fields)}")
 
-    _mammotion_mqtt = MammotionCloud(MammotionMQTT(
+    _mammotion_mqtt = MammotionCloud(AliyunMQTT(
         region_id=cloud_client.region_response.data.regionId,
         product_key=cloud_client.aep_response.data.productKey,
         device_name=cloud_client.aep_response.data.deviceName,
@@ -165,11 +165,11 @@ async def run() -> CloudIOTGateway:
 
     _devices_list = []
     for device in cloud_client.devices_by_account_response.data.data:
-        if (device.deviceName.startswith(("Luba-"))):
+        if device.device_name.startswith(("Luba-")):
             dev = MammotionBaseCloudDevice(
                 mqtt=_mammotion_mqtt,
                 cloud_device=device,
-                state_manager=StateManager(MowingDevice())
+                state_manager=MowerStateManager(MowingDevice())
             )
             _devices_list.append(dev)
     # Wrap device commands in error handling

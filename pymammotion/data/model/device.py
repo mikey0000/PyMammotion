@@ -96,6 +96,7 @@ class MowingDevice(DataClassORJSONMixin):
                 self.location.device = coordinate_converter.enu_to_lla(
                     parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
                 )
+                self.map.invalidate_maps(location.bol_hash)
                 if location.zone_hash:
                     self.location.work_zone = (
                         location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0

@@ -22,7 +22,7 @@ from Tea.exceptions import UnretryableException
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.model.aep_response import AepResponse
 from pymammotion.aliyun.model.connect_response import ConnectResponse
-from pymammotion.aliyun.model.dev_by_account_response import ListingDevByAccountResponse
+from pymammotion.aliyun.model.dev_by_account_response import ListingDevAccountResponse
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
@@ -103,6 +103,9 @@ class CheckSessionException(Exception):
     """Raise exception when checking session results in a failure."""
 
 
+EXPIRED_CREDENTIAL_EXCEPTIONS = (CheckSessionException, SetupException)
+
+
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
 
@@ -120,7 +123,7 @@ class CloudIOTGateway:
         aep_response: AepResponse | None = None,
         session_by_authcode_response: SessionByAuthCodeResponse | None = None,
         region_response: RegionResponse | None = None,
-        dev_by_account: ListingDevByAccountResponse | None = None,
+        dev_by_account: ListingDevAccountResponse | None = None,
     ) -> None:
         """Initialize the CloudIOTGateway."""
         self.mammotion_http: MammotionHTTP = mammotion_http
@@ -146,7 +149,7 @@ class CloudIOTGateway:
             )
 
     @staticmethod
-    def generate_random_string(length: int):
+    def generate_random_string(length: int) -> str:
         """Generate a random string of specified length."""
         characters = string.ascii_letters + string.digits
         return "".join(random.choice(characters) for _ in range(length))
@@ -165,7 +168,7 @@ class CloudIOTGateway:
             logger.error("Couldn't decode message %s", response_body_str)
             return {"code": 22000}
 
-    def sign(self, data):
+    def sign(self, data: dict) -> str:
         """Generate signature for the given data."""
         keys = ["appKey", "clientId", "deviceSn", "timestamp"]
         concatenated_str = ""
@@ -180,7 +183,7 @@ class CloudIOTGateway:
             hashlib.sha1,
         ).hexdigest()
 
-    async def get_region(self, country_code: str):
+    async def get_region(self, country_code: str) -> RegionResponse:
         """Get the region based on country code and auth code."""
         auth_code = self.mammotion_http.login_info.authorization_code
 
@@ -244,7 +247,7 @@ class CloudIOTGateway:
 
         return response.body
 
-    async def aep_handle(self):
+    async def aep_handle(self) -> AepResponse:
         """Handle AEP authentication."""
         aep_domain = self.domain
 
@@ -300,9 +303,9 @@ class CloudIOTGateway:
 
         logger.debug(response_body_dict)
 
-        return response.body
+        return self._aep_response
 
-    async def connect(self):
+    async def connect(self) -> ConnectResponse:
         """Connect to the Aliyun Cloud IoT Gateway."""
         region_url = "sdk.openaccount.aliyun.com"
         time_now = time.time()
@@ -449,7 +452,7 @@ class CloudIOTGateway:
                     return self._login_by_oauth_response
                 raise LoginException(data)
 
-    async def session_by_auth_code(self):
+    async def session_by_auth_code(self) -> SessionByAuthCodeResponse:
         """Create a session by auth code."""
         config = Config(
             app_key=self._app_key,
@@ -608,7 +611,8 @@ class CloudIOTGateway:
         session_data = session.data
 
         if (
-            session_data.identityId is None
+            session_data is None
+            or session_data.identityId is None
             or session_data.refreshTokenExpire is None
             or session_data.iotToken is None
             or session_data.iotTokenExpire is None
@@ -619,7 +623,7 @@ class CloudIOTGateway:
         self._session_by_authcode_response = session
         self._iot_token_issued_at = int(time.time())
 
-    async def list_binding_by_account(self) -> ListingDevByAccountResponse:
+    async def list_binding_by_account(self) -> ListingDevAccountResponse:
         """List bindings by account."""
         config = Config(
             app_key=self._app_key,
@@ -658,9 +662,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in creating session: " + response_body_dict["msg"])
+            raise Exception("Error in creating session: " + response_body_dict["message"])
 
-        self._devices_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
+        self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
         return self._devices_by_account_response
 
     async def list_binding_by_dev(self, iot_id: str):
@@ -699,9 +703,93 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
+            raise Exception("Error in getting shared device list: " + response_body_dict["msg"])
+
+        self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
+        return self._devices_by_account_response
+
+    async def confirm_share(self, record_list: list[str]) -> bool:
+        config = Config(
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,
+        )
+
+        client = Client(config)
+
+        # build request
+        request = CommonParams(
+            api_ver="1.0.7",
+            language="en-US",
+            iot_token=self._session_by_authcode_response.data.iotToken,
+        )
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params={"agree": 1, "recordIdList": record_list},
+            request=request,
+            version="1.0",
+        )
+
+        # send request
+        response = await client.async_do_request("/uc/confirmShare", "https", "POST", None, body, RuntimeOptions())
+        logger.debug(response.status_message)
+        logger.debug(response.headers)
+        logger.debug(response.status_code)
+        logger.debug(response.body)
+
+        # Decode the response body
+        response_body_str = response.body.decode("utf-8")
+
+        # Load the JSON string into a dictionary
+        response_body_dict = self.parse_json_response(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
+            raise Exception("Error in accepting share: " + response_body_dict["msg"])
+
+        return True
+
+    async def get_shared_notice_list(self):
+        ### status 0 accepted status -1 ready to be accepted 3 expired
+        config = Config(
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,
+        )
+
+        client = Client(config)
+
+        # build request
+        request = CommonParams(
+            api_ver="1.0.9",
+            language="en-US",
+            iot_token=self._session_by_authcode_response.data.iotToken,
+        )
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params={"pageSize": 100, "pageNo": 1},
+            request=request,
+            version="1.0",
+        )
+
+        # send request
+        response = await client.async_do_request(
+            "/uc/getShareNoticeList", "https", "POST", None, body, RuntimeOptions()
+        )
+        logger.debug(response.status_message)
+        logger.debug(response.headers)
+        logger.debug(response.status_code)
+        logger.debug(response.body)
+
+        # Decode the response body
+        response_body_str = response.body.decode("utf-8")
+
+        # Load the JSON string into a dictionary
+        response_body_dict = self.parse_json_response(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
-        self._devices_by_account_response = ListingDevByAccountResponse.from_dict(response_body_dict)
+        self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
         return self._devices_by_account_response
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
@@ -867,11 +955,11 @@ class CloudIOTGateway:
         self.mammotion_http = mammotion_http
 
     @property
-    def region_response(self) -> RegionResponse:
+    def region_response(self) -> RegionResponse | None:
         return self._region_response
 
     @property
-    def aep_response(self) -> AepResponse:
+    def aep_response(self) -> AepResponse | None:
         return self._aep_response
 
     @property
@@ -883,9 +971,9 @@ class CloudIOTGateway:
         return self._client_id
 
     @property
-    def login_by_oauth_response(self) -> LoginByOAuthResponse:
+    def login_by_oauth_response(self) -> LoginByOAuthResponse | None:
         return self._login_by_oauth_response
 
     @property
-    def connect_response(self) -> ConnectResponse:
+    def connect_response(self) -> ConnectResponse | None:
         return self._connect_response

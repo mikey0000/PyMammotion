@@ -6,7 +6,7 @@ from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 
 from pymammotion.data.model.device import MowingDevice
-from pymammotion.data.state_manager import StateManager
+from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice
 from pymammotion.proto.mctrl_sys import MctlSys, RptAct, RptInfoType
@@ -61,7 +61,7 @@ async def run(loop):
 
     luba_ble = MammotionBaseBLEDevice(
         device=luba_device,
-        state_manager=StateManager(MowingDevice())
+        state_manager=MowerStateManager(MowingDevice())
     )
 
     await asyncio.sleep(2)

@@ -300,7 +300,7 @@ message LoraCfgRsp {
   int32 result = 1;
   int32 op = 2;
   string cfg = 3;
-  string fac_cfg = 4;
+  bytes fac_cfg = 4;
 }
 
 message mod_fw_info {

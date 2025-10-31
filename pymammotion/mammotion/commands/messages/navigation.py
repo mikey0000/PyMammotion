@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class MessageNavigation(AbstractMessage, ABC):
-    def send_order_msg_nav(self, build) -> bytes:
+    def send_order_msg_nav(self, build: MctlNav) -> bytes:
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.NAV,
             sender=MsgDevice.DEV_MOBILEAPP,
@@ -206,9 +206,9 @@ class MessageNavigation(AbstractMessage, ABC):
             reserved=plan_bean.reserved,
             weeks=plan_bean.weeks,
             start_date=plan_bean.start_date,
-            trigger_type=plan_bean.job_type,
-            day=plan_bean.interval_days,
-            toward_included_angle=plan_bean.demond_angle,
+            trigger_type=plan_bean.trigger_type,
+            day=plan_bean.day,
+            toward_included_angle=plan_bean.toward_included_angle,
             toward_mode=0,
         )
         logger.debug(f"Send read job plan command planBean={plan_bean}")
@@ -262,7 +262,7 @@ class MessageNavigation(AbstractMessage, ABC):
             toapp_map_name_msg=NavMapNameMsg(
                 hash=0,
                 result=0,
-                device_id=device_id,  # iotId or ???
+                device_id=device_id,  # iot_id
                 rw=0,
             )
         )
@@ -390,7 +390,7 @@ class MessageNavigation(AbstractMessage, ABC):
         generate_route_information}")
         return self.send_order_msg_nav(MctlNav(bidire_reqconver_path=build))
 
-    def modify_generate_route_information(self, generate_route_information: GenerateRouteInformation) -> bytes:
+    def modify_route_information(self, generate_route_information: GenerateRouteInformation) -> bytes:
         logger.debug(f"Generate route data source: {generate_route_information}")
         build = NavReqCoverPath(
             pver=1,
@@ -432,7 +432,11 @@ class MessageNavigation(AbstractMessage, ABC):
         return self.send_order_msg_nav(build)
 
     def get_line_info_list(self, hash_list: list[int], transaction_id: int) -> bytes:
+        """Get route information (mow path) corresponding to the specified hash list based on time.
+        e.g transaction_id = int(time.time() * 1000)
+        """
         logger.debug(f"Sending==========Get route command: {hash_list}")
+
         build = MctlNav(
             app_request_cover_paths=AppRequestCoverPathsT(
                 pver=1, hash_list=hash_list, transaction_id=transaction_id, sub_cmd=0
