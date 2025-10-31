@@ -371,7 +371,7 @@ class HomeAssistantMowerApi:
             operation_settings.blade_height = -10
 
         route_information = GenerateRouteInformation(
-            one_hashs=operation_settings.areas,
+            one_hashs=list(operation_settings.areas),
             rain_tactics=operation_settings.rain_tactics,
             speed=operation_settings.speed,
             ultra_wave=operation_settings.ultra_wave,  # touch no touch etc
