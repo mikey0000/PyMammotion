@@ -289,8 +289,7 @@ class Mammotion:
         if len(mammotion_http.device_records.records) != 0:
             mammotion_cloud = MammotionCloud(
                 MammotionMQTT(
-                    product_key=cloud_client.aep_response.data.productKey,
-                    device_name=cloud_client.aep_response.data.deviceName,
+                    records=mammotion_http.device_records.records,
                     mammotion_http=mammotion_http,
                     mqtt_connection=mammotion_http.mqtt_credentials,
                 ),

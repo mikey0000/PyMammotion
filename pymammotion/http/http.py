@@ -370,7 +370,13 @@ class MammotionHTTP:
         async with ClientSession(self.jwt_info.iot) as session:
             async with session.post(
                 "/v1/mqtt/rpc/thing/service/invoke",
-                json={"args": {"content": content, "deviceName": device_name, "iotId": iot_id, "productKey": ""}},
+                json={
+                    "args": {"content": content},
+                    "deviceName": device_name,
+                    "identifier": "device_protobuf_sync_service",
+                    "iotId": iot_id,
+                    "productKey": "",
+                },
                 headers={
                     **self._headers,
                     "Authorization": f"Bearer {self.login_info.access_token}",

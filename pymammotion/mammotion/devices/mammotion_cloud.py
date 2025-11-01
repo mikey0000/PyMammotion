@@ -15,8 +15,8 @@ from pymammotion import AliyunMQTT, CloudIOTGateway, MammotionMQTT
 from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.mower_state_manager import MowerStateManager
-from pymammotion.data.mqtt.event import ThingEventMessage
-from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.data.mqtt.event import MammotionEventMessage, ThingEventMessage
+from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.event.event import DataEvent
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
@@ -112,10 +112,9 @@ class MammotionCloud:
         # _LOGGER.debug("MQTT message received on topic %s: %s, iot_id: %s", topic, payload, iot_id)
         json_str = payload.decode("utf-8")
         dict_payload = json.loads(json_str)
-        print(dict_payload)
-        await self._parse_mqtt_response(topic, dict_payload)
+        await self._parse_mqtt_response(topic, dict_payload, iot_id)
 
-    async def _parse_mqtt_response(self, topic: str, payload: dict) -> None:
+    async def _parse_mqtt_response(self, topic: str, payload: dict, iot_id: str) -> None:
         """Parse and handle MQTT responses based on the topic.
 
         This function processes different types of MQTT messages received from various
@@ -149,6 +148,17 @@ class MammotionCloud:
         elif topic.endswith("app/down/thing/properties"):
             property_event = ThingPropertiesMessage.from_dict(payload)
             await self.mqtt_properties_event.data_event(property_event)
+
+        if topic.endswith("/thing/event/device_protobuf_msg_event/post"):
+            _LOGGER.debug("Mammotion Thing event received")
+            mammotion_event = MammotionEventMessage.from_dict(payload)
+            mammotion_event.params.iot_id = iot_id
+            await self.mqtt_message_event.data_event(mammotion_event)
+        elif topic.endswith("/thing/event/property/post"):
+            _LOGGER.debug("Mammotion Property event received")
+            mammotion_property_event = MammotionPropertiesMessage.from_dict(payload)
+            mammotion_property_event.params.iot_id = iot_id
+            await self.mqtt_properties_event.data_event(mammotion_property_event)
 
     def _disconnect(self) -> None:
         """Disconnect the MQTT client."""
@@ -229,6 +239,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self.stopped = True
 
     async def start(self) -> None:
+        """Start the device connection."""
         self.stopped = False
         if not self.mqtt.is_connected():
             loop = asyncio.get_running_loop()
@@ -277,18 +288,18 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         return None
 
     async def _parse_message_properties_for_device(self, event: ThingPropertiesMessage) -> None:
-        if event.params.iotId != self.iot_id:
+        if event.params.iot_id != self.iot_id:
             return
         await self.state_manager.properties(event)
 
     async def _parse_message_status_for_device(self, status: ThingStatusMessage) -> None:
-        if status.params.iotId != self.iot_id:
+        if status.params.iot_id != self.iot_id:
             return
         await self.state_manager.status(status)
 
     async def _parse_device_event_for_device(self, status: ThingStatusMessage) -> None:
         """Process device event if it matches the device's IoT ID."""
-        if status.params.iotId != self.iot_id:
+        if status.params.iot_id != self.iot_id:
             return
         await self.state_manager.device_event(status)
 
@@ -307,7 +318,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         """
         params = event.params
         new_msg = LubaMsg()
-        if event.params.iotId != self.iot_id:
+        if event.params.iot_id != self.iot_id:
             return
         binary_data = base64.b64decode(params.value.content)
         try:
@@ -318,9 +329,9 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
         if (
             self._commands.get_device_product_key() == ""
-            and self._commands.get_device_name() == event.params.deviceName
+            and self._commands.get_device_name() == event.params.device_name
         ):
-            self._commands.set_device_product_key(event.params.productKey)
+            self._commands.set_device_product_key(event.params.product_key)
 
         res = betterproto2.which_one_of(new_msg, "LubaSubMsg")
         if res[0] == "net":

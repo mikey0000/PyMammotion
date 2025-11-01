@@ -96,14 +96,14 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
 
     async def _parse_message_properties_for_device(self, event: ThingPropertiesMessage) -> None:
         """Parse property messages for this RTK device."""
-        if event.params.iotId != self.iot_id:
+        if event.params.iot_id != self.iot_id:
             return
         # RTK devices have simpler properties - update as needed
         _LOGGER.debug("RTK properties update: %s", event)
 
     async def _parse_message_status_for_device(self, status: ThingStatusMessage) -> None:
         """Parse status messages for this RTK device."""
-        if status.params.iotId != self.iot_id:
+        if status.params.iot_id != self.iot_id:
             return
         # Update online status
         self._rtk_device.online = True

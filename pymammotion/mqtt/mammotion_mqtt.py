@@ -11,27 +11,30 @@ from paho.mqtt.properties import Properties
 from paho.mqtt.reasoncodes import ReasonCode
 
 from pymammotion import MammotionHTTP
-from pymammotion.http.model.http import MQTTConnection, Response
+from pymammotion.http.model.http import DeviceRecord, MQTTConnection, Response
+from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = logging.getLogger(__name__)
 
 
 class MammotionMQTT:
+    """Mammotion MQTT Client."""
+    converter = DatatypeConverter()
+
     def __init__(
-        self, mqtt_connection: MQTTConnection, mammotion_http: MammotionHTTP, product_key: str, device_name: str
+        self, mqtt_connection: MQTTConnection, mammotion_http: MammotionHTTP, records: list[DeviceRecord]
     ) -> None:
         self.on_connected: Callable[[], Awaitable[None]] | None = None
         self.on_ready: Callable[[], Awaitable[None]] | None = None
         self.on_error: Callable[[str], Awaitable[None]] | None = None
         self.on_disconnected: Callable[[], Awaitable[None]] | None = None
-        self.on_message: Callable[[str, str, str], Awaitable[None]] | None = None
+        self.on_message: Callable[[str, bytes, str], Awaitable[None]] | None = None
         self.loop = asyncio.get_running_loop()
         self.mammotion_http = mammotion_http
         self.mqtt_connection = mqtt_connection
         self.client = self.build(mqtt_connection)
 
-        self.device_name = device_name
-        self.product_key = product_key
+        self.records = records
 
         # wire callbacks from the service object if present
         self.client.on_connect = self._on_connect
@@ -42,7 +45,8 @@ class MammotionMQTT:
 
     def __del__(self) -> None:
         if self.client.is_connected():
-            self.unsubscribe_all(self.product_key, self.device_name)
+            for record in self.records:
+                self.unsubscribe_all(record.product_key, record.device_name)
             self.client.disconnect()
 
     def connect_async(self) -> None:
@@ -103,14 +107,36 @@ class MammotionMQTT:
     def _on_message(self, _client: mqtt.Client, _userdata: Any, message: mqtt.MQTTMessage) -> None:
         """Is called when message is received."""
         logger.debug("Message on topic %s", message.topic)
-        json_payload = json.loads(message.payload)
+        logger.debug(message)
 
-        iot_id = json_payload.get("params", {}).get("iotId", "")
-        if iot_id != "" and self.on_message is not None:
-            future = asyncio.run_coroutine_threadsafe(
-                self.on_message(message.topic, str(message.payload), iot_id), self.loop
-            )
-            asyncio.wrap_future(future, loop=self.loop)
+        if self.on_message is not None:
+            iot_id = None
+            # Parse the topic path to get product_key and device_name
+            topic_parts = message.topic.split("/")
+            if len(topic_parts) >= 4:
+                product_key = topic_parts[2]
+                device_name = topic_parts[3]
+
+                # Filter records to find matching device
+                filtered_records = [
+                    record
+                    for record in self.records
+                    if record.product_key == product_key and record.device_name == device_name
+                ]
+
+                if filtered_records:
+                    iot_id = filtered_records[0].iot_id
+                    payload = json.loads(message.payload.decode("utf-8"))
+                    payload["iot_id"] = iot_id
+                    payload["product_key"] = product_key
+                    payload["device_name"] = device_name
+                    message.payload = json.dumps(payload).encode("utf-8")
+
+            if iot_id:
+                future = asyncio.run_coroutine_threadsafe(
+                    self.on_message(message.topic, message.payload, iot_id), self.loop
+                )
+                asyncio.wrap_future(future, loop=self.loop)
 
     def _on_connect(
         self,
@@ -122,9 +148,15 @@ class MammotionMQTT:
     ) -> None:
         """Handle connection event and execute callback if set."""
         self.is_connected = True
+        for record in self.records:
+            self.subscribe_all(record.product_key, record.device_name)
         if self.on_connected is not None:
-            self.subscribe_all(self.product_key, self.device_name)
             future = asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)
+            asyncio.wrap_future(future, loop=self.loop)
+
+        if self.on_ready:
+            self.is_ready = True
+            future = asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
         logger.debug("on_connect, session_flag:%s, rc:%s", session_flag, rc)
@@ -141,7 +173,8 @@ class MammotionMQTT:
         """Handle disconnection event and execute callback if set."""
         self.is_connected = False
         if self.on_disconnected is not None:
-            self.unsubscribe_all(self.product_key, self.device_name)
+            for record in self.records:
+                self.unsubscribe_all(record.product_key, record.device_name)
             future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
@@ -165,6 +198,13 @@ class MammotionMQTT:
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send command to cloud."""
-        res: Response[dict] = await self.mammotion_http.mqtt_invoke(str(command), "", iot_id)
+        res: Response[dict] = await self.mammotion_http.mqtt_invoke(
+            self.converter.printBase64Binary(command), "", iot_id
+        )
+
+        logger.debug("send_cloud_command: %s", res)
+
+        if res.code == 500:
+            return res.msg
 
         return str(res.data["result"])
