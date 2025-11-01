@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import csv
 import random
 import time
@@ -33,7 +35,7 @@ class MammotionHTTP:
         self.msg = None
         self.account = account
         self._password = password
-        self.response: Response | None = None
+        self._response: Response | None = None
         self.login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,1.14.2.29"}
@@ -46,6 +48,17 @@ class MammotionHTTP:
 
         # Replace the line in the __init__ method with:
         self.client_id = f"{int(time.time() * 1000)}_{get_10_random()}_1"
+
+    @property
+    def response(self) -> Response | None:
+        return self._response
+
+    @response.setter
+    def response(self, response: Response) -> None:
+        self._response = response
+        decoded_token = jwt.decode(response.data.access_token, options={"verify_signature": False})
+        if isinstance(decoded_token, dict):
+            self.jwt_info = JWTTokenInfo(iot=decoded_token.get("iot", ""), robot=decoded_token.get("robot", ""))
 
     @staticmethod
     def generate_headers(token: str) -> dict:
@@ -416,9 +429,6 @@ class MammotionHTTP:
                 self.response = login_response
                 self.msg = login_response.msg
                 self.code = login_response.code
-                decoded_token = jwt.decode(self.response.data.access_token, options={"verify_signature": False})
-                if isinstance(decoded_token, dict):
-                    self.jwt_info = JWTTokenInfo(iot=decoded_token.get("iot", ""), robot=decoded_token.get("robot", ""))
                 # TODO catch errors from mismatch user / password elsewhere
                 # Assuming the data format matches the expected structure
                 return login_response
