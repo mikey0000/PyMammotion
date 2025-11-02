@@ -175,6 +175,7 @@ class Mammotion:
         async with self._login_lock:
             exists_aliyun: MammotionCloud | None = self.mqtt_list.get(f"{account}_aliyun")
             exists_mammotion: MammotionCloud | None = self.mqtt_list.get(f"{account}_mammotion")
+
             if not exists_aliyun and not exists_mammotion:
                 return
             mammotion_http = (
@@ -182,7 +183,9 @@ class Mammotion:
                 if exists_aliyun
                 else exists_mammotion.cloud_client.mammotion_http
             )
+
             await mammotion_http.refresh_login()
+
             if len(mammotion_http.device_info) != 0:
                 await self.connect_iot(exists_aliyun.cloud_client)
             if len(mammotion_http.device_records.records) != 0:
@@ -407,9 +410,10 @@ class Mammotion:
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
         mammotion_http = MammotionHTTP()
-        await mammotion_http.login(account, password)
+        await mammotion_http.login_v2(account, password)
         await mammotion_http.get_user_device_page()
         device_list = await mammotion_http.get_user_device_list()
+        _LOGGER.debug("device_list: %s", device_list)
         await mammotion_http.get_mqtt_credentials()
         cloud_client = CloudIOTGateway(mammotion_http)
         if len(device_list.data or []) != 0:

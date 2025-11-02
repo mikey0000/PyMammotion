@@ -11,14 +11,10 @@ from paho.mqtt.properties import Properties
 from paho.mqtt.reasoncodes import ReasonCode
 
 from pymammotion import MammotionHTTP
-from pymammotion.http.model.http import DeviceRecord, MQTTConnection, Response
+from pymammotion.http.model.http import DeviceRecord, MQTTConnection, Response, UnauthorizedException
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = logging.getLogger(__name__)
-
-
-class UnauthorizedException(Exception):
-    pass
 
 
 class MammotionMQTT:

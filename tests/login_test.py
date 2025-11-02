@@ -20,13 +20,13 @@ async def run():
 
     async with ClientSession(MAMMOTION_DOMAIN) as session:
         mammotion = MammotionHTTP()
-        luba_http = await mammotion.login(EMAIL, PASSWORD)
+        luba_http = await mammotion.login_v2(EMAIL, PASSWORD)
         # print(luba_http.data)
         data = mammotion.login_info
         #error_codes = await mammotion.get_all_error_codes()
         #firmware = await mammotion.get_device_ota_firmware(["UTpbwGC7vxd4DpNvbFGL000000"])
         print(mammotion.login_info)
-        res = await mammotion.refresh_token()
+        res = await mammotion.refresh_authorization_code()
         print(res)
         return
         cloud_client = CloudIOTGateway(mammotion)

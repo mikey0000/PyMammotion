@@ -6,6 +6,11 @@ from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
 
+
+class UnauthorizedException(Exception):
+    pass
+
+
 DataT = TypeVar("DataT")
 
 

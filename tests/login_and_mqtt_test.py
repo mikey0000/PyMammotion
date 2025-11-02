@@ -51,16 +51,31 @@ async def run() -> CloudIOTGateway:
         await asyncio.sleep(1.0)
         
         # Wrap login with retry logic
-        await exponential_backoff(
-            lambda: mammotion_http.login(EMAIL, PASSWORD),
-            max_retries=3,
-            initial_delay=5.0
-        )
+        # await exponential_backoff(
+        #     lambda: mammotion_http.login_v2(EMAIL, PASSWORD),
+        #     max_retries=3,
+        #     initial_delay=5.0
+        # )
         
-        country_code = mammotion_http.login_info.userInformation.domainAbbreviation
+
+
+        mammotion = Mammotion()
+        cloud_client = await mammotion.login(EMAIL, PASSWORD)
+        #await mammotion_http.login_v2(EMAIL, PASSWORD)
+
+        # await mammotion_http.refresh_token_v2()
+
+        country_code = cloud_client.mammotion_http.login_info.userInformation.domainAbbreviation
         _LOGGER.debug("CountryCode: " + country_code)
-        _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
-        
+        _LOGGER.debug("AuthCode: " + cloud_client.mammotion_http.login_info.authorization_code)
+        _LOGGER.debug("JWT: " + json.dumps(cloud_client.mammotion_http.jwt_info.to_dict()))
+
+
+        await mammotion.initiate_cloud_connection(EMAIL, cloud_client)
+        _LOGGER.debug("device records: " + json.dumps(cloud_client.mammotion_http.device_records.to_dict()))
+        _LOGGER.debug("device info: " + json.dumps(cloud_client.mammotion_http.device_info))
+
+        return
         # Execute API calls sequentially with delays and retries
         await exponential_backoff(
             lambda: cloud_client.get_region(country_code),
