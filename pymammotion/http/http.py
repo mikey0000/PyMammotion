@@ -304,7 +304,7 @@ class MammotionHTTP:
                 return response_factory(Response[list[RTK]], data)
 
     async def get_user_device_list(self) -> Response[list[DeviceInfo]]:
-        """Fetches device list for a user, older devices / aliyun."""
+        """Fetches device list for a user (owned)."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.get(
                 "/device-server/v1/device/list",
@@ -318,6 +318,25 @@ class MammotionHTTP:
                 resp_dict = await resp.json()
                 response = response_factory(Response[list[DeviceInfo]], resp_dict)
                 self.device_info = response.data if response.data else self.device_info
+                return response
+
+    async def get_user_shared_device_page(self) -> Response[DeviceRecords]:
+        """Fetches device list for a user (shared) but not accepted."""
+        """Can set owned to zero or one to possibly check for not accepted mowers?"""
+        async with ClientSession(MAMMOTION_API_DOMAIN) as session:
+            async with session.post(
+                "/user-server/v1/share/device/page",
+                json={"iotId": "", "owned": 0, "pageNumber": 1, "pageSize": 200, "statusList": [-1]},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            ) as resp:
+                resp_dict = await resp.json()
+                response = response_factory(Response[DeviceRecords], resp_dict)
+                self.devices_shared_info = response.data if response.data else self.devices_shared_info
                 return response
 
     async def get_user_device_page(self) -> Response[DeviceRecords]:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated, Any, Generic, Literal, TypeVar, Union
+from typing import Annotated, Any, Literal, Union
 
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin

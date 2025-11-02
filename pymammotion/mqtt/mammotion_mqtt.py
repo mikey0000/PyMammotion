@@ -17,8 +17,13 @@ from pymammotion.utility.datatype_converter import DatatypeConverter
 logger = logging.getLogger(__name__)
 
 
+class UnauthorizedException(Exception):
+    pass
+
+
 class MammotionMQTT:
     """Mammotion MQTT Client."""
+
     converter = DatatypeConverter()
 
     def __init__(
@@ -206,5 +211,8 @@ class MammotionMQTT:
 
         if res.code == 500:
             return res.msg
+
+        if res.code == 401:
+            raise UnauthorizedException(res.msg)
 
         return str(res.data["result"])
