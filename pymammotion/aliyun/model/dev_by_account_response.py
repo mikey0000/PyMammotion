@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from typing import Annotated, Optional
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+from mashumaro.types import Alias
 
 
 @dataclass
@@ -9,79 +11,47 @@ class Device(DataClassORJSONMixin):
     """Unified device model supporting both Device and ShareNotification data"""
 
     # Core device fields (from Device model)
-    gmt_modified: int
-    node_type: str
-    device_name: str
-    product_name: str
+    gmt_modified: Annotated[int, Alias("gmtModified")]
+    node_type: Annotated[str, Alias("nodeType")]
+    device_name: Annotated[str, Alias("deviceName")]
+    product_name: Annotated[str, Alias("productName")]
     status: int
-    identity_id: str
+    identity_id: Annotated[str, Alias("identityId")]
 
     # Required fields from original Device model
-    net_type: str
-    category_key: str
-    product_key: str
-    is_edge_gateway: bool
-    category_name: str
-    identity_alias: str
-    iot_id: str
-    bind_time: int
+    net_type: Annotated[str, Alias("netType")]
+    category_key: Annotated[str, Alias("categoryKey")]
+    product_key: Annotated[str, Alias("productKey")]
+    is_edge_gateway: Annotated[bool, Alias("isEdgeGateway")]
+    category_name: Annotated[str, Alias("categoryName")]
+    identity_alias: Annotated[str, Alias("identityAlias")]
+    iot_id: Annotated[str, Alias("iotId")]
+    bind_time: Annotated[int, Alias("bindTime")]
     owned: int
-    thing_type: str
+    thing_type: Annotated[str, Alias("thingType")]
 
     # Optional fields (common to both or nullable)
-    nick_name: str | None = None
-    description: str | None = None
-    product_image: str | None = None
-    category_image: str | None = None
-    product_model: str | None = None
+    nick_name: Annotated[Optional[str], Alias("nickName")] = None
+    description: Optional[str] = None
+    product_image: Annotated[Optional[str], Alias("productImage")] = None
+    category_image: Annotated[Optional[str], Alias("categoryImage")] = None
+    product_model: Annotated[Optional[str], Alias("productModel")] = None
 
     # Optional fields from ShareNotification only
-    target_id: str | None = None
-    receiver_identity_id: str | None = None
-    target_type: str | None = None
-    gmt_create: int | None = None
-    batch_id: str | None = None
-    record_id: str | None = None
-    initiator_identity_id: str | None = None
-    is_receiver: int | None = None
-    initiator_alias: str | None = None
-    receiver_alias: str | None = None
+    target_id: Annotated[Optional[str], Alias("targetId")] = None
+    receiver_identity_id: Annotated[Optional[str], Alias("receiverIdentityId")] = None
+    target_type: Annotated[Optional[str], Alias("targetType")] = None
+    gmt_create: Annotated[Optional[int], Alias("gmtCreate")] = None
+    batch_id: Annotated[Optional[str], Alias("batchId")] = None
+    record_id: Annotated[Optional[str], Alias("recordId")] = None
+    initiator_identity_id: Annotated[Optional[str], Alias("initiatorIdentityId")] = None
+    is_receiver: Annotated[Optional[int], Alias("isReceiver")] = None
+    initiator_alias: Annotated[Optional[str], Alias("initiatorAlias")] = None
+    receiver_alias: Annotated[Optional[str], Alias("receiverAlias")] = None
 
     class Config(BaseConfig):
         omit_default = True
-        serialize_by_alias = True
-        aliases = {
-            # Original Device model aliases
-            "gmt_modified": "gmtModified",
-            "net_type": "netType",
-            "category_key": "categoryKey",
-            "product_key": "productKey",
-            "node_type": "nodeType",
-            "is_edge_gateway": "isEdgeGateway",
-            "device_name": "deviceName",
-            "category_name": "categoryName",
-            "identity_alias": "identityAlias",
-            "product_name": "productName",
-            "iot_id": "iotId",
-            "bind_time": "bindTime",
-            "identity_id": "identityId",
-            "thing_type": "thingType",
-            "nick_name": "nickName",
-            "product_image": "productImage",
-            "category_image": "categoryImage",
-            "product_model": "productModel",
-            # ShareNotification specific aliases
-            "target_id": "targetId",
-            "receiver_identity_id": "receiverIdentityId",
-            "target_type": "targetType",
-            "gmt_create": "gmtCreate",
-            "batch_id": "batchId",
-            "record_id": "recordId",
-            "initiator_identity_id": "initiatorIdentityId",
-            "is_receiver": "isReceiver",
-            "initiator_alias": "initiatorAlias",
-            "receiver_alias": "receiverAlias",
-        }
+        allow_deserialization_not_by_alias = True
 
 
 # # Alternative: Keep them separate but with a common base class

@@ -428,7 +428,7 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_user_device_list(self) -> Response[list[DeviceInfo]]:
-        """Fetches device list for a user (owned)."""
+        """Fetches device list for a user (owned not shared, shared returns nothing)."""
         async with ClientSession(MAMMOTION_API_DOMAIN) as session:
             async with session.get(
                 "/device-server/v1/device/list",
@@ -437,6 +437,8 @@ class MammotionHTTP:
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
                 },
             ) as resp:
                 resp_dict = await resp.json()

@@ -186,8 +186,7 @@ class Mammotion:
 
             await mammotion_http.refresh_login()
 
-            if len(mammotion_http.device_info) != 0:
-                await self.connect_iot(exists_aliyun.cloud_client)
+            await self.connect_iot(exists_aliyun.cloud_client)
             if len(mammotion_http.device_records.records) != 0:
                 await mammotion_http.get_mqtt_credentials()
 
@@ -272,7 +271,7 @@ class Mammotion:
             if mqtt.is_connected():
                 await loop.run_in_executor(None, mqtt.disconnect)
 
-        if len(mammotion_http.device_info) != 0:
+        if len(cloud_client.devices_by_account_response.data.data) != 0:
             mammotion_cloud = MammotionCloud(
                 AliyunMQTT(
                     region_id=cloud_client.region_response.data.regionId,
@@ -416,8 +415,7 @@ class Mammotion:
         _LOGGER.debug("device_list: %s", device_list)
         await mammotion_http.get_mqtt_credentials()
         cloud_client = CloudIOTGateway(mammotion_http)
-        if len(device_list.data or []) != 0:
-            await self.connect_iot(cloud_client)
+        await self.connect_iot(cloud_client)
         return cloud_client
 
     @staticmethod

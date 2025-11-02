@@ -61,7 +61,7 @@ async def run() -> CloudIOTGateway:
 
         mammotion = Mammotion()
         cloud_client = await mammotion.login(EMAIL, PASSWORD)
-        #await mammotion_http.login_v2(EMAIL, PASSWORD)
+        # await mammotion_http.login_v2(EMAIL, PASSWORD)
 
         # await mammotion_http.refresh_token_v2()
 
