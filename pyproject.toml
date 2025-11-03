@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.5.46"
+version = "0.5.47"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -26,7 +26,7 @@ dependencies = [
     "jsonic>=1.0.0,<2",
     "mashumaro~=3.13",
     "orjson>=3.9.15,<4",
-    "betterproto2>=0.8.0,<0.9",
+    "betterproto2>=0.9.1",
     "numpy>=1.26.0",
     "async-timeout>=4.0.3,<5",
     "cryptography>=43.0.1",
@@ -40,19 +40,19 @@ extras = [
     "nest-asyncio>=1.6.0,<2",
 ]
 dev = [
-    "types-protobuf>=4.23.0.1,<5",
-    "mypy-protobuf>=3.4.0,<4",
+    "types-protobuf>=6.32.1.20250918,<7",
+    "mypy-protobuf>=3.6.0,<4",
     "twine>=5.0.0,<6",
-    "bumpver~=2023.1129",
-    "frida-tools>=12.3.0,<13",
-    "grpcio-tools>=1.63.0,<2",
-    "betterproto2-compiler>=0.8.0,<0.9",
-    "pylint>=3.2.2,<4",
+    "bumpver~=2025.1131",
+    "frida-tools>=14.4.6,<15",
+    "grpcio-tools>=1.76.0,<2",
+    "betterproto2-compiler>=0.9.0",
+    "pylint>=4.0.2,<5",
     "ruff>=0.9.3,<0.10",
-    "pre-commit>=4.2.0,<5",
-    "mypy>=1.11.2,<2",
-    "autotyping>=24.3.0,<25",
-    "ipython>=9.0.2,<10",
+    "pre-commit>=4.3.0,<5",
+    "mypy>=1.18.2,<2",
+    "autotyping>=24.9.0",
+    "ipython>=9.6.0,<10",
 ]
 
 [tool.uv]
@@ -68,7 +68,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.5.46"
+current_version = "0.5.47"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
