@@ -414,7 +414,7 @@ class HomeAssistantMowerApi:
         device = self.mammotion.get_device_by_name(device_name)
 
         if work := device.state.work:
-            operation_settings.areas = work.zone_hashs
+            operation_settings.areas = set(work.zone_hashs)
             operation_settings.toward = work.toward
             operation_settings.toward_mode = work.toward_mode
             operation_settings.toward_included_angle = work.toward_included_angle

@@ -129,7 +129,7 @@ class MammotionHTTP:
         self._response: Response | None = None
         self.login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
-        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,1.14.2.29"}
+        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,1.15.6.14"}
         self.encryption_utils = EncryptionUtils()
 
         # Add this method to generate a 10-digit random number
@@ -383,6 +383,8 @@ class MammotionHTTP:
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
                 },
             ) as resp:
                 data = await resp.json()
@@ -402,6 +404,8 @@ class MammotionHTTP:
                     "Authorization": f"Bearer {self.login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
                 },
             ) as resp:
                 data = await resp.json()
