@@ -239,6 +239,19 @@ class HashList(DataClassORJSONMixin):
         # Combine data_couple from all RootHashLists
         return [i for root_list in self.root_hash_lists for obj in root_list.data for i in obj.data_couple]
 
+    @property
+    def area_root_hashlist(self) -> list[int]:
+        if not self.root_hash_lists:
+            return []
+        # Combine data_couple from all RootHashLists
+        return [
+            i
+            for root_list in self.root_hash_lists
+            for obj in root_list.data
+            for i in obj.data_couple
+            if root_list.sub_cmd == 0
+        ]
+
     def missing_hashlist(self, sub_cmd: int = 0) -> list[int]:
         """Return missing hashlist."""
         all_hash_ids = set(self.area.keys()).union(
@@ -439,7 +452,5 @@ class HashList(DataClassORJSONMixin):
         return False
 
     def invalidate_maps(self, bol_hash: int) -> None:
-        if MurMurHashUtil.hash_unsigned_list(self.hashlist) != bol_hash:
-            pass
-
-            # self.root_hash_lists = []
+        if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
+            self.root_hash_lists = []
