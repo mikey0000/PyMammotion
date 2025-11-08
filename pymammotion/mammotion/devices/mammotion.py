@@ -482,12 +482,12 @@ class Mammotion:
         if device:
             if device.preference is ConnectionPreference.BLUETOOTH and device.ble:
                 return await device.ble.command(key, **kwargs)
-            if device.preference is ConnectionPreference.WIFI:
+            if device.preference is ConnectionPreference.WIFI and device.cloud:
                 return await device.cloud.command(key, **kwargs)
             # TODO work with both with EITHER
         return None
 
-    async def start_map_sync(self, name: str):
+    async def start_map_sync(self, name: str) -> None:
         """Start map sync."""
         device = self.get_device_by_name(name)
         if device:
@@ -495,6 +495,17 @@ class Mammotion:
                 return await device.ble.start_map_sync()
             if device.preference is ConnectionPreference.WIFI and device.cloud:
                 return await device.cloud.start_map_sync()
+            # TODO work with both with EITHER
+        return None
+
+    async def start_schedule_sync(self, name: str) -> None:
+        """Start map sync."""
+        device = self.get_device_by_name(name)
+        if device:
+            if device.preference is ConnectionPreference.BLUETOOTH and device.ble:
+                return await device.ble.start_schedule_sync()
+            if device.preference is ConnectionPreference.WIFI and device.cloud:
+                return await device.cloud.start_schedule_sync()
             # TODO work with both with EITHER
         return None
 

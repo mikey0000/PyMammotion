@@ -87,6 +87,13 @@ class MammotionMowerDevice(MammotionBaseDevice, ABC):
             index = plan.plan_index + 1
             await self.queue_command("read_plan", sub_cmd=2, plan_index=index)
 
+    async def start_schedule_sync(self) -> None:
+        """Start sync of schedule data."""
+        if len(self.mower.map.plan) == 0 or list(self.mower.map.plan.values())[0].total_plan_num != len(
+            self.mower.map.plan
+        ):
+            await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
+
     async def start_map_sync(self) -> None:
         """Start sync of map data."""
         if location := next((loc for loc in self.mower.report_data.locations if loc.pos_type == 5), None):
@@ -94,16 +101,12 @@ class MammotionMowerDevice(MammotionBaseDevice, ABC):
 
         await self.queue_command("send_todev_ble_sync", sync_type=3)
 
+        # TODO correctly check if area names exist for a zone.
         if self._cloud_device and len(self.mower.map.area_name) == 0 and not DeviceType.is_luba1(self.mower.name):
             await self.queue_command("get_area_name_list", device_id=self._cloud_device.iot_id)
 
         if len(self.mower.map.root_hash_lists) == 0 or len(self.mower.map.missing_hashlist()) > 0:
             await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
-
-        if len(self.mower.map.plan) == 0 or list(self.mower.map.plan.values())[0].total_plan_num != len(
-            self.mower.map.plan
-        ):
-            await self.queue_command("read_plan", sub_cmd=2, plan_index=0)
 
         for hash_id, frame in list(self.mower.map.area.items()):
             missing_frames = self.mower.map.find_missing_frames(frame)

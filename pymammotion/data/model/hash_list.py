@@ -440,4 +440,6 @@ class HashList(DataClassORJSONMixin):
 
     def invalidate_maps(self, bol_hash: int) -> None:
         if MurMurHashUtil.hash_unsigned_list(self.hashlist) != bol_hash:
-            self.root_hash_lists = []
+            pass
+
+            # self.root_hash_lists = []

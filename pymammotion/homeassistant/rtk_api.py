@@ -20,22 +20,22 @@ class HomeAssistantRTKApi:
         try:
             response = await device.cloud_client.get_device_properties(device.iot_id)
             if response.code == 200:
-                data = response.data
-                if ota_progress := data.otaProgress:
-                    device.update_check = CheckDeviceVersion.from_dict(ota_progress.value)
-                if network_info := data.networkInfo:
-                    network = json.loads(network_info.value)
-                    device.state.wifi_rssi = network["wifi_rssi"]
-                    device.state.wifi_sta_mac = network["wifi_sta_mac"]
-                    device.state.bt_mac = network["bt_mac"]
-                if coordinate := data.coordinate:
-                    coord_val = json.loads(coordinate.value)
-                    if device.state.lat == 0:
-                        device.state.lat = coord_val["lat"]
-                    if device.state.lon == 0:
-                        device.state.lon = coord_val["lon"]
-                if device_version := data.deviceVersion:
-                    device.state.device_version = device_version.value
+                if data := response.data:
+                    if ota_progress := data.otaProgress:
+                        device.state.update_check = CheckDeviceVersion.from_dict(ota_progress.value)
+                    if network_info := data.networkInfo:
+                        network = json.loads(network_info.value)
+                        device.state.wifi_rssi = network["wifi_rssi"]
+                        device.state.wifi_sta_mac = network["wifi_sta_mac"]
+                        device.state.bt_mac = network["bt_mac"]
+                    if coordinate := data.coordinate:
+                        coord_val = json.loads(coordinate.value)
+                        if device.state.lat == 0:
+                            device.state.lat = coord_val["lat"]
+                        if device.state.lon == 0:
+                            device.state.lon = coord_val["lon"]
+                    if device_version := data.deviceVersion:
+                        device.state.device_version = device_version.value
             device.state.online = True
 
             ota_info = await device.cloud_client.mammotion_http.get_device_ota_firmware([device.state.iot_id])

@@ -27,12 +27,14 @@ class HomeAssistantMowerApi:
     """API for interacting with Mammotion Mowers for Home Assistant."""
 
     def __init__(self) -> None:
+        self._plan_lock = asyncio.Lock()
         self.update_failures = 0
         self._mammotion = Mammotion()
         self._map_lock = asyncio.Lock()
         self._last_call_times: dict[str, datetime] = {}
         self._call_intervals = {
-            "check_maps": timedelta(minutes=1),
+            "check_maps": timedelta(minutes=5),
+            "read_plan": timedelta(minutes=30),
             "read_settings": timedelta(minutes=5),
             "get_errors": timedelta(minutes=1),
             "get_report_cfg": timedelta(seconds=5),
@@ -81,10 +83,19 @@ class HomeAssistantMowerApi:
                 self._map_lock.release()
 
         # Check maps periodically
-        if self._should_call_api("check_maps"):
+        if self._should_call_api("check_maps") and not self._map_lock.locked():
             await self._map_lock.acquire()
             await self.mammotion.start_map_sync(device_name)
             self._mark_api_called("check_maps")
+            return device.state
+
+        if self._should_call_api("read_plan"):
+            if len(device.state.map.plan) == 0 or list(device.state.map.plan.values())[0].total_plan_num != len(
+                device.state.map.plan
+            ):
+                await self.async_send_command(device_name, "read_plan", sub_cmd=2, plan_index=0)
+                self._mark_api_called("read_plan")
+                return device.state
 
         # Read settings less frequently
         if self._should_call_api("read_settings"):
@@ -195,8 +206,8 @@ class HomeAssistantMowerApi:
 
     def is_online(self, device_name: str) -> bool:
         if device := self.mammotion.get_device_by_name(device_name):
-            ble = device.ble
-            return device.state.online or ble is not None and ble.client.is_connected
+            if ble := device.ble:
+                return device.state.online or ble is not None and ble.client.is_connected
         return False
 
     async def update_firmware(self, device_name: str, version: str) -> None:
@@ -242,7 +253,7 @@ class HomeAssistantMowerApi:
     async def async_set_sidelight(self, device_name: str, on_off: int) -> None:
         """Set Sidelight."""
         await self.async_send_command(device_name, "read_and_set_sidelight", is_sidelight=bool(on_off), operate=0)
-        await self.async_read_sidelight()
+        await self.async_read_sidelight(device_name)
 
     async def async_read_sidelight(self, device_name: str) -> None:
         """Set Sidelight."""
