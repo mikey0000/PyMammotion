@@ -180,7 +180,7 @@ class MowerStateManager:
 
         await self.on_notification_callback(res)
 
-    async def _update_nav_data(self, message) -> None:
+    async def _update_nav_data(self, message: LubaMsg) -> None:
         """Update nav data."""
         nav_msg = betterproto2.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
@@ -235,6 +235,7 @@ class MowerStateManager:
                         self._device.mower_state.traversal_mode = settings.context
             case "todev_unable_time_set":
                 nav_non_work_time: NavUnableTimeSet = nav_msg[1]
+                self._device.non_work_hours.non_work_sub_cmd = nav_non_work_time.sub_cmd
                 self._device.non_work_hours.start_time = nav_non_work_time.unable_start_time
                 self._device.non_work_hours.end_time = nav_non_work_time.unable_end_time
 

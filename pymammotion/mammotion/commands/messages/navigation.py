@@ -245,6 +245,35 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Send command--Read plan time {sub_cmd}")
         return self.send_order_msg_nav(build2)
 
+    def read_job_not_not_disturb(self) -> bytes:
+        build = NavUnableTimeSet(sub_cmd=2)
+        build2 = MctlNav(todev_unable_time_set=build)
+        logger.debug(f"Send command--Read job dnd {2}")
+        return self.send_order_msg_nav(build2)
+
+    def job_animal_protect_read(self) -> bytes:
+        """Read animal protection settings."""
+        build = NavUnableTimeSet(sub_cmd=2, trigger=99)
+        build2 = MctlNav(todev_unable_time_set=build)
+        logger.debug(f"Send command - Read job do not disturb time subCmd2 {build}")
+        return self.send_order_msg_nav(build2)
+
+    def job_do_not_disturb(self, unable_start_time: str, unable_end_time: str) -> bytes:
+        """Set do not disturb time period."""
+        build = MctlNav(
+            todev_unable_time_set=NavUnableTimeSet(
+                sub_cmd=1, trigger=1, unable_start_time=unable_start_time, unable_end_time=unable_end_time
+            )
+        )
+        logger.debug(f"Send command - Set job do not disturb time: {unable_start_time} - {unable_end_time}")
+        return self.send_order_msg_nav(build)
+
+    def job_do_not_disturb_del(self) -> bytes:
+        """Delete do not disturb settings."""
+        build = MctlNav(todev_unable_time_set=NavUnableTimeSet(sub_cmd=1, trigger=0))
+        logger.debug("Send command - Turn off do not disturb time")
+        return self.send_order_msg_nav(build)
+
     def query_job_history(self) -> bytes:
         return self.send_order_msg_nav(MctlNav(todev_work_report_update_cmd=WorkReportUpdateCmd(sub_cmd=1)))
 

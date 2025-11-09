@@ -60,20 +60,22 @@ async def run() -> CloudIOTGateway:
 
 
         mammotion = Mammotion()
-        cloud_client = await mammotion.login(EMAIL, PASSWORD)
-        # await mammotion_http.login_v2(EMAIL, PASSWORD)
+        # cloud_client = await mammotion.login(EMAIL, PASSWORD)
+        await mammotion_http.login_v2(EMAIL, PASSWORD)
 
-        # await mammotion_http.refresh_token_v2()
+        ota = await mammotion_http.get_device_ota_firmware(['UTpbwGC7vxd4DpNvbFGL000000'])
 
-        country_code = cloud_client.mammotion_http.login_info.userInformation.domainAbbreviation
-        _LOGGER.debug("CountryCode: " + country_code)
-        _LOGGER.debug("AuthCode: " + cloud_client.mammotion_http.login_info.authorization_code)
-        _LOGGER.debug("JWT: " + json.dumps(cloud_client.mammotion_http.jwt_info.to_dict()))
-
-
-        await mammotion.initiate_cloud_connection(EMAIL, cloud_client)
-        _LOGGER.debug("device records: " + json.dumps(cloud_client.mammotion_http.device_records.to_dict()))
-        _LOGGER.debug("device info: " + json.dumps(cloud_client.mammotion_http.device_info))
+        print(ota)
+        #
+        # country_code = cloud_client.mammotion_http.login_info.userInformation.domainAbbreviation
+        # _LOGGER.debug("CountryCode: " + country_code)
+        # _LOGGER.debug("AuthCode: " + cloud_client.mammotion_http.login_info.authorization_code)
+        # _LOGGER.debug("JWT: " + json.dumps(cloud_client.mammotion_http.jwt_info.to_dict()))
+        #
+        #
+        # await mammotion.initiate_cloud_connection(EMAIL, cloud_client)
+        # _LOGGER.debug("device records: " + json.dumps(cloud_client.mammotion_http.device_records.to_dict()))
+        # _LOGGER.debug("device info: " + json.dumps(cloud_client.mammotion_http.device_info))
 
         return
         # Execute API calls sequentially with delays and retries

@@ -343,6 +343,33 @@ class HomeAssistantMowerApi:
         }
         """
 
+    async def async_set_non_work_hours(self, device_name: str, start_time: str, end_time: str) -> None:
+        """Set non work hours l1?."""
+        device = self._mammotion.get_device_by_name(device_name)
+        await self.async_send_command(
+            device_name,
+            "set_plan_unable_time",
+            sub_cmd=device.state.non_work_hours.sub_cmd,
+            device_id=device.iot_id,
+            unable_end_time=end_time,
+            unable_start_time=start_time,
+        )
+
+    async def async_set_job_dnd(self, device_name: str, start_time: str, end_time: str) -> None:
+        """Set non work hours."""
+        await self.async_send_command(
+            device_name,
+            "job_do_not_disturb",
+            sub_cmd=1,
+            trigger=1,
+            unable_end_time=end_time,
+            unable_start_time=start_time,
+        )
+
+    async def async_del_job_dnd(self, device_name: str) -> None:
+        """Del non work hours."""
+        await self.async_send_command(device_name, "job_do_not_disturb", sub_cmd=1, trigger=0)
+
     async def send_command_and_update(self, device_name: str, command_str: str, **kwargs: Any) -> None:
         """Send command and update."""
         await self.async_send_command(device_name, command_str, **kwargs)

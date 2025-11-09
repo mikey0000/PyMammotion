@@ -124,7 +124,7 @@ class MurMurHashUtil:
         return value & 0x7FFFFFFFFFFFFFFF
 
     @staticmethod
-    def hash_unsigned(data) -> int:
+    def hash_unsigned(data: str | bytes) -> int:
         """Get unsigned hash value
         Can accept bytes or string
         """

@@ -16,6 +16,7 @@ class SideLight(DataClassORJSONMixin):
 
 @dataclass
 class DeviceNonWorkingHours(DataClassORJSONMixin):
+    sub_cmd: int = 0
     start_time: str = ""
     end_time: str = ""
 
