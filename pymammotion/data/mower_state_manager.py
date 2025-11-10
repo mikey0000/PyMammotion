@@ -244,7 +244,7 @@ class MowerStateManager:
                     self._device.map.current_mow_path = {}
 
                 if current_task.path_hash != self._device.work.path_hash:
-                    await self.queue_command_callback("get_all_boundary_hash_list", sub_cmd=3)
+                    await self.queue_command_callback(command="get_all_boundary_hash_list", sub_cmd=3)
 
                 self._device.work = current_task
 

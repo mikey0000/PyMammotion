@@ -76,11 +76,11 @@ class DataEvent:
     def __init__(self) -> None:
         self.on_data_event = Event()
 
-    async def data_event(self, **kwargs: Any) -> None:
+    async def data_event(self, data: Any) -> None:
         """Execute the data event callback."""
         # This function will be executed when data is received.
-        if kwargs:
-            await self.on_data_event(kwargs)
+        if data:
+            await self.on_data_event(data)
         else:
             await self.on_data_event()
 
