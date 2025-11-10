@@ -101,7 +101,7 @@ class MowingDevice(DataClassORJSONMixin):
                         area_value = int(buffer_list.update_buf_data[i + 1])
                         task_area_map[area_id] = area_value
                         task_area_ids.append(area_id)
-                self.events.work_tasks_event.hash_list = task_area_map
+                self.events.work_tasks_event.hash_area_map = task_area_map
                 self.events.work_tasks_event.ids = task_area_ids
 
     def update_report_data(self, toapp_report_data: ReportInfoData) -> None:

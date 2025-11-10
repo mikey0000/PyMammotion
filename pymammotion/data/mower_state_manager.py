@@ -99,7 +99,7 @@ class MowerStateManager:
             self._device.online = True
         self._device.status_properties = thing_status
         if self._device.mower_state.product_key == "":
-            self._device.mower_state.product_key = thing_status.params.productKey
+            self._device.mower_state.product_key = thing_status.params.product_key
         await self.on_status_callback(thing_status)
 
     async def device_event(self, device_event: ThingEventMessage) -> None:
@@ -162,10 +162,10 @@ class MowerStateManager:
 
     async def queue_command_callback(self, **kwargs: Any) -> None:
         """Queue command to available callback."""
-        if self.ble_queue_command_callback:
-            await self.ble_queue_command_callback.data_event(**kwargs)
-        elif self.cloud_queue_command_callback:
+        if self.cloud_queue_command_callback:
             await self.cloud_queue_command_callback.data_event(**kwargs)
+        elif self.ble_queue_command_callback:
+            await self.ble_queue_command_callback.data_event(**kwargs)
 
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
@@ -307,7 +307,7 @@ class MowerStateManager:
         match net_msg[0]:
             case "toapp_wifi_iot_status":
                 wifi_iot_status: WifiIotStatusReport = net_msg[1]
-                self._device.mower_state.product_key = wifi_iot_status.productkey
+                self._device.mower_state.product_key = wifi_iot_status.product_key
             case "toapp_devinfo_resp":
                 toapp_devinfo_resp: DrvDevInfoResp = net_msg[1]
                 for resp in toapp_devinfo_resp.resp_ids:
