@@ -6,9 +6,11 @@ import logging
 from typing import Any
 
 import betterproto2
+from shapely import Point
 
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_info import SideLight
+from pymammotion.data.model.generate_geojson import GeojsonGenerator
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     MowPath,
@@ -17,6 +19,7 @@ from pymammotion.data.model.hash_list import (
     Plan,
     SvgMessage,
 )
+from pymammotion.data.model.location import Dock, LocationPoint
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -44,6 +47,7 @@ from pymammotion.proto import (
     TimeCtrlLight,
     WifiIotStatusReport,
 )
+from pymammotion.utility.map import CoordinateConverter
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +160,13 @@ class MowerStateManager:
         elif self.ble_get_plan_callback:
             await self.ble_get_plan_callback(planjob)
 
+    async def queue_command_callback(self, **kwargs: Any) -> None:
+        """Queue command to available callback."""
+        if self.ble_queue_command_callback:
+            await self.ble_queue_command_callback.data_event(**kwargs)
+        elif self.cloud_queue_command_callback:
+            await self.cloud_queue_command_callback.data_event(**kwargs)
+
     async def notification(self, message: LubaMsg) -> None:
         """Handle protobuf notifications."""
         res = betterproto2.which_one_of(message, "LubaSubMsg")
@@ -196,10 +207,15 @@ class MowerStateManager:
                     NavGetCommData.from_dict(common_data.to_dict(casing=betterproto2.Casing.SNAKE))
                 )
                 if updated:
+                    if len(self._device.map.missing_hashlist(0)) == 0:
+                        self.generate_geojson(self._device.location.RTK, self._device.location.dock)
+
                     await self.get_commondata_ack_callback(common_data)
             case "cover_path_upload":
                 mow_path: CoverPathUploadT = nav_msg[1]
                 self._device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
+                if len(self._device.map.find_missing_mow_path_frames()) == 0:
+                    self.generate_mowing_geojson(self._device.location.RTK)
 
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]
@@ -221,9 +237,17 @@ class MowerStateManager:
 
             case "bidire_reqconver_path":
                 work_settings: NavReqCoverPath = nav_msg[1]
-                self._device.work = CurrentTaskSettings.from_dict(
-                    work_settings.to_dict(casing=betterproto2.Casing.SNAKE)
-                )
+
+                current_task = CurrentTaskSettings.from_dict(work_settings.to_dict(casing=betterproto2.Casing.SNAKE))
+
+                if current_task.path_hash == 0:
+                    self._device.map.current_mow_path = {}
+
+                if current_task.path_hash != self._device.work.path_hash:
+                    await self.queue_command_callback("get_all_boundary_hash_list", sub_cmd=3)
+
+                self._device.work = current_task
+
             case "nav_sys_param_cmd":
                 settings: NavSysParamMsg = nav_msg[1]
                 match settings.id:
@@ -314,3 +338,32 @@ class MowerStateManager:
 
     def _update_ota_data(self, message) -> None:
         """Update OTA data."""
+
+    def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
+        """Generate geojson from frames."""
+        coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
+        RTK_real_loc = coordinator_converter.enu_to_lla(0, 0)
+
+        dock_location = coordinator_converter.enu_to_lla(dock.latitude, dock.longitude)
+        dock_rotation = coordinator_converter.get_transform_yaw_with_yaw(dock.rotation) + 180
+
+        self._device.map.generated_geojson = GeojsonGenerator.generate_geojson(
+            self._device.map,
+            Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
+            Point(dock_location.latitude, dock_location.longitude),
+            int(dock_rotation),
+        )
+
+        return self._device.map.generated_geojson
+
+    def generate_mowing_geojson(self, rtk: LocationPoint) -> Any:
+        """Generate geojson from frames."""
+        coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
+        RTK_real_loc = coordinator_converter.enu_to_lla(0, 0)
+
+        self._device.map.generated_mow_path_geojson = GeojsonGenerator.generate_mow_path_geojson(
+            self._device.map,
+            Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
+        )
+
+        return self._device.map.generated_mow_path_geojson

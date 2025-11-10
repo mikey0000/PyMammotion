@@ -76,17 +76,20 @@ class DataEvent:
     def __init__(self) -> None:
         self.on_data_event = Event()
 
-    async def data_event(self, data: Any) -> None:
+    async def data_event(self, **kwargs: Any) -> None:
+        """Execute the data event callback."""
         # This function will be executed when data is received.
-        if data:
-            await self.on_data_event(data)
+        if kwargs:
+            await self.on_data_event(kwargs)
         else:
             await self.on_data_event()
 
-    def add_subscribers(self, obj_method) -> None:
+    def add_subscribers(self, obj_method: Callable) -> None:
+        """Add subscribers."""
         self.on_data_event += obj_method
 
-    def remove_subscribers(self, obj_method) -> None:
+    def remove_subscribers(self, obj_method: Callable) -> None:
+        """Remove subscribers."""
         try:
             self.on_data_event -= obj_method
         except ValueError:

@@ -1,13 +1,10 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Any
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
-from shapely import Point
 
-from pymammotion.data.model.generate_geojson import GeoJSONCollection, generate_geojson
-from pymammotion.data.model.location import Dock, LocationPoint
 from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
-from pymammotion.utility.map import CoordinateConverter
 from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 
 
@@ -213,7 +210,8 @@ class HashList(DataClassORJSONMixin):
     plan: dict[str, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
     current_mow_path: dict[int, MowPath] = field(default_factory=dict)
-    generated_geojson: GeoJSONCollection = field(default_factory=dict)
+    generated_geojson: dict[str, Any] = field(default_factory=dict)
+    generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
 
     def update_hash_lists(self, hashlist: list[int], bol_hash: str | None = None) -> None:
         if bol_hash:
@@ -459,20 +457,3 @@ class HashList(DataClassORJSONMixin):
     def invalidate_maps(self, bol_hash: int) -> None:
         if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
             self.root_hash_lists = []
-
-    def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> GeoJSONCollection:
-        """Generate geojson from frames."""
-        coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
-        RTK_real_loc = coordinator_converter.enu_to_lla(0, 0)
-
-        dock_location = coordinator_converter.enu_to_lla(dock.latitude, dock.longitude)
-        dock_rotation = coordinator_converter.get_transform_yaw_with_yaw(dock.rotation) + 180
-
-        self.generated_geojson = generate_geojson(
-            self,
-            Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
-            Point(dock_location.latitude, dock_location.longitude),
-            int(dock_rotation),
-        )
-
-        return self.generated_geojson
