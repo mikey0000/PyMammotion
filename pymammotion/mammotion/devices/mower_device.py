@@ -31,10 +31,6 @@ class MammotionMowerDevice(MammotionBaseDevice, ABC):
     def __init__(self, state_manager: MowerStateManager, cloud_device: Device) -> None:
         """Initialize MammotionMowerDevice."""
         super().__init__(state_manager, cloud_device)
-        # Register mower-specific callbacks
-        self._state_manager.cloud_gethash_ack_callback = self.datahash_response
-        self._state_manager.cloud_get_commondata_ack_callback = self.commdata_response
-        self._state_manager.cloud_get_plan_callback = self.plan_callback
 
     async def datahash_response(self, hash_ack: NavGetHashListAck) -> None:
         """Handle datahash responses for root level hashs."""
