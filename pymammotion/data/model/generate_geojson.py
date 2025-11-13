@@ -139,7 +139,6 @@ class GeojsonGenerator:
         total_frames = GeojsonGenerator._process_map_objects(hash_list, rtk_location, area_names, geo_json)
 
         # _save_geojson(geo_json)
-        logger.debug("GeoJson complete. Total Frames processed:", total_frames)
         return geo_json
 
     @staticmethod
@@ -226,7 +225,6 @@ class GeojsonGenerator:
 
         for type_name, map_objects in type_mapping.items():
             for hash_key, frame_list in map_objects.items():
-                logger.debug(hash_key, type_name)
 
                 if not GeojsonGenerator._validate_frame_list(frame_list, hash_key, area_names):
                     continue
