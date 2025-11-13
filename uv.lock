@@ -1833,7 +1833,7 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.5.52"
+version = "0.5.55"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1854,7 +1854,9 @@ dependencies = [
     { name = "protobuf" },
     { name = "py-jsonic" },
     { name = "pyjwt" },
+    { name = "sdp-transform" },
     { name = "shapely" },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -1898,7 +1900,9 @@ requires-dist = [
     { name = "protobuf", specifier = ">=4.23.1" },
     { name = "py-jsonic", specifier = ">=0.0.2,<0.0.3" },
     { name = "pyjwt", specifier = ">=2.10.1" },
+    { name = "sdp-transform", specifier = ">=1.1.0" },
     { name = "shapely", specifier = ">=2.1.2" },
+    { name = "websockets", specifier = ">=13.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -2180,6 +2184,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/8f/1f545ea6f9fcd7bf4368551fb91d2064d8f0577b3079bb3f0ae5779fb773/ruff-0.9.10-py3-none-win32.whl", hash = "sha256:bfb834e87c916521ce46b1788fbb8484966e5113c02df216680102e9eb960029", size = 10247401, upload-time = "2025-03-07T15:27:35.994Z" },
     { url = "https://files.pythonhosted.org/packages/4f/18/fb703603ab108e5c165f52f5b86ee2aa9be43bb781703ec87c66a5f5d604/ruff-0.9.10-py3-none-win_amd64.whl", hash = "sha256:f2160eeef3031bf4b17df74e307d4c5fb689a6f3a26a2de3f7ef4044e3c484f1", size = 11366360, upload-time = "2025-03-07T15:27:38.66Z" },
     { url = "https://files.pythonhosted.org/packages/35/85/338e603dc68e7d9994d5d84f24adbf69bae760ba5efd3e20f5ff2cec18da/ruff-0.9.10-py3-none-win_arm64.whl", hash = "sha256:5fd804c0327a5e5ea26615550e706942f348b197d5475ff34c19733aee4b2e69", size = 10436892, upload-time = "2025-03-07T15:27:41.687Z" },
+]
+
+[[package]]
+name = "sdp-transform"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/4c/726df9484f45722ad8f1e7a8018ee40bf39b88f90f5443ce5e636f76b770/sdp_transform-1.1.0.tar.gz", hash = "sha256:422e09753a855096eb915b8867608ff0aa1ac3ac79e3c9c758f6ecfde1548aad", size = 7789, upload-time = "2024-05-06T04:10:56.411Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/79/fc0909e8b4d15e077da4ed0a09a37ba2052984ad92ba646de17b2b8c69ec/sdp_transform-1.1.0-py3-none-any.whl", hash = "sha256:565faad4c269877669a287327eb507a3968b7100bc40258e9f1eadba031fcff1", size = 9049, upload-time = "2024-05-06T04:10:54.532Z" },
 ]
 
 [[package]]
