@@ -6,13 +6,13 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 @dataclass
 class RegionData(DataClassORJSONMixin):
     def __init__(self) -> None:
-        self.hash: int | None = None
+        self.hash: int = 0
         self.action: int = 0
         self.current_frame: int = 0
-        self.data_hash: int | None = None
+        self.data_hash: int = 0
         self.data_len: int = 0
-        self.p_hash_a: int | None = None
-        self.p_hash_b: int | None = None
+        self.p_hash_a: int = 0
+        self.p_hash_b: int = 0
         self.path: list[list[float]] | None = None
         self.pver: int = 0
         self.result: int = 0

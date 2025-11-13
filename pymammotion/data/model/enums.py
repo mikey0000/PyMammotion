@@ -4,9 +4,11 @@ from enum import Enum
 class ConnectionPreference(Enum):
     """Enum for connection preference."""
 
-    EITHER = 0
+    ANY = 0
     WIFI = 1
     BLUETOOTH = 2
+    PREFER_WIFI = 3
+    PREFER_BLUETOOTH = 4
 
 
 class PositionMode(Enum):
@@ -17,7 +19,7 @@ class PositionMode(Enum):
     UNKNOWN = 4
 
     @staticmethod
-    def from_value(value: int):
+    def from_value(value: int) -> "PositionMode":
         if value == 0:
             return PositionMode.FIX
         elif value == 1:
@@ -50,7 +52,7 @@ class RTKStatus(Enum):
     UNKNOWN = 6
 
     @staticmethod
-    def from_value(value: int):
+    def from_value(value: int) -> "RTKStatus":
         if value == 0:
             return RTKStatus.NONE
         elif value == 1 or value == 2:

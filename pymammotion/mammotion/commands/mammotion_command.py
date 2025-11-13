@@ -44,6 +44,12 @@ class MammotionCommand(
         # 1 multipoint turn
         return self.read_write_device(6, context, 1)
 
+    def get_error_code(self) -> bytes:
+        return self.read_write_device(5, 2, 1)
+
+    def get_error_timestamp(self) -> bytes:
+        return self.read_write_device(5, 3, 1)
+
     def get_device_product_key(self) -> str:
         return self._product_key
 

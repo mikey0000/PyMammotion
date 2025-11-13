@@ -6,7 +6,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
 @dataclass
-class Point(DataClassORJSONMixin):
+class LocationPoint(DataClassORJSONMixin):
     """Returns a lat long."""
 
     latitude: float = 0.0
@@ -18,7 +18,7 @@ class Point(DataClassORJSONMixin):
 
 
 @dataclass
-class Dock(Point):
+class Dock(LocationPoint):
     """Stores robot dock position."""
 
     rotation: int = 0
@@ -28,8 +28,8 @@ class Dock(Point):
 class Location(DataClassORJSONMixin):
     """Stores/retrieves RTK GPS data."""
 
-    device: Point = field(default_factory=Point)
-    RTK: Point = field(default_factory=Point)
+    device: LocationPoint = field(default_factory=LocationPoint)
+    RTK: LocationPoint = field(default_factory=LocationPoint)
     dock: Dock = field(default_factory=Dock)
     position_type: int = 0
     orientation: int = 0  # 360 degree rotation +-

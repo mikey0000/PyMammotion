@@ -1,16 +1,11 @@
 from dataclasses import dataclass
-from typing import Any, Generic, Literal, TypeVar, Union
+from typing import Annotated, Any, Literal, Union
 
 from mashumaro import DataClassDictMixin
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+from mashumaro.types import Alias
 
-DataT = TypeVar("DataT")
-
-
-@dataclass
-class Item(DataClassDictMixin, Generic[DataT]):
-    time: int
-    value: DataT
+from pymammotion.data.mqtt.mammotion_properties import DeviceProperties
 
 
 @dataclass
@@ -163,29 +158,29 @@ class Items(DataClassDictMixin):
 
 @dataclass
 class Params(DataClassORJSONMixin):
-    deviceType: Literal["LawnMower", "Tracker"]
-    checkFailedData: dict
-    groupIdList: list[str]
-    _tenantId: str
-    groupId: str
-    categoryKey: Literal["LawnMower", "Tracker"]
-    batchId: str
-    gmtCreate: int
-    productKey: str
-    generateTime: int
-    deviceName: str
-    _traceId: str
-    iotId: str
-    JMSXDeliveryCount: int
-    checkLevel: int
+    device_type: Annotated[Literal["LawnMower", "Tracker"], Alias("deviceType")]
+    check_failed_data: Annotated[dict[str, Any], Alias("checkFailedData")]
+    group_id_list: Annotated[list[str], Alias("groupIdList")]
+    _tenant_id: Annotated[str, Alias("_tenantId")]
+    group_id: Annotated[str, Alias("groupId")]
+    category_key: Annotated[Literal["LawnMower", "Tracker"], Alias("categoryKey")]
+    batch_id: Annotated[str, Alias("batchId")]
+    gmt_create: Annotated[int, Alias("gmtCreate")]
+    product_key: Annotated[str, Alias("productKey")]
+    generate_time: Annotated[int, Alias("generateTime")]
+    device_name: Annotated[str, Alias("deviceName")]
+    _trace_id: Annotated[str, Alias("_traceId")]
+    iot_id: Annotated[str, Alias("iotId")]
+    jmsx_delivery_count: Annotated[int, Alias("JMSXDeliveryCount")]
+    check_level: Annotated[int, Alias("checkLevel")]
     qos: int
-    requestId: str
-    _categoryKey: str
+    request_id: Annotated[str, Alias("requestId")]
+    _category_key: Annotated[str, Alias("_categoryKey")]
     namespace: str
-    tenantId: str
-    thingType: Literal["DEVICE"]
-    items: Items
-    tenantInstanceId: str
+    tenant_id: Annotated[str, Alias("tenantId")]
+    thing_type: Annotated[Literal["DEVICE"], Alias("thingType")]
+    items: Annotated["Items", Alias("items")]
+    tenant_instance_id: Annotated[str, Alias("tenantInstanceId")]
 
 
 @dataclass
@@ -194,3 +189,11 @@ class ThingPropertiesMessage(DataClassORJSONMixin):
     id: str
     params: Params
     version: Literal["1.0"]
+
+
+@dataclass
+class MammotionPropertiesMessage(DataClassORJSONMixin):
+    id: str
+    version: str
+    sys: dict
+    params: DeviceProperties

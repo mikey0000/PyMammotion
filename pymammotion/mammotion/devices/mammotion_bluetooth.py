@@ -17,7 +17,7 @@ from bleak_retry_connector import (
 
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.bluetooth import BleMessage
-from pymammotion.data.state_manager import StateManager
+from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
 from pymammotion.proto import LubaMsg
@@ -72,7 +72,12 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
     """Base class for Mammotion BLE devices."""
 
     def __init__(
-        self, state_manager: StateManager, cloud_device: Device, device: BLEDevice, interface: int = 0, **kwargs: Any
+        self,
+        state_manager: MowerStateManager,
+        cloud_device: Device,
+        device: BLEDevice,
+        interface: int = 0,
+        **kwargs: Any,
     ) -> None:
         """Initialize MammotionBaseBLEDevice."""
         super().__init__(state_manager, cloud_device)
@@ -95,9 +100,6 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._key: str | None = None
         self._cloud_device = cloud_device
         self.set_queue_callback(self.queue_command)
-        self._state_manager.ble_gethash_ack_callback = self.datahash_response
-        self._state_manager.ble_get_commondata_ack_callback = self.commdata_response
-        self._state_manager.ble_get_plan_callback = self.plan_callback
         loop = asyncio.get_event_loop()
         loop.create_task(self.process_queue())
 

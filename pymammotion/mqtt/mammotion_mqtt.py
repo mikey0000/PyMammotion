@@ -1,232 +1,214 @@
-"""MammotionMQTT."""
-
 import asyncio
-import base64
-from typing import Awaitable, Callable
-import hashlib
-import hmac
+from collections.abc import Awaitable, Callable
 import json
 import logging
-from logging import getLogger
+import ssl
+from typing import Any
+from urllib.parse import urlparse
 
-import betterproto2
-from paho.mqtt.client import MQTTMessage
+import paho.mqtt.client as mqtt
+from paho.mqtt.properties import Properties
+from paho.mqtt.reasoncodes import ReasonCode
 
-from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.data.mqtt.event import ThingEventMessage
-from pymammotion.data.mqtt.properties import ThingPropertiesMessage
-from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.mqtt.linkkit.linkkit import LinkKit
-from pymammotion.proto import LubaMsg
+from pymammotion import MammotionHTTP
+from pymammotion.http.model.http import DeviceRecord, MQTTConnection, Response, UnauthorizedException
+from pymammotion.utility.datatype_converter import DatatypeConverter
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class MammotionMQTT:
-    """MQTT client for pymammotion."""
+    """Mammotion MQTT Client."""
+
+    converter = DatatypeConverter()
 
     def __init__(
-        self,
-        region_id: str,
-        product_key: str,
-        device_name: str,
-        device_secret: str,
-        iot_token: str,
-        cloud_client: CloudIOTGateway,
-        client_id: str | None = None,
+        self, mqtt_connection: MQTTConnection, mammotion_http: MammotionHTTP, records: list[DeviceRecord]
     ) -> None:
-        """Create instance of MammotionMQTT."""
-        super().__init__()
-        self._cloud_client = cloud_client
-        self.is_connected = False
-        self.is_ready = False
         self.on_connected: Callable[[], Awaitable[None]] | None = None
         self.on_ready: Callable[[], Awaitable[None]] | None = None
         self.on_error: Callable[[str], Awaitable[None]] | None = None
         self.on_disconnected: Callable[[], Awaitable[None]] | None = None
-        self.on_message: Callable[[str, str, str], Awaitable[None]] | None = None
-
-        self._product_key = product_key
-        self._device_name = device_name
-        self._device_secret = device_secret
-        self._iot_token = iot_token
-        self._mqtt_username = f"{device_name}&{product_key}"
-        # linkkit provides the correct MQTT service for all of this and uses paho under the hood
-        if client_id is None:
-            client_id = f"python-{device_name}"
-        self._mqtt_client_id = f"{client_id}|securemode=2,signmethod=hmacsha1|"
-        sign_content = f"clientId{client_id}deviceName{device_name}productKey{product_key}"
-        self._mqtt_password = hmac.new(
-            device_secret.encode("utf-8"), sign_content.encode("utf-8"), hashlib.sha1
-        ).hexdigest()
-
-        self._client_id = client_id
+        self.on_message: Callable[[str, bytes, str], Awaitable[None]] | None = None
         self.loop = asyncio.get_running_loop()
+        self.mammotion_http = mammotion_http
+        self.mqtt_connection = mqtt_connection
+        self.client = self.build(mqtt_connection)
 
-        self._linkkit_client = LinkKit(
-            region_id,
-            product_key,
-            device_name,
-            device_secret,
-            auth_type="",
-            client_id=client_id,
-            password=self._mqtt_password,
-            username=self._mqtt_username,
-        )
+        self.records = records
 
-        self._linkkit_client.enable_logger(level=logging.ERROR)
-        self._linkkit_client.on_connect = self._thing_on_connect
-        self._linkkit_client.on_disconnect = self._on_disconnect
-        self._linkkit_client.on_thing_enable = self._thing_on_thing_enable
-        self._linkkit_client.on_topic_message = self._thing_on_topic_message
-        self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
+        # wire callbacks from the service object if present
+        self.client.on_connect = self._on_connect
+        self.client.on_message = self._on_message
+        self.client.on_disconnect = self._on_disconnect
+        # client.on_subscribe = getattr(mqtt_service_obj, "on_subscribe", None)
+        # client.on_publish = getattr(mqtt_service_obj, "on_publish", None)
+
+    def __del__(self) -> None:
+        if self.client.is_connected():
+            for record in self.records:
+                self.unsubscribe_all(record.product_key, record.device_name)
+            self.client.disconnect()
 
     def connect_async(self) -> None:
         """Connect async to MQTT Server."""
-        logger.info("Connecting...")
-        if self._linkkit_client.check_state() is LinkKit.LinkKitState.INITIALIZED:
-            self._linkkit_client.thing_setup()
-        self._linkkit_client.connect_async()
+        if not self.client.is_connected():
+            logger.info("Connecting...")
+            self.client.connect_async(host=self.client.host, port=self.client.port, keepalive=self.client.keepalive)
+            self.client.loop_start()
 
     def disconnect(self) -> None:
         """Disconnect from MQTT Server."""
         logger.info("Disconnecting...")
+        self.client.disconnect()
 
-        self._linkkit_client.disconnect()
+    @staticmethod
+    def build(mqtt_connection: MQTTConnection, keepalive: int = 60, timeout: int = 30) -> mqtt.Client:
+        """get_jwt_response: object with attributes .client_id, .username, .jwt (password), .host (e.g. 'mqtts://broker:8883' or 'broker:1883' or 'broker').
+        mqtt_service_obj: object that exposes callback methods (on_connect, on_message, on_disconnect, etc.)
+        Returns: (client, connected_bool, rc)
+        """
+        host = mqtt_connection.host
+        # Ensure urlparse can parse plain hosts
+        parsed = urlparse(host if "://" in host else "tcp://" + host)
+        scheme = parsed.scheme
+        hostname = parsed.hostname
+        port = parsed.port
 
-    def _thing_on_thing_enable(self, user_data) -> None:
-        """Is called when Thing is enabled."""
-        logger.debug("on_thing_enable")
+        # decide TLS/ssl and default port
+        use_ssl = scheme in ("mqtts", "ssl")
+        if port is None:
+            port = 8883 if use_ssl else 1883
+
+        client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            client_id=mqtt_connection.client_id,
+            clean_session=True,
+            protocol=mqtt.MQTTv311,
+        )
+
+        client.username_pw_set(mqtt_connection.username, mqtt_connection.jwt)
+
+        if use_ssl:
+            # use system default CA certs; adjust tls_set() params if custom CA/client certs required
+            client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+            client.tls_insecure_set(False)
+
+        # automatic reconnect backoff
+        client.reconnect_delay_set(min_delay=1, max_delay=120)
+
+        # connect (synchronous connect attempt) and start background loop
+        if hostname:
+            client.host = hostname
+            client.port = port
+            client.keepalive = keepalive
+
+        return client
+
+    def _on_message(self, _client: mqtt.Client, _userdata: Any, message: mqtt.MQTTMessage) -> None:
+        """Is called when message is received."""
+        logger.debug("Message on topic %s", message.topic)
+        logger.debug(message)
+
+        if self.on_message is not None:
+            iot_id = None
+            # Parse the topic path to get product_key and device_name
+            topic_parts = message.topic.split("/")
+            if len(topic_parts) >= 4:
+                product_key = topic_parts[2]
+                device_name = topic_parts[3]
+
+                # Filter records to find matching device
+                filtered_records = [
+                    record
+                    for record in self.records
+                    if record.product_key == product_key and record.device_name == device_name
+                ]
+
+                if filtered_records:
+                    iot_id = filtered_records[0].iot_id
+                    payload = json.loads(message.payload.decode("utf-8"))
+                    payload["iot_id"] = iot_id
+                    payload["product_key"] = product_key
+                    payload["device_name"] = device_name
+                    message.payload = json.dumps(payload).encode("utf-8")
+
+            if iot_id:
+                future = asyncio.run_coroutine_threadsafe(
+                    self.on_message(message.topic, message.payload, iot_id), self.loop
+                )
+                asyncio.wrap_future(future, loop=self.loop)
+
+    def _on_connect(
+        self,
+        _client: mqtt.Client,
+        user_data: Any,
+        session_flag: mqtt.ConnectFlags,
+        rc: ReasonCode,
+        properties: Properties | None,
+    ) -> None:
+        """Handle connection event and execute callback if set."""
         self.is_connected = True
-        # logger.debug('subscribe_topic, topic:%s' % echo_topic)
-        # self._linkkit_client.subscribe_topic(echo_topic, 0)
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
-        )
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/event/property/post_reply"
-        )
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/status/notify"
-        )
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/connect/event/notify"
-        )
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/_thing/event/notify"
-        )
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events")
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status")
-        self._linkkit_client.subscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties")
-        self._linkkit_client.subscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/model/down_raw"
-        )
-
-        self._linkkit_client.publish_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
-            json.dumps(
-                {
-                    "id": "msgid1",
-                    "version": "1.0",
-                    "request": {"clientId": self._mqtt_username},
-                    "params": {"iotToken": self._iot_token},
-                }
-            ),
-        )
+        for record in self.records:
+            self.subscribe_all(record.product_key, record.device_name)
+        if self.on_connected is not None:
+            future = asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)
+            asyncio.wrap_future(future, loop=self.loop)
 
         if self.on_ready:
             self.is_ready = True
             future = asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
-    def unsubscribe(self) -> None:
-        self._linkkit_client.unsubscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/account/bind_reply"
-        )
-        self._linkkit_client.unsubscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/event/property/post_reply"
-        )
-        self._linkkit_client.unsubscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/status/notify"
-        )
-        self._linkkit_client.unsubscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/wifi/connect/event/notify"
-        )
-        self._linkkit_client.unsubscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/_thing/event/notify"
-        )
-        self._linkkit_client.unsubscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/events")
-        self._linkkit_client.unsubscribe_topic(f"/sys/{self._product_key}/{self._device_name}/app/down/thing/status")
-        self._linkkit_client.unsubscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/properties"
-        )
-        self._linkkit_client.unsubscribe_topic(
-            f"/sys/{self._product_key}/{self._device_name}/app/down/thing/model/down_raw"
-        )
+        logger.debug("on_connect, session_flag:%s, rc:%s", session_flag, rc)
 
-    def _thing_on_topic_message(self, topic, payload, qos, user_data) -> None:
-        """Is called when thing topic comes in."""
-        logger.debug(
-            "on_topic_message, receive message, topic:%s, payload:%s, qos:%d",
-            topic,
-            payload,
-            qos,
-        )
-        payload = json.loads(payload)
-        iot_id = payload.get("params", {}).get("iotId", "")
-        if iot_id != "" and self.on_message is not None:
-            future = asyncio.run_coroutine_threadsafe(self.on_message(topic, payload, iot_id), self.loop)
+    def _on_disconnect(
+        self,
+        _client: mqtt.Client,
+        user_data: Any | None,
+        disconnect_flags: mqtt.DisconnectFlags,
+        rc: ReasonCode,
+        properties: Properties | None,
+        **kwargs: Any,
+    ) -> None:
+        """Handle disconnection event and execute callback if set."""
+        self.is_connected = False
+        if self.on_disconnected is not None:
+            for record in self.records:
+                self.unsubscribe_all(record.product_key, record.device_name)
+            future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
             asyncio.wrap_future(future, loop=self.loop)
 
-    def _thing_on_connect(self, session_flag, rc, user_data) -> None:
-        """Handle connection event and execute callback if set."""
-        self.is_connected = True
-        if self.on_connected is not None:
-            future = asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)
-            asyncio.wrap_future(future, loop=self.loop)
+        logger.debug("on_disconnect, rc:%s", rc)
 
-        logger.debug("on_connect, session_flag:%d, rc:%d", session_flag, rc)
+    def subscribe_all(self, product_key: str, device_name: str) -> None:
+        """Subscribe to all topics for the given device."""
 
-    def _on_disconnect(self, _client, _userdata) -> None:
-        """Is called on disconnect."""
-        if self._linkkit_client.check_state() is LinkKit.LinkKitState.DISCONNECTED:
-            logger.info("Disconnected")
-            self.is_connected = False
-            self.is_ready = False
-            if self.on_disconnected:
-                future = asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
-                asyncio.wrap_future(future, loop=self.loop)
+        # "/sys/" + this.$productKey + "/" + this.$deviceName + "/thing/event/+/post"
+        # "/sys/proto/" + this.$productKey + "/" + this.$deviceName + "/thing/event/+/post"
+        # "/sys/" + this.$productKey + "/" + this.$deviceName + "/app/down/thing/status"
+        self.client.subscribe(f"/sys/{product_key}/{device_name}/app/down/thing/status")
+        self.client.subscribe(f"/sys/{product_key}/{device_name}/thing/event/+/post")
+        self.client.subscribe(f"/sys/proto/{product_key}/{device_name}/thing/event/+/post")
 
-    def _on_message(self, _client, _userdata, message: MQTTMessage) -> None:
-        """Is called when message is received."""
-        logger.info("Message on topic %s", message.topic)
+    def unsubscribe_all(self, product_key: str, device_name: str) -> None:
+        """Unsubscribe from all topics for the given device."""
+        self.client.unsubscribe(f"/sys/{product_key}/{device_name}/app/down/thing/status")
+        self.client.unsubscribe(f"/sys/{product_key}/{device_name}/thing/event/+/post")
+        self.client.unsubscribe(f"/sys/proto/{product_key}/{device_name}/thing/event/+/post")
 
-        payload = json.loads(message.payload)
-        if message.topic.endswith("/app/down/thing/events"):
-            event = ThingEventMessage(**payload)
-            params = event.params
-            if params.identifier == "device_protobuf_msg_event":
-                content = LubaMsg().parse(base64.b64decode(params.value.content))
+    async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
+        """Send command to cloud."""
+        res: Response[dict] = await self.mammotion_http.mqtt_invoke(
+            self.converter.printBase64Binary(command), "", iot_id
+        )
 
-                logger.info("Unhandled protobuf event: %s", betterproto2.which_one_of(content, "LubaSubMsg"))
-            elif params.identifier == "device_warning_event":
-                logger.debug("identifier event: %s", params.identifier)
-            else:
-                logger.info("Unhandled event: %s", params.identifier)
-        elif message.topic.endswith("/app/down/thing/status"):
-            # the tell if a device has come back online
-            # lastStatus
-            # 1 online?
-            # 3 offline?
-            status = ThingStatusMessage(**payload)
-            logger.debug(status.params.status.value)
-        elif message.topic.endswith("/app/down/thing/properties"):
-            properties = ThingPropertiesMessage(**payload)
-            logger.debug("properties: %s", properties)
-        else:
-            logger.debug("Unhandled topic: %s", message.topic)
-            logger.debug(payload)
+        logger.debug("send_cloud_command: %s", res)
 
-    def get_cloud_client(self) -> CloudIOTGateway:
-        """Return internal cloud client."""
-        return self._cloud_client
+        if res.code == 500:
+            return res.msg
+
+        if res.code == 401:
+            raise UnauthorizedException(res.msg)
+
+        return str(res.data["result"])

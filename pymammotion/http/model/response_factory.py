@@ -7,19 +7,20 @@ T = TypeVar("T")
 
 def deserialize_data(value, target_type):
     """Deserialize data into a specified target type.
-    
+
     The function handles deserialization of basic types, lists, and unions. It
     recursively processes list elements and supports optional types by handling
     Union[T, None]. For custom types with a `from_dict` method, it calls this
     method for deserialization. If the target type is unknown or unsupported, it
     returns the value unchanged.
-    
+
     Args:
         value: The data to be deserialized.
         target_type (type): The desired type into which the data should be deserialized.
-    
+
     Returns:
         The deserialized data in the specified target type.
+
     """
     if value is None:
         return None
@@ -35,7 +36,12 @@ def deserialize_data(value, target_type):
         # Support Optional[T] = Union[T, None]
         non_none_types = [t for t in args if t is not type(None)]
         if len(non_none_types) == 1:
-            return deserialize_data(value, non_none_types[0])
+            target = non_none_types[0]
+            # Handle Response[list[type]] case
+            if get_origin(target) is list and get_args(target):
+                item_type = get_args(target)[0]
+                return [deserialize_data(v, item_type) for v in value]
+            return deserialize_data(value, target)
 
     if hasattr(target_type, "from_dict"):
         return target_type.from_dict(value)

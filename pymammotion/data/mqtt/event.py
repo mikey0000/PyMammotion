@@ -1,10 +1,10 @@
 from base64 import b64decode
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from google.protobuf import json_format
 from mashumaro.mixins.orjson import DataClassORJSONMixin
-from mashumaro.types import SerializableType
+from mashumaro.types import Alias, SerializableType
 
 from pymammotion.proto import luba_msg_pb2
 
@@ -73,34 +73,35 @@ class DeviceBizReqEventValue(DataClassORJSONMixin):
 
 @dataclass
 class GeneralParams(DataClassORJSONMixin):
-    groupIdList: list[str]
-    groupId: str
-    categoryKey: Literal["LawnMower", "Tracker"]
-    batchId: str
-    gmtCreate: int
-    productKey: str
+    group_id_list: Annotated[list[str], Alias("groupIdList")]
+    group_id: Annotated[str, Alias("groupId")]
+    category_key: Annotated[Literal["LawnMower", "Tracker"], Alias("categoryKey")]
+    batch_id: Annotated[str, Alias("batchId")]
+    gmt_create: Annotated[int, Alias("gmtCreate")]
+    product_key: Annotated[str, Alias("productKey")]
     type: str
-    deviceName: str
-    iotId: str
-    checkLevel: int
+    device_name: Annotated[str, Alias("deviceName")]
+    iot_id: Annotated[str, Alias("iotId")]
+    check_level: Annotated[int, Alias("checkLevel")]
     namespace: str
-    tenantId: str
+    tenant_id: Annotated[str, Alias("tenantId")]
     name: str
-    thingType: Literal["DEVICE"]
+    thing_type: Annotated[Literal["DEVICE"], Alias("thingType")]
     time: int
-    tenantInstanceId: str
+    tenant_instance_id: Annotated[str, Alias("tenantInstanceId")]
     value: Any
 
+    # Optional fields
     identifier: str | None = None
-    checkFailedData: dict | None = None
-    _tenantId: str | None = None
-    generateTime: int | None = None
-    JMSXDeliveryCount: int | None = None
+    check_failed_data: Annotated[dict | None, Alias("checkFailedData")] = None
+    _tenant_id: Annotated[str | None, Alias("_tenantId")] = None
+    generate_time: Annotated[int | None, Alias("generateTime")] = None
+    jmsx_delivery_count: Annotated[int | None, Alias("JMSXDeliveryCount")] = None
     qos: int | None = None
-    requestId: str | None = None
-    _categoryKey: str | None = None
-    deviceType: str | None = None
-    _traceId: str | None = None
+    request_id: Annotated[str | None, Alias("requestId")] = None
+    _category_key: Annotated[str | None, Alias("_categoryKey")] = None
+    device_type: Annotated[str | None, Alias("deviceType")] = None
+    _trace_id: Annotated[str | None, Alias("_traceId")] = None
 
 
 @dataclass
@@ -196,3 +197,27 @@ class ThingEventMessage(DataClassORJSONMixin):
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")
 
         return cls(method=method, id=event_id, params=params_obj, version=version)
+
+
+@dataclass
+class MammotionProtoMsgParams(DataClassORJSONMixin, SerializableType):
+    value: DeviceProtobufMsgEventValue
+    iot_id: str = ""
+    product_key: str = ""
+    device_name: str = ""
+
+    @classmethod
+    def _deserialize(cls, d: dict[str, Any]) -> "MammotionProtoMsgParams":
+        """Override from_dict to allow dict manipulation before conversion."""
+        proto: str = d["content"]
+
+        return cls(value=DeviceProtobufMsgEventValue(content=proto))
+
+
+@dataclass
+class MammotionEventMessage(DataClassORJSONMixin):
+    id: str
+    version: str
+    sys: dict
+    params: MammotionProtoMsgParams
+    method: str

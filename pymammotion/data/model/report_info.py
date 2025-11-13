@@ -80,7 +80,14 @@ class LocationData(DataClassORJSONMixin):
 
 
 @dataclass
+class BladeUsed(DataClassORJSONMixin):
+    blade_used_time: int = 0
+    blade_used_warn_time: int = 0
+
+
+@dataclass
 class Maintain(DataClassORJSONMixin):
+    blade_used_time: BladeUsed = field(default_factory=BladeUsed)
     mileage: int = 0
     work_time: int = 0
     bat_cycles: int = 0

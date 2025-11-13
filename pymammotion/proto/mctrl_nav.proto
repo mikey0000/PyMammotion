@@ -380,7 +380,7 @@ message cover_path_upload_t {
   int32 totalFrame = 6;
   int32 currentFrame = 7;
   int32 total_path_num = 8;
-  int32 vaild_path_num = 9;
+  int32 valid_path_num = 9;
   fixed64 dataHash = 10;
   int64 transaction_id = 11;
   repeated int64 reserved = 12;

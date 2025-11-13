@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 
 logger = logging.getLogger(__name__)
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class GenerateRouteInformation:
     """Creates a model for generating route information and mowing plan before starting a job."""
 
-    one_hashs: list[int] = list
+    one_hashs: list[int] = field(default_factory=list)
     job_mode: int = 4  # taskMode
     job_version: int = 0
     job_id: int = 0

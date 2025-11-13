@@ -22,13 +22,31 @@ Luba2MiniProductKey = ["a1L5ZfJIxGl", "a1dCWYFLROK"]
 
 YukaProductKey = ["a1kT0TlYEza", "a1IQV0BrnXb"]
 
-YukaPlusProductKey = ["a1lNESu9VST"]
+YukaPlusProductKey = ["a1lNESu9VST", "a1zAEzmvWDa"]
 
 YukaMiniProductKey = ["a1BqmEWMRbX", "a1biqVGvxrE"]
 
 RTKProductKey = ["a1qXkZ5P39W", "a1Nc68bGZzX"]
 
-YukaMVProductKey = ["a1jFe8HzcDb"]
+YukaMVProductKey = ["a1jFe8HzcDb", "a16cz0iXgUJ", "USpE46bNTC7", "pdA6uJrBfjz"]
+
+LubaLDProductKey = ["a1jDMfG2Fgj", "a1vtZq9LUFS"]
+
+LubaVAProductKey = ["a1Ce85210Be", "a1BBOJnnjb9"]
+
+YukaMLProductKey = ["a1OWGO8WXbh", "a1s6znKxGvI"]
+
+LubaMDProductKey = ["a1T6VTFTc0C", "a14iRDqMepW"]
+
+LubaMBProductKey = ["a1pb9toor70"]
+
+RTKNBProductKey = ["a1NfZqdSREf", "a1ZuQVL7UiN"]
+
+LubaLAProductKey = ["CDYuKXTYrSP"]
+
+YukaMN100ProductKey = ["NnbeYtaEUGE"]
+
+Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m"]
 
 
 class DeviceType(Enum):
@@ -47,7 +65,17 @@ class DeviceType(Enum):
     LUBA_LD = (11, "Luba-LD", "HM431")
     RTK3A0 = (12, "RBSA0", "RBS03A0")
     RTK3A2 = (13, "RBSA2", "RBS03A2")
-    YUKA_MINIVP = (14, "Yuka-MV", "MN231")
+    YUKA_MINIV = (14, "Yuka-MV", "MN231")
+    LUBA_VA = (15, "Luba-VA", "HM442")
+    YUKA_ML = (16, "Yuka-ML", "MN232")
+    LUBA_MD = (17, "Luba-MD", "HM433")
+    LUBA_LA = (18, "Luba-LA", "HM432")
+    SWIMMINGPOOL_S1 = (19, "Spino-S1", "Spino-S1")
+    SWIMMINGPOOL_E1 = (20, "Spino-E1", "Spino-E1")
+    YUKA_MN100 = (21, "Ezy-VT", "MN100")
+    RTKNB = (22, "NB", "NB")
+    LUBA_MB = (23, "Luba-MB", "HM434")
+    CM900 = (24, "Kumar-MK", "KM01")
 
     def __init__(self, value: int, name: str, model: str) -> None:
         self._value = value
@@ -112,6 +140,28 @@ class DeviceType(Enum):
             return DeviceType.RTK3A0
         elif value == 13:
             return DeviceType.RTK3A2
+        elif value == 14:
+            return DeviceType.YUKA_MINIV
+        elif value == 15:
+            return DeviceType.LUBA_VA
+        elif value == 16:
+            return DeviceType.YUKA_ML
+        elif value == 17:
+            return DeviceType.LUBA_MD
+        elif value == 18:
+            return DeviceType.LUBA_LA
+        elif value == 19:
+            return DeviceType.SWIMMINGPOOL_S1
+        elif value == 20:
+            return DeviceType.SWIMMINGPOOL_E1
+        elif value == 21:
+            return DeviceType.YUKA_MN100
+        elif value == 22:
+            return DeviceType.RTKNB
+        elif value == 23:
+            return DeviceType.LUBA_MB
+        elif value == 24:
+            return DeviceType.CM900
         else:
             return DeviceType.UNKNOWN
 
@@ -156,6 +206,36 @@ class DeviceType(Enum):
                 return DeviceType.LUBA_YUKA
             elif DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
                 return DeviceType.LUBA
+            elif DeviceType.SPINO.get_name() in substring2:
+                return DeviceType.SPINO
+            elif DeviceType.RTK3A1.get_name() in substring2:
+                return DeviceType.RTK3A1
+            elif DeviceType.RTK3A0.get_name() in substring2:
+                return DeviceType.RTK3A0
+            elif DeviceType.RTK3A2.get_name() in substring2:
+                return DeviceType.RTK3A2
+            elif DeviceType.YUKA_MINIV.get_name() in substring2:
+                return DeviceType.YUKA_MINIV
+            elif DeviceType.LUBA_VA.get_name() in substring2:
+                return DeviceType.LUBA_VA
+            elif DeviceType.YUKA_ML.get_name() in substring2:
+                return DeviceType.YUKA_ML
+            elif DeviceType.LUBA_MD.get_name() in substring2:
+                return DeviceType.LUBA_MD
+            elif DeviceType.LUBA_LA.get_name() in substring2:
+                return DeviceType.LUBA_LA
+            elif DeviceType.SWIMMINGPOOL_S1.get_name() in substring2:
+                return DeviceType.SWIMMINGPOOL_S1
+            elif DeviceType.SWIMMINGPOOL_E1.get_name() in substring2:
+                return DeviceType.SWIMMINGPOOL_E1
+            elif DeviceType.YUKA_MN100.get_name() in substring2:
+                return DeviceType.YUKA_MN100
+            elif DeviceType.RTKNB.get_name() in substring2:
+                return DeviceType.RTKNB
+            elif DeviceType.LUBA_MB.get_name() in substring2:
+                return DeviceType.LUBA_MB
+            elif DeviceType.CM900.get_name() in substring2:
+                return DeviceType.CM900
             else:
                 return DeviceType.UNKNOWN
         except Exception:
@@ -252,6 +332,9 @@ class DeviceType(Enum):
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_VP.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINIV.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_ML.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MN100.get_value()
         )
 
     @staticmethod
@@ -268,6 +351,7 @@ class DeviceType(Enum):
         return (
             DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
+            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINIV.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_VP.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_MN.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_VP.get_value()
@@ -301,6 +385,7 @@ class DeviceType(Enum):
             or DeviceType.RTK3A0.get_value() == device_type.get_value()
             or DeviceType.RTK3A1.get_value() == device_type.get_value()
             or DeviceType.RTK3A2.get_value() == device_type.get_value()
+            or DeviceType.RTKNB.get_value() == device_type.get_value()
         )
 
     @staticmethod

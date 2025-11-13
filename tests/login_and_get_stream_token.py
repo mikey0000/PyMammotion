@@ -3,7 +3,7 @@ import logging
 import os
 import traceback
 
-from pymammotion.mqtt.mammotion_mqtt import logger
+from pymammotion.mqtt.aliyun_mqtt import logger
 from pymammotion.data.model.account import Credentials
 from pymammotion.mammotion.devices.mammotion import ConnectionPreference
 

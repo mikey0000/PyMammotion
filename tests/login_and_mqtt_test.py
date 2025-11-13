@@ -7,12 +7,12 @@ import time
 from typing import Optional
 
 from pymammotion.data.model.device import MowingDevice
-from pymammotion.data.state_manager import StateManager
+from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT, logger
-from pymammotion.mammotion.devices.mammotion import MammotionBaseCloudDevice
+from pymammotion.mqtt.aliyun_mqtt import AliyunMQTT, logger
+from pymammotion.mammotion.devices import MammotionBaseCloudDevice, Mammotion
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,16 +51,33 @@ async def run() -> CloudIOTGateway:
         await asyncio.sleep(1.0)
         
         # Wrap login with retry logic
-        await exponential_backoff(
-            lambda: mammotion_http.login(EMAIL, PASSWORD),
-            max_retries=3,
-            initial_delay=5.0
-        )
+        # await exponential_backoff(
+        #     lambda: mammotion_http.login_v2(EMAIL, PASSWORD),
+        #     max_retries=3,
+        #     initial_delay=5.0
+        # )
         
-        country_code = mammotion_http.login_info.userInformation.domainAbbreviation
-        _LOGGER.debug("CountryCode: " + country_code)
-        _LOGGER.debug("AuthCode: " + mammotion_http.login_info.authorization_code)
-        
+
+
+        mammotion = Mammotion()
+        # cloud_client = await mammotion.login(EMAIL, PASSWORD)
+        await mammotion_http.login_v2(EMAIL, PASSWORD)
+
+        ota = await mammotion_http.get_device_ota_firmware(['UTpbwGC7vxd4DpNvbFGL000000'])
+
+        print(ota)
+        #
+        # country_code = cloud_client.mammotion_http.login_info.userInformation.domainAbbreviation
+        # _LOGGER.debug("CountryCode: " + country_code)
+        # _LOGGER.debug("AuthCode: " + cloud_client.mammotion_http.login_info.authorization_code)
+        # _LOGGER.debug("JWT: " + json.dumps(cloud_client.mammotion_http.jwt_info.to_dict()))
+        #
+        #
+        # await mammotion.initiate_cloud_connection(EMAIL, cloud_client)
+        # _LOGGER.debug("device records: " + json.dumps(cloud_client.mammotion_http.device_records.to_dict()))
+        # _LOGGER.debug("device info: " + json.dumps(cloud_client.mammotion_http.device_info))
+
+        return
         # Execute API calls sequentially with delays and retries
         await exponential_backoff(
             lambda: cloud_client.get_region(country_code),
@@ -147,7 +164,7 @@ async def run() -> CloudIOTGateway:
     if missing_fields:
         raise ValueError(f"Missing required fields in cloud client responses: {', '.join(missing_fields)}")
 
-    _mammotion_mqtt = MammotionCloud(MammotionMQTT(
+    _mammotion_mqtt = MammotionCloud(AliyunMQTT(
         region_id=cloud_client.region_response.data.regionId,
         product_key=cloud_client.aep_response.data.productKey,
         device_name=cloud_client.aep_response.data.deviceName,
@@ -165,11 +182,11 @@ async def run() -> CloudIOTGateway:
 
     _devices_list = []
     for device in cloud_client.devices_by_account_response.data.data:
-        if (device.deviceName.startswith(("Luba-"))):
+        if device.device_name.startswith(("Luba-")):
             dev = MammotionBaseCloudDevice(
                 mqtt=_mammotion_mqtt,
                 cloud_device=device,
-                state_manager=StateManager(MowingDevice())
+                state_manager=MowerStateManager(MowingDevice())
             )
             _devices_list.append(dev)
     # Wrap device commands in error handling

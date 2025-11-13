@@ -927,7 +927,7 @@ class cover_path_packet_t(_message.Message):
     def __init__(self, path_hash: _Optional[int] = ..., path_type: _Optional[int] = ..., path_total: _Optional[int] = ..., path_cur: _Optional[int] = ..., zone_hash: _Optional[int] = ..., dataCouple: _Optional[_Iterable[_Union[_common_pb2.CommDataCouple, _Mapping]]] = ...) -> None: ...
 
 class cover_path_upload_t(_message.Message):
-    __slots__ = ["area", "currentFrame", "dataHash", "dataLen", "path_packets", "pver", "reserved", "result", "subCmd", "time", "totalFrame", "total_path_num", "transaction_id", "vaild_path_num"]
+    __slots__ = ["area", "currentFrame", "dataHash", "dataLen", "path_packets", "pver", "reserved", "result", "subCmd", "time", "totalFrame", "total_path_num", "transaction_id", "valid_path_num"]
     AREA_FIELD_NUMBER: _ClassVar[int]
     CURRENTFRAME_FIELD_NUMBER: _ClassVar[int]
     DATAHASH_FIELD_NUMBER: _ClassVar[int]
@@ -941,7 +941,7 @@ class cover_path_upload_t(_message.Message):
     TOTALFRAME_FIELD_NUMBER: _ClassVar[int]
     TOTAL_PATH_NUM_FIELD_NUMBER: _ClassVar[int]
     TRANSACTION_ID_FIELD_NUMBER: _ClassVar[int]
-    VAILD_PATH_NUM_FIELD_NUMBER: _ClassVar[int]
+    VALID_PATH_NUM_FIELD_NUMBER: _ClassVar[int]
     area: int
     currentFrame: int
     dataHash: int
@@ -955,8 +955,8 @@ class cover_path_upload_t(_message.Message):
     totalFrame: int
     total_path_num: int
     transaction_id: int
-    vaild_path_num: int
-    def __init__(self, pver: _Optional[int] = ..., result: _Optional[int] = ..., subCmd: _Optional[int] = ..., area: _Optional[int] = ..., time: _Optional[int] = ..., totalFrame: _Optional[int] = ..., currentFrame: _Optional[int] = ..., total_path_num: _Optional[int] = ..., vaild_path_num: _Optional[int] = ..., dataHash: _Optional[int] = ..., transaction_id: _Optional[int] = ..., reserved: _Optional[_Iterable[int]] = ..., dataLen: _Optional[int] = ..., path_packets: _Optional[_Iterable[_Union[cover_path_packet_t, _Mapping]]] = ...) -> None: ...
+    valid_path_num: int
+    def __init__(self, pver: _Optional[int] = ..., result: _Optional[int] = ..., subCmd: _Optional[int] = ..., area: _Optional[int] = ..., time: _Optional[int] = ..., totalFrame: _Optional[int] = ..., currentFrame: _Optional[int] = ..., total_path_num: _Optional[int] = ..., valid_path_num: _Optional[int] = ..., dataHash: _Optional[int] = ..., transaction_id: _Optional[int] = ..., reserved: _Optional[_Iterable[int]] = ..., dataLen: _Optional[int] = ..., path_packets: _Optional[_Iterable[_Union[cover_path_packet_t, _Mapping]]] = ...) -> None: ...
 
 class nav_get_all_plan_task(_message.Message):
     __slots__ = ["tasks"]

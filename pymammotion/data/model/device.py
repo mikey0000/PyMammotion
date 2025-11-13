@@ -8,6 +8,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorkingHours, MowerInfo
 from pymammotion.data.model.errors import DeviceErrors
+from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.report_info import ReportData
 from pymammotion.data.model.work import CurrentTaskSettings
@@ -41,6 +42,7 @@ class MowingDevice(DataClassORJSONMixin):
     device_firmwares: DeviceFirmwares = field(default_factory=DeviceFirmwares)
     errors: DeviceErrors = field(default_factory=DeviceErrors)
     non_work_hours: DeviceNonWorkingHours = field(default_factory=DeviceNonWorkingHours)
+    events: Events = field(default_factory=Events)
 
     def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:
         """Update the device based on which buffer we are reading from."""
@@ -51,9 +53,11 @@ class MowingDevice(DataClassORJSONMixin):
                     self.location.RTK.latitude = parse_double(buffer_list.update_buf_data[5], 8.0)
                     self.location.RTK.longitude = parse_double(buffer_list.update_buf_data[6], 8.0)
                 if buffer_list.update_buf_data[7] != 0:
-                    self.location.dock.latitude = parse_double(buffer_list.update_buf_data[7], 4.0)
-                    self.location.dock.longitude = parse_double(buffer_list.update_buf_data[8], 4.0)
-                    self.location.dock.rotation = buffer_list.update_buf_data[3] + 180
+                    # latitude Y longitude X
+                    self.location.dock.longitude = parse_double(buffer_list.update_buf_data[7], 4.0)
+                    self.location.dock.latitude = parse_double(buffer_list.update_buf_data[8], 4.0)
+                    self.location.dock.rotation = buffer_list.update_buf_data[3]
+
             case 2:
                 self.errors.err_code_list.clear()
                 self.errors.err_code_list_time.clear()
@@ -85,6 +89,20 @@ class MowingDevice(DataClassORJSONMixin):
                         buffer_list.update_buf_data[22],
                     ]
                 )
+            case 3:
+                # task state event
+                task_area_map: dict[int, int] = {}
+                task_area_ids = []
+
+                for i in range(3, len(buffer_list.update_buf_data), 2):
+                    area_id = buffer_list.update_buf_data[i]
+
+                    if area_id != 0:
+                        area_value = int(buffer_list.update_buf_data[i + 1])
+                        task_area_map[area_id] = area_value
+                        task_area_ids.append(area_id)
+                self.events.work_tasks_event.hash_area_map = task_area_map
+                self.events.work_tasks_event.ids = task_area_ids
 
     def update_report_data(self, toapp_report_data: ReportInfoData) -> None:
         """Set report data for the mower."""
@@ -96,16 +114,11 @@ class MowingDevice(DataClassORJSONMixin):
                 self.location.device = coordinate_converter.enu_to_lla(
                     parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
                 )
+                self.map.invalidate_maps(location.bol_hash)
                 if location.zone_hash:
                     self.location.work_zone = (
                         location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
                     )
-                # if location.bol_hash:
-                #     for loc in toapp_report_data.locations:
-                #         if loc.bol_hash:
-                #             if loc.bol_hash != location.bol_hash:
-                #                 self.map = HashList()
-                # MurMurHashUtil.hash_unsigned_list(list(self.map.area.keys()))
 
         if toapp_report_data.fw_info:
             self.update_device_firmwares(toapp_report_data.fw_info)
