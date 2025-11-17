@@ -107,6 +107,13 @@ class MammotionDeviceManager:
         """Get a mower device."""
         return self.devices[mammotion_device_name]
 
+    def get_device_by_iot_id(self, iot_id: str) -> MammotionMowerDeviceManager | None:
+        """Get a mower device by IoT ID."""
+        for device in self.devices.values():
+            if device.iot_id == iot_id:
+                return device
+        return None
+
     def get_rtk_device(self, rtk_device_name: str) -> MammotionRTKDeviceManager:
         """Get an RTK device."""
         return self.rtk_devices[rtk_device_name]

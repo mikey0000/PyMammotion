@@ -44,6 +44,9 @@ class Params(DataClassORJSONMixin):
     category_id: Annotated[int, Alias("categoryId")]
     status: Annotated[Status, Alias("status")]
 
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
 
 @dataclass
 class ThingStatusMessage(DataClassORJSONMixin):

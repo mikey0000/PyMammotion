@@ -1,6 +1,5 @@
 from asyncio import sleep
 from io import BytesIO
-import itertools
 import json
 import logging
 import queue
@@ -331,7 +330,6 @@ class BleMessage:
             return ""
 
     def clear_notification(self) -> None:
-        self.notification = None
         self.notification = BlufiNotifyData()
 
     # async def get_device_info(self):
@@ -383,7 +381,7 @@ class BleMessage:
     async def gatt_write(self, data: bytes) -> None:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
-    def parseNotification(self, response: bytearray):
+    def parseNotification(self, response: bytes):
         """Parse notification data from BLE device."""
         if response is None:
             # Log.w(TAG, "parseNotification null data");
@@ -495,7 +493,6 @@ class BleMessage:
             #             return;
             case 19:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
-                # luba_msg = parse_custom_data(data)  # parse to protobuf message
                 return data
 
     # private void parseCtrlData(int i, byte[] bArr) {
@@ -565,8 +562,8 @@ class BleMessage:
         except Exception as err:
             _LOGGER.debug(err)
             # we might be constantly connected and in a bad state
-            self.mSendSequence = itertools.count()
-            self.mReadSequence = itertools.count()
+            self.mSendSequence = AtomicInteger(-1)
+            self.mReadSequence = AtomicInteger(-1)
             await self.client.disconnect()
 
     async def post(
@@ -585,8 +582,8 @@ class BleMessage:
     async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
         sequence = self.generate_send_sequence()
         postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
-        posted = await self.gatt_write(postBytes)
-        return posted and (not require_ack or self.receiveAck(sequence))
+        await self.gatt_write(postBytes)
+        return not require_ack or self.receiveAck(sequence)
 
     async def post_contains_data(
         self,
@@ -610,9 +607,7 @@ class BleMessage:
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
             # _LOGGER.debug("sequence")
             # _LOGGER.debug(sequence)
-            posted = await self.gatt_write(postBytes)
-            if posted is not None:
-                return False
+            await self.gatt_write(postBytes)
 
             if not frag:
                 return not require_ack or self.receiveAck(sequence)
@@ -624,8 +619,8 @@ class BleMessage:
             await sleep(0.01)
             if require_ack and not self.receiveAck(sequence):
                 return False
-            else:
-                return True
+
+            return True
 
     def getPostBytes(
         self,

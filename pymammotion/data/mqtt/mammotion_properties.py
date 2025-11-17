@@ -19,6 +19,9 @@ class DeviceVersionInfo(DataClassORJSONMixin):
     whole: int
     fw_info: Annotated[list[FirmwareInfo], Alias("fwInfo")]
 
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
 
 @dataclass
 class Coordinate(DataClassORJSONMixin):
@@ -36,6 +39,9 @@ class InternalNavigation(DataClassORJSONMixin):
     w_slp: Annotated[str, Alias("wSlp")]
     i_slp: Annotated[str, Alias("iSlp")]
 
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
 
 @dataclass
 class BandwidthTraffic(DataClassORJSONMixin):
@@ -43,6 +49,9 @@ class BandwidthTraffic(DataClassORJSONMixin):
     roi: Annotated[str, Alias("RoI")]
     fpv: Annotated[str, Alias("FPV")]
     inav: InternalNavigation
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
 
 
 @dataclass
@@ -58,6 +67,9 @@ class TrafficData(DataClassORJSONMixin):
     hour: Annotated[dict[str, TrafficPeriod], Alias("Hour")]
     day: Annotated[dict[str, TrafficPeriod], Alias("Day")]
     mon: Annotated[dict[str, TrafficPeriod], Alias("Mon")]
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
 
 
 @dataclass
@@ -190,6 +202,9 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     systemio_boot_time: Annotated[str, Alias("systemioBootTime")]
     dds_no_gdc: int
 
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
 
 @dataclass
 class CheckData(DataClassORJSONMixin):
@@ -197,6 +212,9 @@ class CheckData(DataClassORJSONMixin):
     error: Annotated[list[int], Alias("Error")]
     warn: Annotated[list[int], Alias("Warn")]
     ok: Annotated[list[int], Alias("OK")]
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
 
 
 @dataclass
@@ -232,6 +250,7 @@ class DeviceProperties(DataClassORJSONMixin):
     iot_id: str = ""
 
     class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
         # Custom deserializer for nested JSON strings
         serialization_strategy = {
             DeviceVersionInfo: {

@@ -29,6 +29,7 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
     ) -> None:
         """Initialize RTK device manager."""
         super().__init__(name, iot_id, cloud_client, cloud_device, preference)
+        # Store as generic interfaces to satisfy AbstractDeviceManager contract
         self._ble_device: MammotionRTKBLEDevice | None = None
         self._cloud_device: MammotionRTKCloudDevice | None = None
         self.name = name
@@ -110,8 +111,10 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
 
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
         """Replace MQTT connection."""
-        device = self._cloud_device.device
-        self._cloud_device = MammotionRTKCloudDevice(mqtt, cloud_device=device, rtk_state=self._rtk_state)
+        if cloud_device := self._cloud_device:
+            self._cloud_device = MammotionRTKCloudDevice(
+                mqtt, cloud_device=cloud_device.device, rtk_state=self._rtk_state
+            )
 
     def has_cloud(self) -> bool:
         """Check if cloud connection is available."""

@@ -92,7 +92,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._write_char: BleakGATTCharacteristic | int | str | UUID = 0
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._message: BleMessage | None = None
-        self._commands: MammotionCommand = MammotionCommand(device.name, 1)
+        self._commands: MammotionCommand = MammotionCommand(device.name or "", 1)
         self.command_queue = asyncio.Queue()
         self._expected_disconnect = False
         self._connect_lock = asyncio.Lock()
@@ -175,7 +175,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 # Mark the task as done
                 self.command_queue.task_done()
 
-    async def _send_command_with_args(self, key: str, **kwargs) -> bytes | None:
+    async def _send_command_with_args(self, key: str, **kwargs) -> None:
         """Send command to device and read response."""
         if self._operation_lock.locked():
             _LOGGER.debug(
@@ -206,7 +206,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
                 _LOGGER.debug("%s: communication failed with:", self.name, exc_info=True)
         return
 
-    async def _send_command(self, key: str, retry: int | None = None) -> bytes | None:
+    async def _send_command(self, key: str, retry: int | None = None) -> None:
         """Send command to device and read response."""
         if self._operation_lock.locked():
             _LOGGER.debug(
@@ -339,7 +339,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             await self._execute_forced_disconnect()
             raise
 
-    async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytearray) -> None:
+    async def _notification_handler(self, _sender: BleakGATTCharacteristic, data: bytes) -> None:
         """Handle notification responses."""
 
         if self._message is None:

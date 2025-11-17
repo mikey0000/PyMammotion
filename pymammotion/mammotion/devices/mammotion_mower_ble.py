@@ -45,5 +45,4 @@ class MammotionMowerBLEDevice(MammotionBaseBLEDevice, MammotionMowerDevice):
             self._state_manager.ble_get_commondata_ack_callback = None
             self._state_manager.ble_get_plan_callback = None
         # Call parent cleanup
-        if MammotionBaseBLEDevice.__del__:
-            super().__del__()
+        super().__del__()

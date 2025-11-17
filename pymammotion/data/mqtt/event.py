@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from google.protobuf import json_format
+from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias, SerializableType
 
@@ -102,6 +103,9 @@ class GeneralParams(DataClassORJSONMixin):
     _category_key: Annotated[str | None, Alias("_categoryKey")] = None
     device_type: Annotated[str | None, Alias("deviceType")] = None
     _trace_id: Annotated[str | None, Alias("_traceId")] = None
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
 
 
 @dataclass

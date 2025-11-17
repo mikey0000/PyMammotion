@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Union
 
 from mashumaro import DataClassDictMixin
+from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
 
@@ -181,6 +182,9 @@ class Params(DataClassORJSONMixin):
     thing_type: Annotated[Literal["DEVICE"], Alias("thingType")]
     items: Annotated["Items", Alias("items")]
     tenant_instance_id: Annotated[str, Alias("tenantInstanceId")]
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
 
 
 @dataclass

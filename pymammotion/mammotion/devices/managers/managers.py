@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 from bleak import BLEDevice
 
@@ -6,8 +7,7 @@ from pymammotion import CloudIOTGateway
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.model.device import MowingDevice, RTKDevice
 from pymammotion.data.model.enums import ConnectionPreference
-from pymammotion.mammotion.devices.mammotion_bluetooth import MammotionBaseBLEDevice
-from pymammotion.mammotion.devices.mammotion_cloud import MammotionBaseCloudDevice, MammotionCloud
+from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 
 
 class AbstractDeviceManager(ABC):
@@ -40,12 +40,12 @@ class AbstractDeviceManager(ABC):
 
     @property
     @abstractmethod
-    def ble(self) -> MammotionBaseBLEDevice | None:
+    def ble(self) -> Any | None:
         """Return BLE device interface."""
 
     @property
     @abstractmethod
-    def cloud(self) -> MammotionBaseCloudDevice | None:
+    def cloud(self) -> Any | None:
         """Return cloud device interface."""
 
     @abstractmethod
@@ -53,15 +53,15 @@ class AbstractDeviceManager(ABC):
         """Check if there are queued commands."""
 
     @abstractmethod
-    def add_ble(self, ble_device: BLEDevice) -> MammotionBaseBLEDevice:
+    def add_ble(self, ble_device: BLEDevice) -> Any:
         """Add BLE device."""
 
     @abstractmethod
-    def add_cloud(self, mqtt: MammotionCloud) -> MammotionBaseCloudDevice:
+    def add_cloud(self, mqtt: MammotionCloud) -> Any:
         """Add cloud device."""
 
     @abstractmethod
-    def replace_cloud(self, cloud_device: MammotionBaseCloudDevice) -> None:
+    def replace_cloud(self, cloud_device: Any) -> None:
         """Replace cloud device."""
 
     @abstractmethod
@@ -69,7 +69,7 @@ class AbstractDeviceManager(ABC):
         """Remove cloud device."""
 
     @abstractmethod
-    def replace_ble(self, ble_device: MammotionBaseBLEDevice) -> None:
+    def replace_ble(self, ble_device: Any) -> None:
         """Replace BLE device."""
 
     @abstractmethod

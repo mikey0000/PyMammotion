@@ -20,7 +20,9 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
     """RTK device with cloud connectivity - simpler than mowers, no map sync."""
 
     def __init__(self, mqtt: MammotionCloud, cloud_device: Device, rtk_state: RTKDevice) -> None:
-        """Initialize MammotionRTKCloudDevice."""
+        """Initialize MammotionRTKCloudDevice.
+        :rtype: None
+        """
         super().__init__(cloud_device, rtk_state)
         self.stopped = False
         self.on_ready_callback: Callable[[], Awaitable[None]] | None = None

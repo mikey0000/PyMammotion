@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.5.56"
+version = "0.5.57"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -71,7 +71,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.5.56"
+current_version = "0.5.57"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -475,6 +475,18 @@ platform = "linux"
 python_version = "3.12"
 exclude = ['pymammotion/proto', 'tests', "scripts"]
 
+# parity with previous mypy.ini
+show_error_codes = true
+local_partial_types = true
+strict_equality = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-self", "truthy-iterable"]
+disable_error_code = ["annotation-unchecked", "import-not-found", "import-untyped"]
+extra_checks = false
+
+# Use local stubs for third-party packages missing type hints
+mypy_path = "stubs"
+
 # show error messages from unrelated files
 follow_imports = "normal"
 
@@ -485,7 +497,8 @@ ignore_missing_imports = true
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
-disallow_subclassing_any = true
+# Follow mypy.ini behavior
+disallow_subclassing_any = false
 disallow_untyped_calls = true
 disallow_untyped_decorators = true
 disallow_untyped_defs = true
