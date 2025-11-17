@@ -169,7 +169,7 @@ class Mammotion:
         self._login_lock = asyncio.Lock()
         self.mqtt_list: dict[str, MammotionCloud] = {}
 
-    async def login_and_initiate_cloud(self, account, password, force: bool = False) -> None:
+    async def login_and_initiate_cloud(self, account: str, password: str, force: bool = False) -> None:
         async with self._login_lock:
             exists_aliyun: MammotionCloud | None = self.mqtt_list.get(f"{account}_aliyun")
             exists_mammotion: MammotionCloud | None = self.mqtt_list.get(f"{account}_mammotion")

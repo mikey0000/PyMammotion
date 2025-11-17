@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Annotated, Literal
 
+from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
 
