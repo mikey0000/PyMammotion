@@ -895,6 +895,9 @@ class CloudIOTGateway:
             if response_body_dict.get("code") == 6205:
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
 
+            if response_body_dict.get("code") == 6205:
+                raise CheckSessionException(response_body_dict.get("message"))
+
             if response_body_dict.get("code") == 460:
                 logger.debug("iotToken expired, must re-login.")
                 raise CheckSessionException(response_body_dict.get("message"))

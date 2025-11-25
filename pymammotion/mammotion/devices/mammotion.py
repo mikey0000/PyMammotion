@@ -193,9 +193,15 @@ class Mammotion:
 
             await mammotion_http.refresh_login()
 
-            await self.connect_iot(exists_aliyun.cloud_client)
             if len(mammotion_http.device_records.records) != 0:
                 await mammotion_http.get_mqtt_credentials()
+
+            if exists_aliyun and exists_aliyun.is_connected():
+                exists_aliyun.disconnect()
+                await self.connect_iot(exists_aliyun.cloud_client)
+
+            if exists_mammotion and exists_mammotion.is_connected():
+                exists_mammotion.disconnect()
 
             if exists_aliyun and not exists_aliyun.is_connected():
                 loop = asyncio.get_running_loop()

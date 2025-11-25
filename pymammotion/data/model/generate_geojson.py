@@ -225,7 +225,6 @@ class GeojsonGenerator:
 
         for type_name, map_objects in type_mapping.items():
             for hash_key, frame_list in map_objects.items():
-
                 if not GeojsonGenerator._validate_frame_list(frame_list, hash_key, area_names):
                     continue
 
@@ -243,23 +242,40 @@ class GeojsonGenerator:
 
     @staticmethod
     def _process_mow_map_objects(hash_list: HashList, rtk_location: Point, geo_json: GeoJSONCollection) -> int:
-        """Process all map objects and add them to GeoJSON."""
+        """Process all mow path objects and add them to GeoJSON.
+
+        Each transaction_id in current_mow_path represents a separate mowing path
+        consisting of multiple frames. A feature is generated only when all
+        frames for that transaction_id have been received.
+        """
         total_frames = 0
 
-        if 0 < len(hash_list.current_mow_path) == next(iter(hash_list.current_mow_path.values())).total_frame:
-            local_coords = GeojsonGenerator._collect_mow_frame_coordinates(
-                [mow_path for key, mow_path in hash_list.current_mow_path.items()]
-            )
+        for transaction_id, frames_by_index in hash_list.current_mow_path.items():
+            if not frames_by_index:
+                continue
+
+            # Use any frame to determine total_frame and other metadata
+            any_mow_path = next(iter(frames_by_index.values()))
+            total_frame = any_mow_path.total_frame
+
+            if total_frame == 0:
+                continue
+
+            # Only generate a feature when we have all frames for this transaction
+            if len(frames_by_index) != total_frame:
+                continue
+
+            ordered_mow_paths = [frames_by_index[i] for i in sorted(frames_by_index.keys())]
+            local_coords = GeojsonGenerator._collect_mow_frame_coordinates(ordered_mow_paths)
             total_frames += 1
 
             lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location)
             length, area = GeojsonGenerator.map_object_stats(local_coords)
 
-            feature = GeojsonGenerator._create_mow_path_feature(
-                next(iter(hash_list.current_mow_path.values())), lonlat_coords, length, area
-            )
+            feature = GeojsonGenerator._create_mow_path_feature(any_mow_path, lonlat_coords, length, area)
             if feature:
                 geo_json["features"].append(feature)
+
         return total_frames
 
     @staticmethod

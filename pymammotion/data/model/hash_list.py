@@ -209,7 +209,7 @@ class HashList(DataClassORJSONMixin):
     line: dict[int, FrameList] = field(default_factory=dict)  # type 10 possibly breakpoint? / sub cmd 3
     plan: dict[str, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
-    current_mow_path: dict[int, MowPath] = field(default_factory=dict)
+    current_mow_path: dict[int, dict[int, MowPath]] = field(default_factory=dict)
     generated_geojson: dict[str, Any] = field(default_factory=dict)
     generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
 
@@ -375,34 +375,44 @@ class HashList(DataClassORJSONMixin):
 
         return False
 
-    def find_missing_mow_path_frames(self) -> list[int]:
-        """Find missing frames in current_mow_path based on total_frame."""
+    def find_missing_mow_path_frames(self) -> dict[int, list[int]]:
+        """Find missing frames in current_mow_path grouped by transaction_id.
+
+        Returns a mapping of transaction_id -> list of missing frame numbers.
+        Only transaction_ids with at least one missing frame are included.
+        """
+        missing_frames: dict[int, list[int]] = {}
+
         if not self.current_mow_path:
-            return []
+            return missing_frames
 
-        # Get total_frame from any MowPath object (they should all have the same total_frame)
-        total_frame = next(iter(self.current_mow_path.values())).total_frame
+        for transaction_id, frames_by_index in self.current_mow_path.items():
+            if not frames_by_index:
+                continue
 
-        if total_frame == 0:
-            return []
+            # Get total_frame from any MowPath object for this transaction_id
+            any_mow_path = next(iter(frames_by_index.values()))
+            total_frame = any_mow_path.total_frame
 
-        if total_frame == len(self.current_mow_path):
-            return []
+            if total_frame == 0:
+                continue
 
-        # Generate list of expected frame numbers (1 to total_frame)
-        expected_frames = set(range(1, total_frame + 1))
+            expected_frames = set(range(1, total_frame + 1))
+            current_frames = set(frames_by_index.keys())
+            missing_for_transaction = sorted(expected_frames - current_frames)
 
-        # Get current frame numbers from dictionary keys
-        current_frames = set(self.current_mow_path.keys())
+            if missing_for_transaction:
+                missing_frames[transaction_id] = missing_for_transaction
 
-        # Return sorted list of missing frames
-        missing_frames = sorted(expected_frames - current_frames)
         return missing_frames
 
     def update_mow_path(self, path: MowPath) -> None:
         """Update the current_mow_path with the latest MowPath data."""
         # TODO check if we need to clear the current_mow_path first
-        self.current_mow_path[path.current_frame] = path
+        transaction_id = path.transaction_id
+        if transaction_id not in self.current_mow_path:
+            self.current_mow_path[transaction_id] = {}
+        self.current_mow_path[transaction_id][path.current_frame] = path
 
     @staticmethod
     def find_missing_frames(frame_list: FrameList | RootHashList | None) -> list[int]:
