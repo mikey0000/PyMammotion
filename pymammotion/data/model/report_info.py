@@ -105,27 +105,35 @@ class VisionInfo(DataClassORJSONMixin):
 
 
 @dataclass
+class HeadingState(DataClassORJSONMixin):
+    heading_state: int = 0
+
+
+@dataclass
 class WorkData(DataClassORJSONMixin):
     path: int = 0
-    path_hash: str = ""
+    path_hash: int = 0
     progress: int = 0
     area: int = 0
     bp_info: int = 0
-    bp_hash: str = ""
+    bp_hash: int = 0
     bp_pos_x: int = 0
     bp_pos_y: int = 0
-    real_path_num: str = ""
+    real_path_num: int = 0
     path_pos_x: int = 0
     path_pos_y: int = 0
-    ub_zone_hash: str = ""
-    ub_path_hash: str = ""
-    init_cfg_hash: str = ""
-    ub_ecode_hash: str = ""
+    ub_zone_hash: int = 0
+    ub_path_hash: int = 0
+    init_cfg_hash: int = 0
+    ub_ecode_hash: int = 0
     nav_run_mode: int = 0
     test_mode_status: int = 0
     man_run_speed: int = 0
     nav_edit_status: int = 0
     knife_height: int = 0
+    nav_heading_state: HeadingState = field(default_factory=HeadingState)
+    cutter_offset: float = 0.0
+    cutter_width: float = 0.0
 
 
 @dataclass
