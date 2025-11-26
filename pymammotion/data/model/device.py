@@ -123,6 +123,11 @@ class MowingDevice(DataClassORJSONMixin):
         if toapp_report_data.fw_info:
             self.update_device_firmwares(toapp_report_data.fw_info)
 
+        if toapp_report_data.work and (toapp_report_data.work.area >> 16) == 0:
+            self.work.zone_hashs = []
+            self.map.current_mow_path = {}
+            self.map.generated_mow_path_geojson = {}
+
         self.report_data.update(toapp_report_data.to_dict(casing=betterproto2.Casing.SNAKE))
 
     def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
