@@ -94,9 +94,9 @@ class SvgMessageData(DataClassORJSONMixin):
     base_width_pix: int = 0
     base_height_m: float = 0.0
     base_height_pix: int = 0
+    name_count: int = 0
     data_count: int = 0
     hide_svg: bool = False
-    name_count: int = 0
     svg_file_name: str = ""
     svg_file_data: str = ""
 
