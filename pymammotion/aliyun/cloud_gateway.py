@@ -553,7 +553,7 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
         return response_body_dict
 
-    async def check_or_refresh_session(self):
+    async def check_or_refresh_session(self) -> None:
         """Check or refresh the session."""
         logger.debug("Trying to refresh token")
         config = Config(
