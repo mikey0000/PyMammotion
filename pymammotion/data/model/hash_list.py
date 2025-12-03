@@ -17,6 +17,7 @@ class PathType(IntEnum):
     LINE = 10
     DUMP = 12
     SVG = 13
+    VISUAL_SAFETY_ZONE = 25
 
 
 @dataclass
@@ -207,6 +208,7 @@ class HashList(DataClassORJSONMixin):
     dump: dict[int, FrameList] = field(default_factory=dict)  # type 12? / sub cmd 4
     svg: dict[int, FrameList] = field(default_factory=dict)  # type 13
     line: dict[int, FrameList] = field(default_factory=dict)  # type 10 possibly breakpoint? / sub cmd 3
+    visual_safety_zone: dict[int, FrameList] = field(default_factory=dict)  # type 25
     plan: dict[str, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
     current_mow_path: dict[int, dict[int, MowPath]] = field(default_factory=dict)
@@ -221,6 +223,7 @@ class HashList(DataClassORJSONMixin):
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
         self.dump = {hash_id: frames for hash_id, frames in self.dump.items() if hash_id in hashlist}
         self.svg = {hash_id: frames for hash_id, frames in self.svg.items() if hash_id in hashlist}
+        self.visual_safety_zone = {hash_id: frames for hash_id, frames in self.visual_safety_zone.items() if hash_id in hashlist}
 
         area_hashes = list(self.area.keys())
         for hash_id, plan_task in self.plan.copy().items():
@@ -258,7 +261,7 @@ class HashList(DataClassORJSONMixin):
     def missing_hashlist(self, sub_cmd: int = 0) -> list[int]:
         """Return missing hashlist."""
         all_hash_ids = set(self.area.keys()).union(
-            self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys()
+            self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys(), self.visual_safety_zone.keys()
         )
         if sub_cmd == 3:
             all_hash_ids = set(self.line.keys())
@@ -353,6 +356,7 @@ class HashList(DataClassORJSONMixin):
             PathType.LINE: self.line,
             PathType.DUMP: self.dump,
             PathType.SVG: self.svg,
+            PathType.VISUAL_SAFETY_ZONE: self.visual_safety_zone,
         }
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
