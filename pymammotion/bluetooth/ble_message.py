@@ -7,14 +7,12 @@ import sys
 import time
 
 from bleak import BleakClient
-from jsonic.serializable import serialize
 
 from pymammotion.aliyun.tmp_constant import tmp_constant
 from pymammotion.bluetooth.const import UUID_WRITE_CHARACTERISTIC
 from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.bluetooth.model.atomic_integer import AtomicInteger
-from pymammotion.data.model.execute_boarder import ExecuteBorder
 from pymammotion.proto import DevNet, DrvDevInfoReq, LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 from pymammotion.utility.constant.device_constant import bleOrderCmd
 
@@ -374,9 +372,6 @@ class BleMessage:
             # Log.w(TAG, "post requestDeviceStatus interrupted")
             request = False
             _LOGGER.error(err)
-
-    async def sendBorderPackage(self, executeBorder: ExecuteBorder) -> None:
-        await self.post_custom_data(serialize(executeBorder))
 
     async def gatt_write(self, data: bytes) -> None:
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)

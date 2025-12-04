@@ -18,7 +18,6 @@ alicloud-gateway-iot==1.0.0 ; python_version >= "3.10" and python_version < "3.1
 aliyun-iot-linkkit==1.2.13 ; python_version >= "3.10" and python_version < "3.13"
 aliyun-python-sdk-core==2.15.2 ; python_version >= "3.10" and python_version < "3.13"
 aliyun-python-sdk-iot==8.59.0 ; python_version >= "3.10" and python_version < "3.13"
-async-timeout==4.0.3 ; python_version >= "3.10" and python_version < "3.13"
 attrs==24.2.0 ; python_version >= "3.10" and python_version < "3.13"
 betterproto==1.2.5 ; python_version >= "3.10" and python_version < "3.13"
 bleak-retry-connector==3.5.0 ; python_version >= "3.10" and python_version < "3.13"
