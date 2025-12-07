@@ -62,12 +62,34 @@ class DeviceData(DataClassORJSONMixin):
 
 
 @dataclass
+class RTKDisStatus(DataClassORJSONMixin):
+    pos_status: int = 0
+    precision: int = 0
+    device_signal: int = 0
+    l1: int = 0
+    l2: int = 0
+    connection_to_ref: int = 0
+    rtk_signal: int = 0
+
+
+@dataclass
 class RTKData(DataClassORJSONMixin):
     status: int = 0
     pos_level: int = 0
     gps_stars: int = 0
-    dis_status: str = ""
+    dis_status: int = 0
     co_view_stars: int = 0
+
+    def get_dis_status(self) -> RTKDisStatus:
+        rtk_dis_status = RTKDisStatus()
+        rtk_dis_status.pos_status = ((int)(self.dis_status >> 8)) & 255
+        rtk_dis_status.precision = ((int)(self.dis_status >> 56)) & 255
+        rtk_dis_status.device_signal = ((int)(self.dis_status >> 32)) & 255
+        rtk_dis_status.l1 = ((int)(self.dis_status >> 16)) & 255
+        rtk_dis_status.l2 = ((int)(self.dis_status >> 24)) & 255
+        rtk_dis_status.connection_to_ref = ((int)(self.dis_status >> 48)) & 255
+        rtk_dis_status.rtk_signal = ((int)(self.dis_status >> 40)) & 255
+        return rtk_dis_status
 
 
 @dataclass
@@ -76,7 +98,7 @@ class LocationData(DataClassORJSONMixin):
     real_pos_y: int = 0
     real_toward: int = 0
     pos_type: int = 0
-    bol_hash: str = ""
+    bol_hash: int = 0
 
 
 @dataclass

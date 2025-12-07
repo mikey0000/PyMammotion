@@ -215,15 +215,17 @@ class HashList(DataClassORJSONMixin):
     generated_geojson: dict[str, Any] = field(default_factory=dict)
     generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
 
-    def update_hash_lists(self, hashlist: list[int], bol_hash: str | None = None) -> None:
+    def update_hash_lists(self, hashlist: list[int], bol_hash: int | None = None) -> None:
         if bol_hash:
-            self.invalidate_maps(int(bol_hash))
+            self.invalidate_maps(bol_hash)
         self.area = {hash_id: frames for hash_id, frames in self.area.items() if hash_id in hashlist}
         self.path = {hash_id: frames for hash_id, frames in self.path.items() if hash_id in hashlist}
         self.obstacle = {hash_id: frames for hash_id, frames in self.obstacle.items() if hash_id in hashlist}
         self.dump = {hash_id: frames for hash_id, frames in self.dump.items() if hash_id in hashlist}
         self.svg = {hash_id: frames for hash_id, frames in self.svg.items() if hash_id in hashlist}
-        self.visual_safety_zone = {hash_id: frames for hash_id, frames in self.visual_safety_zone.items() if hash_id in hashlist}
+        self.visual_safety_zone = {
+            hash_id: frames for hash_id, frames in self.visual_safety_zone.items() if hash_id in hashlist
+        }
 
         area_hashes = list(self.area.keys())
         for hash_id, plan_task in self.plan.copy().items():

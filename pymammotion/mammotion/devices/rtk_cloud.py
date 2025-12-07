@@ -55,7 +55,7 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
         return self._mqtt.command_sent_time
 
     @property
-    def mqtt(self):
+    def mqtt(self) -> MammotionCloud:
         return self._mqtt
 
     async def on_ready(self) -> None:
@@ -72,7 +72,7 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
     async def on_connect(self) -> None:
         """Callback for when MQTT connects."""
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
         """Stop all tasks and disconnect."""
         self.stopped = True
 
@@ -90,7 +90,7 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
         command_bytes = getattr(self._commands, key)(**kwargs)
         await self._mqtt.command_queue.put((self.iot_id, key, command_bytes, future))
         try:
-            return await future
+            await future
         except asyncio.CancelledError:
             """Try again once."""
             future = asyncio.Future()

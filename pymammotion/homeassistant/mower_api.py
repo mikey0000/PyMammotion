@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 
+from aiohttp import ClientSession
+
 from pymammotion.aliyun.cloud_gateway import (
     EXPIRED_CREDENTIAL_EXCEPTIONS,
     DeviceOfflineException,
@@ -26,10 +28,10 @@ logger = getLogger(__name__)
 class HomeAssistantMowerApi:
     """API for interacting with Mammotion Mowers for Home Assistant."""
 
-    def __init__(self) -> None:
+    def __init__(self, session: ClientSession | None = None) -> None:
         self._plan_lock = asyncio.Lock()
         self.update_failures = 0
-        self._mammotion = Mammotion()
+        self._mammotion = Mammotion(session)
         self._map_lock = asyncio.Lock()
         self._last_call_times: dict[str, datetime] = {}
         self._call_intervals = {
@@ -227,6 +229,7 @@ class HomeAssistantMowerApi:
                 blade_height = 0
 
             await self.async_send_command(
+                device_name,
                 "operate_on_device",
                 main_ctrl=1,
                 cut_knife_ctrl=1,
@@ -235,6 +238,7 @@ class HomeAssistantMowerApi:
             )
         else:
             await self.async_send_command(
+                device_name,
                 "operate_on_device",
                 main_ctrl=0,
                 cut_knife_ctrl=0,

@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from aiohttp import ClientSession
 from bleak import BLEDevice
 
 from pymammotion import MammotionMQTT
@@ -164,9 +165,10 @@ class Mammotion:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self) -> None:
+    def __init__(self, session: ClientSession | None = None) -> None:
         """Initialize MammotionDevice."""
         self._login_lock = asyncio.Lock()
+        self._session: ClientSession | None = session
         self.mqtt_list: dict[str, MammotionCloud] = {}
 
     async def login_and_initiate_cloud(self, account: str, password: str, force: bool = False) -> None:
@@ -250,7 +252,7 @@ class Mammotion:
                                 cloud_device=device,
                                 ble_device=ble_device,
                                 preference=ConnectionPreference.BLUETOOTH,
-                                cloud_client=CloudIOTGateway(MammotionHTTP()),
+                                cloud_client=CloudIOTGateway(MammotionHTTP(session=self._session)),
                             )
                         )
                     else:
@@ -264,7 +266,7 @@ class Mammotion:
                                 cloud_device=device,
                                 ble_device=ble_device,
                                 preference=ConnectionPreference.BLUETOOTH,
-                                cloud_client=CloudIOTGateway(MammotionHTTP()),
+                                cloud_client=CloudIOTGateway(MammotionHTTP(session=self._session)),
                             )
                         )
                     else:
@@ -421,7 +423,7 @@ class Mammotion:
 
     async def login(self, account: str, password: str) -> CloudIOTGateway:
         """Login to mammotion cloud."""
-        mammotion_http = MammotionHTTP()
+        mammotion_http = MammotionHTTP(session=self._session)
         await mammotion_http.login_v2(account, password)
         await mammotion_http.get_user_device_page()
         device_list = await mammotion_http.get_user_device_list()
@@ -469,7 +471,9 @@ class Mammotion:
         mow_device = MammotionMowerDeviceManager(
             name=device.device_name,
             iot_id=device.iot_id,
-            cloud_client=mqtt_client.cloud_client if mqtt_client else CloudIOTGateway(MammotionHTTP()),
+            cloud_client=mqtt_client.cloud_client
+            if mqtt_client
+            else CloudIOTGateway(MammotionHTTP(session=self._session)),
             mqtt=mqtt_client,
             cloud_device=device,
             ble_device=ble_device,
