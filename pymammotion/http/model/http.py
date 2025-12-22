@@ -32,6 +32,8 @@ class ErrorInfo(DataClassDictMixin):
     fr_solution: str
     it_implication: str
     it_solution: str
+    ja_implication: str
+    ja_solution: str
     es_implication: str
     es_solution: str
     cs_implication: str
