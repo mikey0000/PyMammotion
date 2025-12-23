@@ -41,7 +41,8 @@ class HomeAssistantMowerApi:
             "get_errors": timedelta(minutes=1),
             "get_report_cfg": timedelta(seconds=5),
             "get_maintenance": timedelta(minutes=30),
-            "device_version_upgrade": timedelta(hours=5),
+            "device_version_upgrade": timedelta(hours=24),
+            "device_info": timedelta(hours=24),
         }
 
     @property
@@ -119,7 +120,11 @@ class HomeAssistantMowerApi:
             self._mark_api_called("get_maintenance")
 
         if self._should_call_api("device_version_upgrade"):
+            await self.async_check_firmware_version(device_name)
             self._mark_api_called("device_version_upgrade")
+
+        if self._should_call_api("device_info"):
+            await self.async_device_info(device_name)
 
         return device.state
 
@@ -486,3 +491,24 @@ class HomeAssistantMowerApi:
         if cloud := device.cloud:
             if cloud.stopped:
                 await cloud.start()
+
+    async def async_check_firmware_version(self, device_name: str) -> None:
+        """Checks firmware version."""
+        device = self.mammotion.get_device_by_name(device_name)
+        ota_info = await device.mammotion_http.get_device_ota_firmware([device.iot_id])
+        logger.debug("OTA info: %s", ota_info.data)
+        if check_versions := ota_info.data:
+            for check_version in check_versions:
+                if check_version.device_id == device.iot_id:
+                    device.state.update_check = check_version
+
+    async def async_device_info(self, device_name) -> None:
+        """Get device info."""
+        command_list = [
+            "get_device_version_main",
+            "get_device_version_info",
+            "get_device_base_info",
+            "get_device_product_model",
+        ]
+        for command in command_list:
+            await self.async_send_command(device_name, command)

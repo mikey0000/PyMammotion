@@ -655,9 +655,10 @@ class MammotionHTTP:
             },
         )
         if resp.status != 200:
-            print(resp.json())
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
         data = await resp.json()
+        if data.get("code") != 0:
+            return Response.from_dict({"code": resp.status, "msg": data.get("msg") or "Login failed"})
         login_response = response_factory(Response[LoginResponseData], data)
         if login_response is None or login_response.data is None:
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
