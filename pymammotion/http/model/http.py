@@ -38,6 +38,8 @@ class ErrorInfo(DataClassDictMixin):
     es_solution: str
     cs_implication: str
     cs_solution: str
+    ko_implication: str
+    ko_solution: str
     sk_implication: str
     sk_solution: str
     pl_implication: str
