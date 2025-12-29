@@ -126,6 +126,14 @@ class MammotionCloud:
             payload (dict): The payload data of the MQTT message.
 
         """
+        if topic.endswith("/app/down/account/bind_reply"):
+            code = payload.get("code", 0)
+            if code != 200:
+                _LOGGER.error("Failed to bind account: %s", payload)
+                # TODO send message to re login to aliyun mqtt
+                self._disconnect_error = payload
+                return
+
         if topic.endswith("/app/down/thing/events"):
             _LOGGER.debug("Thing event received")
             event = ThingEventMessage.from_dicts(payload)
@@ -233,9 +241,11 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
     async def on_connect(self) -> None:
         """On connect callback"""
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
         """Stop all tasks and disconnect."""
         # self._mqtt._mqtt_client.unsubscribe()
+        if self.mqtt.is_connected():
+            self._mqtt.disconnect()
         self.stopped = True
 
     async def start(self) -> None:

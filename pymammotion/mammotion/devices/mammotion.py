@@ -41,6 +41,13 @@ class MammotionDeviceManager:
         self.devices: dict[str, MammotionMowerDeviceManager] = {}
         self.rtk_devices: dict[str, MammotionRTKDeviceManager] = {}
 
+    async def stop(self) -> None:
+        for mower in self.devices.values():
+            if cloud := mower.cloud:
+                cloud.stop()
+            if ble := mower.ble:
+                await ble.stop()
+
     def _should_disconnect_mqtt(self, device_for_removal: AbstractDeviceManager) -> bool:
         """Check if MQTT connection should be disconnected.
 
@@ -128,7 +135,7 @@ class MammotionDeviceManager:
             if device_for_removal.cloud:
                 if self._should_disconnect_mqtt(device_for_removal):
                     await loop.run_in_executor(None, device_for_removal.cloud.mqtt.disconnect)
-                await device_for_removal.cloud.stop()
+                    device_for_removal.cloud.stop()
 
             if device_for_removal.ble:
                 await device_for_removal.ble.stop()
@@ -144,7 +151,7 @@ class MammotionDeviceManager:
             if device_for_removal.cloud:
                 if self._should_disconnect_mqtt(device_for_removal):
                     await loop.run_in_executor(None, device_for_removal.cloud.mqtt.disconnect)
-                await device_for_removal.cloud.stop()
+                    device_for_removal.cloud.stop()
 
             if device_for_removal.ble:
                 await device_for_removal.ble.stop()
@@ -432,6 +439,12 @@ class Mammotion:
         cloud_client = CloudIOTGateway(mammotion_http)
         await self.connect_iot(cloud_client)
         return cloud_client
+
+    async def stop(self) -> None:
+        await self.device_manager.stop()
+        for mqtt in self.mqtt_list.values():
+            if mqtt.is_connected():
+                mqtt.disconnect()
 
     @staticmethod
     async def connect_iot(cloud_client: CloudIOTGateway) -> None:

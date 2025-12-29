@@ -30,6 +30,7 @@ import string
 import sys
 import threading
 import time
+from typing import Any
 import urllib.parse
 import urllib.request
 
@@ -1189,11 +1190,11 @@ UxeCp6
     def destroy(self) -> None:
         self.destruct()
 
-    def check_state(self):
+    def check_state(self) -> LinkKitState:
         return self.__linkkit_state
 
     @staticmethod
-    def __generate_random_str(randomlength=16):
+    def __generate_random_str(randomlength: int = 16) -> str:
         """Generate radom string"""
         random_str = ""
         for i in range(randomlength):
@@ -1201,7 +1202,7 @@ UxeCp6
         return random_str
 
     # 基于HTTPS的一型一密预注册
-    def __dynamic_register_device(self):
+    def __dynamic_register_device(self) -> tuple[int, Any] | None:
         pk = self.__product_key
         ps = self.__product_secret
         dn = self.__device_name
@@ -1222,8 +1223,9 @@ UxeCp6
                     return 0, reply_obj_data["deviceSecret"]
             else:
                 return 1, reply_obj["message"]
+        return None
 
-    def __config_mqtt_client_internal(self):
+    def __config_mqtt_client_internal(self) -> None:
         self.__link_log.info("start connect")
 
         timestamp = str(int(time.time()))

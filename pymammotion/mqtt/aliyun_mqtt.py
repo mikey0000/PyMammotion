@@ -49,7 +49,6 @@ class AliyunMQTT:
         self._product_key = product_key
         self._device_name = device_name
         self._device_secret = device_secret
-        self._iot_token = iot_token
         self._mqtt_username = f"{device_name}&{product_key}"
         # linkkit provides the correct MQTT service for all of this and uses paho under the hood
         if client_id is None:
@@ -80,6 +79,12 @@ class AliyunMQTT:
         self._linkkit_client.on_thing_enable = self._thing_on_thing_enable
         self._linkkit_client.on_topic_message = self._thing_on_topic_message
         self._mqtt_host = f"{self._product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
+
+    @property
+    def iot_token(self) -> str:
+        if authcode_response := self._cloud_client.session_by_authcode_response.data:
+            return authcode_response.iotToken
+        return ""
 
     def connect_async(self) -> None:
         """Connect async to MQTT Server."""
@@ -129,7 +134,7 @@ class AliyunMQTT:
                     "id": "msgid1",
                     "version": "1.0",
                     "request": {"clientId": self._mqtt_username},
-                    "params": {"iotToken": self._iot_token},
+                    "params": {"iotToken": self.iot_token},
                 }
             ),
         )
