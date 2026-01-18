@@ -17,9 +17,11 @@ from pymammotion.aliyun.cloud_gateway import (
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
+from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.mammotion.devices import MammotionMowerDeviceManager
 from pymammotion.mammotion.devices.mammotion import Mammotion
 from pymammotion.proto import RptAct, RptInfoType
+from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.device_type import DeviceType
 
 logger = getLogger(__name__)
@@ -29,6 +31,7 @@ class HomeAssistantMowerApi:
     """API for interacting with Mammotion Mowers for Home Assistant."""
 
     def __init__(self, session: ClientSession | None = None) -> None:
+        self._device_config = DeviceConfig()
         self._plan_lock = asyncio.Lock()
         self.update_failures = 0
         self._mammotion = Mammotion(session)
@@ -69,6 +72,10 @@ class HomeAssistantMowerApi:
     def _mark_api_called(self, api_name: str) -> None:
         """Mark an API as called with the current timestamp."""
         self._last_call_times[api_name] = datetime.now()
+
+    def device_limits(self, device_name: str) -> DeviceLimits:
+        device = self._mammotion.get_device_by_name(device_name)
+        return self._device_config.get_best_default(device.state.mower_state.product_key)
 
     async def update(self, device_name: str) -> MowingDevice:
         device = self._mammotion.get_device_by_name(device_name)

@@ -14,6 +14,7 @@ from pymammotion.proto import (
     MsgAttr,
     MsgCmdType,
     MsgDevice,
+    RemoteResetReqT,
     ReportInfoCfg,
     RptAct,
     RptInfoType,
@@ -328,3 +329,21 @@ class MessageSystem(AbstractMessage, ABC):
             timestamp=round(time.time() * 1000),
         )
         return luba_msg.SerializeToString()
+
+    def remote_restart(self, force_reset: int = 1) -> bytes:
+        """Send a remote restart command.
+        force_reset: 0 - normal restart, 1 - force restart
+        Args:
+            force_reset: Force reset flag
+        """
+        mctl_sys = MctlSys(
+            to_dev_remote_reset=RemoteResetReqT(
+                magic=1916956532,
+                bizid=round(time.time() * 1000),
+                reset_mode=0,
+                force_reset=force_reset,
+                account=self.user_account,
+            )
+        )
+        logger.debug(f"Send command - remote restart command status={force_reset}")
+        return self.send_order_msg_sys(mctl_sys)
