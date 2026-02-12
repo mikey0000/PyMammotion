@@ -307,7 +307,7 @@ class MowerStateManager:
         match net_msg[0]:
             case "toapp_wifi_iot_status":
                 wifi_iot_status: WifiIotStatusReport = net_msg[1]
-                self._device.mower_state.product_key = wifi_iot_status.product_key
+                self._device.mower_state.product_key = wifi_iot_status.productkey
             case "toapp_devinfo_resp":
                 toapp_devinfo_resp: DrvDevInfoResp = net_msg[1]
                 for resp in toapp_devinfo_resp.resp_ids:
