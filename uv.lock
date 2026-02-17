@@ -1698,7 +1698,7 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.5.65"
+version = "0.5.70"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1717,6 +1717,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "sdp-transform" },
     { name = "shapely" },
+    { name = "webrtc-models" },
     { name = "websockets" },
 ]
 
@@ -1759,6 +1760,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "sdp-transform", specifier = ">=1.1.0" },
     { name = "shapely", specifier = ">=2.1.2" },
+    { name = "webrtc-models", specifier = ">=0.3.0" },
     { name = "websockets", specifier = ">=13.1" },
 ]
 
@@ -2261,6 +2263,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/24/30/6b0809f4510673dc723187aeaf24c7f5459922d01e2f794277a3dfb90345/wcwidth-0.2.14.tar.gz", hash = "sha256:4d478375d31bc5395a3c55c40ccdf3354688364cd61c4f6adacaa9215d0b3605", size = 102293, upload-time = "2025-09-22T16:29:53.023Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/b5/123f13c975e9f27ab9c0770f514345bd406d0e8d3b7a0723af9d43f710af/wcwidth-0.2.14-py2.py3-none-any.whl", hash = "sha256:a7bb560c8aee30f9957e5f9895805edd20602f2d7f720186dfd906e82b4982e1", size = 37286, upload-time = "2025-09-22T16:29:51.641Z" },
+]
+
+[[package]]
+name = "webrtc-models"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mashumaro" },
+    { name = "orjson" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/80/e8/050ffe3b71ff44d3885eee2bed763ca937e2a30bc950d866f22ba657776b/webrtc_models-0.3.0.tar.gz", hash = "sha256:559c743e5cc3bcc8133be1b6fb5e8492a9ddb17151129c21cbb2e3f2a1166526", size = 9411, upload-time = "2024-11-18T17:43:45.682Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/e7/62f29980c9e8d75af93b642a0c37aa8e201fd5268ba3a7179c172549bac3/webrtc_models-0.3.0-py3-none-any.whl", hash = "sha256:8fddded3ffd7ca837de878033501927580799a2c1b7829f7ae8a0f43b49004ea", size = 7476, upload-time = "2024-11-18T17:43:44.165Z" },
 ]
 
 [[package]]

@@ -47,6 +47,15 @@ class VioSurvivalInfo(DataClassORJSONMixin):
 
 
 @dataclass
+class FpvInfo(DataClassORJSONMixin):
+    """fpv_flag: 0: no fpv, 1: fpv ok, 2: fpv error"""
+
+    fpv_flag: int = 0
+    wifi_available: int = 0
+    mobile_net_available: int = 0
+
+
+@dataclass
 class DeviceData(DataClassORJSONMixin):
     sys_status: int = 0
     charge_state: int = 0
@@ -58,6 +67,7 @@ class DeviceData(DataClassORJSONMixin):
     mnet_info: MnetInfo = field(default_factory=MnetInfo)
     vio_survival_info: VioSurvivalInfo = field(default_factory=VioSurvivalInfo)
     collector_status: CollectorStatus = field(default_factory=CollectorStatus)
+    fpv_info: FpvInfo | None = None
     lock_state: LockStateT = field(default_factory=LockStateT)
 
 

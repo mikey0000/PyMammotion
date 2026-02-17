@@ -31,6 +31,7 @@ dependencies = [
     "shapely>=2.1.2",
     "sdp-transform>=1.1.0",
     "websockets>=13.1",
+    "webrtc-models>=0.3.0",
 ]
 
 [dependency-groups]

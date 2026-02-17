@@ -8,10 +8,10 @@ The implementation is based on analysis of the Agora JavaScript SDK (agoraRTC_N.
 to ensure compatibility and parity with client-side behavior.
 """
 
-import asyncio
 from dataclasses import dataclass
 import hashlib
 import json
+import logging
 from random import randint
 import time
 
@@ -19,12 +19,20 @@ import aiohttp
 from types import TracebackType
 from typing import Optional, Type
 
-# Service flags (from Agora SDK)
-SERVICE_FLAGS = {
-    "CHOOSE_SERVER": 11,
+# Service IDs for API requests (what you send in the request)
+SERVICE_IDS = {
+    "CHOOSE_SERVER": 11,  # Media gateway / WebSocket edge servers
     "CLOUD_PROXY": 18,
     "CLOUD_PROXY_5": 20,
-    "CLOUD_PROXY_FALLBACK": 26,
+    "CLOUD_PROXY_FALLBACK": 26,  # TURN servers
+}
+
+# Response flags (what you receive in response_body[].buffer.flag)
+RESPONSE_FLAGS = {
+    "CHOOSE_SERVER": 4096,  # Media gateway addresses
+    "CLOUD_PROXY": 1048576,
+    "CLOUD_PROXY_5": 4194304,
+    "CLOUD_PROXY_FALLBACK": 4194310,  # TURN/proxy addresses
 }
 
 
@@ -56,12 +64,15 @@ class EdgeAddress:
     username: str | None = None
     credentials: str | None = None
     ticket: str | None = None
+    fingerprint: str | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         result = {"ip": self.ip, "port": self.port}
         if self.ticket:
             result["ticket"] = self.ticket
+        if self.fingerprint:
+            result["fingerprint"] = self.fingerprint
         return result
 
 
@@ -69,7 +80,7 @@ class EdgeAddress:
 class ICEServer:
     """Represents an RTCIceServer configuration."""
 
-    urls: str
+    urls: str | list[str]
     username: str | None = None
     credential: str | None = None
 
@@ -122,7 +133,9 @@ class AgoraResponse:
         if not response_body:
             raise ValueError("No response_body in API response")
 
-        print(response_data)
+        _log = logging.getLogger(__name__)
+        _log.debug("Agora API response body count: %d", len(response_body))
+
         # Parse all responses by flag
         responses_by_flag = {}
         first_buffer = None
@@ -140,18 +153,27 @@ class AgoraResponse:
             detail = {**detail, **buffer.get("detail", {})}
             uid = buffer.get("uid", 0)
 
-            # Derive credentials from UID (matches JavaScript SDK behavior)
-            # When ENCRYPT_PROXY_USERNAME_AND_PSW feature flag is enabled:
-            # - username = uid as string
-            # - password = SHA-256(uid as string)
-            # Fallback to detail fields if uid not available
-            if uid:
-                username = str(uid)
-                credentials = derive_password(uid)
-            else:
-                # Fallback: use detail fields
-                username = detail.get("8", "")
-                credentials = detail.get("4", "")
+            _log.info(
+                "Parsing response flag=%d, uid=%d, edges_count=%d",
+                flag,
+                uid,
+                len(edges_services),
+            )
+
+            # Note: We intentionally ignore the 'detail' fields for credentials (detail.8/detail.4)
+            # to match Agora SDK behavior which uses UID-derived credentials in secure contexts.
+            # Using detail fields causes TURN 401 failures because the server expects UID hash.
+            # The actual derivation happens below (lines 239-240).
+            # Parse fingerprints from detail[19] (semicolon-separated list)
+            # Each fingerprint corresponds to an edge address
+            fingerprints = []
+            if detail.get("19"):
+                fingerprint_str = detail["19"]
+                # Split by semicolon and strip whitespace
+                fingerprints = [fp.strip() for fp in fingerprint_str.split(";") if fp.strip()]
+
+            username = str(uid)
+            credentials = derive_password(uid)
 
             addresses = [
                 EdgeAddress(
@@ -160,8 +182,9 @@ class AgoraResponse:
                     username=username,
                     credentials=credentials,
                     ticket=ticket,
+                    fingerprint=fingerprints[i] if i < len(fingerprints) else None,
                 )
-                for edge in edges_services
+                for i, edge in enumerate(edges_services)
             ]
 
             # Store all responses with complete data
@@ -186,7 +209,7 @@ class AgoraResponse:
 
         # Get the first flag's response data (already parsed with addresses)
         first_flag = first_buffer.get("flag", 0)
-        first_response = responses_by_flag.get(first_flag, {})
+        first_response = responses_by_flag.get(4096, responses_by_flag.get(first_flag, {}))
 
         # Create response with primary fields from first buffer
         return cls(
@@ -203,61 +226,169 @@ class AgoraResponse:
             responses=responses_by_flag if len(responses_by_flag) > 1 else None,
         )
 
-    def get_ice_servers(self, turn_port_udp: int = 3478, turn_port_tcp: int = 3433) -> list[ICEServer]:
-        """Convert addresses to ICE server configuration.
+    def get_ice_servers(self, use_all_turn_servers: bool = True, new_turn_mode: int = 4) -> list[ICEServer]:
+        """Convert TURN addresses to ICE server configuration.
 
         Args:
-            turn_port_udp: UDP TURN port (default: 3478)
-            turn_port_tcp: TCP TURN port (default: 3433)
+            use_all_turn_servers: If True, includes all TURN servers. If False, only first one.
+            new_turn_mode: TURN mode (1=udp, 2=tcp, 3=tls, 4=all, default: 4)
 
         Returns:
             List of ICEServer objects ready for RTCPeerConnection
 
         """
+        _log = logging.getLogger(__name__)
         ice_servers = []
 
-        for addr in self.addresses:
-            # UDP TURN server
-            ice_servers.append(
-                ICEServer(
-                    urls=f"turn:{addr.ip.replace('.', '-')}.edge.agora.io:{turn_port_udp}?transport=udp",
-                    username=addr.username,
-                    credential=addr.credentials,
-                )
+        # Get TURN addresses from flag 4194310
+        turn_addresses = self.get_turn_addresses()
+
+        if not turn_addresses:
+            # Fallback to any available addresses
+            turn_addresses = self.addresses
+            _log.warning("No TURN addresses found with flag 4194310, using primary addresses")
+
+        # Use all servers or just the first one
+        addresses_to_use = turn_addresses if use_all_turn_servers else turn_addresses[:1]
+
+        _log.info(
+            "Creating ICE servers: use_all=%s, mode=%s, addr_count=%d",
+            use_all_turn_servers,
+            new_turn_mode,
+            len(addresses_to_use),
+        )
+
+        for addr in addresses_to_use:
+            _log.debug(
+                "Processing TURN address: ip=%s, port=%d, username=%s, cred_len=%s",
+                addr.ip,
+                addr.port,
+                addr.username,
+                len(addr.credentials) if addr.credentials else 0,
             )
 
-            # TCP TURN server
-            ice_servers.append(
-                ICEServer(
-                    urls=f"turn:{addr.ip.replace('.', '-')}.edge.agora.io:{turn_port_tcp}?transport=tcp",
-                    username=addr.username,
-                    credential=addr.credentials,
+            # VALIDATION: Check credentials are present before creating ICE servers
+            if not addr.username:
+                _log.error(
+                    "CRITICAL: TURN address %s:%d has empty username! This will cause 401 errors.",
+                    addr.ip,
+                    addr.port,
                 )
-            )
+            if not addr.credentials:
+                _log.error(
+                    "CRITICAL: TURN address %s:%d has empty credentials! This will cause 401 errors.",
+                    addr.ip,
+                    addr.port,
+                )
 
-            # TLS/TURNS server
-            ice_servers.append(
-                ICEServer(
-                    urls=f"turns:{addr.ip.replace('.', '-')}.edge.agora.io:443?transport=tcp",
-                    username=addr.username,
-                    credential=addr.credentials,
+            # Based on new_turn_mode (from agoraRTC_N.js:30764-30796)
+            if new_turn_mode in [1, 4]:  # UDP
+                ice_servers.append(
+                    ICEServer(
+                        urls=f"turn:{addr.ip}:3478?transport=udp",
+                        username=addr.username,
+                        credential=addr.credentials,
+                    )
                 )
-            )
-            ice_servers.append(
-                ICEServer(
-                    urls=f"stun:{addr.ip.replace('.', '-')}.edge.agora.io:{turn_port_tcp}",
-                    username=addr.username,
-                    credential=addr.credentials,
+
+            if new_turn_mode in [2, 4]:  # TCP
+                ice_servers.append(
+                    ICEServer(
+                        urls=f"turn:{addr.ip}:3478?transport=tcp",
+                        username=addr.username,
+                        credential=addr.credentials,
+                    )
                 )
-            )
+
+            if new_turn_mode in [3, 4]:  # TLS
+                ice_servers.append(
+                    ICEServer(
+                        urls=f"turns:{addr.ip.replace('.', '-')}.edge.agora.io:443?transport=tcp",
+                        username=addr.username,
+                        credential=addr.credentials,
+                    )
+                )
+
+        _log.info(
+            "Created %d ICE server entries from %d addresses",
+            len(ice_servers),
+            len(addresses_to_use),
+        )
+
+        # SUMMARY: Log all created ICE servers for validation
+        if ice_servers:
+            _log.info("ICE Server Summary:")
+            for i, server in enumerate(ice_servers):
+                _log.info(
+                    "  [%d] urls=%s, username=%s, cred_present=%s",
+                    i,
+                    server.urls,
+                    server.username,
+                    bool(server.credential),
+                )
+        else:
+            _log.error("WARNING: No ICE servers were created! This will prevent TURN connections.")
 
         return ice_servers
+
+    def get_turn_server_config(
+        self,
+        gateway_address: EdgeAddress | None = None,
+        token: str | None = None,
+        use_gateway: bool = True,
+    ) -> dict:
+        """Generate complete turnServer configuration matching Agora SDK format.
+
+        Returns object with both 'servers' (from flag 4194310) and
+        'serversFromGateway' (derived from connected gateway).
+
+        Args:
+            gateway_address: The EdgeAddress of currently connected gateway (for serversFromGateway)
+            token: The channel token (for serversFromGateway password)
+            use_gateway: Whether to include serversFromGateway
+
+        Returns:
+            Dict with 'mode', 'servers', and 'serversFromGateway' arrays
+
+        """
+        config = {"mode": "manual", "servers": [], "serversFromGateway": []}
+
+        # Build 'servers' array from TURN addresses (flag 4194310)
+        turn_addresses = self.get_turn_addresses()
+        for addr in turn_addresses:
+            config["servers"].append(
+                {
+                    "turnServerURL": addr.ip,
+                    "tcpport": addr.port,
+                    "udpport": addr.port,
+                    "username": str(self.uid),
+                    "password": derive_password(self.uid),
+                    "forceturn": False,
+                    "security": True,  # Always true for proxy fallback
+                }
+            )
+
+        # Build 'serversFromGateway' from connected gateway
+        if use_gateway and gateway_address and token:
+            config["serversFromGateway"].append(
+                {
+                    "username": str(self.uid),
+                    "password": token,  # Use JWT token, not hashed
+                    "turnServerURL": gateway_address.ip,
+                    "tcpport": gateway_address.port + 30,  # Gateway port + 30
+                    "udpport": gateway_address.port + 30,
+                    "forceturn": False,
+                    # Note: no 'security' field for serversFromGateway
+                }
+            )
+
+        return config
 
     def get_responses_by_flag(self, flag: int) -> dict | None:
         """Get response data for a specific service flag.
 
         Args:
-            flag: Service flag (e.g., SERVICE_FLAGS["CHOOSE_SERVER"])
+            flag: Response flag (e.g., RESPONSE_FLAGS["CHOOSE_SERVER"])
 
         Returns:
             Response data for that flag, or None if not available
@@ -266,6 +397,38 @@ class AgoraResponse:
         if not self.responses:
             return None
         return self.responses.get(flag)
+
+    def get_gateway_addresses(self) -> list[EdgeAddress]:
+        """Get WebSocket gateway addresses (flag 4096).
+
+        Returns:
+            List of gateway EdgeAddress objects for WebSocket connections
+
+        """
+        if self.responses:
+            gateway_data = self.responses.get(RESPONSE_FLAGS["CHOOSE_SERVER"])
+            if gateway_data:
+                return gateway_data.get("addresses", [])
+        # Fallback to primary addresses if flag 4096 is the main response
+        if self.flag == RESPONSE_FLAGS["CHOOSE_SERVER"]:
+            return self.addresses
+        return []
+
+    def get_turn_addresses(self) -> list[EdgeAddress]:
+        """Get TURN server addresses (flag 4194310).
+
+        Returns:
+            List of TURN server EdgeAddress objects
+
+        """
+        if self.responses:
+            turn_data = self.responses.get(RESPONSE_FLAGS["CLOUD_PROXY_FALLBACK"])
+            if turn_data:
+                return turn_data.get("addresses", [])
+        # Fallback to primary addresses if flag 4194310 is the main response
+        if self.flag == RESPONSE_FLAGS["CLOUD_PROXY_FALLBACK"]:
+            return self.addresses
+        return []
 
     def to_ap_response(self, flag: int | None = None) -> dict:
         """Format response data for websocket join_v3 ap_response field.
@@ -356,7 +519,7 @@ class AgoraAPIClient:
         channel_name: str,
         user_id: int,
         string_uid: str | None = None,
-        role: int = 2,
+        role: int = 1,
         area_code: str = "CN,GLOBAL",
         service_flags: list[int] | None = None,
         sid: str | None = None,
@@ -407,7 +570,8 @@ class AgoraAPIClient:
             sid=sid,
             uri=22,  # Choose server operation
         )
-        print(request_payload)
+        _log = logging.getLogger(__name__)
+        _log.debug("Agora choose_server request payload: %s", request_payload)
         # Make API call
         response = await self._make_api_call(request_payload, proxy_server=proxy_server)
 
@@ -453,7 +617,7 @@ class AgoraAPIClient:
             string_uid = str(user_id)
 
         if service_flags is None:
-            service_flags = [SERVICE_FLAGS["CHOOSE_SERVER"]]
+            service_flags = [SERVICE_IDS["CHOOSE_SERVER"]]
 
         if edge_addresses is None:
             edge_addresses = []
@@ -471,7 +635,8 @@ class AgoraAPIClient:
             uri=28,  # Ticket update operation
         )
 
-        print(request_payload)
+        _log = logging.getLogger(__name__)
+        _log.debug("Agora update_ticket request payload: %s", request_payload)
 
         # Make API call
         response = await self._make_api_call(request_payload, proxy_server=proxy_server)
@@ -512,7 +677,7 @@ class AgoraAPIClient:
         service_flags: list[int],
         sid: str,
         uri: int,
-        role: int = 2,
+        role: int = 1,
         area_code: str = "CN,GLOBAL",
         edge_addresses: list[dict] | None = None,
     ) -> dict:
@@ -550,7 +715,8 @@ class AgoraAPIClient:
             {"26": "RTM2"} if ap_rtm else {},
         )
 
-        print(detail)
+        _log = logging.getLogger(__name__)
+        _log.debug("Built detail field for request: %s", detail)
         # Build buffer
         buffer = {
             "cname": channel_name,
@@ -662,94 +828,3 @@ class AgoraAPIClient:
 
             response_data = await resp.json()
             return response_data
-
-
-async def main() -> None:
-    """Example usage of the Agora API client."""
-    # Example parameters
-    # mammotion_http = MammotionHTTP(EMAIL, PASSWORD)
-    # mammotion_http.login_info = LoginResponseData.from_dict(json.loads('LOGIN_RESPONSE_DATA'))
-    # mammotion_http.expires_in = 2591999 + time.time()
-    # stream = await mammotion_http.get_stream_subscription("CHANNEL_NAME/IOT_ID")
-    # print(stream)
-
-    channel_name = "CHANNEL_NAME"
-    # user_id = stream.data.uid
-    # app_id = stream.data.appid
-    # token = stream.data.token
-    user_id = 1223456
-    app_id = "APP_ID"
-    token = "TOKEN"
-
-    string_uid = "client_21231"
-
-    # Make request
-    async with AgoraAPIClient() as client:
-        try:
-            print("=== Example 1: Get media gateway only ===")
-            # Choose server - media gateway only
-            response = await client.choose_server(
-                app_id=app_id,
-                token=token,
-                channel_name=channel_name,
-                user_id=user_id,
-                string_uid=string_uid,
-                role=2,  # 2 = audience
-            )
-
-            print(f"Successfully got {len(response.addresses)} edge addresses:")
-            for addr in response.addresses:
-                print(f"  - {addr.ip.replace('.', '-')}.edge.agora.io:{addr.port}")
-            print(f"Ticket: {response.ticket[:50]}...")
-
-            print("\n=== Example 2: Get both media gateway AND TURN servers ===")
-            # Request with both service flags to get TURN servers
-            response = await client.choose_server(
-                app_id=app_id,
-                token=token,
-                channel_name=channel_name,
-                user_id=user_id,
-                string_uid=string_uid,
-                role=2,
-                service_flags=[
-                    SERVICE_FLAGS["CHOOSE_SERVER"],  # Media gateway
-                    SERVICE_FLAGS["CLOUD_PROXY"],  # TURN servers
-                ],
-            )
-
-            # Get separate responses by flag
-            gateway_resp = response.get_responses_by_flag(SERVICE_FLAGS["CHOOSE_SERVER"])
-            turn_resp = response.get_responses_by_flag(SERVICE_FLAGS["CLOUD_PROXY"])
-
-            if gateway_resp:
-                print(f"\nGateway addresses: {len(gateway_resp['addresses'])}")
-                for addr in gateway_resp["addresses"]:
-                    print(f"  - {addr.ip.replace('.', '-')}.edge.agora.io:{addr.port}")
-
-            if turn_resp:
-                print(f"\nTURN addresses: {len(turn_resp['addresses'])}")
-                for addr in turn_resp["addresses"]:
-                    print(f"  - {addr.ip.replace('.', '-')}.edge.agora.io:{addr.port}")
-
-            # Get ICE servers (TURN) configuration
-            ice_servers = response.get_ice_servers()
-            print(f"\nICE Servers configuration ({len(ice_servers)} entries):")
-            for server in ice_servers[:3]:  # Show first 3
-                print(f"  - {server.urls}")
-                print(f"    username: {server.username}")
-                print(f"    credential: {server.credential}")
-
-            # Format for WebRTC RTCPeerConnection
-            rtc_config = {"iceServers": [server.to_dict() for server in ice_servers]}
-            print("\nRTC Configuration ready for RTCPeerConnection")
-            print(f"Total ICE servers: {len(rtc_config['iceServers'])}")
-
-        except Exception as e:
-            print(f"Error: {e}")
-            import traceback
-
-            traceback.print_exc()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
