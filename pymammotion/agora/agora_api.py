@@ -14,10 +14,10 @@ import json
 import logging
 from random import randint
 import time
+from types import TracebackType
+from typing import Any
 
 import aiohttp
-from types import TracebackType
-from typing import Optional, Type
 
 # Service IDs for API requests (what you send in the request)
 SERVICE_IDS = {
@@ -112,7 +112,7 @@ class AgoraResponse:
     detail: dict
     flag: int
     opid: int
-    responses: dict = None  # Multi-flag responses: {flag: response_dict}
+    responses: dict | None = None  # Multi-flag responses: {flag: response_dict}
 
     @classmethod
     def from_api_response(cls, response_data: dict) -> "AgoraResponse":
@@ -507,7 +507,9 @@ class AgoraAPIClient:
         """Context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
+    ) -> None:
         """Context manager exit - close session if we created it."""
         if self._own_session and self.session:
             await self.session.close()
@@ -795,7 +797,7 @@ class AgoraAPIClient:
         domain: str,
         request_payload: dict,
         proxy_server: str | None = None,
-    ) -> dict:
+    ) -> Any:
         """Call a single Agora endpoint.
 
         Args:
@@ -826,5 +828,4 @@ class AgoraAPIClient:
             if resp.status != 200:
                 raise Exception(f"HTTP {resp.status}: {await resp.text()}")
 
-            response_data = await resp.json()
-            return response_data
+            return await resp.json()

@@ -290,40 +290,17 @@ class MammotionHTTP:
             return Response.from_dict(data)
 
     @refresh_token_decorator
-    async def get_stream_subscription(self, iot_id: str) -> Response[StreamSubscriptionResponse]:
-        """Fetches stream subscription data from agora.io for a given IoT device."""
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/stream/subscription",
-            json={"deviceId": iot_id},
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
-            },
-        )
-        data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
-        # Assuming the data format matches the expected structure
-        response = Response[StreamSubscriptionResponse].from_dict(data)
-        await self.handle_expiry(response)
-        if response.code != 0:
-            return response
-        response.data = StreamSubscriptionResponse.from_dict(data.get("data", {}))
-        return response
-
-    @refresh_token_decorator
-    async def get_stream_subscription_mini_or_x_series(
-        self, iot_id: str, is_yuka: bool
-    ) -> Response[StreamSubscriptionResponse]:
+    async def get_stream_subscription(self, iot_id: str, is_yuka: bool) -> Response[StreamSubscriptionResponse]:
         # Prepare the payload with cameraStates based on is_yuka flag
         """Fetches stream subscription data for a given IoT device."""
 
         payload = {"deviceId": iot_id, "mode": 0, "cameraStates": []}
 
         # Add appropriate cameraStates based on the is_yuka flag
+        # yukas have two cameras you could view [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 1}]
+        # but its not useful so ignore this and only subscribe to the front one.
         if is_yuka:
-            payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 1}]
+            payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 0}]
         else:
             payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 0}]
 

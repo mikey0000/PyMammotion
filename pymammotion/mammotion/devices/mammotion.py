@@ -542,7 +542,7 @@ class Mammotion:
     async def get_stream_subscription(self, name: str, iot_id: str) -> Response[StreamSubscriptionResponse] | Any:
         """Get stream subscription."""
         device = self.get_device_by_name(name)
-        _stream_response = await device.mammotion_http.get_stream_subscription_mini_or_x_series(
+        _stream_response = await device.mammotion_http.get_stream_subscription(
             iot_id, DeviceType.is_yuka(name) and not DeviceType.is_yuka_mini(name)
         )
         _LOGGER.debug(_stream_response)
