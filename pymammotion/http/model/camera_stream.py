@@ -12,8 +12,10 @@ class Camera(DataClassORJSONMixin):
 @dataclass
 class StreamSubscriptionResponse(DataClassORJSONMixin):
     appid: str
+    openEncrypt: int
     cameras: list[Camera]
     channelName: str
+    areaCode: str
     token: str
     uid: int
     license: str | None = None

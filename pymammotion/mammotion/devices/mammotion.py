@@ -542,16 +542,11 @@ class Mammotion:
     async def get_stream_subscription(self, name: str, iot_id: str) -> Response[StreamSubscriptionResponse] | Any:
         """Get stream subscription."""
         device = self.get_device_by_name(name)
-        if DeviceType.is_mini_or_x_series(name):
-            _stream_response = await device.mammotion_http.get_stream_subscription_mini_or_x_series(
-                iot_id, DeviceType.is_yuka(name) and not DeviceType.is_yuka_mini(name)
-            )
-            _LOGGER.debug(_stream_response)
-            return _stream_response
-        else:
-            _stream_response = await device.mammotion_http.get_stream_subscription(iot_id)
-            _LOGGER.debug(_stream_response)
-            return _stream_response
+        _stream_response = await device.mammotion_http.get_stream_subscription_mini_or_x_series(
+            iot_id, DeviceType.is_yuka(name) and not DeviceType.is_yuka_mini(name)
+        )
+        _LOGGER.debug(_stream_response)
+        return _stream_response
 
     async def get_video_resource(self, name: str, iot_id: str) -> Response[VideoResourceResponse] | None:
         """Get video resource."""
