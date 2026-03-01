@@ -310,7 +310,7 @@ class Mammotion:
             self.add_cloud_devices(mammotion_cloud)
 
             await loop.run_in_executor(None, self.mqtt_list[f"{account}_aliyun"].connect_async)
-        if len(mammotion_http.device_records.records) != 0:
+        if len(mammotion_http.device_records.records) != 0 and mammotion_http.mqtt_credentials is not None:
             mammotion_cloud = MammotionCloud(
                 MammotionMQTT(
                     records=mammotion_http.device_records.records,

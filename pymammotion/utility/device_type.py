@@ -85,20 +85,20 @@ class DeviceType(Enum):
     def get_name(self) -> str:
         return self._name
 
-    def get_model(self):
+    def get_model(self) -> str:
         return self._model
 
-    def get_value(self):
+    def get_value(self) -> int:
         return self._value
 
-    def get_value_str(self):
+    def get_value_str(self) -> str:
         return str(self._value)
 
-    def set_value(self, value) -> None:
+    def set_value(self, value: int) -> None:
         self._value = value
 
     @staticmethod
-    def valueof(value):
+    def valueof(value: int) -> "DeviceType":
         """Return the corresponding DeviceType based on the input value.
 
         This function takes an integer value as input and returns the
@@ -166,7 +166,7 @@ class DeviceType(Enum):
             return DeviceType.UNKNOWN
 
     @staticmethod
-    def value_of_str(device_name: str, product_key: str = ""):
+    def value_of_str(device_name: str, product_key: str = "") -> "DeviceType":
         """Determine the type of device based on the provided device name and
         product key.
 
@@ -242,7 +242,7 @@ class DeviceType(Enum):
             return DeviceType.UNKNOWN
 
     @staticmethod
-    def has_4g(device_name: str, product_key: str = ""):
+    def has_4g(device_name: str, product_key: str = "") -> bool:
         """Check if the device has 4G capability based on the device name and
         optional product key.
 
@@ -267,7 +267,7 @@ class DeviceType(Enum):
         return device_type.get_value() >= DeviceType.LUBA_2.get_value()
 
     @staticmethod
-    def is_luba1(device_name: str, product_key: str = ""):
+    def is_luba1(device_name: str, product_key: str = "") -> bool:
         """Check if the given device is of type LUBA.
 
         This function determines if the device specified by 'device_name' is of
@@ -291,7 +291,7 @@ class DeviceType(Enum):
         return device_type.get_value() == DeviceType.LUBA.get_value()
 
     @staticmethod
-    def is_luba_pro(device_name: str, product_key: str = ""):
+    def is_luba_pro(device_name: str, product_key: str = "") -> bool:
         """Check if the device type is LUBA 2 or higher based on the device name
         and optional product key.
 
@@ -316,7 +316,7 @@ class DeviceType(Enum):
         )
 
     @staticmethod
-    def is_yuka(device_name: str):
+    def is_yuka(device_name: str) -> bool:
         """Check if the given device name corresponds to a LUBA_YUKA device type.
 
         Args:
@@ -338,14 +338,14 @@ class DeviceType(Enum):
         )
 
     @staticmethod
-    def is_yuka_mini(device_name: str):
+    def is_yuka_mini(device_name: str) -> bool:
         return (
             DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
         )
 
     @staticmethod
-    def is_mini_or_x_series(device_name: str):
+    def is_mini_or_x_series(device_name: str) -> bool:
         """IsNewDeviceType returns if a device is part of the x or mini series."""
 
         return (
@@ -359,7 +359,7 @@ class DeviceType(Enum):
         )
 
     @staticmethod
-    def is_rtk(device_name: str, product_key: str = ""):
+    def is_rtk(device_name: str, product_key: str = "") -> bool:
         """Check if the device type is within the range of RTK devices.
 
         This function determines if the device type corresponding to the given
@@ -389,7 +389,7 @@ class DeviceType(Enum):
         )
 
     @staticmethod
-    def contain_rtk_product_key(product_key) -> bool:
+    def contain_rtk_product_key(product_key: str) -> bool:
         """Check if the given product key is in a predefined list of RTK product
         keys.
 
@@ -406,7 +406,7 @@ class DeviceType(Enum):
         return product_key in RTKProductKey
 
     @staticmethod
-    def contain_luba_product_key(product_key) -> bool:
+    def contain_luba_product_key(product_key: str) -> bool:
         """Check if the given product key is in the list of valid product keys.
 
         Args:
@@ -422,7 +422,7 @@ class DeviceType(Enum):
         return product_key in LubaProductKey
 
     @staticmethod
-    def contain_luba_2_product_key(product_key) -> bool:
+    def contain_luba_2_product_key(product_key: str) -> bool:
         """Check if the given product key is present in a predefined list.
 
         Args:
@@ -438,7 +438,7 @@ class DeviceType(Enum):
         return product_key in LubaVProductKey
 
     @staticmethod
-    def contain_yuka_product_key(product_key) -> bool:
+    def contain_yuka_product_key(product_key: str) -> bool:
         """Check if the given product key is present in a predefined list.
 
         Args:
@@ -454,7 +454,7 @@ class DeviceType(Enum):
         return product_key in YukaProductKey
 
     @staticmethod
-    def contain_yuka_mini_product_key(product_key) -> bool:
+    def contain_yuka_mini_product_key(product_key: str) -> bool:
         """Check if the given product key is present in a predefined list.
 
         Args:
@@ -470,7 +470,7 @@ class DeviceType(Enum):
         return product_key in YukaMiniProductKey
 
     @staticmethod
-    def contain_yuka_plus_product_key(product_key) -> bool:
+    def contain_yuka_plus_product_key(product_key: str) -> bool:
         """Check if the given product key is present in a predefined list.
 
         Args:
@@ -485,5 +485,9 @@ class DeviceType(Enum):
             return False
         return product_key in YukaPlusProductKey
 
-    def is_support_video(self):
+    def is_support_video(self) -> bool:
         return self != DeviceType.LUBA
+
+    @staticmethod
+    def is_yuka_ml(device_name: str) -> bool:
+        return DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_ML.get_value()
