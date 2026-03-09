@@ -53,6 +53,7 @@ dev = [
     "mypy>=1.18.2,<2",
     "autotyping>=24.9.0",
     "ipython>=9.6.0,<10",
+    "codegraphcontext>=0.2.8",
 ]
 
 [tool.uv]
