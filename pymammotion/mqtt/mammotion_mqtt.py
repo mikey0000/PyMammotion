@@ -205,10 +205,10 @@ class MammotionMQTT:
 
         logger.debug("send_cloud_command: %s", res)
 
-        if res.code == 500:
-            return res.msg
-
         if res.code == 401:
             raise UnauthorizedException(res.msg)
 
-        return str(res.data["result"])
+        if res.code != 0:
+            raise Exception(f"Error sending cloud command: {res.msg}, {iot_id}")
+
+        return str(res.data.get("result"))
