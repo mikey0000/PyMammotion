@@ -12,7 +12,7 @@ import betterproto2
 from Tea.exceptions import UnretryableException
 
 from pymammotion import AliyunMQTT, CloudIOTGateway, MammotionMQTT
-from pymammotion.aliyun.cloud_gateway import DeviceOfflineException
+from pymammotion.aliyun.exceptions import DeviceOfflineException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.data.mqtt.event import MammotionEventMessage, ThingEventMessage

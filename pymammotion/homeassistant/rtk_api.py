@@ -1,6 +1,6 @@
 import json
 
-from pymammotion.aliyun.cloud_gateway import DeviceOfflineException, GatewayTimeoutException, SetupException
+from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException, SetupException
 from pymammotion.data.model.device import RTKDevice
 from pymammotion.http.model.http import CheckDeviceVersion
 from pymammotion.mammotion.devices.mammotion import Mammotion

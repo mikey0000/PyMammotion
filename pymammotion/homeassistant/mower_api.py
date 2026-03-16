@@ -7,7 +7,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from pymammotion.aliyun.cloud_gateway import (
+from pymammotion.aliyun.exceptions import (
     EXPIRED_CREDENTIAL_EXCEPTIONS,
     DeviceOfflineException,
     FailedRequestException,

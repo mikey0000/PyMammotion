@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 
 import aiomqtt
 
+from pymammotion.aliyun.exceptions import FailedRequestException, GatewayTimeoutException, DeviceOfflineException, \
+    SetupException, CheckSessionException
 from pymammotion.http.model.http import DeviceRecord, MQTTConnection, UnauthorizedException
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
@@ -65,7 +67,11 @@ class MammotionMQTT:
         """Schedule the connection loop on the event loop.
 
         Safe to call from any thread (including a thread-pool executor).
+        Ignored if already connected or a connection task is already running.
         """
+        if self.is_connected:
+            logger.debug("connect_async called while already connected — ignoring")
+            return
         self._disconnect_requested = False
         self.loop.call_soon_threadsafe(self._start_task)
 
@@ -82,6 +88,20 @@ class MammotionMQTT:
         res = await self._mammotion_http.mqtt_invoke(self._converter.printBase64Binary(command), "", iot_id)
         if res.code == 401:
             raise UnauthorizedException(res.msg)
+        if res.code == 22000:
+            raise FailedRequestException(iot_id)
+        if res.code == 20056:
+            logger.debug("Gateway timeout.")
+            raise GatewayTimeoutException(res.code, iot_id)
+        if res.code == 29003:
+            raise SetupException(res.code, iot_id)
+        if res.code == 6205:
+            raise DeviceOfflineException(res.code, iot_id)
+        if res.code == 6205:
+            raise CheckSessionException(res.data)
+        if res.code == 460:
+            logger.debug("token expired, must re-login.")
+            raise CheckSessionException(res.data)
         if res.code != 0:
             raise Exception(f"Error sending cloud command: {res.msg}, {iot_id}")
         return str(res.data.get("result") if res.data is not None else "")

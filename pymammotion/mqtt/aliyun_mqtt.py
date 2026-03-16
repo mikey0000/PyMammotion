@@ -202,8 +202,11 @@ class AliyunMQTT:
         """Schedule the connection loop on the event loop.
 
         Safe to call from any thread (including a thread-pool executor).
-        Ignored if a connection task is already running.
+        Ignored if already connected or a connection task is already running.
         """
+        if self.is_connected:
+            logger.debug("connect_async called while already connected — ignoring")
+            return
         self._disconnect_requested = False
         self.loop.call_soon_threadsafe(self._start_task)
 

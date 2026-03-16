@@ -17,9 +17,19 @@ from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
-from Tea.exceptions import UnretryableException
-
 from pymammotion.aliyun.client import Client
+from pymammotion.aliyun.exceptions import (
+    AuthRefreshException,
+    CheckSessionException,
+    DeviceOfflineException,
+    EXPIRED_CREDENTIAL_EXCEPTIONS,
+    FailedRequestException,
+    GatewayTimeoutException,
+    LoginException,
+    NoConnectionException,
+    SetupException,
+    TooManyRequestsException,
+)
 from pymammotion.aliyun.model.aep_response import AepResponse
 from pymammotion.aliyun.model.connect_response import ConnectResponse
 from pymammotion.aliyun.model.dev_by_account_response import ListingDevAccountResponse
@@ -45,65 +55,6 @@ MOVE_HEADERS = (
     "token",
     "user-agent",
 )
-
-
-class SetupException(Exception):
-    """Raise when mqtt expires token or token is invalid."""
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(args)
-        self.iot_id = args[1]
-
-
-class AuthRefreshException(Exception):
-    """Raise exception when library cannot refresh token."""
-
-
-class DeviceOfflineException(Exception):
-    """Raise exception when device is offline."""
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(args)
-        self.iot_id = args[1]
-
-
-class FailedRequestException(Exception):
-    """Raise exception when request response is bad."""
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(args)
-        self.iot_id = args[0]
-
-
-class NoConnectionException(UnretryableException):
-    """Raise exception when device is unreachable."""
-
-
-class GatewayTimeoutException(Exception):
-    """Raise exception when the gateway times out."""
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(args)
-        self.iot_id = args[1]
-
-
-class TooManyRequestsException(Exception):
-    """Raise exception when the gateway times out."""
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(args)
-        self.iot_id = args[1]
-
-
-class LoginException(Exception):
-    """Raise exception when library cannot log in."""
-
-
-class CheckSessionException(Exception):
-    """Raise exception when checking session results in a failure."""
-
-
-EXPIRED_CREDENTIAL_EXCEPTIONS = (CheckSessionException, SetupException)
 
 
 class CloudIOTGateway:
