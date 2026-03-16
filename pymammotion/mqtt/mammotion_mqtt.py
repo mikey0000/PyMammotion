@@ -7,12 +7,16 @@ from collections.abc import Awaitable, Callable
 import json
 import logging
 import ssl
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import aiomqtt
 
-from pymammotion.http.model.http import DeviceRecord, MQTTConnection
+from pymammotion.http.model.http import DeviceRecord, MQTTConnection, UnauthorizedException
+from pymammotion.utility.datatype_converter import DatatypeConverter
+
+if TYPE_CHECKING:
+    from pymammotion.http.http import MammotionHTTP
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,12 @@ class MammotionMQTT:
     reconnects automatically on error.
     """
 
-    def __init__(self, mqtt_connection: MQTTConnection, records: list[DeviceRecord]) -> None:
+    def __init__(
+        self,
+        mqtt_connection: MQTTConnection,
+        records: list[DeviceRecord],
+        mammotion_http: MammotionHTTP | None = None,
+    ) -> None:
         self.on_connected: Callable[[], Awaitable[None]] | None = None
         self.on_ready: Callable[[], Awaitable[None]] | None = None
         self.on_error: Callable[[str], Awaitable[None]] | None = None
@@ -35,6 +44,8 @@ class MammotionMQTT:
         self.is_ready = False
         self.records = records
 
+        self._mammotion_http = mammotion_http
+        self._converter = DatatypeConverter()
         self._connection = mqtt_connection
         self._task: asyncio.Task[None] | None = None
         self._disconnect_requested = False
@@ -65,8 +76,15 @@ class MammotionMQTT:
             self.loop.call_soon_threadsafe(self._task.cancel)
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
-        """Not used for direct MQTT connections."""
-        raise NotImplementedError
+        """Send a command via the Mammotion HTTP API (mqtt_invoke)."""
+        if self._mammotion_http is None:
+            raise NotImplementedError("No MammotionHTTP instance provided; cannot send cloud commands.")
+        res = await self._mammotion_http.mqtt_invoke(self._converter.printBase64Binary(command), "", iot_id)
+        if res.code == 401:
+            raise UnauthorizedException(res.msg)
+        if res.code != 0:
+            raise Exception(f"Error sending cloud command: {res.msg}, {iot_id}")
+        return str(res.data.get("result") if res.data is not None else "")
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -123,7 +141,7 @@ class MammotionMQTT:
 
                     async for message in client.messages:
                         if self._disconnect_requested:
-                            break
+                            break  # type: ignore[unreachable]
                         await self._dispatch(str(message.topic), message.payload)
 
             except aiomqtt.MqttError as exc:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.6.0"
+version = "0.6.1"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -32,7 +32,7 @@ dependencies = [
     "sdp-transform>=1.1.0",
     "websockets>=13.1",
     "webrtc-models>=0.3.0",
-    "aiomqtt>=2.0.0",
+    "aiomqtt>=2.5.1",
 ]
 
 [dependency-groups]
@@ -71,7 +71,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.6.0"
+current_version = "0.6.1"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true

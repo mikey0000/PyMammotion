@@ -2101,7 +2101,7 @@ extras = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.1" },
-    { name = "aiomqtt", specifier = ">=2.0.0" },
+    { name = "aiomqtt", specifier = ">=2.5.1" },
     { name = "alibabacloud-apigateway-util", specifier = ">=0.0.2,<0.0.3" },
     { name = "alibabacloud-iot-api-gateway", specifier = ">=0.0.4,<0.0.5" },
     { name = "betterproto2", specifier = ">=0.9.1" },
