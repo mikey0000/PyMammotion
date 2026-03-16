@@ -4,22 +4,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from enum import Enum, auto
 import hashlib
 import hmac
 import json
 from logging import getLogger
 import ssl
-import threading
+import time
 from typing import TYPE_CHECKING
 
-import paho.mqtt.client as mqtt
-from paho.mqtt.enums import CallbackAPIVersion
+import aiomqtt
 
 if TYPE_CHECKING:
-    from paho.mqtt.reasoncodes import ReasonCode
-
-from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+    from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 
 logger = getLogger(__name__)
 
@@ -157,19 +153,12 @@ _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 60
 
 
-class _State(Enum):
-    DISCONNECTED = auto()
-    CONNECTING = auto()
-    CONNECTED = auto()
-    DISCONNECTING = auto()
-
-
 class AliyunMQTT:
-    """Async-friendly MQTT client for the Aliyun IoT platform.
+    """Async MQTT client for the Aliyun IoT platform.
 
-    Handles the Aliyun-specific credential format and topic structure while
-    using paho-mqtt v2 directly (no LinkKit wrapper). Auto-reconnects with
-    exponential backoff via paho's built-in reconnect_delay_set.
+    Handles Aliyun-specific credential format and topic structure using aiomqtt.
+    Runs a persistent asyncio task that reconnects with exponential backoff on
+    any connection error.
     """
 
     def __init__(
@@ -182,10 +171,15 @@ class AliyunMQTT:
         cloud_client: CloudIOTGateway,
         client_id: str | None = None,
     ) -> None:
-        super().__init__()
         self._cloud_client = cloud_client
         self._product_key = product_key
         self._device_name = device_name
+
+        # Base client_id: "{product_key}&{device_name}" per Aliyun convention
+        self._client_id_base = f"{product_key}&{device_name}" if client_id is None else client_id
+        self._device_secret = device_secret
+        self._mqtt_username = f"{device_name}&{product_key}"
+        self._mqtt_host = f"{product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
 
         self.is_connected = False
         self.is_ready = False
@@ -193,58 +187,31 @@ class AliyunMQTT:
         self.on_ready: Callable[[], Awaitable[None]] | None = None
         self.on_error: Callable[[str], Awaitable[None]] | None = None
         self.on_disconnected: Callable[[], Awaitable[None]] | None = None
-        self.on_message: Callable[[str, str, str], Awaitable[None]] | None = None
+        self.on_message: Callable[[str, bytes, str], Awaitable[None]] | None = None
 
-        # Aliyun-specific credential format.
-        # Client ID: "{base_id}|securemode=2,signmethod=hmacsha1|"
-        if client_id is None:
-            client_id = f"python-{device_name}"
-        self._mqtt_client_id = f"{client_id}|securemode=2,signmethod=hmacsha1|"
-
-        # Username: "{device_name}&{product_key}"
-        self._mqtt_username = f"{device_name}&{product_key}"
-
-        # Password: HMAC-SHA1("{device_secret}", "clientId{id}deviceName{dn}productKey{pk}")
-        sign_content = f"clientId{client_id}deviceName{device_name}productKey{product_key}"
-        self._mqtt_password = hmac.new(
-            device_secret.encode("utf-8"), sign_content.encode("utf-8"), hashlib.sha1
-        ).hexdigest()
-
-        # Aliyun regional MQTT endpoint
-        self._mqtt_host = f"{product_key}.iot-as-mqtt.{region_id}.aliyuncs.com"
-
-        self._state = _State.DISCONNECTED
-        self._state_lock = threading.Lock()
+        self._tls_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cadata=_ALIYUN_BROKER_CA_DATA)
+        self._task: asyncio.Task[None] | None = None
+        self._disconnect_requested = False
         self.loop = asyncio.get_running_loop()
 
-        self._mqtt_client = self._build_mqtt_client()
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
 
-    def _build_mqtt_client(self) -> mqtt.Client:
-        """Build and configure the paho MQTT client with Aliyun TLS and settings."""
-        client = mqtt.Client(
-            callback_api_version=CallbackAPIVersion.VERSION2,
-            client_id=self._mqtt_client_id,
-            protocol=mqtt.MQTTv311,
-            transport="tcp",
-            clean_session=True,
-        )
+    def connect_async(self) -> None:
+        """Schedule the connection loop on the event loop.
 
-        # TLS using Aliyun's CA bundle (GlobalSign + Aliyun IoT root certificates)
-        tls_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cadata=_ALIYUN_BROKER_CA_DATA)
-        client.tls_set_context(tls_context)
+        Safe to call from any thread (including a thread-pool executor).
+        Ignored if a connection task is already running.
+        """
+        self._disconnect_requested = False
+        self.loop.call_soon_threadsafe(self._start_task)
 
-        client.username_pw_set(self._mqtt_username, self._mqtt_password)
-
-        # Exponential backoff: starts at 1 s, doubles each attempt, caps at 60 s
-        client.reconnect_delay_set(_MQTT_RECONNECT_MIN_SEC, _MQTT_RECONNECT_MAX_SEC)
-        client.max_inflight_messages_set(_MQTT_MAX_INFLIGHT)
-        client.max_queued_messages_set(_MQTT_MAX_QUEUED)
-
-        client.on_connect = self._on_connect
-        client.on_disconnect = self._on_disconnect
-        client.on_message = self._on_message
-
-        return client
+    def disconnect(self) -> None:
+        """Stop the connection loop and disconnect."""
+        self._disconnect_requested = True
+        if self._task is not None:
+            self.loop.call_soon_threadsafe(self._task.cancel)
 
     @property
     def iot_token(self) -> str:
@@ -252,127 +219,32 @@ class AliyunMQTT:
             return authcode_response.iotToken
         return ""
 
-    def connect_async(self) -> None:
-        """Start a non-blocking connection to the Aliyun MQTT broker.
-
-        Safe to call from any state — calls while already connecting or connected
-        are silently ignored.
-        """
-        with self._state_lock:
-            if self._state in (_State.CONNECTED, _State.CONNECTING):
-                logger.debug("Already %s, ignoring connect_async()", self._state.name)
-                return
-            self._state = _State.CONNECTING
-
-        logger.info("Connecting to %s:%d", self._mqtt_host, _MQTT_PORT)
-        self._mqtt_client.connect_async(self._mqtt_host, port=_MQTT_PORT, keepalive=_MQTT_KEEPALIVE)
-        self._mqtt_client.loop_start()
-
-    def disconnect(self) -> None:
-        """Disconnect from the Aliyun MQTT broker and stop the network loop."""
-        with self._state_lock:
-            if self._state == _State.DISCONNECTED:
-                return
-            self._state = _State.DISCONNECTING
-
-        logger.info("Disconnecting from Aliyun MQTT")
-        self._mqtt_client.disconnect()
-        self._mqtt_client.loop_stop()
+    async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
+        """Send a command via the Aliyun cloud gateway."""
+        return await self._cloud_client.send_cloud_command(iot_id, command)
 
     # ------------------------------------------------------------------
-    # paho callbacks (called from paho's background thread)
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    def _on_connect(
-        self,
-        client: mqtt.Client,
-        userdata: None,
-        connect_flags: mqtt.ConnectFlags,
-        reason_code: ReasonCode,
-        properties: mqtt.Properties | None,
-    ) -> None:
-        if reason_code.is_failure:
-            logger.error("Connection refused by broker: %s", reason_code)
-            with self._state_lock:
-                self._state = _State.DISCONNECTED
-            return
+    def _start_task(self) -> None:
+        if self._task is None or self._task.done():
+            self._task = self.loop.create_task(self._run())
 
-        logger.info("Connected to Aliyun MQTT broker")
-        with self._state_lock:
-            self._state = _State.CONNECTED
-        self.is_connected = True
-
-        # Subscribe to all Aliyun device-specific down-topics
-        for topic in self._subscription_topics():
-            client.subscribe(topic, qos=1)
-
-        # Bind this client session to the device using its IoT token
-        client.publish(
-            f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
-            json.dumps(
-                {
-                    "id": "msgid1",
-                    "version": "1.0",
-                    "request": {"clientId": self._mqtt_username},
-                    "params": {"iotToken": self.iot_token},
-                }
-            ),
-            qos=1,
+    def _build_credentials(self) -> tuple[str, str]:
+        """Return (client_id, password) stamped with the current timestamp."""
+        timestamp = str(int(time.time()))
+        client_id = f"{self._client_id_base}|securemode=2,signmethod=hmacsha1,ext=1,_ss=1,timestamp={timestamp}|"
+        sign_content = (
+            f"clientId{self._client_id_base}"
+            f"deviceName{self._device_name}"
+            f"productKey{self._product_key}"
+            f"timestamp{timestamp}"
         )
-
-        if self.on_connected is not None:
-            asyncio.run_coroutine_threadsafe(self.on_connected(), self.loop)
-
-        self.is_ready = True
-        if self.on_ready is not None:
-            asyncio.run_coroutine_threadsafe(self.on_ready(), self.loop)
-
-    def _on_disconnect(
-        self,
-        client: mqtt.Client,
-        userdata: None,
-        disconnect_flags: mqtt.DisconnectFlags,
-        reason_code: ReasonCode,
-        properties: mqtt.Properties | None,
-    ) -> None:
-        with self._state_lock:
-            intentional = self._state == _State.DISCONNECTING
-            self._state = _State.DISCONNECTED
-
-        self.is_connected = False
-        self.is_ready = False
-
-        if intentional:
-            logger.info("Disconnected (intentional)")
-        else:
-            logger.warning("Disconnected unexpectedly (rc=%s) — paho will reconnect", reason_code)
-
-        if self.on_disconnected is not None:
-            asyncio.run_coroutine_threadsafe(self.on_disconnected(), self.loop)
-
-    def _on_message(self, client: mqtt.Client, userdata: None, message: mqtt.MQTTMessage) -> None:
-        """Route incoming MQTT messages to the registered async handler."""
-        logger.debug("Message on topic %s", message.topic)
-        try:
-            payload = json.loads(message.payload)
-            logger.debug("Topic data %s", payload)
-        except (json.JSONDecodeError, ValueError):
-            logger.warning("Non-JSON payload on topic %s, ignoring", message.topic)
-            return
-
-        iot_id: str = payload.get("params", {}).get("iotId", "")
-        if iot_id and self.on_message is not None:
-            asyncio.run_coroutine_threadsafe(
-                self.on_message(message.topic, message.payload.decode(), iot_id),
-                self.loop,
-            )
-
-    # ------------------------------------------------------------------
-    # Topic helpers
-    # ------------------------------------------------------------------
+        password = hmac.new(self._device_secret.encode("utf-8"), sign_content.encode("utf-8"), hashlib.sha1).hexdigest()
+        return client_id, password
 
     def _subscription_topics(self) -> list[str]:
-        """Return the full list of Aliyun down-topics to subscribe to on connect."""
         base = f"/sys/{self._product_key}/{self._device_name}"
         return [
             f"{base}/app/down/account/bind_reply",
@@ -386,11 +258,91 @@ class AliyunMQTT:
             f"{base}/app/down/thing/model/down_raw",
         ]
 
-    def unsubscribe(self) -> None:
-        """Unsubscribe from all device down-topics."""
-        for topic in self._subscription_topics():
-            self._mqtt_client.unsubscribe(topic)
+    # ------------------------------------------------------------------
+    # Connection loop
+    # ------------------------------------------------------------------
 
-    async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
-        """Send a command via the Aliyun cloud gateway."""
-        return await self._cloud_client.send_cloud_command(iot_id, command)
+    async def _run(self) -> None:
+        """Main connection loop — reconnects with exponential backoff."""
+        backoff = _MQTT_RECONNECT_MIN_SEC
+        while not self._disconnect_requested:
+            client_id, password = self._build_credentials()
+            try:
+                async with aiomqtt.Client(
+                    hostname=self._mqtt_host,
+                    port=_MQTT_PORT,
+                    username=self._mqtt_username,
+                    password=password,
+                    identifier=client_id,
+                    keepalive=_MQTT_KEEPALIVE,
+                    tls_context=self._tls_context,
+                    protocol=aiomqtt.ProtocolVersion.V311,
+                    max_inflight_messages=_MQTT_MAX_INFLIGHT,
+                    max_queued_incoming_messages=_MQTT_MAX_QUEUED,
+                ) as client:
+                    backoff = _MQTT_RECONNECT_MIN_SEC  # reset on successful connect
+
+                    for topic in self._subscription_topics():
+                        await client.subscribe(topic, qos=1)
+
+                    await client.publish(
+                        f"/sys/{self._product_key}/{self._device_name}/app/up/account/bind",
+                        json.dumps(
+                            {
+                                "id": "msgid1",
+                                "version": "1.0",
+                                "request": {"clientId": self._mqtt_username},
+                                "params": {"iotToken": self.iot_token},
+                            }
+                        ),
+                        qos=1,
+                    )
+
+                    self.is_connected = True
+                    if self.on_connected is not None:
+                        await self.on_connected()
+
+                    self.is_ready = True
+                    if self.on_ready is not None:
+                        await self.on_ready()
+
+                    async for message in client.messages:
+                        if self._disconnect_requested:
+                            break
+                        await self._dispatch(str(message.topic), message.payload)
+
+            except aiomqtt.MqttError as exc:
+                logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)
+            except asyncio.CancelledError:
+                break
+            finally:
+                if self.is_connected or self.is_ready:
+                    self.is_connected = False
+                    self.is_ready = False
+                    if self.on_disconnected is not None:
+                        await self.on_disconnected()
+
+            if not self._disconnect_requested:
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
+
+    async def _dispatch(self, topic: str, payload: bytes | bytearray | str | int | float | None) -> None:
+        """Parse and route an incoming MQTT message."""
+        logger.debug("Message on topic %s", topic)
+        if isinstance(payload, (bytes, bytearray)):
+            raw = bytes(payload)
+        elif isinstance(payload, str):
+            raw = payload.encode("utf-8")
+        else:
+            logger.warning("Unexpected payload type %s on topic %s, ignoring", type(payload), topic)
+            return
+
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Non-JSON payload on topic %s, ignoring", topic)
+            return
+
+        iot_id: str = parsed.get("params", {}).get("iotId", "")
+        if iot_id and self.on_message is not None:
+            await self.on_message(topic, raw, iot_id)

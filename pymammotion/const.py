@@ -2,7 +2,7 @@
 
 APP_KEY = "34231230"
 APP_SECRET = "1ba85698bb10e19c6437413b61ba3445"
-APP_VERSION = "1.11.130"
+APP_VERSION = "2.2.4.13"
 ALIYUN_DOMAIN = "api.link.aliyun.com"
 MAMMOTION_DOMAIN = "https://id.mammotion.com"
 MAMMOTION_API_DOMAIN = "https://domestic.mammotion.com"

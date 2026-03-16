@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.5.76"
+version = "0.6.0"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -32,6 +32,7 @@ dependencies = [
     "sdp-transform>=1.1.0",
     "websockets>=13.1",
     "webrtc-models>=0.3.0",
+    "aiomqtt>=2.0.0",
 ]
 
 [dependency-groups]
@@ -54,6 +55,7 @@ dev = [
     "autotyping>=24.9.0",
     "ipython>=9.6.0,<10",
     "codegraphcontext>=0.2.8",
+    "pytest-asyncio>=0.23",
 ]
 
 [tool.uv]
@@ -69,7 +71,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.5.76"
+current_version = "0.6.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -386,6 +388,9 @@ runtime-typing = false
 
 [tool.pylint.CODE_STYLE]
 max-line-length-suggestions = 120
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.ruff]
 required-version = ">=0.4.3"
