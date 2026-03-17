@@ -106,6 +106,12 @@ class MowingDevice(DataClassORJSONMixin):
 
     def update_report_data(self, toapp_report_data: ReportInfoData) -> None:
         """Set report data for the mower."""
+
+        # adjust for vision models
+        if (rtk := toapp_report_data.rtk) and (mqtt_rtk := rtk.mqtt_rtk_info):
+            self.location.RTK.longitude = mqtt_rtk.longitude
+            self.location.RTK.latitude = mqtt_rtk.latitude
+
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):
             if index == 0 and location.real_pos_y != 0:

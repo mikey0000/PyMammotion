@@ -159,6 +159,7 @@ class MammotionCloud:
 
         if topic.endswith("/thing/event/device_protobuf_msg_event/post"):
             _LOGGER.debug("Mammotion Thing event received")
+            _LOGGER.debug(payload)
             mammotion_event = MammotionEventMessage.from_dict(payload)
             mammotion_event.params.iot_id = iot_id
             await self.mqtt_message_event.data_event(mammotion_event)
@@ -313,7 +314,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             return
         await self.state_manager.device_event(status)
 
-    async def _parse_message_for_device(self, event: ThingEventMessage) -> None:
+    async def _parse_message_for_device(self, event: ThingEventMessage | MammotionEventMessage) -> None:
         """Parses a message received from a device and updates internal state.
 
         This function processes an incoming `ThingEventMessage`, checks if the message

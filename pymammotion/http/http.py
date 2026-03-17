@@ -132,7 +132,7 @@ class MammotionHTTP:
         self._response: Response | None = None
         self.login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
-        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,1.15.6.14"}
+        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,2.2.4.13"}
         self.encryption_utils = EncryptionUtils()
 
         # Add this method to generate a 10-digit random number

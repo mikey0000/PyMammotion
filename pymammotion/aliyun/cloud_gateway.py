@@ -17,16 +17,15 @@ from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
+
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.exceptions import (
     AuthRefreshException,
     CheckSessionException,
     DeviceOfflineException,
-    EXPIRED_CREDENTIAL_EXCEPTIONS,
     FailedRequestException,
     GatewayTimeoutException,
     LoginException,
-    NoConnectionException,
     SetupException,
     TooManyRequestsException,
 )

@@ -46,7 +46,7 @@ class DatatypeConverter:
         return DatatypeConverter.encode_map[i & 63]
 
     @staticmethod
-    def _printBase64Binary(bArr: bytes, i: int = 0, i2=None) -> str:
+    def _printBase64Binary(bArr: bytes, i: int = 0, i2: int | None = None) -> str:
         """Print the Base64 binary representation of a byte array.
 
         This function takes a byte array and optional start and end indices to

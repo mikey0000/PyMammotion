@@ -12,8 +12,13 @@ from urllib.parse import urlparse
 
 import aiomqtt
 
-from pymammotion.aliyun.exceptions import FailedRequestException, GatewayTimeoutException, DeviceOfflineException, \
-    SetupException, CheckSessionException
+from pymammotion.aliyun.exceptions import (
+    CheckSessionException,
+    DeviceOfflineException,
+    FailedRequestException,
+    GatewayTimeoutException,
+    SetupException,
+)
 from pymammotion.http.model.http import DeviceRecord, MQTTConnection, UnauthorizedException
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
