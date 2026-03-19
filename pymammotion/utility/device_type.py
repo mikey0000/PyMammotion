@@ -204,8 +204,6 @@ class DeviceType(Enum):
                 return DeviceType.YUKA_MINI2
             elif DeviceType.LUBA_YUKA.get_name() in substring2:
                 return DeviceType.LUBA_YUKA
-            elif DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
-                return DeviceType.LUBA
             elif DeviceType.SPINO.get_name() in substring2:
                 return DeviceType.SPINO
             elif DeviceType.RTK3A1.get_name() in substring2:
@@ -236,6 +234,8 @@ class DeviceType(Enum):
                 return DeviceType.LUBA_MB
             elif DeviceType.CM900.get_name() in substring2:
                 return DeviceType.CM900
+            elif DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
+                return DeviceType.LUBA
             else:
                 return DeviceType.UNKNOWN
         except Exception:
