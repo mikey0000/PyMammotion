@@ -7,6 +7,7 @@ from functools import wraps
 import hashlib
 import hmac
 import json
+import logging
 import random
 import time
 from typing import Any, TypeVar, cast
@@ -39,6 +40,8 @@ from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
 
 T = TypeVar("T")
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def sign_with_hmac_sha256(data: str, app_secret: str) -> str:
@@ -196,7 +199,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
             },
         )
         data = await resp.json()
@@ -218,7 +220,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
             },
         )
         data = await resp.json()
@@ -233,7 +234,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
             },
             json={"clientId": MAMMOTION_CLIENT_ID},
         )
@@ -311,7 +311,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
             },
         )
         data = await resp.json()
@@ -332,7 +331,6 @@ class MammotionHTTP:
             headers={
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
             },
         )
         data = await resp.json()
@@ -354,7 +352,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
                 "Client-Id": self.client_id,
                 "Client-Type": "1",
             },
@@ -374,7 +371,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
                 "Client-Id": self.client_id,
                 "Client-Type": "1",
             },
@@ -393,7 +389,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
             },
         )
         data = await resp.json()
@@ -409,7 +404,6 @@ class MammotionHTTP:
                 **self._headers,
                 "Authorization": f"Bearer {self.login_info.access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
                 "Client-Id": self.client_id,
                 "Client-Type": "1",
             },
@@ -486,6 +480,7 @@ class MammotionHTTP:
     @refresh_token_decorator
     async def mqtt_invoke(self, content: str, device_name: str, iot_id: str) -> Response[dict]:
         """Send mqtt commands to devices."""
+        _LOGGER.debug(f"mqtt invoke content: {content}, {self.jwt_info.iot}")
         resp = await self._session.post(
             f"{self.jwt_info.iot}/v1/mqtt/rpc/thing/service/invoke",
             json={
@@ -504,11 +499,14 @@ class MammotionHTTP:
                 "Client-Type": "1",
             },
         )
+        resp_dict = await resp.json()
         if resp.status != 200:
             return Response.from_dict({"code": resp.status, "msg": "invoke mqtt failed"})
-        if resp.status == 401:
+        if resp.status == 401 or resp_dict.get("code") == 401:
             raise UnauthorizedException("Access Token expired")
-        resp_dict = await resp.json()
+        if resp_dict.get("code") != 0:
+            return Response.from_dict({"code": resp_dict.get("code"), "msg": resp_dict.get("msg")})
+
         return response_factory(Response[dict], resp_dict)
 
     async def refresh_login(self) -> Response[LoginResponseData]:

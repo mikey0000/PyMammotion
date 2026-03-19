@@ -1,6 +1,7 @@
 """MowingDevice class to wrap around the betterproto dataclasses."""
 
 from dataclasses import dataclass, field
+import math
 
 import betterproto2
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -109,8 +110,8 @@ class MowingDevice(DataClassORJSONMixin):
 
         # adjust for vision models
         if (rtk := toapp_report_data.rtk) and (mqtt_rtk := rtk.mqtt_rtk_info):
-            self.location.RTK.longitude = mqtt_rtk.longitude
-            self.location.RTK.latitude = mqtt_rtk.latitude
+            self.location.RTK.longitude = math.radians(mqtt_rtk.longitude)
+            self.location.RTK.latitude = math.radians(mqtt_rtk.latitude)
 
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):

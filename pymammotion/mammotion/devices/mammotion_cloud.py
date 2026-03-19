@@ -19,6 +19,7 @@ from pymammotion.data.mqtt.event import MammotionEventMessage, ThingEventMessage
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.event.event import DataEvent
+from pymammotion.http.model.http import MQTTConnection
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.base import MammotionBaseDevice
 from pymammotion.proto import LubaMsg
@@ -44,12 +45,14 @@ class MammotionCloud:
         self.on_ready_event = DataEvent()
         self.on_disconnected_event = DataEvent()
         self.on_connected_event = DataEvent()
+        self.on_error_event = DataEvent()
         self._operation_lock = asyncio.Lock()
         self._mqtt_client = mqtt_client
         self._mqtt_client.on_connected = self.on_connected
         self._mqtt_client.on_disconnected = self.on_disconnected
         self._mqtt_client.on_message = self._on_mqtt_message
         self._mqtt_client.on_ready = self.on_ready
+        self._mqtt_client.on_error = self._on_mqtt_error
 
     async def on_ready(self) -> None:
         """Starts processing the queue and emits the ready event."""
@@ -78,6 +81,18 @@ class MammotionCloud:
     async def on_disconnected(self) -> None:
         """Callback for when MQTT disconnects."""
         await self.on_disconnected_event.data_event(None)
+
+    async def _on_mqtt_error(self, error: str) -> None:
+        """Callback for unrecoverable MQTT errors (e.g. auth failures)."""
+        _LOGGER.error("MQTT auth error: %s", error)
+        await self.on_error_event.data_event(error)
+
+    def update_mqtt_credentials(self, mqtt_connection: MQTTConnection) -> None:
+        """Push fresh JWT credentials into a MammotionMQTT client."""
+        from pymammotion.mqtt.mammotion_mqtt import MammotionMQTT
+
+        if isinstance(self._mqtt_client, MammotionMQTT):
+            self._mqtt_client.update_credentials(mqtt_connection)
 
     async def process_queue(self) -> None:
         while True:

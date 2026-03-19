@@ -311,9 +311,22 @@ class AliyunMQTT:
 
                     async for message in client.messages:
                         if self._disconnect_requested:
-                            break
+                            break  # type: ignore[unreachable]
                         await self._dispatch(str(message.topic), message.payload)
 
+            except aiomqtt.MqttCodeError as exc:
+                rc = exc.rc
+                if rc in (4, 5):
+                    logger.error(
+                        "MQTT connection refused (rc=%s): %s — stopping reconnect (check credentials/token)",
+                        rc,
+                        exc,
+                    )
+                    self._disconnect_requested = True
+                    if self.on_error is not None:
+                        await self.on_error(str(exc))
+                else:
+                    logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except aiomqtt.MqttError as exc:
                 logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:

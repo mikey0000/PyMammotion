@@ -86,8 +86,14 @@ class MammotionMQTT:
         if self._task is not None:
             self.loop.call_soon_threadsafe(self._task.cancel)
 
+    def update_credentials(self, mqtt_connection: MQTTConnection) -> None:
+        """Replace MQTT credentials so the next connect attempt uses fresh ones."""
+        self._connection = mqtt_connection
+        logger.debug("MammotionMQTT credentials updated")
+
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Send a command via the Mammotion HTTP API (mqtt_invoke)."""
+        logger.debug("Sending cloud command to %s", iot_id)
         if self._mammotion_http is None:
             raise NotImplementedError("No MammotionHTTP instance provided; cannot send cloud commands.")
         res = await self._mammotion_http.mqtt_invoke(self._converter.printBase64Binary(command), "", iot_id)
@@ -169,6 +175,19 @@ class MammotionMQTT:
                             break  # type: ignore[unreachable]
                         await self._dispatch(str(message.topic), message.payload)
 
+            except aiomqtt.MqttCodeError as exc:
+                rc = exc.rc
+                if rc in (4, 5):
+                    logger.error(
+                        "MQTT connection refused (rc=%s): %s — stopping reconnect (check credentials/token)",
+                        rc,
+                        exc,
+                    )
+                    self._disconnect_requested = True
+                    if self.on_error is not None:
+                        await self.on_error(str(exc))
+                else:
+                    logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except aiomqtt.MqttError as exc:
                 logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:
@@ -210,8 +229,9 @@ class MammotionMQTT:
                         enriched["device_name"] = device_name
                         raw = json.dumps(enriched).encode("utf-8")
                     except (json.JSONDecodeError, ValueError):
-                        pass
+                        logger.warning("Non-JSON payload on topic %s, ignoring", topic)
                     break
 
         if iot_id and self.on_message is not None:
+            logger.debug("Message sent from topic %s, %s iot_id=%s", topic, raw, iot_id)
             await self.on_message(topic, raw, iot_id)

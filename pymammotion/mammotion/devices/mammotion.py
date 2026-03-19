@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import ClientSession
@@ -177,6 +178,8 @@ class Mammotion:
         self._login_lock = asyncio.Lock()
         self._session: ClientSession | None = session
         self.mqtt_list: dict[str, MammotionCloud] = {}
+        self._refresh_event: asyncio.Event = asyncio.Event()
+        self._health_monitor_task: asyncio.Task[None] | None = None
 
     async def login_and_initiate_cloud(self, account: str, password: str, force: bool = False) -> None:
         async with self._login_lock:
@@ -205,6 +208,9 @@ class Mammotion:
             if len(mammotion_http.device_records.records) != 0:
                 await mammotion_http.get_mqtt_credentials()
 
+            if exists_mammotion and mammotion_http.mqtt_credentials is not None:
+                exists_mammotion.update_mqtt_credentials(mammotion_http.mqtt_credentials)
+
             if exists_aliyun and exists_aliyun.is_connected():
                 exists_aliyun.disconnect()
                 await self.connect_iot(exists_aliyun.cloud_client)
@@ -212,11 +218,10 @@ class Mammotion:
             if exists_mammotion and exists_mammotion.is_connected():
                 exists_mammotion.disconnect()
 
+            loop = asyncio.get_running_loop()
             if exists_aliyun and not exists_aliyun.is_connected():
-                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, exists_aliyun.connect_async)
             if exists_mammotion and not exists_mammotion.is_connected():
-                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, exists_mammotion.connect_async)
 
     @staticmethod
@@ -307,6 +312,7 @@ class Mammotion:
                 cloud_client,
             )
             self.mqtt_list[f"{account}_aliyun"] = mammotion_cloud
+            mammotion_cloud.on_error_event.add_subscribers(self._on_mqtt_error)
             self.add_cloud_devices(mammotion_cloud)
 
             await loop.run_in_executor(None, self.mqtt_list[f"{account}_aliyun"].connect_async)
@@ -320,9 +326,12 @@ class Mammotion:
                 cloud_client,
             )
             self.mqtt_list[f"{account}_mammotion"] = mammotion_cloud
+            mammotion_cloud.on_error_event.add_subscribers(self._on_mqtt_error)
             self.add_mammotion_devices(mammotion_cloud, mammotion_http.device_records.records)
 
             await loop.run_in_executor(None, self.mqtt_list[f"{account}_mammotion"].connect_async)
+
+        self._start_health_monitor()
 
     def add_mammotion_devices(self, mqtt_client: MammotionCloud, devices: list[DeviceRecord]) -> None:
         """Add devices from mammotion cloud."""
@@ -441,10 +450,105 @@ class Mammotion:
         return cloud_client
 
     async def stop(self) -> None:
+        if self._health_monitor_task is not None:
+            self._health_monitor_task.cancel()
+            self._health_monitor_task = None
         await self.device_manager.stop()
         for mqtt in self.mqtt_list.values():
             if mqtt.is_connected():
                 mqtt.disconnect()
+
+    # ------------------------------------------------------------------
+    # Health monitor
+    # ------------------------------------------------------------------
+
+    async def _on_mqtt_error(self, error: str) -> None:
+        """Called when any MQTT client reports an unrecoverable auth error."""
+        _LOGGER.warning("Health monitor: auth error received — scheduling token refresh: %s", error)
+        self._refresh_event.set()
+
+    def _start_health_monitor(self) -> None:
+        """Start the background health-monitor task if not already running."""
+        if self._health_monitor_task is None or self._health_monitor_task.done():
+            self._health_monitor_task = asyncio.get_running_loop().create_task(self._health_monitor_loop())
+
+    async def _health_monitor_loop(self) -> None:
+        """Periodically check token expiry and reconnect MQTT connections as needed.
+
+        Wakes up every 10 minutes, or immediately when an auth error fires.
+        """
+        while True:
+            try:
+                # Block until woken by an auth error or the 10-minute timeout
+                await asyncio.wait_for(asyncio.shield(self._refresh_event.wait()), timeout=600)
+                self._refresh_event.clear()
+                _LOGGER.debug("Health monitor: woken by auth error, checking connections")
+            except TimeoutError:
+                _LOGGER.debug("Health monitor: periodic check")
+            except asyncio.CancelledError:
+                break
+
+            accounts: set[str] = set()
+            for key in list(self.mqtt_list):
+                accounts.add(key.removesuffix("_aliyun").removesuffix("_mammotion"))
+
+            for account in accounts:
+                try:
+                    await self._check_and_refresh_account(account)
+                except Exception:
+                    _LOGGER.exception("Health monitor: unhandled error for account %s", account)
+
+    async def _check_and_refresh_account(self, account: str) -> None:
+        """Refresh tokens and reconnect for a single account if needed."""
+        exists_aliyun = self.mqtt_list.get(f"{account}_aliyun")
+        exists_mammotion = self.mqtt_list.get(f"{account}_mammotion")
+
+        cloud_client = exists_aliyun or exists_mammotion
+        if cloud_client is None:
+            return
+        mammotion_http = cloud_client.cloud_client.mammotion_http
+
+        # Refresh HTTP access token if it expires within 30 minutes
+        if mammotion_http.expires_in < time.time() + 1800:
+            _LOGGER.info("Health monitor: HTTP token near expiry, refreshing for %s", account)
+            try:
+                await mammotion_http.refresh_login()
+            except Exception:
+                _LOGGER.exception("Health monitor: failed to refresh HTTP token for %s", account)
+                return
+
+        # Refresh MammotionMQTT JWT credentials after token refresh
+        if exists_mammotion is not None and mammotion_http.mqtt_credentials is not None:
+            try:
+                await mammotion_http.get_mqtt_credentials()
+                exists_mammotion.update_mqtt_credentials(mammotion_http.mqtt_credentials)
+            except Exception:
+                _LOGGER.exception("Health monitor: failed to refresh MQTT credentials for %s", account)
+
+        # Refresh Aliyun iotToken if it expires within 1 hour
+        if exists_aliyun is not None:
+            aliyun_cloud = exists_aliyun.cloud_client
+            session = aliyun_cloud.session_by_authcode_response
+            if session is not None and session.data is not None:
+                expiry = aliyun_cloud._iot_token_issued_at + session.data.iotTokenExpire
+                if expiry < time.time() + 3600:
+                    _LOGGER.info("Health monitor: iotToken near expiry, refreshing session for %s", account)
+                    refresh_expiry = aliyun_cloud._iot_token_issued_at + session.data.refreshTokenExpire
+                    if refresh_expiry > time.time():
+                        try:
+                            await aliyun_cloud.check_or_refresh_session()
+                        except Exception:
+                            _LOGGER.exception("Health monitor: failed to refresh iotToken for %s", account)
+                    else:
+                        _LOGGER.error("Health monitor: refreshToken expired for %s — manual re-login required", account)
+
+        loop = asyncio.get_running_loop()
+        if exists_aliyun is not None and not exists_aliyun.is_connected():
+            _LOGGER.info("Health monitor: AliyunMQTT disconnected, reconnecting for %s", account)
+            await loop.run_in_executor(None, exists_aliyun.connect_async)
+        if exists_mammotion is not None and not exists_mammotion.is_connected():
+            _LOGGER.info("Health monitor: MammotionMQTT disconnected, reconnecting for %s", account)
+            await loop.run_in_executor(None, exists_mammotion.connect_async)
 
     @staticmethod
     async def connect_iot(cloud_client: CloudIOTGateway) -> None:

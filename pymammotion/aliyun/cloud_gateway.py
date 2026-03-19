@@ -764,7 +764,7 @@ class CloudIOTGateway:
 
         """Check if iotToken is expired"""
         if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (
-            int(time.time()) + (5 * 3600)
+            int(time.time()) + 3600
         ):
             """Token expired - Try to refresh - Check if refreshToken is not expired"""
             if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (
