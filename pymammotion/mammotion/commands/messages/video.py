@@ -3,7 +3,16 @@ from abc import ABC
 import time
 
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
-from pymammotion.proto import LubaMsg, MsgAttr, MsgCmdType, MsgDevice, MulCameraPosition, MulSetVideo, SocMul
+from pymammotion.proto import (
+    LubaMsg,
+    MsgAttr,
+    MsgCmdType,
+    MsgDevice,
+    MulCameraPosition,
+    MulSetEncode,
+    MulSetVideo,
+    SocMul,
+)
 from pymammotion.utility.device_type import DeviceType
 
 
@@ -31,3 +40,7 @@ class MessageVideo(AbstractMessage, ABC):
         )
         soc_mul = SocMul(set_video=MulSetVideo(position=position, vi_switch=enter_state))
         return self.send_order_msg_video(soc_mul)
+
+    def refresh_fpv(self) -> bytes:
+        """Refresh the FPV frame (re-enable encode stream)."""
+        return self.send_order_msg_video(SocMul(req_encode=MulSetEncode(encode=True)))

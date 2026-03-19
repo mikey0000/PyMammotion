@@ -4,7 +4,10 @@
 # This file has been @generated
 
 __all__ = (
+    "AckToAppTypeE",
     "ApnAuthType",
+    "AppDownlinkCmdT",
+    "AppDownlinkCmdTypeE",
     "AppGetAllAreaHashName",
     "AppGetCutterWorkMode",
     "AppRequestCoverPathsT",
@@ -93,6 +96,8 @@ __all__ = (
     "LubaMsg",
     "MCtrlSimulationCmdData",
     "ManualElementMessage",
+    "MapInfo",
+    "MapPoints",
     "MctlDriver",
     "MctlNav",
     "MctlOta",
@@ -251,6 +256,7 @@ __all__ = (
     "VisionPointMsg",
     "VisionStatisticInfoMsg",
     "VisionStatisticMsg",
+    "WallMaterialE",
     "WifiConfType",
     "WifiIotStatusReport",
     "WorkModeT",
@@ -271,6 +277,18 @@ _COMPILER_VERSION = "0.9.0"
 betterproto2.check_compiler_version(_COMPILER_VERSION)
 
 
+class AckToAppTypeE(betterproto2.Enum):
+    WAIT_ACK = 0
+
+    ACK = 1
+
+    NACK = 2
+
+    INQUIRY = 3
+
+    INQUIRY_ACK = 4
+
+
 class ApnAuthType(betterproto2.Enum):
     APN_AUTH_NONE = 0
 
@@ -279,6 +297,18 @@ class ApnAuthType(betterproto2.Enum):
     APN_AUTH_CHAP = 2
 
     APN_AUTH_PAP_CHAP = 3
+
+
+class AppDownlinkCmdTypeE(betterproto2.Enum):
+    app_wall_material_cmd = 0
+
+    app_bottom_type_cmd = 1
+
+    app_floor_speed_cmd = 2
+
+    app_get_map_cmd = 3
+
+    app_get_line_cmd = 4
 
 
 class CollectMotorState(betterproto2.Enum):
@@ -767,6 +797,14 @@ class UnloadMotorState(betterproto2.Enum):
     UNLOAD_RUNNING = 3
 
 
+class WallMaterialE(betterproto2.Enum):
+    WALL_GLASS = 0
+
+    WALL_CERAMICS = 1
+
+    WALL_SAND_STONE = 2
+
+
 class WifiConfType(betterproto2.Enum):
     DisconnectWifi = 0
 
@@ -777,6 +815,35 @@ class WifiConfType(betterproto2.Enum):
     ReconnectWifi = 3
 
     set_enable = 4
+
+
+@dataclass(eq=False, repr=False)
+class AppDownlinkCmdT(betterproto2.Message):
+    """
+
+
+    Oneofs:
+        - params:
+    """
+
+    cmd: "AppDownlinkCmdTypeE" = betterproto2.field(
+        1, betterproto2.TYPE_ENUM, default_factory=lambda: AppDownlinkCmdTypeE(0)
+    )
+
+    ack: "AckToAppTypeE" = betterproto2.field(2, betterproto2.TYPE_ENUM, default_factory=lambda: AckToAppTypeE(0))
+
+    wall_material: "int | None" = betterproto2.field(3, betterproto2.TYPE_INT32, optional=True, group="params")
+
+    bottom_type: "int | None" = betterproto2.field(4, betterproto2.TYPE_INT32, optional=True, group="params")
+
+    floor_speed: "float | None" = betterproto2.field(5, betterproto2.TYPE_FLOAT, optional=True, group="params")
+
+    map_info: "MapInfo | None" = betterproto2.field(6, betterproto2.TYPE_MESSAGE, optional=True, group="params")
+
+    line_info: "MapInfo | None" = betterproto2.field(7, betterproto2.TYPE_MESSAGE, optional=True, group="params")
+
+
+default_message_pool.register_message("", "app_downlink_cmd_t", AppDownlinkCmdT)
 
 
 @dataclass(eq=False, repr=False)
@@ -1985,6 +2052,32 @@ default_message_pool.register_message("", "ManualElementMessage", ManualElementM
 
 
 @dataclass(eq=False, repr=False)
+class MapInfo(betterproto2.Message):
+    points: "list[MapPoints]" = betterproto2.field(1, betterproto2.TYPE_MESSAGE, repeated=True)
+
+    tag: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+    total_points: "int" = betterproto2.field(3, betterproto2.TYPE_INT32)
+
+    pack_index: "int" = betterproto2.field(4, betterproto2.TYPE_INT32)
+
+    pack_num: "int" = betterproto2.field(5, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "MapInfo", MapInfo)
+
+
+@dataclass(eq=False, repr=False)
+class MapPoints(betterproto2.Message):
+    x: "float" = betterproto2.field(1, betterproto2.TYPE_FLOAT)
+
+    y: "float" = betterproto2.field(2, betterproto2.TYPE_FLOAT)
+
+
+default_message_pool.register_message("", "MapPoints", MapPoints)
+
+
+@dataclass(eq=False, repr=False)
 class MctlDriver(betterproto2.Message):
     """
 
@@ -2589,6 +2682,10 @@ class MctlSys(betterproto2.Message):
 
     current_cutter_mode: "RptCutterRpm | None" = betterproto2.field(
         67, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    app_downlink_cmd: "AppDownlinkCmdT | None" = betterproto2.field(
+        68, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
     )
 
 

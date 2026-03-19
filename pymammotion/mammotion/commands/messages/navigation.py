@@ -10,10 +10,12 @@ from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
     AppRequestCoverPathsT,
     LubaMsg,
+    ManualElementMessage,
     MctlNav,
     MsgAttr,
     MsgCmdType,
     MsgDevice,
+    NavEdgePointsAck,
     NavGetCommData,
     NavGetHashList,
     NavMapNameMsg,
@@ -27,6 +29,7 @@ from pymammotion.proto import (
     SimulationCmdData,
     SvgMessageAckT,
     SvgMessageT,
+    VisionCtrlMsg,
     WorkReportCmdData,
     WorkReportUpdateCmd,
 )
@@ -562,3 +565,161 @@ class MessageNavigation(AbstractMessage, ABC):
         )
 
         return self.send_order_msg_nav(build)
+
+    # === Corridor recording (MN231) ===
+
+    def start_draw_corridor(self) -> bytes:
+        """Start corridor recording (MN231)."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=0, type=19))
+        logger.debug("Send command - Start corridor recording")
+        return self.send_order_msg_nav(build)
+
+    def add_draw_corridor_point(self) -> bytes:
+        """Add a corridor point during corridor recording (MN231)."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=0, type=20))
+        logger.debug("Send command - Add corridor point")
+        return self.send_order_msg_nav(build)
+
+    def end_draw_corridor(self) -> bytes:
+        """End corridor recording (MN231)."""
+        build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=17, result=0))
+        logger.debug("Send command - End corridor recording")
+        return self.send_order_msg_nav(build)
+
+    def give_up_draw_corridor(self) -> bytes:
+        """Abandon corridor recording without saving (MN231)."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=7, type=19))
+        logger.debug("Send command - Give up corridor recording")
+        return self.send_order_msg_nav(build)
+
+    def recover_draw_corridor_line(self) -> bytes:
+        """Recover (undo last delete of) corridor line (MN231)."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=12, type=19))
+        logger.debug("Send command - Recover corridor line")
+        return self.send_order_msg_nav(build)
+
+    def recover_draw_corridor_point(self) -> bytes:
+        """Recover (undo last delete of) corridor point (MN231)."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=12, type=20))
+        logger.debug("Send command - Recover corridor point")
+        return self.send_order_msg_nav(build)
+
+    def stop_and_not_save_task(self) -> bytes:
+        """Abort mapping mid-way without saving (MN231 exit during states 45/46)."""
+        build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=18, result=0))
+        logger.debug("Send command - Stop and do not save task")
+        return self.send_order_msg_nav(build)
+
+    # === Firmware 4.3.1+ border drawing variants ===
+
+    def start_draw_border_431(self) -> bytes:
+        """Start border drawing for firmware 4.3.1+ devices."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=19, type=0))
+        logger.debug("Send command - Start border drawing (4.3.1+)")
+        return self.send_order_msg_nav(build)
+
+    def start_positioning_431_all(self) -> bytes:
+        """Start lidar positioning for firmware 4.3.1+ devices."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=21, type=17))
+        logger.debug("Send command - Start lidar positioning (4.3.1+)")
+        return self.send_order_msg_nav(build)
+
+    # === Lidar charge point ===
+
+    def delete_ld_charge_point(self) -> bytes:
+        """Delete lidar charging pile position and reset."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=0, type=5))
+        logger.debug("Send command - Delete lidar charging pile position and reset")
+        return self.send_order_msg_nav(build)
+
+    # === Pattern visibility ===
+
+    def set_pattern_hide_or_show(self, type: int, hash_num: int) -> bytes:
+        """Show or hide a map pattern (obstacle/area overlay) by type and hash."""
+        build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=16, type=type, hash=hash_num))
+        logger.debug(f"Send command - Set pattern hide/show type={type}, hash={hash_num}")
+        return self.send_order_msg_nav(build)
+
+    # === Visual safety zones (manual elements) ===
+
+    def add_manual_element(
+        self,
+        shape: int,
+        type: int,
+        center_x: float,
+        center_y: float,
+        width_x: float,
+        height_y: float,
+        sub_cmd: int,
+        rotate_radius: float,
+    ) -> bytes:
+        """Add a visual safety zone (obstacle avoidance element) to the map."""
+        build = MctlNav(
+            toapp_manual_element=ManualElementMessage(
+                pver=1,
+                shape=shape,
+                type=type,
+                point1_center_x=center_x,
+                point1_center_y=center_y,
+                point2_width_x=width_x,
+                point2_height_y=height_y,
+                sub_cmd=sub_cmd,
+                rotate_radius=rotate_radius,
+            )
+        )
+        logger.debug(f"Send command - Add manual element shape={shape}, type={type}")
+        return self.send_order_msg_nav(build)
+
+    def delete_manual_element(self, hash_num: int, type: int, shape: int, permanent: bool = False) -> bytes:
+        """Delete a visual safety zone by hash. permanent=True deletes all instances."""
+        sub_cmd = 2 if permanent else 1
+        build = MctlNav(
+            toapp_manual_element=ManualElementMessage(
+                pver=1,
+                type=type,
+                shape=shape,
+                data_hash=hash_num,
+                sub_cmd=sub_cmd,
+            )
+        )
+        logger.debug(f"Send command - Delete manual element hash={hash_num}, type={type}, permanent={permanent}")
+        return self.send_order_msg_nav(build)
+
+    # === Edgewise mapping response ===
+
+    def response_edgewise_mapping(
+        self, action: int, hash_num: int, result: int, type: int, total_frame: int, current_frame: int
+    ) -> bytes:
+        """Acknowledge edgewise mapping data received from device."""
+        build = MctlNav(
+            toapp_edge_points_ack=NavEdgePointsAck(
+                action=action,
+                hash=hash_num,
+                result=result,
+                type=type,
+                total_frame=total_frame,
+                current_frame=current_frame,
+            )
+        )
+        logger.debug(f"Send command - Response edgewise mapping action={action}, hash={hash_num}")
+        return self.send_order_msg_nav(build)
+
+    # === Radar test ===
+
+    def radar_test_send(self, cmd: int) -> bytes:
+        """Send radar static test command. Sends to DEV_PERCEPTION instead of DEV_MAINCTL."""
+        import time as _time
+
+        luba_msg = LubaMsg(
+            msgtype=MsgCmdType.NAV,
+            sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=MsgDevice.DEV_PERCEPTION,
+            msgattr=MsgAttr.REQ,
+            seqs=self.seqs.increment_and_get() & 255,
+            version=1,
+            subtype=self.user_account,
+            nav=MctlNav(vision_ctrl=VisionCtrlMsg(type=1, cmd=cmd)),
+            timestamp=round(_time.time() * 1000),
+        )
+        logger.debug(f"Send command - Radar test cmd={cmd}")
+        return luba_msg.SerializeToString()

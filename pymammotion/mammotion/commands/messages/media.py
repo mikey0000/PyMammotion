@@ -10,6 +10,7 @@ from pymammotion.proto import (
     MsgAttr,
     MsgCmdType,
     MsgDevice,
+    MulAudioCfg,
     MulLanguage,
     MulSetAudio,
     MulSetWiper,
@@ -72,6 +73,10 @@ class MessageMedia(AbstractMessage, ABC):
                 )
             )
         )
+
+    def get_car_audio_cfg(self) -> bytes:
+        """Read current audio configuration (volume, language, sex)."""
+        return self.send_order_msg_media(SocMul(audio_cfg=MulAudioCfg()))
 
     def set_car_manual_light(self, manual_ctrl: bool = False):
         """Set mower light.

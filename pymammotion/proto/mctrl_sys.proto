@@ -646,6 +646,53 @@ message work_mode_t {
   int32 work_mode = 1;
 }
 
+enum app_downlink_cmd_type_e {
+  app_wall_material_cmd = 0;
+  app_bottom_type_cmd = 1;
+  app_floor_speed_cmd = 2;
+  app_get_map_cmd = 3;
+  app_get_line_cmd = 4;
+}
+
+enum ack_to_app_type_e {
+  WAIT_ACK = 0;
+  ACK = 1;
+  NACK = 2;
+  INQUIRY = 3;
+  INQUIRY_ACK = 4;
+}
+
+enum wall_material_e {
+  WALL_GLASS = 0;
+  WALL_CERAMICS = 1;
+  WALL_SAND_STONE = 2;
+}
+
+message MapPoints {
+  float x = 1;
+  float y = 2;
+}
+
+message MapInfo {
+  repeated MapPoints points = 1;
+  int32 tag = 2;
+  int32 total_points = 3;
+  int32 pack_index = 4;
+  int32 pack_num = 5;
+}
+
+message app_downlink_cmd_t {
+  app_downlink_cmd_type_e cmd = 1;
+  ack_to_app_type_e ack = 2;
+  oneof params {
+    int32 wall_material = 3;
+    int32 bottom_type = 4;
+    float floor_speed = 5;
+    MapInfo map_info = 6;
+    MapInfo line_info = 7;
+  }
+}
+
 message special_mode_t {
   int32 stair_mode = 1;
   int32 violent_mode = 2;
@@ -737,5 +784,6 @@ message MctlSys {
     remote_reset_req_t to_dev_remote_reset = 65;
     remote_reset_rsp_t to_app_remote_reset = 66;
     rpt_cutter_rpm current_cutter_mode = 67;
+    app_downlink_cmd_t app_downlink_cmd = 68;
   }
 }

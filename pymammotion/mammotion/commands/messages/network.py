@@ -5,6 +5,7 @@ import time
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
+    BleSignatureReq,
     DevNet,
     DrvDebugDdsZmq,
     DrvDevInfoReq,
@@ -18,11 +19,15 @@ from pymammotion.proto import (
     GetNetworkInfoReq,
     IotConctrlType,
     LubaMsg,
+    MnetApn,
+    MnetApnCfg,
+    MnetApnSetCfg,
     MnetCfg,
     MsgAttr,
     MsgCmdType,
     MsgDevice,
     NetType,
+    SetDrvBleMtu,
     SetMnetCfgReq,
 )
 
@@ -192,6 +197,34 @@ class MessageNetwork(AbstractMessage, ABC):
     def get_record_wifi_list(self) -> bytes:
         build = DevNet(todev_ble_sync=1, todev_wifi_list_upload=DrvWifiList())
         logger.debug("Send command - get memorized WiFi list upload command")
+        return self.send_order_msg_net(build)
+
+    def set_mtu_value(self, mtu: int) -> bytes:
+        """Set Bluetooth MTU value."""
+        build = DevNet(todev_set_ble_mtu=SetDrvBleMtu(mtu_count=mtu))
+        logger.debug(f"Send command - Set MTU value mtu={mtu}")
+        return self.send_order_msg_net(build)
+
+    def send_sign_verification(self, signature_data: str, random_data: str) -> bytes:
+        """Send BLE signature verification frame (RSA authentication)."""
+        build = DevNet(
+            todev_verify_signature_req=BleSignatureReq(signature_data=signature_data, random_data=random_data)
+        )
+        logger.debug("Send command - BLE signature verification")
+        return self.send_order_msg_net(build)
+
+    def set_4g_net_apn_info(self, apn_name: str) -> bytes:
+        """Set 4G network APN name."""
+        build = DevNet(
+            todev_set_mnet_cfg_req=SetMnetCfgReq(
+                cfg=MnetCfg(
+                    apn=MnetApnSetCfg(cfg=MnetApnCfg(apn=[MnetApn(apn_name=apn_name)])),
+                    inet_enable=True,
+                    mnet_enable=True,
+                )
+            )
+        )
+        logger.debug(f"Send command - Set 4G APN name={apn_name}")
         return self.send_order_msg_net(build)
 
     def close_clear_connect_current_wifi(self, ssid: str, status: int) -> bytes:

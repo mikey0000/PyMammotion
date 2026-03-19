@@ -6,22 +6,37 @@ import time
 from pymammotion import logger
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
+    AckToAppTypeE,
+    AppDownlinkCmdT,
+    AppDownlinkCmdTypeE,
+    AppToDevSetMqttRtkT,
+    DebugCfgWriteT,
+    DebugEnableT,
+    DebugResCfgAbilityT,
     DeviceProductTypeInfoT,
     LoraCfgReq,
     LubaMsg,
+    MapInfo,
+    MapPoints,
     MctlSys,
     MCtrlSimulationCmdData,
+    MowToAppQctoolsInfoT,
     MsgAttr,
     MsgCmdType,
     MsgDevice,
+    QcAppTestId,
     RemoteResetReqT,
     ReportInfoCfg,
     RptAct,
     RptInfoType,
+    RtkUsedType,
     SysCommCmd,
     SysKnifeControl,
     SysSetDateTime,
     TimeCtrlLight,
+    UserSetBladeUsedWarnTime,
+    WallMaterialE,
+    WorkModeT,
 )
 
 
@@ -68,6 +83,33 @@ class MessageSystem(AbstractMessage, ABC):
         mctlsys.todev_knife_ctrl = sys_knife_control
 
         return self.send_order_msg_sys(mctlsys)
+
+    def reset_blade_time(self) -> bytes:
+        """Reset the usage time of the blade.
+
+        Returns:
+            bytes: Serialized command for resetting the blade usage time.
+
+        """
+        build = MctlSys(todev_reset_blade_used_time=1)
+        logger.debug("Send command - reset blade usage time")
+        return self.send_order_msg_sys(build)
+
+    def set_blade_warning_time(self, hours: int) -> bytes:
+        """Set blade replacement warning time in hours.
+
+        Args:
+            hours (int): The warning time in hours.
+
+        Returns:
+            bytes: Serialized command for setting the blade warning time.
+
+        """
+        seconds = hours * 3600  # Convert hours to seconds
+        mctlsys = MctlSys()
+        build = mctlsys.blade_used_warn_time = UserSetBladeUsedWarnTime(blade_used_warn_time=seconds)
+        logger.debug(f"Send command - set blade replacement warning time: hours={hours}, seconds={seconds}")
+        return self.send_order_msg_sys(build)
 
     def get_device_product_model(self) -> bytes:
         return self.send_order_msg_sys(MctlSys(device_product_type_info=DeviceProductTypeInfoT(result=1)))
@@ -347,3 +389,142 @@ class MessageSystem(AbstractMessage, ABC):
         )
         logger.debug(f"Send command - remote restart command status={force_reset}")
         return self.send_order_msg_sys(mctl_sys)
+
+    # === iNavi / Network RTK link mode ===
+
+    def cancel_inavi_calibration(self) -> bytes:
+        """Cancel iNavi (network RTK) calibration in progress."""
+        build = MctlSys(app_to_dev_set_mqtt_rtk_msg=AppToDevSetMqttRtkT(stop_nrtk_flag=1))
+        logger.debug("Send command - Cancel iNavi calibration")
+        return self.send_order_msg_sys(build)
+
+    def set_inavi_net_connect_type(self, mode: int) -> bytes:
+        """Set network type used by iNavi (0=WiFi, 1=4G, etc.)."""
+        build = MctlSys(app_to_dev_set_mqtt_rtk_msg=AppToDevSetMqttRtkT(set_nrtk_net_mode=mode))
+        logger.debug(f"Send command - Set iNavi network connect type mode={mode}")
+        return self.send_order_msg_sys(build)
+
+    def set_net_rtk_link_mode(self, mode: int) -> bytes:
+        """Set RTK link channel. mode: 0=LoRa data transmission, 1=network, 2=nRTK."""
+        build = MctlSys(app_to_dev_set_mqtt_rtk_msg=AppToDevSetMqttRtkT(set_rtk_mode=RtkUsedType(mode)))
+        logger.debug(f"Send command - Set network RTK link mode mode={mode}")
+        return self.send_order_msg_sys(build)
+
+    # === Debug configuration ===
+
+    def set_debug_enable(self, enable: int) -> bytes:
+        """Set global debug switch (0=off, 1=on)."""
+        build = MctlSys(debug_enable=DebugEnableT(enbale=enable))
+        logger.debug(f"Send command - Set debug enable={enable}")
+        return self.send_order_msg_sys(build)
+
+    def set_debug_config(self, key: str, value: str) -> bytes:
+        """Write a single debug configuration key/value pair."""
+        build = MctlSys(debug_cfg_write=DebugCfgWriteT(key=key, value=value))
+        logger.debug(f"Send command - Set debug config key={key}")
+        return self.send_order_msg_sys(build)
+
+    def set_all_debug_config(self) -> bytes:
+        """Read/reset all debug configuration entries."""
+        build = MctlSys(debug_res_cfg_ability=DebugResCfgAbilityT(total_keys=0, cur_key_id=-1, value="", keys=""))
+        logger.debug("Send command - Read/reset all debug config")
+        return self.send_order_msg_sys(build)
+
+    # === Factory test ===
+
+    def send_factory_test_complete(self, result: int) -> bytes:
+        """Signal factory test completion with result status."""
+        build = MctlSys(
+            mow_to_app_qctools_info=MowToAppQctoolsInfoT(
+                type=QcAppTestId.QC_APP_TEST_COMPLETE_SIGNAL,
+                result=result,
+            )
+        )
+        logger.debug(f"Send command - Factory test complete result={result}")
+        return self.send_order_msg_sys(build)
+
+    # === Swimming pool / Spino work mode ===
+
+    def set_swimming_work_mode(self, work_mode: int) -> bytes:
+        """Switch pool cleaner (Spino) work mode."""
+        build = MctlSys(set_work_mode=WorkModeT(work_mode=work_mode))
+        logger.debug(f"Send command - Set swimming work mode={work_mode}")
+        return self.send_order_msg_sys(build)
+
+    def get_sp_map(self) -> bytes:
+        """Request swimming pool map from device (Spino)."""
+        build = MctlSys(
+            app_downlink_cmd=AppDownlinkCmdT(
+                cmd=AppDownlinkCmdTypeE.app_get_map_cmd,
+                ack=AckToAppTypeE.WAIT_ACK,
+                map_info=MapInfo(
+                    tag=1,
+                    total_points=1,
+                    pack_index=1,
+                    pack_num=1,
+                    points=[MapPoints(x=1.0, y=1.0)],
+                ),
+            )
+        )
+        logger.debug("Send command - Get swimming pool map")
+        return self.send_order_msg_sys(build)
+
+    def get_sp_line(self) -> bytes:
+        """Request swimming pool route/line from device (Spino)."""
+        build = MctlSys(
+            app_downlink_cmd=AppDownlinkCmdT(
+                cmd=AppDownlinkCmdTypeE.app_get_line_cmd,
+                ack=AckToAppTypeE.WAIT_ACK,
+                map_info=MapInfo(
+                    tag=1,
+                    total_points=1,
+                    pack_index=1,
+                    pack_num=1,
+                    points=[MapPoints(x=1.0, y=1.0)],
+                ),
+            )
+        )
+        logger.debug("Send command - Get swimming pool route")
+        return self.send_order_msg_sys(build)
+
+    def sp_environment_update(self, material: WallMaterialE | int, is_query: bool = False) -> bytes:
+        """Set or query pool wall material (Spino). is_query=True reads current value."""
+        if is_query:
+            build = MctlSys(
+                app_downlink_cmd=AppDownlinkCmdT(
+                    cmd=AppDownlinkCmdTypeE.app_wall_material_cmd,
+                    ack=AckToAppTypeE.INQUIRY,
+                    wall_material=1,
+                )
+            )
+        else:
+            build = MctlSys(
+                app_downlink_cmd=AppDownlinkCmdT(
+                    cmd=AppDownlinkCmdTypeE.app_wall_material_cmd,
+                    ack=AckToAppTypeE.WAIT_ACK,
+                    wall_material=int(material),
+                )
+            )
+        logger.debug(f"Send command - SP environment update material={material}, query={is_query}")
+        return self.send_order_msg_sys(build)
+
+    def sp_speed_update(self, speed: float, is_query: bool = False) -> bytes:
+        """Set or query pool floor cleaning speed (Spino). is_query=True reads current value."""
+        if is_query:
+            build = MctlSys(
+                app_downlink_cmd=AppDownlinkCmdT(
+                    cmd=AppDownlinkCmdTypeE.app_floor_speed_cmd,
+                    ack=AckToAppTypeE.INQUIRY,
+                    floor_speed=0.2,
+                )
+            )
+        else:
+            build = MctlSys(
+                app_downlink_cmd=AppDownlinkCmdT(
+                    cmd=AppDownlinkCmdTypeE.app_floor_speed_cmd,
+                    ack=AckToAppTypeE.WAIT_ACK,
+                    floor_speed=speed,
+                )
+            )
+        logger.debug(f"Send command - SP speed update speed={speed}, query={is_query}")
+        return self.send_order_msg_sys(build)

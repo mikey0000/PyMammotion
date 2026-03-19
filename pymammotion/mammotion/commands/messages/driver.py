@@ -7,6 +7,7 @@ from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
+    DrvCollectCtrlByHand,
     DrvKnifeHeight,
     DrvMotionCtrl,
     DrvMowCtrlByHand,
@@ -120,3 +121,15 @@ class MessageDriver(AbstractMessage, ABC):
                 todev_devmotion_ctrl=DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)
             )
         )
+
+    def manual_grass_collection(self, collect_ctrl: int) -> bytes:
+        """Manual grass collection control (0=off, 1=on)."""
+        build = MctlDriver(collect_ctrl_by_hand=DrvCollectCtrlByHand(collect_ctrl=collect_ctrl))
+        logger.debug(f"Send command - Manual grass collection collect_ctrl={collect_ctrl}")
+        return self.send_order_msg_driver(build)
+
+    def manual_pour_grass(self, unload_ctrl: int) -> bytes:
+        """Manual grass unload/dump control (0=off, 1=on)."""
+        build = MctlDriver(collect_ctrl_by_hand=DrvCollectCtrlByHand(unload_ctrl=unload_ctrl))
+        logger.debug(f"Send command - Manual pour grass unload_ctrl={unload_ctrl}")
+        return self.send_order_msg_driver(build)
