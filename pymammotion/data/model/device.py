@@ -109,9 +109,10 @@ class MowingDevice(DataClassORJSONMixin):
         """Set report data for the mower."""
 
         # adjust for vision models
-        if (rtk := toapp_report_data.rtk) and (mqtt_rtk := rtk.mqtt_rtk_info):
+        if (rtk := toapp_report_data.rtk) and (mqtt_rtk := rtk.mqtt_rtk_info) and self.location.RTK.latitude == 0 and self.location.RTK.longitude == 0:
             self.location.RTK.longitude = math.radians(mqtt_rtk.longitude)
             self.location.RTK.latitude = math.radians(mqtt_rtk.latitude)
+
 
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):
