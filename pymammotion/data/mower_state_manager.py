@@ -128,7 +128,7 @@ class MowerStateManager:
         """Dispatch notification to available callback."""
         if self.cloud_on_notification_callback:
             await self.cloud_on_notification_callback.data_event(res)
-        elif self.ble_on_notification_callback:
+        if self.ble_on_notification_callback:
             await self.ble_on_notification_callback.data_event(res)
 
     async def on_properties_callback(self, thing_properties: ThingPropertiesMessage) -> None:

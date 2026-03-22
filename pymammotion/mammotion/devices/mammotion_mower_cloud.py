@@ -28,12 +28,14 @@ class MammotionMowerCloudDevice(MammotionBaseCloudDevice, MammotionMowerDevice):
         self._state_manager.cloud_get_commondata_ack_callback = self.commdata_response
         self._state_manager.cloud_get_plan_callback = self.plan_callback
 
-    def __del__(self) -> None:
-        """Cleanup subscriptions and callbacks."""
-        # Clean up mower-specific callbacks
+    def cleanup_subscriptions(self) -> None:
+        """Cleanup mower-specific callbacks then base subscriptions."""
         if hasattr(self, "_state_manager"):
             self._state_manager.cloud_gethash_ack_callback = None
             self._state_manager.cloud_get_commondata_ack_callback = None
             self._state_manager.cloud_get_plan_callback = None
-        # Call parent cleanup
-        super().__del__()
+        super().cleanup_subscriptions()
+
+    def __del__(self) -> None:
+        """Cleanup subscriptions and callbacks."""
+        self.cleanup_subscriptions()

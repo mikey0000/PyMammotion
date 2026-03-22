@@ -5,22 +5,47 @@ from typing import Any
 import weakref
 
 
+class _StrongRef:
+    """Strong-reference wrapper with the same call interface as weakref.ref.
+
+    Used for lambdas and other non-method callables that have no other owner
+    keeping them alive. Unlike weakref.ref, this prevents silent GC of the
+    callable between registration and dispatch.
+    """
+
+    __slots__ = ("_obj",)
+
+    def __init__(self, obj: Callable) -> None:
+        self._obj = obj
+
+    def __call__(self) -> Callable:
+        return self._obj
+
+
 class Event:
     def __init__(self) -> None:
-        self.__eventhandlers: list[weakref.ReferenceType] = []
+        self.__eventhandlers: list[weakref.ReferenceType | _StrongRef] = []
 
     def __iadd__(self, handler: Callable) -> "Event":
         if isinstance(handler, MethodType):
-            # Instance method, use WeakMethod
-            ref = weakref.WeakMethod(handler)
+            # Instance method: weak reference so the Event doesn't prevent GC
+            # of the owning object.
+            ref: weakref.ReferenceType | _StrongRef = weakref.WeakMethod(handler)
         else:
-            # Function or static method, use weakref.ref
-            ref = weakref.ref(handler)
+            # Function, lambda, or partial: no owning object holds a reference,
+            # so a weak ref would allow immediate GC. Store strongly instead.
+            ref = _StrongRef(handler)
         self.__eventhandlers.append(ref)
         return self
 
     def __isub__(self, handler: Callable) -> "Event":
-        self.__eventhandlers = [ref for ref in self.__eventhandlers if ref() is not handler]
+        # Use != rather than `is not`: bound methods are never the same object
+        # across two attribute accesses (each creates a fresh MethodType), so
+        # identity comparison would silently fail to remove them.  __eq__ on
+        # MethodType compares the underlying function + instance, which is what
+        # we want.  For _StrongRef callables the same object is stored, so both
+        # == and `is` would work, but == is correct in all cases.
+        self.__eventhandlers = [ref for ref in self.__eventhandlers if ref() != handler]
         return self
 
     async def __call__(self, *args: Any, **kwargs: Any) -> None:

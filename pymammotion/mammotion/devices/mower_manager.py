@@ -75,14 +75,19 @@ class MammotionMowerDeviceManager(AbstractDeviceManager):
         return self._cloud_device
 
     def replace_cloud(self, cloud_device: MammotionMowerCloudDevice) -> None:
+        if self._cloud_device is not None:
+            self._cloud_device.cleanup_subscriptions()
         self._cloud_device = cloud_device
 
     def remove_cloud(self) -> None:
         self._state_manager.cloud_get_commondata_ack_callback = None
         self._state_manager.cloud_get_hashlist_ack_callback = None
         self._state_manager.cloud_get_plan_callback = None
-        self._state_manager.cloud_on_notification_callback = None
         self._state_manager.cloud_gethash_ack_callback = None
+        # Do NOT null out cloud_on_notification_callback — it is a persistent
+        # event bus that external callers (e.g. HA) subscribe to.  Replacing it
+        # with None would silently drop those subscriptions and they would never
+        # be re-registered after a reconnect.
         self._cloud_device = None
 
     def replace_ble(self, ble_device: MammotionMowerBLEDevice) -> None:
@@ -92,12 +97,13 @@ class MammotionMowerDeviceManager(AbstractDeviceManager):
         self._state_manager.ble_get_commondata_ack_callback = None
         self._state_manager.ble_get_hashlist_ack_callback = None
         self._state_manager.ble_get_plan_callback = None
-        self._state_manager.ble_on_notification_callback = None
         self._state_manager.ble_gethash_ack_callback = None
+        # Do NOT null out ble_on_notification_callback — same reason as cloud.
         self._ble_device = None
 
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
         device = self._cloud_device.device
+        self._cloud_device.cleanup_subscriptions()
         self._cloud_device = MammotionMowerCloudDevice(mqtt, cloud_device=device, state_manager=self._state_manager)
 
     def has_cloud(self) -> bool:

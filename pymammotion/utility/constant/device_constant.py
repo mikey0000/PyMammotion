@@ -3,7 +3,7 @@ from enum import IntEnum
 from pymammotion.data.model.report_info import ConnectData
 
 
-class bleOrderCmd:
+class BleOrderCmd(IntEnum):
     allpowerfullRW = 67
     alongBorder = 9
     areaAndTimeAndPathUpdate = 27
@@ -83,7 +83,7 @@ class bleOrderCmd:
     wirteReadSpeed = 66
 
 
-class SystemUpdateBuf:
+class SystemUpdateBuf(IntEnum):
     BATTERY_STATE_INDEX = 2
     CHARGE_POS_VAILD_INDEX = 9
     CHARGE_POS_X_F_INDEX = 7
@@ -145,7 +145,7 @@ class SystemRapidStateTunnelIndex(IntEnum):
     ZONE_HASH_INDEX = 11
 
 
-class SystemTardStateTunnel:
+class SystemTardStateTunnel(IntEnum):
     APP_CONNECTED_INFO = 27
     BATTERY_VAL_INDEX = 2
     BOL_HASH_INDEX = 6
@@ -187,7 +187,7 @@ class SystemTardStateTunnel:
     UB_ZONE_STATE_HASH_INDEX = 17
 
 
-class WorkMode:
+class WorkMode(IntEnum):
     MODE_NOT_ACTIVE = 0
     MODE_ONLINE = 1
     MODE_OFFLINE = 2

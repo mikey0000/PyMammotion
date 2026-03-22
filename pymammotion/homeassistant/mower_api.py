@@ -212,7 +212,7 @@ class HomeAssistantMowerApi:
                 await device.cloud.start()
         else:
             if device.cloud:
-                await device.cloud.stop()
+                device.cloud.stop()
                 if device.cloud.mqtt.is_connected():
                     device.cloud.mqtt.disconnect()
             if device.ble:
@@ -509,7 +509,7 @@ class HomeAssistantMowerApi:
                 if check_version.device_id == device.iot_id:
                     device.state.update_check = check_version
 
-    async def async_device_info(self, device_name) -> None:
+    async def async_device_info(self, device_name: str) -> None:
         """Get device info."""
         command_list = [
             "get_device_version_main",

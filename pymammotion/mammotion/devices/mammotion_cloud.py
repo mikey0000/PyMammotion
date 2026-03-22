@@ -220,8 +220,17 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.on_connected_event.add_subscribers(self.on_connect)
         self.set_queue_callback(self.queue_command)
 
-    def __del__(self) -> None:
-        """Cleanup subscriptions."""
+    def cleanup_subscriptions(self) -> None:
+        """Explicitly remove all event subscriptions.
+
+        Call this before replacing this device with a new one so that the old
+        device's handlers are removed synchronously, rather than relying on
+        __del__ / GC which is non-deterministic and would leave a window where
+        both the old and new device receive the same events.
+        Safe to call more than once.
+        """
+        if not hasattr(self, "_mqtt") or not hasattr(self, "_state_manager"):
+            return
         self._mqtt.on_ready_event.remove_subscribers(self.on_ready)
         self._mqtt.on_disconnected_event.remove_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.remove_subscribers(self.on_connect)
@@ -230,6 +239,10 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         self._mqtt.mqtt_status_event.remove_subscribers(self._parse_message_status_for_device)
         self._mqtt.mqtt_device_event.remove_subscribers(self._parse_device_event_for_device)
         self._state_manager.cloud_queue_command_callback.remove_subscribers(self.queue_command)
+
+    def __del__(self) -> None:
+        """Cleanup subscriptions."""
+        self.cleanup_subscriptions()
 
     @property
     def command_sent_time(self) -> float:

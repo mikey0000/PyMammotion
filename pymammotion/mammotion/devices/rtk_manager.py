@@ -95,6 +95,8 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
 
     def replace_cloud(self, cloud_device: MammotionRTKCloudDevice) -> None:
         """Replace cloud device."""
+        if self._cloud_device is not None:
+            self._cloud_device.cleanup_subscriptions()
         self._cloud_device = cloud_device
 
     def remove_cloud(self) -> None:
@@ -112,6 +114,7 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
     def replace_mqtt(self, mqtt: MammotionCloud) -> None:
         """Replace MQTT connection."""
         if cloud_device := self._cloud_device:
+            cloud_device.cleanup_subscriptions()
             self._cloud_device = MammotionRTKCloudDevice(
                 mqtt, cloud_device=cloud_device.device, rtk_state=self._rtk_state
             )

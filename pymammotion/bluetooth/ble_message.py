@@ -14,7 +14,7 @@ from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.bluetooth.model.atomic_integer import AtomicInteger
 from pymammotion.proto import DevNet, DrvDevInfoReq, LubaMsg, MsgAttr, MsgCmdType, MsgDevice
-from pymammotion.utility.constant.device_constant import bleOrderCmd
+from pymammotion.utility.constant.device_constant import BleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -307,11 +307,11 @@ class BleMessage:
 
     async def get_task(self) -> None:
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
-        await self.post_custom_data(self.get_json_string(bleOrderCmd.task, hash_map))
+        await self.post_custom_data(self.get_json_string(BleOrderCmd.task, hash_map))
 
     async def send_ble_alive(self) -> None:
         hash_map = {"ctrl": 1}
-        await self.post_custom_data(self.get_json_string(bleOrderCmd.bleAlive, hash_map))
+        await self.post_custom_data(self.get_json_string(BleOrderCmd.bleAlive, hash_map))
 
     def get_json_string(self, cmd: int, hash_map: dict[str, int]) -> str:
         jSONObject = {}

@@ -41,14 +41,19 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
         self._mqtt.on_disconnected_event.add_subscribers(self.on_disconnect)
         self._mqtt.on_connected_event.add_subscribers(self.on_connect)
 
+    def cleanup_subscriptions(self) -> None:
+        """Explicitly remove all event subscriptions. Safe to call more than once."""
+        if not hasattr(self, "_mqtt"):
+            return
+        self._mqtt.on_ready_event.remove_subscribers(self.on_ready)
+        self._mqtt.on_disconnected_event.remove_subscribers(self.on_disconnect)
+        self._mqtt.on_connected_event.remove_subscribers(self.on_connect)
+        self._mqtt.mqtt_properties_event.remove_subscribers(self._parse_message_properties_for_device)
+        self._mqtt.mqtt_status_event.remove_subscribers(self._parse_message_status_for_device)
+
     def __del__(self) -> None:
         """Cleanup subscriptions."""
-        if hasattr(self, "_mqtt"):
-            self._mqtt.on_ready_event.remove_subscribers(self.on_ready)
-            self._mqtt.on_disconnected_event.remove_subscribers(self.on_disconnect)
-            self._mqtt.on_connected_event.remove_subscribers(self.on_connect)
-            self._mqtt.mqtt_properties_event.remove_subscribers(self._parse_message_properties_for_device)
-            self._mqtt.mqtt_status_event.remove_subscribers(self._parse_message_status_for_device)
+        self.cleanup_subscriptions()
 
     @property
     def command_sent_time(self) -> float:
