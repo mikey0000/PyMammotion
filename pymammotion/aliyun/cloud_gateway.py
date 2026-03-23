@@ -11,12 +11,14 @@ from logging import getLogger
 import random
 import string
 import time
+from typing import Any
 import uuid
 
 from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
+from mashumaro import MissingField
 
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.exceptions import (
@@ -39,6 +41,8 @@ from pymammotion.aliyun.model.thing_response import ThingPropertiesResponse
 from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
+from pymammotion.http.model.http import LoginResponseData, MQTTConnection, Response
+from pymammotion.http.model.response_factory import response_factory
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
@@ -930,3 +934,124 @@ class CloudIOTGateway:
     @property
     def connect_response(self) -> ConnectResponse | None:
         return self._connect_response
+
+    def to_cache(self) -> dict[str, Any]:
+        """Serialize cloud credentials to a cache dictionary.
+
+        Returns a dict containing all response objects needed to restore the cloud
+        connection without re-authenticating. Fields with a None value are omitted.
+        """
+        raw: dict[str, Any] = {
+            "connect_response": self._connect_response,
+            "auth_data": self._login_by_oauth_response,
+            "region_data": self._region_response,
+            "aep_data": self._aep_response,
+            "session_data": self._session_by_authcode_response,
+            "device_data": self._devices_by_account_response,
+            "mammotion_data": self.mammotion_http.response,
+            "mammotion_mqtt": self.mammotion_http.mqtt_credentials,
+            "mammotion_device_list": self.mammotion_http.device_info,
+            "mammotion_device_records": self.mammotion_http.device_records,
+            "mammotion_jwt_info": self.mammotion_http.jwt_info,
+        }
+        return {k: v for k, v in raw.items() if v is not None}
+
+    @classmethod
+    async def from_cache(cls, data: dict[str, Any], account: str, password: str) -> "CloudIOTGateway | None":
+        """Reconstruct a CloudIOTGateway from a previously serialized cache dictionary.
+
+        Returns None if any required field is missing or if an error occurs during
+        reconstruction or session refresh.
+
+        Args:
+            data: Cache dictionary previously produced by :meth:`to_cache`.
+            account: User account (email / username) for the MammotionHTTP instance.
+            password: User password for the MammotionHTTP instance.
+
+        """
+        required_keys = (
+            "connect_response",
+            "auth_data",
+            "region_data",
+            "aep_data",
+            "session_data",
+            "device_data",
+            "mammotion_data",
+        )
+        if any(k not in data for k in required_keys):
+            return None
+
+        connect_data = data["connect_response"]
+        auth_data = data["auth_data"]
+        region_data = data["region_data"]
+        aep_data = data["aep_data"]
+        session_data = data["session_data"]
+        device_data = data["device_data"]
+        mammotion_data = data["mammotion_data"]
+        mammotion_mqtt = data.get("mammotion_mqtt")
+        mammotion_device_list = data.get("mammotion_device_list")
+        mammotion_device_records = data.get("mammotion_device_records")
+        mammotion_jwt = data.get("mammotion_jwt_info")
+
+        if any(
+            v is None
+            for v in [connect_data, auth_data, region_data, aep_data, session_data, device_data, mammotion_data]
+        ):
+            return None
+
+        mammotion_response_data: Response[LoginResponseData] = (
+            response_factory(Response[LoginResponseData], mammotion_data)
+            if isinstance(mammotion_data, dict)
+            else mammotion_data
+        )
+
+        mammotion_http = MammotionHTTP(account, password)
+        mammotion_http.response = mammotion_response_data
+        if mammotion_device_list:
+            mammotion_http.device_info = mammotion_device_list
+        if mammotion_device_records:
+            mammotion_http.device_records = mammotion_device_records
+        try:
+            if mammotion_mqtt:
+                mammotion_http.mqtt_credentials = (
+                    MQTTConnection.from_dict(mammotion_mqtt)
+                    if isinstance(mammotion_mqtt, dict)
+                    else mammotion_mqtt
+                )
+        except MissingField:
+            mammotion_http.mqtt_credentials = None
+
+        if mammotion_jwt:
+            mammotion_http.jwt_info = mammotion_jwt
+        mammotion_http.login_info = (
+            LoginResponseData.from_dict(mammotion_response_data.data)
+            if isinstance(mammotion_response_data.data, dict)
+            else mammotion_response_data.data
+        )
+
+        try:
+            cloud_client = cls(
+                connect_response=ConnectResponse.from_dict(connect_data)
+                if isinstance(connect_data, dict)
+                else connect_data,
+                aep_response=AepResponse.from_dict(aep_data) if isinstance(aep_data, dict) else aep_data,
+                region_response=RegionResponse.from_dict(region_data)
+                if isinstance(region_data, dict)
+                else region_data,
+                session_by_authcode_response=SessionByAuthCodeResponse.from_dict(session_data)
+                if isinstance(session_data, dict)
+                else session_data,
+                dev_by_account=ListingDevAccountResponse.from_dict(device_data)
+                if isinstance(device_data, dict)
+                else device_data,
+                login_by_oauth_response=LoginByOAuthResponse.from_dict(auth_data)
+                if isinstance(auth_data, dict)
+                else auth_data,
+                mammotion_http=mammotion_http,
+            )
+        except Exception:
+            logger.exception("Error while restoring cloud data")
+            return None
+
+        await cloud_client.check_or_refresh_session()
+        return cloud_client

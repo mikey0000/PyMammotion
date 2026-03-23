@@ -1,0 +1,189 @@
+"""Base classes, exceptions, enums, and EventBus for the transport layer."""
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from enum import Enum
+import logging
+from typing import TYPE_CHECKING, Generic, Self, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+_logger = logging.getLogger(__name__)
+T = TypeVar("T")
+
+
+class TransportError(Exception):
+    """Base exception for all transport failures."""
+
+
+class AuthError(TransportError):
+    """Authentication refused by the remote endpoint (e.g. MQTT rc=4/5)."""
+
+
+class CommandTimeoutError(TransportError):
+    """No response received within timeout after all retry attempts."""
+
+    def __init__(self, expected_field: str, attempts: int) -> None:
+        """Store the field name and attempt count, then format the message."""
+        self.expected_field = expected_field
+        self.attempts = attempts
+        super().__init__(f"No response for '{expected_field}' after {attempts} attempt(s)")
+
+
+class NoTransportAvailableError(TransportError):
+    """No connected transport available to send the command."""
+
+
+class ConcurrentRequestError(TransportError):
+    """A concurrent request for the same response field is already pending."""
+
+
+class ReLoginRequiredError(AuthError):
+    """Token refresh is impossible; the user must re-authenticate."""
+
+    def __init__(self, account_id: str, reason: str) -> None:
+        """Store account ID and reason, then format the message."""
+        self.account_id = account_id
+        self.reason = reason
+        super().__init__(f"Re-login required for account '{account_id}': {reason}")
+
+
+class NoBLEAddressKnownError(TransportError):
+    """No MAC address or external BLE device registered for this device_id."""
+
+
+class BLEUnavailableError(TransportError):
+    """BLE connection failed: direct connect and scan both failed."""
+
+
+class SagaInterruptedError(TransportError):
+    """A saga step timed out after all retries; the saga executor will restart."""
+
+
+class SagaFailedError(TransportError):
+    """A saga exhausted all restart attempts."""
+
+    def __init__(self, name: str, attempts: int) -> None:
+        """Store saga name and attempt count, then format the message."""
+        self.name = name
+        self.attempts = attempts
+        super().__init__(f"Saga '{name}' failed after {attempts} attempt(s)")
+
+
+class TransportType(Enum):
+    """The underlying connection mechanism."""
+
+    CLOUD_ALIYUN = "cloud_aliyun"
+    CLOUD_MAMMOTION = "cloud_mammotion"
+    BLE = "ble"
+
+
+class TransportAvailability(Enum):
+    """Connection state of one transport channel."""
+
+    CONNECTED = "connected"
+    CONNECTING = "connecting"
+    DISCONNECTED = "disconnected"
+    UNKNOWN = "unknown"
+
+
+class Subscription:
+    """RAII handle for an EventBus subscription.
+
+    Call cancel() or use as a context manager to unsubscribe.
+    """
+
+    def __init__(self, sub_id: int, unsubscribe: Callable[[], None]) -> None:
+        """Store the subscription ID and unsubscribe callable."""
+        self._sub_id = sub_id
+        self._unsubscribe = unsubscribe
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Remove this handler from the event bus."""
+        if not self._cancelled:
+            self._unsubscribe()
+            self._cancelled = True
+
+    def __enter__(self) -> Self:
+        """Return self for use as a context manager."""
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        """Cancel the subscription on context exit."""
+        self.cancel()
+
+
+class EventBus(Generic[T]):
+    """Type-safe event bus with RAII subscriptions.
+
+    Handlers are called concurrently on emit(). An exception in one handler
+    is logged but does not prevent other handlers from being called.
+    """
+
+    def __init__(self) -> None:
+        """Initialise an empty event bus."""
+        self._handlers: dict[int, Callable[[T], Awaitable[None]]] = {}
+        self._next_id: int = 0
+
+    def subscribe(self, handler: Callable[[T], Awaitable[None]]) -> Subscription:
+        """Register a handler and return a Subscription for later cancellation."""
+        sub_id = self._next_id
+        self._next_id += 1
+        self._handlers[sub_id] = handler
+        def _remove() -> None:
+            self._handlers.pop(sub_id, None)
+
+        return Subscription(sub_id, _remove)
+
+    async def emit(self, event: T) -> None:
+        """Call all registered handlers with event.
+
+        Copies the handler dict before iteration so unsubscribing during emit is safe.
+        """
+        for handler in list(self._handlers.values()):
+            try:
+                await handler(event)
+            except Exception:
+                _logger.exception("EventBus handler raised an unhandled exception")
+
+    def _unsubscribe(self, sub_id: int) -> None:
+        """Remove a handler by subscription ID."""
+        self._handlers.pop(sub_id, None)
+
+    def __len__(self) -> int:
+        """Return the number of active subscribers."""
+        return len(self._handlers)
+
+
+class Transport(ABC):
+    """Abstract base class for all transport implementations (MQTT, BLE).
+
+    Concrete implementations: MQTTTransport, BLETransport.
+    """
+
+    #: Set by the broker layer to receive raw incoming messages.
+    on_message: Callable[[bytes], Awaitable[None]] | None = None
+
+    @abstractmethod
+    async def connect(self) -> None:
+        """Establish the connection. Raises TransportError or AuthError on failure."""
+
+    @abstractmethod
+    async def disconnect(self) -> None:
+        """Gracefully close the connection."""
+
+    @abstractmethod
+    async def send(self, payload: bytes) -> None:
+        """Send a raw payload. Raises TransportError if not connected."""
+
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """True if the transport currently has an active connection."""
+
+    @property
+    @abstractmethod
+    def transport_type(self) -> TransportType:
+        """The type of this transport (CLOUD_ALIYUN, CLOUD_MAMMOTION, or BLE)."""
