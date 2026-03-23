@@ -63,19 +63,18 @@ def make_handle(
 
 
 async def test_add_transport_sets_on_message() -> None:
-    """transport.on_message must be set to broker.on_message after add_transport."""
+    """transport.on_message must be set to handle._on_raw_message after add_transport."""
     handle = make_handle()
-    # Use a plain object so attribute assignment is a real dict write, not a MagicMock intercept
     transport = make_transport(TransportType.CLOUD_ALIYUN)
 
     await handle.add_transport(transport)
 
-    # The broker's on_message is a bound method; compare by __func__ and __self__ to avoid
-    # the identity issue that arises from bound method re-creation on each attribute access.
-    broker_on_message = handle.broker.on_message
+    # _on_raw_message is a bound method on the handle; compare __func__ and __self__
+    # to avoid the identity issue that arises from bound method re-creation on each access.
+    raw_message_method = handle._on_raw_message
     set_on_message = transport.on_message
-    assert set_on_message.__func__ is broker_on_message.__func__
-    assert set_on_message.__self__ is broker_on_message.__self__
+    assert set_on_message.__func__ is raw_message_method.__func__
+    assert set_on_message.__self__ is raw_message_method.__self__
 
 
 # ---------------------------------------------------------------------------

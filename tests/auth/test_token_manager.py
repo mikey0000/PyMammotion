@@ -12,9 +12,9 @@ from pymammotion.auth.token_manager import (
     AliyunCredentials,
     HTTPCredentials,
     MQTTCredentials,
-    ReLoginRequiredError,
     TokenManager,
 )
+from pymammotion.transport.base import ReLoginRequiredError
 
 
 def make_http_creds(expires_in_seconds: float) -> HTTPCredentials:

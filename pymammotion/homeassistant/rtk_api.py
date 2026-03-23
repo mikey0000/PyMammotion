@@ -1,21 +1,42 @@
 import json
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException, SetupException
+from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import RTKDevice
 from pymammotion.http.model.http import CheckDeviceVersion
+
+# TODO(task #8): RTKDevice is a separate dataclass from MowingDevice, and the new
+# MammotionClient does not yet expose CloudIOTGateway (only AliyunMQTTTransport is
+# stored as _cloud_transport).  Full migration of the HTTP polling path
+# (get_device_properties, get_device_ota_firmware) requires either:
+#   a) storing CloudIOTGateway on MammotionClient (add _cloud_client attribute), or
+#   b) moving RTK state into MowingDevice so all devices share the same model.
+# Until that work is done, this file uses MammotionClient for device lookup but
+# still relies on the old MammotionRTKDeviceManager (via mammotion.get_rtk_device_by_name)
+# for the cloud_client and RTK-specific state.  See task #7 and #8.
 from pymammotion.mammotion.devices.mammotion import Mammotion
 
 
 class HomeAssistantRTKApi:
     def __init__(self) -> None:
+        # TODO(task #8): Replace Mammotion() with MammotionClient() once CloudIOTGateway
+        # is accessible from MammotionClient and RTK state is unified with MowingDevice.
         self._mammotion = Mammotion()
+        self._client = MammotionClient()
 
     @property
     def mammotion(self) -> Mammotion:
         return self._mammotion
 
+    @property
+    def client(self) -> MammotionClient:
+        return self._client
+
     async def update(self, device_name: str) -> RTKDevice:
         """Update RTK data."""
+        # TODO(task #8): Replace with self._client.mower(device_name) once RTK devices
+        # are registered via MammotionClient.login_and_initiate_cloud and RTKDevice
+        # state is accessible from DeviceHandle (currently all devices use MowingDevice).
         device = self.mammotion.get_rtk_device_by_name(device_name)
         try:
             response = await device.cloud_client.get_device_properties(device.iot_id)

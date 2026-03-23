@@ -2,30 +2,38 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from pymammotion.data.model.hash_list import AreaHashNameList, HashList, NavGetHashListData
-from pymammotion.messaging.broker import CommandTimeoutError, DeviceMessageBroker
+import betterproto2
+
+from pymammotion.data.model.hash_list import AreaHashNameList, HashList, NavGetCommData, NavGetHashListData, SvgMessage
+from pymammotion.data.model.region_data import RegionData
 from pymammotion.messaging.saga import Saga
+from pymammotion.transport.base import CommandTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from pymammotion.messaging.broker import DeviceMessageBroker
 
 _logger = logging.getLogger(__name__)
 
 
 class MapFetchSaga(Saga):
-    """Fetches the full device map: area names (non-Luba1), hash list, and all chunks.
+    """Fetches the full device map: area names (non-Luba1), hash list, and all chunk data.
 
-    Area names are fetched first (for non-Luba1 devices) because they must be
-    present in the HashList before boundary data is processed. Area names are
-    cached after the first successful fetch and reused on saga restarts.
+    Execution order:
+      1. Area names (non-Luba1, cached across restarts)
+      2-3. Root hash list frames (all sub_cmd=0 hashes)
+      4. Boundary/obstacle/path data for every hash ID in the list
 
-    If any step times out (CommandTimeoutError), the saga sets SagaInterruptedError
-    which causes Saga.execute() to restart _run() from scratch. Partial state
-    (hash list, chunks) is cleared at the start of each _run() call.
+    Steps 2-4 use subscribe_unsolicited so that device-pushed frames are never
+    dropped due to a race between receiving and registering a send_and_wait.
+
     Area names are NOT cleared on restart — they are cached in _cached_area_names.
+    All other partial state is cleared at the start of each _run() call.
     """
 
     name = "map_fetch"
@@ -60,7 +68,9 @@ class MapFetchSaga(Saga):
         self.result = None
         hash_list = HashList()
 
+        # ------------------------------------------------------------------
         # Step 1: Fetch area names (non-Luba1 only, cached after first fetch)
+        # ------------------------------------------------------------------
         if not self._is_luba1 and self._cached_area_names is None:
             _logger.debug("MapFetchSaga[%s]: fetching area names", self._device_name)
             cmd = self._command_builder.get_area_name_list(self._device_id)
@@ -69,98 +79,190 @@ class MapFetchSaga(Saga):
                 expected_field="toapp_all_hash_name",
                 send_timeout=self.step_timeout,
             )
-            # Parse the AppGetAllAreaHashName response
-            nav_msg = response.nav
-            area_hash_name_msg = getattr(nav_msg, "toapp_all_hash_name", None)
+            area_hash_name_msg = getattr(response.nav, "toapp_all_hash_name", None)
             if area_hash_name_msg is not None and hasattr(area_hash_name_msg, "hashnames"):
                 self._cached_area_names = [
-                    AreaHashNameList(name=item.name, hash=item.hash)
-                    for item in area_hash_name_msg.hashnames
+                    AreaHashNameList(name=item.name, hash=item.hash) for item in area_hash_name_msg.hashnames
                 ]
             else:
                 self._cached_area_names = []
-            _logger.debug(
-                "MapFetchSaga[%s]: got %d area names", self._device_name, len(self._cached_area_names)
-            )
+            _logger.debug("MapFetchSaga[%s]: got %d area names", self._device_name, len(self._cached_area_names))
 
-        # Apply cached area names to the hash list being assembled
         if self._cached_area_names is not None:
             hash_list.area_name = list(self._cached_area_names)
 
-        # Step 2: Request the root hash list (first frame)
+        # ------------------------------------------------------------------
+        # Steps 2-3: Root hash list frames.
+        # Subscribe before sending so no frame is dropped if the device
+        # pushes multiple frames at once before we can register a second
+        # send_and_wait.
+        # ------------------------------------------------------------------
         _logger.debug("MapFetchSaga[%s]: requesting hash list", self._device_name)
-        cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=1)
-        response = await broker.send_and_wait(
-            send_fn=lambda: self._send_command(cmd),
-            expected_field="toapp_gethash_ack",
-            send_timeout=self.step_timeout,
-        )
 
-        nav_msg = response.nav
-        hash_list_ack = getattr(nav_msg, "toapp_gethash_ack", None)
-        if hash_list_ack is None:
-            _logger.warning("MapFetchSaga[%s]: hash list ack was None", self._device_name)
-            field = "toapp_gethash_ack"
-            raise CommandTimeoutError(field, 0)
+        hash_frame_queue: asyncio.Queue[Any] = asyncio.Queue()
 
-        # Decode first frame
-        hash_list.update_root_hash_list(
-            NavGetHashListData(
-                pver=hash_list_ack.pver,
-                sub_cmd=hash_list_ack.sub_cmd,
-                total_frame=hash_list_ack.total_frame,
-                current_frame=hash_list_ack.current_frame,
-                data_hash=hash_list_ack.data_hash,
-                hash_len=hash_list_ack.hash_len,
-                result=hash_list_ack.result,
-                data_couple=list(hash_list_ack.data_couple),
-            )
-        )
+        async def _collect_hash_frame(msg: Any) -> None:
+            try:
+                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
+                if sub_name == "nav":
+                    leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
+                    if leaf_name == "toapp_gethash_ack":
+                        hash_frame_queue.put_nowait(msg)
+            except Exception:  # noqa: BLE001
+                pass
 
-        total_frame = hash_list_ack.total_frame
-        current_frame = hash_list_ack.current_frame
+        with broker.subscribe_unsolicited(_collect_hash_frame):
+            cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
+            await self._send_command(cmd)
 
-        # Step 3: Fetch any remaining hash list frames
-        received_frames = {current_frame}
-        all_frames = set(range(1, total_frame + 1))
+            try:
+                response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
+            except TimeoutError:
+                raise CommandTimeoutError("toapp_gethash_ack", 1) from None
 
-        while received_frames != all_frames:
-            missing = sorted(all_frames - received_frames)
-            next_frame = missing[0]
-            _logger.debug(
-                "MapFetchSaga[%s]: requesting hash frame %d/%d", self._device_name, next_frame, total_frame
-            )
-            chunk_cmd = self._command_builder.get_hash_response(
-                total_frame=total_frame, current_frame=next_frame
-            )
-            chunk_response = await broker.send_and_wait(
-                send_fn=lambda: self._send_command(chunk_cmd),  # noqa: B023
-                expected_field="toapp_gethash_ack",
-                send_timeout=self.step_timeout,
-            )
-            chunk_nav = chunk_response.nav
-            chunk_ack = getattr(chunk_nav, "toapp_gethash_ack", None)
-            if chunk_ack is None:
-                field = "toapp_gethash_ack"
-                raise CommandTimeoutError(field, 0)
+            hash_list_ack = getattr(response.nav, "toapp_gethash_ack", None)
+            if hash_list_ack is None:
+                raise CommandTimeoutError("toapp_gethash_ack", 1)
 
             hash_list.update_root_hash_list(
                 NavGetHashListData(
-                    pver=chunk_ack.pver,
-                    sub_cmd=chunk_ack.sub_cmd,
-                    total_frame=chunk_ack.total_frame,
-                    current_frame=chunk_ack.current_frame,
-                    data_hash=chunk_ack.data_hash,
-                    hash_len=chunk_ack.hash_len,
-                    result=chunk_ack.result,
-                    data_couple=list(chunk_ack.data_couple),
+                    pver=hash_list_ack.pver,
+                    sub_cmd=hash_list_ack.sub_cmd,
+                    total_frame=hash_list_ack.total_frame,
+                    current_frame=hash_list_ack.current_frame,
+                    data_hash=hash_list_ack.data_hash,
+                    hash_len=hash_list_ack.hash_len,
+                    result=hash_list_ack.result,
+                    data_couple=list(hash_list_ack.data_couple),
                 )
             )
-            received_frames.add(chunk_ack.current_frame)
+
+            total_frame = hash_list_ack.total_frame
+            received_frames = {hash_list_ack.current_frame}
+            all_frames = set(range(1, total_frame + 1))
+
+            while received_frames != all_frames:
+                missing = sorted(all_frames - received_frames)
+                next_frame = missing[0]
+                _logger.debug(
+                    "MapFetchSaga[%s]: requesting hash frame %d/%d", self._device_name, next_frame, total_frame
+                )
+                chunk_cmd = self._command_builder.get_hash_response(total_frame=total_frame, current_frame=next_frame)
+                await self._send_command(chunk_cmd)
+
+                try:
+                    chunk_response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
+                except TimeoutError:
+                    raise CommandTimeoutError("toapp_gethash_ack", 1) from None
+
+                chunk_ack = getattr(chunk_response.nav, "toapp_gethash_ack", None)
+                if chunk_ack is None:
+                    raise CommandTimeoutError("toapp_gethash_ack", 1)
+
+                hash_list.update_root_hash_list(
+                    NavGetHashListData(
+                        pver=chunk_ack.pver,
+                        sub_cmd=chunk_ack.sub_cmd,
+                        total_frame=chunk_ack.total_frame,
+                        current_frame=chunk_ack.current_frame,
+                        data_hash=chunk_ack.data_hash,
+                        hash_len=chunk_ack.hash_len,
+                        result=chunk_ack.result,
+                        data_couple=list(chunk_ack.data_couple),
+                    )
+                )
+                received_frames.add(chunk_ack.current_frame)
 
         _logger.debug(
-            "MapFetchSaga[%s]: map fetch complete, %d hash IDs",
+            "MapFetchSaga[%s]: hash list complete — %d hash IDs to fetch",
             self._device_name,
             len(hash_list.hashlist),
         )
+
+        # ------------------------------------------------------------------
+        # Step 4: Fetch boundary/obstacle/path data for every hash ID.
+        # Same unsolicited-subscription pattern: subscribe before first send
+        # so rapid multi-frame responses are never lost.
+        # ------------------------------------------------------------------
+        comm_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        async def _collect_comm_data(msg: Any) -> None:
+            try:
+                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
+                if sub_name == "nav":
+                    leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
+                    if leaf_name in ("toapp_get_commondata_ack", "toapp_svg_msg"):
+                        comm_queue.put_nowait(msg)
+            except Exception:  # noqa: BLE001
+                pass
+
+        with broker.subscribe_unsolicited(_collect_comm_data):
+            missing_hashes = hash_list.missing_hashlist(0)
+            while missing_hashes:
+                data_hash = missing_hashes[0]
+                _logger.debug("MapFetchSaga[%s]: fetching data for hash %d", self._device_name, data_hash)
+
+                cmd = self._command_builder.synchronize_hash_data(hash_num=data_hash)
+                await self._send_command(cmd)
+
+                try:
+                    response = await asyncio.wait_for(comm_queue.get(), timeout=self.step_timeout)
+                except TimeoutError:
+                    raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
+
+                leaf_name, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
+                self._apply_comm_data(hash_list, leaf_name, leaf_val)
+
+                # Fetch any remaining frames for this hash
+                while True:
+                    missing_frames = hash_list.missing_frame(leaf_val)
+                    if not missing_frames:
+                        break
+
+                    region_data = self._make_region_data(leaf_name, leaf_val, missing_frames[0] - 1)
+                    cmd = self._command_builder.get_regional_data(regional_data=region_data)
+                    await self._send_command(cmd)
+
+                    try:
+                        frame_response = await asyncio.wait_for(comm_queue.get(), timeout=self.step_timeout)
+                    except TimeoutError:
+                        raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
+
+                    leaf_name, leaf_val = betterproto2.which_one_of(frame_response.nav, "SubNavMsg")
+                    self._apply_comm_data(hash_list, leaf_name, leaf_val)
+
+                # Refresh — this hash should now be gone from missing list
+                missing_hashes = hash_list.missing_hashlist(0)
+
+        _logger.debug(
+            "MapFetchSaga[%s]: map fetch complete — areas=%d obstacles=%d paths=%d",
+            self._device_name,
+            len(hash_list.area),
+            len(hash_list.obstacle),
+            len(hash_list.path),
+        )
         self.result = hash_list
+
+    @staticmethod
+    def _apply_comm_data(hash_list: HashList, leaf_name: str, leaf_val: Any) -> None:
+        """Convert a protobuf comm-data message to a model object and store it."""
+        if leaf_name == "toapp_get_commondata_ack":
+            hash_list.update(NavGetCommData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+        elif leaf_name == "toapp_svg_msg":
+            hash_list.update(SvgMessage.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+
+    @staticmethod
+    def _make_region_data(leaf_name: str, leaf_val: Any, current_frame: int) -> RegionData:
+        """Build a RegionData request for the next missing frame."""
+        region_data = RegionData()
+        region_data.total_frame = leaf_val.total_frame
+        region_data.current_frame = current_frame
+        region_data.sub_cmd = leaf_val.sub_cmd
+        region_data.type = leaf_val.type
+        if leaf_name == "toapp_svg_msg":
+            region_data.hash = leaf_val.data_hash
+            region_data.action = 0
+        else:
+            region_data.hash = leaf_val.hash
+            region_data.action = leaf_val.action
+        return region_data

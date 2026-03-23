@@ -1,4 +1,5 @@
 """Immutable device snapshots, availability tracking, and state machine."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -9,11 +10,21 @@ import logging
 from typing import TYPE_CHECKING
 
 from pymammotion.transport.base import TransportAvailability
+from pymammotion.utility.constant.device_constant import WorkMode
 
 if TYPE_CHECKING:
     from pymammotion.data.model.device import MowingDevice
 
 _logger = logging.getLogger(__name__)
+
+_WORK_MODE_TO_ACTIVITY: dict[int, str] = {
+    WorkMode.MODE_READY: "ready",
+    WorkMode.MODE_WORKING: "mowing",
+    WorkMode.MODE_RETURNING: "returning",
+    WorkMode.MODE_PAUSE: "paused",
+    WorkMode.MODE_LOCK: "locked",
+    WorkMode.MODE_NOT_ACTIVE: "unknown",
+}
 
 
 class DeviceConnectionState(Enum):
@@ -143,8 +154,8 @@ class DeviceStateMachine:
         battery: int = device.report_data.dev.battery_val
 
         # Mowing activity comes from report_data.dev.sys_status (int, maps to WorkMode)
-        sys_status = device.report_data.dev.sys_status
-        mowing_activity: str = str(sys_status) if sys_status is not None else "unknown"
+        sys_status: int = device.report_data.dev.sys_status
+        mowing_activity: str = _WORK_MODE_TO_ACTIVITY.get(sys_status, f"unknown({sys_status})")
 
         # Blade height (knife_height) is stored in report_data.work.knife_height (WorkData)
         blade_height: int = device.report_data.work.knife_height

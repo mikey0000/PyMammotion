@@ -314,13 +314,8 @@ class MammotionHTTP:
             },
         )
         data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
-        # Assuming the data format matches the expected structure
-        response = Response[StreamSubscriptionResponse].from_dict(data)
+        response = response_factory(Response[StreamSubscriptionResponse], data)
         await self.handle_expiry(response)
-        if response.code != 0:
-            return response
-        response.data = StreamSubscriptionResponse.from_dict(data.get("data", {}))
         return response
 
     @refresh_token_decorator
@@ -334,13 +329,7 @@ class MammotionHTTP:
             },
         )
         data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
-        # Assuming the data format matches the expected structure
-        response = Response[VideoResourceResponse].from_dict(data)
-        if response.code != 0:
-            return response
-        response.data = VideoResourceResponse.from_dict(data.get("data", {}))
-        return response
+        return response_factory(Response[VideoResourceResponse], data)
 
     @refresh_token_decorator
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:

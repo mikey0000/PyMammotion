@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
-from pymammotion.messaging.saga import Saga, SagaFailedError, SagaInterruptedError
+from pymammotion.messaging.saga import Saga
+from pymammotion.transport.base import SagaFailedError, SagaInterruptedError
 
 __all__ = [
     "DeviceCommandQueue",

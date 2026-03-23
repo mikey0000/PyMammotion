@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pymammotion.device.handle import DeviceHandle
-from pymammotion.messaging.broker import CommandTimeoutError, DeviceMessageBroker
+from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.messaging.map_saga import MapFetchSaga
-from pymammotion.messaging.saga import SagaFailedError
+from pymammotion.transport.base import CommandTimeoutError, SagaFailedError
 from pymammotion.state.device_state import DeviceConnectionState, TransportAvailability
 from pymammotion.transport.base import TransportType
 

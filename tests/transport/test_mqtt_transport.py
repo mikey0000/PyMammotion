@@ -126,10 +126,10 @@ async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig) -
 
 @pytest.mark.asyncio
 async def test_send_calls_publish(config: MQTTTransportConfig) -> None:
-    """send() should call client.publish with the correct topic and payload."""
+    """send() should call client.publish with the configured publish topic and payload."""
     transport = MQTTTransport(config)
     topic = "/sys/pk/dn/thing/event/+/post"
-    transport.add_topic(topic)
+    transport.set_publish_topic(topic)
     fake_client = _FakeMQTTClient()
 
     with patch("aiomqtt.Client", return_value=fake_client):

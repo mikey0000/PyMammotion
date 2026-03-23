@@ -1,9 +1,12 @@
 """MQTTTransport — concrete Transport wrapping aiomqtt for Mammotion direct MQTT."""
+
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 from dataclasses import dataclass
+import json
 import logging
 import ssl
 from typing import TYPE_CHECKING
@@ -40,6 +43,7 @@ class MQTTTransport(Transport):
     """
 
     on_message: Callable[[bytes], Awaitable[None]] | None = None
+    on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
 
     def __init__(self, config: MQTTTransportConfig) -> None:
         """Initialise the transport with the supplied configuration."""
@@ -49,6 +53,9 @@ class MQTTTransport(Transport):
         self._stop_event: asyncio.Event = asyncio.Event()
         self._availability: TransportAvailability = TransportAvailability.DISCONNECTED
         self._topics: list[str] = []
+        self._publish_topic: str | None = None
+        # (product_key, device_name) → iot_id, used for per-device message routing
+        self._device_to_iot: dict[tuple[str, str], str] = {}
 
     # ------------------------------------------------------------------
     # Public topic management
@@ -58,6 +65,14 @@ class MQTTTransport(Transport):
         """Register a topic to subscribe to on next (or current) connect."""
         if topic not in self._topics:
             self._topics.append(topic)
+
+    def register_device(self, product_key: str, device_name: str, iot_id: str) -> None:
+        """Map a (product_key, device_name) pair to an iot_id for message routing."""
+        self._device_to_iot[(product_key, device_name)] = iot_id
+
+    def set_publish_topic(self, topic: str) -> None:
+        """Set the topic used for outgoing command publishes."""
+        self._publish_topic = topic
 
     # ------------------------------------------------------------------
     # Transport ABC
@@ -72,9 +87,7 @@ class MQTTTransport(Transport):
     def is_connected(self) -> bool:
         """True when the receive-loop task is running and not done."""
         return (
-            self._availability is TransportAvailability.CONNECTED
-            and self._task is not None
-            and not self._task.done()
+            self._availability is TransportAvailability.CONNECTED and self._task is not None and not self._task.done()
         )
 
     @property
@@ -108,15 +121,17 @@ class MQTTTransport(Transport):
         self._client = None
 
     async def send(self, payload: bytes) -> None:
-        """Publish payload to all subscribed topics.
+        """Publish payload to the configured publish topic.
 
-        Raises TransportError if the transport is not connected.
+        Raises TransportError if the transport is not connected or no publish topic is set.
         """
         if not self.is_connected or self._client is None:
             msg = "MQTTTransport is not connected; cannot send payload"
             raise TransportError(msg)
-        for topic in self._topics:
-            await self._client.publish(topic, payload)
+        if self._publish_topic is None:
+            msg = "No publish topic configured"
+            raise TransportError(msg)
+        await self._client.publish(self._publish_topic, payload)
 
     # ------------------------------------------------------------------
     # Internal
@@ -152,8 +167,7 @@ class MQTTTransport(Transport):
                     async for message in client.messages:
                         if self._stop_event.is_set():
                             break
-                        if self.on_message is not None:
-                            await self.on_message(bytes(message.payload))
+                        await self._dispatch(str(message.topic), bytes(message.payload))
 
             except aiomqtt.MqttCodeError as exc:
                 rc = exc.rc
@@ -181,3 +195,69 @@ class MQTTTransport(Transport):
                 except asyncio.CancelledError:
                     break
                 backoff = min(backoff * 2, 120)
+
+    async def _dispatch(self, topic: str, raw: bytes) -> None:
+        """Route an incoming message to the appropriate callback.
+
+        If ``on_device_message`` is set, the topic is parsed to derive the
+        iot_id, the JSON envelope is unwrapped, and the raw protobuf bytes
+        are forwarded together with the iot_id.
+
+        Falls back to the plain ``on_message`` callback (raw bytes, no routing)
+        when ``on_device_message`` is not set.
+        """
+        if self.on_device_message is not None:
+            # Extract (product_key, device_name) from topic: /sys/<pk>/<dn>/...
+            parts = topic.split("/")
+            if len(parts) >= 4:
+                pk, dn = parts[2], parts[3]
+                iot_id = self._device_to_iot.get((pk, dn))
+                if iot_id:
+                    decoded = self._unwrap_envelope(topic, raw)
+                    if decoded is not None:
+                        await self.on_device_message(iot_id, decoded)
+                        return
+            _logger.debug("MQTTTransport: could not route message on topic %s", topic)
+            return
+
+        if self.on_message is not None:
+            await self.on_message(raw)
+
+    @staticmethod
+    def _unwrap_envelope(topic: str, raw: bytes) -> bytes | None:
+        """Extract the base64-encoded protobuf payload from a Mammotion MQTT envelope.
+
+        Handles two shapes::
+
+            # Mammotion direct-MQTT event shape
+            {"params": {"content": "<base64>"}}
+
+            # Mammotion thing/event shape (nested under value)
+            {"params": {"value": {"content": "<base64>"}}}
+        """
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            _logger.debug("MQTTTransport: non-JSON payload on topic %s, skipping", topic)
+            return None
+
+        params = parsed.get("params", {})
+
+        # Shape 1: params.value.content
+        try:
+            content: str | None = params["value"]["content"]
+            if content:
+                return base64.b64decode(content)
+        except (KeyError, TypeError):
+            pass
+
+        # Shape 2: params.content
+        try:
+            content = params["content"]
+            if content:
+                return base64.b64decode(content)
+        except (KeyError, TypeError):
+            pass
+
+        _logger.debug("MQTTTransport: no base64 content found on topic %s", topic)
+        return None

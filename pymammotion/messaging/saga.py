@@ -5,28 +5,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
-from pymammotion.messaging.broker import CommandTimeoutError, DeviceMessageBroker
+from pymammotion.transport.base import CommandTimeoutError, SagaFailedError, SagaInterruptedError
+
+if TYPE_CHECKING:
+    from pymammotion.messaging.broker import DeviceMessageBroker
 
 _logger = logging.getLogger(__name__)
-
-
-class SagaInterruptedError(Exception):
-    """Raised when a saga step times out after all retries.
-
-    The saga executor catches this and restarts _run() from the beginning.
-    Subclasses must clear partial state at the start of each _run() call.
-    """
-
-
-class SagaFailedError(Exception):
-    """Raised when a saga exhausts all restart attempts."""
-
-    def __init__(self, name: str, attempts: int) -> None:
-        """Initialise with the saga name and total attempts made."""
-        self.name = name
-        self.attempts = attempts
-        super().__init__(f"Saga '{name}' failed after {attempts} attempt(s)")
 
 
 class Saga(ABC):

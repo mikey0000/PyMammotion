@@ -447,6 +447,11 @@ class Mammotion:
         await mammotion_http.get_mqtt_credentials()
         cloud_client = CloudIOTGateway(mammotion_http)
         await self.connect_iot(cloud_client)
+        shared_notice = await cloud_client.get_shared_notice_list()
+        if shared_notice.data and shared_notice.data.data:
+            pending = [d.record_id for d in shared_notice.data.data if d.status == -1 and d.record_id]
+            if pending:
+                await cloud_client.confirm_share(pending)
         return cloud_client
 
     async def stop(self) -> None:

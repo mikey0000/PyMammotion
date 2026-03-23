@@ -7,7 +7,8 @@ import pytest
 
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
-from pymammotion.messaging.saga import Saga, SagaFailedError
+from pymammotion.messaging.saga import Saga
+from pymammotion.transport.base import SagaFailedError
 
 
 async def test_is_saga_active_false_initially() -> None:

@@ -94,7 +94,7 @@ def make_device(online: bool = True, enabled: bool = True) -> MagicMock:
     device.online = online
     device.enabled = enabled
     device.report_data.dev.battery_val = 75
-    device.report_data.dev.sys_status = "idle"
+    device.report_data.dev.sys_status = 0
     device.report_data.work.knife_height = 60
     return device
 

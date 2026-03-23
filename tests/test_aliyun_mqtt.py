@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -10,8 +11,10 @@ import ssl
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import betterproto2
 import pytest
 
+from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams, ThingEventMessage
 from pymammotion.mqtt.aliyun_mqtt import (
     AliyunMQTT,
     _MQTT_KEEPALIVE,
@@ -423,6 +426,94 @@ class TestSendCloudCommand:
 
         cloud.send_cloud_command.assert_awaited_once_with("iot-id-1", b"\x01\x02")
         assert result == "ok"
+
+
+# ---------------------------------------------------------------------------
+# ThingEventMessage parsing — Aliyun thing/events payload
+# ---------------------------------------------------------------------------
+
+# Real payload captured from a live Yuka device on the Aliyun thing/events topic.
+# params.value.content decodes to a LubaMsg containing toapp_all_hash_name.
+_THING_EVENTS_PAYLOAD: dict[str, Any] = {
+    "method": "thing.events",
+    "id": "17742925978238386",
+    "params": {
+        "groupIdList": ["a103KFib2pj733DB"],
+        "checkFailedData": {},
+        "_tenantId": "90AB9606A6F24B4E8CFE9333B8B2F230",
+        "groupId": "a103KFib2pj733DB",
+        "batchId": "a4e3729642cf47feb9c068e3da271792",
+        "productKey": "a1biqVGvxrE",
+        "type": "info",
+        "generateTime": 1774292597802,
+        "deviceName": "Yuka-MNTXVHBE",
+        "JMSXDeliveryCount": 1,
+        "checkLevel": 0,
+        "qos": 1,
+        "requestId": "65110",
+        "_categoryKey": "TmallGenie.LawnMower",
+        "value": {
+            "content": (
+                "CPABEAEYByACKGIwAVqtAeoDqQEKGlVUcGJ3R0M3dnhkNERwTnZiRkdMMDAwMDAwEhsJ"
+                "Z2vn+sZTOiUSEE5laWdoYm91cnMgZnJvbnQSHAlSC5tdTbBQRhIRQmVsb3cgY2xvdGhl"
+                "c2xpbmUSDwm3RLI6QPU2RxIEUm9hZBIQCfxcvLRPwiZaEgVGZW5jZRIVCc36mPbms4Nz"
+                "EgpGcm9udCB5YXJkEhYJbnjXy+zzq3YSC0Nsb3RoZXNsaW5l"
+            )
+        },
+        "deviceType": "LawnMower",
+        "identifier": "device_protobuf_msg_event",
+        "categoryKey": "LawnMower",
+        "gmtCreate": 1774292597802,
+        "_traceId": "a9fef5d617742925977958244d0067",
+        "iotId": "UTpbwGC7vxd4DpNvbFGL000000",
+        "namespace": "TmallGenie",
+        "tenantId": "90AB9606A6F24B4E8CFE9333B8B2F230",
+        "name": "Protobuf\xe5\x8d\x8f\xe8\xae\xae\xe4\xbf\xa1\xe6\x81\xaf\xe4\xba\x8b\xe4\xbb\xb6",
+        "thingType": "DEVICE",
+        "time": 1774292597801,
+        "tenantInstanceId": "iotx-oxssharez400",
+    },
+    "version": "1.0",
+}
+
+
+class TestThingEventMessage:
+    def test_parses_as_protobuf_event(self) -> None:
+        event = ThingEventMessage.from_dicts(_THING_EVENTS_PAYLOAD)
+        assert isinstance(event.params, DeviceProtobufMsgEventParams)
+
+    def test_extracts_iot_id(self) -> None:
+        event = ThingEventMessage.from_dicts(_THING_EVENTS_PAYLOAD)
+        assert isinstance(event.params, DeviceProtobufMsgEventParams)
+        assert event.params.iot_id == "UTpbwGC7vxd4DpNvbFGL000000"
+
+    def test_content_is_base64_string(self) -> None:
+        event = ThingEventMessage.from_dicts(_THING_EVENTS_PAYLOAD)
+        assert isinstance(event.params, DeviceProtobufMsgEventParams)
+        content = event.params.value.content
+        assert isinstance(content, str)
+        # must be valid base64
+        base64.b64decode(content)
+
+    def test_content_decodes_to_luba_msg(self) -> None:
+        from pymammotion.proto import LubaMsg
+
+        event = ThingEventMessage.from_dicts(_THING_EVENTS_PAYLOAD)
+        assert isinstance(event.params, DeviceProtobufMsgEventParams)
+        luba_msg = LubaMsg().parse(base64.b64decode(event.params.value.content))
+        assert luba_msg is not None
+
+    def test_protobuf_contains_toapp_all_hash_name(self) -> None:
+        from pymammotion.proto import LubaMsg
+
+        event = ThingEventMessage.from_dicts(_THING_EVENTS_PAYLOAD)
+        assert isinstance(event.params, DeviceProtobufMsgEventParams)
+        luba_msg = LubaMsg().parse(base64.b64decode(event.params.value.content))
+
+        sub_name, sub_val = betterproto2.which_one_of(luba_msg, "LubaSubMsg")
+        assert sub_name == "nav", f"expected nav sub-message, got {sub_name!r}"
+        leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
+        assert leaf_name == "toapp_all_hash_name", f"expected toapp_all_hash_name, got {leaf_name!r}"
 
 
 # ---------------------------------------------------------------------------

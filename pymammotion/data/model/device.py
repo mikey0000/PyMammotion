@@ -8,6 +8,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorkingHours, MowerInfo
+from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
@@ -20,7 +21,10 @@ from pymammotion.http.model.http import CheckDeviceVersion
 from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemRapidStateTunnelMsg, SystemUpdateBufMsg
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
+from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.map import CoordinateConverter
+
+_device_config = DeviceConfig()
 
 
 @dataclass
@@ -44,6 +48,22 @@ class MowingDevice(DataClassORJSONMixin):
     errors: DeviceErrors = field(default_factory=DeviceErrors)
     non_work_hours: DeviceNonWorkingHours = field(default_factory=DeviceNonWorkingHours)
     events: Events = field(default_factory=Events)
+
+    @property
+    def device_limits(self) -> DeviceLimits:
+        """Return the operating limits for this device.
+
+        Tries (in order):
+          1. sub_model_id — the most specific internal model code
+          2. product_key  — per-product-family limits
+          3. get_best_default — safe fallback based on device family
+        """
+        limits = _device_config.get_working_parameters(self.mower_state.sub_model_id)
+        if limits is None:
+            limits = _device_config.get_working_parameters(self.mower_state.product_key)
+        if limits is None:
+            limits = _device_config.get_best_default(self.mower_state.product_key)
+        return limits
 
     def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:
         """Update the device based on which buffer we are reading from."""
@@ -109,10 +129,14 @@ class MowingDevice(DataClassORJSONMixin):
         """Set report data for the mower."""
 
         # adjust for vision models
-        if (rtk := toapp_report_data.rtk) and (mqtt_rtk := rtk.mqtt_rtk_info) and self.location.RTK.latitude == 0 and self.location.RTK.longitude == 0:
+        if (
+            (rtk := toapp_report_data.rtk)
+            and (mqtt_rtk := rtk.mqtt_rtk_info)
+            and self.location.RTK.latitude == 0
+            and self.location.RTK.longitude == 0
+        ):
             self.location.RTK.longitude = math.radians(mqtt_rtk.longitude)
             self.location.RTK.latitude = math.radians(mqtt_rtk.latitude)
-
 
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):

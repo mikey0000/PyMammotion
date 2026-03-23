@@ -6,9 +6,11 @@ import asyncio
 from dataclasses import dataclass
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 import betterproto2
+
+from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, EventBus, Subscription
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -24,49 +26,6 @@ _LUBA_SUB_GROUP: dict[str, str] = {
     "ota": "SubOtaMsg",
     "pept": "SubPeptMsg",
 }
-T = TypeVar("T")
-
-
-class ConcurrentRequestError(Exception):
-    """A concurrent request for the same response field is already pending."""
-
-
-class CommandTimeoutError(Exception):
-    """No response received after all retry attempts."""
-
-    def __init__(self, expected_field: str, attempts: int) -> None:
-        """Initialise with the field name and number of attempts made."""
-        self.expected_field = expected_field
-        self.attempts = attempts
-        super().__init__(f"No response for '{expected_field}' after {attempts} attempt(s)")
-
-
-class _EventBus(Generic[T]):
-    """Simple event bus for unsolicited device messages."""
-
-    def __init__(self) -> None:
-        """Initialise with an empty handler registry."""
-        self._handlers: dict[int, Callable[[T], Awaitable[None]]] = {}
-        self._next_id: int = 0
-
-    def subscribe(self, handler: Callable[[T], Awaitable[None]]) -> int:
-        """Register handler and return subscription ID."""
-        sub_id = self._next_id
-        self._next_id += 1
-        self._handlers[sub_id] = handler
-        return sub_id
-
-    def unsubscribe(self, sub_id: int) -> None:
-        """Remove handler by subscription ID."""
-        self._handlers.pop(sub_id, None)
-
-    async def emit(self, event: T) -> None:
-        """Emit event to all handlers; exceptions are logged, not raised."""
-        for handler in list(self._handlers.values()):
-            try:
-                await handler(event)
-            except Exception:
-                _logger.exception("EventBus handler raised an unhandled exception")
 
 
 @dataclass
@@ -96,7 +55,7 @@ class DeviceMessageBroker:
     def __init__(self) -> None:
         """Initialise broker with empty pending-request table and event bus."""
         self._pending: dict[str, PendingRequest] = {}
-        self._event_bus: _EventBus[Any] = _EventBus()
+        self._event_bus: EventBus[Any] = EventBus()
         self._lock = asyncio.Lock()
 
     async def send_and_wait(
@@ -181,11 +140,11 @@ class DeviceMessageBroker:
                         leaf_name, _ = betterproto2.which_one_of(sub_val, sub_group)
                         if leaf_name:
                             field_name = leaf_name
-                    except Exception:  # noqa: BLE001
+                    except Exception:  # noqa: BLE001, S110
                         pass
                 if field_name is None:
                     field_name = sub_name  # fallback: top-level sub-msg name (e.g. "net", "mul")
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
 
         # Fallback: generic "payload" oneof (used by test doubles and future protocols)
@@ -205,13 +164,9 @@ class DeviceMessageBroker:
 
         await self._event_bus.emit(message)
 
-    def subscribe_unsolicited(self, handler: Callable[[Any], Awaitable[None]]) -> int:
-        """Subscribe to unsolicited (device-initiated) messages. Returns sub ID."""
+    def subscribe_unsolicited(self, handler: Callable[[Any], Awaitable[None]]) -> Subscription:
+        """Subscribe to unsolicited (device-initiated) messages. Returns a Subscription RAII handle."""
         return self._event_bus.subscribe(handler)
-
-    def unsubscribe_unsolicited(self, sub_id: int) -> None:
-        """Unsubscribe from unsolicited messages."""
-        self._event_bus.unsubscribe(sub_id)
 
     async def close(self) -> None:
         """Cancel all pending futures and clear state. Call on device shutdown."""

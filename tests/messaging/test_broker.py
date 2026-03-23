@@ -6,11 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pymammotion.messaging.broker import (
-    CommandTimeoutError,
-    ConcurrentRequestError,
-    DeviceMessageBroker,
-)
+from pymammotion.messaging.broker import DeviceMessageBroker
+from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError
 
 
 def make_mock_message(field_name: str) -> MagicMock:

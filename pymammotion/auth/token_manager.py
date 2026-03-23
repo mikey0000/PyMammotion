@@ -7,25 +7,11 @@ from dataclasses import dataclass
 import time
 from typing import TYPE_CHECKING
 
+from pymammotion.transport.base import ReLoginRequiredError
+
 if TYPE_CHECKING:
     from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
     from pymammotion.http.http import MammotionHTTP
-
-
-class ReLoginRequiredError(Exception):
-    """Raised when token refresh is impossible; the user must re-authenticate."""
-
-    def __init__(self, account_id: str, reason: str) -> None:
-        """Initialise with the affected account ID and a human-readable reason.
-
-        Args:
-            account_id: The account identifier that requires re-authentication.
-            reason: A short description of why re-login is required.
-
-        """
-        self.account_id = account_id
-        self.reason = reason
-        super().__init__(f"Re-login required for account '{account_id}': {reason}")
 
 
 @dataclass(frozen=True)

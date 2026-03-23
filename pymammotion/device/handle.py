@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import time
 from typing import TYPE_CHECKING
 
+from pymammotion.device.state_reducer import StateReducer
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
+from pymammotion.proto import LubaMsg
 from pymammotion.state.device_state import DeviceAvailability, DeviceSnapshot, DeviceStateMachine
 from pymammotion.transport.base import (
     EventBus,
@@ -27,6 +31,88 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+class _DebouncedBus:
+    """Wraps EventBus[DeviceSnapshot] with optional debounce.
+
+    When debounce_interval > 0, rapid consecutive events are coalesced:
+    only the most recent snapshot is emitted after debounce_interval seconds
+    of silence, OR after max_debounce_wait seconds from the first suppressed
+    event (whichever comes first).
+
+    When debounce_interval == 0 (default), events are emitted immediately.
+    """
+
+    def __init__(
+        self,
+        debounce_interval: float = 0.0,
+        max_debounce_wait: float = 2.0,
+    ) -> None:
+        """Initialise the debounced bus with optional debounce parameters."""
+        self._bus: EventBus[DeviceSnapshot] = EventBus()
+        self._debounce_interval = debounce_interval
+        self._max_debounce_wait = max_debounce_wait
+        self._pending_snapshot: DeviceSnapshot | None = None
+        self._debounce_task: asyncio.Task[None] | None = None
+        self._first_suppressed_at: float = 0.0
+
+    def subscribe(self, handler: Callable[[DeviceSnapshot], Awaitable[None]]) -> Subscription:
+        """Register a handler and return a Subscription for later cancellation."""
+        return self._bus.subscribe(handler)
+
+    async def emit(self, snapshot: DeviceSnapshot) -> None:
+        """Emit a snapshot, coalescing if debounce_interval > 0."""
+        if self._debounce_interval <= 0.0:
+            await self._bus.emit(snapshot)
+            return
+
+        now = time.monotonic()
+
+        # If this is the start of a new burst, record the time
+        if self._pending_snapshot is None:
+            self._first_suppressed_at = now
+
+        self._pending_snapshot = snapshot
+
+        # Cancel any existing debounce task
+        if self._debounce_task is not None and not self._debounce_task.done():
+            self._debounce_task.cancel()
+
+        # Calculate effective sleep duration
+        elapsed = now - self._first_suppressed_at
+        remaining_max = self._max_debounce_wait - elapsed
+        if remaining_max <= 0:
+            # max_debounce_wait exceeded — emit immediately
+            to_emit = self._pending_snapshot
+            self._pending_snapshot = None
+            self._debounce_task = None
+            await self._bus.emit(to_emit)
+            return
+
+        sleep_duration = min(self._debounce_interval, remaining_max)
+        self._debounce_task = asyncio.create_task(self._debounce_emit(sleep_duration))
+
+    async def _debounce_emit(self, delay: float) -> None:
+        """Wait for delay seconds then emit the latest pending snapshot."""
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
+        snapshot = self._pending_snapshot
+        self._pending_snapshot = None
+        self._debounce_task = None
+        if snapshot is not None:
+            await self._bus.emit(snapshot)
+
+    async def stop(self) -> None:
+        """Cancel any pending debounce task without emitting."""
+        if self._debounce_task is not None and not self._debounce_task.done():
+            self._debounce_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._debounce_task
+        self._debounce_task = None
+        self._pending_snapshot = None
+
+
 class DeviceHandle:
     """Per-device facade unifying transport, broker, queue, and state.
 
@@ -41,27 +127,32 @@ class DeviceHandle:
         device_name: str,
         initial_device: MowingDevice,
         *,
+        iot_id: str = "",
         mqtt_transport: Transport | None = None,
         ble_transport: Transport | None = None,
         prefer_ble: bool = False,
+        debounce_interval: float = 0.0,
+        max_debounce_wait: float = 2.0,
     ) -> None:
         """Initialise the device handle with optional initial transports."""
         self.device_id = device_id
         self.device_name = device_name
+        self.iot_id = iot_id
         self.broker = DeviceMessageBroker()
         self.queue = DeviceCommandQueue()
         self.state_machine = DeviceStateMachine(device_id, initial_device)
         self._availability = DeviceAvailability()
         self._transports: dict[TransportType, Transport] = {}
-        self._state_changed_bus: EventBus[DeviceSnapshot] = EventBus()
+        self._state_changed_bus: _DebouncedBus = _DebouncedBus(debounce_interval, max_debounce_wait)
         self._prefer_ble: bool = prefer_ble
+        self._reducer: StateReducer = StateReducer()
 
         if mqtt_transport is not None:
-            mqtt_transport.on_message = self.broker.on_message
+            mqtt_transport.on_message = self._on_raw_message
             self._transports[mqtt_transport.transport_type] = mqtt_transport
 
         if ble_transport is not None:
-            ble_transport.on_message = self.broker.on_message
+            ble_transport.on_message = self._on_raw_message
             self._transports[ble_transport.transport_type] = ble_transport
 
     async def add_transport(self, transport: Transport) -> None:
@@ -69,7 +160,7 @@ class DeviceHandle:
         existing = self._transports.get(transport.transport_type)
         if existing is not None:
             await existing.disconnect()
-        transport.on_message = self.broker.on_message
+        transport.on_message = self._on_raw_message
         self._transports[transport.transport_type] = transport
 
     async def remove_transport(self, transport_type: TransportType) -> None:
@@ -77,6 +168,34 @@ class DeviceHandle:
         transport = self._transports.pop(transport_type, None)
         if transport is not None:
             await transport.disconnect()
+
+    async def _on_raw_message(self, payload: bytes) -> None:
+        """Receive raw bytes from transport, decode, update state, route to broker.
+
+        Called by transports instead of broker.on_message directly.
+        Steps:
+          1. Decode bytes → LubaMsg (log and return on error)
+          2. Apply LubaMsg to state via StateReducer
+          3. Update DeviceStateMachine, emit to _state_changed_bus if fields changed
+          4. Route LubaMsg to broker for request/response correlation
+        """
+        # 1. Parse bytes → LubaMsg
+        try:
+            luba_msg = LubaMsg().parse(payload)
+        except Exception:
+            _logger.exception("Failed to parse incoming bytes as LubaMsg (%d bytes)", len(payload))
+            return
+
+        # 2. Apply to state via reducer (returns a new MowingDevice copy)
+        updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
+
+        # 3. Update state machine and emit if anything observable changed
+        snapshot, changed = self.state_machine.apply(updated_device, self._availability)
+        if changed:
+            await self._state_changed_bus.emit(snapshot)
+
+        # 4. Route to broker for request/response correlation
+        await self.broker.on_message(luba_msg)
 
     async def send_command(
         self,
@@ -107,6 +226,10 @@ class DeviceHandle:
     async def enqueue_saga(self, saga: Saga) -> None:
         """Enqueue a saga for exclusive execution."""
         await self.queue.enqueue_saga(saga, self.broker)
+
+    def has_queued_commands(self) -> bool:
+        """Return True if the queue has pending work or a saga is active."""
+        return self.queue._queue.qsize() > 0 or self.queue.is_saga_active  # noqa: SLF001
 
     def update_availability(
         self,
@@ -159,9 +282,10 @@ class DeviceHandle:
         self.queue.start()
 
     async def stop(self) -> None:
-        """Stop the command queue, broker, and disconnect all transports."""
+        """Stop the command queue, broker, debounce task, and disconnect all transports."""
         await self.queue.stop()
         await self.broker.close()
+        await self._state_changed_bus.stop()
         for transport in list(self._transports.values()):
             await transport.disconnect()
         self._transports.clear()

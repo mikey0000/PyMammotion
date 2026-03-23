@@ -94,7 +94,7 @@ class LocationVo(DataClassORJSONMixin):
 
 
 @dataclass
-class DeviceInfo:
+class DeviceInfo(DataClassDictMixin):
     """Complete device information."""
 
     iot_id: Annotated[str, Alias("iotId")] = ""
@@ -152,7 +152,7 @@ class MQTTConnection(DataClassORJSONMixin):
 class Response(DataClassORJSONMixin, Generic[DataT]):
     code: int
     msg: str
-    request_id: Annotated[str, Alias("requestId")] | None = None
+    request_id: Annotated[str | None, Alias("requestId")] = None
     data: DataT | None = None
 
     class Config(BaseConfig):
