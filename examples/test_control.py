@@ -1,7 +1,11 @@
+import pytest
+
+pytest.skip("Legacy BLE script, not a test module", allow_module_level=True)
+
 import asyncio
 from threading import Thread
 
-from pymammotion import LubaBLE
+from pymammotion import MammotionBLE as LubaBLE
 from pymammotion.bluetooth import BleMessage
 from pymammotion.event import BleNotificationEvent
 from pymammotion.event.event import MoveEvent

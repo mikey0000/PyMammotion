@@ -8,6 +8,7 @@ import pytest
 
 from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
+from pymammotion.transport.base import TransportType
 
 
 # ---------------------------------------------------------------------------
@@ -185,11 +186,17 @@ async def test_send_command_with_args_succeeds_for_known_device() -> None:
     """send_command_with_args must complete without error for a registered device."""
     client = MammotionClient()
 
+    mqtt_transport = MagicMock()
+    mqtt_transport.transport_type = TransportType.CLOUD_ALIYUN
+    mqtt_transport.is_connected = True
+    mqtt_transport.send = AsyncMock()
+
     handle = make_handle("dev1", "Luba-Runner")
+    await handle.add_transport(mqtt_transport)
     await client._device_registry.register(handle)
 
     # Should not raise
-    await client.send_command_with_args("Luba-Runner", "start_mow", zone_id=3)
+    await client.send_command_with_args("Luba-Runner", "start_job")
 
 
 # ---------------------------------------------------------------------------

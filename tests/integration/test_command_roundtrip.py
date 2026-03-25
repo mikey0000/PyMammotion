@@ -329,49 +329,69 @@ async def test_device_availability_propagates_to_snapshot() -> None:
 
 async def test_map_saga_caches_area_names_across_two_runs() -> None:
     """Area name command is called only once across two sequential MapFetchSaga.execute() calls."""
+    from unittest.mock import patch
+
     builder = _make_command_builder()
-    send_command = AsyncMock()
 
     area_response = _make_area_name_response([(1, "Front Lawn"), (2, "Back Yard")])
-    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[1, 2])
-
-    call_log: list[str] = []
-
-    async def _broker_send_and_wait(**kwargs: Any) -> Any:
-        field: str = kwargs.get("expected_field", "")
-        call_log.append(field)
-        if field == "toapp_all_hash_name":
-            return area_response
-        if field == "toapp_gethash_ack":
-            return hash_response
-        msg = f"Unexpected expected_field: {field}"
-        raise AssertionError(msg)
+    # sub_cmd=1 (default) → missing_hashlist(0) returns [] so step 4 is skipped
+    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[])
 
     mock_broker = AsyncMock(spec=DeviceMessageBroker)
-    mock_broker.send_and_wait.side_effect = _broker_send_and_wait
+    mock_broker.send_and_wait.return_value = area_response
 
-    saga = MapFetchSaga(
-        device_id="dev-006",
-        device_name="Luba2Test",
-        is_luba1=False,
-        command_builder=builder,
-        send_command=send_command,
-    )
+    _active: list[Any] = []
 
-    # First run — area names should be fetched and cached
-    await saga.execute(mock_broker)
-    assert saga.result is not None
-    assert saga._cached_area_names is not None
-    assert len(saga._cached_area_names) == 2
+    class _Ctx:
+        def __init__(self, cb: Any) -> None:
+            self._cb = cb
 
-    # Reset result to simulate a second run on the same saga instance
-    saga.result = None
+        def __enter__(self) -> "_Ctx":
+            _active.append(self._cb)
+            return self
 
-    # Second run — area names must NOT be re-fetched (already cached)
-    await saga.execute(mock_broker)
-    assert saga.result is not None
+        def __exit__(self, *args: Any) -> None:
+            if _active and _active[-1] is self._cb:
+                _active.pop()
 
-    area_name_calls = [f for f in call_log if f == "toapp_all_hash_name"]
+    mock_broker.subscribe_unsolicited.side_effect = lambda cb: _Ctx(cb)
+
+    async def send_command(cmd: bytes) -> None:
+        if _active:
+            await _active[-1](hash_response)
+
+    def _which_hash(obj: Any, group: str) -> tuple[str, Any]:
+        if group == "LubaSubMsg":
+            return ("nav", obj.nav)
+        return ("toapp_gethash_ack", obj.toapp_gethash_ack)
+
+    with patch("betterproto2.which_one_of", side_effect=_which_hash):
+        saga = MapFetchSaga(
+            device_id="dev-006",
+            device_name="Luba2Test",
+            is_luba1=False,
+            command_builder=builder,
+            send_command=send_command,
+        )
+
+        # First run — area names should be fetched and cached
+        await saga.execute(mock_broker)
+        assert saga.result is not None
+        assert saga._cached_area_names is not None
+        assert len(saga._cached_area_names) == 2
+
+        # Reset result to simulate a second run on the same saga instance
+        saga.result = None
+
+        # Second run — area names must NOT be re-fetched (already cached)
+        await saga.execute(mock_broker)
+        assert saga.result is not None
+
+    # send_and_wait called once for area names on first run, not at all on second run
+    area_name_calls = [
+        call for call in mock_broker.send_and_wait.call_args_list
+        if call[1].get("expected_field") == "toapp_all_hash_name"
+    ]
     assert len(area_name_calls) == 1, (
         f"Expected area name command to be called exactly once, got {len(area_name_calls)}"
     )

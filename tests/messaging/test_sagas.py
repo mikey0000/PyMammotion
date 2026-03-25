@@ -84,7 +84,39 @@ def _make_command_builder() -> MagicMock:
     builder.get_all_boundary_hash_list.return_value = b"hash_list_cmd"
     builder.get_hash_response.return_value = b"hash_response_cmd"
     builder.send_plan.return_value = b"plan_cmd"
+    builder.read_plan.return_value = b"read_plan_cmd"
     return builder
+
+
+def _make_subscribe_ctx() -> tuple[Any, list[Any]]:
+    """Return (subscribe_side_effect, active_callbacks) for broker.subscribe_unsolicited mocking.
+
+    subscribe_side_effect captures the callback in a context manager.
+    active_callbacks holds the currently registered callback(s).
+    """
+    active: list[Any] = []
+
+    class _Ctx:
+        def __init__(self, cb: Any) -> None:
+            self._cb = cb
+
+        def __enter__(self) -> "_Ctx":
+            active.append(self._cb)
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            if active and active[-1] is self._cb:
+                active.pop()
+
+    return lambda cb: _Ctx(cb), active
+
+
+def _which_one_of_for_hash(obj: Any, group: str) -> tuple[str, Any]:
+    """Fake betterproto2.which_one_of that routes hash-frame messages correctly."""
+    if group == "LubaSubMsg":
+        return ("nav", obj.nav)
+    # "SubNavMsg"
+    return ("toapp_gethash_ack", obj.toapp_gethash_ack)
 
 
 # ---------------------------------------------------------------------------
@@ -96,27 +128,34 @@ async def test_map_saga_fetches_area_names_for_non_luba1() -> None:
     """For non-Luba1 devices, get_area_name_list must be called."""
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
-    send_command = AsyncMock()
 
     area_response = _make_area_name_response([(1, "Front lawn")])
-    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[42])
+    # sub_cmd=1 (default) → missing_hashlist(0) returns [] so step 4 is skipped
+    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[])
 
-    broker.send_and_wait.side_effect = [area_response, hash_response]
+    broker.send_and_wait.return_value = area_response
 
-    saga = MapFetchSaga(
-        device_id="dev-001",
-        device_name="LUBA2",
-        is_luba1=False,
-        command_builder=builder,
-        send_command=send_command,
-    )
-    await saga.execute(broker)
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
+
+    async def send_command(cmd: bytes) -> None:
+        if active_callbacks:
+            await active_callbacks[-1](hash_response)
+
+    with patch("betterproto2.which_one_of", side_effect=_which_one_of_for_hash):
+        saga = MapFetchSaga(
+            device_id="dev-001",
+            device_name="LUBA2",
+            is_luba1=False,
+            command_builder=builder,
+            send_command=send_command,
+        )
+        await saga.execute(broker)
 
     assert saga.result is not None
     builder.get_area_name_list.assert_called_once_with("dev-001")
-    assert broker.send_and_wait.call_count == 2
-
-    # First call must request area names
+    # send_and_wait is only used for the area-names step now
+    assert broker.send_and_wait.call_count == 1
     first_call_kwargs = broker.send_and_wait.call_args_list[0][1]
     assert first_call_kwargs["expected_field"] == "toapp_all_hash_name"
 
@@ -125,68 +164,68 @@ async def test_map_saga_skips_area_names_for_luba1() -> None:
     """For Luba1 devices, get_area_name_list must NOT be called."""
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
-    send_command = AsyncMock()
 
-    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[99])
-    broker.send_and_wait.return_value = hash_response
+    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[])
 
-    saga = MapFetchSaga(
-        device_id="dev-002",
-        device_name="LUBA1",
-        is_luba1=True,
-        command_builder=builder,
-        send_command=send_command,
-    )
-    await saga.execute(broker)
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
+
+    async def send_command(cmd: bytes) -> None:
+        if active_callbacks:
+            await active_callbacks[-1](hash_response)
+
+    with patch("betterproto2.which_one_of", side_effect=_which_one_of_for_hash):
+        saga = MapFetchSaga(
+            device_id="dev-002",
+            device_name="LUBA1",
+            is_luba1=True,
+            command_builder=builder,
+            send_command=send_command,
+        )
+        await saga.execute(broker)
 
     assert saga.result is not None
     builder.get_area_name_list.assert_not_called()
-    assert broker.send_and_wait.call_count == 1
-
-    only_call_kwargs = broker.send_and_wait.call_args_list[0][1]
-    assert only_call_kwargs["expected_field"] == "toapp_gethash_ack"
+    # send_and_wait is never called for Luba1 (no area names, hash frames via queue)
+    assert broker.send_and_wait.call_count == 0
 
 
 async def test_map_saga_caches_area_names_across_restarts() -> None:
     """Area names fetched on attempt 1 must be reused on attempt 2 (not re-fetched)."""
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
-    send_command = AsyncMock()
 
     area_response = _make_area_name_response([(10, "Back yard")])
-    # First attempt: area names succeed, hash list times out → saga restarts
-    # Second attempt: no area names fetch, hash list succeeds
-    hash_response_success = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[10])
+    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[])
+
+    broker.send_and_wait.return_value = area_response
+
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
 
     call_count = 0
 
-    async def side_effect(**kwargs: Any) -> Any:
+    async def send_command(cmd: bytes) -> None:
         nonlocal call_count
         call_count += 1
-        field = kwargs.get("expected_field", "")
-        if field == "toapp_all_hash_name":
-            return area_response
-        if field == "toapp_gethash_ack":
-            if call_count == 2:
-                # First hash list request on attempt 1 — timeout to force restart
-                raise CommandTimeoutError("toapp_gethash_ack", 3)
-            # Second hash list request on attempt 2 — success
-            return hash_response_success
-        raise AssertionError(f"Unexpected field: {field}")
+        if call_count == 1:
+            pass  # First attempt: no delivery → timeout forces restart
+        elif active_callbacks:
+            await active_callbacks[-1](hash_response)
 
-    broker.send_and_wait.side_effect = side_effect
-
-    saga = MapFetchSaga(
-        device_id="dev-003",
-        device_name="LUBA2",
-        is_luba1=False,
-        command_builder=builder,
-        send_command=send_command,
-    )
-    await saga.execute(broker)
+    with patch("betterproto2.which_one_of", side_effect=_which_one_of_for_hash):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            saga = MapFetchSaga(
+                device_id="dev-003",
+                device_name="LUBA2",
+                is_luba1=False,
+                command_builder=builder,
+                send_command=send_command,
+            )
+            saga.step_timeout = 0.01  # short timeout so the test doesn't hang
+            await saga.execute(broker)
 
     assert saga.result is not None
-    # Area names should only have been fetched once (cached on restart)
     area_calls = [
         call for call in broker.send_and_wait.call_args_list if call[1].get("expected_field") == "toapp_all_hash_name"
     ]
@@ -199,48 +238,36 @@ async def test_map_saga_clears_partial_state_on_restart() -> None:
     """result must be None at the start of each _run() call."""
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
-    send_command = AsyncMock()
 
-    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1)
-    observed_results_at_start: list[Any] = []
-    original_run = MapFetchSaga._run
+    hash_response = _make_hash_list_ack_response(total_frame=1, current_frame=1, data_couple=[])
 
-    attempt = 0
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
 
-    async def patched_run(self_: MapFetchSaga, broker_: DeviceMessageBroker) -> None:
-        nonlocal attempt
-        attempt += 1
-        # Record result value at the START (before the real _run body executes)
-        # We can't intercept before super()._run, but we can check after first timeout
-        await original_run(self_, broker_)
+    call_count = 0
 
-    hash_call_count = 0
+    async def send_command(cmd: bytes) -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            pass  # First attempt: timeout → restart
+        elif active_callbacks:
+            await active_callbacks[-1](hash_response)
 
-    async def side_effect(**kwargs: Any) -> Any:
-        nonlocal hash_call_count
-        field = kwargs.get("expected_field", "")
-        if field == "toapp_gethash_ack":
-            hash_call_count += 1
-            if hash_call_count == 1:
-                raise CommandTimeoutError("toapp_gethash_ack", 3)
-            return hash_response
-        raise AssertionError(f"Unexpected: {field}")
+    with patch("betterproto2.which_one_of", side_effect=_which_one_of_for_hash):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            saga = MapFetchSaga(
+                device_id="dev-004",
+                device_name="LUBA1",
+                is_luba1=True,
+                command_builder=builder,
+                send_command=send_command,
+            )
+            saga.step_timeout = 0.01
 
-    broker.send_and_wait.side_effect = side_effect
-
-    saga = MapFetchSaga(
-        device_id="dev-004",
-        device_name="LUBA1",
-        is_luba1=True,
-        command_builder=builder,
-        send_command=send_command,
-    )
-
-    # Manually verify result is None before first run
-    assert saga.result is None
-    await saga.execute(broker)
-    # After success, result should be set
-    assert saga.result is not None
+            assert saga.result is None
+            await saga.execute(broker)
+            assert saga.result is not None
 
 
 async def test_map_saga_raises_saga_failed_after_max_attempts() -> None:
@@ -273,50 +300,68 @@ async def test_map_saga_raises_saga_failed_after_max_attempts() -> None:
 
 
 async def test_plan_saga_sends_plan_and_waits_for_ack() -> None:
-    """Plan must be sent and success flag set after receiving ack."""
+    """read_plan must be called and saga completes after receiving todev_planjob_set."""
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
-    send_command = AsyncMock()
 
-    plan = Plan(plan_id="plan-1", task_name="Mow front lawn")
-    ack_response = _make_plan_ack_response()
-    broker.send_and_wait.return_value = ack_response
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
 
-    saga = PlanFetchSaga(plan=plan, command_builder=builder, send_command=send_command)
-    await saga.execute(broker)
+    plan_response = MagicMock()
+    plan_response.nav = MagicMock()
 
-    assert saga.success is True
-    builder.send_plan.assert_called_once_with(plan)
-    assert broker.send_and_wait.call_count == 1
+    leaf_val = MagicMock()
+    leaf_val.to_dict.return_value = {"total_plan_num": 0}
 
-    call_kwargs = broker.send_and_wait.call_args_list[0][1]
-    assert call_kwargs["expected_field"] == "todev_planjob_set"
+    async def send_command(cmd: bytes) -> None:
+        if active_callbacks:
+            await active_callbacks[-1](plan_response)
+
+    def _which_plan(obj: Any, group: str) -> tuple[str, Any]:
+        if group == "LubaSubMsg":
+            return ("nav", obj.nav)
+        return ("todev_planjob_set", leaf_val)
+
+    with patch("betterproto2.which_one_of", side_effect=_which_plan):
+        saga = PlanFetchSaga(command_builder=builder, send_command=send_command)
+        await saga.execute(broker)
+
+    assert saga.result == {}
+    builder.read_plan.assert_called_once_with(sub_cmd=2, plan_index=0)
 
 
 async def test_plan_saga_retries_on_timeout() -> None:
     """When first attempt times out, saga must restart and succeed on second attempt."""
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
-    send_command = AsyncMock()
 
-    plan = Plan(plan_id="plan-2", task_name="Retry mow")
-    ack_response = _make_plan_ack_response()
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
+
+    plan_response = MagicMock()
+    plan_response.nav = MagicMock()
+
+    leaf_val = MagicMock()
+    leaf_val.to_dict.return_value = {"total_plan_num": 0}
 
     call_count = 0
 
-    async def side_effect(**kwargs: Any) -> Any:
+    async def send_command(cmd: bytes) -> None:
         nonlocal call_count
         call_count += 1
-        if call_count == 1:
-            raise CommandTimeoutError("todev_planjob_set", 3)
-        return ack_response
+        if call_count >= 2 and active_callbacks:  # First call times out, second succeeds
+            await active_callbacks[-1](plan_response)
 
-    broker.send_and_wait.side_effect = side_effect
+    def _which_plan(obj: Any, group: str) -> tuple[str, Any]:
+        if group == "LubaSubMsg":
+            return ("nav", obj.nav)
+        return ("todev_planjob_set", leaf_val)
 
-    saga = PlanFetchSaga(plan=plan, command_builder=builder, send_command=send_command)
+    with patch("betterproto2.which_one_of", side_effect=_which_plan):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            saga = PlanFetchSaga(command_builder=builder, send_command=send_command)
+            saga.step_timeout = 0.01
+            await saga.execute(broker)
 
-    with patch("asyncio.sleep", new_callable=AsyncMock):  # skip 1s delays
-        await saga.execute(broker)
-
-    assert saga.success is True
-    assert broker.send_and_wait.call_count == 2
+    assert saga.result == {}
+    assert builder.read_plan.call_count == 2  # called once per attempt

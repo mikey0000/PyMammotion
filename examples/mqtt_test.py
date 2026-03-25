@@ -3,6 +3,8 @@ import hmac
 import json
 import os
 
+import pytest
+
 from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
 
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -10,6 +12,9 @@ from pymammotion.data.mqtt.event import ThingEventMessage
 PRODUCT_KEY = os.environ.get("PRODUCT_KEY")
 DEVICE_NAME = os.environ.get("DEVICE_NAME")
 DEVICE_SECRET = os.environ.get("DEVICE_SECRET") #iotId?
+
+if DEVICE_SECRET is None or DEVICE_NAME is None or PRODUCT_KEY is None:
+    pytest.skip("MQTT credentials not set in environment", allow_module_level=True)
 
 
 def on_message(client, userdata, message: MQTTMessage):
