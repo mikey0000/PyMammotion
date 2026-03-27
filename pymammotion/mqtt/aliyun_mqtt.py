@@ -189,7 +189,6 @@ class AliyunMQTT:
         self.on_disconnected: Callable[[], Awaitable[None]] | None = None
         self.on_message: Callable[[str, bytes, str], Awaitable[None]] | None = None
 
-        self._tls_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cadata=_ALIYUN_BROKER_CA_DATA)
         self._task: asyncio.Task[None] | None = None
         self._disconnect_requested = False
         self.loop = asyncio.get_running_loop()
@@ -265,9 +264,20 @@ class AliyunMQTT:
     # Connection loop
     # ------------------------------------------------------------------
 
+    @staticmethod
+    async def get_ssl_context() -> ssl.SSLContext:
+        loop = asyncio.get_running_loop()
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.options |= ssl.OP_IGNORE_UNEXPECTED_EOF
+        # Offload the blocking disk I/O to a separate thread
+        loop.run_in_executor(None, context.load_verify_locations, _ALIYUN_BROKER_CA_DATA)
+        return context
+
     async def _run(self) -> None:
         """Main connection loop — reconnects with exponential backoff."""
         backoff = _MQTT_RECONNECT_MIN_SEC
+        _tls_context = await self.get_ssl_context()
+
         while not self._disconnect_requested:
             client_id, password = self._build_credentials()
             try:
@@ -278,7 +288,7 @@ class AliyunMQTT:
                     password=password,
                     identifier=client_id,
                     keepalive=_MQTT_KEEPALIVE,
-                    tls_context=self._tls_context,
+                    tls_context=_tls_context,
                     protocol=aiomqtt.ProtocolVersion.V311,
                     max_inflight_messages=_MQTT_MAX_INFLIGHT,
                     max_queued_incoming_messages=_MQTT_MAX_QUEUED,

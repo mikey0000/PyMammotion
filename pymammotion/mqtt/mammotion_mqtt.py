@@ -108,9 +108,7 @@ class MammotionMQTT:
             raise SetupException(res.code, iot_id)
         if res.code == 6205:
             raise DeviceOfflineException(res.code, iot_id)
-        if res.code == 6205:
-            raise CheckSessionException(res.data)
-        if res.code == 460:
+        if res.code in (6205, 50104, 460):
             logger.debug("token expired, must re-login.")
             raise CheckSessionException(res.data)
         if res.code != 0:
@@ -141,7 +139,7 @@ class MammotionMQTT:
         backoff = 1
         tls_context: ssl.SSLContext | None = None
         if self._use_ssl:
-            tls_context = ssl.create_default_context()
+            tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         while not self._disconnect_requested:
             try:
