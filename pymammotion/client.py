@@ -879,6 +879,28 @@ class MammotionClient:
         is_yuka = DeviceType.is_yuka(device_name)
         return await http.get_stream_subscription(iot_id, is_yuka)
 
+    async def refresh_stream_subscription(self, device_name: str, iot_id: str) -> Any:
+        """Renew the Agora stream token and cycle the device's channel membership.
+
+        Fetches a fresh stream subscription token, sends a leave-channel command
+        to the device, then immediately sends a rejoin-channel command so the
+        device streams to the new Agora session.  Returns the new subscription
+        response so the caller can reinitialise the Agora engine.
+
+        Handles STUN-timeout and ``on_p2p_lost`` events where the underlying
+        peer-to-peer connection has silently dropped and the stream token must
+        be refreshed before the Agora engine can reconnect.
+        """
+        subscription = await self.get_stream_subscription(device_name, iot_id)
+
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is not None:
+            commands = MammotionCommand(device_name, self._user_account)
+            await handle.send_command(commands.device_agora_join_channel_with_position(0))
+            await handle.send_command(commands.device_agora_join_channel_with_position(1))
+
+        return subscription
+
     # ------------------------------------------------------------------
     # Commands
     # ------------------------------------------------------------------
