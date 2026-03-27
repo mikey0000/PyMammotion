@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.7.0"
+version = "0.7.1"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -17,7 +17,6 @@ dependencies = [
     "bleak>=0.21.0",
     "protobuf>=4.23.1",
     "aiohttp>=3.9.1",
-    "paho-mqtt>=2.1.0,<3",
     "alibabacloud-apigateway-util>=0.0.2,<0.0.3",
     "alibabacloud-iot-api-gateway>=0.0.4,<0.0.5",
     "bleak-retry-connector>=3.5.0",
@@ -33,7 +32,7 @@ dependencies = [
     "websockets>=13.1",
     "webrtc-models>=0.3.0",
     "aiomqtt>=2.5.1",
-    "bluetooth-adapters>=2.1.1",
+    "bluetooth-adapters>=2.0.0",
     "pyrsistent>=0.20.0",
 ]
 
@@ -73,7 +72,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.6.8"
+current_version = "0.7.1"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
