@@ -18,6 +18,7 @@ class PathType(IntEnum):
     DUMP = 12
     SVG = 13
     VISUAL_SAFETY_ZONE = 25
+    VISUAL_OBSTACLE_ZONE = 26
 
 
 @dataclass
@@ -123,6 +124,38 @@ class FrameList(DataClassORJSONMixin):
 
 
 @dataclass
+class EdgePoints(DataClassORJSONMixin):
+    """Edge/boundary points received during edgewise mapping (toapp_edge_points).
+
+    Keyed by hash in HashList.edge_points.  Frames are appended as they arrive;
+    complete when len(frames) == total_frame.
+    """
+
+    hash: int = 0
+    action: int = 0
+    type: int = 0
+    total_frame: int = 0
+    frames: dict[int, list[CommDataCouple]] = field(default_factory=dict)
+
+    @property
+    def is_complete(self) -> bool:
+        """True when all frames have been received."""
+        return self.total_frame > 0 and len(self.frames) >= self.total_frame
+
+    def missing_frames(self) -> list[int]:
+        """Return 1-based frame numbers not yet received."""
+        return [f for f in range(1, self.total_frame + 1) if f not in self.frames]
+
+    @property
+    def all_points(self) -> list[CommDataCouple]:
+        """Return all points in frame order."""
+        result: list[CommDataCouple] = []
+        for frame_num in sorted(self.frames):
+            result.extend(self.frames[frame_num])
+        return result
+
+
+@dataclass
 class Plan(DataClassORJSONMixin):
     pver: int = 0
     sub_cmd: int = 2
@@ -209,13 +242,19 @@ class HashList(DataClassORJSONMixin):
     svg: dict[int, FrameList] = field(default_factory=dict)  # type 13
     line: dict[int, FrameList] = field(default_factory=dict)  # type 10 possibly breakpoint? / sub cmd 3
     visual_safety_zone: dict[int, FrameList] = field(default_factory=dict)  # type 25
+    visual_obstacle_zone: dict[int, FrameList] = field(default_factory=dict)  # type 26
     plan: dict[str, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
     current_mow_path: dict[int, dict[int, MowPath]] = field(default_factory=dict)
     generated_geojson: dict[str, Any] = field(default_factory=dict)
     generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
+    last_ub_zone_hash: int = 0
+    last_ub_path_hash: int = 0
+    plans_stale: bool = False
+    edge_points: dict[int, EdgePoints] = field(default_factory=dict)  # hash → EdgePoints
 
     def update_hash_lists(self, hashlist: list[int], bol_hash: int | None = None) -> None:
+        """Prune all map dictionaries to only retain entries whose hash is present in hashlist."""
         if bol_hash:
             self.invalidate_maps(bol_hash)
         self.area = {hash_id: frames for hash_id, frames in self.area.items() if hash_id in hashlist}
@@ -225,6 +264,9 @@ class HashList(DataClassORJSONMixin):
         self.svg = {hash_id: frames for hash_id, frames in self.svg.items() if hash_id in hashlist}
         self.visual_safety_zone = {
             hash_id: frames for hash_id, frames in self.visual_safety_zone.items() if hash_id in hashlist
+        }
+        self.visual_obstacle_zone = {
+            hash_id: frames for hash_id, frames in self.visual_obstacle_zone.items() if hash_id in hashlist
         }
 
         area_hashes = list(self.area.keys())
@@ -242,6 +284,7 @@ class HashList(DataClassORJSONMixin):
 
     @property
     def hashlist(self) -> list[int]:
+        """Return all hash IDs from every RootHashList as a flat list."""
         if not self.root_hash_lists:
             return []
         # Combine data_couple from all RootHashLists
@@ -249,6 +292,7 @@ class HashList(DataClassORJSONMixin):
 
     @property
     def area_root_hashlist(self) -> list[int]:
+        """Return hash IDs from RootHashLists whose sub_cmd indicates area data (sub_cmd == 0)."""
         if not self.root_hash_lists:
             return []
         # Combine data_couple from all RootHashLists
@@ -263,7 +307,12 @@ class HashList(DataClassORJSONMixin):
     def missing_hashlist(self, sub_cmd: int = 0) -> list[int]:
         """Return missing hashlist."""
         all_hash_ids = set(self.area.keys()).union(
-            self.path.keys(), self.obstacle.keys(), self.dump.keys(), self.svg.keys(), self.visual_safety_zone.keys()
+            self.path.keys(),
+            self.obstacle.keys(),
+            self.dump.keys(),
+            self.svg.keys(),
+            self.visual_safety_zone.keys(),
+            self.visual_obstacle_zone.keys(),
         )
         if sub_cmd == 3:
             all_hash_ids = set(self.line.keys())
@@ -292,6 +341,7 @@ class HashList(DataClassORJSONMixin):
         return self.find_missing_frames(target_root_list)
 
     def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
+        """Insert or replace a NavGetHashListData frame in the matching RootHashList, creating one if needed."""
         target_root_list = next(
             (
                 rhl
@@ -327,6 +377,7 @@ class HashList(DataClassORJSONMixin):
         return missing_frames
 
     def missing_frame(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> list[int]:
+        """Return frame numbers not yet received for the FrameList identified by hash_data."""
         frame_list = self._get_frame_list_by_type_and_hash(hash_data)
         return self.find_missing_frames(frame_list)
 
@@ -346,6 +397,7 @@ class HashList(DataClassORJSONMixin):
         return target_dict.get(hash_data.hash)
 
     def update_plan(self, plan: Plan) -> None:
+        """Store a Plan by its plan_id, ignoring plans with a zero total_plan_num."""
         if plan.total_plan_num != 0:
             self.plan[plan.plan_id] = plan
 
@@ -359,6 +411,7 @@ class HashList(DataClassORJSONMixin):
             PathType.DUMP: self.dump,
             PathType.SVG: self.svg,
             PathType.VISUAL_SAFETY_ZONE: self.visual_safety_zone,
+            PathType.VISUAL_OBSTACLE_ZONE: self.visual_obstacle_zone,
         }
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
@@ -367,7 +420,7 @@ class HashList(DataClassORJSONMixin):
         if hash_data.type == PathType.AREA and isinstance(hash_data, NavGetCommData):
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
             if not existing_name:
-                name = f"area {len(self.area_name)+1}"
+                name = f"area {len(self.area_name) + 1}"
                 self.area_name.append(AreaHashNameList(name=name, hash=hash_data.hash))
             result = self._add_hash_data(self.area, hash_data)
             self.update_hash_lists(self.hashlist)
@@ -422,6 +475,7 @@ class HashList(DataClassORJSONMixin):
 
     @staticmethod
     def find_missing_frames(frame_list: FrameList | RootHashList | None) -> list[int]:
+        """Return 1-based frame numbers absent from frame_list.data relative to total_frame."""
         if frame_list is None:
             return []
 
@@ -435,6 +489,7 @@ class HashList(DataClassORJSONMixin):
 
     @staticmethod
     def _add_hash_data(hash_dict: dict[int, FrameList], hash_data: NavGetCommData | SvgMessage) -> bool:
+        """Insert hash_data into hash_dict, creating a new FrameList or appending a new frame as needed."""
         if isinstance(hash_data, SvgMessage):
             if hash_dict.get(hash_data.data_hash, None) is None:
                 hash_dict[hash_data.data_hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
@@ -471,5 +526,34 @@ class HashList(DataClassORJSONMixin):
         return False
 
     def invalidate_maps(self, bol_hash: int) -> None:
+        """Clear root_hash_lists if the locally computed area hash no longer matches the device-reported bol_hash."""
         if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
             self.root_hash_lists = []
+
+    def invalidate_zones(self, ub_zone_hash: int) -> bool:
+        """Return True if zone data is stale because the device's ub_zone_hash changed.
+
+        Unlike bol_hash, ub_zone_hash cannot be locally recomputed, so staleness is
+        detected by watching for transitions rather than by value comparison.  Zero
+        is the uninitialised sentinel and never triggers a re-sync.
+
+        When stale, root_hash_lists is cleared so the next MapFetchSaga starts fresh.
+        """
+        if ub_zone_hash == 0 or ub_zone_hash == self.last_ub_zone_hash:
+            return False
+        self.last_ub_zone_hash = ub_zone_hash
+        self.root_hash_lists = []
+        return True
+
+    def invalidate_paths(self, ub_path_hash: int) -> bool:
+        """Return True if recorded-path data is stale because the device's ub_path_hash changed.
+
+        Zero is the uninitialised sentinel (device has no recorded paths) and never
+        triggers a re-sync.  On a detected change, HashList.path is cleared so
+        stale type-2 path frames are not served to callers.
+        """
+        if ub_path_hash == 0 or ub_path_hash == self.last_ub_path_hash:
+            return False
+        self.last_ub_path_hash = ub_path_hash
+        self.path = {}
+        return True

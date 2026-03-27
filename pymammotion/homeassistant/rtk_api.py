@@ -26,10 +26,12 @@ class HomeAssistantRTKApi:
 
     @property
     def mammotion(self) -> Mammotion:
+        """Return the legacy Mammotion device manager used for RTK device lookup."""
         return self._mammotion
 
     @property
     def client(self) -> MammotionClient:
+        """Return the MammotionClient instance."""
         return self._client
 
     async def update(self, device_name: str) -> RTKDevice:

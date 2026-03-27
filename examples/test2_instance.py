@@ -9,7 +9,6 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.event.event import BleNotificationEvent
 from pymammotion.mammotion.devices.mammotion import MammotionBaseBLEDevice
-from pymammotion.proto.mctrl_sys import MctlSys, RptAct, RptInfoType
 
 bleNotificationEvt = BleNotificationEvent()
 
@@ -59,15 +58,12 @@ async def run(loop):
         print("failed to find a Luba")
         return
 
-    luba_ble = MammotionBaseBLEDevice(
-        device=luba_device,
-        state_manager=MowerStateManager(MowingDevice())
-    )
+    luba_ble = MammotionBaseBLEDevice(device=luba_device, state_manager=MowerStateManager(MowingDevice()))
 
     await asyncio.sleep(2)
     # await luba_ble.start_sync(0)
     # await luba_ble.start_map_sync()
-    #await asyncio.sleep(2)
+    # await asyncio.sleep(2)
     # print(luba_ble.luba_msg.sys.toapp_report_data.dev)
     # if has_field(luba_ble.luba_msg.sys.toapp_report_data.dev):
     #     dev = luba_ble.luba_msg.sys.toapp_report_data.dev
@@ -83,7 +79,7 @@ async def run(loop):
     # print(luba_ble.mower.sys.toapp_report_data)
     # print(luba_ble.mower.sys.toapp_report_data.dev.charge_state)
     # await luba_ble.command("send_todev_ble_sync", **{'sync_type': 2})
-    #print(luba_ble.raw_data) # unreliable
+    # print(luba_ble.raw_data) # unreliable
     # print(has_field(luba_ble.mower.sys.toapp_report_data.dev))
     # print(luba_ble.mower.sys.toapp_report_data.dev.battery_val)
     await asyncio.sleep(5)
@@ -111,8 +107,7 @@ async def run(loop):
     print(luba_ble.mower.map)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
     asyncio.run(run(event_loop))

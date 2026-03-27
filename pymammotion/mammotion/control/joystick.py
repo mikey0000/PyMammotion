@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from timeit import default_timer as timer
 
 import nest_asyncio
@@ -11,6 +12,8 @@ from pymammotion.mammotion.devices import MammotionBaseBLEDevice
 from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 bleNotificationEvt = BleNotificationEvent()
+
+_logger = logging.getLogger(__name__)
 
 nest_asyncio.apply()
 
@@ -49,6 +52,7 @@ class JoystickControl:
         self.ignore_events = False
 
     def run_movement(self) -> None:
+        """Compute movement speeds from current axis percentages and send a movement command to the mower."""
         if self.linear_percent == 0.0 and self.angular_percent == 0.0:
             if self.stopped:
                 return
@@ -63,19 +67,24 @@ class JoystickControl:
         asyncio.run(self._client.command("send_movement", linear_speed=linear_speed, angular_speed=angular_speed))
 
     def print_add(self, joy) -> None:
-        print("Added", joy)
+        """Log that a joystick device has been connected."""
+        _logger.debug("Joystick added: %s", joy)
 
     def print_remove(self, joy) -> None:
-        print("Removed", joy)
+        """Log that a joystick device has been disconnected."""
+        _logger.debug("Joystick removed: %s", joy)
 
     def key_received(self, key) -> None:
+        """Forward a raw joystick key event to the key handler."""
         self.handle_key_received(key)
 
     def run_controller(self) -> None:
+        """Start the joystick event manager and the periodic movement worker thread."""
         self.mngr.start()
         self.worker.start()
 
     def handle_key_received(self, key) -> None:
+        """Dispatch a joystick button or axis event to the corresponding mower command."""
         # print(key, "-", key.keytype, "-", key.number, "-", key.value)
 
         if key.keytype is Key.BUTTON and key.value == 1:
@@ -110,7 +119,7 @@ class JoystickControl:
 
                         # linear_speed==1000
                         # linear_speed==-1000
-                        print("case 1")
+                        _logger.debug("key_received case 1")
                         if key.value > 0:
                             """Backwards."""
                             self.linear_speed = 270.0

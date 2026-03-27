@@ -124,6 +124,10 @@ class DeviceStateMachine:
         """The most recent immutable state snapshot."""
         return self._current
 
+    def restore(self, device: MowingDevice) -> None:
+        """Replace current state with a restored MowingDevice (e.g. from HA storage)."""
+        self._current = self._make_snapshot(device, DeviceAvailability())
+
     def apply(
         self,
         updated_device: MowingDevice,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import logging
 import ssl
@@ -17,6 +17,8 @@ from pymammotion.transport.base import AuthError, Transport, TransportAvailabili
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from pymammotion.http.http import MammotionHTTP
 
 _logger = logging.getLogger(__name__)
 
@@ -45,15 +47,31 @@ class MQTTTransport(Transport):
     on_message: Callable[[bytes], Awaitable[None]] | None = None
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
 
-    def __init__(self, config: MQTTTransportConfig) -> None:
-        """Initialise the transport with the supplied configuration."""
+    def __init__(
+        self,
+        config: MQTTTransportConfig,
+        mammotion_http: MammotionHTTP,
+        jwt_refresher: Callable[[], Awaitable[str]] | None = None,
+    ) -> None:
+        """Initialise the transport with the supplied configuration.
+
+        Args:
+            config: Frozen MQTT connection configuration.
+            mammotion_http: HTTP client for the invoke API.
+            jwt_refresher: Optional async callable that returns a fresh JWT password.
+                           Called before each reconnect and on auth failure.
+                           Specific to Mammotion direct-MQTT (post-2025 devices).
+
+        """
         self._config = config
+        self._http = mammotion_http
+        self._jwt_refresher = jwt_refresher
+        self._tls_context: ssl.SSLContext | None = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS) if config.use_ssl else None
         self._client: aiomqtt.Client | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event = asyncio.Event()
         self._availability: TransportAvailability = TransportAvailability.DISCONNECTED
         self._topics: list[str] = []
-        self._publish_topic: str | None = None
         # (product_key, device_name) → iot_id, used for per-device message routing
         self._device_to_iot: dict[tuple[str, str], str] = {}
 
@@ -69,10 +87,6 @@ class MQTTTransport(Transport):
     def register_device(self, product_key: str, device_name: str, iot_id: str) -> None:
         """Map a (product_key, device_name) pair to an iot_id for message routing."""
         self._device_to_iot[(product_key, device_name)] = iot_id
-
-    def set_publish_topic(self, topic: str) -> None:
-        """Set the topic used for outgoing command publishes."""
-        self._publish_topic = topic
 
     # ------------------------------------------------------------------
     # Transport ABC
@@ -120,31 +134,83 @@ class MQTTTransport(Transport):
         self._availability = TransportAvailability.DISCONNECTED
         self._client = None
 
-    async def send(self, payload: bytes) -> None:
-        """Publish payload to the configured publish topic.
+    async def send(self, payload: bytes, iot_id: str = "") -> None:
+        """Send *payload* to the device via the Mammotion HTTP invoke API.
 
-        Raises TransportError if the transport is not connected or no publish topic is set.
+        Args:
+            payload: Raw protobuf bytes to send.
+            iot_id: Mammotion IoT device identifier for the target device.
+
+        Raises:
+            TransportError: If iot_id is empty or the invoke call fails.
+            AuthError: If the access token is expired (HTTP 401 or code 460).
+
         """
-        if not self.is_connected or self._client is None:
-            msg = "MQTTTransport is not connected; cannot send payload"
+        from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
+
+        if not iot_id:
+            msg = "MQTTTransport.send() requires a non-empty iot_id"
             raise TransportError(msg)
-        if self._publish_topic is None:
-            msg = "No publish topic configured"
+        content = base64.b64encode(payload).decode()
+        res = await self._http.mqtt_invoke(content, "", iot_id)
+        if res.code in (401, 460):
+            raise AuthError(f"Access token expired (code={res.code})")
+        if res.code in (6205, 50104):
+            raise DeviceOfflineException(res.code, iot_id)
+        if res.code == 20056:
+            raise GatewayTimeoutException(res.code, iot_id)
+        if res.code not in (0, 200):
+            msg = f"mqtt_invoke failed: code={res.code} msg={res.msg} iot_id={iot_id}"
             raise TransportError(msg)
-        await self._client.publish(self._publish_topic, payload)
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
+    async def _notify_availability(self, state: TransportAvailability) -> None:
+        """Update internal state and notify the availability callback."""
+        self._availability = state
+        if self.on_availability_changed is not None:
+            try:
+                await self.on_availability_changed(state)
+            except Exception:
+                _logger.exception("on_availability_changed callback failed")
+
+    async def _refresh_jwt(self) -> bool:
+        """Attempt to refresh the JWT via the jwt_refresher callback.
+
+        Returns True if credentials were refreshed, False otherwise.
+        """
+        if self._jwt_refresher is not None:
+            try:
+                new_jwt = await self._jwt_refresher()
+                self._config = replace(self._config, password=new_jwt)
+                _logger.info("Mammotion MQTT JWT refreshed")
+                return True
+            except Exception:
+                _logger.warning("JWT refresh failed", exc_info=True)
+        if self.on_auth_failure is not None:
+            try:
+                return await self.on_auth_failure()
+            except Exception:
+                _logger.warning("on_auth_failure callback failed", exc_info=True)
+        return False
+
     async def _run(self) -> None:
         """Run the main connection loop, reconnecting with exponential backoff."""
         backoff = 1
-        tls_context: ssl.SSLContext | None = None
-        if self._config.use_ssl:
-            tls_context = ssl.create_default_context()
 
         while not self._stop_event.is_set():
+            await self._notify_availability(TransportAvailability.CONNECTING)
+
+            # Refresh JWT before each reconnect attempt (Mammotion MQTT only)
+            if self._jwt_refresher is not None:
+                try:
+                    new_jwt = await self._jwt_refresher()
+                    self._config = replace(self._config, password=new_jwt)
+                except Exception:
+                    _logger.warning("Pre-connect JWT refresh failed", exc_info=True)
+
             try:
                 async with aiomqtt.Client(
                     hostname=self._config.host,
@@ -153,13 +219,13 @@ class MQTTTransport(Transport):
                     password=self._config.password,
                     identifier=self._config.client_id,
                     keepalive=self._config.keepalive,
-                    tls_context=tls_context,
+                    tls_context=self._tls_context,
                     protocol=aiomqtt.ProtocolVersion.V311,
                     clean_session=True,
                 ) as client:
                     self._client = client
                     backoff = 1
-                    self._availability = TransportAvailability.CONNECTED
+                    await self._notify_availability(TransportAvailability.CONNECTED)
 
                     for topic in self._topics:
                         await client.subscribe(topic)
@@ -171,13 +237,13 @@ class MQTTTransport(Transport):
 
             except aiomqtt.MqttCodeError as exc:
                 rc = exc.rc
-                if rc in (4, 5):
-                    _logger.error(
-                        "MQTT connection refused (rc=%s): %s — stopping reconnect (check credentials/token)",
-                        rc,
-                        exc,
-                    )
+                if rc in (4, 5, 135) or "not authorized" in str(exc).lower():
+                    _logger.error("MQTT auth refused (rc=%s): %s — attempting JWT refresh", rc, exc)
+                    if await self._refresh_jwt():
+                        _logger.info("Credentials refreshed after auth failure — retrying")
+                        continue
                     self._stop_event.set()
+                    await self._notify_availability(TransportAvailability.DISCONNECTED)
                     raise AuthError(str(exc)) from exc
                 _logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except aiomqtt.MqttError as exc:
@@ -187,7 +253,7 @@ class MQTTTransport(Transport):
             finally:
                 self._client = None
                 if self._availability is TransportAvailability.CONNECTED:
-                    self._availability = TransportAvailability.DISCONNECTED
+                    await self._notify_availability(TransportAvailability.DISCONNECTED)
 
             if not self._stop_event.is_set():
                 try:

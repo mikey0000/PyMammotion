@@ -1,4 +1,5 @@
 """Base classes, exceptions, enums, and EventBus for the transport layer."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -132,6 +133,7 @@ class EventBus(Generic[T]):
         sub_id = self._next_id
         self._next_id += 1
         self._handlers[sub_id] = handler
+
         def _remove() -> None:
             self._handlers.pop(sub_id, None)
 
@@ -166,6 +168,12 @@ class Transport(ABC):
     #: Set by the broker layer to receive raw incoming messages.
     on_message: Callable[[bytes], Awaitable[None]] | None = None
 
+    #: Called when transport availability changes (connect/disconnect/error).
+    on_availability_changed: Callable[[TransportAvailability], Awaitable[None]] | None = None
+
+    #: Called on auth failure; returns True if credentials were refreshed (retry).
+    on_auth_failure: Callable[[], Awaitable[bool]] | None = None
+
     @abstractmethod
     async def connect(self) -> None:
         """Establish the connection. Raises TransportError or AuthError on failure."""
@@ -175,7 +183,7 @@ class Transport(ABC):
         """Gracefully close the connection."""
 
     @abstractmethod
-    async def send(self, payload: bytes) -> None:
+    async def send(self, payload: bytes, iot_id: str = "") -> None:
         """Send a raw payload. Raises TransportError if not connected."""
 
     @property

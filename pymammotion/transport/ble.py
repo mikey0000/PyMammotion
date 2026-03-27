@@ -1,4 +1,5 @@
 """BLETransport — concrete Transport wrapping bleak for Mammotion BLE devices."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -49,6 +50,7 @@ class BLETransport(Transport):
         self._ble_device: BLEDevice | None = None
         self._client: BleakClientWithServiceCache | None = None
         self._availability: TransportAvailability = TransportAvailability.DISCONNECTED
+        self._disconnect_on_idle: bool = True
 
     # ------------------------------------------------------------------
     # Public device management
@@ -57,6 +59,15 @@ class BLETransport(Transport):
     def set_ble_device(self, device: BLEDevice) -> None:
         """Supply (or update) the bleak BLEDevice used for the next connect()."""
         self._ble_device = device
+
+    def set_disconnect_strategy(self, *, disconnect: bool = True) -> None:
+        """Set whether the BLE connection should be dropped when the device is idle.
+
+        When disconnect=True (default) the transport will disconnect after
+        commands complete, reducing power consumption.  When disconnect=False
+        the connection is kept alive (suitable for stay-connected-Bluetooth mode).
+        """
+        self._disconnect_on_idle = disconnect
 
     # ------------------------------------------------------------------
     # Transport ABC
@@ -90,7 +101,7 @@ class BLETransport(Transport):
             _logger.debug("BLETransport.connect() called while already connected — ignoring")
             return
 
-        self._availability = TransportAvailability.CONNECTING
+        await self._notify_availability(TransportAvailability.CONNECTING)
         _logger.debug("BLETransport connecting to %s", self._config.device_id)
 
         self._client = await establish_connection(
@@ -102,7 +113,7 @@ class BLETransport(Transport):
         )
 
         await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
-        self._availability = TransportAvailability.CONNECTED
+        await self._notify_availability(TransportAvailability.CONNECTED)
         _logger.debug("BLETransport connected to %s", self._config.device_id)
 
     async def disconnect(self) -> None:
@@ -110,9 +121,9 @@ class BLETransport(Transport):
         if self._client is not None and self._client.is_connected:
             await self._client.disconnect()
         self._client = None
-        self._availability = TransportAvailability.DISCONNECTED
+        await self._notify_availability(TransportAvailability.DISCONNECTED)
 
-    async def send(self, payload: bytes) -> None:
+    async def send(self, payload: bytes, iot_id: str = "") -> None:
         """Write payload to the GATT write characteristic.
 
         Raises TransportError if not connected.
@@ -126,10 +137,28 @@ class BLETransport(Transport):
     # Internal handlers
     # ------------------------------------------------------------------
 
+    async def _notify_availability(self, state: TransportAvailability) -> None:
+        """Update internal state and notify the availability callback."""
+        self._availability = state
+        if self.on_availability_changed is not None:
+            try:
+                await self.on_availability_changed(state)
+            except Exception:
+                _logger.exception("on_availability_changed callback failed")
+
     def _handle_disconnect(self, _client: Any) -> None:
         """Handle unexpected disconnect reported by bleak."""
         _logger.warning("BLETransport: device %s disconnected", self._config.device_id)
         self._availability = TransportAvailability.DISCONNECTED
+        # Fire availability callback from sync context
+        if self.on_availability_changed is not None:
+            import asyncio
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.on_availability_changed(TransportAvailability.DISCONNECTED))
+            except RuntimeError:
+                pass
 
     async def _notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Handle incoming BLE notifications and forward to on_message."""

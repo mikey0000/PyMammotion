@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Union
 
-from mashumaro import DataClassDictMixin
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
@@ -121,13 +120,13 @@ ItemTypes = Union[
 
 
 @dataclass
-class Item(DataClassDictMixin):
+class Item(DataClassORJSONMixin):
     time: int
     value: int | float | str | dict[str, Any] | ItemTypes  # Depending on the type of value
 
 
 @dataclass
-class Items(DataClassDictMixin):
+class Items(DataClassORJSONMixin):
     iotState: Item | None = None
     extMod: Item | None = None
     deviceVersionInfo: Item | None = None

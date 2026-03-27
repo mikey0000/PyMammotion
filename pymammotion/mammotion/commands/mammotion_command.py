@@ -24,6 +24,7 @@ class MammotionCommand(
         return self._device_name
 
     def read_write_device(self, rw_id: int, context: int, rw: int):
+        """Dispatch a read/write device command, routing to the X3 adapter for Luba Pro devices."""
         if (
             rw_id == 6 or rw_id == 3 or rw_id == 7 or rw_id == 8 or rw_id == 10 or rw_id == 11
         ) and DeviceType.is_luba_pro(self.get_device_name()):
@@ -45,15 +46,19 @@ class MammotionCommand(
         return self.read_write_device(6, context, 1)
 
     def get_error_code(self) -> bytes:
+        """Request the current error code from the device."""
         return self.read_write_device(5, 2, 1)
 
     def get_error_timestamp(self) -> bytes:
+        """Request the timestamp of the last error from the device."""
         return self.read_write_device(5, 3, 1)
 
     def get_device_product_key(self) -> str:
+        """Return the product key for this device."""
         return self._product_key
 
     def set_device_product_key(self, product_key: str) -> None:
+        """Set the product key for this device."""
         self._product_key = product_key
 
     def move_forward(self, linear: float) -> bytes:

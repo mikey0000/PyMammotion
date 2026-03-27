@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass, field
 import math
+from typing import Any
 
 import betterproto2
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+import orjson
 
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorkingHours, MowerInfo
@@ -12,7 +14,7 @@ from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
-from pymammotion.data.model.report_info import ReportData
+from pymammotion.data.model.report_info import ReportData, WorkSessionResult
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -48,6 +50,7 @@ class MowingDevice(DataClassORJSONMixin):
     errors: DeviceErrors = field(default_factory=DeviceErrors)
     non_work_hours: DeviceNonWorkingHours = field(default_factory=DeviceNonWorkingHours)
     events: Events = field(default_factory=Events)
+    work_session_result: WorkSessionResult = field(default_factory=WorkSessionResult)
 
     @property
     def device_limits(self) -> DeviceLimits:
@@ -64,6 +67,11 @@ class MowingDevice(DataClassORJSONMixin):
         if limits is None:
             limits = _device_config.get_best_default(self.mower_state.product_key)
         return limits
+
+    def clear_version_info(self) -> None:
+        """Clear all cached firmware version info so it will be re-fetched after an OTA update."""
+        self.device_firmwares = DeviceFirmwares()
+        self.mower_state.swversion = ""
 
     def buffer(self, buffer_list: SystemUpdateBufMsg) -> None:
         """Update the device based on which buffer we are reading from."""
@@ -111,7 +119,16 @@ class MowingDevice(DataClassORJSONMixin):
                     ]
                 )
             case 3:
-                # task state event
+                # Task area state event (TaskAreaStateEvent in APK / MACarDataManager).
+                # Format: [3, 0, count, hash1, status1, hash2, status2, ...]
+                # Pairs of (zone_hash, status) starting at index 3, step 2.
+                # task_area_ids preserves the original mow order of zones.
+                # Status values (from APK StateSymbolLayer / BaseMapFragment):
+                #   0 = not started / not selected
+                #   1 = selected, waiting (选中未割 — selected not yet mowed)
+                #   2 = currently mowing (选中正在割 — selected currently mowing)
+                #   3 = complete (区域完成 — area complete)
+                #   5 = abort / skip
                 task_area_map: dict[int, int] = {}
                 task_area_ids = []
 
@@ -171,7 +188,7 @@ class MowingDevice(DataClassORJSONMixin):
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         self.mowing_state = RapidState().from_raw(rapid_state.rapid_state_data)
         self.location.position_type = self.mowing_state.pos_type
-        self.location.orientation = int(self.mowing_state.toward / 10000)
+        self.location.orientation = int(self.mowing_state.toward)
         self.location.device = coordinate_converter.enu_to_lla(
             parse_double(self.mowing_state.pos_y, 4.0), parse_double(self.mowing_state.pos_x, 4.0)
         )
@@ -183,8 +200,13 @@ class MowingDevice(DataClassORJSONMixin):
     def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
         """Set mow info."""
 
-    def report_missing_data(self) -> None:
-        """Report missing data so we can refetch it."""
+    def report_missing_data(self) -> list[str]:
+        """Report what data is missing for basic operation."""
+        from pymammotion.device.readiness import get_readiness_checker
+
+        checker = get_readiness_checker(self.name)
+        status = checker.check(self)
+        return status.missing
 
     def update_device_firmwares(self, fw_info: DeviceFwInfo) -> None:
         """Set firmware versions on all parts of the robot or RTK."""
@@ -198,6 +220,24 @@ class MowingDevice(DataClassORJSONMixin):
                     self.device_firmwares.right_motor_driver = mod.version
                 case 5:
                     self.device_firmwares.rtk_rover_station = mod.version
+                case 7:
+                    self.device_firmwares.bms = mod.version
+                case 8:
+                    self.device_firmwares.main_controller_bt = mod.version
+                case 9:
+                    self.device_firmwares.left_motor_driver_bt = mod.version
+                case 10:
+                    self.device_firmwares.right_motor_driver_bt = mod.version
+                case 11:
+                    self.device_firmwares.bsp = mod.version
+                case 12:
+                    self.device_firmwares.middleware = mod.version
+                case 14:
+                    self.device_firmwares.lora_module = mod.version
+                case 16:
+                    self.device_firmwares.lte_module = mod.version
+                case 17:
+                    self.device_firmwares.lidar = mod.version
                 case 101:
                     # RTK main board
                     self.device_firmwares.main_controller = mod.version
@@ -205,6 +245,10 @@ class MowingDevice(DataClassORJSONMixin):
                     self.device_firmwares.rtk_version = mod.version
                 case 103:
                     self.device_firmwares.lora_version = mod.version
+                case 203:
+                    self.device_firmwares.cutter_driver = mod.version
+                case 204:
+                    self.device_firmwares.cutter_driver_bt = mod.version
 
 
 @dataclass
@@ -222,3 +266,19 @@ class RTKDevice(DataClassORJSONMixin):
     wifi_sta_mac: str = ""
     bt_mac: str = ""
     update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
+
+
+# Mashumaro's __init_subclass__ generates to_jsonb directly on subclasses, overwriting any
+# in-class override.  Patch after class definition so orjson can handle int dict keys
+# (e.g. HashList.area / path / obstacle which are dict[int, FrameList]).
+def _mowing_device_to_jsonb(self: "MowingDevice", **kwargs: Any) -> bytes:
+    kwargs.setdefault("option", orjson.OPT_NON_STR_KEYS)
+    return orjson.dumps(self.to_dict(), **kwargs)
+
+
+def _mowing_device_to_json(self: "MowingDevice", **kwargs: Any) -> str:
+    return _mowing_device_to_jsonb(self, **kwargs).decode()
+
+
+MowingDevice.to_jsonb = _mowing_device_to_jsonb  # type: ignore[method-assign]
+MowingDevice.to_json = _mowing_device_to_json  # type: ignore[method-assign]

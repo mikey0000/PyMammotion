@@ -86,6 +86,83 @@ async def test_exception_in_work_does_not_crash_queue() -> None:
     await q.stop()
 
 
+async def test_enqueue_saga_on_complete_called_on_success() -> None:
+    """on_complete must be called once after a successful saga."""
+    q = DeviceCommandQueue()
+    broker = DeviceMessageBroker()
+    q.start()
+
+    class QuickSaga(Saga):
+        name = "quick"
+
+        async def _run(self, b: DeviceMessageBroker) -> None:
+            pass
+
+    completed: list[int] = []
+
+    async def on_complete() -> None:
+        completed.append(1)
+
+    await q.enqueue_saga(QuickSaga(), broker, on_complete=on_complete)
+    await asyncio.sleep(0.1)
+
+    assert completed == [1]
+    await q.stop()
+
+
+async def test_enqueue_saga_on_complete_not_called_on_failure() -> None:
+    """on_complete must NOT be called when the saga fails (exhausts retries)."""
+    q = DeviceCommandQueue()
+    broker = DeviceMessageBroker()
+    q.start()
+
+    class FailingSaga(Saga):
+        name = "failing"
+        max_attempts = 1
+
+        async def _run(self, b: DeviceMessageBroker) -> None:
+            raise RuntimeError("saga failure")
+
+    completed: list[int] = []
+
+    async def on_complete() -> None:
+        completed.append(1)
+
+    await q.enqueue_saga(FailingSaga(), broker, on_complete=on_complete)
+    await asyncio.sleep(0.1)
+
+    assert completed == []
+    await q.stop()
+
+
+async def test_enqueue_saga_on_complete_error_does_not_crash_queue() -> None:
+    """A failing on_complete callback must not stop subsequent queue items."""
+    q = DeviceCommandQueue()
+    broker = DeviceMessageBroker()
+    q.start()
+
+    class QuickSaga(Saga):
+        name = "quick"
+
+        async def _run(self, b: DeviceMessageBroker) -> None:
+            pass
+
+    async def bad_on_complete() -> None:
+        raise RuntimeError("callback error")
+
+    executed: list[int] = []
+
+    async def next_work() -> None:
+        executed.append(1)
+
+    await q.enqueue_saga(QuickSaga(), broker, on_complete=bad_on_complete)
+    await q.enqueue(next_work)
+    await asyncio.sleep(0.2)
+
+    assert executed == [1]
+    await q.stop()
+
+
 async def test_fifo_within_same_priority() -> None:
     q = DeviceCommandQueue()
     q.start()

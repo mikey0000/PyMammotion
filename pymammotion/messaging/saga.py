@@ -60,7 +60,7 @@ class Saga(ABC):
                     self.max_attempts,
                     exc,
                 )
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
             else:
                 _logger.debug("Saga '%s' completed on attempt %d", self.name, attempt)
                 return

@@ -1,4 +1,5 @@
 """BLETransportManager — per-device BLE connection manager with lazy discovery."""
+
 from __future__ import annotations
 
 import asyncio

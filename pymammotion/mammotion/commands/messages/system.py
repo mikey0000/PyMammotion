@@ -24,6 +24,7 @@ from pymammotion.proto import (
     MsgAttr,
     MsgCmdType,
     MsgDevice,
+    PoolBottomTypeE,
     QcAppTestId,
     RemoteResetReqT,
     ReportInfoCfg,
@@ -42,6 +43,7 @@ from pymammotion.proto import (
 
 class MessageSystem(AbstractMessage, ABC):
     def send_order_msg_sys(self, sys) -> bytes:
+        """Serialize a system (MctlSys) payload into a LubaMsg request frame targeting the main controller."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,
             msgattr=MsgAttr.REQ,
@@ -57,6 +59,7 @@ class MessageSystem(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def send_order_msg_sys_legacy(self, sys) -> bytes:
+        """Serialize a system payload into a LubaMsg frame using the legacy fixed receiver address."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,
             msgattr=MsgAttr.REQ,
@@ -72,11 +75,13 @@ class MessageSystem(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def reset_system(self) -> bytes:
+        """Send a factory reset command to the device."""
         build = MctlSys(todev_reset_system=1)
         logger.debug("Send command - send factory reset")
         return self.send_order_msg_sys(build)
 
     def set_blade_control(self, on_off: int) -> bytes:
+        """Send a command to turn the cutting blade on or off."""
         mctlsys = MctlSys()
         sys_knife_control = SysKnifeControl()
         sys_knife_control.knife_status = on_off
@@ -112,6 +117,7 @@ class MessageSystem(AbstractMessage, ABC):
         return self.send_order_msg_sys(build)
 
     def get_device_product_model(self) -> bytes:
+        """Request the device product type and model information."""
         return self.send_order_msg_sys(MctlSys(device_product_type_info=DeviceProductTypeInfoT(result=1)))
 
     def read_and_set_sidelight(self, is_sidelight: bool, operate: int) -> bytes:
@@ -136,28 +142,30 @@ class MessageSystem(AbstractMessage, ABC):
                 end_hour=0,
                 end_min=0,
             )
-        logger.debug(f"Send read and write sidelight command is_sidelight:{
-            is_sidelight}, operate:{operate}")
+        logger.debug(f"Send read and write sidelight command is_sidelight:{is_sidelight}, operate:{operate}")
         build2 = MctlSys(todev_time_ctrl_light=build)
-        logger.debug(f"Send command - send read and write sidelight command is_sidelight:{
-            is_sidelight}, operate:{operate}, timeCtrlLight:{build}")
+        logger.debug(
+            f"Send command - send read and write sidelight command is_sidelight:{is_sidelight}, operate:{
+                operate
+            }, timeCtrlLight:{build}"
+        )
         return self.send_order_msg_sys(build2)
 
     def test_tool_order_to_sys(self, sub_cmd: int, param_id: int, param_value: list[int]) -> bytes:
+        """Send a simulation/test tool command with a sub-command ID, parameter ID, and parameter values."""
         build = MCtrlSimulationCmdData(sub_cmd=sub_cmd, param_id=param_id, param_value=param_value)
-        logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{
-            param_id}, param_value={param_value}")
+        logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
         build2 = MctlSys(simulation_cmd=build)
-        logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{
-            param_id}, param_value={param_value}")
+        logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
         return self.send_order_msg_sys(build2)
 
     def read_and_set_rtk_paring_code(self, op: int, cgf: str | None = None) -> bytes:
-        logger.debug(f"Send read and write base station configuration quality op:{
-            op}, cgf:{cgf}")
+        """Read or write the RTK base station LoRa pairing code configuration."""
+        logger.debug(f"Send read and write base station configuration quality op:{op}, cgf:{cgf}")
         return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf)))
 
     def allpowerfull_rw(self, rw_id: int, context: int, rw: int) -> bytes:
+        """Send a general-purpose bidirectional read/write command to the device by ID, context, and direction."""
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=rw_id, context=context, rw=rw))
         logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")
         return self.send_order_msg_sys(build)
@@ -223,6 +231,7 @@ class MessageSystem(AbstractMessage, ABC):
     #     return self.send_order_msg_sys(build2)
 
     def send_sys_set_date_time(self) -> bytes:
+        """Synchronize the device clock with the current local date, time, timezone, and DST settings."""
         # TODO get HA timezone
         calendar = datetime.datetime.now()
         i = calendar.year
@@ -234,8 +243,7 @@ class MessageSystem(AbstractMessage, ABC):
         i7 = calendar.second
         i8 = calendar.utcoffset().total_seconds() // 60 if calendar.utcoffset() else 0
         i9 = 1 if calendar.dst() else 0
-        logger.debug(f"Print time zone, time zone={
-            i8}, daylight saving time={i9} week={i4}")
+        logger.debug(f"Print time zone, time zone={i8}, daylight saving time={i9} week={i4}")
         build = MctlSys(
             todev_data_time=SysSetDateTime(
                 year=i,
@@ -250,17 +258,20 @@ class MessageSystem(AbstractMessage, ABC):
             )
         )
         logger.debug(
-            f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{
-            i3}, month:{i2}, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}",
+            f"Send command - synchronize time zone={i8}, daylight saving time={i9} week={i4}, day:{i3}, month:{
+                i2
+            }, hours:{i5}, minutes:{i6}, seconds:{i7}, year={i}",
             "Time synchronization",
             True,
         )
         return self.send_order_msg_sys(build)
 
     def get_device_version_info(self) -> bytes:
+        """Request the device firmware version information."""
         return self.send_order_msg_sys(MctlSys(todev_get_dev_fw_info=1))
 
     def read_and_set_rtk_pairing_code(self, op: int, cfg: str) -> bytes:
+        """Read or write the RTK base station LoRa pairing configuration string."""
         return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cfg)))
 
     # === sendOrderMsg_Sys2 ===
@@ -274,6 +285,7 @@ class MessageSystem(AbstractMessage, ABC):
         no_change_period: int,
         count: int,
     ) -> bytes:
+        """Configure the device IoT reporting subscription with the given action, info types, and timing parameters."""
         build = MctlSys(
             todev_report_cfg=ReportInfoCfg(
                 act=rpt_act,
@@ -284,11 +296,11 @@ class MessageSystem(AbstractMessage, ABC):
                 count=count,
             )
         )
-        logger.debug(f"Send command==== IOT slim data Act {
-            build.todev_report_cfg.act}")
+        logger.debug(f"Send command==== IOT slim data Act {build.todev_report_cfg.act}")
         return self.send_order_msg_sys_legacy(build)
 
     def get_maintenance(self) -> bytes:
+        """Request maintenance-related reports including blade info, base station info, and firmware info."""
         return self.request_iot_sys(
             rpt_act=RptAct.RPT_START,
             rpt_info_type=[
@@ -303,6 +315,7 @@ class MessageSystem(AbstractMessage, ABC):
         )
 
     def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
+        """Send a command to stop all active IoT status reporting subscriptions on the device."""
         # TODO use send_order_msg_sys_legacy
         mctl_sys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
@@ -338,6 +351,7 @@ class MessageSystem(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
+        """Start full-status IoT reporting covering connectivity, RTK, work, vision, and base station info."""
         # TODO use send_order_msg_sys_legacy
         mctl_sys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
@@ -527,4 +541,25 @@ class MessageSystem(AbstractMessage, ABC):
                 )
             )
         logger.debug(f"Send command - SP speed update speed={speed}, query={is_query}")
+        return self.send_order_msg_sys(build)
+
+    def sp_set_bottom_type(self, bottom_type: PoolBottomTypeE | int, is_query: bool = False) -> bytes:
+        """Set or query pool bottom shape type (Spino). is_query=True reads current value."""
+        if is_query:
+            build = MctlSys(
+                app_downlink_cmd=AppDownlinkCmdT(
+                    cmd=AppDownlinkCmdTypeE.app_bottom_type_cmd,
+                    ack=AckToAppTypeE.INQUIRY,
+                    bottom_type=PoolBottomTypeE.BOTTOM_RIGHT_ANGLE_SIMPLE_SHAPE,
+                )
+            )
+        else:
+            build = MctlSys(
+                app_downlink_cmd=AppDownlinkCmdT(
+                    cmd=AppDownlinkCmdTypeE.app_bottom_type_cmd,
+                    ack=AckToAppTypeE.WAIT_ACK,
+                    bottom_type=PoolBottomTypeE(int(bottom_type)),
+                )
+            )
+        logger.debug(f"Send command - SP bottom type update bottom_type={bottom_type}, query={is_query}")
         return self.send_order_msg_sys(build)

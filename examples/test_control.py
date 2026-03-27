@@ -5,14 +5,13 @@ pytest.skip("Legacy BLE script, not a test module", allow_module_level=True)
 import asyncio
 from threading import Thread
 
-from pymammotion import MammotionBLE as LubaBLE
-from pymammotion.bluetooth import BleMessage
 from pymammotion.event import BleNotificationEvent
 from pymammotion.event.event import MoveEvent
 from pymammotion.mammotion.control.joystick import JoystickControl
 
 moveEvt = MoveEvent()
 bleNotificationEvt = BleNotificationEvent()
+
 
 class AsyncLoopThread(Thread):
     def __init__(self):
@@ -61,7 +60,7 @@ async def run():
     print("end run?")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     asyncio.run(run())

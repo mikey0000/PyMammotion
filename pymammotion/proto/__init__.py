@@ -24,6 +24,7 @@ __all__ = (
     "BleLogUploadUpdateProgress",
     "BleSignatureReq",
     "BleTestBytes",
+    "BmsCtrlInfoMsg",
     "ChargePileType",
     "CollectMotorState",
     "CollectorStatusT",
@@ -72,6 +73,9 @@ __all__ = (
     "DrvWifiMsg",
     "DrvWifiSet",
     "DrvWifiUpload",
+    "FileTransferRequest",
+    "FileTransferResponse",
+    "FileTransferResult",
     "FotaInfoT",
     "FotaSubInfoT",
     "FpvToAppInfoT",
@@ -88,6 +92,9 @@ __all__ = (
     "Getlamprsp",
     "InfoType",
     "IotConctrlType",
+    "IotProductParamReqT",
+    "IotProductParamRspT",
+    "IotQuaternion",
     "LampCtrlSta",
     "LampManualCtrlSta",
     "LockStateT",
@@ -180,6 +187,7 @@ __all__ = (
     "PerceptionObstaclesVisualizationT",
     "PerceptionUniversalBuffT",
     "PlanTaskNameIdT",
+    "PoolBottomTypeE",
     "PosScore",
     "QcAppTestConditions",
     "QcAppTestExcept",
@@ -208,6 +216,9 @@ __all__ = (
     "RtkSysMaskQueryAckT",
     "RtkSysMaskQueryT",
     "RtkUsedType",
+    "SelfCheckInfoReq",
+    "SelfCheckInfoRsp",
+    "SelfCheckRsp",
     "SetDrvBleMtu",
     "SetHeadlamp",
     "SetMnetCfgReq",
@@ -218,6 +229,7 @@ __all__ = (
     "SimulationCmdData",
     "SocMul",
     "SpecialModeT",
+    "SpinoSysStatus",
     "SvgMessageAckT",
     "SvgMessageT",
     "SysBatUp",
@@ -245,6 +257,7 @@ __all__ = (
     "SystemTardStateTunnelMsg",
     "SystemTmpCycleTxMsg",
     "SystemUpdateBufMsg",
+    "TaskReportInteractionT",
     "TimeCtrlLight",
     "UnloadMotorState",
     "UplinkT",
@@ -655,6 +668,16 @@ class Operation(betterproto2.Enum):
     ERASE = 2
 
 
+class PoolBottomTypeE(betterproto2.Enum):
+    BOTTOM_RIGHT_ANGLE_SIMPLE_SHAPE = 0
+
+    BOTTOM_RIGHT_ANGLE_COMPLEX_SHAPE = 1
+
+    BOTTOM_CURVE_SIMPLE_SHAPE = 2
+
+    BOTTOM_CURVE_COMPLEX_SHAPE = 3
+
+
 class QcAppTestId(betterproto2.Enum):
     QC_APP_ITEM_ON_CHARGESATSTION = 0
 
@@ -787,6 +810,16 @@ class SimCardSta(betterproto2.Enum):
     SIM_OK = 5
 
 
+class SpinoSysStatus(betterproto2.Enum):
+    SYS_STA_READY = 0
+
+    SYS_STA_WORKING = 1
+
+    SYS_STA_WORKBACKING = 2
+
+    SYS_STA_CHARGEBACKING = 3
+
+
 class UnloadMotorState(betterproto2.Enum):
     UNLOAD_CLOSE = 0
 
@@ -834,7 +867,7 @@ class AppDownlinkCmdT(betterproto2.Message):
 
     wall_material: "int | None" = betterproto2.field(3, betterproto2.TYPE_INT32, optional=True, group="params")
 
-    bottom_type: "int | None" = betterproto2.field(4, betterproto2.TYPE_INT32, optional=True, group="params")
+    bottom_type: "PoolBottomTypeE | None" = betterproto2.field(4, betterproto2.TYPE_ENUM, optional=True, group="params")
 
     floor_speed: "float | None" = betterproto2.field(5, betterproto2.TYPE_FLOAT, optional=True, group="params")
 
@@ -1067,6 +1100,26 @@ class BleTestBytes(betterproto2.Message):
 
 
 default_message_pool.register_message("", "BleTestBytes", BleTestBytes)
+
+
+@dataclass(eq=False, repr=False)
+class BmsCtrlInfoMsg(betterproto2.Message):
+    bat_cycle_times: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
+
+    bat_health_state: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+    smart_charge_switch: "int" = betterproto2.field(3, betterproto2.TYPE_INT32)
+
+    charge_soc_threshold: "int" = betterproto2.field(4, betterproto2.TYPE_INT32)
+
+    peak_valley_charge_switch: "int" = betterproto2.field(5, betterproto2.TYPE_INT32)
+
+    valley_charge_start_time: "int" = betterproto2.field(6, betterproto2.TYPE_INT32)
+
+    valley_charge_end_time: "int" = betterproto2.field(7, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "BmsCtrlInfoMsg", BmsCtrlInfoMsg)
 
 
 @dataclass(eq=False, repr=False)
@@ -1751,6 +1804,42 @@ default_message_pool.register_message("", "DrvWifiUpload", DrvWifiUpload)
 
 
 @dataclass(eq=False, repr=False)
+class FileTransferRequest(betterproto2.Message):
+    biz_id: "str" = betterproto2.field(1, betterproto2.TYPE_STRING)
+
+    type: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+    total_size: "int" = betterproto2.field(3, betterproto2.TYPE_INT32)
+
+    pack_size: "int" = betterproto2.field(4, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "FileTransferRequest", FileTransferRequest)
+
+
+@dataclass(eq=False, repr=False)
+class FileTransferResponse(betterproto2.Message):
+    biz_id: "str" = betterproto2.field(1, betterproto2.TYPE_STRING)
+
+    result: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+    progress: "int" = betterproto2.field(3, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "FileTransferResponse", FileTransferResponse)
+
+
+@dataclass(eq=False, repr=False)
+class FileTransferResult(betterproto2.Message):
+    biz_id: "str" = betterproto2.field(1, betterproto2.TYPE_STRING)
+
+    result: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "FileTransferResult", FileTransferResult)
+
+
+@dataclass(eq=False, repr=False)
 class FotaInfoT(betterproto2.Message):
     need_ota_num: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
 
@@ -1938,6 +2027,44 @@ class GetNetworkInfoRsp(betterproto2.Message):
 
 
 default_message_pool.register_message("", "GetNetworkInfoRsp", GetNetworkInfoRsp)
+
+
+@dataclass(eq=False, repr=False)
+class IotProductParamReqT(betterproto2.Message):
+    account: "int" = betterproto2.field(1, betterproto2.TYPE_INT64)
+
+    cmd: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+    origin_device_name: "str" = betterproto2.field(3, betterproto2.TYPE_STRING)
+
+    test_key: "IotQuaternion | None" = betterproto2.field(4, betterproto2.TYPE_MESSAGE, optional=True)
+
+
+default_message_pool.register_message("", "iot_product_param_req_t", IotProductParamReqT)
+
+
+@dataclass(eq=False, repr=False)
+class IotProductParamRspT(betterproto2.Message):
+    result: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
+
+    param: "IotQuaternion | None" = betterproto2.field(2, betterproto2.TYPE_MESSAGE, optional=True)
+
+
+default_message_pool.register_message("", "iot_product_param_rsp_t", IotProductParamRspT)
+
+
+@dataclass(eq=False, repr=False)
+class IotQuaternion(betterproto2.Message):
+    product_key: "str" = betterproto2.field(1, betterproto2.TYPE_STRING)
+
+    product_secret: "str" = betterproto2.field(2, betterproto2.TYPE_STRING)
+
+    device_name: "str" = betterproto2.field(3, betterproto2.TYPE_STRING)
+
+    device_secret: "str" = betterproto2.field(4, betterproto2.TYPE_STRING)
+
+
+default_message_pool.register_message("", "iot_quaternion", IotQuaternion)
 
 
 @dataclass(eq=False, repr=False)
@@ -2686,6 +2813,42 @@ class MctlSys(betterproto2.Message):
 
     app_downlink_cmd: "AppDownlinkCmdT | None" = betterproto2.field(
         68, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    to_dev_self_check_info_req: "SelfCheckInfoReq | None" = betterproto2.field(
+        70, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    to_app_self_check_info_rsp: "SelfCheckInfoRsp | None" = betterproto2.field(
+        71, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    iot_product_param_req: "IotProductParamReqT | None" = betterproto2.field(
+        72, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    iot_product_param_rsp: "IotProductParamRspT | None" = betterproto2.field(
+        73, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    task_report_interaction: "TaskReportInteractionT | None" = betterproto2.field(
+        74, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    task_report_req: "FileTransferRequest | None" = betterproto2.field(
+        75, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    task_report_resp: "FileTransferResponse | None" = betterproto2.field(
+        76, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    task_report_result: "FileTransferResult | None" = betterproto2.field(
+        77, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
+    )
+
+    bms_ctrl_info_msg: "BmsCtrlInfoMsg | None" = betterproto2.field(
+        78, betterproto2.TYPE_MESSAGE, optional=True, group="SubSysMsg"
     )
 
 
@@ -4244,6 +4407,36 @@ default_message_pool.register_message("", "rtk_sys_mask_query_t", RtkSysMaskQuer
 
 
 @dataclass(eq=False, repr=False)
+class SelfCheckInfoReq(betterproto2.Message):
+    self_check_reqid: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "self_check_info_req", SelfCheckInfoReq)
+
+
+@dataclass(eq=False, repr=False)
+class SelfCheckInfoRsp(betterproto2.Message):
+    check_result: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
+
+    self_check_rspid: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+    sc_data: "list[SelfCheckRsp]" = betterproto2.field(3, betterproto2.TYPE_MESSAGE, repeated=True)
+
+
+default_message_pool.register_message("", "self_check_info_rsp", SelfCheckInfoRsp)
+
+
+@dataclass(eq=False, repr=False)
+class SelfCheckRsp(betterproto2.Message):
+    scp: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
+
+    scr: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "self_check_rsp", SelfCheckRsp)
+
+
+@dataclass(eq=False, repr=False)
 class SetPeripheralsT(betterproto2.Message):
     buzz_enable: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
 
@@ -4720,6 +4913,18 @@ class SysWorkState(betterproto2.Message):
 
 
 default_message_pool.register_message("", "SysWorkState", SysWorkState)
+
+
+@dataclass(eq=False, repr=False)
+class TaskReportInteractionT(betterproto2.Message):
+    type: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
+
+    cmd: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
+
+    data: "bytes" = betterproto2.field(3, betterproto2.TYPE_BYTES)
+
+
+default_message_pool.register_message("", "task_report_interaction_t", TaskReportInteractionT)
 
 
 @dataclass(eq=False, repr=False)

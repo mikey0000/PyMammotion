@@ -36,11 +36,11 @@ async def run():
     client = bleLubaConn.get_client()
     luba_client = BleMessage(client)
 
-    async def handle_notifications(data:bytearray):
+    async def handle_notifications(data: bytearray):
         print("got ble message", data)
         result = luba_client.parseNotification(data)
         print(result)
-        if (result == 0):
+        if result == 0:
             await luba_client.parseBlufiNotifyData()
             luba_client.clear_notification()
 
@@ -70,7 +70,7 @@ async def run():
     # await luba_client.get_all_boundary_hash_list(0)
 
     # get map data off Luba
-    #8656065632562971511
+    # 8656065632562971511
     #
 
     # await luba_client.synchronize_hash_data(8656065632562971511)
@@ -101,17 +101,17 @@ async def run():
     generate_route_information = GenerateRouteInformation(
         one_hashs=[8656065632562971511],
         rain_tactics=1,
-        speed=.3,
-        ultra_wave=2, # touch no touch etc
-        toward=0, # is just angle
-        toward_included_angle=0, # angle type relative etc
+        speed=0.3,
+        ultra_wave=2,  # touch no touch etc
+        toward=0,  # is just angle
+        toward_included_angle=0,  # angle type relative etc
         knife_height=70,
-        channel_mode=0, # line mode is grid single double or single2
+        channel_mode=0,  # line mode is grid single double or single2
         channel_width=25,
-        job_mode=3, # taskMode
-        edge_mode=1, # border laps
+        job_mode=3,  # taskMode
+        edge_mode=1,  # border laps
         path_order=0,
-        obstacle_laps=0
+        obstacle_laps=0,
     )
     """arrayList.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_monday), 2, true, true));
         this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_tuesday), 3, false, true));
@@ -128,7 +128,6 @@ async def run():
     # await luba_client.set_knife_height(70)
     # await luba_client.send_todev_ble_sync()
 
-
     await asyncio.sleep(2)
     # await luba_client.send_device_info()
 
@@ -141,10 +140,8 @@ async def run():
     await asyncio.sleep(2)
     await luba_client.allpowerfull_rw(5, 1, 1)
 
-
     # await luba_client.send_order_msg_ota(0)
     await asyncio.sleep(1)
-
 
     # await luba_client.allpowerfull_rw(5, 2, 1)
     await luba_client.get_report_cfg(10000, 1000, 2000)
@@ -163,12 +160,8 @@ async def run():
     print("end run?")
 
 
-
-if __name__ ==  '__main__':
+if __name__ == "__main__":
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
     asyncio.run(run())
     event_loop.run_forever()
-
-
-

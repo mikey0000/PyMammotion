@@ -16,9 +16,11 @@ class MammotionFuture:
             self.fut.set_result(item)
 
     def resolve(self, item: bytes) -> None:
+        """Thread-safely resolve the underlying future with the given result bytes."""
         self.loop.call_soon_threadsafe(self._resolve, item)
 
     async def async_get(self, timeout: float | int) -> bytes:
+        """Await the future result, raising asyncio.TimeoutError if it is not resolved within timeout seconds."""
         try:
             async with async_timeout.timeout(timeout):
                 return await self.fut

@@ -1,10 +1,9 @@
 import asyncio
-import threading
-import pyjoystick
-from pyjoystick.sdl2 import Key, Joystick, run_event_loop
-from pyjoystick.utils import PeriodicThread
 from timeit import default_timer as timer
 
+import pyjoystick
+from pyjoystick.sdl2 import Key, run_event_loop
+from pyjoystick.utils import PeriodicThread
 
 from pymammotion.bluetooth.ble import MammotionBLE
 from pymammotion.bluetooth.ble_message import BleMessage
@@ -15,9 +14,11 @@ from pymammotion.utility.rocker_util import RockerControlUtil
 bleNotificationEvt = BleNotificationEvent()
 
 import nest_asyncio
+
 nest_asyncio.apply()
 
-commands = MammotionCommand('')
+commands = MammotionCommand("")
+
 
 class JoystickControl:
     """Joystick class for controlling Luba with a joystick"""
@@ -34,10 +35,8 @@ class JoystickControl:
         self._client = ble_message
         self._curr_time = timer()
         self.stopped = False
-        
-        repeater = pyjoystick.HatRepeater(
-            first_repeat_timeout=0.2, repeat_timeout=0.03, check_timeout=0.01
-        )
+
+        repeater = pyjoystick.HatRepeater(first_repeat_timeout=0.2, repeat_timeout=0.03, check_timeout=0.01)
 
         self.mngr = pyjoystick.ThreadEventManager(
             event_loop=run_event_loop,
@@ -46,8 +45,8 @@ class JoystickControl:
             remove_joystick=self.print_remove,
             button_repeater=repeater,
         )
-        
-        self.worker = PeriodicThread(0.2, self.run_movement, name='luba-process_movements')
+
+        self.worker = PeriodicThread(0.2, self.run_movement, name="luba-process_movements")
         self.worker.alive = self.mngr.alive  # stop when this event stops
         self.worker.daemon = True
 
@@ -66,20 +65,19 @@ class JoystickControl:
             return linear_speed, angular_speed
 
     def run_movement(self):
-        if (self.linear_percent == 0.0 and self.angular_percent == 0.0):
+        if self.linear_percent == 0.0 and self.angular_percent == 0.0:
             if self.stopped:
                 return
             self.stopped = True
         self.stopped = False
-            
 
         self.transform_both_speeds(
-                self.linear_speed,
-                self.angular_speed,
-                self.linear_percent,
-                self.angular_percent,
-            )
-            
+            self.linear_speed,
+            self.angular_speed,
+            self.linear_percent,
+            self.angular_percent,
+        )
+
     def print_add(self, joy):
         print("Added", joy)
 
@@ -93,16 +91,15 @@ class JoystickControl:
         self.mngr.start()
         self.worker.start()
 
-
     def get_percent(self, percent: float):
-        if (percent <= 15.0):
+        if percent <= 15.0:
             return 0.0
 
         return percent - 15.0
 
     def handle_key_received(self, key):
         # print(key, "-", key.keytype, "-", key.number, "-", key.value)
-        
+
         if key.keytype is Key.BUTTON and key.value == 1:
             # print(key, "-", key.keytype, "-", key.number, "-", key.value)
             if key.number == 0:  # x
@@ -167,6 +164,7 @@ class JoystickControl:
                         self.angular_speed = 0.0
                         self.angular_percent = 0.0
 
+
 async def run():
     bleLubaConn = MammotionBLE(bleNotificationEvt)
     did_connect = await bleLubaConn.scanForLubaAndConnect()
@@ -181,7 +179,7 @@ async def run():
         print("got ble message", data)
         result = luba_client.parseNotification(data)
         print(result)
-        if (result == 0):
+        if result == 0:
             await luba_client.parseBlufiNotifyData()
             luba_client.clear_notification()
 
@@ -190,7 +188,8 @@ async def run():
     await luba_client.post_custom_data_bytes(command_bytes)
     return luba_client
 
-if __name__ ==  '__main__':
+
+if __name__ == "__main__":
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
     client = event_loop.run_until_complete(run())

@@ -3,15 +3,14 @@ import hmac
 import json
 import os
 
-import pytest
-
 from paho.mqtt.client import Client, MQTTMessage, MQTTv311, connack_string
+import pytest
 
 from pymammotion.data.mqtt.event import ThingEventMessage
 
 PRODUCT_KEY = os.environ.get("PRODUCT_KEY")
 DEVICE_NAME = os.environ.get("DEVICE_NAME")
-DEVICE_SECRET = os.environ.get("DEVICE_SECRET") #iotId?
+DEVICE_SECRET = os.environ.get("DEVICE_SECRET")  # iotId?
 
 if DEVICE_SECRET is None or DEVICE_NAME is None or PRODUCT_KEY is None:
     pytest.skip("MQTT credentials not set in environment", allow_module_level=True)
@@ -23,20 +22,22 @@ def on_message(client, userdata, message: MQTTMessage):
         print(message.topic, repr(msg))
     else:
         print(message.topic, message.payload)
+
+
 def on_connect(client, userdata, flags, rc):
     print("connected", connack_string(rc))
     client.subscribe("/sys/+/+/app/#")
+
+
 def on_disconnect(client, userdata, rc):
     print("disconnected", rc)
+
 
 client_id_ = "asdf"
 client_id = f"{client_id_}|securemode=2,signmethod=hmacsha1|"
 username = f"{DEVICE_NAME}&{PRODUCT_KEY}"
 sign_content = f"clientId{client_id_}deviceName{DEVICE_NAME}productKey{PRODUCT_KEY}"
-password = hmac.new(
-    DEVICE_SECRET.encode("utf-8"), sign_content.encode("utf-8"),
-    hashlib.sha1
-).hexdigest()
+password = hmac.new(DEVICE_SECRET.encode("utf-8"), sign_content.encode("utf-8"), hashlib.sha1).hexdigest()
 
 print(client_id)
 print(username)
@@ -54,5 +55,5 @@ client.on_disconnect = on_disconnect
 client.username_pw_set(username, password)
 # TODO get regional hub for MQTT
 client.connect("public.itls.eu-central-1.aliyuncs.com")
-#client.connect(f"{PRODUCT_KEY}.iot-as-mqtt.eu-central-1.aliyuncs.com")
+# client.connect(f"{PRODUCT_KEY}.iot-as-mqtt.eu-central-1.aliyuncs.com")
 client.loop_forever()

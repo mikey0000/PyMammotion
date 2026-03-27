@@ -1,4 +1,5 @@
 """AccountSession and AccountRegistry — replaces the Mammotion god-object."""
+
 from __future__ import annotations
 
 import asyncio

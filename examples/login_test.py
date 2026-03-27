@@ -16,15 +16,13 @@ async def run():
     EMAIL = os.environ.get("EMAIL")
     PASSWORD = os.environ.get("PASSWORD")
 
-    
-
     async with ClientSession(MAMMOTION_DOMAIN) as session:
         mammotion = MammotionHTTP()
         luba_http = await mammotion.login_v2(EMAIL, PASSWORD)
         # print(luba_http.data)
         data = mammotion.login_info
-        #error_codes = await mammotion.get_all_error_codes()
-        #firmware = await mammotion.get_device_ota_firmware(["UTpbwGC7vxd4DpNvbFGL000000"])
+        # error_codes = await mammotion.get_all_error_codes()
+        # firmware = await mammotion.get_device_ota_firmware(["UTpbwGC7vxd4DpNvbFGL000000"])
         print(mammotion.login_info)
         res = await mammotion.refresh_authorization_code()
         print(res)
@@ -46,17 +44,21 @@ async def run():
     logging.basicConfig(level=logging.DEBUG)
     logger.getChild("paho").setLevel(logging.WARNING)
 
-    luba = AliyunMQTT(region_id=cloud_client.region_response.data.regionId,
-                      product_key=cloud_client.aep_response.data.productKey,
-                      device_name=cloud_client.aep_response.data.deviceName,
-                      device_secret=cloud_client.aep_response.data.deviceSecret,
-                      iot_token=cloud_client.session_by_authcode_response.data.iotToken,
-                      client_id=cloud_client.client_id, cloud_client=cloud_client)
+    luba = AliyunMQTT(
+        region_id=cloud_client.region_response.data.regionId,
+        product_key=cloud_client.aep_response.data.productKey,
+        device_name=cloud_client.aep_response.data.deviceName,
+        device_secret=cloud_client.aep_response.data.deviceSecret,
+        iot_token=cloud_client.session_by_authcode_response.data.iotToken,
+        client_id=cloud_client.client_id,
+        cloud_client=cloud_client,
+    )
 
     # luba.connect() blocks further calls
     luba.connect_async()
 
-if __name__ ==  '__main__':
+
+if __name__ == "__main__":
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
     cloud_client = event_loop.run_until_complete(run())
@@ -69,8 +71,7 @@ if __name__ ==  '__main__':
     #                 device_name=cloud_client.aep_response.data.deviceName,
     #                 device_secret=cloud_client.aep_response.data.deviceSecret, iot_token=cloud_client.session_by_authcode_response.data.iotToken, client_id=cloud_client.client_id, cloud_client=cloud_client)
 
-
-    #luba.connect() blocks further calls
+    # luba.connect() blocks further calls
     # luba.connect_async()
 
     event_loop.run_forever()

@@ -646,6 +646,20 @@ message work_mode_t {
   int32 work_mode = 1;
 }
 
+enum SpinoSysStatus {
+  SYS_STA_READY = 0;
+  SYS_STA_WORKING = 1;
+  SYS_STA_WORKBACKING = 2;
+  SYS_STA_CHARGEBACKING = 3;
+}
+
+enum pool_bottom_type_e {
+  BOTTOM_RIGHT_ANGLE_SIMPLE_SHAPE = 0;
+  BOTTOM_RIGHT_ANGLE_COMPLEX_SHAPE = 1;
+  BOTTOM_CURVE_SIMPLE_SHAPE = 2;
+  BOTTOM_CURVE_COMPLEX_SHAPE = 3;
+}
+
 enum app_downlink_cmd_type_e {
   app_wall_material_cmd = 0;
   app_bottom_type_cmd = 1;
@@ -686,7 +700,7 @@ message app_downlink_cmd_t {
   ack_to_app_type_e ack = 2;
   oneof params {
     int32 wall_material = 3;
-    int32 bottom_type = 4;
+    pool_bottom_type_e bottom_type = 4;
     float floor_speed = 5;
     MapInfo map_info = 6;
     MapInfo line_info = 7;
@@ -721,6 +735,74 @@ message remote_reset_rsp_t {
   int32 magic = 1;
   int64 bizid = 2;
   Command_Result result = 3;
+}
+
+message self_check_info_req {
+  int32 self_check_reqid = 1;
+}
+
+message self_check_rsp {
+  int32 scp = 1;
+  int32 scr = 2;
+}
+
+message self_check_info_rsp {
+  int32 check_result = 1;
+  int32 self_check_rspid = 2;
+  repeated self_check_rsp sc_data = 3;
+}
+
+message BmsCtrlInfoMsg {
+  int32 bat_cycle_times = 1;
+  int32 bat_health_state = 2;
+  int32 smart_charge_switch = 3;
+  int32 charge_soc_threshold = 4;
+  int32 peak_valley_charge_switch = 5;
+  int32 valley_charge_start_time = 6;
+  int32 valley_charge_end_time = 7;
+}
+
+message iot_quaternion {
+  string product_key = 1;
+  string product_secret = 2;
+  string device_name = 3;
+  string device_secret = 4;
+}
+
+message iot_product_param_req_t {
+  int64 account = 1;
+  int32 cmd = 2;
+  string origin_device_name = 3;
+  iot_quaternion test_key = 4;
+}
+
+message iot_product_param_rsp_t {
+  int32 result = 1;
+  iot_quaternion param = 2;
+}
+
+message task_report_interaction_t {
+  int32 type = 1;
+  int32 cmd = 2;
+  bytes data = 3;
+}
+
+message FileTransferRequest {
+  string biz_id = 1;
+  int32 type = 2;
+  int32 total_size = 3;
+  int32 pack_size = 4;
+}
+
+message FileTransferResponse {
+  string biz_id = 1;
+  int32 result = 2;
+  int32 progress = 3;
+}
+
+message FileTransferResult {
+  string biz_id = 1;
+  int32 result = 2;
 }
 
 message MctlSys {
@@ -785,5 +867,14 @@ message MctlSys {
     remote_reset_rsp_t to_app_remote_reset = 66;
     rpt_cutter_rpm current_cutter_mode = 67;
     app_downlink_cmd_t app_downlink_cmd = 68;
+    self_check_info_req to_dev_self_check_info_req = 70;
+    self_check_info_rsp to_app_self_check_info_rsp = 71;
+    iot_product_param_req_t iot_product_param_req = 72;
+    iot_product_param_rsp_t iot_product_param_rsp = 73;
+    task_report_interaction_t task_report_interaction = 74;
+    FileTransferRequest task_report_req = 75;
+    FileTransferResponse task_report_resp = 76;
+    FileTransferResult task_report_result = 77;
+    BmsCtrlInfoMsg bms_ctrl_info_msg = 78;
   }
 }

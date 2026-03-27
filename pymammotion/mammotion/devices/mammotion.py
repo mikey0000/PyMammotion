@@ -43,6 +43,7 @@ class MammotionDeviceManager:
         self.rtk_devices: dict[str, MammotionRTKDeviceManager] = {}
 
     async def stop(self) -> None:
+        """Stop all managed mower and RTK devices and disconnect their transports."""
         for mower in self.devices.values():
             if cloud := mower.cloud:
                 cloud.stop()
@@ -182,6 +183,7 @@ class Mammotion:
         self._health_monitor_task: asyncio.Task[None] | None = None
 
     async def login_and_initiate_cloud(self, account: str, password: str, force: bool = False) -> None:
+        """Log in and establish cloud MQTT connections unless already connected."""
         async with self._login_lock:
             exists_aliyun: MammotionCloud | None = self.mqtt_list.get(f"{account}_aliyun")
             exists_mammotion: MammotionCloud | None = self.mqtt_list.get(f"{account}_mammotion")
@@ -226,6 +228,7 @@ class Mammotion:
 
     @staticmethod
     def shim_cloud_devices(devices: list[DeviceRecord]) -> list[Device]:
+        """Convert a list of DeviceRecord objects into the Device schema used by the cloud layer."""
         device_list: list[Device] = []
         for device in devices:
             device_list.append(
@@ -455,6 +458,7 @@ class Mammotion:
         return cloud_client
 
     async def stop(self) -> None:
+        """Cancel the health monitor, stop all devices, and disconnect all MQTT clients."""
         if self._health_monitor_task is not None:
             self._health_monitor_task.cancel()
             self._health_monitor_task = None

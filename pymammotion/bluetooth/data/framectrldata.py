@@ -10,22 +10,28 @@ class FrameCtrlData:
         self.mValue = frameCtrlValue
 
     def check(self, position):
+        """Return True if the bit at the given position in mValue is set."""
         return ((self.mValue >> position) & 1) == 1
 
     def isEncrypted(self):
+        """Return True if the encrypted bit (position 0) is set in the frame control value."""
         return self.check(0)
 
     def isChecksum(self):
+        """Return True if the checksum bit (position 1) is set in the frame control value."""
         return self.check(1)
 
     def isAckRequirement(self):
+        """Return True if the require-ACK bit (position 3) is set in the frame control value."""
         return self.check(3)
 
     def hasFrag(self):
+        """Return True if the fragmentation bit (position 4) is set in the frame control value."""
         return self.check(4)
 
     @staticmethod
     def getFrameCTRLValue(encrypted, checksum, direction, requireAck, frag):
+        """Compute and return the integer frame control value from individual flag parameters."""
         frame = 0
         if encrypted:
             frame = 0 | 1

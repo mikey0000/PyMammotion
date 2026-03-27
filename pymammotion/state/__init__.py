@@ -1,4 +1,5 @@
 """Device state management — immutable snapshots and availability tracking."""
+
 from __future__ import annotations
 
 from pymammotion.state.device_state import (

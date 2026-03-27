@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from pymammotion.data.model.device import MowingDevice
+    from pymammotion.device.readiness import ReadinessChecker, ReadinessStatus
+    from pymammotion.device.staleness_watcher import MapStalenessWatcher
     from pymammotion.messaging.saga import Saga
 
 _logger = logging.getLogger(__name__)
@@ -133,6 +135,7 @@ class DeviceHandle:
         prefer_ble: bool = False,
         debounce_interval: float = 0.0,
         max_debounce_wait: float = 2.0,
+        readiness_checker: ReadinessChecker | None = None,
     ) -> None:
         """Initialise the device handle with optional initial transports."""
         self.device_id = device_id
@@ -146,22 +149,45 @@ class DeviceHandle:
         self._state_changed_bus: _DebouncedBus = _DebouncedBus(debounce_interval, max_debounce_wait)
         self._prefer_ble: bool = prefer_ble
         self._reducer: StateReducer = StateReducer()
+        self._error_bus: EventBus[Exception] = EventBus()
+        self._readiness_checker: ReadinessChecker | None = readiness_checker
+        self._staleness_watcher: MapStalenessWatcher | None = None
+
+        # Wire up critical error propagation from queue
+        self.queue.on_critical_error = self._on_critical_error
 
         if mqtt_transport is not None:
-            mqtt_transport.on_message = self._on_raw_message
-            self._transports[mqtt_transport.transport_type] = mqtt_transport
+            self._wire_transport(mqtt_transport)
 
         if ble_transport is not None:
-            ble_transport.on_message = self._on_raw_message
-            self._transports[ble_transport.transport_type] = ble_transport
+            self._wire_transport(ble_transport)
+
+    def _wire_transport(self, transport: Transport) -> None:
+        """Wire callbacks on a transport and register it."""
+        transport.on_message = self._on_raw_message
+        transport.on_availability_changed = self._make_availability_handler(transport.transport_type)
+        self._transports[transport.transport_type] = transport
+
+    def _make_availability_handler(
+        self, transport_type: TransportType
+    ) -> Callable[[TransportAvailability], Awaitable[None]]:
+        """Create a per-transport availability callback."""
+
+        async def _handler(state: TransportAvailability) -> None:
+            self.update_availability(transport_type, state)
+
+        return _handler
+
+    async def _on_critical_error(self, error: Exception) -> None:
+        """Propagate critical errors to the error bus."""
+        await self._error_bus.emit(error)
 
     async def add_transport(self, transport: Transport) -> None:
         """Register a transport (MQTT or BLE). Replaces any existing transport of the same type."""
         existing = self._transports.get(transport.transport_type)
         if existing is not None:
             await existing.disconnect()
-        transport.on_message = self._on_raw_message
-        self._transports[transport.transport_type] = transport
+        self._wire_transport(transport)
 
     async def remove_transport(self, transport_type: TransportType) -> None:
         """Disconnect and remove a transport by type."""
@@ -185,6 +211,8 @@ class DeviceHandle:
         except Exception:
             _logger.exception("Failed to parse incoming bytes as LubaMsg (%d bytes)", len(payload))
             return
+
+        _logger.debug("← %s  %s", self.device_name, luba_msg.to_dict(include_default_values=False))
 
         # 2. Apply to state via reducer (returns a new MowingDevice copy)
         updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
@@ -213,7 +241,7 @@ class DeviceHandle:
 
         async def _do_send(cmd: bytes, field: str) -> None:
             await self.broker.send_and_wait(
-                send_fn=lambda: self._active_transport().send(cmd),
+                send_fn=lambda: self.active_transport().send(cmd, iot_id=self.iot_id),
                 expected_field=field,
             )
 
@@ -223,9 +251,13 @@ class DeviceHandle:
             skip_if_saga_active=skip_if_saga_active,
         )
 
-    async def enqueue_saga(self, saga: Saga) -> None:
+    async def enqueue_saga(
+        self,
+        saga: Saga,
+        on_complete: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         """Enqueue a saga for exclusive execution."""
-        await self.queue.enqueue_saga(saga, self.broker)
+        await self.queue.enqueue_saga(saga, self.broker, on_complete=on_complete)
 
     def has_queued_commands(self) -> bool:
         """Return True if the queue has pending work or a saga is active."""
@@ -270,6 +302,10 @@ class DeviceHandle:
         """The latest immutable device state snapshot."""
         return self.state_machine.current
 
+    def restore_device(self, device: MowingDevice) -> None:
+        """Restore previously saved device state (e.g. from HA storage)."""
+        self.state_machine.restore(device)
+
     def subscribe_state_changed(
         self,
         handler: Callable[[DeviceSnapshot], Awaitable[None]],
@@ -283,12 +319,102 @@ class DeviceHandle:
 
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
+        if self._staleness_watcher is not None:
+            self._staleness_watcher.stop()
         await self.queue.stop()
         await self.broker.close()
         await self._state_changed_bus.stop()
         for transport in list(self._transports.values()):
             await transport.disconnect()
         self._transports.clear()
+
+    # ------------------------------------------------------------------
+    # Public transport API (replaces private _transports access from HA)
+    # ------------------------------------------------------------------
+
+    def transport_status(self) -> dict[TransportType, TransportAvailability]:
+        """Return availability status for all registered transports."""
+        return {tt: t.availability for tt, t in self._transports.items()}
+
+    def has_transport(self, transport_type: TransportType) -> bool:
+        """Check if a transport of the given type is registered."""
+        return transport_type in self._transports
+
+    def is_transport_connected(self, transport_type: TransportType) -> bool:
+        """Check if a specific transport is connected."""
+        t = self._transports.get(transport_type)
+        return t is not None and t.is_connected
+
+    async def connect_transport(self, transport_type: TransportType) -> None:
+        """Connect a specific transport by type."""
+        t = self._transports.get(transport_type)
+        if t is not None and not t.is_connected:
+            await t.connect()
+
+    async def disconnect_transport(self, transport_type: TransportType) -> None:
+        """Disconnect a specific transport by type."""
+        t = self._transports.get(transport_type)
+        if t is not None and t.is_connected:
+            await t.disconnect()
+
+    async def send_raw(self, payload: bytes, *, prefer_ble: bool = False) -> None:
+        """Send raw bytes via the best available transport."""
+        await self.active_transport(prefer_ble=prefer_ble).send(payload, iot_id=self.iot_id)
+
+    # ------------------------------------------------------------------
+    # Error bus
+    # ------------------------------------------------------------------
+
+    def subscribe_errors(
+        self,
+        handler: Callable[[Exception], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to critical errors (AuthError, SagaFailedError, etc.)."""
+        return self._error_bus.subscribe(handler)
+
+    # ------------------------------------------------------------------
+    # Readiness
+    # ------------------------------------------------------------------
+
+    @property
+    def readiness(self) -> ReadinessStatus | None:
+        """Check device readiness. Returns None if no checker configured."""
+        if self._readiness_checker is None:
+            return None
+        return self._readiness_checker.check(self.snapshot.raw)
+
+    @property
+    def is_ready(self) -> bool:
+        """True if device has base-level data, or no checker is configured."""
+        status = self.readiness
+        return status is None or status.is_ready
+
+    def commands_to_fetch_missing(self) -> list[str]:
+        """Return command names needed to populate missing data."""
+        if self._readiness_checker is None:
+            return []
+        return self._readiness_checker.commands_to_fetch_missing(self.snapshot.raw)
+
+    # ------------------------------------------------------------------
+    # Staleness watcher
+    # ------------------------------------------------------------------
+
+    def enable_staleness_watcher(
+        self,
+        on_maps_stale: Callable[[], Awaitable[None]],
+        on_plans_stale: Callable[[], Awaitable[None]],
+    ) -> None:
+        """Enable auto-refetch of stale maps and plans."""
+        from pymammotion.device.staleness_watcher import MapStalenessWatcher
+
+        watcher = MapStalenessWatcher(
+            on_maps_stale=on_maps_stale,
+            on_plans_stale=on_plans_stale,
+            is_saga_active=lambda: self.queue.is_saga_active,
+        )
+        sub = self._state_changed_bus.subscribe(watcher.on_state_changed)
+        watcher._subscription = sub  # noqa: SLF001
+        self._staleness_watcher = watcher
 
     @property
     def prefer_ble(self) -> bool:
@@ -299,13 +425,24 @@ class DeviceHandle:
         """Change the transport preference at runtime (e.g. when BLE connects/disconnects)."""
         self._prefer_ble = value
 
-    def _active_transport(self) -> Transport:
+    def active_transport(self, *, prefer_ble: bool | None = None) -> Transport:
         """Return the best connected transport.
 
         By default: MQTT preferred, BLE fallback.
-        If prefer_ble=True: BLE preferred, MQTT fallback.
-        Raises NoTransportAvailableError if nothing is connected.
+        If prefer_ble=True (either from the handle setting or the per-call override):
+        BLE preferred, MQTT fallback.
+
+        Args:
+            prefer_ble: Per-call override.  When None (default) the handle's
+                        ``_prefer_ble`` attribute is used.  Pass True to force
+                        BLE for a single call without mutating the handle state.
+
+        Raises:
+            NoTransportAvailableError: if nothing is connected.
+
         """
+        use_ble_first = self._prefer_ble if prefer_ble is None else prefer_ble
+
         ble = self._transports.get(TransportType.BLE)
         ble_ok = ble is not None and ble.is_connected
 
@@ -317,7 +454,7 @@ class DeviceHandle:
                 break
         mqtt_ok = mqtt is not None
 
-        if self._prefer_ble:
+        if use_ble_first:
             if ble_ok:
                 return ble  # type: ignore[return-value]
             if mqtt_ok:

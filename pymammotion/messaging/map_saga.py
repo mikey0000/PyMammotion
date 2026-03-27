@@ -69,26 +69,32 @@ class MapFetchSaga(Saga):
         hash_list = HashList()
 
         # ------------------------------------------------------------------
-        # Step 1: Fetch area names (non-Luba1 only, cached after first fetch)
+        # Step 1: Fetch area names (non-Luba1 only, mandatory — saga will not
+        # proceed past this point until a toapp_all_hash_name response arrives).
         # ------------------------------------------------------------------
-        if not self._is_luba1 and self._cached_area_names is None:
-            _logger.debug("MapFetchSaga[%s]: fetching area names", self._device_name)
-            cmd = self._command_builder.get_area_name_list(self._device_id)
-            response = await broker.send_and_wait(
-                send_fn=lambda: self._send_command(cmd),
-                expected_field="toapp_all_hash_name",
-                send_timeout=self.step_timeout,
-            )
-            area_hash_name_msg = getattr(response.nav, "toapp_all_hash_name", None)
-            if area_hash_name_msg is not None and hasattr(area_hash_name_msg, "hashnames"):
-                self._cached_area_names = [
-                    AreaHashNameList(name=item.name, hash=item.hash) for item in area_hash_name_msg.hashnames
-                ]
+        if not self._is_luba1:
+            if self._cached_area_names is None:
+                _logger.debug("MapFetchSaga[%s]: fetching area names", self._device_name)
+                cmd = self._command_builder.get_area_name_list(self._device_id)
+                response = await broker.send_and_wait(
+                    send_fn=lambda: self._send_command(cmd),
+                    expected_field="toapp_all_hash_name",
+                    send_timeout=self.step_timeout,
+                )
+                area_hash_name_msg = getattr(response.nav, "toapp_all_hash_name", None)
+                if area_hash_name_msg is not None and hasattr(area_hash_name_msg, "hashnames"):
+                    self._cached_area_names = [
+                        AreaHashNameList(name=item.name, hash=item.hash) for item in area_hash_name_msg.hashnames
+                    ]
+                else:
+                    self._cached_area_names = []
+                _logger.debug("MapFetchSaga[%s]: got %d area names", self._device_name, len(self._cached_area_names))
             else:
-                self._cached_area_names = []
-            _logger.debug("MapFetchSaga[%s]: got %d area names", self._device_name, len(self._cached_area_names))
-
-        if self._cached_area_names is not None:
+                _logger.debug(
+                    "MapFetchSaga[%s]: using %d cached area names (retry)",
+                    self._device_name,
+                    len(self._cached_area_names),
+                )
             hash_list.area_name = list(self._cached_area_names)
 
         # ------------------------------------------------------------------
@@ -197,14 +203,23 @@ class MapFetchSaga(Saga):
                 pass
 
         with broker.subscribe_unsolicited(_collect_comm_data):
-            missing_hashes = hash_list.missing_hashlist(0)
-            while missing_hashes:
-                data_hash = missing_hashes[0]
-                _logger.debug("MapFetchSaga[%s]: fetching data for hash %d", self._device_name, data_hash)
+            # Mirrors commdata_response / datahash_response in mower_device.py:
+            # receive any message → store it → if missing frames request them,
+            # else chain to the first item in missing_hashlist (same hash or next).
+            #
+            # Circuit breaker: if no hash is removed from missing_hashes after
+            # _NO_PROGRESS_LIMIT consecutive responses the device is stuck —
+            # raise CommandTimeoutError so the Saga base retries (max_attempts=3).
+            _NO_PROGRESS_LIMIT = 10
+            no_progress = 0
 
-                cmd = self._command_builder.synchronize_hash_data(hash_num=data_hash)
+            missing_hashes = hash_list.missing_hashlist(0)
+            if missing_hashes:
+                _logger.debug("MapFetchSaga[%s]: fetching data for hash %d", self._device_name, missing_hashes[0])
+                cmd = self._command_builder.synchronize_hash_data(hash_num=missing_hashes[0])
                 await self._send_command(cmd)
 
+            while missing_hashes:
                 try:
                     response = await asyncio.wait_for(comm_queue.get(), timeout=self.step_timeout)
                 except TimeoutError:
@@ -213,26 +228,28 @@ class MapFetchSaga(Saga):
                 leaf_name, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
                 self._apply_comm_data(hash_list, leaf_name, leaf_val)
 
-                # Fetch any remaining frames for this hash
-                while True:
-                    missing_frames = hash_list.missing_frame(leaf_val)
-                    if not missing_frames:
-                        break
-
+                missing_frames = hash_list.missing_frame(leaf_val)
+                if missing_frames:
+                    # Request the next missing frame for the received hash (mirrors commdata_response else-branch)
                     region_data = self._make_region_data(leaf_name, leaf_val, missing_frames[0] - 1)
                     cmd = self._command_builder.get_regional_data(regional_data=region_data)
                     await self._send_command(cmd)
-
-                    try:
-                        frame_response = await asyncio.wait_for(comm_queue.get(), timeout=self.step_timeout)
-                    except TimeoutError:
-                        raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
-
-                    leaf_name, leaf_val = betterproto2.which_one_of(frame_response.nav, "SubNavMsg")
-                    self._apply_comm_data(hash_list, leaf_name, leaf_val)
-
-                # Refresh — this hash should now be gone from missing list
-                missing_hashes = hash_list.missing_hashlist(0)
+                else:
+                    # Received hash is complete — chain to first still-missing hash (mirrors commdata_response)
+                    new_missing = hash_list.missing_hashlist(0)
+                    if len(new_missing) < len(missing_hashes):
+                        no_progress = 0
+                    else:
+                        no_progress += 1
+                        if no_progress >= _NO_PROGRESS_LIMIT:
+                            raise CommandTimeoutError("map_sync_stall", no_progress)
+                    missing_hashes = new_missing
+                    if missing_hashes:
+                        _logger.debug(
+                            "MapFetchSaga[%s]: fetching data for hash %d", self._device_name, missing_hashes[0]
+                        )
+                        cmd = self._command_builder.synchronize_hash_data(hash_num=missing_hashes[0])
+                        await self._send_command(cmd)
 
         _logger.debug(
             "MapFetchSaga[%s]: map fetch complete — areas=%d obstacles=%d paths=%d",

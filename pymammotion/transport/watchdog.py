@@ -1,4 +1,5 @@
 """ConnectionWatchdog — per-transport health monitor with circuit breaker."""
+
 from __future__ import annotations
 
 import asyncio
@@ -195,9 +196,7 @@ class ConnectionWatchdog:
                 await self._token_manager.force_refresh()
                 await self._transport.connect()
                 self._circuit.record_success()
-                _logger.info(
-                    "Transport %s connected after token refresh", type(self._transport).__name__
-                )
+                _logger.info("Transport %s connected after token refresh", type(self._transport).__name__)
             except AuthError:
                 _logger.error(
                     "Auth error persisted after token refresh on transport %s",

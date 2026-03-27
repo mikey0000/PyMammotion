@@ -1,4 +1,5 @@
 """Per-account MQTT connection pool — one connection per path (aliyun/mammotion)."""
+
 from __future__ import annotations
 
 import asyncio

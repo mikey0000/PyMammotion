@@ -39,6 +39,7 @@ class TopicUtils:
 
     @staticmethod
     def get_device_name(topic: str) -> str:
+        """Extract the device name from a /sys/{productKey}/{deviceName}/... topic string."""
         parts = TopicUtils._split_topic(topic)
         # original code expects the device name at index 3 when topic is like:
         # /sys/{productKey}/{deviceName}/...
@@ -49,6 +50,7 @@ class TopicUtils:
 
     @staticmethod
     def get_identifier(topic: str) -> str:
+        """Extract the event identifier from a topic string, returning an empty string for property topics."""
         if "property" in (topic or ""):
             return ""
         parts = TopicUtils._split_topic(topic)

@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Annotated, Generic, Literal, TypeVar
 
-from mashumaro import DataClassDictMixin
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
@@ -15,7 +14,7 @@ DataT = TypeVar("DataT")
 
 
 @dataclass
-class ErrorInfo(DataClassDictMixin):
+class ErrorInfo(DataClassORJSONMixin):
     code: str
     platform: str
     module: str
@@ -94,7 +93,7 @@ class LocationVo(DataClassORJSONMixin):
 
 
 @dataclass
-class DeviceInfo(DataClassDictMixin):
+class DeviceInfo(DataClassORJSONMixin):
     """Complete device information."""
 
     iot_id: Annotated[str, Alias("iotId")] = ""
@@ -133,11 +132,11 @@ class DeviceRecord(DataClassORJSONMixin):
 
 @dataclass
 class DeviceRecords(DataClassORJSONMixin):
-    records: list[DeviceRecord]
-    total: int
-    size: int
-    current: int
-    pages: int
+    records: list[DeviceRecord] = field(default_factory=list)
+    total: int = 0
+    size: int = 0
+    current: int = 0
+    pages: int = 0
 
 
 @dataclass
@@ -146,6 +145,9 @@ class MQTTConnection(DataClassORJSONMixin):
     jwt: str
     client_id: Annotated[str, Alias("clientId")]
     username: str
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
 
 
 @dataclass
@@ -157,6 +159,7 @@ class Response(DataClassORJSONMixin, Generic[DataT]):
 
     class Config(BaseConfig):
         omit_default = True
+        allow_deserialization_not_by_alias = True
 
 
 @dataclass
@@ -188,9 +191,9 @@ class LoginResponseData(DataClassORJSONMixin):
     expires_in: int
     authorization_code: str
     userInformation: LoginResponseUserInformation
-    jti: str = None
-    grant_type: Literal["password", "Password"] = None
-    scope: Literal["read", "Read"] = None
+    jti: str | None = None
+    grant_type: Literal["password", "Password"] | None = None
+    scope: Literal["read", "Read"] | None = None
 
     class Config(BaseConfig):
         omit_none = True
@@ -232,7 +235,7 @@ class CheckDeviceVersion(DataClassORJSONMixin):
     class Config(BaseConfig):
         allow_deserialization_not_by_alias = True
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         if not isinstance(other, CheckDeviceVersion):
             return NotImplemented
 

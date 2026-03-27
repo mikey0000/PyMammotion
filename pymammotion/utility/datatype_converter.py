@@ -34,6 +34,7 @@ class DatatypeConverter:
 
     @staticmethod
     def parseBase64Binary(s: str) -> bytes:
+        """Decode a Base64-encoded string and return the resulting bytes."""
         return base64.b64decode(s)
 
     @staticmethod
@@ -43,6 +44,7 @@ class DatatypeConverter:
 
     @staticmethod
     def encode(i):
+        """Return the Base64 character for the 6-bit value of i using the encode map."""
         return DatatypeConverter.encode_map[i & 63]
 
     @staticmethod

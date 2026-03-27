@@ -181,7 +181,7 @@ async def test_active_transport_prefers_mqtt_by_default() -> None:
     await handle.add_transport(mqtt_transport)
     await handle.add_transport(ble_transport)
 
-    active = handle._active_transport()
+    active = handle.active_transport()
     assert active.transport_type == TransportType.CLOUD_ALIYUN
 
 
@@ -201,7 +201,7 @@ async def test_active_transport_prefer_ble_flag_reverses_order() -> None:
     await handle.add_transport(mqtt_transport)
     await handle.add_transport(ble_transport)
 
-    active = handle._active_transport()
+    active = handle.active_transport()
     assert active.transport_type == TransportType.BLE
 
 
@@ -214,7 +214,7 @@ async def test_active_transport_falls_back_to_ble_when_mqtt_disconnected() -> No
     await handle.add_transport(mqtt_transport)
     await handle.add_transport(ble_transport)
 
-    active = handle._active_transport()
+    active = handle.active_transport()
     assert active.transport_type == TransportType.BLE
 
 
@@ -234,7 +234,7 @@ async def test_active_transport_falls_back_to_mqtt_when_ble_disconnected() -> No
     await handle.add_transport(mqtt_transport)
     await handle.add_transport(ble_transport)
 
-    active = handle._active_transport()
+    active = handle.active_transport()
     assert active.transport_type == TransportType.CLOUD_ALIYUN
 
 
@@ -245,4 +245,4 @@ async def test_active_transport_raises_when_none_connected() -> None:
     await handle.add_transport(transport)
 
     with pytest.raises(NoTransportAvailableError):
-        handle._active_transport()
+        handle.active_transport()

@@ -247,6 +247,11 @@ class GeojsonGenerator:
         Each transaction_id in current_mow_path represents a separate mowing path
         consisting of multiple frames. A feature is generated only when all
         frames for that transaction_id have been received.
+
+        Key findings:
+        - path_type=2 = border/edge paths, path_type=0 = main mow stripes
+        - Order is zone 1 first (border then mow paths), then zone 2 (border then mow paths) — matching the zone order we passed in one_hashs
+        - total_paths=125 but only valid_path_num=2 per frame — the device sends a subset of paths per frame, across 5 frames total
         """
         total_frames = 0
 

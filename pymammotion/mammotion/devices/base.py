@@ -160,4 +160,5 @@ class MammotionBaseDevice(ABC):
 
     @property
     def state_manager(self) -> MowerStateManager:
+        """Return the state manager that holds this device's mowing state."""
         return self._state_manager

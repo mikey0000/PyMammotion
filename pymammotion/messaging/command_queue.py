@@ -54,6 +54,8 @@ class DeviceCommandQueue:
         self._running = False
         self._task: asyncio.Task[None] | None = None
         self._current_work_task: asyncio.Task[None] | None = None
+        #: Called on critical errors (AuthError, SagaFailedError) so DeviceHandle can propagate them.
+        self.on_critical_error: Callable[[Exception], Awaitable[None]] | None = None
 
     @property
     def is_saga_active(self) -> bool:
@@ -109,7 +111,12 @@ class DeviceCommandQueue:
         )
         await self._queue.put(item)
 
-    async def enqueue_saga(self, saga: Saga, broker: DeviceMessageBroker) -> None:
+    async def enqueue_saga(
+        self,
+        saga: Saga,
+        broker: DeviceMessageBroker,
+        on_complete: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         """Enqueue a saga as an exclusive blocking operation."""
 
         async def _run() -> None:
@@ -118,6 +125,11 @@ class DeviceCommandQueue:
                 await saga.execute(broker)
             finally:
                 self._exclusive_active.set()
+            if on_complete is not None:
+                try:
+                    await on_complete()
+                except Exception:
+                    _logger.exception("on_complete callback failed for saga '%s'", saga.name)
 
         await self.enqueue(_run, priority=Priority.EXCLUSIVE)
 
@@ -149,8 +161,16 @@ class DeviceCommandQueue:
                     self._current_work_task = None
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except Exception as exc:
                 _logger.exception("DeviceCommandQueue: unhandled error in work item")
+                if self.on_critical_error is not None:
+                    from pymammotion.transport.base import AuthError, SagaFailedError
+
+                    if isinstance(exc, (AuthError, SagaFailedError)):
+                        try:
+                            await self.on_critical_error(exc)
+                        except Exception:
+                            _logger.exception("on_critical_error callback failed")
             finally:
                 with contextlib.suppress(ValueError):
                     self._queue.task_done()
