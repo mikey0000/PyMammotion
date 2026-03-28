@@ -164,9 +164,17 @@ class DeviceHandle:
 
     def _wire_transport(self, transport: Transport) -> None:
         """Wire callbacks on a transport and register it."""
-        transport.on_message = self._on_raw_message
+        transport.on_message = self._make_message_handler(transport.transport_type)
         transport.on_availability_changed = self._make_availability_handler(transport.transport_type)
         self._transports[transport.transport_type] = transport
+
+    def _make_message_handler(self, transport_type: TransportType) -> Callable[[bytes], Awaitable[None]]:
+        """Create a per-transport message callback that carries the transport type."""
+
+        async def _handler(payload: bytes) -> None:
+            await self._on_raw_message(payload, transport_type)
+
+        return _handler
 
     def _make_availability_handler(
         self, transport_type: TransportType
@@ -195,15 +203,18 @@ class DeviceHandle:
         if transport is not None:
             await transport.disconnect()
 
-    async def _on_raw_message(self, payload: bytes) -> None:
+    async def _on_raw_message(self, payload: bytes, transport_type: TransportType = TransportType.CLOUD_ALIYUN) -> None:
         """Receive raw bytes from transport, decode, update state, route to broker.
 
-        Called by transports instead of broker.on_message directly.
+        Called via the per-transport closure created in _make_message_handler so
+        that transport_type is always known.
+
         Steps:
           1. Decode bytes → LubaMsg (log and return on error)
-          2. Apply LubaMsg to state via StateReducer
-          3. Update DeviceStateMachine, emit to _state_changed_bus if fields changed
-          4. Route LubaMsg to broker for request/response correlation
+          2. Clear mqtt_reported_offline if this message arrived over a cloud transport
+          3. Apply LubaMsg to state via StateReducer
+          4. Update DeviceStateMachine, emit to _state_changed_bus if fields changed
+          5. Route LubaMsg to broker for request/response correlation
         """
         # 1. Parse bytes → LubaMsg
         try:
@@ -214,15 +225,19 @@ class DeviceHandle:
 
         _logger.debug("← %s  %s", self.device_name, luba_msg.to_dict(include_default_values=False))
 
-        # 2. Apply to state via reducer (returns a new MowingDevice copy)
+        # 2. Clear mqtt_reported_offline — device is clearly reachable if it's sending messages
+        if self._availability.mqtt_reported_offline and transport_type != TransportType.BLE:
+            self.update_availability(transport_type, self._availability.mqtt, mqtt_reported_offline=False)
+
+        # 3. Apply to state via reducer (returns a new MowingDevice copy)
         updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
 
-        # 3. Update state machine and emit if anything observable changed
+        # 4. Update state machine and emit if anything observable changed
         snapshot, changed = self.state_machine.apply(updated_device, self._availability)
         if changed:
             await self._state_changed_bus.emit(snapshot)
 
-        # 4. Route to broker for request/response correlation
+        # 5. Route to broker for request/response correlation
         await self.broker.on_message(luba_msg)
 
     async def send_command(
@@ -240,10 +255,34 @@ class DeviceHandle:
         """
 
         async def _do_send(cmd: bytes, field: str) -> None:
-            await self.broker.send_and_wait(
-                send_fn=lambda: self.active_transport().send(cmd, iot_id=self.iot_id),
-                expected_field=field,
-            )
+            from pymammotion.aliyun.exceptions import DeviceOfflineException
+
+            transport = self.active_transport()
+            try:
+                await self.broker.send_and_wait(
+                    send_fn=lambda: transport.send(cmd, iot_id=self.iot_id),
+                    expected_field=field,
+                )
+            except DeviceOfflineException:
+                ble = self._transports.get(TransportType.BLE)
+                if ble is not None and ble.is_connected:
+                    _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
+                    await self.broker.send_and_wait(
+                        send_fn=lambda: ble.send(cmd, iot_id=self.iot_id),
+                        expected_field=field,
+                    )
+                else:
+                    _logger.warning(
+                        "Device '%s' reported offline by cloud — marking %s unavailable",
+                        self.device_name,
+                        transport.transport_type,
+                    )
+                    self.update_availability(
+                        transport.transport_type,
+                        self._availability.mqtt,
+                        mqtt_reported_offline=True,
+                    )
+                    raise
 
         await self.queue.enqueue(
             lambda: _do_send(command, expected_field),
@@ -403,13 +442,19 @@ class DeviceHandle:
         self,
         on_maps_stale: Callable[[], Awaitable[None]],
         on_plans_stale: Callable[[], Awaitable[None]],
+        on_area_names_stale: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
-        """Enable auto-refetch of stale maps and plans."""
+        """Enable auto-refetch of stale maps, plans, and area names.
+
+        *on_area_names_stale* is called when map data is valid but area names
+        are missing.  Defaults to *on_maps_stale* (full re-fetch) when omitted.
+        """
         from pymammotion.device.staleness_watcher import MapStalenessWatcher
 
         watcher = MapStalenessWatcher(
             on_maps_stale=on_maps_stale,
             on_plans_stale=on_plans_stale,
+            on_area_names_stale=on_area_names_stale,
             is_saga_active=lambda: self.queue.is_saga_active,
         )
         sub = self._state_changed_bus.subscribe(watcher.on_state_changed)
@@ -456,14 +501,14 @@ class DeviceHandle:
 
         if use_ble_first:
             if ble_ok:
-                return ble  # type: ignore[return-value]
+                return ble
             if mqtt_ok:
-                return mqtt  # type: ignore[return-value]
+                return mqtt
         else:
             if mqtt_ok:
-                return mqtt  # type: ignore[return-value]
+                return mqtt
             if ble_ok:
-                return ble  # type: ignore[return-value]
+                return ble
 
         msg = f"No connected transport available for device '{self.device_id}'"
         raise NoTransportAvailableError(msg)

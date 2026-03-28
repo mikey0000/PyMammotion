@@ -135,7 +135,7 @@ async def test_happy_path_mqtt_command_round_trip() -> None:
     # Capture the bytes sent so we can verify send() was called
     sent_payloads: list[bytes] = []
 
-    async def fake_send(payload: bytes) -> None:
+    async def fake_send(payload: bytes, iot_id: str = "") -> None:
         sent_payloads.append(payload)
         # Simulate the device responding after a small delay
         async def _deliver() -> None:
@@ -327,8 +327,8 @@ async def test_device_availability_propagates_to_snapshot() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_map_saga_caches_area_names_across_two_runs() -> None:
-    """Area name command is called only once across two sequential MapFetchSaga.execute() calls."""
+async def test_map_saga_refetches_area_names_on_each_run() -> None:
+    """Area name command is called on each MapFetchSaga.execute() call (no cross-run caching)."""
     from unittest.mock import patch
 
     builder = _make_command_builder()
@@ -374,24 +374,23 @@ async def test_map_saga_caches_area_names_across_two_runs() -> None:
             send_command=send_command,
         )
 
-        # First run — area names should be fetched and cached
+        # First run
         await saga.execute(mock_broker)
         assert saga.result is not None
-        assert saga._cached_area_names is not None
-        assert len(saga._cached_area_names) == 2
+        assert len(saga.result.area_name) == 2
 
         # Reset result to simulate a second run on the same saga instance
         saga.result = None
 
-        # Second run — area names must NOT be re-fetched (already cached)
+        # Second run — area names are re-fetched (no caching across runs)
         await saga.execute(mock_broker)
         assert saga.result is not None
 
-    # send_and_wait called once for area names on first run, not at all on second run
+    # send_and_wait called once per execute() call = 2 total
     area_name_calls = [
         call for call in mock_broker.send_and_wait.call_args_list
         if call[1].get("expected_field") == "toapp_all_hash_name"
     ]
-    assert len(area_name_calls) == 1, (
-        f"Expected area name command to be called exactly once, got {len(area_name_calls)}"
+    assert len(area_name_calls) == 2, (
+        f"Expected area name command called once per run (2 total), got {len(area_name_calls)}"
     )

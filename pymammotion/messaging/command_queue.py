@@ -162,11 +162,17 @@ class DeviceCommandQueue:
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                _logger.exception("DeviceCommandQueue: unhandled error in work item")
+                from pymammotion.transport.base import NoTransportAvailableError
+
+                if isinstance(exc, NoTransportAvailableError):
+                    _logger.warning("DeviceCommandQueue: no transport available: %s", exc)
+                else:
+                    _logger.exception("DeviceCommandQueue: unhandled error in work item")
                 if self.on_critical_error is not None:
+                    from pymammotion.aliyun.exceptions import DeviceOfflineException
                     from pymammotion.transport.base import AuthError, SagaFailedError
 
-                    if isinstance(exc, (AuthError, SagaFailedError)):
+                    if isinstance(exc, (AuthError, SagaFailedError, DeviceOfflineException)):
                         try:
                             await self.on_critical_error(exc)
                         except Exception:

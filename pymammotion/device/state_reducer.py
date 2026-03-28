@@ -194,8 +194,19 @@ class StateReducer:
                 device.map.update(SvgMessage.from_dict(common_svg_data.to_dict(casing=betterproto2.Casing.SNAKE)))
             case "toapp_all_hash_name":
                 hash_names: AppGetAllAreaHashName = nav_msg[1]
-                converted_list = [AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames]
-                device.map.area_name = converted_list
+                if hash_names.hashnames:
+                    device.map.area_name = [
+                        AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames
+                    ]
+                elif device.map.area:
+                    # Device returned no names (user hasn't named areas) — generate
+                    # fallback labels from known area hashes so HA has something to show.
+                    device.map.area_name = [
+                        AreaHashNameList(name=f"area {i + 1}", hash=h)
+                        for i, h in enumerate(sorted(device.map.area.keys()))
+                    ]
+                # else: no areas fetched yet — leave area_name alone; HashList.update()
+                # will generate fallback names as each area chunk arrives.
             case "bidire_reqconver_path":
                 work_settings: NavReqCoverPath = nav_msg[1]
                 current_task = CurrentTaskSettings.from_dict(work_settings.to_dict(casing=betterproto2.Casing.SNAKE))

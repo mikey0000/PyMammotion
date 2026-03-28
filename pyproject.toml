@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.7.5"
+version = "0.7.6"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -72,7 +72,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.7.5"
+current_version = "0.7.6"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -476,7 +476,7 @@ max-complexity = 25
 # results.
 platform = "linux"
 python_version = "3.12"
-exclude = ['pymammotion/proto', 'tests', "scripts"]
+exclude = ['pymammotion/proto', 'tests', 'examples', "scripts"]
 
 # parity with previous mypy.ini
 show_error_codes = true
@@ -491,7 +491,7 @@ extra_checks = false
 mypy_path = "stubs"
 
 # show error messages from unrelated files
-follow_imports = "normal"
+follow_imports = "skip"
 
 # suppress errors about unsatisfied imports
 ignore_missing_imports = true

@@ -503,8 +503,6 @@ class MammotionClient:
                     await self._register_aliyun_device(device.device_name, device.iot_id, transport)
                     known_ids.add(device.device_name)
 
-        await transport.connect()
-
         if check_for_new_devices:
             try:
                 fresh = await cloud_client.list_binding_by_account()
@@ -512,8 +510,16 @@ class MammotionClient:
                     for device in fresh.data.data:
                         if device.device_name and device.device_name not in known_ids:
                             await self._register_aliyun_device(device.device_name, device.iot_id, transport)
+                            known_ids.add(device.device_name)
             except Exception:
                 _logger.warning("restore_credentials: new-device discovery failed (Aliyun)", exc_info=True)
+
+        if not known_ids:
+            _logger.info("No Aliyun devices found — skipping Aliyun MQTT connection")
+            self._aliyun_transport = None
+            return
+
+        await transport.connect()
 
     async def _restore_mammotion_mqtt(
         self,
@@ -638,6 +644,37 @@ class MammotionClient:
                 _apply_geojson(device)
 
         await handle.enqueue_saga(saga, on_complete=_on_map_complete)
+
+    async def start_area_name_sync(self, device_name: str) -> None:
+        """Fetch area names for *device_name* without re-fetching the full map.
+
+        Enqueues a MapFetchSaga in area-names-only mode.  Use this when the
+        map hash is still valid (bol_hash matches) but area names are missing.
+        """
+        from pymammotion.messaging.map_saga import MapFetchSaga
+        from pymammotion.utility.device_type import DeviceType
+
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            _logger.warning("start_area_name_sync: device '%s' not registered", device_name)
+            return
+        if DeviceType.is_luba1(device_name):
+            return  # Luba 1 has no area names
+        commands = MammotionCommand(device_name, self._user_account)
+        transport = handle.active_transport()
+        _iot_id = handle.iot_id
+        device = self.get_device_by_name(device_name)
+        existing_area_hashes = list(device.map.area.keys()) if device is not None else []
+        saga = MapFetchSaga(
+            device_id=handle.device_id,
+            device_name=handle.device_name,
+            is_luba1=False,
+            command_builder=commands,
+            send_command=lambda cmd: transport.send(cmd, iot_id=_iot_id),
+            area_names_only=True,
+            existing_area_hashes=existing_area_hashes,
+        )
+        await handle.enqueue_saga(saga)
 
     async def start_plan_sync(self, device_name: str) -> None:
         """Enqueue a PlanFetchSaga to fetch all stored schedule plans.
@@ -895,8 +932,8 @@ class MammotionClient:
         handle = self._device_registry.get_by_name(device_name)
         if handle is not None:
             commands = MammotionCommand(device_name, self._user_account)
-            await handle.send_command(commands.device_agora_join_channel_with_position(0))
-            await handle.send_command(commands.device_agora_join_channel_with_position(1))
+            await handle.send_command(commands.device_agora_join_channel_with_position(0), "set_video_ack")
+            await handle.send_command(commands.device_agora_join_channel_with_position(1), "set_video_ack")
 
         return subscription
 

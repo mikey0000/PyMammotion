@@ -285,6 +285,15 @@ class HashList(DataClassORJSONMixin):
         ]
 
     @property
+    def area_names_stale(self) -> bool:
+        """True when area data is present but no area names have been fetched.
+
+        Used by MapStalenessWatcher to trigger a lightweight area-name-only
+        re-fetch without requiring a full map sync.
+        """
+        return bool(self.area) and not self.area_name
+
+    @property
     def hashlist(self) -> list[int]:
         """Return all hash IDs from every RootHashList as a flat list."""
         if not self.root_hash_lists:

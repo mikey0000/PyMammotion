@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pymammotion.aliyun.exceptions import DeviceOfflineException
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.state.device_state import DeviceAvailability, DeviceConnectionState, TransportAvailability
@@ -63,18 +64,17 @@ def make_handle(
 
 
 async def test_add_transport_sets_on_message() -> None:
-    """transport.on_message must be set to handle._on_raw_message after add_transport."""
+    """transport.on_message must be a callable closure after add_transport.
+
+    _wire_transport now sets a per-transport closure (not _on_raw_message directly)
+    so that the transport type is captured and forwarded to _on_raw_message.
+    """
     handle = make_handle()
     transport = make_transport(TransportType.CLOUD_ALIYUN)
 
     await handle.add_transport(transport)
 
-    # _on_raw_message is a bound method on the handle; compare __func__ and __self__
-    # to avoid the identity issue that arises from bound method re-creation on each access.
-    raw_message_method = handle._on_raw_message
-    set_on_message = transport.on_message
-    assert set_on_message.__func__ is raw_message_method.__func__
-    assert set_on_message.__self__ is raw_message_method.__self__
+    assert callable(transport.on_message)
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +246,154 @@ async def test_active_transport_raises_when_none_connected() -> None:
 
     with pytest.raises(NoTransportAvailableError):
         handle.active_transport()
+
+
+# ---------------------------------------------------------------------------
+# Helpers for offline / online tests
+# ---------------------------------------------------------------------------
+
+
+def _patch_raw_message_internals(handle: DeviceHandle) -> None:
+    """Stub out the state-machine internals so _on_raw_message doesn't crash."""
+    handle._reducer.apply = MagicMock(return_value=make_device())  # type: ignore[method-assign]
+    handle.state_machine.apply = MagicMock(return_value=(MagicMock(), False))  # type: ignore[method-assign]
+    handle.broker.on_message = AsyncMock()  # type: ignore[method-assign]
+
+
+async def _drain_queue(handle: DeviceHandle) -> None:
+    """Start queue, wait for all enqueued items to finish, then stop."""
+    handle.queue.start()
+    await handle.queue._queue.join()
+    await handle.queue.stop()
+
+
+# ---------------------------------------------------------------------------
+# test 8: DeviceOfflineException marks mqtt_reported_offline — CLOUD_ALIYUN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "transport_type",
+    [TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION],
+    ids=["aliyun", "mammotion"],
+)
+async def test_device_offline_marks_reported_offline(transport_type: TransportType) -> None:
+    """DeviceOfflineException from either MQTT transport sets mqtt_reported_offline=True
+    and makes the device unavailable (no BLE fallback present)."""
+    handle = make_handle()
+    mqtt = make_transport(transport_type, connected=True)
+    await handle.add_transport(mqtt)
+    handle.update_availability(transport_type, TransportAvailability.CONNECTED)
+
+    handle.broker.send_and_wait = AsyncMock(  # type: ignore[method-assign]
+        side_effect=DeviceOfflineException(6205, "iot-id")
+    )
+
+    await handle.send_command(b"\x01", "some_field")
+    await _drain_queue(handle)
+
+    assert handle.availability.mqtt_reported_offline is True
+    assert handle.availability.is_available is False
+
+
+# ---------------------------------------------------------------------------
+# test 9: message arriving clears mqtt_reported_offline — both MQTT transports
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "transport_type",
+    [TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION],
+    ids=["aliyun", "mammotion"],
+)
+async def test_incoming_message_clears_reported_offline(transport_type: TransportType) -> None:
+    """Any message arriving over the cloud transport resets mqtt_reported_offline=False
+    and makes the device available again."""
+    handle = make_handle()
+    mqtt = make_transport(transport_type, connected=True)
+    await handle.add_transport(mqtt)
+    handle.update_availability(transport_type, TransportAvailability.CONNECTED)
+
+    # Put the device into the offline state directly
+    handle.update_availability(transport_type, TransportAvailability.CONNECTED, mqtt_reported_offline=True)
+    assert handle.availability.mqtt_reported_offline is True
+    assert handle.availability.is_available is False
+
+    # Simulate a message arriving from the device over the cloud transport
+    _patch_raw_message_internals(handle)
+    with patch("pymammotion.device.handle.LubaMsg") as mock_luba:
+        mock_luba.return_value.parse.return_value = MagicMock()
+        await handle._on_raw_message(b"\x00", transport_type)
+
+    assert handle.availability.mqtt_reported_offline is False
+    assert handle.availability.is_available is True
+
+
+# ---------------------------------------------------------------------------
+# test 10: BLE message does NOT clear mqtt_reported_offline
+# ---------------------------------------------------------------------------
+
+
+async def test_ble_message_does_not_clear_reported_offline() -> None:
+    """A message arriving over BLE must not touch mqtt_reported_offline — the
+    cloud transport is still reporting the device as offline."""
+    handle = make_handle()
+    mqtt = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    ble = make_transport(TransportType.BLE, connected=True)
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED)
+
+    handle.update_availability(
+        TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED, mqtt_reported_offline=True
+    )
+    assert handle.availability.mqtt_reported_offline is True
+
+    _patch_raw_message_internals(handle)
+    with patch("pymammotion.device.handle.LubaMsg") as mock_luba:
+        mock_luba.return_value.parse.return_value = MagicMock()
+        await handle._on_raw_message(b"\x00", TransportType.BLE)
+
+    # BLE message must not clear the MQTT offline flag
+    assert handle.availability.mqtt_reported_offline is True
+
+
+# ---------------------------------------------------------------------------
+# test 11: BLE fallback when MQTT reports device offline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "transport_type",
+    [TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION],
+    ids=["aliyun", "mammotion"],
+)
+async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType) -> None:
+    """When the MQTT send raises DeviceOfflineException and a connected BLE transport
+    exists, the command is retried over BLE without marking the device unavailable."""
+    handle = make_handle()
+    mqtt = make_transport(transport_type, connected=True)
+    ble = make_transport(TransportType.BLE, connected=True)
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+    handle.update_availability(transport_type, TransportAvailability.CONNECTED)
+
+    call_count = 0
+
+    async def _send_and_wait_side_effect(**kwargs: object) -> None:  # noqa: ARG001
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First call (MQTT) fails with DeviceOfflineException
+            raise DeviceOfflineException(6205, "iot-id")
+        # Second call (BLE) succeeds
+
+    handle.broker.send_and_wait = AsyncMock(side_effect=_send_and_wait_side_effect)  # type: ignore[method-assign]
+
+    await handle.send_command(b"\x01", "some_field")
+    await _drain_queue(handle)
+
+    # send_and_wait must have been called twice: MQTT then BLE
+    assert handle.broker.send_and_wait.call_count == 2
+    # Device must NOT be marked offline — BLE carried the command
+    assert handle.availability.mqtt_reported_offline is False

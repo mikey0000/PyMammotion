@@ -199,6 +199,8 @@ class MQTTTransport(Transport):
     async def _run(self) -> None:
         """Run the main connection loop, reconnecting with exponential backoff."""
         backoff = 1
+        _bad_credentials_attempts = 0
+        _BAD_CREDENTIALS_MAX = 3
 
         while not self._stop_event.is_set():
             await self._notify_availability(TransportAvailability.CONNECTING)
@@ -225,6 +227,7 @@ class MQTTTransport(Transport):
                 ) as client:
                     self._client = client
                     backoff = 1
+                    _bad_credentials_attempts = 0
                     await self._notify_availability(TransportAvailability.CONNECTED)
 
                     for topic in self._topics:
@@ -237,6 +240,24 @@ class MQTTTransport(Transport):
 
             except aiomqtt.MqttCodeError as exc:
                 rc = exc.rc
+                if rc == 134 or "bad user name" in str(exc).lower():
+                    # rc=134 = Bad User Name or Password — JWT is expired/invalid
+                    _bad_credentials_attempts += 1
+                    if _bad_credentials_attempts <= _BAD_CREDENTIALS_MAX:
+                        _logger.warning(
+                            "MQTT rc=134 (bad credentials), JWT refresh attempt %d/%d",
+                            _bad_credentials_attempts,
+                            _BAD_CREDENTIALS_MAX,
+                        )
+                        if await self._refresh_jwt():
+                            continue
+                    _logger.error(
+                        "MQTT auth failed after %d JWT refresh attempt(s) — stopping",
+                        _bad_credentials_attempts,
+                    )
+                    self._stop_event.set()
+                    await self._notify_availability(TransportAvailability.DISCONNECTED)
+                    raise AuthError(str(exc)) from exc
                 if rc in (4, 5, 135) or "not authorized" in str(exc).lower():
                     _logger.error("MQTT auth refused (rc=%s): %s — attempting JWT refresh", rc, exc)
                     if await self._refresh_jwt():

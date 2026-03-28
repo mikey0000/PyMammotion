@@ -31,15 +31,23 @@ class MapStalenessWatcher:
         on_maps_stale: Callable[[], Awaitable[None]],
         on_plans_stale: Callable[[], Awaitable[None]],
         is_saga_active: Callable[[], bool],
+        on_area_names_stale: Callable[[], Awaitable[None]] | None = None,
         cooldown: float = _REFETCH_COOLDOWN_SECONDS,
     ) -> None:
-        """Initialise the watcher with callbacks and cooldown settings."""
+        """Initialise the watcher with callbacks and cooldown settings.
+
+        *on_area_names_stale* is called when map data is valid (bol_hash
+        correct) but area names are missing.  Falls back to *on_maps_stale*
+        (full re-fetch) when not provided.
+        """
         self._on_maps_stale = on_maps_stale
         self._on_plans_stale = on_plans_stale
+        self._on_area_names_stale = on_area_names_stale if on_area_names_stale is not None else on_maps_stale
         self._is_saga_active = is_saga_active
         self._cooldown = cooldown
         self._last_map_trigger: float = 0.0
         self._last_plan_trigger: float = 0.0
+        self._last_area_names_trigger: float = 0.0
         self._subscription: Subscription | None = None
 
     async def on_state_changed(self, snapshot: DeviceSnapshot) -> None:
@@ -59,6 +67,15 @@ class MapStalenessWatcher:
                 await self._on_maps_stale()
             except Exception:  # noqa: BLE001
                 _logger.warning("MapStalenessWatcher: map refetch trigger failed", exc_info=True)
+
+        # Check area names staleness — map is valid but area names never arrived
+        elif device.map.area_names_stale and (now - self._last_area_names_trigger) > self._cooldown:
+            self._last_area_names_trigger = now
+            _logger.info("MapStalenessWatcher: area names missing, triggering area-name fetch")
+            try:
+                await self._on_area_names_stale()
+            except Exception:  # noqa: BLE001
+                _logger.warning("MapStalenessWatcher: area-name refetch trigger failed", exc_info=True)
 
         # Check plan staleness
         if device.map.plans_stale and (now - self._last_plan_trigger) > self._cooldown:

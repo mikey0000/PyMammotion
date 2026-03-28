@@ -190,8 +190,8 @@ async def test_map_saga_skips_area_names_for_luba1() -> None:
     assert broker.send_and_wait.call_count == 0
 
 
-async def test_map_saga_caches_area_names_across_restarts() -> None:
-    """Area names fetched on attempt 1 must be reused on attempt 2 (not re-fetched)."""
+async def test_map_saga_refetches_area_names_on_restart() -> None:
+    """Area names are re-requested on each attempt (no caching across retries)."""
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
 
@@ -229,9 +229,9 @@ async def test_map_saga_caches_area_names_across_restarts() -> None:
     area_calls = [
         call for call in broker.send_and_wait.call_args_list if call[1].get("expected_field") == "toapp_all_hash_name"
     ]
-    assert len(area_calls) == 1
-    assert saga._cached_area_names is not None
-    assert saga._cached_area_names[0].name == "Back yard"
+    # Area names are re-requested on each attempt (attempt 1 failed → attempt 2 succeeded = 2 calls)
+    assert len(area_calls) == 2
+    assert saga.result.area_name[0].name == "Back yard"
 
 
 async def test_map_saga_clears_partial_state_on_restart() -> None:
