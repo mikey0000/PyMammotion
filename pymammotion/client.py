@@ -547,8 +547,6 @@ class MammotionClient:
             self._set_user_account(mammotion_http)
 
         mqtt_raw = cached_data["mammotion_mqtt"]
-        mqtt_creds: MQTTConnection = MQTTConnection.from_dict(mqtt_raw) if isinstance(mqtt_raw, dict) else mqtt_raw
-        mammotion_http.mqtt_credentials = mqtt_creds
 
         records_raw = cached_data["mammotion_device_records"]
         cached_records: DeviceRecords = (
@@ -556,7 +554,9 @@ class MammotionClient:
         )
         mammotion_http.device_records = cached_records
 
-        transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http)
+        if mqtt_creds := MQTTConnection.from_dict(mqtt_raw) if isinstance(mqtt_raw, dict) else mqtt_raw:
+            mammotion_http.mqtt_credentials = mqtt_creds
+            transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http)
 
         known_ids: set[str] = set()
         for record in cached_records.records:
