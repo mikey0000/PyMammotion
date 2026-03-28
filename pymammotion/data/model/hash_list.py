@@ -216,6 +216,8 @@ class HashList(DataClassORJSONMixin):
     generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
 
     def update_hash_lists(self, hashlist: list[int], bol_hash: int | None = None) -> None:
+        if not hashlist:
+            return
         if bol_hash:
             self.invalidate_maps(bol_hash)
         self.area = {hash_id: frames for hash_id, frames in self.area.items() if hash_id in hashlist}
