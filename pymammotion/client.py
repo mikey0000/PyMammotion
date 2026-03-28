@@ -553,27 +553,26 @@ class MammotionClient:
             DeviceRecords.from_dict(records_raw) if isinstance(records_raw, dict) else records_raw
         )
         mammotion_http.device_records = cached_records
+        known_ids: set[str] = set()
 
         if mqtt_creds := MQTTConnection.from_dict(mqtt_raw) if isinstance(mqtt_raw, dict) else mqtt_raw:
             mammotion_http.mqtt_credentials = mqtt_creds
             transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http)
+            for record in cached_records.records:
+                if record.device_name:
+                    await self._register_mammotion_device(record, transport)
+                    known_ids.add(record.device_name)
 
-        known_ids: set[str] = set()
-        for record in cached_records.records:
-            if record.device_name:
-                await self._register_mammotion_device(record, transport)
-                known_ids.add(record.device_name)
+            await transport.connect()
 
-        await transport.connect()
-
-        if check_for_new_devices:
-            try:
-                page_resp = await mammotion_http.get_user_device_page()
-                for record in (page_resp.data.records if page_resp.data else []) or []:
-                    if record.device_name and record.device_name not in known_ids:
-                        await self._register_mammotion_device(record, transport)
-            except Exception:
-                _logger.warning("restore_credentials: new-device discovery failed (Mammotion)", exc_info=True)
+            if check_for_new_devices:
+                try:
+                    page_resp = await mammotion_http.get_user_device_page()
+                    for record in (page_resp.data.records if page_resp.data else []) or []:
+                        if record.device_name and record.device_name not in known_ids:
+                            await self._register_mammotion_device(record, transport)
+                except Exception:
+                    _logger.warning("restore_credentials: new-device discovery failed (Mammotion)", exc_info=True)
 
     @staticmethod
     async def _connect_iot(cloud_client: CloudIOTGateway) -> None:
