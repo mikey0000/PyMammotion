@@ -10,7 +10,6 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.raw_data import RawMowerData
 from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.proto import LubaMsg
-from pymammotion.utility.device_type import DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -158,6 +157,7 @@ class MammotionBaseDevice(ABC):
     async def async_get_errors(self) -> None:
         """Error codes."""
         await self.queue_command("read_write_device", rw_id=5, rw=1, context=2)
+        # returns bidireCommCmd, systemUpdateBuf and bidireCommCmd
         await self.queue_command("read_write_device", rw_id=5, rw=1, context=3)
 
     async def command(self, key: str, **kwargs: Any) -> None:

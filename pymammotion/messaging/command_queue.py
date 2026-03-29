@@ -179,21 +179,18 @@ class DeviceCommandQueue:
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                from pymammotion.transport.base import NoTransportAvailableError
+                from pymammotion.aliyun.exceptions import DeviceOfflineException
+                from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError
 
-                if isinstance(exc, NoTransportAvailableError):
-                    _logger.warning("DeviceCommandQueue: no transport available: %s", exc)
+                if isinstance(exc, (AuthError, SagaFailedError, DeviceOfflineException, NoTransportAvailableError)):
+                    _logger.warning("DeviceCommandQueue: %s", exc)
                 else:
                     _logger.exception("DeviceCommandQueue: unhandled error in work item")
-                if self.on_critical_error is not None:
-                    from pymammotion.aliyun.exceptions import DeviceOfflineException
-                    from pymammotion.transport.base import AuthError, SagaFailedError
-
-                    if isinstance(exc, (AuthError, SagaFailedError, DeviceOfflineException)):
-                        try:
-                            await self.on_critical_error(exc)
-                        except Exception:
-                            _logger.exception("on_critical_error callback failed")
+                if self.on_critical_error is not None and isinstance(exc, (AuthError, SagaFailedError)):
+                    try:
+                        await self.on_critical_error(exc)
+                    except Exception:
+                        _logger.exception("on_critical_error callback failed")
             finally:
                 with contextlib.suppress(ValueError):
                     self._queue.task_done()

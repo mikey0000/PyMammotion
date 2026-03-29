@@ -12,6 +12,7 @@ Available in the IPython REPL:
     mammotion                       MammotionClient singleton (cloud connection active)
     devices                         list[DeviceHandle]
     send(name, cmd, **kwargs)       Queue a command and block until complete
+    send_and_wait(name, cmd, field) Send and block until the response arrives
     dump(name)                      Force-write state_{name}.json right now
     console                         DevConsole instance
     loop                            The main asyncio event loop
@@ -283,6 +284,67 @@ class DevConsole:
         except Exception as exc:
             print(f"✗  Error: {exc}")
 
+    def send_and_wait(
+        self,
+        name: str,
+        cmd: str,
+        expected_field: str,
+        *,
+        send_timeout: float = 1.0,
+        timeout: float = 3.0,
+        **kwargs: Any,
+    ) -> Any:
+        """Send a command and block until the matching protobuf response arrives.
+
+        Uses broker.send_and_wait for request/response correlation via the
+        protobuf oneof field name.  Returns the full LubaMsg response.
+
+        Args:
+            name:           Registered device name.
+            cmd:            Method name on MammotionCommand (e.g. "get_report_cfg").
+            expected_field: Protobuf oneof field name expected in the response
+                            (e.g. "toapp_report_cfg").
+            send_timeout:   Seconds the broker waits for the device to respond
+                            per attempt (default 5 s).
+            timeout:        Wall-clock seconds before this call gives up (default 30 s).
+            **kwargs:       Arguments forwarded to the command builder.
+
+        Example:
+            resp = send_and_wait(
+                "Luba-VS563L6H",
+                "get_report_cfg",
+                "toapp_report_cfg",
+            )
+
+        """
+        handle = self.mammotion.device_registry.get_by_name(name)
+        if handle is None:
+            print(
+                f"Device {name!r} not found.\n"
+                f"Available: {[h.device_name for h in self.mammotion.device_registry.all_devices]}"
+            )
+            return None
+        try:
+            fut = asyncio.run_coroutine_threadsafe(
+                self.mammotion.send_command_and_wait(
+                    name,
+                    cmd,
+                    expected_field,
+                    send_timeout=send_timeout,
+                    **kwargs,
+                ),
+                self.loop,
+            )
+            result = fut.result(timeout=timeout)
+            print(f"✓  {cmd!r} → {expected_field!r}  {result}")
+            return result
+        except TimeoutError:
+            print(f"✗  Timed out waiting for {expected_field!r} from {name!r}")
+            return None
+        except Exception as exc:
+            print(f"✗  Error: {exc}")
+            return None
+
     def sync_map(self, name: str, *, timeout: float = 120.0) -> None:
         """Run a full MapFetchSaga for *name* and dump state on completion.
 
@@ -290,6 +352,7 @@ class DevConsole:
 
         Example:
             sync_map("Luba-VS563L6H")
+
         """
         handle = self.mammotion.device_registry.get_by_name(name)
         if handle is None:
@@ -367,6 +430,7 @@ async def _main() -> None:
         "mammotion": mammotion,
         "devices": mammotion.device_registry.all_devices,
         "send": dev.send,
+        "send_and_wait": dev.send_and_wait,
         "sync_map": dev.sync_map,
         "dump": dev.dump,
         "dump_all": dev.dump_all,
@@ -380,13 +444,14 @@ async def _main() -> None:
     _rich_console.print(
         "\n[bold green][PyMammotion dev console][/bold green]\n"
         f"  [cyan]devices[/cyan]  = {device_names}\n\n"
-        "  [cyan]send(name, cmd, **kwargs)[/cyan]  — queue a command (blocking)\n"
-        "  [cyan]sync_map(name)[/cyan]             — run a full MapFetchSaga (blocking)\n"
-        "  [cyan]dump(name)[/cyan]                 — write state_{name}.json\n"
-        "  [cyan]dump_all()[/cyan]                 — write state JSON for all devices\n"
-        "  [cyan]status()[/cyan]                   — show connection status\n"
-        "  [cyan]creds()[/cyan]                    — print all MQTT credentials\n"
-        f"  [cyan]loop[/cyan]                       — main asyncio event loop\n"
+        "  [cyan]send(name, cmd, **kwargs)[/cyan]                          — queue a command (blocking)\n"
+        "  [cyan]send_and_wait(name, cmd, expected_field, **kwargs)[/cyan]  — send and block for response\n"
+        "  [cyan]sync_map(name)[/cyan]                                     — run a full MapFetchSaga (blocking)\n"
+        "  [cyan]dump(name)[/cyan]                                         — write state_{name}.json\n"
+        "  [cyan]dump_all()[/cyan]                                         — write state JSON for all devices\n"
+        "  [cyan]status()[/cyan]                                           — show connection status\n"
+        "  [cyan]creds()[/cyan]                                            — print all MQTT credentials\n"
+        f"  [cyan]loop[/cyan]                                               — main asyncio event loop\n"
         f"\n  Output → [dim]{OUTPUT_DIR}[/dim]\n"
     )
 
