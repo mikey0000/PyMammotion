@@ -141,6 +141,7 @@ class AliyunMQTTTransport(Transport):
 
     def __init__(self, config: AliyunMQTTConfig, cloud_gateway: CloudIOTGateway) -> None:
         """Initialise the transport with the supplied Aliyun configuration."""
+        super().__init__()
         self._config = config
         self._cloud_gateway = cloud_gateway
         self._client: aiomqtt.Client | None = None
@@ -277,13 +278,9 @@ class AliyunMQTTTransport(Transport):
     # ------------------------------------------------------------------
 
     async def _notify_availability(self, state: TransportAvailability) -> None:
-        """Update internal state and notify the availability callback."""
+        """Update internal state and notify all availability listeners."""
         self._availability = state
-        if self.on_availability_changed is not None:
-            try:
-                await self.on_availability_changed(state)
-            except Exception:
-                _logger.exception("on_availability_changed callback failed")
+        await self._fire_availability_listeners(state)
 
     @staticmethod
     async def get_ssl_context() -> ssl.SSLContext:
@@ -341,8 +338,12 @@ class AliyunMQTTTransport(Transport):
                     async for message in client.messages:
                         if self._stop_event.is_set():
                             break
+                        topic = str(message.topic)
                         raw = bytes(message.payload)
-                        result = self._unwrap_envelope(str(message.topic), raw)
+                        if topic.endswith("/thing/status"):
+                            await self._dispatch_device_status(topic, raw)
+                            continue
+                        result = self._unwrap_envelope(topic, raw)
                         if result is not None:
                             decoded, iot_id = result
                             if iot_id and self.on_device_message is not None:
@@ -381,6 +382,30 @@ class AliyunMQTTTransport(Transport):
                 except asyncio.CancelledError:
                     break
                 backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
+
+    # ------------------------------------------------------------------
+    # Device status dispatch
+    # ------------------------------------------------------------------
+
+    async def _dispatch_device_status(self, topic: str, raw: bytes) -> None:
+        """Parse a thing/status message and notify on_device_status.
+
+        Uses :class:`~pymammotion.data.mqtt.status.ThingStatusMessage` to decode
+        the envelope.  ``status`` passed to the callback is ``"online"`` when
+        ``StatusType.CONNECTED`` and ``"offline"`` otherwise.
+        """
+        if self.on_device_status is None:
+            return
+        try:
+            from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
+
+            msg = ThingStatusMessage.from_json(raw)
+            iot_id = msg.params.iot_id
+            status = "online" if msg.params.status.value is StatusType.CONNECTED else "offline"
+            if iot_id:
+                await self.on_device_status(iot_id, status)
+        except Exception:
+            _logger.debug("AliyunMQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
 
     # ------------------------------------------------------------------
     # Envelope unwrapping

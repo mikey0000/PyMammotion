@@ -63,6 +63,7 @@ class MQTTTransport(Transport):
                            Specific to Mammotion direct-MQTT (post-2025 devices).
 
         """
+        super().__init__()
         self._config = config
         self._http = mammotion_http
         self._jwt_refresher = jwt_refresher
@@ -177,13 +178,9 @@ class MQTTTransport(Transport):
     # ------------------------------------------------------------------
 
     async def _notify_availability(self, state: TransportAvailability) -> None:
-        """Update internal state and notify the availability callback."""
+        """Update internal state and notify all availability listeners."""
         self._availability = state
-        if self.on_availability_changed is not None:
-            try:
-                await self.on_availability_changed(state)
-            except Exception:
-                _logger.exception("on_availability_changed callback failed")
+        await self._fire_availability_listeners(state)
 
     async def _refresh_jwt(self) -> bool:
         """Attempt to refresh the JWT via the jwt_refresher callback.
@@ -295,6 +292,9 @@ class MQTTTransport(Transport):
     async def _dispatch(self, topic: str, raw: bytes) -> None:
         """Route an incoming message to the appropriate callback.
 
+        thing/status messages are dispatched to on_device_status regardless of
+        which other callbacks are registered.
+
         If ``on_device_message`` is set, the topic is parsed to derive the
         iot_id, the JSON envelope is unwrapped, and the raw protobuf bytes
         are forwarded together with the iot_id.
@@ -302,6 +302,10 @@ class MQTTTransport(Transport):
         Falls back to the plain ``on_message`` callback (raw bytes, no routing)
         when ``on_device_message`` is not set.
         """
+        if topic.endswith("/thing/status"):
+            await self._dispatch_device_status(topic, raw)
+            return
+
         if self.on_device_message is not None:
             # Extract (product_key, device_name) from topic: /sys/<pk>/<dn>/...
             parts = topic.split("/")
@@ -318,6 +322,21 @@ class MQTTTransport(Transport):
 
         if self.on_message is not None:
             await self.on_message(raw)
+
+    async def _dispatch_device_status(self, topic: str, raw: bytes) -> None:
+        """Parse a thing/status message and notify on_device_status."""
+        if self.on_device_status is None:
+            return
+        try:
+            from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
+
+            msg = ThingStatusMessage.from_json(raw)
+            iot_id = msg.params.iot_id
+            status = "online" if msg.params.status.value is StatusType.CONNECTED else "offline"
+            if iot_id:
+                await self.on_device_status(iot_id, status)
+        except Exception:
+            _logger.debug("MQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
 
     @staticmethod
     def _unwrap_envelope(topic: str, raw: bytes) -> bytes | None:

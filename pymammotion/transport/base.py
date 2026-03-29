@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import contextlib
 from enum import Enum
 import logging
 from typing import TYPE_CHECKING, Generic, Self, TypeVar
@@ -168,11 +169,42 @@ class Transport(ABC):
     #: Set by the broker layer to receive raw incoming messages.
     on_message: Callable[[bytes], Awaitable[None]] | None = None
 
-    #: Called when transport availability changes (connect/disconnect/error).
-    on_availability_changed: Callable[[TransportAvailability], Awaitable[None]] | None = None
-
     #: Called on auth failure; returns True if credentials were refreshed (retry).
     on_auth_failure: Callable[[], Awaitable[bool]] | None = None
+
+    #: Called when a per-device online/offline status message arrives (iot_id, status).
+    on_device_status: Callable[[str, str], Awaitable[None]] | None = None
+
+    def __init__(self) -> None:
+        """Initialise the availability listener list."""
+        self._availability_listeners: list[Callable[[TransportAvailability], Awaitable[None]]] = []
+
+    def add_availability_listener(
+        self,
+        listener: Callable[[TransportAvailability], Awaitable[None]],
+    ) -> None:
+        """Register a listener for transport availability changes.
+
+        Multiple listeners are supported — all are called on each state change.
+        """
+        if listener not in self._availability_listeners:
+            self._availability_listeners.append(listener)
+
+    def remove_availability_listener(
+        self,
+        listener: Callable[[TransportAvailability], Awaitable[None]],
+    ) -> None:
+        """Remove a previously registered availability listener."""
+        with contextlib.suppress(ValueError):
+            self._availability_listeners.remove(listener)
+
+    async def _fire_availability_listeners(self, state: TransportAvailability) -> None:
+        """Notify all registered availability listeners of a state change."""
+        for listener in list(self._availability_listeners):
+            try:
+                await listener(state)
+            except Exception:
+                _logger.exception("availability listener raised an unhandled exception")
 
     @abstractmethod
     async def connect(self) -> None:

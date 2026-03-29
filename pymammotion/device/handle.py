@@ -165,7 +165,7 @@ class DeviceHandle:
     def _wire_transport(self, transport: Transport) -> None:
         """Wire callbacks on a transport and register it."""
         transport.on_message = self._make_message_handler(transport.transport_type)
-        transport.on_availability_changed = self._make_availability_handler(transport.transport_type)
+        transport.add_availability_listener(self._make_availability_handler(transport.transport_type))
         self._transports[transport.transport_type] = transport
 
     def _make_message_handler(self, transport_type: TransportType) -> Callable[[bytes], Awaitable[None]]:

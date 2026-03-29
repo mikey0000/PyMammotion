@@ -402,6 +402,7 @@ class MammotionClient:
         )
         transport = AliyunMQTTTransport(config, cloud_client)
         transport.on_device_message = self._route_device_message
+        transport.on_device_status = self._route_device_status
         self._aliyun_transport = transport
         return transport
 
@@ -421,6 +422,7 @@ class MammotionClient:
         )
         transport = MQTTTransport(config, mammotion_http)
         transport.on_device_message = self._route_device_message
+        transport.on_device_status = self._route_device_status
         self._mammotion_transport = transport
         return transport
 
@@ -608,6 +610,31 @@ class MammotionClient:
             _logger.debug("_route_device_message: handle gone for device_id=%s", device_id)
             return
         await handle._on_raw_message(payload)  # noqa: SLF001
+
+    async def _route_device_status(self, iot_id: str, status: str) -> None:
+        """Update a device handle's MQTT availability from a thing/status message.
+
+        Args:
+            iot_id: The Aliyun / Mammotion IoT device identifier.
+            status: ``"online"`` or ``"offline"`` as decoded by the transport.
+        """
+        from pymammotion.transport.base import TransportAvailability
+
+        device_id = self._iot_id_to_device_id.get(iot_id)
+        if device_id is None:
+            _logger.debug("_route_device_status: unknown iot_id=%s (%s)", iot_id, status)
+            return
+        handle = self._device_registry.get(device_id)
+        if handle is None:
+            return
+        transport_type = (
+            TransportType.CLOUD_MAMMOTION
+            if handle.has_transport(TransportType.CLOUD_MAMMOTION)
+            else TransportType.CLOUD_ALIYUN
+        )
+        avail = TransportAvailability.CONNECTED if status == "online" else TransportAvailability.DISCONNECTED
+        handle.update_availability(transport_type, avail, mqtt_reported_offline=(status != "online"))
+        _logger.info("Device '%s' is now %s (thing/status)", device_id, status)
 
     # ------------------------------------------------------------------
     # Map sync

@@ -46,6 +46,7 @@ class BLETransport(Transport):
 
     def __init__(self, config: BLETransportConfig) -> None:
         """Initialise the transport with the supplied configuration."""
+        super().__init__()
         self._config = config
         self._ble_device: BLEDevice | None = None
         self._client: BleakClientWithServiceCache | None = None
@@ -138,25 +139,21 @@ class BLETransport(Transport):
     # ------------------------------------------------------------------
 
     async def _notify_availability(self, state: TransportAvailability) -> None:
-        """Update internal state and notify the availability callback."""
+        """Update internal state and notify all availability listeners."""
         self._availability = state
-        if self.on_availability_changed is not None:
-            try:
-                await self.on_availability_changed(state)
-            except Exception:
-                _logger.exception("on_availability_changed callback failed")
+        await self._fire_availability_listeners(state)
 
     def _handle_disconnect(self, _client: Any) -> None:
         """Handle unexpected disconnect reported by bleak."""
         _logger.warning("BLETransport: device %s disconnected", self._config.device_id)
         self._availability = TransportAvailability.DISCONNECTED
-        # Fire availability callback from sync context
-        if self.on_availability_changed is not None:
+        # Fire availability listeners from sync context
+        if self._availability_listeners:
             import asyncio
 
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(self.on_availability_changed(TransportAvailability.DISCONNECTED))
+                loop.create_task(self._fire_availability_listeners(TransportAvailability.DISCONNECTED))
             except RuntimeError:
                 pass
 
