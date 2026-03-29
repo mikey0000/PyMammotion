@@ -107,7 +107,7 @@ class DeviceMessageBroker:
                     return await asyncio.wait_for(asyncio.shield(future), timeout=send_timeout)
                 except TimeoutError:
                     if attempt < retries:
-                        _logger.warning(
+                        _logger.debug(
                             "No response for '%s' (attempt %d/%d), retrying",
                             expected_field,
                             attempt,

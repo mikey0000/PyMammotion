@@ -174,9 +174,13 @@ class StateReducer:
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]
                 device.map.update(NavGetCommData.from_dict(common_data.to_dict(casing=betterproto2.Casing.SNAKE)))
+                if len(device.map.missing_hashlist(0)) == 0:
+                    device.map.generate_geojson(device.location.RTK, device.location.dock)
             case "cover_path_upload":
                 mow_path: CoverPathUploadT = nav_msg[1]
                 device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
+                if len(device.map.find_missing_mow_path_frames()) == 0:
+                    device.map.generate_mowing_geojson(device.location.RTK)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]
                 device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))

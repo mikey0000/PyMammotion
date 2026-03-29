@@ -617,6 +617,7 @@ class MammotionClient:
         Args:
             iot_id: The Aliyun / Mammotion IoT device identifier.
             status: ``"online"`` or ``"offline"`` as decoded by the transport.
+
         """
         from pymammotion.transport.base import TransportAvailability
 
