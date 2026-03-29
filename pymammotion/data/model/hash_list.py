@@ -5,8 +5,7 @@ from typing import Any
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from shapely import Point
 
-from pymammotion.data.model.generate_geojson import GeojsonGenerator
-from pymammotion.data.model.location import LocationPoint
+from pymammotion.data.model.location import Dock, LocationPoint
 from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
 from pymammotion.utility.map import CoordinateConverter
 from pymammotion.utility.mur_mur_hash import MurMurHashUtil
@@ -581,14 +580,16 @@ class HashList(DataClassORJSONMixin):
 
     def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
         """Generate geojson from frames."""
+        from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
         coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
         RTK_real_loc = coordinator_converter.enu_to_lla(0, 0)
 
         dock_location = coordinator_converter.enu_to_lla(dock.latitude, dock.longitude)
         dock_rotation = coordinator_converter.get_transform_yaw_with_yaw(dock.rotation) + 180
 
-        self._device.map.generated_geojson = GeojsonGenerator.generate_geojson(
-            self._device.map,
+        self.generated_geojson = GeojsonGenerator.generate_geojson(
+            self,
             Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
             Point(dock_location.latitude, dock_location.longitude),
             int(dock_rotation),
@@ -596,6 +597,8 @@ class HashList(DataClassORJSONMixin):
 
     def generate_mowing_geojson(self, rtk: LocationPoint) -> Any:
         """Generate geojson from frames."""
+        from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
         coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
         rtk_real_loc = coordinator_converter.enu_to_lla(0, 0)
 

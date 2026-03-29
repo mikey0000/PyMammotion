@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pymammotion.transport.base import TransportType
+from pymammotion.transport.base import TransportError, TransportType
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 
 
@@ -22,8 +22,15 @@ def config() -> MQTTTransportConfig:
 
 
 @pytest.fixture
-def transport(config: MQTTTransportConfig) -> MQTTTransport:
-    return MQTTTransport(config)
+def mammotion_http() -> MagicMock:
+    http = MagicMock()
+    http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=0))
+    return http
+
+
+@pytest.fixture
+def transport(config: MQTTTransportConfig, mammotion_http: MagicMock) -> MQTTTransport:
+    return MQTTTransport(config, mammotion_http)
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +75,6 @@ class _FakeAsyncMessages:
         try:
             return next(self._messages)
         except StopIteration:
-            # Block forever so the loop task stays alive during the test
             await asyncio.sleep(3600)
             raise StopAsyncIteration
 
@@ -93,23 +99,22 @@ class _FakeMQTTClient:
 
 
 @pytest.mark.asyncio
-async def test_connect_sets_is_connected(config: MQTTTransportConfig) -> None:
+async def test_connect_sets_is_connected(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """connect() should set is_connected to True once the MQTT loop starts."""
-    transport = MQTTTransport(config)
+    transport = MQTTTransport(config, mammotion_http)
     fake_client = _FakeMQTTClient()
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        # Give the loop task a moment to enter the async-with block
         await asyncio.sleep(0.05)
         assert transport.is_connected is True
         await transport.disconnect()
 
 
 @pytest.mark.asyncio
-async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig) -> None:
+async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """disconnect() should set is_connected to False."""
-    transport = MQTTTransport(config)
+    transport = MQTTTransport(config, mammotion_http)
     fake_client = _FakeMQTTClient()
 
     with patch("aiomqtt.Client", return_value=fake_client):
@@ -120,43 +125,52 @@ async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig) -
 
 
 # ---------------------------------------------------------------------------
-# send() calls client.publish
+# send() calls the HTTP invoke API
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_send_calls_publish(config: MQTTTransportConfig) -> None:
-    """send() should call client.publish with the configured publish topic and payload."""
-    transport = MQTTTransport(config)
-    topic = "/sys/pk/dn/thing/event/+/post"
-    transport.set_publish_topic(topic)
-    fake_client = _FakeMQTTClient()
+async def test_send_calls_mqtt_invoke(config: MQTTTransportConfig) -> None:
+    """send() should forward the payload via mammotion_http.mqtt_invoke."""
+    import base64
 
-    with patch("aiomqtt.Client", return_value=fake_client):
-        await transport.connect()
-        await asyncio.sleep(0.05)
+    http = MagicMock()
+    http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=0))
+    transport = MQTTTransport(config, http)
 
-        payload = b"\x01\x02\x03"
-        await transport.send(payload)
+    payload = b"\x01\x02\x03"
+    await transport.send(payload, iot_id="dev123")
 
-        fake_client.publish.assert_awaited_once_with(topic, payload)
-        await transport.disconnect()
+    http.mqtt_invoke.assert_awaited_once()
+    call_args = http.mqtt_invoke.call_args
+    # First arg is base64-encoded payload
+    assert call_args.args[0] == base64.b64encode(payload).decode()
+    # Third arg is the iot_id
+    assert call_args.args[2] == "dev123"
+
+
+@pytest.mark.asyncio
+async def test_send_raises_when_no_iot_id(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
+    """send() with an empty iot_id should raise TransportError."""
+    transport = MQTTTransport(config, mammotion_http)
+    with pytest.raises(TransportError, match="iot_id"):
+        await transport.send(b"hello")
 
 
 # ---------------------------------------------------------------------------
-# on_message callback is invoked
+# on_message callback is invoked for non-status messages
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_on_message_callback_called(config: MQTTTransportConfig) -> None:
-    """on_message should be called with the raw bytes of an incoming message."""
+async def test_on_message_callback_called(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
+    """on_message should be called with the raw bytes of an incoming non-status message."""
     received: list[bytes] = []
 
     async def _handler(data: bytes) -> None:
         received.append(data)
 
-    transport = MQTTTransport(config)
+    transport = MQTTTransport(config, mammotion_http)
     transport.on_message = _handler
 
     incoming = [_FakeMessage("some/topic", b"hello")]
@@ -164,8 +178,6 @@ async def test_on_message_callback_called(config: MQTTTransportConfig) -> None:
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        # Allow the loop task to process the message and then block
         await asyncio.sleep(0.1)
-
         assert received == [b"hello"]
         await transport.disconnect()

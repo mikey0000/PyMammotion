@@ -134,28 +134,16 @@ class TestCredentials:
 
 
 class TestTLSConfiguration:
-    def test_tls_context_created_with_ca_data(self, event_loop: asyncio.AbstractEventLoop) -> None:
-        """TLS context must be created using Aliyun's embedded CA bundle."""
-        with (
-            patch("pymammotion.mqtt.aliyun_mqtt.asyncio.get_running_loop", return_value=event_loop),
-            patch("pymammotion.mqtt.aliyun_mqtt.ssl.create_default_context") as mock_ctx_fn,
-        ):
+    @pytest.mark.asyncio
+    async def test_tls_context_created_with_ca_file(self) -> None:
+        """get_ssl_context() must return an SSLContext built with PROTOCOL_TLS_CLIENT."""
+        with patch("pymammotion.mqtt.aliyun_mqtt.ssl.SSLContext") as mock_ctx_cls:
             mock_ctx = MagicMock()
-            mock_ctx_fn.return_value = mock_ctx
-            obj = AliyunMQTT(
-                region_id="eu-central-1",
-                product_key="pk",
-                device_name="dn",
-                device_secret="sec",
-                iot_token="tok",
-                cloud_client=_make_cloud_client(),
-            )
+            mock_ctx_cls.return_value = mock_ctx
+            ctx = await AliyunMQTT.get_ssl_context()
 
-        mock_ctx_fn.assert_called_once()
-        pos_args, kw_args = mock_ctx_fn.call_args
-        assert pos_args[0] == ssl.Purpose.SERVER_AUTH
-        assert "-----BEGIN CERTIFICATE-----" in kw_args["cadata"]
-        assert obj._tls_context is mock_ctx
+        mock_ctx_cls.assert_called_once_with(ssl.PROTOCOL_TLS_CLIENT)
+        assert ctx is mock_ctx
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +199,7 @@ class TestConnectDisconnect:
 class TestStartTask:
     def test_creates_task_when_none(self, event_loop: asyncio.AbstractEventLoop) -> None:
         obj = _make_aliyun_mqtt(loop=event_loop)
-        with patch.object(obj.loop, "create_task") as mock_ct:
+        with patch.object(obj.loop, "create_task", side_effect=lambda coro: coro.close()) as mock_ct:
             obj._start_task()
         mock_ct.assert_called_once()
 
@@ -220,7 +208,7 @@ class TestStartTask:
         mock_task = MagicMock()
         mock_task.done.return_value = False
         obj._task = mock_task
-        with patch.object(obj.loop, "create_task") as mock_ct:
+        with patch.object(obj.loop, "create_task", side_effect=lambda coro: coro.close()) as mock_ct:
             obj._start_task()
         mock_ct.assert_not_called()
 
@@ -229,7 +217,7 @@ class TestStartTask:
         mock_task = MagicMock()
         mock_task.done.return_value = True
         obj._task = mock_task
-        with patch.object(obj.loop, "create_task") as mock_ct:
+        with patch.object(obj.loop, "create_task", side_effect=lambda coro: coro.close()) as mock_ct:
             obj._start_task()
         mock_ct.assert_called_once()
 
@@ -269,7 +257,7 @@ class TestRunLoop:
         if messages is None:
             messages = []
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.subscribe = AsyncMock()
         mock_client.publish = AsyncMock()
         mock_client.messages = _make_async_iter(messages)
