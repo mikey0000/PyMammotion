@@ -283,6 +283,32 @@ class DevConsole:
         except Exception as exc:
             print(f"✗  Error: {exc}")
 
+    def sync_map(self, name: str, *, timeout: float = 120.0) -> None:
+        """Run a full MapFetchSaga for *name* and dump state on completion.
+
+        Blocks until the saga finishes or *timeout* seconds elapse.
+
+        Example:
+            sync_map("Luba-VS563L6H")
+        """
+        handle = self.mammotion.device_registry.get_by_name(name)
+        if handle is None:
+            print(
+                f"Device {name!r} not found.\n"
+                f"Available: {[h.device_name for h in self.mammotion.device_registry.all_devices]}"
+            )
+            return
+        try:
+            fut = asyncio.run_coroutine_threadsafe(
+                self.mammotion.start_map_sync(name), self.loop
+            )
+            fut.result(timeout=timeout)
+            print(f"✓  map sync enqueued for {name!r} — watching for completion …")
+        except TimeoutError:
+            print(f"✗  Timed out enqueuing map sync for {name!r}")
+        except Exception as exc:
+            print(f"✗  Error: {exc}")
+
     def dump_all(self) -> None:
         """Force-write state JSON for every connected device."""
         for handle in self.mammotion.device_registry.all_devices:
@@ -341,6 +367,7 @@ async def _main() -> None:
         "mammotion": mammotion,
         "devices": mammotion.device_registry.all_devices,
         "send": dev.send,
+        "sync_map": dev.sync_map,
         "dump": dev.dump,
         "dump_all": dev.dump_all,
         "status": dev.status,
@@ -354,6 +381,7 @@ async def _main() -> None:
         "\n[bold green][PyMammotion dev console][/bold green]\n"
         f"  [cyan]devices[/cyan]  = {device_names}\n\n"
         "  [cyan]send(name, cmd, **kwargs)[/cyan]  — queue a command (blocking)\n"
+        "  [cyan]sync_map(name)[/cyan]             — run a full MapFetchSaga (blocking)\n"
         "  [cyan]dump(name)[/cyan]                 — write state_{name}.json\n"
         "  [cyan]dump_all()[/cyan]                 — write state JSON for all devices\n"
         "  [cyan]status()[/cyan]                   — show connection status\n"

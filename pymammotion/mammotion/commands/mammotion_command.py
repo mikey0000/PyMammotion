@@ -23,7 +23,7 @@ class MammotionCommand(
         """Get device name."""
         return self._device_name
 
-    def read_write_device(self, rw_id: int, context: int, rw: int):
+    def read_write_device(self, rw_id: int, context: int, rw: int) -> bytes:
         """Dispatch a read/write device command, routing to the X3 adapter for Luba Pro devices."""
         if (
             rw_id == 6 or rw_id == 3 or rw_id == 7 or rw_id == 8 or rw_id == 10 or rw_id == 11

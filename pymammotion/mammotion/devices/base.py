@@ -10,6 +10,7 @@ from pymammotion.data.model.device import MowingDevice
 from pymammotion.data.model.raw_data import RawMowerData
 from pymammotion.data.mower_state_manager import MowerStateManager
 from pymammotion.proto import LubaMsg
+from pymammotion.utility.device_type import DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -136,6 +137,11 @@ class MammotionBaseDevice(ABC):
 
     async def async_read_settings(self) -> None:
         """Read settings from device."""
+        # expected_field = (
+        #     "nav_sys_param_cmd"
+        #     if DeviceType.is_luba_pro(self.mower.name)
+        #     else "bidire_comm_cmd"
+        # )
         # no cutting in rain nav_sys_param_cmd (id 3 context 1/0)
         await self.queue_command("read_write_device", rw_id=3, context=1, rw=0)
         # ??

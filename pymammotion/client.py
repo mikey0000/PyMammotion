@@ -640,7 +640,16 @@ class MammotionClient:
 
         async def _on_map_complete() -> None:
             device = self.get_device_by_name(device_name)
-            if device is not None and device.location.RTK.latitude != 0:
+            if device is None:
+                return
+            # Restore root_hash_lists from the saga result.  Reports arriving
+            # during the sync may have cleared device.map.root_hash_lists via
+            # invalidate_maps() because the partial area set didn't hash-match.
+            # Copying the completed saga's list ensures the next invalidate_maps()
+            # call sees a consistent hash and doesn't immediately clear it again.
+            if saga.result is not None:
+                device.map.root_hash_lists = saga.result.root_hash_lists
+            if device.location.RTK.latitude != 0:
                 _apply_geojson(device)
 
         await handle.enqueue_saga(saga, on_complete=_on_map_complete)
@@ -984,7 +993,7 @@ class MammotionClient:
         _prefer_ble = prefer_ble
 
         async def _do_send() -> None:
-            await handle.active_transport(prefer_ble=_prefer_ble).send(command_bytes, iot_id=iot_id)
+            await handle.send_raw(command_bytes, prefer_ble=_prefer_ble)
 
         await handle.queue.enqueue(_do_send, priority=Priority.NORMAL)
 

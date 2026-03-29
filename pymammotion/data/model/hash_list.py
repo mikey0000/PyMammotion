@@ -431,8 +431,15 @@ class HashList(DataClassORJSONMixin):
         if hash_data.type == PathType.AREA and isinstance(hash_data, NavGetCommData):
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
             if not existing_name:
-                name = f"area {len(self.area_name) + 1}"
-                self.area_name.append(AreaHashNameList(name=name, hash=hash_data.hash))
+                used_numbers = {
+                    int(a.name.split()[-1])
+                    for a in self.area_name
+                    if a.name.startswith("area ") and a.name.split()[-1].isdigit()
+                }
+                n = 1
+                while n in used_numbers:
+                    n += 1
+                self.area_name.append(AreaHashNameList(name=f"area {n}", hash=hash_data.hash))
             result = self._add_hash_data(self.area, hash_data)
             self.update_hash_lists(self.hashlist)
             return result

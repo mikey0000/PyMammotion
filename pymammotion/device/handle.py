@@ -397,8 +397,29 @@ class DeviceHandle:
             await t.disconnect()
 
     async def send_raw(self, payload: bytes, *, prefer_ble: bool = False) -> None:
-        """Send raw bytes via the best available transport."""
-        await self.active_transport(prefer_ble=prefer_ble).send(payload, iot_id=self.iot_id)
+        """Send raw bytes via the best available transport, with BLE fallback on offline."""
+        from pymammotion.aliyun.exceptions import DeviceOfflineException
+
+        transport = self.active_transport(prefer_ble=prefer_ble)
+        try:
+            await transport.send(payload, iot_id=self.iot_id)
+        except DeviceOfflineException:
+            ble = self._transports.get(TransportType.BLE)
+            if ble is not None and ble.is_connected:
+                _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
+                await ble.send(payload, iot_id=self.iot_id)
+            else:
+                _logger.warning(
+                    "Device '%s' reported offline by cloud — marking %s unavailable",
+                    self.device_name,
+                    transport.transport_type,
+                )
+                self.update_availability(
+                    transport.transport_type,
+                    self._availability.mqtt,
+                    mqtt_reported_offline=True,
+                )
+                raise
 
     # ------------------------------------------------------------------
     # Error bus

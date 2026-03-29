@@ -147,12 +147,21 @@ class MQTTTransport(Transport):
 
         """
         from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
+        from pymammotion.http.model.http import UnauthorizedException
 
         if not iot_id:
             msg = "MQTTTransport.send() requires a non-empty iot_id"
             raise TransportError(msg)
         content = base64.b64encode(payload).decode()
-        res = await self._http.mqtt_invoke(content, "", iot_id)
+        try:
+            res = await self._http.mqtt_invoke(content, "", iot_id)
+        except UnauthorizedException:
+            _logger.warning("MQTTTransport.send: HTTP access token expired — refreshing and retrying")
+            try:
+                await self._http.refresh_login()
+                res = await self._http.mqtt_invoke(content, "", iot_id)
+            except Exception as refresh_exc:
+                raise AuthError("Access token expired and refresh failed") from refresh_exc
         if res.code in (401, 460):
             raise AuthError(f"Access token expired (code={res.code})")
         if res.code in (6205, 50104):

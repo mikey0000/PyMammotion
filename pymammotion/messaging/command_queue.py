@@ -152,13 +152,30 @@ class DeviceCommandQueue:
                 if item.skip_if_saga_active and self.is_saga_active and item.priority > Priority.EXCLUSIVE:
                     continue
 
-                self._current_work_task = asyncio.get_running_loop().create_task(
-                    item.work()  # type: ignore[arg-type]
-                )
-                try:
-                    await self._current_work_task
-                finally:
-                    self._current_work_task = None
+                from pymammotion.aliyun.exceptions import GatewayTimeoutException
+
+                _GATEWAY_TIMEOUT_MAX = 3
+                for _attempt in range(1, _GATEWAY_TIMEOUT_MAX + 1):
+                    self._current_work_task = asyncio.get_running_loop().create_task(
+                        item.work()  # type: ignore[arg-type]
+                    )
+                    try:
+                        await self._current_work_task
+                        break  # success — exit retry loop
+                    except GatewayTimeoutException:
+                        if _attempt < _GATEWAY_TIMEOUT_MAX:
+                            _logger.warning(
+                                "DeviceCommandQueue: gateway timeout (attempt %d/%d) — retrying",
+                                _attempt,
+                                _GATEWAY_TIMEOUT_MAX,
+                            )
+                        else:
+                            _logger.warning(
+                                "DeviceCommandQueue: gateway timeout after %d attempts — dropping command",
+                                _attempt,
+                            )
+                    finally:
+                        self._current_work_task = None
             except asyncio.CancelledError:
                 break
             except Exception as exc:
