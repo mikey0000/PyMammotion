@@ -28,7 +28,6 @@ from pymammotion.aliyun.exceptions import (
     FailedRequestException,
     GatewayTimeoutException,
     LoginException,
-    SetupException,
     TooManyRequestsException,
 )
 from pymammotion.aliyun.model.aep_response import AepResponse
@@ -847,9 +846,9 @@ class CloudIOTGateway:
                 raise GatewayTimeoutException(response_body_dict.get("code"), iot_id)
 
             if response_body_dict.get("code") == 29003:
-                logger.debug(self._session_by_authcode_response.data.identityId)
-                await self.sign_out()
-                raise SetupException(response_body_dict.get("code"), iot_id)
+                logger.debug("identityId is blank, refreshing Aliyun credentials")
+                msg = "identityId is blank (29003) — token refresh required"
+                raise CheckSessionException(msg)
             if response_body_dict.get("code") == 6205:
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
 

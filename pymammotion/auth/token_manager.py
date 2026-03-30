@@ -189,6 +189,30 @@ class TokenManager:
             if self._cloud_gateway is not None:
                 await self._refresh_aliyun()
 
+    async def refresh_aliyun_credentials(self) -> None:
+        """Force-refresh only Aliyun IoT credentials; called when identityId is blank (29003) or session expires.
+
+        Does not disconnect MQTT or touch HTTP/Mammotion-MQTT credentials.
+
+        Raises:
+            ReLoginRequiredError: If the Aliyun session cannot be renewed.
+
+        """
+        async with self._lock:
+            await self._refresh_aliyun()
+
+    async def refresh_mqtt_credentials(self) -> None:
+        """Force-refresh only Mammotion MQTT JWT credentials; called on MQTT auth errors (401/460).
+
+        Does not touch HTTP or Aliyun credentials.
+
+        Raises:
+            ReLoginRequiredError: If the MQTT credentials cannot be renewed.
+
+        """
+        async with self._lock:
+            await self._refresh_mqtt_creds()
+
     # ------------------------------------------------------------------
     # Private helpers — callers are responsible for holding self._lock.
     # ------------------------------------------------------------------

@@ -1021,7 +1021,21 @@ class MammotionClient:
         _prefer_ble = prefer_ble
 
         async def _do_send() -> None:
-            await handle.send_raw(command_bytes, prefer_ble=_prefer_ble)
+            from pymammotion.aliyun.exceptions import CheckSessionException
+            from pymammotion.transport.base import AuthError
+
+            try:
+                await handle.send_raw(command_bytes, prefer_ble=_prefer_ble)
+            except CheckSessionException:
+                _logger.debug("Aliyun session expired — refreshing Aliyun credentials and retrying")
+                if self._token_manager is not None:
+                    await self._token_manager.refresh_aliyun_credentials()
+                await handle.send_raw(command_bytes, prefer_ble=_prefer_ble)
+            except AuthError:
+                _logger.debug("MQTT auth error — refreshing MQTT credentials and retrying")
+                if self._token_manager is not None:
+                    await self._token_manager.refresh_mqtt_credentials()
+                await handle.send_raw(command_bytes, prefer_ble=_prefer_ble)
 
         await handle.queue.enqueue(_do_send, priority=Priority.NORMAL)
 

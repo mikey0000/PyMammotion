@@ -191,7 +191,7 @@ class MQTTTransport(Transport):
             try:
                 new_jwt = await self._jwt_refresher()
                 self._config = replace(self._config, password=new_jwt)
-                _logger.info("Mammotion MQTT JWT refreshed")
+                _logger.debug("Mammotion MQTT JWT refreshed")
                 return True
             except Exception:
                 _logger.warning("JWT refresh failed", exc_info=True)
@@ -250,12 +250,13 @@ class MQTTTransport(Transport):
                     # rc=134 = Bad User Name or Password — JWT is expired/invalid
                     _bad_credentials_attempts += 1
                     if _bad_credentials_attempts <= _BAD_CREDENTIALS_MAX:
-                        _logger.warning(
+                        _logger.debug(
                             "MQTT rc=134 (bad credentials), JWT refresh attempt %d/%d",
                             _bad_credentials_attempts,
                             _BAD_CREDENTIALS_MAX,
                         )
                         if await self._refresh_jwt():
+                            _bad_credentials_attempts = 0
                             continue
                     _logger.error(
                         "MQTT auth failed after %d JWT refresh attempt(s) — stopping",
@@ -267,7 +268,7 @@ class MQTTTransport(Transport):
                 if rc in (4, 5, 135) or "not authorized" in str(exc).lower():
                     _logger.error("MQTT auth refused (rc=%s): %s — attempting JWT refresh", rc, exc)
                     if await self._refresh_jwt():
-                        _logger.info("Credentials refreshed after auth failure — retrying")
+                        _logger.debug("Credentials refreshed after auth failure — retrying")
                         continue
                     self._stop_event.set()
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
