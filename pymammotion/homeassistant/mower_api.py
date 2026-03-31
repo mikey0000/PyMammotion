@@ -11,7 +11,7 @@ from pymammotion.client import MammotionClient
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
 from pymammotion.proto import RptAct, RptInfoType
-from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, Subscription, TransportType
+from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, TransportType
 from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.device_type import DeviceType
 
@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 
     from pymammotion.data.model.device import MowingDevice
     from pymammotion.data.model.device_limits import DeviceLimits
-    from pymammotion.state.device_state import DeviceSnapshot
 
 logger = getLogger(__name__)
 
@@ -45,10 +44,6 @@ class HomeAssistantMowerApi:
             "device_version_upgrade": timedelta(hours=24),
             "device_info": timedelta(hours=24),
         }
-        # Per-device work state tracking for auto-trigger of MowPathSaga
-        self._active_work_ids: dict[str, int] = {}
-        # RAII subscriptions for state-change watchers (keyed by device_name)
-        self._mow_path_subscriptions: dict[str, Subscription] = {}
 
     @property
     def mammotion(self) -> MammotionClient:
@@ -144,62 +139,6 @@ class HomeAssistantMowerApi:
         else:
             self.update_failures = 0
             return True
-
-    def setup_device_watchers(self, device_name: str) -> Subscription | None:
-        """Subscribe to state changes for a device.
-
-        Automatically triggers MowPathSaga (fetch-only, no re-planning) when the
-        device starts a new mow job externally.  Call teardown_device_watchers()
-        or cancel the returned Subscription when the device is removed.
-
-        Returns the Subscription handle, or None if the device is not yet registered.
-        """
-        handle = self._mammotion.mower(device_name)
-        if handle is None:
-            return None
-
-        async def _on_state_changed(snapshot: DeviceSnapshot) -> None:
-            device = snapshot.raw
-            current_job_id = device.work.job_id
-            current_path_hash = device.work.path_hash
-
-            last_job_id = self._active_work_ids.get(device_name, 0)
-
-            new_job = current_path_hash != 0 and current_job_id != last_job_id
-            plan_missing = current_path_hash != 0 and not device.map.current_mow_path
-
-            if new_job or plan_missing:
-                # Avoid queuing a duplicate saga while one is already running
-                if handle.queue.is_saga_active:
-                    return
-                # New mow job started (possibly from device panel or another source),
-                # or device is working but we have no cover path yet.
-                self._active_work_ids[device_name] = current_job_id
-                zone_hashs = list(device.work.zone_hashs)
-                logger.debug(
-                    "Device %s started new job %d — auto-fetching cover path for %d zone(s)",
-                    device_name,
-                    current_job_id,
-                    len(zone_hashs),
-                )
-                try:
-                    await self._mammotion.start_mow_path_saga(
-                        device_name,
-                        zone_hashs=zone_hashs,
-                        skip_planning=True,
-                    )
-                except Exception:  # noqa: BLE001
-                    logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
-
-        sub = handle.subscribe_state_changed(_on_state_changed)
-        self._mow_path_subscriptions[device_name] = sub
-        return sub
-
-    def teardown_device_watchers(self, device_name: str) -> None:
-        """Cancel state-change subscriptions for the named device."""
-        sub = self._mow_path_subscriptions.pop(device_name, None)
-        if sub is not None:
-            sub.cancel()
 
     async def set_scheduled_updates(self, device_name: str, enabled: bool) -> None:
         """Disconnect all transports for the named device when scheduled updates are disabled."""

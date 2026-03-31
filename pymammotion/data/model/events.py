@@ -2,10 +2,12 @@ from dataclasses import dataclass, field
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pymammotion.data.model.enums import TaskAreaStatus
+
 
 @dataclass
 class WorkTaskEvent(DataClassORJSONMixin):
-    hash_area_map: dict[int, int] = field(default_factory=dict)
+    hash_area_map: dict[int, TaskAreaStatus] = field(default_factory=dict)
     ids: list[int] = field(default_factory=list)
 
 

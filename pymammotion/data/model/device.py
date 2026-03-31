@@ -11,6 +11,7 @@ import orjson
 from pymammotion.data.model import HashList, RapidState
 from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorkingHours, MowerInfo
 from pymammotion.data.model.device_limits import DeviceLimits
+from pymammotion.data.model.enums import TaskAreaStatus
 from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
@@ -123,21 +124,15 @@ class MowingDevice(DataClassORJSONMixin):
                 # Format: [3, 0, count, hash1, status1, hash2, status2, ...]
                 # Pairs of (zone_hash, status) starting at index 3, step 2.
                 # task_area_ids preserves the original mow order of zones.
-                # Status values (from APK StateSymbolLayer / BaseMapFragment):
-                #   0 = not started / not selected
-                #   1 = selected, waiting (选中未割 — selected not yet mowed)
-                #   2 = currently mowing (选中正在割 — selected currently mowing)
-                #   3 = complete (区域完成 — area complete)
-                #   5 = abort / skip
-                task_area_map: dict[int, int] = {}
+                # Status values: see TaskAreaStatus enum.
+                task_area_map: dict[int, TaskAreaStatus] = {}
                 task_area_ids = []
 
                 for i in range(3, len(buffer_list.update_buf_data), 2):
                     area_id = buffer_list.update_buf_data[i]
 
                     if area_id != 0:
-                        area_value = int(buffer_list.update_buf_data[i + 1])
-                        task_area_map[area_id] = area_value
+                        task_area_map[area_id] = TaskAreaStatus(int(buffer_list.update_buf_data[i + 1]))
                         task_area_ids.append(area_id)
                 self.events.work_tasks_event.hash_area_map = task_area_map
                 self.events.work_tasks_event.ids = task_area_ids

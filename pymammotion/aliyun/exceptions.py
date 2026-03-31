@@ -59,4 +59,4 @@ class CheckSessionException(Exception):
     """Raise exception when checking session results in a failure."""
 
 
-EXPIRED_CREDENTIAL_EXCEPTIONS = (CheckSessionException, SetupException)
+EXPIRED_CREDENTIAL_EXCEPTIONS = CheckSessionException

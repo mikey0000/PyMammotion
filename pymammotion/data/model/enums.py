@@ -172,3 +172,19 @@ class IotConnectionStatus(IntEnum):
     OFFLINE = 0
     ONLINE = 1
     RESET = 2
+
+
+class TaskAreaStatus(IntEnum):
+    """Per-zone status within a work task session.
+
+    Stored as the value in WorkTaskEvent.hash_area_map (dict[zone_hash, TaskAreaStatus]).
+    Populated from system_update_buf when buf_type == 4 (task area progress buffer).
+
+    Source: APK comments (Chinese) extracted from device update buffer parsing.
+    """
+
+    NOT_STARTED = 0  # Zone selected but mowing has not yet begun
+    WAITING = 1  # Zone selected, queued behind another zone (选中未割)
+    MOWING = 2  # Zone currently being mowed (选中正在割)
+    COMPLETE = 3  # Zone finished (区域完成)
+    ABORTED = 5  # Zone skipped or aborted

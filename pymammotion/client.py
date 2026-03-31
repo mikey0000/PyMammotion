@@ -40,7 +40,7 @@ from pymammotion.http.model.http import DeviceRecord, DeviceRecords, Response
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
-from pymammotion.transport.base import TransportType
+from pymammotion.transport.base import Subscription, TransportType
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 
@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from pymammotion.data.model import GenerateRouteInformation
     from pymammotion.data.model.device import MowingDevice
     from pymammotion.http.model.http import MQTTConnection
+    from pymammotion.state.device_state import DeviceSnapshot
 
 _logger = logging.getLogger(__name__)
 
@@ -109,6 +110,8 @@ class MammotionClient:
         self._cloud_client: CloudIOTGateway | None = None
         self._mammotion_http: MammotionHTTP | None = None
         self._token_manager: TokenManager | None = None
+        # RAII subscriptions for state-change watchers (keyed by device_name)
+        self._watcher_subscriptions: dict[str, Subscription] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -134,6 +137,71 @@ class MammotionClient:
         if handle is not None:
             task = loop.create_task(self._device_registry.unregister(handle.device_id))
             del task  # RUF006: reference held briefly to satisfy linter, task is fire-and-forget
+
+    # ------------------------------------------------------------------
+    # Device state watchers
+    # ------------------------------------------------------------------
+
+    def setup_device_watchers(self, device_name: str) -> Subscription | None:
+        """Subscribe to state changes for a device.
+
+        Automatically triggers MowPathSaga (fetch-only, no re-planning) when the
+        device is found to be actively working (non-empty work_tasks_event.ids and
+        a non-zero report_data.work.path_hash) but the cover path has not yet been
+        collected.  Call teardown_device_watchers() when the device is removed.
+
+        Returns the Subscription handle, or None if the device is not yet registered.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return None
+
+        async def _on_state_changed(snapshot: DeviceSnapshot) -> None:
+            device = snapshot.raw
+            task_ids = device.events.work_tasks_event.ids
+            work = device.report_data.work
+            actively_working = bool(task_ids) and work.path_hash != 0
+            path_missing = not device.map.current_mow_path and actively_working
+
+            if path_missing:
+                if handle.queue.is_saga_active:
+                    return
+                _logger.debug(
+                    "Device %s is actively working — auto-fetching cover path for %d zone(s)",
+                    device_name,
+                    len(task_ids),
+                )
+                try:
+                    await self.start_mow_path_saga(
+                        device_name,
+                        zone_hashs=list(task_ids),
+                        skip_planning=True,
+                    )
+                except Exception:  # noqa: BLE001
+                    _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
+
+        sub = handle.subscribe_state_changed(_on_state_changed)
+        self._watcher_subscriptions[device_name] = sub
+        return sub
+
+    def teardown_device_watchers(self, device_name: str) -> None:
+        """Cancel state-change subscriptions for the named device."""
+        sub = self._watcher_subscriptions.pop(device_name, None)
+        if sub is not None:
+            sub.cancel()
+
+    def setup_all_mower_watchers(self) -> None:
+        """Set up state-change watchers for all registered mower devices.
+
+        Skips RTK base stations and swimming-pool (Spino/S1/E1) devices.
+        """
+        from pymammotion.utility.device_type import DeviceType
+
+        for handle in self._device_registry.all_devices:
+            name = handle.device_name
+            if DeviceType.is_rtk(name) or DeviceType.is_swimming_pool(name):
+                continue
+            self.setup_device_watchers(name)
 
     # ------------------------------------------------------------------
     # Device access
@@ -276,11 +344,11 @@ class MammotionClient:
 
             self._cloud_client = cloud_client
             self._token_manager = TokenManager(account, mammotion_http, cloud_client)
-            transport = self._setup_aliyun_transport(cloud_client)
+            al_transport = self._setup_aliyun_transport(cloud_client)
             for device in cloud_client.devices_by_account_response.data.data:
                 if device.device_name:
-                    await self._register_aliyun_device(device.device_name, device.iot_id, transport)
-            await transport.connect()
+                    await self._register_aliyun_device(device.device_name, device.iot_id, al_transport)
+            await al_transport.connect()
 
         if mammotion_records:
             await mammotion_http.get_mqtt_credentials()
