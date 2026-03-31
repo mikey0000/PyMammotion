@@ -12,14 +12,9 @@ from urllib.parse import urlparse
 
 import aiomqtt
 
-from pymammotion.aliyun.exceptions import (
-    CheckSessionException,
-    DeviceOfflineException,
-    FailedRequestException,
-    GatewayTimeoutException,
-    SetupException,
-)
+from pymammotion.aliyun.exceptions import DeviceOfflineException, FailedRequestException, GatewayTimeoutException
 from pymammotion.http.model.http import DeviceRecord, MQTTConnection, UnauthorizedException
+from pymammotion.transport.base import SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 if TYPE_CHECKING:
@@ -105,14 +100,12 @@ class MammotionMQTT:
             logger.debug("Gateway timeout.")
             raise GatewayTimeoutException(res.code, iot_id)
         if res.code == 29003:
-            raise SetupException(res.code, iot_id)
+            raise SessionExpiredError(TransportType.CLOUD_MAMMOTION, f"identityId is blank (29003) iot_id={iot_id}")
         if res.code == 6205:
             raise DeviceOfflineException(res.code, iot_id)
-        if res.code == 6205:
-            raise CheckSessionException(res.data)
         if res.code == 460:
             logger.debug("token expired, must re-login.")
-            raise CheckSessionException(res.data)
+            raise SessionExpiredError(TransportType.CLOUD_MAMMOTION, f"token expired (460) iot_id={iot_id}")
         if res.code != 0:
             raise Exception(f"Error sending cloud command: {res.msg}, {iot_id}")
         return str(res.data.get("result") if res.data is not None else "")

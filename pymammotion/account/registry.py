@@ -1,4 +1,4 @@
-"""AccountSession and AccountRegistry — replaces the Mammotion god-object."""
+"""AccountSession and AccountRegistry — per-account state management."""
 
 from __future__ import annotations
 
@@ -7,22 +7,34 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
     from pymammotion.auth.token_manager import TokenManager
-    from pymammotion.mqtt.pool import MQTTConnectionPool
+    from pymammotion.http.http import MammotionHTTP
+    from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
+    from pymammotion.transport.mqtt import MQTTTransport
+
+# Account ID used for BLE-only devices that have no cloud account.
+BLE_ONLY_ACCOUNT = "__ble__"
 
 
 @dataclass
 class AccountSession:
-    """All per-account state: credentials, MQTT pool, and BLE manager.
+    """All per-account state: credentials, transports, and device ownership.
 
-    One AccountSession per logged-in account. Multiple accounts are supported.
-    The ``ble_manager`` attribute is intentionally omitted here to avoid circular
-    import issues; callers may attach a BLETransportManager at runtime as needed.
+    One AccountSession per logged-in account.  BLE-only devices get a shared
+    session with ``account_id = BLE_ONLY_ACCOUNT`` and all cloud fields left
+    as ``None``.
     """
 
     account_id: str
-    token_manager: TokenManager
-    mqtt_pool: MQTTConnectionPool
+    email: str = ""
+    password: str = ""
+    user_account: int = 0
+    token_manager: TokenManager | None = None
+    mammotion_http: MammotionHTTP | None = None
+    cloud_client: CloudIOTGateway | None = None
+    aliyun_transport: AliyunMQTTTransport | None = None
+    mammotion_transport: MQTTTransport | None = None
     device_ids: set[str] = field(default_factory=set)
 
 
@@ -35,43 +47,30 @@ class AccountRegistry:
         self._lock: asyncio.Lock = asyncio.Lock()
 
     async def register(self, session: AccountSession) -> None:
-        """Add or replace a session in the registry.
-
-        Args:
-            session: The :class:`AccountSession` to register.
-
-        """
+        """Add or replace a session in the registry."""
         async with self._lock:
             self._sessions[session.account_id] = session
 
     async def unregister(self, account_id: str) -> None:
-        """Remove a session from the registry by account ID.
-
-        If *account_id* is not present, this is a no-op.
-
-        Args:
-            account_id: The account to remove.
-
-        """
+        """Remove a session from the registry by account ID (no-op if absent)."""
         async with self._lock:
             self._sessions.pop(account_id, None)
 
     def get(self, account_id: str) -> AccountSession | None:
-        """Return the session for *account_id*, or ``None`` if not registered.
-
-        This method does **not** acquire the lock because reads from a dict are
-        thread-safe in CPython and the method is not async.  Callers that need
-        strong consistency while modifying the registry should use
-        ``async with registry._lock``.
-
-        Args:
-            account_id: The account identifier to look up.
-
-        Returns:
-            The matching :class:`AccountSession` or ``None``.
-
-        """
+        """Return the session for *account_id*, or ``None``."""
         return self._sessions.get(account_id)
+
+    def find_by_device(self, device_name: str) -> AccountSession | None:
+        """Return the session that owns *device_name*, or ``None``."""
+        for session in self._sessions.values():
+            if device_name in session.device_ids:
+                return session
+        return None
+
+    @property
+    def all_sessions(self) -> list[AccountSession]:
+        """Return all registered sessions."""
+        return list(self._sessions.values())
 
     @property
     def sessions(self) -> dict[str, AccountSession]:

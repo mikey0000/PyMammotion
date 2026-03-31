@@ -23,7 +23,6 @@ from mashumaro import MissingField
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.exceptions import (
     AuthRefreshException,
-    CheckSessionException,
     DeviceOfflineException,
     FailedRequestException,
     GatewayTimeoutException,
@@ -42,6 +41,7 @@ from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import LoginResponseData, MQTTConnection, Response
 from pymammotion.http.model.response_factory import response_factory
+from pymammotion.transport.base import SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
@@ -556,11 +556,15 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             logger.error(response_body_dict)
             await self.sign_out()
-            raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
+            raise SessionExpiredError(
+                TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
+            )
 
         if response_body_dict.get("code") == 2401:
             await self.sign_out()
-            raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
+            raise SessionExpiredError(
+                TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
+            )
 
         session = SessionByAuthCodeResponse.from_dict(response_body_dict)
         session_data = session.data
@@ -847,14 +851,15 @@ class CloudIOTGateway:
 
             if response_body_dict.get("code") == 29003:
                 logger.debug("identityId is blank, refreshing Aliyun credentials")
-                msg = "identityId is blank (29003) — token refresh required"
-                raise CheckSessionException(msg)
+                raise SessionExpiredError(
+                    TransportType.CLOUD_ALIYUN, "identityId is blank (29003) — token refresh required"
+                )
             if response_body_dict.get("code") == 6205:
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
 
             if response_body_dict.get("code") == 460:
                 logger.debug("iotToken expired, must re-login.")
-                raise CheckSessionException(response_body_dict.get("message"))
+                raise SessionExpiredError(TransportType.CLOUD_ALIYUN, response_body_dict.get("message"))
 
         if self.message_delay != 1:
             self.message_delay = 1

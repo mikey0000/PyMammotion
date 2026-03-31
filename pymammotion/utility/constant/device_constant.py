@@ -308,6 +308,12 @@ class PosType(IntEnum):
 
 def camera_brightness(value: int) -> str:
     """Return the brightness corresponding to the given value."""
+
+    if value not in (0, 1):
+        if value > 45:
+            return "Light"
+        return "Dark"
+
     modes = {
         0: "Dark",
         1: "Light",

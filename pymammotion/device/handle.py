@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from pymammotion.data.model.device import MowingDevice
     from pymammotion.device.readiness import ReadinessChecker, ReadinessStatus
     from pymammotion.device.staleness_watcher import MapStalenessWatcher
+    from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
     from pymammotion.messaging.saga import Saga
 
 _logger = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ class DeviceHandle:
         initial_device: MowingDevice,
         *,
         iot_id: str = "",
+        user_account: int = 0,
         mqtt_transport: Transport | None = None,
         ble_transport: Transport | None = None,
         prefer_ble: bool = False,
@@ -141,6 +143,7 @@ class DeviceHandle:
         self.device_id = device_id
         self.device_name = device_name
         self.iot_id = iot_id
+        self.user_account = user_account
         self.broker = DeviceMessageBroker()
         self.queue = DeviceCommandQueue()
         self.state_machine = DeviceStateMachine(device_id, initial_device)
@@ -161,6 +164,13 @@ class DeviceHandle:
 
         if ble_transport is not None:
             self._wire_transport(ble_transport)
+
+    @property
+    def commands(self) -> MammotionCommand:
+        """Return a MammotionCommand builder for this device."""
+        from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
+
+        return MammotionCommand(self.device_name, self.user_account)
 
     def _wire_transport(self, transport: Transport) -> None:
         """Wire callbacks on a transport and register it."""

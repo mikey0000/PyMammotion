@@ -1,6 +1,6 @@
 import json
 
-from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException, SetupException
+from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
 from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import RTKDevice
 from pymammotion.http.model.http import CheckDeviceVersion
@@ -15,6 +15,7 @@ from pymammotion.http.model.http import CheckDeviceVersion
 # still relies on the old MammotionRTKDeviceManager (via mammotion.get_rtk_device_by_name)
 # for the cloud_client and RTK-specific state.  See task #7 and #8.
 from pymammotion.mammotion.devices.mammotion import Mammotion
+from pymammotion.transport.base import SessionExpiredError
 
 
 class HomeAssistantRTKApi:
@@ -67,8 +68,8 @@ class HomeAssistantRTKApi:
                     if check_version.device_id == device.state.iot_id:
                         device.state.update_check = check_version
             return device.state
-        except SetupException:
-            """Cloud IOT Gateway is not setup."""
+        except SessionExpiredError:
+            """Cloud IOT session expired."""
             return device.state
         except DeviceOfflineException:
             device.state.online = False

@@ -42,13 +42,23 @@ class ConcurrentRequestError(TransportError):
 
 
 class ReLoginRequiredError(AuthError):
-    """Token refresh is impossible; the user must re-authenticate."""
+    """Token refresh failed; a full re-login with stored credentials will be attempted."""
 
     def __init__(self, account_id: str, reason: str) -> None:
         """Store account ID and reason, then format the message."""
         self.account_id = account_id
         self.reason = reason
         super().__init__(f"Re-login required for account '{account_id}': {reason}")
+
+
+class LoginFailedError(AuthError):
+    """Full re-login with stored credentials failed; user must reconfigure."""
+
+    def __init__(self, account_id: str, reason: str) -> None:
+        """Store account ID and reason, then format the message."""
+        self.account_id = account_id
+        self.reason = reason
+        super().__init__(f"Login failed for account '{account_id}': {reason}")
 
 
 class NoBLEAddressKnownError(TransportError):
@@ -79,6 +89,18 @@ class TransportType(Enum):
     CLOUD_ALIYUN = "cloud_aliyun"
     CLOUD_MAMMOTION = "cloud_mammotion"
     BLE = "ble"
+
+
+class SessionExpiredError(AuthError):
+    """Session token expired; a targeted credential refresh should fix it.
+
+    Carries the transport_type so the caller knows which credentials to refresh.
+    """
+
+    def __init__(self, transport_type: TransportType, message: str = "") -> None:
+        """Store the transport type whose session expired."""
+        self.transport_type = transport_type
+        super().__init__(message or f"Session expired on {transport_type.value}")
 
 
 class TransportAvailability(Enum):
@@ -222,6 +244,11 @@ class Transport(ABC):
     @abstractmethod
     def is_connected(self) -> bool:
         """True if the transport currently has an active connection."""
+
+    @property
+    @abstractmethod
+    def availability(self) -> TransportAvailability:
+        """Current availability state of this transport."""
 
     @property
     @abstractmethod

@@ -250,7 +250,8 @@ class TokenManager:
             ReLoginRequiredError: If the refresh token has expired or the session cannot be renewed.
 
         """
-        from pymammotion.aliyun.exceptions import AuthRefreshException, CheckSessionException
+        from pymammotion.aliyun.exceptions import AuthRefreshException
+        from pymammotion.transport.base import SessionExpiredError
 
         if self._cloud_gateway is None:
             raise ReLoginRequiredError(self._account_id, "No Aliyun cloud gateway configured")
@@ -269,7 +270,7 @@ class TokenManager:
             )
         except ReLoginRequiredError:
             raise
-        except (AuthRefreshException, CheckSessionException) as exc:
+        except (AuthRefreshException, SessionExpiredError) as exc:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         except Exception as exc:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
