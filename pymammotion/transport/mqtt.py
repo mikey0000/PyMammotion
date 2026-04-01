@@ -11,6 +11,7 @@ import logging
 import ssl
 from typing import TYPE_CHECKING
 
+from aiohttp import ClientConnectorDNSError
 import aiomqtt
 
 from pymammotion.transport.base import AuthError, Transport, TransportAvailability, TransportError, TransportType
@@ -156,6 +157,8 @@ class MQTTTransport(Transport):
         content = base64.b64encode(payload).decode()
         try:
             res = await self._http.mqtt_invoke(content, "", iot_id)
+        except ClientConnectorDNSError:
+            raise TransportError("MQTTTransport.send: DNS lookup timed out") from None
         except UnauthorizedException:
             _logger.warning("MQTTTransport.send: HTTP access token expired — refreshing and retrying")
             try:

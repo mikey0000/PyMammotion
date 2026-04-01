@@ -116,9 +116,17 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
     from pymammotion.utility.map import CoordinateConverter
 
     rtk = device.location.RTK
-    now_index = device.report_data.work.now_index
+    work = device.report_data.work
+    now_index = work.now_index
+    ub_path_hash = work.ub_path_hash
     if rtk.latitude == 0 or now_index <= 0 or not device.map.current_mow_path:
         return
+
+    # Decode exact device position from path_pos_x/y (raw int ÷ 10000 → ENU metres).
+    # Non-zero values give a more precise start point for the remaining-path line.
+    path_pos_x = work.path_pos_x / 10000.0
+    path_pos_y = work.path_pos_y / 10000.0
+    path_pos = (path_pos_x, path_pos_y) if (path_pos_x != 0.0 or path_pos_y != 0.0) else None
 
     conv = CoordinateConverter(rtk.latitude, rtk.longitude)
     rtk_ll = conv.enu_to_lla(0, 0)
@@ -126,6 +134,8 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
         device.map,
         now_index,
         Point(rtk_ll.latitude, rtk_ll.longitude),
+        ub_path_hash=ub_path_hash,
+        path_pos=path_pos,
     )
 
 

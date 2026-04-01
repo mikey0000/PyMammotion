@@ -2051,7 +2051,7 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.7.15"
+version = "0.7.18"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

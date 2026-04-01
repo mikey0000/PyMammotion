@@ -246,18 +246,30 @@ class GeojsonGenerator:
         hash_list: HashList,
         now_index: int,
         rtk_location: Point,
+        ub_path_hash: int = 0,
+        path_pos: tuple[float, float] | None = None,
     ) -> GeoJSONCollection:
-        """Generate a GeoJSON FeatureCollection showing the completed mow path portion.
+        """Generate a GeoJSON FeatureCollection showing the remaining mow path portion.
 
-        Flattens all path points from ``hash_list.current_mow_path`` in order
-        (by transaction_id then frame index), then slices to ``now_index`` to
-        produce the portion of the planned path that has been completed.
+        Filters ``hash_list.current_mow_path`` packets to those whose ``path_hash``
+        matches ``ub_path_hash``, then slices from ``now_index`` onwards to produce
+        the remaining (not-yet-mowed) portion of the planned path.
+
+        When ``path_pos`` is provided (ENU metres decoded from ``report_data.work.path_pos_x/y``),
+        it is prepended as the precise starting coordinate — matching APK behaviour where the
+        current device position begins the remaining-path line.  Without it the function falls back
+        to starting from ``all_points[now_index - 1]``.
 
         Args:
-            hash_list:   HashList containing ``current_mow_path`` data.
-            now_index:   Current path position index from ``report_data.work.now_index``
-                         or ``mowing_state.now_index``.  Points 0..now_index are shown.
+            hash_list:    HashList containing ``current_mow_path`` data.
+            now_index:    Current path position index from ``report_data.work.now_index``
+                          or ``mowing_state.now_index``.  Points 0..now_index are completed.
             rtk_location: Shapely ``Point(latitude, longitude)`` for the RTK base station.
+            ub_path_hash: The path hash from ``report_data.work.ub_path_hash`` used to
+                          filter the correct path packets.  Pass 0 to include all packets.
+            path_pos:     Optional ``(x_metres, y_metres)`` ENU position of the device
+                          (``report_data.work.path_pos_x / 10000``, same for y``).
+                          When non-zero this replaces the ``now_index - 1`` fallback start point.
 
         Returns:
             GeoJSON FeatureCollection with zero or one LineString features.
@@ -272,30 +284,42 @@ class GeojsonGenerator:
         if now_index <= 0 or not hash_list.current_mow_path:
             return geo_json
 
-        # Flatten all mow path points in transaction_id / frame order.
+        # Collect matching packets sorted by path_cur so the path is in execution order
+        # regardless of the frame arrival order (current_mow_path is unordered).
         all_points: list[CommDataCouple] = []
         for transaction_id in sorted(hash_list.current_mow_path.keys()):
             frames = hash_list.current_mow_path[transaction_id]
+            matching_packets = []
             for frame_idx in sorted(frames.keys()):
                 mow_path = frames[frame_idx]
                 for packet in mow_path.path_packets:
-                    all_points.extend(packet.data_couple)
+                    if ub_path_hash == 0 or packet.path_hash == ub_path_hash:
+                        matching_packets.append(packet)
+            matching_packets.sort(key=lambda p: p.path_cur)
+            for packet in matching_packets:
+                all_points.extend(packet.data_couple)
 
-        completed = all_points[:now_index]
-        if len(completed) < 2:
+        # Build remaining path: APK does path[nowIndex:] then prepends the exact device
+        # position (path_pos_x/y) as the first point so the line begins at the mower's
+        # current location rather than the next planned waypoint.
+        if path_pos is not None and (path_pos[0] != 0.0 or path_pos[1] != 0.0):
+            remaining: list[CommDataCouple] = [CommDataCouple(x=path_pos[0], y=path_pos[1])] + all_points[now_index:]
+        else:
+            # Fallback: start one point before nowIndex to include the current section.
+            start = max(0, now_index - 1)
+            remaining = all_points[start:]
+        if len(remaining) < 2:
             return geo_json
 
-        lonlat_coords: CoordinateList = [
-            list(GeojsonGenerator.lon_lat_delta(rtk_location, pt.x, pt.y)) for pt in completed
-        ]
-        length, _ = GeojsonGenerator.map_object_stats(completed)
+        lonlat_coords: CoordinateList = GeojsonGenerator._convert_to_lonlat_coords(remaining, rtk_location)
+        length, _ = GeojsonGenerator.map_object_stats(remaining)
 
         geo_json["features"].append(
             {
                 "type": "Feature",
                 "properties": {
                     "type_name": "mow_progress",
-                    "point_count": len(completed),
+                    "point_count": len(remaining),
                     "now_index": now_index,
                     "total_points": len(all_points),
                     "length": length,
