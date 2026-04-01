@@ -35,6 +35,7 @@ from rich.logging import RichHandler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import Subscription, TransportType
 
@@ -153,89 +154,99 @@ class DevConsole:
 
         _rich_console.rule("[bold yellow]MQTT Credentials[/bold yellow]")
 
-        http = self.mammotion._mammotion_http  # noqa: SLF001
+        for acct_session in self.mammotion.account_registry.all_sessions:
+            if acct_session.account_id == BLE_ONLY_ACCOUNT:
+                continue
 
-        # ── HTTP / JWT layer ─────────────────────────────────────────────────
-        if http is not None and http.login_info is not None:
-            _rich_console.print("\n[bold white]── HTTP / JWT ──[/bold white]")
-            _rich_console.print("[bold]HTTP access token[/bold]")
-            expires_in = http.expires_in
-            remaining = max(0, int(expires_in - time.time()))
-            _rich_console.print(f"  access_token  : {http.login_info.access_token}")
-            _rich_console.print(
-                f"  expires_at    : {datetime.fromtimestamp(expires_in, tz=UTC).isoformat()}"
-                f"  ([cyan]{remaining // 3600}h {(remaining % 3600) // 60}m[/cyan] remaining)"
+            # Prefer the HTTP client embedded in the cloud gateway (Aliyun path).
+            http = (
+                acct_session.cloud_client.mammotion_http
+                if acct_session.cloud_client is not None
+                else acct_session.mammotion_http
             )
-            _rich_console.print(f"  refresh_token : {http.login_info.refresh_token}")
 
-            _LOGGER.debug("HTTP access_token=%s", http.login_info.access_token)
-            _LOGGER.debug("HTTP refresh_token=%s", http.login_info.refresh_token)
-            _LOGGER.debug("HTTP expires_at=%s remaining=%ds", http.expires_in, remaining)
+            _rich_console.print(f"\n[bold white]── Account: {acct_session.account_id} ──[/bold white]")
 
-            # ── MammotionMQTT JWT credentials ─────────────────────────────
-            if http.mqtt_credentials is not None:
-                creds = http.mqtt_credentials
-                _rich_console.print("\n[bold]MammotionMQTT (JWT)[/bold]")
-                _rich_console.print(f"  host          : {creds.host}")
-                _rich_console.print(f"  username      : {creds.username}")
-                _rich_console.print(f"  client_id     : {creds.client_id}")
-                _rich_console.print(f"  jwt           : {creds.jwt}")
+            # ── HTTP / JWT layer ─────────────────────────────────────────────────
+            if http is not None and http.login_info is not None:
+                _rich_console.print("[bold]HTTP access token[/bold]")
+                expires_in = http.expires_in
+                remaining = max(0, int(expires_in - time.time()))
+                _rich_console.print(f"  access_token  : {http.login_info.access_token}")
+                _rich_console.print(
+                    f"  expires_at    : {datetime.fromtimestamp(expires_in, tz=UTC).isoformat()}"
+                    f"  ([cyan]{remaining // 3600}h {(remaining % 3600) // 60}m[/cyan] remaining)"
+                )
+                _rich_console.print(f"  refresh_token : {http.login_info.refresh_token}")
+
+                _LOGGER.debug("HTTP access_token=%s", http.login_info.access_token)
+                _LOGGER.debug("HTTP refresh_token=%s", http.login_info.refresh_token)
+                _LOGGER.debug("HTTP expires_at=%s remaining=%ds", http.expires_in, remaining)
+
+                # ── MammotionMQTT JWT credentials ─────────────────────────────
+                if http.mqtt_credentials is not None:
+                    creds = http.mqtt_credentials
+                    _rich_console.print("\n[bold]MammotionMQTT (JWT)[/bold]")
+                    _rich_console.print(f"  host          : {creds.host}")
+                    _rich_console.print(f"  username      : {creds.username}")
+                    _rich_console.print(f"  client_id     : {creds.client_id}")
+                    _rich_console.print(f"  jwt           : {creds.jwt}")
+                    _LOGGER.debug(
+                        "MammotionMQTT host=%s username=%s client_id=%s jwt=%s",
+                        creds.host,
+                        creds.username,
+                        creds.client_id,
+                        creds.jwt,
+                    )
+
+            # ── AliyunMQTT credentials ───────────────────────────────────────────
+            aliyun = acct_session.aliyun_transport
+            cloud_client = acct_session.cloud_client
+            if aliyun is not None:
+                cfg = aliyun._config  # noqa: SLF001
+                _rich_console.print("\n[bold white]── AliyunMQTT ──[/bold white]")
+                _rich_console.print("[bold]AliyunMQTT (HMAC + iotToken)[/bold]")
+                _rich_console.print(f"  host          : {cfg.host}")
+                _rich_console.print(f"  username      : {cfg.username}")
+                _rich_console.print(f"  product_key   : {cfg.product_key}")
+                _rich_console.print(f"  device_name   : {cfg.device_name}")
+                _rich_console.print(f"  device_secret : {cfg.device_secret}")
                 _LOGGER.debug(
-                    "MammotionMQTT host=%s username=%s client_id=%s jwt=%s",
-                    creds.host,
-                    creds.username,
-                    creds.client_id,
-                    creds.jwt,
+                    "AliyunMQTT host=%s username=%s product_key=%s device_name=%s device_secret=%s",
+                    cfg.host,
+                    cfg.username,
+                    cfg.product_key,
+                    cfg.device_name,
+                    cfg.device_secret,
                 )
 
-        # ── AliyunMQTT credentials ───────────────────────────────────────────
-        aliyun = self.mammotion._aliyun_transport  # noqa: SLF001
-        cloud_client = self.mammotion._cloud_client  # noqa: SLF001
-        if aliyun is not None:
-            cfg = aliyun._config  # noqa: SLF001
-            _rich_console.print("\n[bold white]── AliyunMQTT ──[/bold white]")
-            _rich_console.print("[bold]AliyunMQTT (HMAC + iotToken)[/bold]")
-            _rich_console.print(f"  host          : {cfg.host}")
-            _rich_console.print(f"  username      : {cfg.username}")
-            _rich_console.print(f"  product_key   : {cfg.product_key}")
-            _rich_console.print(f"  device_name   : {cfg.device_name}")
-            _rich_console.print(f"  device_secret : {cfg.device_secret}")
-            _LOGGER.debug(
-                "AliyunMQTT host=%s username=%s product_key=%s device_name=%s device_secret=%s",
-                cfg.host,
-                cfg.username,
-                cfg.product_key,
-                cfg.device_name,
-                cfg.device_secret,
-            )
-
-            if cloud_client is not None:
-                session = cloud_client.session_by_authcode_response
-                if session is not None and session.data is not None:
-                    issued = cloud_client._iot_token_issued_at  # noqa: SLF001
-                    ion_exp = max(0, int(issued + session.data.iotTokenExpire - time.time()))
-                    ref_exp = max(0, int(issued + session.data.refreshTokenExpire - time.time()))
-                    _rich_console.print("\n[bold]  Aliyun session[/bold]")
-                    _rich_console.print(f"    iotToken          : {session.data.iotToken}")
-                    _rich_console.print(
-                        f"    iotTokenExpire    : {session.data.iotTokenExpire}s total"
-                        f"  ([cyan]{ion_exp // 3600}h {(ion_exp % 3600) // 60}m[/cyan] remaining)"
-                    )
-                    _rich_console.print(f"    refreshToken      : {session.data.refreshToken}")
-                    _rich_console.print(
-                        f"    refreshTokenExpire: {session.data.refreshTokenExpire}s total"
-                        f"  ([cyan]{ref_exp // 3600}h {(ref_exp % 3600) // 60}m[/cyan] remaining)"
-                    )
-                    _rich_console.print(
-                        f"    issued_at         : {datetime.fromtimestamp(issued, tz=UTC).isoformat()}"
-                    )
-                    _LOGGER.debug(
-                        "Aliyun iotToken=%s iotTokenExpire=%ds refreshToken=%s refreshTokenExpire=%ds",
-                        session.data.iotToken,
-                        session.data.iotTokenExpire,
-                        session.data.refreshToken,
-                        session.data.refreshTokenExpire,
-                    )
+                if cloud_client is not None:
+                    auth_resp = cloud_client.session_by_authcode_response
+                    if auth_resp is not None and auth_resp.data is not None:
+                        issued = cloud_client._iot_token_issued_at  # noqa: SLF001
+                        ion_exp = max(0, int(issued + auth_resp.data.iotTokenExpire - time.time()))
+                        ref_exp = max(0, int(issued + auth_resp.data.refreshTokenExpire - time.time()))
+                        _rich_console.print("\n[bold]  Aliyun session[/bold]")
+                        _rich_console.print(f"    iotToken          : {auth_resp.data.iotToken}")
+                        _rich_console.print(
+                            f"    iotTokenExpire    : {auth_resp.data.iotTokenExpire}s total"
+                            f"  ([cyan]{ion_exp // 3600}h {(ion_exp % 3600) // 60}m[/cyan] remaining)"
+                        )
+                        _rich_console.print(f"    refreshToken      : {auth_resp.data.refreshToken}")
+                        _rich_console.print(
+                            f"    refreshTokenExpire: {auth_resp.data.refreshTokenExpire}s total"
+                            f"  ([cyan]{ref_exp // 3600}h {(ref_exp % 3600) // 60}m[/cyan] remaining)"
+                        )
+                        _rich_console.print(
+                            f"    issued_at         : {datetime.fromtimestamp(issued, tz=UTC).isoformat()}"
+                        )
+                        _LOGGER.debug(
+                            "Aliyun iotToken=%s iotTokenExpire=%ds refreshToken=%s refreshTokenExpire=%ds",
+                            auth_resp.data.iotToken,
+                            auth_resp.data.iotTokenExpire,
+                            auth_resp.data.refreshToken,
+                            auth_resp.data.refreshTokenExpire,
+                        )
 
         _rich_console.rule()
 

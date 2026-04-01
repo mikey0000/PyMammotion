@@ -376,6 +376,28 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Send command--Get transfer area before charging pile")
         return self.send_order_msg_nav(build)
 
+    def get_common_data(self, *, action: int, type: int, sub_cmd: int = 1, hash_num: int = 0) -> bytes:
+        """Generic NavGetCommData request used by CommonDataSaga.
+
+        Sends a ``todev_get_commondata`` message with the given ``action`` and
+        ``type``.  An optional ``hash_num`` is included when the request targets
+        a specific stored hash (e.g. ``synchronize_hash_data`` uses action=8 with
+        a hash; dynamics line uses action=8, type=18 with no hash).
+
+        Args:
+            action:   NavGetCommData action field (e.g. 8 = fetch/sync).
+            type:     PathType value identifying the data to fetch (see PathType
+                      enum and docs/common_data_types.md for the full table).
+            hash_num: Optional hash ID.  Pass 0 (default) when the request is
+                      not hash-specific (e.g. dynamics line, area transfer).
+
+        """
+        build = MctlNav(
+            todev_get_commondata=NavGetCommData(pver=1, action=action, sub_cmd=sub_cmd, type=type, hash=hash_num)
+        )
+        logger.debug("Send command--get_common_data action=%d type=%d hash=%d", action, type, hash_num)
+        return self.send_order_msg_nav(build)
+
     def get_regional_data(self, regional_data: RegionData) -> bytes:
         """Request a specific frame of regional map data (boundary, obstacle, or channel)."""
         build = MctlNav(

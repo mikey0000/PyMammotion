@@ -214,9 +214,6 @@ class StateReducer:
             case "bidire_reqconver_path":
                 work_settings: NavReqCoverPath = nav_msg[1]
                 current_task = CurrentTaskSettings.from_dict(work_settings.to_dict(casing=betterproto2.Casing.SNAKE))
-                if current_task.path_hash == 0:
-                    device.map.current_mow_path = {}
-                    device.map.generated_mow_path_geojson = {}
                 device.work = current_task
             case "nav_sys_param_cmd":
                 settings: NavSysParamMsg = nav_msg[1]

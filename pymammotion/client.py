@@ -101,6 +101,33 @@ def _apply_mow_path_geojson(device: MowingDevice) -> None:
     )
 
 
+def _apply_dynamics_line_geojson(device: MowingDevice) -> None:
+    """Generate and store the dynamics-line GeoJSON on *device*.
+
+    Converts ``device.map.dynamics_line`` (raw x/y metre offsets from the RTK
+    base) to a GeoJSON LineString in WGS-84 and stores the result in
+    ``device.map.generated_dynamics_line_geojson``.
+
+    A no-op when the RTK location is unknown (latitude == 0) or the dynamics
+    line has fewer than two points.
+    """
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    rtk = device.location.RTK
+    if rtk.latitude == 0 or len(device.map.dynamics_line) < 2:
+        return
+
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    device.map.generated_dynamics_line_geojson = GeojsonGenerator.generate_dynamics_line_geojson(
+        device.map.dynamics_line,
+        Point(rtk_ll.latitude, rtk_ll.longitude),
+    )
+
+
 class MammotionClient:
     """Top-level client — stable HA-facing API for the new architecture."""
 
@@ -1008,6 +1035,52 @@ class MammotionClient:
                 _apply_mow_path_geojson(device)
 
         await handle.enqueue_saga(saga, on_complete=_on_mow_path_complete)
+
+    async def get_dynamics_line(self, device_name: str) -> None:
+        """Fetch the live mow-progress path for *device_name* via a CommonDataSaga.
+
+        Sends ``NavGetCommData(action=8, type=18)`` to the device and collects
+        the multi-frame ``toapp_get_commondata_ack`` response.  On completion the
+        assembled ``list[CommDataCouple]`` is stored in
+        ``device.map.dynamics_line``, replacing any previous value.
+
+        The saga is enqueued on the device's command queue, so it will not
+        interrupt other in-progress commands.  Callers should rate-limit
+        invocations to avoid flooding the device — the APK uses a 1-second
+        minimum gap between requests and calls this every ~10 seconds while
+        mowing is active.
+
+        Args:
+            device_name: Registered device name.
+
+        """
+        from pymammotion.data.model.hash_list import PathType
+        from pymammotion.messaging.common_data_saga import CommonDataSaga
+
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            _logger.warning("get_dynamics_line: device '%s' not registered", device_name)
+            return
+
+        _iot_id = handle.iot_id
+
+        async def _send(cmd: bytes) -> None:
+            await handle.active_transport().send(cmd, iot_id=_iot_id)
+
+        saga = CommonDataSaga(
+            command_builder=handle.commands,
+            send_command=_send,
+            action=8,
+            type=PathType.DYNAMICS_LINE,
+        )
+
+        async def _on_complete() -> None:
+            device = self.get_device_by_name(device_name)
+            if device is not None and saga.result:
+                device.map.update_dynamics_line(saga.result)
+                _apply_dynamics_line_geojson(device)
+
+        await handle.enqueue_saga(saga, on_complete=_on_complete)
 
     async def start_edge_mapping(
         self,

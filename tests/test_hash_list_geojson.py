@@ -231,16 +231,20 @@ def test_yuka_mow_path_generates_geojson() -> None:
 
 
 def test_yuka_mow_path_geojson_has_correct_properties() -> None:
-    """Yuka: generated mow path feature has expected metadata properties."""
+    """Yuka: generated mow path GeoJSON contains both mow_path and border_pass features."""
     fixture = _load_yuka_fixture()
     rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
     hash_list = _build_yuka_hash_list(fixture)
 
     result = hash_list.generate_mowing_geojson(rtk)
 
-    feature = result["features"][0]
-    props = feature["properties"]
-    assert props["type_name"] == "mow_path"
+    type_names = {f["properties"]["type_name"] for f in result["features"]}
+    assert "mow_path" in type_names, "Expected a mow_path (stripe) feature"
+    assert "border_pass" in type_names, "Expected a border_pass feature"
+
+    # Verify shared metadata on the mow_path feature
+    mow_feature = next(f for f in result["features"] if f["properties"]["type_name"] == "mow_path")
+    props = mow_feature["properties"]
     assert props["transaction_id"] == fixture["mow_path_frames"][0]["transaction_id"]
     assert props["total_path_num"] == fixture["mow_path_frames"][0]["total_path_num"]
     assert "length" in props
@@ -249,14 +253,15 @@ def test_yuka_mow_path_geojson_has_correct_properties() -> None:
 
 
 def test_yuka_mow_path_geojson_has_linestring_coordinates() -> None:
-    """Yuka: generated mow path feature contains a LineString with real lon/lat coordinates."""
+    """Yuka: all mow path features contain LineStrings with real lon/lat coordinates."""
     fixture = _load_yuka_fixture()
     rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
     hash_list = _build_yuka_hash_list(fixture)
 
     result = hash_list.generate_mowing_geojson(rtk)
 
-    feature = result["features"][0]
+    # Pick the mow_path (stripe) feature specifically; border_pass uses the same transform
+    feature = next(f for f in result["features"] if f["properties"]["type_name"] == "mow_path")
     geometry = feature["geometry"]
     assert geometry["type"] == "LineString"
     coords = geometry["coordinates"]
@@ -332,11 +337,14 @@ def test_yuka_apply_mow_path_geojson_populates_device() -> None:
     assert result["type"] == "FeatureCollection"
     assert len(result["features"]) > 0, "Expected mow path features after apply"
 
-    feature = result["features"][0]
-    assert feature["geometry"]["type"] == "LineString"
-    assert feature["properties"]["type_name"] == "mow_path"
+    # Features are split by path_type; find the mow stripe feature specifically
+    mow_feature = next(
+        (f for f in result["features"] if f["properties"]["type_name"] == "mow_path"), None
+    )
+    assert mow_feature is not None, "Expected a mow_path (stripe) feature"
+    assert mow_feature["geometry"]["type"] == "LineString"
 
     # Verify coordinates are in expected real-world range
-    for lon, lat in feature["geometry"]["coordinates"]:
+    for lon, lat in mow_feature["geometry"]["coordinates"]:
         assert 175.0 < lon < 176.0
         assert -39.0 < lat < -37.0

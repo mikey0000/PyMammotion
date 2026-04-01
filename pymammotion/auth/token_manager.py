@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import time
 from typing import TYPE_CHECKING
 
+from pymammotion.aliyun.exceptions import LoginException
 from pymammotion.transport.base import ReLoginRequiredError
 
 if TYPE_CHECKING:
@@ -256,7 +257,11 @@ class TokenManager:
         if self._cloud_gateway is None:
             raise ReLoginRequiredError(self._account_id, "No Aliyun cloud gateway configured")
         try:
-            await self._cloud_gateway.check_or_refresh_session()
+            try:
+                await self._cloud_gateway.check_or_refresh_session()
+            except SessionExpiredError:
+                return await self.connect_iot(self._cloud_gateway)
+
             session = self._cloud_gateway.session_by_authcode_response
             session_data = session.data
             if session_data is None:
@@ -270,10 +275,27 @@ class TokenManager:
             )
         except ReLoginRequiredError:
             raise
-        except (AuthRefreshException, SessionExpiredError) as exc:
+        except (AuthRefreshException, LoginException) as exc:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         except Exception as exc:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
+
+    @staticmethod
+    async def connect_iot(cloud_client: CloudIOTGateway) -> None:
+        """Run the Aliyun IoT gateway setup sequence (region, AEP, session, devices)."""
+        mammotion_http = cloud_client.mammotion_http
+        login_info = mammotion_http.login_info
+        if login_info is None:
+            msg = "login_info is None — call login_v2() before _connect_iot()"
+            raise ReLoginRequiredError(mammotion_http.account or "", msg)
+        country_code = login_info.userInformation.domainAbbreviation
+        if cloud_client.region_response is None:
+            await cloud_client.get_region(country_code)
+        await cloud_client.connect()
+        await cloud_client.login_by_oauth(country_code)
+        await cloud_client.aep_handle()
+        await cloud_client.session_by_auth_code()
+        await cloud_client.list_binding_by_account()
 
     async def _refresh_mqtt_creds(self) -> None:
         """Fetch fresh MQTT credentials from the Mammotion API.

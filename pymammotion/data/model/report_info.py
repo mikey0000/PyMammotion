@@ -302,6 +302,9 @@ class WorkData(DataClassORJSONMixin):
     path_hash: int = 0
     progress: int = 0
     area: int = 0
+    """Packed field: upper 16 bits = mow completion percentage (0–100),
+    lower 16 bits = area mowed in device units.  Use ``mow_percent`` to
+    read the percentage and ``area_mowed`` for the raw area value."""
     bp_info: int = 0
     bp_hash: int = 0
     bp_pos_x: int = 0
@@ -321,6 +324,16 @@ class WorkData(DataClassORJSONMixin):
     nav_heading_state: HeadingState = field(default_factory=HeadingState)
     cutter_offset: float = 0.0
     cutter_width: float = 0.0
+
+    @property
+    def mow_percent(self) -> int:
+        """Mow completion percentage (0–100), packed in upper 16 bits of ``area``."""
+        return self.area >> 16
+
+    @property
+    def area_mowed(self) -> int:
+        """Area mowed in device units, packed in lower 16 bits of ``area``."""
+        return self.area & 0xFFFF
 
 
 @dataclass

@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from pymammotion.account.registry import AccountRegistry, AccountSession
-from pymammotion.mqtt.pool import MQTTConnectionPool
 
 
 # ---------------------------------------------------------------------------
@@ -17,11 +16,9 @@ from pymammotion.mqtt.pool import MQTTConnectionPool
 
 def _make_session(account_id: str = "user@example.com") -> AccountSession:
     token_manager = MagicMock()
-    mqtt_pool = MagicMock(spec=MQTTConnectionPool)
     return AccountSession(
         account_id=account_id,
         token_manager=token_manager,
-        mqtt_pool=mqtt_pool,
     )
 
 

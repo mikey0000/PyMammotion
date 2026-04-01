@@ -12,16 +12,43 @@ from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 
 
 class PathType(IntEnum):
-    """Path types for common data."""
+    """Path types for NavGetCommData / NavGetCommDataAck ``type`` field.
+
+    These are the numeric values the device uses to identify what kind of
+    map data is carried in a ``toapp_get_commondata_ack`` response.  See
+    ``docs/hash_guide.md`` for a full description of each type.
+    """
 
     AREA = 0
+    """Mowing-area (zone) boundary polygon points."""
+
     OBSTACLE = 1
+    """Keep-out / no-go obstacle boundary points."""
+
     PATH = 2
+    """Recorded travel path segments (Luba 1 path-mode)."""
+
     LINE = 10
+    """Stored mowing-line segments (breakpoint / sub_cmd=3 path segments)."""
+
     DUMP = 12
+    """Dump / clippings-collection zone boundary points."""
+
     SVG = 13
+    """Pre-rendered SVG map tile (device-side raster overview)."""
+
     VISUAL_SAFETY_ZONE = 25
+    """Vision-camera detected safety zone (Luba 2 Vision / Pro only)."""
+
     VISUAL_OBSTACLE_ZONE = 26
+    """Vision-camera detected obstacle zone (Luba 2 Vision / Pro only)."""
+
+    DYNAMICS_LINE = 18
+    """Live mow-progress path: the actual path the mower has driven so far
+    during the current work session.  Fetched via ``CommonDataSaga`` with
+    ``action=8, type=18`` and stored in ``HashList.dynamics_line``.
+    Unlike the other types this has no hash key — a single request always
+    returns the current session's data in sequential frames."""
 
 
 @dataclass
@@ -255,6 +282,17 @@ class HashList(DataClassORJSONMixin):
     last_ub_path_hash: int = 0
     plans_stale: bool = False
     edge_points: dict[int, EdgePoints] = field(default_factory=dict)  # hash → EdgePoints
+    dynamics_line: list[CommDataCouple] = field(default_factory=list)
+    """Assembled live mow-progress path from the most recent CommonDataSaga
+    (action=8, type=18) response.  Each entry is an (x, y) coordinate pair
+    in the device's local coordinate system.  Cleared and replaced on each
+    successful fetch.  Empty list when no mowing session is active or the
+    first fetch has not completed yet."""
+    generated_dynamics_line_geojson: dict[str, Any] = field(default_factory=dict)
+    """GeoJSON FeatureCollection generated from ``dynamics_line`` after each
+    successful fetch.  Contains a single LineString feature representing the
+    path the mower has actually driven in the current session.  Updated in
+    place by ``_apply_dynamics_line_geojson`` in ``client.py``."""
 
     def update_hash_lists(self, hashlist: list[int], bol_hash: int | None = None) -> None:
         """Prune all map dictionaries to only retain entries whose hash is present in hashlist."""
@@ -447,6 +485,16 @@ class HashList(DataClassORJSONMixin):
             self.update_hash_lists(self.hashlist)
             return result
 
+        # DYNAMICS_LINE (type 18) is frameless with respect to hash keys — frames
+        # are assembled by CommonDataSaga and the final flat list is stored via
+        # update_dynamics_line().  If a raw NavGetCommDataAck somehow arrives here
+        # we still handle it gracefully by accumulating the data_couple points.
+        if hash_data.type == PathType.DYNAMICS_LINE and isinstance(hash_data, NavGetCommData):
+            if hash_data.current_frame == 1:
+                self.dynamics_line = []
+            self.dynamics_line.extend(hash_data.data_couple)
+            return True
+
         path_type_mapping = self._get_path_type_mapping()
         target_dict = path_type_mapping.get(hash_data.type)
 
@@ -454,6 +502,16 @@ class HashList(DataClassORJSONMixin):
             return self._add_hash_data(target_dict, hash_data)
 
         return False
+
+    def update_dynamics_line(self, points: list[CommDataCouple]) -> None:
+        """Replace the live mow-progress path with a freshly assembled point list.
+
+        Called by ``CommonDataSaga`` (via the client's ``on_complete`` callback)
+        once all frames for a type-18 response have been collected and assembled
+        in order.  Replaces the previous path entirely — the device always returns
+        the full current-session path, not a delta.
+        """
+        self.dynamics_line = points
 
     def find_missing_mow_path_frames(self) -> dict[int, list[int]]:
         """Find missing frames in current_mow_path grouped by transaction_id.
@@ -564,6 +622,22 @@ class HashList(DataClassORJSONMixin):
         self.last_ub_zone_hash = ub_zone_hash
         self.root_hash_lists = []
         return True
+
+    def invalidate_mow_path(self, ub_path_hash: int) -> None:
+        """Clear current_mow_path if any stored path packet's hash doesn't match ub_path_hash.
+
+        Zero is the uninitialised sentinel and never triggers a clear.
+        """
+        if ub_path_hash == 0 or not self.current_mow_path:
+            self.generated_mow_path_geojson = {}
+            return
+        for frames_by_index in self.current_mow_path.values():
+            for mow_path in frames_by_index.values():
+                for packet in mow_path.path_packets:
+                    if packet.path_hash != ub_path_hash:
+                        self.current_mow_path = {}
+                        self.generated_mow_path_geojson = {}
+                        return
 
     def invalidate_paths(self, ub_path_hash: int) -> bool:
         """Return True if recorded-path data is stale because the device's ub_path_hash changed.

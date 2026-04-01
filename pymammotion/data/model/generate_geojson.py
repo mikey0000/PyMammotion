@@ -80,13 +80,42 @@ PATH_STYLE = {
 
 POINT_STYLE = {"color": "blue", "fill": "lightblue", "weight": 2, "opacity": 1.0, "fillOpacity": 0.7, "radius": 5}
 
+DYNAMICS_LINE_STYLE = {
+    "color": "#FFD700",  # gold — visually distinct from the planned green mow path
+    "weight": 3,
+    "opacity": 0.9,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# path_type=0: main mow stripes (弓 arch pattern)
+MOW_STRIPE_STYLE = {
+    "color": "green",
+    "weight": 2,
+    "opacity": 0.9,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# path_type=2: border/perimeter passes (回 circular pattern) — APK renders these on
+# a separate TRACK_ANAMORPHOSIS_SOURCE1 layer with a different visual treatment
+BORDER_PASS_STYLE = {
+    "color": "#00BFFF",  # deep sky blue — distinguishable from mow stripes
+    "weight": 2,
+    "opacity": 0.9,
+    "dashArray": "6, 4",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
 geojson_metadata = {"name": "Lawn Areas", "description": "Generated from Mammotion diagnostics data"}
 
-# Map type IDs
+# Map type IDs — these match PathType enum values from NavGetCommData.type
 TYPE_MOWING_ZONE: int = 0
 TYPE_OBSTACLE: int = 1
 TYPE_PATH: int = 2
-TYPE_MOW_PATH: int = 4
 
 # Coordinate conversion constants
 METERS_PER_DEGREE: int = 111320
@@ -147,6 +176,60 @@ class GeojsonGenerator:
         geo_json: GeoJSONCollection = {"type": "FeatureCollection", "name": "Mowing Lawn Areas", "features": []}
 
         total_frames = GeojsonGenerator._process_mow_map_objects(hash_list, rtk_location, geo_json)
+        return geo_json
+
+    @staticmethod
+    def generate_dynamics_line_geojson(dynamics_line: list[CommDataCouple], rtk_location: Point) -> GeoJSONCollection:
+        """Generate a GeoJSON FeatureCollection from the live mow-progress path.
+
+        Converts the raw ``list[CommDataCouple]`` (device-local x/y metres) to
+        a single GeoJSON ``LineString`` feature in WGS-84 lon/lat, using the
+        same RTK-origin coordinate transform used for all other map objects.
+
+        The resulting feature has ``type_name = "dynamics_line"`` and is styled
+        in gold so it is visually distinct from the planned mow-path (green).
+
+        Args:
+            dynamics_line: Assembled path points from ``HashList.dynamics_line``.
+            rtk_location:  Shapely ``Point(latitude, longitude)`` for the RTK
+                           base station — the origin of the device coordinate
+                           system.
+
+        Returns:
+            GeoJSON FeatureCollection with zero or one LineString features.
+            Zero features when *dynamics_line* has fewer than two points.
+
+        """
+        geo_json: GeoJSONCollection = {
+            "type": "FeatureCollection",
+            "name": "Mow Progress Path",
+            "features": [],
+        }
+
+        if len(dynamics_line) < 2:
+            return geo_json
+
+        # Convert local x/y → lon/lat.  Unlike polygon boundaries the dynamics
+        # line must NOT be reversed — point order encodes time (start → current).
+        lonlat_coords: CoordinateList = [
+            list(GeojsonGenerator.lon_lat_delta(rtk_location, pt.x, pt.y)) for pt in dynamics_line
+        ]
+        length, _ = GeojsonGenerator.map_object_stats(dynamics_line)
+
+        properties: dict[str, Any] = {
+            "type_name": "dynamics_line",
+            "point_count": len(dynamics_line),
+            "length": length,
+            **DYNAMICS_LINE_STYLE,
+        }
+
+        geo_json["features"].append(
+            {
+                "type": "Feature",
+                "properties": properties,
+                "geometry": {"type": "LineString", "coordinates": lonlat_coords},
+            }
+        )
         return geo_json
 
     @staticmethod
@@ -266,20 +349,29 @@ class GeojsonGenerator:
             if total_frame == 0:
                 continue
 
-            # Only generate a feature when we have all frames for this transaction
+            # Only generate features when we have all frames for this transaction
             if len(frames_by_index) != total_frame:
                 continue
 
             ordered_mow_paths = [frames_by_index[i] for i in sorted(frames_by_index.keys())]
-            local_coords = GeojsonGenerator._collect_mow_frame_coordinates(ordered_mow_paths)
             total_frames += 1
 
-            lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location)
-            length, area = GeojsonGenerator.map_object_stats(local_coords)
+            # Group coordinates by path_type so each type becomes a separate feature.
+            # path_type=0: main mow stripes (弓 arch), path_type=2: border passes (回 circular).
+            coords_by_path_type: dict[int, list[CommDataCouple]] = {}
+            for mow_frame in ordered_mow_paths:
+                for packet in mow_frame.path_packets:
+                    coords_by_path_type.setdefault(packet.path_type, []).extend(packet.data_couple)
 
-            feature = GeojsonGenerator._create_mow_path_feature(any_mow_path, lonlat_coords, length, area)
-            if feature:
-                geo_json["features"].append(feature)
+            for path_type, local_coords in coords_by_path_type.items():
+                lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location)
+                length, area = GeojsonGenerator.map_object_stats(local_coords)
+
+                feature = GeojsonGenerator._create_mow_path_feature(
+                    any_mow_path, path_type, lonlat_coords, length, area
+                )
+                if feature:
+                    geo_json["features"].append(feature)
 
         return total_frames
 
@@ -326,15 +418,6 @@ class GeojsonGenerator:
             # TODO svg message needs different transform
             # elif isinstance(frame, SvgMessage):
             #     local_coords.extend(frame.)
-        return local_coords
-
-    @staticmethod
-    def _collect_mow_frame_coordinates(mow_path_list: list[MowPath]) -> list[CommDataCouple]:
-        """Collect coordinates from all frames in a FrameList."""
-        local_coords: list[CommDataCouple] = []
-        for mow_frame in mow_path_list:
-            for frame in mow_frame.path_packets:
-                local_coords.extend(frame.data_couple)
         return local_coords
 
     @staticmethod
@@ -393,28 +476,33 @@ class GeojsonGenerator:
 
     @staticmethod
     def _create_mow_path_feature(
-        path_packet_list: MowPath, lonlat_coords: CoordinateList, length: float, area: float
+        path_packet_list: MowPath, path_type: int, lonlat_coords: CoordinateList, length: float, area: float
     ) -> GeoJSONFeature | None:
-        properties = GeojsonGenerator._create_feature_mow_path_properties(
-            path_packet_list, length, path_packet_list.area
-        )
-        geometry = GeojsonGenerator._create_feature_geometry(4, lonlat_coords, properties)
+        """Create a GeoJSON feature for a mow path, styled by path_type.
 
-        if geometry is None:
+        path_type=0 produces main mow stripes (弓 arch pattern).
+        path_type=2 produces border/perimeter passes (回 circular pattern).
+        """
+        if len(lonlat_coords) < 2:
             return None
 
-        return {"type": "Feature", "properties": properties, "geometry": geometry}
+        style = BORDER_PASS_STYLE if path_type == 2 else MOW_STRIPE_STYLE
+        type_label = "border_pass" if path_type == 2 else "mow_path"
 
-    @staticmethod
-    def _create_feature_mow_path_properties(first_frame: MowPath, length: float, area: float) -> dict[str, Any]:
-        """Create properties dictionary for GeoJSON feature."""
-        return {
-            "transaction_id": first_frame.transaction_id,
-            "type_name": "mow_path",
-            "total_path_num": first_frame.total_path_num,
+        properties: dict[str, Any] = {
+            "transaction_id": path_packet_list.transaction_id,
+            "type_name": type_label,
+            "path_type": path_type,
+            "total_path_num": path_packet_list.total_path_num,
             "length": length,
-            "area": area,
-            "time": first_frame.time,
+            "area": path_packet_list.area,
+            "time": path_packet_list.time,
+            **style,
+        }
+        return {
+            "type": "Feature",
+            "properties": properties,
+            "geometry": {"type": "LineString", "coordinates": lonlat_coords},
         }
 
     @staticmethod
@@ -472,9 +560,6 @@ class GeojsonGenerator:
             return {"type": "Polygon", "coordinates": [lonlat_coords]}
         elif type_id == TYPE_PATH and len(lonlat_coords) > 1:
             properties.update(PATH_STYLE)
-            return {"type": "LineString", "coordinates": lonlat_coords}
-        elif type_id == TYPE_MOW_PATH and len(lonlat_coords) > 1:
-            properties["color"] = "green"
             return {"type": "LineString", "coordinates": lonlat_coords}
         else:
             return None  # Point (ignore)

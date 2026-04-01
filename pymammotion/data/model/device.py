@@ -170,11 +170,12 @@ class MowingDevice(DataClassORJSONMixin):
         if (
             toapp_report_data.work
             and (toapp_report_data.work.area >> 16) == 0
-            and toapp_report_data.work.path_hash == 0
+            and toapp_report_data.work.ub_path_hash == 0
         ):
             self.work.zone_hashs = []
-            self.map.current_mow_path = {}
-            self.map.generated_mow_path_geojson = {}
+
+        if toapp_report_data.work:
+            self.map.invalidate_mow_path(toapp_report_data.work.ub_path_hash)
 
         self.report_data.update(toapp_report_data.to_dict(casing=betterproto2.Casing.SNAKE))
 
