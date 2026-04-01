@@ -629,20 +629,18 @@ class HashList(DataClassORJSONMixin):
         return True
 
     def invalidate_mow_path(self, ub_path_hash: int) -> None:
-        """Clear current_mow_path if any stored path packet's hash doesn't match ub_path_hash.
+        """Clear current_mow_path when ub_path_hash transitions.
 
-        Zero is the uninitialised sentinel and never triggers a clear.
+        Mirrors APK HashDataManager.updateTotalHash: clears the active cover
+        path whenever the device's ub_path_hash changes — either to a new
+        non-zero value (new job, refetch required) or to 0 (job ended).
+        Repeated calls with the same value are no-ops.
         """
-        if ub_path_hash == 0 or not self.current_mow_path:
-            self.generated_mow_path_geojson = {}
+        if ub_path_hash == self.last_ub_path_hash:
             return
-        for frames_by_index in self.current_mow_path.values():
-            for mow_path in frames_by_index.values():
-                for packet in mow_path.path_packets:
-                    if packet.path_hash != ub_path_hash:
-                        self.current_mow_path = {}
-                        self.generated_mow_path_geojson = {}
-                        return
+        self.last_ub_path_hash = ub_path_hash
+        self.current_mow_path = {}
+        self.generated_mow_path_geojson = {}
 
     def invalidate_paths(self, ub_path_hash: int) -> bool:
         """Return True if recorded-path data is stale because the device's ub_path_hash changed.
