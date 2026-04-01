@@ -293,6 +293,11 @@ class HashList(DataClassORJSONMixin):
     successful fetch.  Contains a single LineString feature representing the
     path the mower has actually driven in the current session.  Updated in
     place by ``_apply_dynamics_line_geojson`` in ``client.py``."""
+    generated_mow_progress_geojson: dict[str, Any] = field(default_factory=dict)
+    """GeoJSON FeatureCollection showing the completed portion of the planned
+    mow path, sliced to ``mowing_state.now_index``.  Updated by
+    ``_apply_mow_progress_geojson`` in ``client.py`` on each state change
+    while the device is actively mowing."""
 
     def update_hash_lists(self, hashlist: list[int], bol_hash: int | None = None) -> None:
         """Prune all map dictionaries to only retain entries whose hash is present in hashlist."""

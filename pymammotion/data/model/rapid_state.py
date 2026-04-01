@@ -27,12 +27,15 @@ class RapidState(DataClassORJSONMixin):
     pos_type: int = 0
     zone_hash: int = 0
     pos_level: int = 0
-    # Visible satellite counts from rapid_state_data[15]
+    # Visible satellite counts from tard_state_data[15]
     view_l1: int = 0  # visible L1-band satellite count
     view_l2: int = 0  # visible L2-band satellite count
-    # IMU/vision fusion state from rapid_state_data[16]
+    # IMU/vision fusion state from tard_state_data[16]
     fuse_status: int = 0  # FuseLocalizationStatus value
     vision_state_raw: int = 0  # raw vision system state
+    # Mow path progress from tard_state_data[14]
+    now_index: int = 0  # current position index into the planned mow path point array
+    start_index: int = 0  # start index of the current mow segment
 
     @property
     def fuse_localization_status(self) -> FuseLocalizationStatus:
@@ -59,6 +62,10 @@ class RapidState(DataClassORJSONMixin):
             pos_type=raw[10],
             zone_hash=raw[11],
         )
+        if len(raw) > 14:
+            raw14 = int(raw[14])
+            state.now_index = (raw14 & 0x00FFFF00) >> 8
+            state.start_index = (raw14 & 0xFFFF000000) >> 24
         if len(raw) > 15:
             raw15 = int(raw[15])
             state.view_l1 = raw15 & 0xFF

@@ -21,7 +21,7 @@ from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.http.model.http import CheckDeviceVersion
-from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemRapidStateTunnelMsg, SystemUpdateBufMsg
+from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemTardStateTunnelMsg, SystemUpdateBufMsg
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
 from pymammotion.utility.device_config import DeviceConfig
@@ -179,10 +179,10 @@ class MowingDevice(DataClassORJSONMixin):
 
         self.report_data.update(toapp_report_data.to_dict(casing=betterproto2.Casing.SNAKE))
 
-    def run_state_update(self, rapid_state: SystemRapidStateTunnelMsg) -> None:
+    def run_state_update(self, tard_state: SystemTardStateTunnelMsg) -> None:
         """Set lat long, work zone of RTK and robot."""
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
-        self.mowing_state = RapidState().from_raw(rapid_state.rapid_state_data)
+        self.mowing_state = RapidState().from_raw(tard_state.tard_state_data)
         self.location.position_type = self.mowing_state.pos_type
         self.location.orientation = int(self.mowing_state.toward)
         self.location.device = coordinate_converter.enu_to_lla(

@@ -89,6 +89,15 @@ DYNAMICS_LINE_STYLE = {
     "lineJoin": "round",
 }
 
+MOW_PROGRESS_STYLE = {
+    "color": "#00FF7F",  # spring green — overlaid on the planned path to show completed portion
+    "weight": 3,
+    "opacity": 0.9,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
 # path_type=0: main mow stripes (弓 arch pattern)
 MOW_STRIPE_STYLE = {
     "color": "green",
@@ -227,6 +236,71 @@ class GeojsonGenerator:
             {
                 "type": "Feature",
                 "properties": properties,
+                "geometry": {"type": "LineString", "coordinates": lonlat_coords},
+            }
+        )
+        return geo_json
+
+    @staticmethod
+    def generate_mow_progress_geojson(
+        hash_list: HashList,
+        now_index: int,
+        rtk_location: Point,
+    ) -> GeoJSONCollection:
+        """Generate a GeoJSON FeatureCollection showing the completed mow path portion.
+
+        Flattens all path points from ``hash_list.current_mow_path`` in order
+        (by transaction_id then frame index), then slices to ``now_index`` to
+        produce the portion of the planned path that has been completed.
+
+        Args:
+            hash_list:   HashList containing ``current_mow_path`` data.
+            now_index:   Current path position index from ``report_data.work.now_index``
+                         or ``mowing_state.now_index``.  Points 0..now_index are shown.
+            rtk_location: Shapely ``Point(latitude, longitude)`` for the RTK base station.
+
+        Returns:
+            GeoJSON FeatureCollection with zero or one LineString features.
+
+        """
+        geo_json: GeoJSONCollection = {
+            "type": "FeatureCollection",
+            "name": "Mow Progress",
+            "features": [],
+        }
+
+        if now_index <= 0 or not hash_list.current_mow_path:
+            return geo_json
+
+        # Flatten all mow path points in transaction_id / frame order.
+        all_points: list[CommDataCouple] = []
+        for transaction_id in sorted(hash_list.current_mow_path.keys()):
+            frames = hash_list.current_mow_path[transaction_id]
+            for frame_idx in sorted(frames.keys()):
+                mow_path = frames[frame_idx]
+                for packet in mow_path.path_packets:
+                    all_points.extend(packet.data_couple)
+
+        completed = all_points[:now_index]
+        if len(completed) < 2:
+            return geo_json
+
+        lonlat_coords: CoordinateList = [
+            list(GeojsonGenerator.lon_lat_delta(rtk_location, pt.x, pt.y)) for pt in completed
+        ]
+        length, _ = GeojsonGenerator.map_object_stats(completed)
+
+        geo_json["features"].append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "type_name": "mow_progress",
+                    "point_count": len(completed),
+                    "now_index": now_index,
+                    "total_points": len(all_points),
+                    "length": length,
+                    **MOW_PROGRESS_STYLE,
+                },
                 "geometry": {"type": "LineString", "coordinates": lonlat_coords},
             }
         )

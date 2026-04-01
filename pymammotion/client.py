@@ -101,6 +101,34 @@ def _apply_mow_path_geojson(device: MowingDevice) -> None:
     )
 
 
+def _apply_mow_progress_geojson(device: MowingDevice) -> None:
+    """Generate and store the mow-progress GeoJSON on *device*.
+
+    Slices ``device.map.current_mow_path`` to ``now_index`` (from
+    ``report_data.work.now_index``) and stores the resulting GeoJSON in
+    ``device.map.generated_mow_progress_geojson``.
+
+    A no-op when the RTK location is unknown or ``now_index`` is 0.
+    """
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    rtk = device.location.RTK
+    now_index = device.report_data.work.now_index
+    if rtk.latitude == 0 or now_index <= 0 or not device.map.current_mow_path:
+        return
+
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    device.map.generated_mow_progress_geojson = GeojsonGenerator.generate_mow_progress_geojson(
+        device.map,
+        now_index,
+        Point(rtk_ll.latitude, rtk_ll.longitude),
+    )
+
+
 def _apply_dynamics_line_geojson(device: MowingDevice) -> None:
     """Generate and store the dynamics-line GeoJSON on *device*.
 
@@ -189,7 +217,7 @@ class MammotionClient:
             device = snapshot.raw
             task_ids = device.events.work_tasks_event.ids
             work = device.report_data.work
-            actively_working = bool(task_ids) and work.path_hash != 0
+            actively_working = bool(task_ids) and work.ub_path_hash != 0
             path_missing = not device.map.current_mow_path and actively_working
 
             if path_missing:
@@ -208,6 +236,9 @@ class MammotionClient:
                     )
                 except Exception:  # noqa: BLE001
                     _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
+
+            if actively_working and device.map.current_mow_path and work.now_index > 0:
+                _apply_mow_progress_geojson(device)
 
         sub = handle.subscribe_state_changed(_on_state_changed)
         self._watcher_subscriptions[device_name] = sub

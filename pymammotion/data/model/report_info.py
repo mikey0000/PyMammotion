@@ -310,6 +310,8 @@ class WorkData(DataClassORJSONMixin):
     bp_pos_x: int = 0
     bp_pos_y: int = 0
     real_path_num: int = 0
+    """Packed field encoding current mow path position.
+    Use ``now_index``, ``start_index``, and ``path_direction`` to read."""
     path_pos_x: int = 0
     path_pos_y: int = 0
     ub_zone_hash: int = 0
@@ -334,6 +336,25 @@ class WorkData(DataClassORJSONMixin):
     def area_mowed(self) -> int:
         """Area mowed in device units, packed in lower 16 bits of ``area``."""
         return self.area & 0xFFFF
+
+    @property
+    def now_index(self) -> int:
+        """Current mow path position index (bits 8–23 of ``real_path_num``).
+
+        This is an index into the ordered planned mow path point array.
+        Points 0..now_index represent the completed portion of the path.
+        """
+        return (self.real_path_num & 0x00FFFF00) >> 8
+
+    @property
+    def start_index(self) -> int:
+        """Start index of the current mow segment (bits 24–39 of ``real_path_num``)."""
+        return (self.real_path_num & 0xFFFF000000) >> 24
+
+    @property
+    def path_direction(self) -> int:
+        """Mow path traversal direction flag (bits 0–7 of ``real_path_num``)."""
+        return self.real_path_num & 0xFF
 
 
 @dataclass
