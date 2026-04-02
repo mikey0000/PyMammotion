@@ -15,11 +15,13 @@ def _make_snapshot(
     task_ids: list[int] | None = None,
     work_path_hash: int = 0,
     current_mow_path: dict | None = None,
+    now_index: int = 0,
 ) -> MagicMock:
     """Return a DeviceSnapshot-shaped MagicMock."""
     device = MagicMock()
     device.events.work_tasks_event.ids = task_ids or []
-    device.report_data.work.path_hash = work_path_hash
+    device.report_data.work.ub_path_hash = work_path_hash
+    device.report_data.work.now_index = now_index
     device.map.current_mow_path = current_mow_path if current_mow_path is not None else {}
     return MagicMock(raw=device)
 

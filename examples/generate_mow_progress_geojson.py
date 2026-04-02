@@ -143,10 +143,12 @@ print(f"RTK (degrees): lat={rtk_deg_lat:.6f}, lon={rtk_deg_lon:.6f}")
 _work = fixture.get("report_data", {}).get("work", {})
 real_path_num = _work.get("real_path_num", 0)
 _fixture_now_index = (real_path_num & 0x00FFFF00) >> 8
-_fixture_ub_path_hash = _work.get("ub_path_hash", 0) or fixture.get("map", {}).get("last_ub_path_hash", 0)
+# ub_path_hash=0 means include all paths/types — the fixture's work.ub_path_hash is the
+# currently-active segment only, not the full map, so default to 0 for full-map output.
+_fixture_ub_path_hash = int(_work.get("ub_path_hash", 0))
 
 now_index = _cli_now_index if _cli_now_index is not None else _fixture_now_index
-ub_path_hash = _cli_ub_path_hash if _cli_ub_path_hash is not None else _fixture_ub_path_hash
+ub_path_hash = _cli_ub_path_hash if _cli_ub_path_hash is not None else 0
 
 # Decode exact device position (raw int ÷ 10000 → ENU metres), matching APK logic.
 _raw_path_pos_x = _work.get("path_pos_x", 0)
@@ -157,8 +159,8 @@ path_pos = (path_pos_x, path_pos_y) if (_raw_path_pos_x or _raw_path_pos_y) else
 
 if _cli_now_index is None:
     print(f"now_index={now_index} (decoded from real_path_num={real_path_num})")
-if _cli_ub_path_hash is None and _fixture_ub_path_hash:
-    print(f"ub_path_hash={ub_path_hash} (from fixture report_data.work)")
+if _cli_ub_path_hash is None:
+    print(f"ub_path_hash=0 (all paths; active segment from fixture: {_fixture_ub_path_hash})")
 if path_pos:
     print(f"path_pos=({path_pos_x:.4f}m, {path_pos_y:.4f}m) (from fixture report_data.work.path_pos_x/y)")
 
@@ -168,18 +170,24 @@ if path_pos:
 
 total_packets = 0
 total_points = 0
-matching_points = 0
+matching_points_by_type: dict[int, int] = {}
 for tid, frames in hash_list.current_mow_path.items():
     for fidx, mow_path in frames.items():
         for pkt in mow_path.path_packets:
             total_packets += 1
             total_points += len(pkt.data_couple)
             if ub_path_hash == 0 or pkt.path_hash == ub_path_hash:
-                matching_points += len(pkt.data_couple)
+                matching_points_by_type[pkt.path_type] = (
+                    matching_points_by_type.get(pkt.path_type, 0) + len(pkt.data_couple)
+                )
 
+matching_total = sum(matching_points_by_type.values())
 print(f"\nPackets: {total_packets}  total points: {total_points}  "
-      f"matching ub_path_hash={ub_path_hash}: {matching_points}")
-print(f"now_index={now_index}  →  completed points: {min(now_index, matching_points)}")
+      f"matching ub_path_hash={ub_path_hash}: {matching_total}")
+for pt, cnt in sorted(matching_points_by_type.items()):
+    print(f"  path_type={pt}: {cnt} pts")
+print(f"now_index={now_index}  →  remaining per type: "
+      + ", ".join(f"type {pt}: {max(0, cnt - max(0, now_index - 1))}" for pt, cnt in sorted(matching_points_by_type.items())))
 
 # ---------------------------------------------------------------------------
 # Generate planned and progress GeoJSON
@@ -210,7 +218,8 @@ if not progress["features"]:
 for feat in progress["features"]:
     coords = feat["geometry"]["coordinates"]
     props = feat["properties"]
-    print(f"  {props['point_count']} pts (of {props['total_points']} total, now_index={props['now_index']})")
+    print(f"  [path_type={props['path_type']}]  {props['point_count']} pts "
+          f"(of {props['total_points']} total, now_index={props['now_index']})")
     print(f"  first={coords[0]}  last={coords[-1]}")
     print(f"  length={props['length']:.3f} m")
 

@@ -284,50 +284,58 @@ class GeojsonGenerator:
         if now_index <= 0 or not hash_list.current_mow_path:
             return geo_json
 
-        # Collect matching packets sorted by path_cur so the path is in execution order
-        # regardless of the frame arrival order (current_mow_path is unordered).
-        all_points: list[CommDataCouple] = []
+        # Collect matching packets grouped by path_type so each type becomes a separate
+        # feature (matching the structure of generate_mow_path_geojson).
+        # Frames are iterated in sorted order — same traversal used by _process_mow_map_objects —
+        # so that generate_mow_progress_geojson at now_index=1 produces identical coordinates
+        # to the planned mow path geojson.
+        points_by_type: dict[int, list[CommDataCouple]] = {}
+        total_by_type: dict[int, int] = {}
         for transaction_id in sorted(hash_list.current_mow_path.keys()):
             frames = hash_list.current_mow_path[transaction_id]
-            matching_packets = []
             for frame_idx in sorted(frames.keys()):
                 mow_path = frames[frame_idx]
                 for packet in mow_path.path_packets:
                     if ub_path_hash == 0 or packet.path_hash == ub_path_hash:
-                        matching_packets.append(packet)
-            matching_packets.sort(key=lambda p: p.path_cur)
-            for packet in matching_packets:
-                all_points.extend(packet.data_couple)
+                        points_by_type.setdefault(packet.path_type, []).extend(packet.data_couple)
 
-        # Build remaining path: APK does path[nowIndex:] then prepends the exact device
-        # position (path_pos_x/y) as the first point so the line begins at the mower's
-        # current location rather than the next planned waypoint.
-        if path_pos is not None and (path_pos[0] != 0.0 or path_pos[1] != 0.0):
-            remaining: list[CommDataCouple] = [CommDataCouple(x=path_pos[0], y=path_pos[1])] + all_points[now_index:]
-        else:
-            # Fallback: start one point before nowIndex to include the current section.
-            start = max(0, now_index - 1)
-            remaining = all_points[start:]
-        if len(remaining) < 2:
-            return geo_json
+        for path_type in points_by_type:
+            total_by_type[path_type] = len(points_by_type[path_type])
 
-        lonlat_coords: CoordinateList = GeojsonGenerator._convert_to_lonlat_coords(remaining, rtk_location)
-        length, _ = GeojsonGenerator.map_object_stats(remaining)
+        # Build remaining path per type: APK does path[nowIndex:] then prepends the exact
+        # device position (path_pos_x/y) as the first point so the line begins at the
+        # mower's current location rather than the next planned waypoint.
+        for path_type, all_points in sorted(points_by_type.items()):
+            if path_pos is not None and (path_pos[0] != 0.0 or path_pos[1] != 0.0):
+                remaining: list[CommDataCouple] = [CommDataCouple(x=path_pos[0], y=path_pos[1])] + all_points[
+                    now_index:
+                ]
+            else:
+                # Fallback: start one point before nowIndex to include the current section.
+                start = max(0, now_index - 1)
+                remaining = all_points[start:]
 
-        geo_json["features"].append(
-            {
-                "type": "Feature",
-                "properties": {
-                    "type_name": "mow_progress",
-                    "point_count": len(remaining),
-                    "now_index": now_index,
-                    "total_points": len(all_points),
-                    "length": length,
-                    **MOW_PROGRESS_STYLE,
-                },
-                "geometry": {"type": "LineString", "coordinates": lonlat_coords},
-            }
-        )
+            if len(remaining) < 2:
+                continue
+
+            lonlat_coords: CoordinateList = GeojsonGenerator._convert_to_lonlat_coords(remaining, rtk_location)
+            length, _ = GeojsonGenerator.map_object_stats(remaining)
+
+            geo_json["features"].append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "type_name": "mow_progress",
+                        "path_type": path_type,
+                        "point_count": len(remaining),
+                        "now_index": now_index,
+                        "total_points": total_by_type[path_type],
+                        "length": length,
+                        **MOW_PROGRESS_STYLE,
+                    },
+                    "geometry": {"type": "LineString", "coordinates": lonlat_coords},
+                }
+            )
         return geo_json
 
     @staticmethod

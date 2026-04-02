@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.transport.base import TransportType
@@ -380,3 +381,106 @@ async def test_start_map_sync_skips_geojson_when_rtk_zero() -> None:
 
     assert applied == [], "geojson must NOT be generated when RTK is 0,0"
     await handle.stop()
+
+
+# ---------------------------------------------------------------------------
+# TokenManager created during cloud login and credential restore
+# ---------------------------------------------------------------------------
+
+
+async def test_token_manager_set_after_restore_aliyun() -> None:
+    """_restore_aliyun must set token_manager on the session."""
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+
+    mock_cloud = MagicMock()
+    mock_cloud.mammotion_http = MagicMock()
+    mock_cloud.mammotion_http.login_info = None
+    mock_cloud.devices_by_account_response = None
+
+    with (
+        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
+        patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
+    ):
+        await client._restore_aliyun(
+            "user@test.com", "pass", {}, acct_session, check_for_new_devices=False
+        )
+
+    assert acct_session.token_manager is not None
+
+
+async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
+    """_restore_mammotion_mqtt must set token_manager on the session when mqtt_creds are present."""
+    from pymammotion.http.model.http import MQTTConnection
+
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+
+    mqtt_creds = MQTTConnection(
+        host="mqtt.example.com",
+        client_id="client-1",
+        username="user",
+        jwt="token",
+    )
+    cached_data = {
+        "mammotion_mqtt": mqtt_creds.to_dict(),
+        "mammotion_device_records": {"records": []},
+    }
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    with patch.object(client, "_setup_mammotion_transport", return_value=mock_transport):
+        await client._restore_mammotion_mqtt(
+            "user@test.com", "pass", cached_data, None, acct_session, check_for_new_devices=False
+        )
+
+    assert acct_session.token_manager is not None
+
+
+async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
+    """login_and_initiate_cloud must set token_manager when Aliyun devices are present."""
+    client = MammotionClient()
+
+    mock_device = MagicMock()
+    mock_device.device_name = "Luba-Cloud"
+    mock_device.iot_id = "iot-123"
+
+    mock_devices_data = MagicMock()
+    mock_devices_data.data.data = [mock_device]
+
+    mock_cloud = MagicMock()
+    mock_cloud.mammotion_http = MagicMock()
+    mock_cloud.mammotion_http.login_info = None
+    mock_cloud.devices_by_account_response = mock_devices_data
+    mock_cloud.aep_response = MagicMock()
+    mock_cloud.aep_response.data = MagicMock(productKey="pk", deviceName="dn", deviceSecret="ds")
+    mock_cloud.region_response = MagicMock()
+    mock_cloud.region_response.data.regionId = "cn-shanghai"
+    mock_cloud.session_by_authcode_response = MagicMock()
+    mock_cloud.session_by_authcode_response.data = MagicMock(iotToken="tok")
+
+    mock_http = MagicMock()
+    mock_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
+    mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=["placeholder"]))
+    mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=None))
+    mock_http.login_info = None
+    mock_http.mqtt_credentials = None
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    with (
+        patch("pymammotion.client.MammotionHTTP", return_value=mock_http),
+        patch("pymammotion.client.CloudIOTGateway", return_value=mock_cloud),
+        patch("pymammotion.client.MammotionClient._connect_iot", AsyncMock()),
+        patch.object(client, "_setup_aliyun_transport", return_value=mock_transport),
+        patch.object(client, "_register_aliyun_device", AsyncMock()),
+    ):
+        mock_cloud.get_shared_notice_list = AsyncMock(return_value=MagicMock(data=None))
+        mock_cloud.get_shared_notice_list.return_value.data = None
+        await client.login_and_initiate_cloud("user@test.com", "pass")
+
+    session = client._account_registry.get("user@test.com")
+    assert session is not None
+    assert session.token_manager is not None

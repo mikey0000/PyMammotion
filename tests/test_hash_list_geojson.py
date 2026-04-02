@@ -603,3 +603,143 @@ def test_apply_mow_progress_geojson_noop_when_now_index_zero() -> None:
     _apply_mow_progress_geojson(device)
 
     assert device.map.generated_mow_progress_geojson == {}
+
+
+# ---------------------------------------------------------------------------
+# Mow progress GeoJSON — multi-type coverage (mow stripes + border passes)
+# ---------------------------------------------------------------------------
+
+
+def test_mow_progress_geojson_matches_example_script_output() -> None:
+    """generate_mow_progress_geojson at now_index 1, 300 and 550 must produce output
+    identical to the reference files written by examples/generate_mow_progress_geojson.py.
+
+    The example script uses ub_path_hash=0 (all paths) and the path_pos decoded from
+    the fixture's report_data.work.  Both must be replicated here to get a byte-for-byte
+    match of every coordinate in the GeoJSON.
+    """
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    fixture = _load_yuka_fixture()
+    hash_list = _build_yuka_hash_list(fixture)
+
+    rtk = LocationPoint(
+        latitude=fixture["location"]["RTK"]["latitude"],
+        longitude=fixture["location"]["RTK"]["longitude"],
+    )
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    rtk_point = Point(rtk_ll.latitude, rtk_ll.longitude)
+
+    work = fixture.get("report_data", {}).get("work", {})
+    raw_x = work.get("path_pos_x", 0)
+    raw_y = work.get("path_pos_y", 0)
+    path_pos = (raw_x / 10000.0, raw_y / 10000.0) if (raw_x or raw_y) else None
+
+    dev_output = Path(__file__).parent.parent / "examples" / "dev_output"
+
+    for now_index in (1, 300, 550):
+        ref_file = dev_output / f"mow_progress_{now_index}.geojson"
+        with open(ref_file) as f:
+            reference = json.load(f)
+
+        result = GeojsonGenerator.generate_mow_progress_geojson(
+            hash_list,
+            now_index=now_index,
+            rtk_location=rtk_point,
+            ub_path_hash=0,
+            path_pos=path_pos,
+        )
+
+        assert result["type"] == reference["type"]
+        assert len(result["features"]) == len(reference["features"]), (
+            f"now_index={now_index}: expected {len(reference['features'])} features, "
+            f"got {len(result['features'])}"
+        )
+
+        ref_by_type = {f["properties"]["path_type"]: f for f in reference["features"]}
+        res_by_type = {f["properties"]["path_type"]: f for f in result["features"]}
+
+        assert set(res_by_type.keys()) == set(ref_by_type.keys()), (
+            f"now_index={now_index}: path_type mismatch — "
+            f"expected {set(ref_by_type.keys())}, got {set(res_by_type.keys())}"
+        )
+
+        for path_type, ref_feat in ref_by_type.items():
+            res_feat = res_by_type[path_type]
+            ref_coords = ref_feat["geometry"]["coordinates"]
+            res_coords = res_feat["geometry"]["coordinates"]
+            assert len(res_coords) == len(ref_coords), (
+                f"now_index={now_index}, path_type={path_type}: "
+                f"{len(res_coords)} pts != {len(ref_coords)} reference pts"
+            )
+            assert res_coords == ref_coords, (
+                f"now_index={now_index}, path_type={path_type}: coordinates differ at index "
+                + str(next(i for i, (a, b) in enumerate(zip(res_coords, ref_coords)) if a != b))
+            )
+
+
+def test_mow_progress_from_start_identical_to_mow_path() -> None:
+    """At now_index=1 (start) the progress geojson coordinates must be identical to the
+    planned mow path geojson, per path_type.
+
+    Both functions must:
+      - cover the same path_types (mow stripes + border passes)
+      - produce the same number of points per type
+      - produce the exact same coordinates per type
+
+    This guards against two regressions:
+      1. Flattening all path types into one feature (loses border_pass / mow_stripe distinction)
+      2. Inconsistent point ordering between the two generation paths
+    """
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    # generate_mowing_geojson converts radian RTK coords via CoordinateConverter internally;
+    # generate_mow_progress_geojson expects the already-converted WGS-84 Point — match that.
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    rtk_point = Point(rtk_ll.latitude, rtk_ll.longitude)
+
+    # Planned mow path — one feature per path_type, keyed by path_type int
+    planned = hash_list.generate_mowing_geojson(rtk)
+    planned_by_type: dict[int, list] = {
+        f["properties"]["path_type"]: f["geometry"]["coordinates"]
+        for f in planned["features"]
+    }
+    assert len(planned_by_type) >= 2, "Fixture should have at least two path types"
+
+    # Progress at now_index=1: start = max(0, 0) = 0, so all points are remaining
+    progress = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=1,
+        rtk_location=rtk_point,
+        ub_path_hash=0,  # all paths, all types
+    )
+    progress_by_type: dict[int, list] = {
+        f["properties"]["path_type"]: f["geometry"]["coordinates"]
+        for f in progress["features"]
+    }
+
+    assert set(progress_by_type.keys()) == set(planned_by_type.keys()), (
+        f"Progress path_types {set(progress_by_type.keys())} != planned {set(planned_by_type.keys())}"
+    )
+
+    for path_type, planned_coords in planned_by_type.items():
+        progress_coords = progress_by_type[path_type]
+        assert len(progress_coords) == len(planned_coords), (
+            f"path_type={path_type}: {len(progress_coords)} progress pts != {len(planned_coords)} planned pts"
+        )
+        assert progress_coords == planned_coords, (
+            f"path_type={path_type}: coordinates differ at index "
+            + str(next(i for i, (a, b) in enumerate(zip(progress_coords, planned_coords)) if a != b))
+        )
