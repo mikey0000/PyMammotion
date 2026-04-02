@@ -132,6 +132,7 @@ class BLETransport(Transport):
         if self._client is None or not self._client.is_connected:
             msg = "BLETransport is not connected; cannot send payload"
             raise TransportError(msg)
+        _logger.debug("BLETransport send: %d bytes to %s", len(payload), self._config.device_id)
         await self._client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, payload, response=False)
 
     # ------------------------------------------------------------------

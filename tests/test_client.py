@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -484,3 +484,116 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
     session = client._account_registry.get("user@test.com")
     assert session is not None
     assert session.token_manager is not None
+
+
+# ---------------------------------------------------------------------------
+# send_command_with_args prefer_ble routing
+# ---------------------------------------------------------------------------
+
+
+def _make_connected_transport(transport_type: TransportType) -> MagicMock:
+    t = MagicMock()
+    t.transport_type = transport_type
+    t.is_connected = True
+    t.send = AsyncMock()
+    t.disconnect = AsyncMock()
+    t.on_message = None
+    t.add_availability_listener = MagicMock()
+    return t
+
+
+async def _drain(handle: DeviceHandle) -> None:
+    """Flush all pending queue items then stop the worker."""
+    handle.queue.start()
+    await handle.queue._queue.join()  # noqa: SLF001
+    await handle.queue.stop()
+
+
+def _stub_commands(handle: DeviceHandle, fake_bytes: bytes) -> MagicMock:
+    """Replace the handle's commands property with a mock that returns fake_bytes."""
+    mock_commands = MagicMock()
+    mock_commands.get_report_cfg = MagicMock(return_value=fake_bytes)
+    # commands is a @property — patch it on the class via PropertyMock
+    patcher = patch.object(type(handle), "commands", new_callable=PropertyMock, return_value=mock_commands)
+    patcher.start()
+    return patcher  # caller must call patcher.stop()
+
+
+async def test_send_command_with_args_prefer_ble_uses_ble_transport() -> None:
+    """send_command_with_args(prefer_ble=True) must route through the BLE transport.
+
+    Both BLE and MQTT are connected. With prefer_ble=True the active transport
+    selector should return BLE, so only ble.send() is awaited.
+    """
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    ble = _make_connected_transport(TransportType.BLE)
+
+    handle = make_handle("Luba-BLE", "Luba-BLE")
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    # Confirm the BLE transport is registered on the handle before sending.
+    assert handle._transports.get(TransportType.BLE) is ble  # noqa: SLF001
+
+    fake_bytes = b"\xDE\xAD\xBE\xEF"
+    patcher = _stub_commands(handle, fake_bytes)
+    try:
+        await client._device_registry.register(handle)
+        await client.send_command_with_args("Luba-BLE", "get_report_cfg", prefer_ble=True)
+        await _drain(handle)
+    finally:
+        patcher.stop()
+
+    ble.send.assert_awaited_once_with(fake_bytes, iot_id="")
+    mqtt.send.assert_not_awaited()
+
+
+async def test_send_command_with_args_default_uses_mqtt_transport() -> None:
+    """send_command_with_args without prefer_ble routes through MQTT (default preference)."""
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    ble = _make_connected_transport(TransportType.BLE)
+
+    handle = make_handle("Luba-MQTT", "Luba-MQTT")
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    fake_bytes = b"\xCA\xFE"
+    patcher = _stub_commands(handle, fake_bytes)
+    try:
+        await client._device_registry.register(handle)
+        await client.send_command_with_args("Luba-MQTT", "get_report_cfg")
+        await _drain(handle)
+    finally:
+        patcher.stop()
+
+    mqtt.send.assert_awaited_once_with(fake_bytes, iot_id="")
+    ble.send.assert_not_awaited()
+
+
+async def test_send_command_with_args_prefer_ble_falls_back_to_mqtt_when_ble_disconnected() -> None:
+    """When prefer_ble=True but BLE is disconnected, command falls back to MQTT."""
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False  # BLE down
+
+    handle = make_handle("Luba-FB", "Luba-FB")
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    fake_bytes = b"\xAB\xCD"
+    patcher = _stub_commands(handle, fake_bytes)
+    try:
+        await client._device_registry.register(handle)
+        await client.send_command_with_args("Luba-FB", "get_report_cfg", prefer_ble=True)
+        await _drain(handle)
+    finally:
+        patcher.stop()
+
+    mqtt.send.assert_awaited_once_with(fake_bytes, iot_id="")
+    ble.send.assert_not_awaited()
