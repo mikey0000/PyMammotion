@@ -45,6 +45,7 @@ from pymammotion.transport.base import (
     ReLoginRequiredError,
     SessionExpiredError,
     Subscription,
+    TransportError,
     TransportType,
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
@@ -367,6 +368,8 @@ class MammotionClient:
                 _logger.debug("Full refresh requires re-login — attempting full re-login")
                 await self._full_relogin(session)
                 await send_fn()
+        except TransportError as ex:
+            _logger.warning(ex)
 
     # ------------------------------------------------------------------
     # Device access

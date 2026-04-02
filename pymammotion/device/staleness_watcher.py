@@ -66,7 +66,7 @@ class MapStalenessWatcher:
             try:
                 await self._on_maps_stale()
             except Exception:  # noqa: BLE001
-                _logger.warning("MapStalenessWatcher: map refetch trigger failed", exc_info=True)
+                _logger.warning(f"MapStalenessWatcher:{device.name} map refetch trigger failed", exc_info=True)
 
         # Check area names staleness — map is valid but area names never arrived
         elif device.map.area_names_stale and (now - self._last_area_names_trigger) > self._cooldown:
@@ -75,7 +75,7 @@ class MapStalenessWatcher:
             try:
                 await self._on_area_names_stale()
             except Exception:  # noqa: BLE001
-                _logger.warning("MapStalenessWatcher: area-name refetch trigger failed", exc_info=True)
+                _logger.warning(f"MapStalenessWatcher:{device.name} area-name refetch trigger failed", exc_info=True)
 
         # Check plan staleness
         if device.map.plans_stale and (now - self._last_plan_trigger) > self._cooldown:
@@ -84,7 +84,7 @@ class MapStalenessWatcher:
             try:
                 await self._on_plans_stale()
             except Exception:  # noqa: BLE001
-                _logger.warning("MapStalenessWatcher: plan refetch trigger failed", exc_info=True)
+                _logger.warning(f"MapStalenessWatcher:{device.name} plan refetch trigger failed", exc_info=True)
 
     def stop(self) -> None:
         """Cancel the state-change subscription."""

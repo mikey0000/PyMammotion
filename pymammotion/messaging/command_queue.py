@@ -9,6 +9,8 @@ from enum import IntEnum
 import logging
 from typing import TYPE_CHECKING
 
+from pymammotion.transport import TransportError
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -182,7 +184,9 @@ class DeviceCommandQueue:
                 from pymammotion.aliyun.exceptions import DeviceOfflineException
                 from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError
 
-                if isinstance(exc, (AuthError, SagaFailedError, DeviceOfflineException, NoTransportAvailableError)):
+                if isinstance(
+                    exc, (AuthError, SagaFailedError, DeviceOfflineException, NoTransportAvailableError, TransportError)
+                ):
                     _logger.warning("DeviceCommandQueue: %s", exc)
                 else:
                     _logger.exception("DeviceCommandQueue: unhandled error in work item")

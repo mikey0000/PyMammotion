@@ -24,6 +24,7 @@ import time
 from typing import TYPE_CHECKING
 
 import aiomqtt
+from Tea.exceptions import UnretryableException
 
 from pymammotion.transport.base import AuthError, Transport, TransportAvailability, TransportError, TransportType
 
@@ -223,7 +224,10 @@ class AliyunMQTTTransport(Transport):
         if not iot_id:
             msg = "AliyunMQTTTransport.send() requires a non-empty iot_id"
             raise TransportError(msg)
-        await self._cloud_gateway.send_cloud_command(iot_id, payload)
+        try:
+            await self._cloud_gateway.send_cloud_command(iot_id, payload)
+        except UnretryableException as ex:
+            raise TransportError(ex.message) from None
 
     # ------------------------------------------------------------------
     # Credential helpers
