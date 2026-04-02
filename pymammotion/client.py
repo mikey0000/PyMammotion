@@ -782,6 +782,7 @@ class MammotionClient:
         acct_session.mammotion_http = cloud_client.mammotion_http
         acct_session.cloud_client = cloud_client
         acct_session.user_account = self._extract_user_account(cloud_client.mammotion_http)
+        acct_session.token_manager = TokenManager(account, cloud_client.mammotion_http, cloud_client)
 
         transport = self._setup_aliyun_transport(cloud_client)
         acct_session.aliyun_transport = transport
@@ -856,6 +857,8 @@ class MammotionClient:
 
         if mqtt_creds := MQTTConnection.from_dict(mqtt_raw) if isinstance(mqtt_raw, dict) else mqtt_raw:
             mammotion_http.mqtt_credentials = mqtt_creds
+            if acct_session.token_manager is None:
+                acct_session.token_manager = TokenManager(account, mammotion_http)
             transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http)
             acct_session.mammotion_transport = transport
             ua = acct_session.user_account

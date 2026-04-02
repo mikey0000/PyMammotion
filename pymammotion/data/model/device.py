@@ -132,7 +132,10 @@ class MowingDevice(DataClassORJSONMixin):
                     area_id = buffer_list.update_buf_data[i]
 
                     if area_id != 0:
-                        task_area_map[area_id] = TaskAreaStatus(int(buffer_list.update_buf_data[i + 1]))
+                        status = TaskAreaStatus(int(buffer_list.update_buf_data[i + 1]))
+                        if status is TaskAreaStatus.ABORTED:
+                            continue
+                        task_area_map[area_id] = status
                         task_area_ids.append(area_id)
                 self.events.work_tasks_event.hash_area_map = task_area_map
                 self.events.work_tasks_event.ids = task_area_ids

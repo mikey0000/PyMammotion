@@ -41,7 +41,7 @@ from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import LoginResponseData, MQTTConnection, Response
 from pymammotion.http.model.response_factory import response_factory
-from pymammotion.transport.base import SessionExpiredError, TransportType
+from pymammotion.transport.base import ReLoginRequiredError, SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
@@ -905,7 +905,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in getting properties: " + response_body_dict["msg"])
+            if msg := response_body_dict.get("msg"):
+                raise ReLoginRequiredError("Error in getting properties: " + msg)
+            raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
 
         return ThingPropertiesResponse.from_dict(response_body_dict)
 
