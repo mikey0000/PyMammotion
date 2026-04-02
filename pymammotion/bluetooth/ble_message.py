@@ -13,7 +13,6 @@ from pymammotion.bluetooth.const import UUID_WRITE_CHARACTERISTIC
 from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.bluetooth.model.atomic_integer import AtomicInteger
-from pymammotion.proto import DevNet, DrvDevInfoReq, LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 from pymammotion.utility.constant.device_constant import BleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
@@ -337,21 +336,6 @@ class BleMessage:
     # async def get_device_info(self):
     #     await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
-    async def send_device_info(self) -> None:
-        """Currently not called"""
-        luba_msg = LubaMsg(
-            msgtype=MsgCmdType.ESP,
-            sender=MsgDevice.DEV_MOBILEAPP,
-            rcver=MsgDevice.DEV_COMM_ESP,
-            msgattr=MsgAttr.REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            net=DevNet(todev_ble_sync=1, todev_devinfo_req=DrvDevInfoReq()),
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
     async def requestDeviceStatus(self) -> None:
         """Request the current device status from the BLE device."""
         request = False
@@ -383,7 +367,7 @@ class BleMessage:
         """Write raw bytes to the GATT write characteristic with response."""
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
-    def parseNotification(self, response: bytes):
+    def parseNotification(self, response: bytes | None) -> int:
         """Parse notification data from BLE device."""
         if response is None:
             # Log.w(TAG, "parseNotification null data");

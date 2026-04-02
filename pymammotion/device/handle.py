@@ -275,6 +275,11 @@ class DeviceHandle:
                 field,
                 {k.value: v.is_connected for k, v in self._transports.items()},
             )
+            if self._prefer_ble:
+                ble = self._transports.get(TransportType.BLE)
+                if ble is not None and not ble.is_connected:
+                    _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
+                    await ble.connect()
             try:
                 transport = self.active_transport()
             except NoTransportAvailableError:
@@ -437,6 +442,12 @@ class DeviceHandle:
             prefer_ble,
             {k.value: v.is_connected for k, v in self._transports.items()},
         )
+        use_ble = prefer_ble or self._prefer_ble
+        if use_ble:
+            ble = self._transports.get(TransportType.BLE)
+            if ble is not None and not ble.is_connected:
+                _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
+                await ble.connect()
         try:
             transport = self.active_transport(prefer_ble=prefer_ble)
         except NoTransportAvailableError:

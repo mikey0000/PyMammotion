@@ -574,13 +574,48 @@ async def test_send_command_with_args_default_uses_mqtt_transport() -> None:
     ble.send.assert_not_awaited()
 
 
-async def test_send_command_with_args_prefer_ble_falls_back_to_mqtt_when_ble_disconnected() -> None:
-    """When prefer_ble=True but BLE is disconnected, command falls back to MQTT."""
+async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback() -> None:
+    """When prefer_ble=True and BLE is disconnected, send_raw attempts reconnect first.
+
+    If reconnect succeeds the command goes over BLE, not MQTT.
+    """
     client = MammotionClient()
 
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     ble = _make_connected_transport(TransportType.BLE)
-    ble.is_connected = False  # BLE down
+    ble.is_connected = False
+
+    async def _reconnect() -> None:
+        ble.is_connected = True
+
+    ble.connect = AsyncMock(side_effect=_reconnect)
+
+    handle = make_handle("Luba-RC", "Luba-RC")
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    fake_bytes = b"\xAB\xCD"
+    patcher = _stub_commands(handle, fake_bytes)
+    try:
+        await client._device_registry.register(handle)
+        await client.send_command_with_args("Luba-RC", "get_report_cfg", prefer_ble=True)
+        await _drain(handle)
+    finally:
+        patcher.stop()
+
+    ble.connect.assert_awaited_once()
+    ble.send.assert_awaited_once_with(fake_bytes, iot_id="")
+    mqtt.send.assert_not_awaited()
+
+
+async def test_send_command_with_args_prefer_ble_falls_back_to_mqtt_when_reconnect_fails() -> None:
+    """When prefer_ble=True, BLE reconnect fails, command falls back to MQTT."""
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.connect = AsyncMock()  # connect() does nothing — is_connected stays False
 
     handle = make_handle("Luba-FB", "Luba-FB")
     await handle.add_transport(mqtt)
@@ -595,5 +630,6 @@ async def test_send_command_with_args_prefer_ble_falls_back_to_mqtt_when_ble_dis
     finally:
         patcher.stop()
 
+    ble.connect.assert_awaited_once()
     mqtt.send.assert_awaited_once_with(fake_bytes, iot_id="")
     ble.send.assert_not_awaited()
