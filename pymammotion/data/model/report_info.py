@@ -1,9 +1,16 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
+import betterproto2
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model.enums import MnetLinkType, RtkSwitchMode, SimCardStatus
+
+if TYPE_CHECKING:
+    from pymammotion.proto import ReportInfoData
 
 
 class NetUsedType(StrEnum):
@@ -358,6 +365,49 @@ class WorkData(DataClassORJSONMixin):
 
 
 @dataclass
+class BasestationInfo(DataClassORJSONMixin):
+    ver_major: int = 0
+    ver_minor: int = 0
+    ver_patch: int = 0
+    ver_build: int = 0
+    basestation_status: int = 0
+    connect_status_since_poweron: int = 0
+
+
+@dataclass
+class CutterWorkModeInfo(DataClassORJSONMixin):
+    current_cutter_mode: int = 0
+    current_cutter_rpm: int = 0
+
+
+@dataclass
+class VisionPointMsg(DataClassORJSONMixin):
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+
+
+@dataclass
+class VisionPointInfo(DataClassORJSONMixin):
+    label: int = 0
+    num: int = 0
+    vision_point: list[VisionPointMsg] = field(default_factory=list)
+
+
+@dataclass
+class VisionStatisticMsg(DataClassORJSONMixin):
+    mean: float = 0.0
+    var: float = 0.0
+
+
+@dataclass
+class VisionStatisticInfo(DataClassORJSONMixin):
+    timestamp: float = 0.0
+    num: int = 0
+    vision_statistics: list[VisionStatisticMsg] = field(default_factory=list)
+
+
+@dataclass
 class WorkSessionResult(DataClassORJSONMixin):
     """Completed or interrupted work session summary (proto WorkReportInfoAck).
 
@@ -390,17 +440,43 @@ class ReportData(DataClassORJSONMixin):
     rtk: RTKData = field(default_factory=RTKData)
     locations: list[LocationData] = field(default_factory=list)
     work: WorkData = field(default_factory=WorkData)
+    basestation_info: BasestationInfo = field(default_factory=BasestationInfo)
+    cutter_work_mode_info: CutterWorkModeInfo = field(default_factory=CutterWorkModeInfo)
+    vision_point_info: list[VisionPointInfo] = field(default_factory=list)
+    vision_statistic_info: VisionStatisticInfo = field(default_factory=VisionStatisticInfo)
 
-    def update(self, data: dict) -> None:
-        """Update all report fields in-place from a raw device telemetry dictionary."""
-        locations = self.locations
-        if data.get("locations") is not None:
-            locations = [LocationData.from_dict(loc) for loc in data.get("locations", [])]
-
-        self.connect = ConnectData.from_dict(data.get("connect", self.connect.to_dict()))
-        self.dev = DeviceData.from_dict(data.get("dev", self.dev.to_dict()))
-        self.rtk = RTKData.from_dict(data.get("rtk", self.rtk.to_dict()))
-        self.maintenance = Maintain.from_dict(data.get("maintain", self.maintenance.to_dict()))
-        self.vision_info = VisionInfo.from_dict(data.get("vio_to_app_info", VisionInfo().to_dict()))
-        self.locations = locations
-        self.work = WorkData.from_dict(data.get("work", self.work.to_dict()))
+    def update(self, data: ReportInfoData) -> None:
+        """Update only the fields present in the proto message, leaving absent fields unchanged."""
+        if data.connect is not None:
+            self.connect = ConnectData.from_dict(data.connect.to_dict(casing=betterproto2.Casing.SNAKE))
+        if data.dev is not None:
+            self.dev = DeviceData.from_dict(data.dev.to_dict(casing=betterproto2.Casing.SNAKE))
+        if data.rtk is not None:
+            self.rtk = RTKData.from_dict(data.rtk.to_dict(casing=betterproto2.Casing.SNAKE))
+        if data.maintain is not None:
+            self.maintenance = Maintain.from_dict(data.maintain.to_dict(casing=betterproto2.Casing.SNAKE))
+        if data.vio_to_app_info is not None:
+            self.vision_info = VisionInfo.from_dict(data.vio_to_app_info.to_dict(casing=betterproto2.Casing.SNAKE))
+        if data.locations:
+            self.locations = [
+                LocationData.from_dict(loc.to_dict(casing=betterproto2.Casing.SNAKE)) for loc in data.locations
+            ]
+        if data.work is not None:
+            self.work = WorkData.from_dict(data.work.to_dict(casing=betterproto2.Casing.SNAKE))
+        if data.basestation_info is not None:
+            self.basestation_info = BasestationInfo.from_dict(
+                data.basestation_info.to_dict(casing=betterproto2.Casing.SNAKE)
+            )
+        if data.cutter_work_mode_info is not None:
+            self.cutter_work_mode_info = CutterWorkModeInfo.from_dict(
+                data.cutter_work_mode_info.to_dict(casing=betterproto2.Casing.SNAKE)
+            )
+        if data.vision_point_info:
+            self.vision_point_info = [
+                VisionPointInfo.from_dict(vpi.to_dict(casing=betterproto2.Casing.SNAKE))
+                for vpi in data.vision_point_info
+            ]
+        if data.vision_statistic_info is not None:
+            self.vision_statistic_info = VisionStatisticInfo.from_dict(
+                data.vision_statistic_info.to_dict(casing=betterproto2.Casing.SNAKE)
+            )

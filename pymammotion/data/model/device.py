@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 import math
 from typing import Any
 
-import betterproto2
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 import orjson
 
@@ -180,7 +179,7 @@ class MowingDevice(DataClassORJSONMixin):
         if toapp_report_data.work:
             self.map.invalidate_mow_path(toapp_report_data.work.ub_path_hash)
 
-        self.report_data.update(toapp_report_data.to_dict(casing=betterproto2.Casing.SNAKE))
+        self.report_data.update(toapp_report_data)
 
     def run_state_update(self, tard_state: SystemTardStateTunnelMsg) -> None:
         """Set lat long, work zone of RTK and robot."""
