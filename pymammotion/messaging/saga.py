@@ -31,6 +31,7 @@ class Saga(ABC):
     name: str = "unnamed_saga"
     max_attempts: int = 3
     step_timeout: float = 15.0
+    device_name: str = ""
 
     @abstractmethod
     async def _run(self, broker: DeviceMessageBroker) -> None:
@@ -54,13 +55,14 @@ class Saga(ABC):
                 if attempt >= self.max_attempts:
                     raise SagaFailedError(self.name, self.max_attempts) from exc
                 _logger.warning(
-                    "Saga '%s' interrupted on attempt %d/%d: %s. Restarting in 1s.",
+                    "Saga '%s'[%s] interrupted on attempt %d/%d: %s. Restarting in 1s.",
                     self.name,
+                    self.device_name,
                     attempt,
                     self.max_attempts,
                     exc,
                 )
                 await asyncio.sleep(0.5)
             else:
-                _logger.debug("Saga '%s' completed on attempt %d", self.name, attempt)
+                _logger.debug("Saga '%s'[%s] completed on attempt %d", self.name, self.device_name, attempt)
                 return

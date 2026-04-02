@@ -47,7 +47,7 @@ class DeviceCommandQueue:
     EMERGENCY items always execute and are never skipped.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, device_name: str = "") -> None:
         """Initialise queue, exclusive-slot event, and sequence counter."""
         self._queue: asyncio.PriorityQueue[_QueueItem] = asyncio.PriorityQueue()
         self._exclusive_active = asyncio.Event()
@@ -56,6 +56,7 @@ class DeviceCommandQueue:
         self._running = False
         self._task: asyncio.Task[None] | None = None
         self._current_work_task: asyncio.Task[None] | None = None
+        self._device_name = device_name
         #: Called on critical errors (AuthError, SagaFailedError) so DeviceHandle can propagate them.
         self.on_critical_error: Callable[[Exception], Awaitable[None]] | None = None
 
@@ -124,6 +125,7 @@ class DeviceCommandQueue:
         async def _run() -> None:
             self._exclusive_active.clear()
             try:
+                saga.device_name = self._device_name
                 await saga.execute(broker)
             finally:
                 self._exclusive_active.set()
@@ -156,8 +158,8 @@ class DeviceCommandQueue:
 
                 from pymammotion.aliyun.exceptions import GatewayTimeoutException
 
-                _GATEWAY_TIMEOUT_MAX = 3
-                for _attempt in range(1, _GATEWAY_TIMEOUT_MAX + 1):
+                _gateway_timeout_max = 3
+                for _attempt in range(1, _gateway_timeout_max + 1):
                     self._current_work_task = asyncio.get_running_loop().create_task(
                         item.work()  # type: ignore[arg-type]
                     )
@@ -165,15 +167,17 @@ class DeviceCommandQueue:
                         await self._current_work_task
                         break  # success — exit retry loop
                     except GatewayTimeoutException:
-                        if _attempt < _GATEWAY_TIMEOUT_MAX:
+                        if _attempt < _gateway_timeout_max:
                             _logger.warning(
-                                "DeviceCommandQueue: gateway timeout (attempt %d/%d) — retrying",
+                                "DeviceCommandQueue[%s]: gateway timeout (attempt %d/%d) — retrying",
+                                self._device_name,
                                 _attempt,
-                                _GATEWAY_TIMEOUT_MAX,
+                                _gateway_timeout_max,
                             )
                         else:
                             _logger.warning(
-                                "DeviceCommandQueue: gateway timeout after %d attempts — dropping command",
+                                "DeviceCommandQueue[%s]: gateway timeout after %d attempts — dropping command",
+                                self._device_name,
                                 _attempt,
                             )
                     finally:
@@ -187,9 +191,9 @@ class DeviceCommandQueue:
                 if isinstance(
                     exc, (AuthError, SagaFailedError, DeviceOfflineException, NoTransportAvailableError, TransportError)
                 ):
-                    _logger.warning("DeviceCommandQueue: %s", exc)
+                    _logger.warning("DeviceCommandQueue[%s]: %s", self._device_name, exc)
                 else:
-                    _logger.exception("DeviceCommandQueue: unhandled error in work item")
+                    _logger.exception("DeviceCommandQueue[%s]: unhandled error in work item", self._device_name)
                 if self.on_critical_error is not None and isinstance(exc, (AuthError, SagaFailedError)):
                     try:
                         await self.on_critical_error(exc)

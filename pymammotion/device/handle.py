@@ -145,7 +145,7 @@ class DeviceHandle:
         self.iot_id = iot_id
         self.user_account = user_account
         self.broker = DeviceMessageBroker()
-        self.queue = DeviceCommandQueue()
+        self.queue = DeviceCommandQueue(device_name)
         self.state_machine = DeviceStateMachine(device_id, initial_device)
         self._availability = DeviceAvailability()
         self._transports: dict[TransportType, Transport] = {}
@@ -267,7 +267,16 @@ class DeviceHandle:
         async def _do_send(cmd: bytes, field: str) -> None:
             from pymammotion.aliyun.exceptions import DeviceOfflineException
 
-            transport = self.active_transport()
+            try:
+                transport = self.active_transport()
+            except NoTransportAvailableError:
+                ble = self._transports.get(TransportType.BLE)
+                if ble is not None and not ble.is_connected:
+                    _logger.debug("BLE disconnected for '%s' — reconnecting before send", self.device_name)
+                    await ble.connect()
+                    transport = self.active_transport()
+                else:
+                    raise
             try:
                 await self.broker.send_and_wait(
                     send_fn=lambda: transport.send(cmd, iot_id=self.iot_id),
@@ -410,7 +419,16 @@ class DeviceHandle:
         """Send raw bytes via the best available transport, with BLE fallback on offline."""
         from pymammotion.aliyun.exceptions import DeviceOfflineException
 
-        transport = self.active_transport(prefer_ble=prefer_ble)
+        try:
+            transport = self.active_transport(prefer_ble=prefer_ble)
+        except NoTransportAvailableError:
+            ble = self._transports.get(TransportType.BLE)
+            if ble is not None and not ble.is_connected:
+                _logger.debug("BLE disconnected for '%s' — reconnecting before send", self.device_name)
+                await ble.connect()
+                transport = self.active_transport(prefer_ble=prefer_ble)
+            else:
+                raise
         try:
             await transport.send(payload, iot_id=self.iot_id)
         except DeviceOfflineException:

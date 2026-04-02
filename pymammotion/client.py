@@ -307,9 +307,11 @@ class MammotionClient:
         Raises LoginFailedError if the re-login itself fails.
         """
         if session is None or not session.email or not session.password:
-            raise LoginFailedError("", "No stored credentials available for re-login")
+            msg = "No stored credentials available for re-login"
+            raise LoginFailedError("", msg)  # noqa: EM101
         if session.mammotion_http is None:
-            raise LoginFailedError(session.email, "No HTTP client available for re-login")
+            msg = "No HTTP client available for re-login"
+            raise LoginFailedError(session.email, msg)
         try:
             login_resp = await session.mammotion_http.login_v2(session.email, session.password)
             if login_resp.code != 0:
@@ -391,12 +393,35 @@ class MammotionClient:
     # ------------------------------------------------------------------
 
     async def add_ble_device(self, device_id: str, ble_device: object) -> None:
-        """Register an externally-discovered BLE device (hybrid MQTT+BLE mode)."""
+        """Register an externally-discovered BLE device (hybrid MQTT+BLE mode).
+
+        If the device handle is already registered (cloud login happened first),
+        a BLETransport is created and wired to the handle immediately.  If the
+        handle does not exist yet, the BLE device is stored in the manager so
+        that the transport can be added once the handle is registered.
+        """
         self._ble_manager.register_external_ble_client(device_id, ble_device)
+        handle = self._device_registry.get(device_id)
+        if handle is not None:
+            transport = BLETransport(BLETransportConfig(device_id=device_id))
+            transport.set_ble_device(ble_device)  # type: ignore[arg-type]
+            await handle.add_transport(transport)
+            _logger.info("BLE transport added to existing handle for device %s", device_id)
 
     async def update_ble_device(self, device_id: str, ble_device: object) -> None:
-        """Update the BLE advertisement for a known device."""
+        """Update the BLE advertisement for a known device.
+
+        Also updates the live BLETransport (if already wired to the handle) so
+        bleak_retry_connector has the freshest advertisement on the next connect.
+        """
         self._ble_manager.update_external_ble_client(device_id, ble_device)
+        handle = self._device_registry.get(device_id)
+        if handle is not None:
+            from pymammotion.transport.ble import BLETransport as _BLETransport
+
+            ble = handle._transports.get(TransportType.BLE)  # noqa: SLF001
+            if isinstance(ble, _BLETransport):
+                ble.set_ble_device(ble_device)  # type: ignore[arg-type]
 
     async def add_ble_only_device(
         self,

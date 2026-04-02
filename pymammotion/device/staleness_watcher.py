@@ -62,29 +62,29 @@ class MapStalenessWatcher:
         # Check map staleness
         if device.map.missing_hashlist() and (now - self._last_map_trigger) > self._cooldown:
             self._last_map_trigger = now
-            _logger.info("MapStalenessWatcher: map data invalidated, triggering re-fetch")
+            _logger.info("MapStalenessWatcher[%s]: map data invalidated, triggering re-fetch", device.name)
             try:
                 await self._on_maps_stale()
             except Exception:  # noqa: BLE001
-                _logger.warning(f"MapStalenessWatcher:{device.name} map refetch trigger failed", exc_info=True)
+                _logger.warning("MapStalenessWatcher[%s]: map refetch trigger failed", device.name, exc_info=True)
 
         # Check area names staleness — map is valid but area names never arrived
         elif device.map.area_names_stale and (now - self._last_area_names_trigger) > self._cooldown:
             self._last_area_names_trigger = now
-            _logger.info("MapStalenessWatcher: area names missing, triggering area-name fetch")
+            _logger.info("MapStalenessWatcher[%s]: area names missing, triggering area-name fetch", device.name)
             try:
                 await self._on_area_names_stale()
             except Exception:  # noqa: BLE001
-                _logger.warning(f"MapStalenessWatcher:{device.name} area-name refetch trigger failed", exc_info=True)
+                _logger.warning("MapStalenessWatcher[%s]: area-name refetch trigger failed", device.name, exc_info=True)
 
         # Check plan staleness
         if device.map.plans_stale and (now - self._last_plan_trigger) > self._cooldown:
             self._last_plan_trigger = now
-            _logger.info("MapStalenessWatcher: plans stale, triggering re-fetch")
+            _logger.info("MapStalenessWatcher[%s]: plans stale, triggering re-fetch", device.name)
             try:
                 await self._on_plans_stale()
             except Exception:  # noqa: BLE001
-                _logger.warning(f"MapStalenessWatcher:{device.name} plan refetch trigger failed", exc_info=True)
+                _logger.warning("MapStalenessWatcher[%s]: plan refetch trigger failed", device.name, exc_info=True)
 
     def stop(self) -> None:
         """Cancel the state-change subscription."""
