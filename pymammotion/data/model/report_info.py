@@ -7,7 +7,15 @@ from typing import TYPE_CHECKING
 import betterproto2
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.data.model.enums import MnetLinkType, RtkSwitchMode, SimCardStatus
+from pymammotion.data.model.enums import (
+    BladeState,
+    MnetLinkType,
+    PositionMode,
+    RTKStatus,
+    RtkSwitchMode,
+    SensorCheckState,
+    SimCardStatus,
+)
 
 if TYPE_CHECKING:
     from pymammotion.proto import ReportInfoData
@@ -142,6 +150,47 @@ class DeviceData(DataClassORJSONMixin):
     # Hardware self-check bitmask (rpt_dev_status.self_check_status)
     self_check_status: int = 0
 
+    # ------------------------------------------------------------------
+    # sensor_status bit-field accessors
+    # See docs/sensor_status.md for the full bit layout.
+    # ------------------------------------------------------------------
+
+    @property
+    def bumper_state(self) -> SensorCheckState:
+        """Bumper/collision-bar state (sensor_status bits 0-2)."""
+        raw = self.sensor_status & 0x7
+        return SensorCheckState(min(raw, int(SensorCheckState.ERROR)))
+
+    @property
+    def blade_state(self) -> BladeState:
+        """Blade/cutter-disc state (sensor_status bits 9-11)."""
+        raw = (self.sensor_status >> 9) & 0x7
+        return BladeState.ON if raw else BladeState.OFF
+
+    @property
+    def ult_left(self) -> SensorCheckState:
+        """Left ultrasonic sensor state (sensor_status bits 12-14)."""
+        raw = (self.sensor_status >> 12) & 0x7
+        return SensorCheckState(min(raw, int(SensorCheckState.ERROR)))
+
+    @property
+    def ult_left_front(self) -> SensorCheckState:
+        """Left-front ultrasonic sensor state (sensor_status bits 15-17)."""
+        raw = (self.sensor_status >> 15) & 0x7
+        return SensorCheckState(min(raw, int(SensorCheckState.ERROR)))
+
+    @property
+    def ult_right_front(self) -> SensorCheckState:
+        """Right-front ultrasonic sensor state (sensor_status bits 18-20)."""
+        raw = (self.sensor_status >> 18) & 0x7
+        return SensorCheckState(min(raw, int(SensorCheckState.ERROR)))
+
+    @property
+    def ult_right(self) -> SensorCheckState:
+        """Right ultrasonic sensor state (sensor_status bits 21-23)."""
+        raw = (self.sensor_status >> 21) & 0x7
+        return SensorCheckState(min(raw, int(SensorCheckState.ERROR)))
+
 
 @dataclass
 class LoraInfo(DataClassORJSONMixin):
@@ -250,6 +299,18 @@ class RTKData(DataClassORJSONMixin):
     lora_info: LoraInfo = field(default_factory=LoraInfo)
     mqtt_rtk_info: MqttRtkInfo = field(default_factory=MqttRtkInfo)
     score_info: RtkPositionScore = field(default_factory=RtkPositionScore)
+
+    @property
+    def positioning_mode(self) -> PositionMode:
+        """Decode pos_level into a PositionMode (FIX/SINGLE/FLOAT/NONE).
+
+        pos_level 0 = best fix (FIX), increasing values indicate degrading solution.
+        Source: MACarDataManager.java posLevel extraction + PositionMode mapping.
+        """
+        try:
+            return PositionMode(self.pos_level)
+        except ValueError:
+            return PositionMode.UNKNOWN
 
     def get_dis_status(self) -> RTKDisStatus:
         """Unpack the packed dis_status integer into an RTKDisStatus with individual signal quality fields."""
@@ -365,13 +426,46 @@ class WorkData(DataClassORJSONMixin):
 
 
 @dataclass
+class BaseScore(DataClassORJSONMixin):
+    """Quality scores reported by the RTK base station."""
+
+    base_score: int = 0
+    base_leve: int = 0
+    base_moved: int = 0
+    base_moving: int = 0
+
+
+@dataclass
 class BasestationInfo(DataClassORJSONMixin):
+    # Fields from RptBasestationInfo (via toapp_report_data subscription)
     ver_major: int = 0
     ver_minor: int = 0
     ver_patch: int = 0
     ver_build: int = 0
     basestation_status: int = 0
     connect_status_since_poweron: int = 0
+    # Fields from response_basestation_info_t (via LubaMsg.base.to_app)
+    sats_num: int = 0
+    rtk_status: int = 0
+    rtk_channel: int = 0
+    rtk_switch: int = 0
+    wifi_rssi: int = 0
+    lora_channel: int = 0
+    mqtt_rtk_status: int = 0
+    score_info: BaseScore = field(default_factory=BaseScore)
+
+    @property
+    def fix_status(self) -> RTKStatus:
+        """RTK fix status of the base station."""
+        return RTKStatus.from_value(self.rtk_status)
+
+    @property
+    def correction_source(self) -> RtkSwitchMode:
+        """Correction source mode for the base station."""
+        try:
+            return RtkSwitchMode(self.rtk_switch)
+        except ValueError:
+            return RtkSwitchMode.LORA
 
 
 @dataclass

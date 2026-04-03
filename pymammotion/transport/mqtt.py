@@ -114,11 +114,14 @@ class MQTTTransport(Transport):
     async def connect(self) -> None:
         """Start the MQTT receive loop task.
 
-        Raises TransportError if already connected or if starting the task
-        fails immediately.
+        Does nothing if the task is already running (connected or in a retry-sleep).
+        If the task has died unexpectedly it is restarted.
         """
-        if self.is_connected:
-            _logger.debug("MQTTTransport.connect() called while already connected — ignoring")
+        if self._task is not None and not self._task.done():
+            _logger.debug(
+                "MQTTTransport.connect() called while task is running (availability=%s) — ignoring",
+                self._availability.value,
+            )
             return
 
         self._stop_event.clear()

@@ -188,3 +188,29 @@ class TaskAreaStatus(IntEnum):
     MOWING = 2  # Zone currently being mowed (选中正在割)
     COMPLETE = 3  # Zone finished (区域完成)
     ABORTED = 5  # Zone skipped or aborted
+
+
+class SensorCheckState(IntEnum):
+    """3-bit sensor health/obstacle state packed into DeviceData.sensor_status.
+
+    Each sensor occupies 3 bits in the sensor_status long field.  The app's
+    self-check screen (SelfCheckFragment.setCheckState) uses exactly these
+    three display states; values 3-7 are all treated as ERROR by the app.
+
+    Source: SelfCheckFragment.java setCheckState() + MACarDataManager.java
+    碰撞杆状态 / 超声打印 log messages.
+    """
+
+    OK = 0  # Sensor healthy / clear (green ✓ in self-check)
+    WARNING = 1  # Degraded / ignored (yellow ⚠ in self-check)
+    ERROR = 2  # Fault or obstacle detected (red ✗ in self-check); values 3-7 also map here
+
+
+class BladeState(IntEnum):
+    """3-bit blade/cutter-disc state packed into DeviceData.sensor_status bits 9-11.
+
+    Source: MACarDataManager.java "刀盘逻辑" (cutter-disc logic) + KnifeStateEvent.
+    """
+
+    OFF = 0  # Blade not rotating
+    ON = 1  # Blade active / rotating

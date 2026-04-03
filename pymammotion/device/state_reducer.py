@@ -20,6 +20,7 @@ from pymammotion.data.model.hash_list import (
     Plan,
     SvgMessage,
 )
+from pymammotion.data.model.report_info import BaseScore
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.proto import (
     AppGetAllAreaHashName,
@@ -47,6 +48,7 @@ from pymammotion.proto import (
     NavReqCoverPath,
     NavSysParamMsg,
     NavUnableTimeSet,
+    ResponseBasestationInfoT,
     SvgMessageAckT,
     SysCommCmd,
     TimeCtrlLight,
@@ -154,6 +156,10 @@ class StateReducer:
 
             case "ota":
                 pass  # OTA updates are informational only; nothing to update yet
+
+            case "base":
+                device.report_data = copy.deepcopy(current.report_data)
+                self._update_base_data(device, message)
 
         return device
 
@@ -356,6 +362,28 @@ class StateReducer:
                     device.report_data.dev.mnet_info = device.report_data.dev.mnet_info.from_dict(
                         mnet_info_rsp.mnet.to_dict(casing=betterproto2.Casing.SNAKE)
                     )
+
+    def _update_base_data(self, device: MowingDevice, message: LubaMsg) -> None:
+        """Update base station RTK data from LubaMsg.base.to_app response."""
+        base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")
+        if base_msg[0] != "to_app":
+            return
+        resp: ResponseBasestationInfoT = base_msg[1]
+        info = device.report_data.basestation_info
+        info.sats_num = resp.sats_num
+        info.rtk_status = resp.rtk_status
+        info.rtk_channel = resp.rtk_channel
+        info.rtk_switch = resp.rtk_switch
+        info.wifi_rssi = resp.wifi_rssi
+        info.lora_channel = resp.lora_channel
+        info.mqtt_rtk_status = resp.mqtt_rtk_status
+        if resp.score_info is not None:
+            info.score_info = BaseScore(
+                base_score=resp.score_info.base_score,
+                base_leve=resp.score_info.base_leve,
+                base_moved=resp.score_info.base_moved,
+                base_moving=resp.score_info.base_moving,
+            )
 
     def _update_mul_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update media/light data fields on *device* in-place."""

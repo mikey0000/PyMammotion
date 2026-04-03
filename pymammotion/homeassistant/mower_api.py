@@ -108,6 +108,7 @@ class HomeAssistantMowerApi:
 
         if self._should_call_api("get_maintenance", device_name):
             await self.async_send_command(device_name, "get_maintenance")
+            await self.async_send_command(device_name, "basestation_info")
             self._mark_api_called("get_maintenance", device_name)
 
         if self._should_call_api("device_version_upgrade", device_name):

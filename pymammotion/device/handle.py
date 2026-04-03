@@ -283,6 +283,17 @@ class DeviceHandle:
             try:
                 transport = self.active_transport()
             except NoTransportAvailableError:
+                # Restart any dead MQTT task so future commands have a transport.
+                # The fixed connect() is a no-op if the task is still running (retry-sleep).
+                for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                    mqtt_t = self._transports.get(t_type)
+                    if mqtt_t is not None and not mqtt_t.is_connected:
+                        _logger.warning(
+                            "DeviceHandle[%s]: %s not connected on send — restarting loop",
+                            self.device_name,
+                            t_type.value,
+                        )
+                        await mqtt_t.connect()
                 ble = self._transports.get(TransportType.BLE)
                 if ble is not None and not ble.is_connected:
                     _logger.debug("BLE disconnected for '%s' — reconnecting before send", self.device_name)
@@ -568,7 +579,7 @@ class DeviceHandle:
         use_ble_first = self._prefer_ble if prefer_ble is None else prefer_ble
 
         ble = self._transports.get(TransportType.BLE)
-        ble_ok = ble is not None and ble.is_connected
+        ble_ok = ble is not None
 
         mqtt: Transport | None = None
         for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
@@ -606,7 +617,11 @@ class DeviceHandle:
                 _logger.debug("active_transport '%s': MQTT not connected — falling back to BLE", self.device_name)
                 return ble
 
-        msg = f"No connected transport available for device '{self.device_id}'"
+        transport_states = (
+            ", ".join(f"{tt.value}={t.availability.value}" for tt, t in self._transports.items()) or "none registered"
+        )
+        msg = f"No connected transport available for device '{self.device_id}' [{transport_states}]"
+        _logger.warning("active_transport '%s': %s", self.device_name, msg)
         raise NoTransportAvailableError(msg)
 
 

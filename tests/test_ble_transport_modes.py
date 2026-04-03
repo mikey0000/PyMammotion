@@ -60,14 +60,18 @@ async def test_ble_only_active_transport_is_ble() -> None:
     assert handle.active_transport() is ble
 
 
-async def test_ble_only_no_transport_when_disconnected() -> None:
-    """When the BLE transport is disconnected and no MQTT exists, raise NoTransportAvailableError."""
+async def test_ble_only_returns_ble_even_when_disconnected() -> None:
+    """When the BLE transport is disconnected, active_transport still returns it.
+
+    BLETransport.send() auto-connects; routing through BLE is correct even
+    when it is not yet connected.  NoTransportAvailableError is only raised
+    when no BLE transport is registered at all.
+    """
     handle = _make_handle(prefer_ble=True)
     ble = _make_transport(TransportType.BLE, connected=False)
     await handle.add_transport(ble)
 
-    with pytest.raises(NoTransportAvailableError):
-        handle.active_transport()
+    assert handle.active_transport() is ble
 
 
 async def test_ble_only_reconnects_before_send() -> None:
@@ -150,17 +154,20 @@ async def test_hybrid_prefer_ble_chooses_ble() -> None:
     assert handle.active_transport() is ble
 
 
-async def test_hybrid_ble_disconnected_falls_back_to_mqtt() -> None:
-    """When prefer_ble=True but BLE is disconnected, active_transport() falls back to MQTT."""
+async def test_hybrid_ble_disconnected_still_routes_to_ble() -> None:
+    """When prefer_ble=True and BLE is disconnected, active_transport() still returns BLE.
+
+    BLETransport.send() handles auto-connection internally; routing through
+    BLE is correct even before the connection is established.
+    """
     handle = _make_handle(prefer_ble=True)
     mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
     ble = _make_transport(TransportType.BLE, connected=False)
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
 
-    # BLE is disconnected — should fall back to MQTT without raising
     active = handle.active_transport()
-    assert active is mqtt
+    assert active is ble
 
 
 async def test_hybrid_ble_disconnected_reconnects_when_no_mqtt() -> None:

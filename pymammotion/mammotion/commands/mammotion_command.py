@@ -1,3 +1,4 @@
+from pymammotion.mammotion.commands.messages.basestation import MessageBasestation
 from pymammotion.mammotion.commands.messages.driver import MessageDriver
 from pymammotion.mammotion.commands.messages.media import MessageMedia
 from pymammotion.mammotion.commands.messages.navigation import MessageNavigation
@@ -10,7 +11,14 @@ from pymammotion.utility.movement import get_percent, transform_both_speeds
 
 
 class MammotionCommand(
-    MessageSystem, MessageNavigation, MessageNetwork, MessageOta, MessageVideo, MessageMedia, MessageDriver
+    MessageSystem,
+    MessageNavigation,
+    MessageNetwork,
+    MessageOta,
+    MessageVideo,
+    MessageMedia,
+    MessageDriver,
+    MessageBasestation,
 ):
     """MQTT commands for Luba."""
 
