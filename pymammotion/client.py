@@ -229,7 +229,7 @@ class MammotionClient:
             task_ids = device.events.work_tasks_event.ids
             work = device.report_data.work
             actively_working = bool(task_ids) and work.ub_path_hash != 0
-            path_missing = not device.map.current_mow_path and actively_working
+            path_missing = not device.map.current_mow_path and work.ub_path_hash != 0
 
             if path_missing:
                 if handle.queue.is_saga_active:
