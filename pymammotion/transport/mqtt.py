@@ -26,6 +26,7 @@ from pymammotion.transport.base import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from pymammotion.auth.token_manager import TokenManager
     from pymammotion.http.http import MammotionHTTP
 
 _logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ class MQTTTransport(Transport):
         config: MQTTTransportConfig,
         mammotion_http: MammotionHTTP,
         jwt_refresher: Callable[[], Awaitable[str]] | None = None,
+        token_manager: TokenManager | None = None,
     ) -> None:
         """Initialise the transport with the supplied configuration.
 
@@ -74,12 +76,16 @@ class MQTTTransport(Transport):
             jwt_refresher: Optional async callable that returns a fresh JWT password.
                            Called before each reconnect and on auth failure.
                            Specific to Mammotion direct-MQTT (post-2025 devices).
+            token_manager: Optional TokenManager used by send() to refresh the HTTP
+                           bearer token via get_valid_http_token() rather than calling
+                           refresh_login() directly.
 
         """
         super().__init__()
         self._config = config
         self._http = mammotion_http
         self._jwt_refresher = jwt_refresher
+        self._token_manager = token_manager
         self._tls_context: ssl.SSLContext | None = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS) if config.use_ssl else None
         self._client: aiomqtt.Client | None = None
         self._task: asyncio.Task[None] | None = None
@@ -181,11 +187,14 @@ class MQTTTransport(Transport):
             raise TransportError("MQTTTransport.send: DNS lookup timed out") from None
         except UnauthorizedException:
             _logger.warning("MQTTTransport.send: HTTP access token expired — refreshing and retrying")
+            # Only the HTTP Bearer token is relevant here; refresh it via refresh_token_v2.
+            # Raises ReLoginRequiredError (bubbles up) if the refresh token is also expired.
+            assert self._token_manager is not None, "MQTTTransport requires a TokenManager"
+            await self._token_manager.get_valid_http_token()
             try:
-                await self._http.refresh_login()
                 res = await self._http.mqtt_invoke(content, "", iot_id)
-            except Exception as refresh_exc:
-                raise AuthError("Access token expired and refresh failed") from refresh_exc
+            except Exception as retry_exc:
+                raise AuthError("Access token expired and retry failed after credential refresh") from retry_exc
         if res.code in (401, 460):
             raise AuthError(f"Access token expired (code={res.code})")
         if res.code in (6205, 50104):

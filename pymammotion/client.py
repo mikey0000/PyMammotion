@@ -721,7 +721,7 @@ class MammotionClient:
         self,
         mqtt_creds: MQTTConnection,
         mammotion_http: MammotionHTTP,
-        acct_session: AccountSession | None = None,
+        acct_session: AccountSession,
     ) -> MQTTTransport:
         """Build a MQTTTransport from MQTTConnection credentials."""
         from urllib.parse import urlparse
@@ -738,20 +738,13 @@ class MammotionClient:
         )
 
         # Build a jwt_refresher that uses the TokenManager to get a fresh JWT.
-        token_manager = acct_session.token_manager if acct_session else None
+        token_manager = acct_session.token_manager
 
         async def _refresh_jwt() -> str:
-            if token_manager is not None:
-                creds = await token_manager.get_mammotion_mqtt_credentials()
-                return creds.jwt
-            # Fallback: re-fetch via HTTP directly.
-            await mammotion_http.get_mqtt_credentials()
-            if mammotion_http.mqtt_credentials is not None:
-                return mammotion_http.mqtt_credentials.jwt
-            msg = "Could not obtain fresh MQTT JWT"
-            raise AuthError(msg)
+            creds = await token_manager.get_mammotion_mqtt_credentials()
+            return str(creds.jwt)
 
-        transport = MQTTTransport(config, mammotion_http, jwt_refresher=_refresh_jwt)
+        transport = MQTTTransport(config, mammotion_http, jwt_refresher=_refresh_jwt, token_manager=token_manager)
         transport.on_device_message = self._route_device_message
         transport.on_device_status = self._route_device_status
 
