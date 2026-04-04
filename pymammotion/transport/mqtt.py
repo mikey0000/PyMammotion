@@ -14,7 +14,14 @@ from typing import TYPE_CHECKING
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
 
-from pymammotion.transport.base import AuthError, Transport, TransportAvailability, TransportError, TransportType
+from pymammotion.transport.base import (
+    AuthError,
+    ReLoginRequiredError,
+    Transport,
+    TransportAvailability,
+    TransportError,
+    TransportType,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -48,6 +55,11 @@ class MQTTTransport(Transport):
     on_message: Callable[[bytes], Awaitable[None]] | None = None
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
 
+    #: Fired when the connection loop exhausts JWT refresh attempts and gives up.
+    #: The callback receives the underlying exception.  The client should trigger
+    #: a full re-login and then call ``connect()`` again.
+    on_fatal_auth_error: Callable[[Exception], Awaitable[None]] | None = None
+
     def __init__(
         self,
         config: MQTTTransportConfig,
@@ -80,6 +92,11 @@ class MQTTTransport(Transport):
     # ------------------------------------------------------------------
     # Public topic management
     # ------------------------------------------------------------------
+
+    def update_jwt(self, new_jwt: str) -> None:
+        """Replace the MQTT password (JWT) on the current config for the next connection attempt."""
+        self._config = replace(self._config, password=new_jwt)
+        self._stop_event.clear()
 
     def add_topic(self, topic: str) -> None:
         """Register a topic to subscribe to on next (or current) connect."""
@@ -270,7 +287,13 @@ class MQTTTransport(Transport):
                     )
                     self._stop_event.set()
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
-                    raise AuthError(str(exc)) from exc
+                    auth_exc = ReLoginRequiredError(
+                        "", f"MQTT JWT auth exhausted after {_bad_credentials_attempts} attempt(s)"
+                    )
+                    if self.on_fatal_auth_error is not None:
+                        with contextlib.suppress(Exception):
+                            await self.on_fatal_auth_error(auth_exc)
+                    raise auth_exc from exc
                 if rc in (4, 5, 135) or "not authorized" in str(exc).lower():
                     _logger.error("MQTT auth refused (rc=%s): %s — attempting JWT refresh", rc, exc)
                     if await self._refresh_jwt():
@@ -278,7 +301,11 @@ class MQTTTransport(Transport):
                         continue
                     self._stop_event.set()
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
-                    raise AuthError(str(exc)) from exc
+                    auth_exc = ReLoginRequiredError("", f"MQTT auth refused (rc={rc}) and JWT refresh failed")
+                    if self.on_fatal_auth_error is not None:
+                        with contextlib.suppress(Exception):
+                            await self.on_fatal_auth_error(auth_exc)
+                    raise auth_exc from exc
                 _logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except aiomqtt.MqttError as exc:
                 _logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)
