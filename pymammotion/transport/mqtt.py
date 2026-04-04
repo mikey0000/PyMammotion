@@ -209,6 +209,8 @@ class MQTTTransport(Transport):
         """Attempt to refresh the JWT via the jwt_refresher callback.
 
         Returns True if credentials were refreshed, False otherwise.
+        Raises ReLoginRequiredError if the refresher signals that a full
+        re-login is needed (e.g. HTTP token also expired).
         """
         if self._jwt_refresher is not None:
             try:
@@ -216,6 +218,8 @@ class MQTTTransport(Transport):
                 self._config = replace(self._config, password=new_jwt)
                 _logger.debug("Mammotion MQTT JWT refreshed")
                 return True
+            except ReLoginRequiredError:
+                raise
             except Exception:
                 _logger.warning("JWT refresh failed", exc_info=True)
         if self.on_auth_failure is not None:
@@ -239,6 +243,8 @@ class MQTTTransport(Transport):
                 try:
                     new_jwt = await self._jwt_refresher()
                     self._config = replace(self._config, password=new_jwt)
+                except ReLoginRequiredError:
+                    raise
                 except Exception:
                     _logger.warning("Pre-connect JWT refresh failed", exc_info=True)
 
@@ -307,6 +313,14 @@ class MQTTTransport(Transport):
                             await self.on_fatal_auth_error(auth_exc)
                     raise auth_exc from exc
                 _logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
+            except ReLoginRequiredError as exc:
+                _logger.error("Re-login required during MQTT connection loop: %s", exc)
+                self._stop_event.set()
+                await self._notify_availability(TransportAvailability.DISCONNECTED)
+                if self.on_fatal_auth_error is not None:
+                    with contextlib.suppress(Exception):
+                        await self.on_fatal_auth_error(exc)
+                raise
             except aiomqtt.MqttError as exc:
                 _logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:
