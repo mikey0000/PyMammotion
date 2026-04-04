@@ -583,7 +583,9 @@ class MammotionClient:
             else:
                 if acct_session.token_manager is None:
                     acct_session.token_manager = TokenManager(account, mammotion_http)
-                transport = self._setup_mammotion_transport(mammotion_http.mqtt_credentials, mammotion_http)
+                transport = self._setup_mammotion_transport(
+                    mammotion_http.mqtt_credentials, mammotion_http, acct_session
+                )
                 acct_session.mammotion_transport = transport
                 ua = acct_session.user_account
                 for record in mammotion_records:
@@ -715,7 +717,12 @@ class MammotionClient:
         transport.on_device_status = self._route_device_status
         return transport
 
-    def _setup_mammotion_transport(self, mqtt_creds: MQTTConnection, mammotion_http: MammotionHTTP) -> MQTTTransport:
+    def _setup_mammotion_transport(
+        self,
+        mqtt_creds: MQTTConnection,
+        mammotion_http: MammotionHTTP,
+        acct_session: AccountSession,
+    ) -> MQTTTransport:
         """Build a MQTTTransport from MQTTConnection credentials."""
         from urllib.parse import urlparse
 
@@ -729,9 +736,33 @@ class MammotionClient:
             port=parsed.port or (8883 if use_ssl else 1883),
             use_ssl=use_ssl,
         )
-        transport = MQTTTransport(config, mammotion_http)
+
+        # Build a jwt_refresher that uses the TokenManager to get a fresh JWT.
+        token_manager = acct_session.token_manager
+
+        async def _refresh_jwt() -> str:
+            creds = await token_manager.get_mammotion_mqtt_credentials()
+            return str(creds.jwt)
+
+        transport = MQTTTransport(config, mammotion_http, jwt_refresher=_refresh_jwt, token_manager=token_manager)
         transport.on_device_message = self._route_device_message
         transport.on_device_status = self._route_device_status
+
+        # When the connection loop permanently fails auth, trigger a full
+        # re-login and reconnect so the integration recovers automatically.
+        async def _on_fatal_auth(exc: Exception) -> None:
+            _logger.warning("MQTT transport fatal auth error — attempting full re-login: %s", exc)
+            try:
+                await self._full_relogin(acct_session)
+                # Update the transport config with the fresh JWT and reconnect.
+                new_jwt = await _refresh_jwt()
+                transport.update_jwt(new_jwt)
+                await transport.connect()
+                _logger.info("MQTT transport reconnected after full re-login")
+            except Exception:
+                _logger.exception("Full re-login failed for MQTT transport")
+
+        transport.on_fatal_auth_error = _on_fatal_auth
         return transport
 
     async def _register_aliyun_device(
@@ -887,7 +918,7 @@ class MammotionClient:
             mammotion_http.mqtt_credentials = mqtt_creds
             if acct_session.token_manager is None:
                 acct_session.token_manager = TokenManager(account, mammotion_http)
-            transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http)
+            transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http, acct_session)
             acct_session.mammotion_transport = transport
             ua = acct_session.user_account
             for record in cached_records.records:

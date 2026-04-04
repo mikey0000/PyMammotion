@@ -8,6 +8,8 @@ import time
 from typing import TYPE_CHECKING
 
 from pymammotion.aliyun.exceptions import LoginException
+from pymammotion.http.model.http import MQTTConnection
+from pymammotion.transport import AuthError
 from pymammotion.transport.base import ReLoginRequiredError
 
 if TYPE_CHECKING:
@@ -228,7 +230,7 @@ class TokenManager:
 
         """
         try:
-            response = await self._http.refresh_login()
+            response = await self._http.refresh_token_v2()
             data = response.data
             if data is None:
                 raise ReLoginRequiredError(self._account_id, "refresh_login returned no data")
@@ -307,11 +309,9 @@ class TokenManager:
             ReLoginRequiredError: If the underlying HTTP request fails with an auth error.
 
         """
-        try:
-            response = await self._http.get_mqtt_credentials()
-            data = response.data
-            if data is None:
-                raise ReLoginRequiredError(self._account_id, "get_mqtt_credentials returned no data")
+
+        def _store_mqtt_creds(data: MQTTConnection) -> None:
+            """Store MQTTConnection data into self._mqtt_creds."""
             self._mqtt_creds = MQTTCredentials(
                 host=data.host,
                 client_id=data.client_id,
@@ -319,7 +319,31 @@ class TokenManager:
                 jwt=data.jwt,
                 expires_at=time.time() + 86400,
             )
-        except ReLoginRequiredError:
-            raise
+
+        try:
+            response = await self._http.get_mqtt_credentials()
+            data = response.data
+            if data is None:
+                raise AuthError("get_mqtt_credentials returned no data")
+            _store_mqtt_creds(data)
+        except AuthError:
+            # JWT endpoint failed — refresh the authorization code first (which
+            # internally calls get_mqtt_credentials() and stores the result on self._http).
+            try:
+                await self._http.refresh_token_v2()
+                await self._http.refresh_authorization_code()
+                creds = self._http.mqtt_credentials
+                if creds is None:
+                    raise AuthError("refresh_authorization_code returned no MQTT credentials")
+                _store_mqtt_creds(creds)
+            except (Exception, AuthError):
+                # Authorization code refresh also failed — fall back to a full HTTP re-login.
+                try:
+                    await self._http.refresh_login()
+                    await self._http.refresh_authorization_code()
+                except ReLoginRequiredError:
+                    raise
+                except Exception as exc:
+                    raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         except Exception as exc:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc

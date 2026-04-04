@@ -611,7 +611,7 @@ class MammotionHTTP:
             data = await resp.json()
         refresh_response = response_factory(Response[LoginResponseData], data)
         if refresh_response is None or refresh_response.data is None:
-            return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+            return Response.from_dict({"code": resp.status, "msg": "Refresh login token failed"})
         self.login_info = refresh_response.data
         self.expires_in = refresh_response.data.expires_in + time.time()
         self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if refresh_response.data else None
