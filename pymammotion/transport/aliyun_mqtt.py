@@ -376,13 +376,12 @@ class AliyunMQTTTransport(Transport):
                     raise AuthError(str(exc)) from exc
                 _logger.warning("Aliyun MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except aiomqtt.MqttError as exc:
-                _logger.warning("Aliyun MQTT disconnected: %s — retry in %ds", exc, backoff)
+                _logger.debug("Aliyun MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:
                 break
             finally:
                 self._client = None
-                if self._availability is TransportAvailability.CONNECTED:
-                    await self._notify_availability(TransportAvailability.DISCONNECTED)
+                await self._notify_availability(TransportAvailability.DISCONNECTED)
 
             if not self._stop_event.is_set():
                 try:

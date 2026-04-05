@@ -164,11 +164,11 @@ class BLETransport(Transport):
         Raises TransportError if not connected.
         """
         if self._client is None or self._message is None:
-            if not self._client.is_connected:
-                await self.connect()
-            msg = "BLETransport is not connected; cannot send payload"
+            msg = "BLETransport has no client; cannot send payload"
             raise TransportError(msg)
         _logger.debug("BLETransport send: %d bytes to %s", len(payload), self._config.device_id)
+        if not self._client.is_connected:
+            await self.connect()
         async with self._operation_lock:
             await self._message.post_custom_data_bytes(payload)
         self._reset_idle_disconnect_timer()

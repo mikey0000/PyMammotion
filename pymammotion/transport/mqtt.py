@@ -301,7 +301,6 @@ class MQTTTransport(Transport):
                         _bad_credentials_attempts,
                     )
                     self._stop_event.set()
-                    await self._notify_availability(TransportAvailability.DISCONNECTED)
                     auth_exc = ReLoginRequiredError(
                         "", f"MQTT JWT auth exhausted after {_bad_credentials_attempts} attempt(s)"
                     )
@@ -315,7 +314,6 @@ class MQTTTransport(Transport):
                         _logger.debug("Credentials refreshed after auth failure — retrying")
                         continue
                     self._stop_event.set()
-                    await self._notify_availability(TransportAvailability.DISCONNECTED)
                     auth_exc = ReLoginRequiredError("", f"MQTT auth refused (rc={rc}) and JWT refresh failed")
                     if self.on_fatal_auth_error is not None:
                         with contextlib.suppress(Exception):
@@ -325,7 +323,6 @@ class MQTTTransport(Transport):
             except ReLoginRequiredError as exc:
                 _logger.error("Re-login required during MQTT connection loop: %s", exc)
                 self._stop_event.set()
-                await self._notify_availability(TransportAvailability.DISCONNECTED)
                 if self.on_fatal_auth_error is not None:
                     with contextlib.suppress(Exception):
                         await self.on_fatal_auth_error(exc)
@@ -336,8 +333,7 @@ class MQTTTransport(Transport):
                 break
             finally:
                 self._client = None
-                if self._availability is TransportAvailability.CONNECTED:
-                    await self._notify_availability(TransportAvailability.DISCONNECTED)
+                await self._notify_availability(TransportAvailability.DISCONNECTED)
 
             if not self._stop_event.is_set():
                 try:
