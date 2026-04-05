@@ -60,18 +60,18 @@ async def test_ble_only_active_transport_is_ble() -> None:
     assert handle.active_transport() is ble
 
 
-async def test_ble_only_returns_ble_even_when_disconnected() -> None:
-    """When the BLE transport is disconnected, active_transport still returns it.
+async def test_ble_only_raises_when_disconnected() -> None:
+    """When the only BLE transport is not connected, active_transport raises NoTransportAvailableError.
 
-    BLETransport.send() auto-connects; routing through BLE is correct even
-    when it is not yet connected.  NoTransportAvailableError is only raised
-    when no BLE transport is registered at all.
+    active_transport() requires is_connected — it does NOT auto-connect.  The caller
+    (send_raw / _do_send) is responsible for calling ble.connect() first.
     """
     handle = _make_handle(prefer_ble=True)
     ble = _make_transport(TransportType.BLE, connected=False)
     await handle.add_transport(ble)
 
-    assert handle.active_transport() is ble
+    with pytest.raises(NoTransportAvailableError):
+        handle.active_transport()
 
 
 async def test_ble_only_reconnects_before_send() -> None:
@@ -154,11 +154,11 @@ async def test_hybrid_prefer_ble_chooses_ble() -> None:
     assert handle.active_transport() is ble
 
 
-async def test_hybrid_ble_disconnected_still_routes_to_ble() -> None:
-    """When prefer_ble=True and BLE is disconnected, active_transport() still returns BLE.
+async def test_hybrid_ble_disconnected_falls_back_to_mqtt() -> None:
+    """When prefer_ble=True but BLE is disconnected, active_transport() falls back to MQTT.
 
-    BLETransport.send() handles auto-connection internally; routing through
-    BLE is correct even before the connection is established.
+    active_transport() requires is_connected.  When BLE is not ready, MQTT is used
+    as fallback rather than routing to a disconnected transport.
     """
     handle = _make_handle(prefer_ble=True)
     mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
@@ -167,7 +167,7 @@ async def test_hybrid_ble_disconnected_still_routes_to_ble() -> None:
     await handle.add_transport(ble)
 
     active = handle.active_transport()
-    assert active is ble
+    assert active is mqtt
 
 
 async def test_hybrid_ble_disconnected_reconnects_when_no_mqtt() -> None:

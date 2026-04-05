@@ -155,6 +155,7 @@ class DeviceHandle:
         self._error_bus: EventBus[Exception] = EventBus()
         self._readiness_checker: ReadinessChecker | None = readiness_checker
         self._staleness_watcher: MapStalenessWatcher | None = None
+        self._stopping: bool = False
 
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
@@ -373,7 +374,7 @@ class DeviceHandle:
             )
 
         new_state = self._availability.connection_state
-        if old_state != new_state:
+        if old_state != new_state and not self._stopping:
             snapshot, _ = self.state_machine.apply(self.state_machine.current.raw, self._availability)
             asyncio.get_event_loop().create_task(self._state_changed_bus.emit(snapshot))
 
@@ -400,10 +401,12 @@ class DeviceHandle:
 
     async def start(self) -> None:
         """Start the command queue processor."""
+        self._stopping = False
         self.queue.start()
 
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
+        self._stopping = True
         if self._staleness_watcher is not None:
             self._staleness_watcher.stop()
         await self.queue.stop()
@@ -581,21 +584,23 @@ class DeviceHandle:
         ble = self._transports.get(TransportType.BLE)
         ble_ok = ble is not None
 
+        mqtt_reported_offline = self._availability.mqtt_reported_offline
         mqtt: Transport | None = None
         for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
             t = self._transports.get(transport_type)
-            if t is not None and t.is_connected:
+            if t is not None and t.is_connected and not mqtt_reported_offline:
                 mqtt = t
                 break
         mqtt_ok = mqtt is not None
 
         _logger.debug(
-            "active_transport '%s': prefer_ble=%s ble_registered=%s ble_connected=%s mqtt_connected=%s",
+            "active_transport '%s': prefer_ble=%s ble_registered=%s ble_connected=%s mqtt_connected=%s mqtt_offline=%s",
             self.device_name,
             use_ble_first,
             ble is not None,
             ble_ok,
             mqtt_ok,
+            mqtt_reported_offline,
         )
 
         if use_ble_first:

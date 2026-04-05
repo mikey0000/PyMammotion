@@ -42,6 +42,7 @@ from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransp
 from pymammotion.transport.base import (
     AuthError,
     LoginFailedError,
+    NoTransportAvailableError,
     ReLoginRequiredError,
     SessionExpiredError,
     Subscription,
@@ -119,7 +120,6 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
     rtk = device.location.RTK
     work = device.report_data.work
     now_index = work.now_index
-    ub_path_hash = work.ub_path_hash
     if rtk.latitude == 0 or now_index <= 0 or not device.map.current_mow_path:
         return
 
@@ -135,7 +135,7 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
         device.map,
         now_index,
         Point(rtk_ll.latitude, rtk_ll.longitude),
-        ub_path_hash=ub_path_hash,
+        ub_path_hash=0,  # 0 = include all zones; work.ub_path_hash is the active segment only
         path_pos=path_pos,
     )
 
@@ -229,7 +229,7 @@ class MammotionClient:
             task_ids = device.events.work_tasks_event.ids
             work = device.report_data.work
             actively_working = bool(task_ids) and work.ub_path_hash != 0
-            path_missing = not device.map.current_mow_path and work.ub_path_hash != 0
+            path_missing = actively_working and not device.map.current_mow_path
 
             if path_missing:
                 if handle.queue.is_saga_active:
@@ -370,6 +370,8 @@ class MammotionClient:
                 _logger.debug("Full refresh requires re-login — attempting full re-login")
                 await self._full_relogin(session)
                 await send_fn()
+        except NoTransportAvailableError:
+            raise  # let send_command_with_args retry when transport reconnects
         except TransportError as ex:
             _logger.warning(ex)
 
@@ -1421,11 +1423,43 @@ class MammotionClient:
         _prefer_ble = prefer_ble
         _session = self._get_session_for_device(name)
 
+        _no_transport_max = 5
+        _no_transport_delay = 2.0
+
         async def _do_send() -> None:
-            await self._send_with_auth_retry(
-                lambda: handle.send_raw(command_bytes, prefer_ble=_prefer_ble),
-                _session,
-            )
+            # Gate: cloud has told us this device is offline — don't send unless BLE is available.
+            if handle.availability.mqtt_reported_offline and not handle.has_transport(TransportType.BLE):
+                _logger.debug(
+                    "send_command_with_args '%s': device offline (cloud-reported) — skipping '%s'",
+                    name,
+                    key,
+                )
+                return
+
+            for _attempt in range(1, _no_transport_max + 1):
+                try:
+                    await self._send_with_auth_retry(
+                        lambda: handle.send_raw(command_bytes, prefer_ble=_prefer_ble),
+                        _session,
+                    )
+                except NoTransportAvailableError:
+                    if _attempt >= _no_transport_max:
+                        _logger.warning(
+                            "send_command_with_args '%s': no transport after %d attempts — dropping",
+                            name,
+                            _attempt,
+                        )
+                        return
+                    _logger.debug(
+                        "send_command_with_args '%s': no transport (attempt %d/%d) — retrying in %.1fs",
+                        name,
+                        _attempt,
+                        _no_transport_max,
+                        _no_transport_delay,
+                    )
+                    await asyncio.sleep(_no_transport_delay)
+                else:
+                    return
 
         await handle.queue.enqueue(_do_send, priority=Priority.NORMAL)
 

@@ -96,13 +96,13 @@ def _make_http_mock(
     refresh_token: str = "refresh-new",
     expires_in: float = 3600.0,
 ) -> AsyncMock:
-    """Return a MammotionHTTP mock whose refresh_login returns valid data."""
+    """Return a MammotionHTTP mock whose refresh_token_v2 returns valid data."""
     http = AsyncMock()
     data = MagicMock()
     data.access_token = access_token
     data.refresh_token = refresh_token
     data.expires_in = expires_in
-    http.refresh_login.return_value = MagicMock(data=data)
+    http.refresh_token_v2.return_value = MagicMock(data=data)
     return http
 
 
@@ -114,12 +114,12 @@ def _make_mqtt_http_mock(
 ) -> AsyncMock:
     """Return a MammotionHTTP mock whose get_mqtt_credentials returns valid data."""
     http = AsyncMock()
-    # refresh_login used by _refresh_http
+    # refresh_token_v2 used by _refresh_http
     http_data = MagicMock()
     http_data.access_token = "access-new"
     http_data.refresh_token = "refresh-new"
     http_data.expires_in = 3600.0
-    http.refresh_login.return_value = MagicMock(data=http_data)
+    http.refresh_token_v2.return_value = MagicMock(data=http_data)
 
     # get_mqtt_credentials
     mqtt_data = MagicMock()
@@ -146,7 +146,7 @@ async def test_get_valid_http_token_refreshes_when_near_expiry() -> None:
     token = await tm.get_valid_http_token()
 
     assert token == "access-new"
-    http.refresh_login.assert_awaited_once()
+    http.refresh_token_v2.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -159,14 +159,14 @@ async def test_get_valid_http_token_no_refresh_when_valid() -> None:
     token = await tm.get_valid_http_token()
 
     assert token == "access-old"
-    http.refresh_login.assert_not_awaited()
+    http.refresh_token_v2.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_get_valid_http_token_raises_on_api_failure() -> None:
-    """When refresh_login raises, get_valid_http_token must raise ReLoginRequiredError."""
+    """When refresh_token_v2 raises, get_valid_http_token must raise ReLoginRequiredError."""
     http = AsyncMock()
-    http.refresh_login.side_effect = RuntimeError("network error")
+    http.refresh_token_v2.side_effect = RuntimeError("network error")
     tm = TokenManager(account_id="user@example.com", mammotion_http=http)
     await tm.initialize(http_creds=None, aliyun_creds=None, mqtt_creds=None)
 
@@ -178,9 +178,9 @@ async def test_get_valid_http_token_raises_on_api_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_get_valid_http_token_raises_when_data_is_none() -> None:
-    """When refresh_login returns data=None, ReLoginRequiredError must be raised."""
+    """When refresh_token_v2 returns data=None, ReLoginRequiredError must be raised."""
     http = AsyncMock()
-    http.refresh_login.return_value = MagicMock(data=None)
+    http.refresh_token_v2.return_value = MagicMock(data=None)
     tm = TokenManager(account_id="user@example.com", mammotion_http=http)
     await tm.initialize(http_creds=None, aliyun_creds=None, mqtt_creds=None)
 
@@ -245,7 +245,7 @@ async def test_force_refresh_refreshes_all_active_credentials() -> None:
 
     await tm.force_refresh()
 
-    http.refresh_login.assert_awaited_once()
+    http.refresh_token_v2.assert_awaited_once()
     http.get_mqtt_credentials.assert_awaited_once()
 
     new_creds = await tm.get_mammotion_mqtt_credentials()
@@ -261,7 +261,7 @@ async def test_force_refresh_skips_uninitialised_mqtt_credentials() -> None:
 
     await tm.force_refresh()
 
-    http.refresh_login.assert_awaited_once()
+    http.refresh_token_v2.assert_awaited_once()
     http.get_mqtt_credentials.assert_not_awaited()
 
 
@@ -269,7 +269,7 @@ async def test_force_refresh_skips_uninitialised_mqtt_credentials() -> None:
 async def test_force_refresh_raises_re_login_required_on_failure() -> None:
     """force_refresh() must propagate ReLoginRequiredError when the HTTP refresh fails."""
     http = AsyncMock()
-    http.refresh_login.side_effect = RuntimeError("server error")
+    http.refresh_token_v2.side_effect = RuntimeError("server error")
     tm = TokenManager(account_id="user@example.com", mammotion_http=http)
     await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
 
@@ -298,7 +298,7 @@ async def test_concurrent_calls_trigger_single_refresh() -> None:
         return MagicMock(data=data)
 
     http = AsyncMock()
-    http.refresh_login.side_effect = slow_refresh
+    http.refresh_token_v2.side_effect = slow_refresh
     tm = TokenManager(account_id="user@example.com", mammotion_http=http)
     # Start with expired credentials so both calls want to refresh
     await tm.initialize(http_creds=None, aliyun_creds=None, mqtt_creds=None)

@@ -608,12 +608,11 @@ async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback
     mqtt.send.assert_not_awaited()
 
 
-async def test_send_command_with_args_prefer_ble_sends_via_ble_after_reconnect_attempt() -> None:
-    """When prefer_ble=True and BLE is disconnected, send_raw() calls connect() then routes to BLE.
+async def test_send_command_with_args_prefer_ble_falls_back_to_mqtt_when_ble_wont_connect() -> None:
+    """When prefer_ble=True and BLE connect() doesn't succeed, the command falls back to MQTT.
 
-    Even if connect() does not succeed (is_connected stays False), the message
-    is still routed to BLE — BLETransport owns the send/connect lifecycle.
-    MQTT is not used as a fallback when BLE is registered.
+    active_transport() requires is_connected.  If ble.connect() fires but
+    is_connected remains False, active_transport() returns MQTT as fallback.
     """
     client = MammotionClient()
 
@@ -636,5 +635,5 @@ async def test_send_command_with_args_prefer_ble_sends_via_ble_after_reconnect_a
         patcher.stop()
 
     ble.connect.assert_awaited_once()
-    ble.send.assert_awaited_once_with(fake_bytes, iot_id="")
-    mqtt.send.assert_not_awaited()
+    mqtt.send.assert_awaited_once_with(fake_bytes, iot_id="")
+    ble.send.assert_not_awaited()

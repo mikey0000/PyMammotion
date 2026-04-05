@@ -551,7 +551,13 @@ def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:
 
 
 def test_apply_mow_progress_geojson_populates_device() -> None:
-    """_apply_mow_progress_geojson stores progress GeoJSON on MowingDevice."""
+    """_apply_mow_progress_geojson stores progress GeoJSON on MowingDevice.
+
+    Uses ub_path_hash=0 (all zones) — work.ub_path_hash is the active segment
+    only; including it would suppress all other zones from the output.
+    Yuka fixture has path_type=1 (902 pts) and path_type=2 (278 pts) across all
+    zones.  At now_index=23 (start=22): type 1 has 880 remaining, type 2 has 256.
+    """
     from pymammotion.client import _apply_mow_progress_geojson
     from pymammotion.data.model.device import MowingDevice
 
@@ -565,9 +571,8 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
         for fid, frame in frames.items():
             device.map.update_mow_path(_make_mow_path(frame))
 
-    # real_path_num=5889 → now_index=23; ub_path_hash from fixture → 60 matching pts → [22:] = 38 remaining
+    # real_path_num=5889 → now_index=23; all zones included (ub_path_hash=0)
     device.report_data.work.real_path_num = 5889
-    device.report_data.work.ub_path_hash = fixture["report_data"]["work"]["ub_path_hash"]
 
     assert not device.map.generated_mow_progress_geojson, "Should be empty before apply"
 
@@ -575,13 +580,19 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
 
     result = device.map.generated_mow_progress_geojson
     assert result["type"] == "FeatureCollection"
-    assert len(result["features"]) == 1
+    assert len(result["features"]) == 2  # path_type=1 (mow stripes) + path_type=2 (border passes)
 
-    feature = result["features"][0]
-    assert feature["geometry"]["type"] == "LineString"
-    assert feature["properties"]["type_name"] == "mow_progress"
-    assert feature["properties"]["now_index"] == 23
-    assert feature["properties"]["point_count"] == 38  # 60 matching pts - (23-1) = 38 remaining
+    by_type = {f["properties"]["path_type"]: f for f in result["features"]}
+    assert set(by_type.keys()) == {1, 2}
+
+    for feature in result["features"]:
+        assert feature["geometry"]["type"] == "LineString"
+        assert feature["properties"]["type_name"] == "mow_progress"
+        assert feature["properties"]["now_index"] == 23
+
+    # now_index=23 → start=22; type 1: 902 - 22 = 880 remaining; type 2: 278 - 22 = 256 remaining
+    assert by_type[1]["properties"]["point_count"] == 880
+    assert by_type[2]["properties"]["point_count"] == 256
 
 
 def test_apply_mow_progress_geojson_noop_when_now_index_zero() -> None:
