@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.mqtt.event import ThingEventMessage
+    from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+    from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.device.readiness import ReadinessChecker, ReadinessStatus
     from pymammotion.device.staleness_watcher import MapStalenessWatcher
     from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
@@ -150,6 +153,9 @@ class DeviceHandle:
         self._availability = DeviceAvailability()
         self._transports: dict[TransportType, Transport] = {}
         self._state_changed_bus: _DebouncedBus = _DebouncedBus(debounce_interval, max_debounce_wait)
+        self._status_bus: EventBus[ThingStatusMessage] = EventBus()
+        self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
+        self._event_bus: EventBus[ThingEventMessage] = EventBus()
         self._prefer_ble: bool = prefer_ble
         self._reducer: StateReducer = StateReducer()
         self._error_bus: EventBus[Exception] = EventBus()
@@ -252,6 +258,36 @@ class DeviceHandle:
 
         # 5. Route to broker for request/response correlation
         await self.broker.on_message(luba_msg)
+
+    async def _on_status_message(self, msg: ThingStatusMessage) -> None:
+        """Store status_properties on the device model from a thing/status message."""
+        import dataclasses
+
+        updated = dataclasses.replace(self.state_machine.current.raw, status_properties=msg)
+        snapshot, _ = self.state_machine.apply(updated, self._availability)
+        if not self._stopping:
+            await self._state_changed_bus.emit(snapshot)
+            await self._status_bus.emit(msg)
+
+    async def _on_device_event(self, event: ThingEventMessage) -> None:
+        """Update device state with a non-protobuf thing.events message."""
+        import dataclasses
+
+        updated = dataclasses.replace(self.state_machine.current.raw, device_event=event)
+        snapshot, _ = self.state_machine.apply(updated, self._availability)
+        if not self._stopping:
+            await self._state_changed_bus.emit(snapshot)
+            await self._event_bus.emit(event)
+
+    async def _on_device_properties(self, properties: ThingPropertiesMessage) -> None:
+        """Update device state with a thing.properties message."""
+        import dataclasses
+
+        updated = dataclasses.replace(self.state_machine.current.raw, mqtt_properties=properties)
+        snapshot, _ = self.state_machine.apply(updated, self._availability)
+        if not self._stopping:
+            await self._state_changed_bus.emit(snapshot)
+            await self._properties_bus.emit(properties)
 
     async def send_command(
         self,
@@ -398,6 +434,27 @@ class DeviceHandle:
     ) -> Subscription:
         """Subscribe to state changes. Returns RAII Subscription handle."""
         return self._state_changed_bus.subscribe(handler)
+
+    def subscribe_device_status(
+        self,
+        handler: Callable[[ThingStatusMessage], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to thing/status messages. Returns RAII Subscription handle."""
+        return self._status_bus.subscribe(handler)
+
+    def subscribe_device_properties(
+        self,
+        handler: Callable[[ThingPropertiesMessage], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to thing/properties messages. Returns RAII Subscription handle."""
+        return self._properties_bus.subscribe(handler)
+
+    def subscribe_device_event(
+        self,
+        handler: Callable[[ThingEventMessage], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to non-protobuf thing/events messages. Returns RAII Subscription handle."""
+        return self._event_bus.subscribe(handler)
 
     async def start(self) -> None:
         """Start the command queue processor."""

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 import aiomqtt
 from Tea.exceptions import UnretryableException
 
+from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import AuthError, Transport, TransportAvailability, TransportError, TransportType
 
 if TYPE_CHECKING:
@@ -350,14 +351,18 @@ class AliyunMQTTTransport(Transport):
                         raw = bytes(message.payload)
                         if topic.endswith("/thing/status"):
                             await self._dispatch_device_status(topic, raw)
-                            continue
-                        result = self._unwrap_envelope(topic, raw)
-                        if result is not None:
-                            decoded, iot_id = result
-                            if iot_id and self.on_device_message is not None:
-                                await self.on_device_message(iot_id, decoded)
-                            elif self.on_message is not None:
-                                await self.on_message(decoded)
+                        elif topic.endswith("/account/bind_reply"):
+                            self._handle_bind_reply(raw)
+                        elif topic.endswith(("/thing/events", "/thing/properties")):
+                            await self._dispatch_aliyun_event(topic, raw)
+                        else:
+                            result = self._unwrap_envelope(topic, raw)
+                            if result is not None:
+                                decoded, iot_id = result
+                                if iot_id and self.on_device_message is not None:
+                                    await self.on_device_message(iot_id, decoded)
+                                elif self.on_message is not None:
+                                    await self.on_message(decoded)
 
             except aiomqtt.MqttCodeError as exc:
                 rc = exc.rc
@@ -404,15 +409,66 @@ class AliyunMQTTTransport(Transport):
         if self.on_device_status is None:
             return
         try:
-            from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
-
             msg = ThingStatusMessage.from_json(raw)
-            iot_id = msg.params.iot_id
-            status = "online" if msg.params.status.value is StatusType.CONNECTED else "offline"
-            if iot_id:
-                await self.on_device_status(iot_id, status)
+            if msg.params.iot_id:
+                await self.on_device_status(msg.params.iot_id, msg)
         except Exception:
             _logger.debug("AliyunMQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
+
+    def _handle_bind_reply(self, raw: bytes) -> None:
+        """Check the account bind reply and log an error if it failed."""
+        try:
+            parsed = json.loads(raw)
+            code = parsed.get("code", 200)
+            if code != 200:
+                _logger.error("Aliyun account bind failed (code=%s): %s", code, parsed)
+        except Exception:  # noqa: BLE001
+            _logger.debug("AliyunMQTTTransport: failed to parse bind_reply", exc_info=True)
+
+    async def _dispatch_aliyun_event(self, topic: str, raw: bytes) -> None:
+        """Dispatch a thing/events or thing/properties message.
+
+        Protobuf events (identifier=device_protobuf_msg_event) are unwrapped and
+        forwarded as raw bytes via on_device_message.  All other events are forwarded
+        as typed objects via on_device_event (thing/events) or on_device_properties
+        (thing/properties).
+        """
+        # Try protobuf path first — covers device_protobuf_msg_event on thing/events
+        result = self._unwrap_envelope(topic, raw)
+        if result is not None:
+            decoded, iot_id = result
+            if iot_id and self.on_device_message is not None:
+                await self.on_device_message(iot_id, decoded)
+            elif self.on_message is not None:
+                await self.on_message(decoded)
+            return
+
+        # Non-protobuf: parse and forward typed event
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return
+
+        event_iot_id: str = parsed.get("params", {}).get("iotId", "")
+        if not event_iot_id:
+            return
+
+        if topic.endswith("/thing/events") and self.on_device_event is not None:
+            try:
+                from pymammotion.data.mqtt.event import ThingEventMessage
+
+                event = ThingEventMessage.from_dicts(parsed)
+                await self.on_device_event(event_iot_id, event)
+            except Exception:  # noqa: BLE001
+                _logger.debug("AliyunMQTTTransport: failed to parse thing/events on %s", topic, exc_info=True)
+        elif topic.endswith("/thing/properties") and self.on_device_properties is not None:
+            try:
+                from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+
+                props = ThingPropertiesMessage.from_dict(parsed)
+                await self.on_device_properties(event_iot_id, props)
+            except Exception:  # noqa: BLE001
+                _logger.debug("AliyunMQTTTransport: failed to parse thing/properties on %s", topic, exc_info=True)
 
     # ------------------------------------------------------------------
     # Envelope unwrapping

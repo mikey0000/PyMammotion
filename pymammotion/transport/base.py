@@ -11,6 +11,10 @@ from typing import TYPE_CHECKING, Generic, Self, TypeVar
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from pymammotion.data.mqtt.event import ThingEventMessage
+    from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+    from pymammotion.data.mqtt.status import ThingStatusMessage
+
 _logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
@@ -194,8 +198,14 @@ class Transport(ABC):
     #: Called on auth failure; returns True if credentials were refreshed (retry).
     on_auth_failure: Callable[[], Awaitable[bool]] | None = None
 
-    #: Called when a per-device online/offline status message arrives (iot_id, status).
-    on_device_status: Callable[[str, str], Awaitable[None]] | None = None
+    #: Called when a per-device thing/status message arrives.
+    on_device_status: Callable[[str, ThingStatusMessage], Awaitable[None]] | None = None
+
+    #: Called when a non-protobuf thing.events message arrives (iot_id, event).
+    on_device_event: Callable[[str, ThingEventMessage], Awaitable[None]] | None = None
+
+    #: Called when a thing.properties message arrives (iot_id, properties).
+    on_device_properties: Callable[[str, ThingPropertiesMessage], Awaitable[None]] | None = None
 
     def __init__(self) -> None:
         """Initialise the availability listener list."""

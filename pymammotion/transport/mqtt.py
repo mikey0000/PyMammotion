@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
 
+from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import (
     AuthError,
     ReLoginRequiredError,
@@ -381,13 +382,9 @@ class MQTTTransport(Transport):
         if self.on_device_status is None:
             return
         try:
-            from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
-
             msg = ThingStatusMessage.from_json(raw)
-            iot_id = msg.params.iot_id
-            status = "online" if msg.params.status.value is StatusType.CONNECTED else "offline"
-            if iot_id:
-                await self.on_device_status(iot_id, status)
+            if msg.params.iot_id:
+                await self.on_device_status(msg.params.iot_id, msg)
         except Exception:
             _logger.debug("MQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
 

@@ -60,6 +60,9 @@ if TYPE_CHECKING:
 
     from pymammotion.data.model import GenerateRouteInformation
     from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.mqtt.event import ThingEventMessage
+    from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+    from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.http.model.http import MQTTConnection
     from pymammotion.state.device_state import DeviceSnapshot
 
@@ -254,6 +257,33 @@ class MammotionClient:
         sub = handle.subscribe_state_changed(_on_state_changed)
         self._watcher_subscriptions[device_name] = sub
         return sub
+
+    def subscribe_device_status(
+        self,
+        device_name: str,
+        handler: Callable[[ThingStatusMessage], Awaitable[None]],
+    ) -> Subscription | None:
+        """Subscribe to thing/status messages for a device. Returns RAII Subscription, or None if not found."""
+        handle = self._device_registry.get_by_name(device_name)
+        return handle.subscribe_device_status(handler) if handle is not None else None
+
+    def subscribe_device_properties(
+        self,
+        device_name: str,
+        handler: Callable[[ThingPropertiesMessage], Awaitable[None]],
+    ) -> Subscription | None:
+        """Subscribe to thing/properties messages for a device. Returns RAII Subscription, or None if not found."""
+        handle = self._device_registry.get_by_name(device_name)
+        return handle.subscribe_device_properties(handler) if handle is not None else None
+
+    def subscribe_device_event(
+        self,
+        device_name: str,
+        handler: Callable[[ThingEventMessage], Awaitable[None]],
+    ) -> Subscription | None:
+        """Subscribe to non-protobuf thing/events messages for a device. Returns RAII Subscription, or None if not found."""
+        handle = self._device_registry.get_by_name(device_name)
+        return handle.subscribe_device_event(handler) if handle is not None else None
 
     def teardown_device_watchers(self, device_name: str) -> None:
         """Cancel state-change subscriptions for the named device."""
@@ -717,6 +747,8 @@ class MammotionClient:
         transport = AliyunMQTTTransport(config, cloud_client)
         transport.on_device_message = self._route_device_message
         transport.on_device_status = self._route_device_status
+        transport.on_device_event = self._route_device_event
+        transport.on_device_properties = self._route_device_properties
         return transport
 
     def _setup_mammotion_transport(
@@ -959,33 +991,27 @@ class MammotionClient:
         await cloud_client.session_by_auth_code()
         await cloud_client.list_binding_by_account()
 
-    async def _route_device_message(self, iot_id: str, payload: bytes) -> None:
-        """Route an incoming cloud message to the correct DeviceHandle."""
+    def _handle_for_iot_id(self, iot_id: str, caller: str) -> DeviceHandle | None:
+        """Look up a DeviceHandle by iot_id, logging if not found."""
         device_id = self._iot_id_to_device_id.get(iot_id)
         if device_id is None:
-            _logger.debug("_route_device_message: unknown iot_id=%s, dropping message", iot_id)
-            return
-        handle = self._device_registry.get(device_id)
+            _logger.debug("%s: unknown iot_id=%s, dropping", caller, iot_id)
+            return None
+        return self._device_registry.get(device_id)
+
+    async def _route_device_message(self, iot_id: str, payload: bytes) -> None:
+        """Route an incoming cloud message to the correct DeviceHandle."""
+        handle = self._handle_for_iot_id(iot_id, "_route_device_message")
         if handle is None:
-            _logger.debug("_route_device_message: handle gone for device_id=%s", device_id)
             return
         await handle._on_raw_message(payload)  # noqa: SLF001
 
-    async def _route_device_status(self, iot_id: str, status: str) -> None:
-        """Update a device handle's MQTT availability from a thing/status message.
-
-        Args:
-            iot_id: The Aliyun / Mammotion IoT device identifier.
-            status: ``"online"`` or ``"offline"`` as decoded by the transport.
-
-        """
+    async def _route_device_status(self, iot_id: str, msg: ThingStatusMessage) -> None:
+        """Update a device handle's MQTT availability and status_properties from a thing/status message."""
+        from pymammotion.data.mqtt.status import StatusType
         from pymammotion.transport.base import TransportAvailability
 
-        device_id = self._iot_id_to_device_id.get(iot_id)
-        if device_id is None:
-            _logger.debug("_route_device_status: unknown iot_id=%s (%s)", iot_id, status)
-            return
-        handle = self._device_registry.get(device_id)
+        handle = self._handle_for_iot_id(iot_id, "_route_device_status")
         if handle is None:
             return
         transport_type = (
@@ -993,9 +1019,29 @@ class MammotionClient:
             if handle.has_transport(TransportType.CLOUD_MAMMOTION)
             else TransportType.CLOUD_ALIYUN
         )
-        avail = TransportAvailability.CONNECTED if status == "online" else TransportAvailability.DISCONNECTED
-        handle.update_availability(transport_type, avail, mqtt_reported_offline=(status != "online"))
-        _logger.info("Device '%s' is now %s (thing/status)", device_id, status)
+        online = msg.params.status.value is StatusType.CONNECTED
+        avail = TransportAvailability.CONNECTED if online else TransportAvailability.DISCONNECTED
+        handle.update_availability(transport_type, avail, mqtt_reported_offline=not online)
+        await handle._on_status_message(msg)  # noqa: SLF001
+        _logger.info(
+            "Device '%s' is now %s (thing/status)",
+            self._iot_id_to_device_id.get(iot_id),
+            "online" if online else "offline",
+        )
+
+    async def _route_device_event(self, iot_id: str, event: ThingEventMessage) -> None:
+        """Forward a non-protobuf thing.events message to the correct DeviceHandle."""
+        handle = self._handle_for_iot_id(iot_id, "_route_device_event")
+        if handle is None:
+            return
+        await handle._on_device_event(event)  # noqa: SLF001
+
+    async def _route_device_properties(self, iot_id: str, properties: ThingPropertiesMessage) -> None:
+        """Forward a thing.properties message to the correct DeviceHandle."""
+        handle = self._handle_for_iot_id(iot_id, "_route_device_properties")
+        if handle is None:
+            return
+        await handle._on_device_properties(properties)  # noqa: SLF001
 
     # ------------------------------------------------------------------
     # Map sync
