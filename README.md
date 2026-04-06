@@ -4,7 +4,7 @@
 [![PyPI Releases][img_pypi]][url_pypi]
 [![Supported Python Versions][img_pyversions]][url_pyversions]
 
-[img_version]: https://img.shields.io/static/v1.svg?label=SemVer&message=0.4.0&color=blue
+[img_version]: https://img.shields.io/static/v1.svg?label=SemVer&message=0.7.31&color=blue
 [url_version]: https://pypi.org/project/pymammotion/
 
 [img_pypi]: https://img.shields.io/badge/PyPI-wheels-green.svg
@@ -15,7 +15,7 @@
 
 💬 [Join us on Discord](https://discord.gg/vpZdWhJX8x)
 
-PyMammotion is a Python API for controlling and monitoring Mammotion robot mowers (Luba, Luba 2 & Yuka) via MQTT, Cloud, and Bluetooth.
+PyMammotion is a Python API for controlling and monitoring Mammotion devices (Luba, Yuka, spino etc) via MQTT, Cloud, and Bluetooth.
 
 ⚠️ **Please note:** This API is still under active development. You may encounter unfinished features or bugs. If you come across any issues, please open an issue on the GitHub repository. 🐛
 
@@ -33,7 +33,7 @@ pip install pymammotion
 
 ## Development 🔧
 
-PyMammotion uses `betterproto` and `protoc` for generating protobuf models. To set up the development environment:
+PyMammotion uses `betterproto2` and `protoc` for generating protobuf models. To set up the development environment:
 
 1. Clone the repository
 2. poetry install --with=dev
@@ -62,5 +62,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Trademark Notice
 
-The trademarks "Mammotion," "Luba," and "Yuka" referenced herein are registered trademarks of their respective owners. The author of this software repository is not affiliated with, endorsed by, or connected to these trademark owners in any way.
+The trademarks "Mammotion," "Luba,", "Yuka" and "Spino" referenced herein are registered trademarks of their respective owners. The author of this software repository is not affiliated with, endorsed by, or connected to these trademark owners in any way.
 
