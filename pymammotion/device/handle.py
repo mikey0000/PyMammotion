@@ -626,7 +626,7 @@ class DeviceHandle:
             ", ".join(f"{tt.value}={t.availability.value}" for tt, t in self._transports.items()) or "none registered"
         )
         msg = f"No connected transport available for device '{self.device_id}' [{transport_states}]"
-        _logger.warning("active_transport '%s': %s", self.device_name, msg)
+        _logger.debug("active_transport '%s': %s", self.device_name, msg)
         raise NoTransportAvailableError(msg)
 
 
