@@ -22,6 +22,7 @@ from pymammotion.proto import (
 
 class MessageMedia(AbstractMessage, ABC):
     def send_order_msg_media(self, mul):
+        """Serialize and return a LubaMsg multimedia request with the given payload."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.MUL,
             sender=MsgDevice.DEV_MOBILEAPP,
@@ -40,9 +41,11 @@ class MessageMedia(AbstractMessage, ABC):
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(at_switch=volume)))
 
     def set_car_voice_language(self, language_type: MulLanguage | str | None):
+        """Set the car voice language for audio announcements."""
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(au_language=language_type)))
 
     def set_car_volume_sex(self, sex: MulSex):
+        """Set the voice gender used for audio announcements."""
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(sex=sex)))
 
     def set_car_wiper(self, round_num: int):

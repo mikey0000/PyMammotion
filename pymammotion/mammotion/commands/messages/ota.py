@@ -24,6 +24,7 @@ class MessageOta(AbstractMessage, ABC):
     """Message OTA class."""
 
     def send_order_msg_ota(self, ota):
+        """Serialize and return a LubaMsg OTA request with the given payload."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_OTA,
             sender=MsgDevice.DEV_MOBILEAPP,
@@ -38,6 +39,7 @@ class MessageOta(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def get_device_ota_info(self, log_type: int):
+        """Request OTA upgrade details from the device."""
         todev_get_info_req = MctlOta(todev_get_info_req=GetInfoReq(type=InfoType.IT_OTA))
 
         _LOGGER.debug("===Send command to get upgrade details===logType:" + str(log_type))

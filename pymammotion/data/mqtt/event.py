@@ -27,6 +27,7 @@ class Base64EncodedProtobuf(SerializableType):
 
     @classmethod
     def validate(cls, v: str):
+        """Validate and decode a base64-encoded protobuf string into a LubaMsg dict."""
         if not isinstance(v, str):
             raise TypeError("string required")
         binary = b64decode(v, validate=True)

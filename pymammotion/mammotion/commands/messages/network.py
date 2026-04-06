@@ -34,6 +34,7 @@ from pymammotion.proto import (
 
 class MessageNetwork(AbstractMessage, ABC):
     def send_order_msg_net(self, build: DevNet) -> bytes:
+        """Serialize a network (DevNet) payload into a LubaMsg request frame targeting the ESP comm module."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.ESP,
             sender=MsgDevice.DEV_MOBILEAPP,
@@ -49,16 +50,19 @@ class MessageNetwork(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def send_todev_ble_sync(self, sync_type: int) -> bytes:
+        """Send a BLE synchronisation control message with the specified sync type."""
         comm_esp = DevNet(todev_ble_sync=sync_type)
         return self.send_order_msg_net(comm_esp)
 
     def get_device_version_main(self) -> bytes:
+        """Request the main firmware version from the ESP module."""
         net = DevNet(todev_devinfo_req=DrvDevInfoReq())
         net.todev_devinfo_req.req_ids.append(DrvDevInfoReqId(id=1, type=6))
 
         return self.send_order_msg_net(net)
 
     def get_device_base_info(self) -> bytes:
+        """Request base hardware and firmware info for all device sub-components (IDs 1–7)."""
         net = DevNet(todev_devinfo_req=DrvDevInfoReq())
 
         for i in range(1, 8):
@@ -69,16 +73,19 @@ class MessageNetwork(AbstractMessage, ABC):
         return self.send_order_msg_net(net)
 
     def get_4g_module_info(self) -> bytes:
+        """Request the 4G mobile network module configuration from the device."""
         build = DevNet(todev_get_mnet_cfg_req=DevNet().todev_get_mnet_cfg_req)
         logger.debug("Send command -- Get device 4G network module information")
         return self.send_order_msg_net(build)
 
     def get_4g_info(self) -> bytes:
+        """Request current 4G network connection status and signal information from the device."""
         build = DevNet(todev_mnet_info_req=DevNet().todev_mnet_info_req)
         logger.debug("Send command -- Get device 4G network information")
         return self.send_order_msg_net(build)
 
     def set_zmq_enable(self) -> bytes:
+        """Enable the DDS/ZMQ vision perception data bridge on the device."""
         build = DevNet(
             todev_set_dds2_zmq=DrvDebugDdsZmq(
                 is_enable=True,
@@ -90,6 +97,7 @@ class MessageNetwork(AbstractMessage, ABC):
         return self.send_order_msg_net(build)
 
     def set_iot_setting(self, iot_control_type: IotConctrlType) -> bytes:
+        """Send an IoT connectivity control command to bring the device online or offline."""
         build = DevNet(todev_set_iot_offline_req=iot_control_type)
         logger.debug("Send command -- Device re-online")
         return self.send_order_msg_net(build)
@@ -103,6 +111,7 @@ class MessageNetwork(AbstractMessage, ABC):
         number: int,
         type: int,
     ) -> bytes:
+        """Instruct the device to upload log files to the specified server address and port."""
         build = DrvUploadFileToAppReq(
             biz_id=request_id,
             operation=operation,
@@ -159,11 +168,13 @@ class MessageNetwork(AbstractMessage, ABC):
         return self.send_order_msg_net(DevNet(todev_log_data_cancel=DrvUploadFileCancel(biz_id=biz_id)))
 
     def get_device_network_info(self) -> bytes:
+        """Request the current network interface information from the device."""
         build = DevNet(todev_networkinfo_req=GetNetworkInfoReq(req_ids=1))
         logger.debug("Send command - get device network information")
         return self.send_order_msg_net(build)
 
     def set_device_4g_enable_status(self, new_4g_status: bool) -> bytes:
+        """Enable or disable the device 4G mobile network connection."""
         build = DevNet(
             todev_ble_sync=1,
             todev_set_mnet_cfg_req=SetMnetCfgReq(
@@ -179,6 +190,7 @@ class MessageNetwork(AbstractMessage, ABC):
         return self.send_order_msg_net(build)
 
     def set_device_wifi_enable_status(self, new_wifi_status: bool) -> bytes:
+        """Enable or disable the device WiFi connection."""
         build = DevNet(
             todev_ble_sync=1,
             todev_wifi_configuration=DrvWifiSet(config_param=4, wifi_enable=new_wifi_status),
@@ -187,6 +199,7 @@ class MessageNetwork(AbstractMessage, ABC):
         return self.send_order_msg_net(build)
 
     def wifi_connectinfo_update(self) -> bytes:
+        """Request the current WiFi connection status and details from the device."""
         build = DevNet(
             todev_ble_sync=1,
             todev_wifi_msg_upload=DrvWifiUpload(wifi_msg_upload=1),
@@ -195,6 +208,7 @@ class MessageNetwork(AbstractMessage, ABC):
         return self.send_order_msg_net(build)
 
     def get_record_wifi_list(self) -> bytes:
+        """Request the list of previously remembered WiFi networks stored on the device."""
         build = DevNet(todev_ble_sync=1, todev_wifi_list_upload=DrvWifiList())
         logger.debug("Send command - get memorized WiFi list upload command")
         return self.send_order_msg_net(build)
@@ -228,6 +242,7 @@ class MessageNetwork(AbstractMessage, ABC):
         return self.send_order_msg_net(build)
 
     def close_clear_connect_current_wifi(self, ssid: str, status: int) -> bytes:
+        """Send a WiFi management command to disconnect, forget, directly connect, or reconnect to the given SSID."""
         build = DevNet(
             todev_ble_sync=1,
             todev_wifi_configuration=DrvWifiSet(config_param=status, confssid=ssid),

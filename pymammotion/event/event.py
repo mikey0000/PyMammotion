@@ -49,6 +49,7 @@ class Event:
         return self
 
     async def __call__(self, *args: Any, **kwargs: Any) -> None:
+        """Invoke all live registered handlers concurrently and purge any garbage-collected ones."""
         live_handlers = []
         for ref in self.__eventhandlers:
             func = ref()
@@ -69,14 +70,17 @@ class MoveEvent:
         self.OnMoveFinished = Event()
 
     async def MoveFinished(self) -> None:
+        """Fire the OnMoveFinished event to notify subscribers that a movement command has completed."""
         # This function will be executed once blufi finishes after a movement command and will
         # raise an event
         await self.OnMoveFinished()
 
     def AddSubscribersForMoveFinishedEvent(self, objMethod) -> None:
+        """Register a handler to be called when a movement command finishes."""
         self.OnMoveFinished += objMethod
 
     def RemoveSubscribersForMoveFinishedEvent(self, objMethod) -> None:
+        """Unregister a previously registered move-finished handler."""
         self.OnMoveFinished -= objMethod
 
 
@@ -85,13 +89,16 @@ class BleNotificationEvent:
         self.OnBleNotification = Event()
 
     async def BleNotification(self, data: bytearray) -> None:
+        """Fire the OnBleNotification event to deliver incoming BLE data to all subscribers."""
         # This function will be executed when data is received.
         await self.OnBleNotification(data)
 
     def AddSubscribersForBleNotificationEvent(self, objMethod) -> None:
+        """Register a handler to be called when BLE notification data is received."""
         self.OnBleNotification += objMethod
 
     def RemoveSubscribersForBleNotificationEvent(self, objMethod) -> None:
+        """Unregister a previously registered BLE notification handler."""
         self.OnBleNotification -= objMethod
 
 

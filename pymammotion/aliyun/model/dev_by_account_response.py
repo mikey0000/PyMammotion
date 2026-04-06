@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated, Optional
+from typing import Annotated
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -31,23 +31,23 @@ class Device(DataClassORJSONMixin):
     thing_type: Annotated[str, Alias("thingType")]
 
     # Optional fields (common to both or nullable)
-    nick_name: Annotated[Optional[str], Alias("nickName")] = None
-    description: Optional[str] = None
-    product_image: Annotated[Optional[str], Alias("productImage")] = None
-    category_image: Annotated[Optional[str], Alias("categoryImage")] = None
-    product_model: Annotated[Optional[str], Alias("productModel")] = None
+    nick_name: Annotated[str | None, Alias("nickName")] = None
+    description: str | None = None
+    product_image: Annotated[str | None, Alias("productImage")] = None
+    category_image: Annotated[str | None, Alias("categoryImage")] = None
+    product_model: Annotated[str | None, Alias("productModel")] = None
 
     # Optional fields from ShareNotification only
-    target_id: Annotated[Optional[str], Alias("targetId")] = None
-    receiver_identity_id: Annotated[Optional[str], Alias("receiverIdentityId")] = None
-    target_type: Annotated[Optional[str], Alias("targetType")] = None
-    gmt_create: Annotated[Optional[int], Alias("gmtCreate")] = None
-    batch_id: Annotated[Optional[str], Alias("batchId")] = None
-    record_id: Annotated[Optional[str], Alias("recordId")] = None
-    initiator_identity_id: Annotated[Optional[str], Alias("initiatorIdentityId")] = None
-    is_receiver: Annotated[Optional[int], Alias("isReceiver")] = None
-    initiator_alias: Annotated[Optional[str], Alias("initiatorAlias")] = None
-    receiver_alias: Annotated[Optional[str], Alias("receiverAlias")] = None
+    target_id: Annotated[str | None, Alias("targetId")] = None
+    receiver_identity_id: Annotated[str | None, Alias("receiverIdentityId")] = None
+    target_type: Annotated[str | None, Alias("targetType")] = None
+    gmt_create: Annotated[int | None, Alias("gmtCreate")] = None
+    batch_id: Annotated[str | None, Alias("batchId")] = None
+    record_id: Annotated[str | None, Alias("recordId")] = None
+    initiator_identity_id: Annotated[str | None, Alias("initiatorIdentityId")] = None
+    is_receiver: Annotated[int | None, Alias("isReceiver")] = None
+    initiator_alias: Annotated[str | None, Alias("initiatorAlias")] = None
+    receiver_alias: Annotated[str | None, Alias("receiverAlias")] = None
 
     class Config(BaseConfig):
         omit_default = True
@@ -192,4 +192,43 @@ class Data(DataClassORJSONMixin):
 class ListingDevAccountResponse(DataClassORJSONMixin):
     code: int
     data: Data | None
+    id: str | None = None
+
+
+@dataclass
+class ShareNotification(DataClassORJSONMixin):
+    gmt_modified: Annotated[int, Alias("gmtModified")]
+    target_id: Annotated[str, Alias("targetId")]
+    receiver_identity_id: Annotated[str, Alias("receiverIdentityId")]
+    description: str
+    target_type: Annotated[str, Alias("targetType")]
+    gmt_create: Annotated[int, Alias("gmtCreate")]
+    batch_id: Annotated[str, Alias("batchId")]
+    node_type: Annotated[str, Alias("nodeType")]
+    device_name: Annotated[str, Alias("deviceName")]
+    product_name: Annotated[str, Alias("productName")]
+    record_id: Annotated[str, Alias("recordId")]
+    initiator_identity_id: Annotated[str, Alias("initiatorIdentityId")]
+    is_receiver: Annotated[int, Alias("isReceiver")]
+    initiator_alias: Annotated[str, Alias("initiatorAlias")]
+    receiver_alias: Annotated[str, Alias("receiverAlias")]
+    status: int
+
+    class Config(BaseConfig):
+        omit_default = True
+        allow_deserialization_not_by_alias = True
+
+
+@dataclass
+class ShareNoticeData(DataClassORJSONMixin):
+    total: int
+    data: list[ShareNotification]
+    pageNo: int
+    pageSize: int
+
+
+@dataclass
+class ShareNoticeListResponse(DataClassORJSONMixin):
+    code: int
+    data: ShareNoticeData | None
     id: str | None = None

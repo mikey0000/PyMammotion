@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 import csv
 from functools import wraps
 import hashlib
@@ -129,7 +130,7 @@ class MammotionHTTP:
         self.expires_in = 0.0
         self.code = 0
         self.msg = None
-        self._session = session if session else ClientSession()
+        self._session: ClientSession | None = session  # None → new session per request
         self.account = account
         self._password = password
         self._response: Response | None = None
@@ -146,8 +147,18 @@ class MammotionHTTP:
         # Replace the line in the __init__ method with:
         self.client_id = f"{int(time.time() * 1000)}_{get_10_random()}_1"
 
+    @asynccontextmanager
+    async def _client_session(self) -> AsyncIterator[ClientSession]:
+        """Yield the externally-provided session, or a fresh one that is closed after use."""
+        if self._session is not None:
+            yield self._session
+        else:
+            async with ClientSession() as session:
+                yield session
+
     @property
     def response(self) -> Response | None:
+        """Return the most recent login response."""
         return self._response
 
     @response.setter
@@ -159,6 +170,7 @@ class MammotionHTTP:
 
     @staticmethod
     def generate_headers(token: str) -> dict:
+        """Generate Authorization headers for the given bearer token."""
         return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
@@ -183,25 +195,28 @@ class MammotionHTTP:
         return wrapper
 
     async def handle_expiry(self, resp: Response) -> Response:
+        """Re-login and return a fresh response if the given response indicates an expired token (401)."""
         if resp.code == 401 and self.account and self._password:
             return await self.login_v2(self.account, self._password)
         return resp
 
     async def login_by_email(self, email: str, password: str) -> Response[LoginResponseData]:
+        """Log in using email and password via the v2 OAuth endpoint."""
         return await self.login_v2(email, password)
 
     @refresh_token_decorator
     async def get_all_error_codes(self) -> dict[str, ErrorInfo]:
         """Retrieves and parses all error codes from the MAMMOTION API."""
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/user-server/v1/code/record/export-data",
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-            },
-        )
-        data = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/user-server/v1/code/record/export-data",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            data = await resp.json()
         reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
         codes = dict()
         for row in reader:
@@ -214,31 +229,33 @@ class MammotionHTTP:
 
         Returns 401 if token is invalid. We then need to re-authenticate, can try to refresh token first
         """
-        resp = await self._session.post(
-            f"{MAMMOTION_DOMAIN}/user-server/v1/user/oauth/check",
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-            },
-        )
-        data = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_DOMAIN}/user-server/v1/user/oauth/check",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            data = await resp.json()
         return Response.from_dict(data)
 
     @refresh_token_decorator
     async def refresh_authorization_code(self) -> Response:
         """Refresh token."""
-        resp = await self._session.post(
-            f"{MAMMOTION_DOMAIN}/authorization/code",
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-            },
-            json={"clientId": MAMMOTION_CLIENT_ID},
-        )
-        data = await resp.json()
-        print(data)
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_DOMAIN}/authorization/code",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={"clientId": MAMMOTION_CLIENT_ID},
+            )
+            data = await resp.json()
+        _logger.debug("handle_expiry response: %s", data)
         self.login_info.access_token = data["data"].get("accessToken", self.login_info.access_token)
         self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
         await self.get_mqtt_credentials()
@@ -246,48 +263,42 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def pair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/iot/device/pairing",
-            headers=self._headers,
-            json={"mowerName": mower_name, "rtkName": rtk_name},
-        )
-        data = await resp.json()
-        if data.get("status") == 200:
-            print(data)
-            return Response.from_dict(data)
-        else:
-            print(data)
-            return Response.from_dict(data)
+        """Pair a mower and an RTK device together via the cloud API."""
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/iot/device/pairing",
+                headers=self._headers,
+                json={"mowerName": mower_name, "rtkName": rtk_name},
+            )
+            data = await resp.json()
+        _logger.debug("pair_devices_mqtt response: %s", data)
+        return Response.from_dict(data)
 
     @refresh_token_decorator
     async def unpair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/iot/device/unpairing",
-            headers=self._headers,
-            json={"mowerName": mower_name, "rtkName": rtk_name},
-        )
-        data = await resp.json()
-        if data.get("status") == 200:
-            print(data)
-            return Response.from_dict(data)
-        else:
-            print(data)
-            return Response.from_dict(data)
+        """Unpair a mower and an RTK device via the cloud API."""
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/iot/device/unpairing",
+                headers=self._headers,
+                json={"mowerName": mower_name, "rtkName": rtk_name},
+            )
+            data = await resp.json()
+        _logger.debug("unpair_devices_mqtt response: %s", data)
+        return Response.from_dict(data)
 
     @refresh_token_decorator
     async def net_rtk_enable(self, device_id: str) -> Response:
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/iot/net-rtk/enable",
-            headers=self._headers,
-            json={"deviceId": device_id},
-        )
-        data = await resp.json()
-        if data.get("status") == 200:
-            print(data)
-            return Response.from_dict(data)
-        else:
-            print(data)
-            return Response.from_dict(data)
+        """Enable network RTK for the given device."""
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/iot/net-rtk/enable",
+                headers=self._headers,
+                json={"deviceId": device_id},
+            )
+            data = await resp.json()
+        _logger.debug("net_rtk_enable response: %s", data)
+        return Response.from_dict(data)
 
     @refresh_token_decorator
     async def get_stream_subscription(self, iot_id: str, is_yuka: bool) -> Response[StreamSubscriptionResponse]:
@@ -304,111 +315,103 @@ class MammotionHTTP:
         else:
             payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 0}]
 
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/stream/token",
-            json=payload,
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-            },
-        )
-        data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
-        # Assuming the data format matches the expected structure
-        response = Response[StreamSubscriptionResponse].from_dict(data)
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/stream/token",
+                json=payload,
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            data = await resp.json()
+        response = response_factory(Response[StreamSubscriptionResponse], data)
         await self.handle_expiry(response)
-        if response.code != 0:
-            return response
-        response.data = StreamSubscriptionResponse.from_dict(data.get("data", {}))
         return response
 
     @refresh_token_decorator
     async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
         """Fetch video resource for a given IoT ID."""
-        resp = await self._session.get(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/video-resource/{iot_id}",
-            headers={
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-            },
-        )
-        data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
-        # Assuming the data format matches the expected structure
-        response = Response[VideoResourceResponse].from_dict(data)
-        if response.code != 0:
-            return response
-        response.data = VideoResourceResponse.from_dict(data.get("data", {}))
-        return response
+        async with self._client_session() as session:
+            resp = await session.get(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/video-resource/{iot_id}",
+                headers={
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            data = await resp.json()
+        return response_factory(Response[VideoResourceResponse], data)
 
     @refresh_token_decorator
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
         """Checks device firmware versions for a list of IoT IDs."""
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/devices/version/check",
-            json={"deviceIds": iot_ids},
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "Client-Id": self.client_id,
-                "Client-Type": "1",
-            },
-        )
-        data = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/devices/version/check",
+                json={"deviceIds": iot_ids},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            )
+            data = await resp.json()
         # TODO catch errors from mismatch like token expire etc
-        # Assuming the data format matches the expected structure
         return response_factory(Response[list[CheckDeviceVersion]], data)
 
     @refresh_token_decorator
     async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
         """Initiates an OTA upgrade for a device."""
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/ota/device/upgrade",
-            json={"deviceId": iot_id, "version": version},
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "Client-Id": self.client_id,
-                "Client-Type": "1",
-            },
-        )
-        data = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/ota/device/upgrade",
+                json={"deviceId": iot_id, "version": version},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            )
+            data = await resp.json()
         # TODO catch errors from mismatch like token expire etc
-        # Assuming the data format matches the expected structure
         return response_factory(Response[str], data)
 
     @refresh_token_decorator
     async def get_rtk_devices(self) -> Response[list[RTK]]:
         """Fetches stream subscription data from agora.io for a given IoT device."""
-        resp = await self._session.get(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/rtk/devices",
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-            },
-        )
-        data = await resp.json()
-
+        async with self._client_session() as session:
+            resp = await session.get(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/rtk/devices",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            data = await resp.json()
         return response_factory(Response[list[RTK]], data)
 
     @refresh_token_decorator
     async def get_user_device_list(self) -> Response[list[DeviceInfo]]:
         """Fetches device list for a user (owned not shared, shared returns nothing)."""
-        resp = await self._session.get(
-            f"{MAMMOTION_API_DOMAIN}/device-server/v1/device/list",
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "Client-Id": self.client_id,
-                "Client-Type": "1",
-            },
-        )
-        resp_dict = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.get(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/device/list",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            )
+            resp_dict = await resp.json()
         response = response_factory(Response[list[DeviceInfo]], resp_dict)
         self.device_info = response.data if response.data else self.device_info
         return response
@@ -417,17 +420,18 @@ class MammotionHTTP:
     async def get_user_shared_device_page(self) -> Response[DeviceRecords]:
         """Fetches device list for a user (shared) but not accepted."""
         """Can set owned to zero or one to possibly check for not accepted mowers?"""
-        resp = await self._session.post(
-            f"{MAMMOTION_API_DOMAIN}/user-server/v1/share/device/page",
-            json={"iotId": "", "owned": 0, "pageNumber": 1, "pageSize": 200, "statusList": [-1]},
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
-            },
-        )
-        resp_dict = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/user-server/v1/share/device/page",
+                json={"iotId": "", "owned": 0, "pageNumber": 1, "pageSize": 200, "statusList": [-1]},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            )
+            resp_dict = await resp.json()
         response = response_factory(Response[DeviceRecords], resp_dict)
         self.devices_shared_info = response.data if response.data else self.devices_shared_info
         return response
@@ -435,25 +439,26 @@ class MammotionHTTP:
     @refresh_token_decorator
     async def get_user_device_page(self) -> Response[DeviceRecords]:
         """Fetches device list for a user, is either new API or for newer devices."""
-        resp = await self._session.post(
-            f"{self.jwt_info.iot}/v1/user/device/page",
-            json={
-                "iotId": "",
-                "pageNumber": 1,
-                "pageSize": 100,
-            },
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
-                "Client-Id": self.client_id,
-                "Client-Type": "1",
-            },
-        )
-        if resp.status != 200:
-            return Response.from_dict({"code": resp.status, "msg": "get device list failed"})
-        resp_dict = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{self.jwt_info.iot}/v1/user/device/page",
+                json={
+                    "iotId": "",
+                    "pageNumber": 1,
+                    "pageSize": 100,
+                },
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            )
+            if resp.status != 200:
+                return Response.from_dict({"code": resp.status, "msg": "get device list failed"})
+            resp_dict = await resp.json()
         response = response_factory(Response[DeviceRecords], resp_dict)
         self.device_records = response.data if response.data else self.device_records
         return response
@@ -461,18 +466,19 @@ class MammotionHTTP:
     @refresh_token_decorator
     async def get_mqtt_credentials(self) -> Response[MQTTConnection]:
         """Get mammotion mqtt credentials"""
-        resp = await self._session.post(
-            f"{self.jwt_info.iot}/v1/mqtt/auth/jwt",
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
-            },
-        )
-        if resp.status != 200:
-            return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
-        resp_dict = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{self.jwt_info.iot}/v1/mqtt/auth/jwt",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            )
+            if resp.status != 200:
+                return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
+            resp_dict = await resp.json()
         response = response_factory(Response[MQTTConnection], resp_dict)
         self.mqtt_credentials = response.data
         return response
@@ -481,25 +487,29 @@ class MammotionHTTP:
     async def mqtt_invoke(self, content: str, device_name: str, iot_id: str) -> Response[dict]:
         """Send mqtt commands to devices."""
         _LOGGER.debug(f"mqtt invoke content: {content}, {self.jwt_info.iot}")
-        resp = await self._session.post(
-            f"{self.jwt_info.iot}/v1/mqtt/rpc/thing/service/invoke",
-            json={
-                "args": {"content": content},
-                "deviceName": device_name,
-                "identifier": "device_protobuf_sync_service",
-                "iotId": iot_id,
-                "productKey": "",
-            },
-            headers={
-                **self._headers,
-                "Authorization": f"Bearer {self.login_info.access_token}",
-                "Content-Type": "application/json",
-                "User-Agent": "okhttp/4.9.3",
-                "Client-Id": self.client_id,
-                "Client-Type": "1",
-            },
-        )
-        resp_dict = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{self.jwt_info.iot}/v1/mqtt/rpc/thing/service/invoke",
+                json={
+                    "args": {"content": content},
+                    "deviceName": device_name,
+                    "identifier": "device_protobuf_sync_service",
+                    "iotId": iot_id,
+                    "productKey": "",
+                },
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                    "Request-Id": "".join([str(random.randint(0, 9)) for _ in range(21)]),
+                    "Accept-Language": "en-US",
+                    "L-T-Z": f"{int(time.time())}/0/0",
+                },
+            )
+            resp_dict = await resp.json()
         if resp.status != 200:
             return Response.from_dict({"code": resp.status, "msg": "invoke mqtt failed"})
         if resp.status == 401 or resp_dict.get("code") == 401:
@@ -509,7 +519,20 @@ class MammotionHTTP:
 
         return response_factory(Response[dict], resp_dict)
 
+    async def logout(self) -> None:
+        """Invalidate the current session by calling the v3 logout endpoint."""
+        if self.login_info is None:
+            return
+        async with self._client_session() as client:
+            await client.post(
+                f"{MAMMOTION_API_DOMAIN}/user-server/v3/user/logout",
+                headers=self.generate_headers(self.login_info.access_token),
+            )
+        self.login_info = None
+        self._headers.pop("Authorization", None)
+
     async def refresh_login(self) -> Response[LoginResponseData]:
+        """Attempt a token refresh, falling back to a full re-login if the token has already expired."""
         if self.expires_in > time.time():
             res = await self.refresh_token_v2()
             if res.code == 0:
@@ -520,29 +543,30 @@ class MammotionHTTP:
         """Logs in to the service using provided account and password."""
         self.account = account
         self._password = password
-        resp = await self._session.post(
-            f"{MAMMOTION_DOMAIN}/oauth/token",
-            headers={
-                **self._headers,
-                "Encrypt-Key": self.encryption_utils.encrypt_by_public_key(),
-                "Decrypt-Type": "3",
-                "Ec-Version": "v1",
-            },
-            params={
-                "username": self.encryption_utils.encryption_by_aes(account),
-                "password": self.encryption_utils.encryption_by_aes(password),
-                "client_id": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_ID),
-                "client_secret": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_SECRET),
-                "grant_type": self.encryption_utils.encryption_by_aes("password"),
-            },
-        )
-        if resp.status != 200:
-            print(resp.json())
-            return Response.from_dict({"code": resp.status, "msg": "Login failed"})
-        data = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_DOMAIN}/oauth/token",
+                headers={
+                    **self._headers,
+                    "Encrypt-Key": self.encryption_utils.encrypt_by_public_key(),
+                    "Decrypt-Type": "3",
+                    "Ec-Version": "v1",
+                },
+                params={
+                    "username": self.encryption_utils.encryption_by_aes(account),
+                    "password": self.encryption_utils.encryption_by_aes(password),
+                    "client_id": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_ID),
+                    "client_secret": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_SECRET),
+                    "grant_type": self.encryption_utils.encryption_by_aes("password"),
+                },
+            )
+            if resp.status != 200:
+                _logger.debug("login_v2 failed (status=%s): %s", resp.status, resp.json())
+                return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+            data = await resp.json()
         login_response = response_factory(Response[LoginResponseData], data)
         if login_response is None or login_response.data is None:
-            print(login_response)
+            _logger.debug("login_v2 returned empty response: %s", login_response)
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
@@ -570,23 +594,24 @@ class MammotionHTTP:
             token_endpoint="/oauth2/token",
         )
 
-        resp = await self._session.post(
-            f"{MAMMOTION_DOMAIN}/oauth2/token",
-            headers={
-                **self._headers,
-                "Ma-Iot-Signature": oauth_signature,
-                "Ma-Timestamp": str(int(time.time())),
-                "Client-Id": self.client_id,
-                "Client-Type": "1",
-            },
-            params={
-                **refresh_request,
-            },
-        )
-        data = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_DOMAIN}/oauth2/token",
+                headers={
+                    **self._headers,
+                    "Ma-Iot-Signature": oauth_signature,
+                    "Ma-Timestamp": str(int(time.time())),
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+                params={
+                    **refresh_request,
+                },
+            )
+            data = await resp.json()
         refresh_response = response_factory(Response[LoginResponseData], data)
         if refresh_response is None or refresh_response.data is None:
-            return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+            return Response.from_dict({"code": resp.status, "msg": "Refresh login token failed"})
         self.login_info = refresh_response.data
         self.expires_in = refresh_response.data.expires_in + time.time()
         self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if refresh_response.data else None
@@ -615,23 +640,24 @@ class MammotionHTTP:
             token_endpoint="/oauth2/token",
         )
 
-        resp = await self._session.post(
-            f"{MAMMOTION_DOMAIN}/oauth2/token",
-            headers={
-                **self._headers,
-                "Ma-App-Key": MAMMOTION_OUATH2_CLIENT_ID,
-                "Ma-Signature": oauth_signature,
-                "Ma-Timestamp": str(int(time.time())),
-                "Client-Id": self.client_id,
-                "Client-Type": "1",
-            },
-            params={
-                **login_request,
-            },
-        )
-        if resp.status != 200:
-            return Response.from_dict({"code": resp.status, "msg": "Login failed"})
-        data = await resp.json()
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_DOMAIN}/oauth2/token",
+                headers={
+                    **self._headers,
+                    "Ma-App-Key": MAMMOTION_OUATH2_CLIENT_ID,
+                    "Ma-Signature": oauth_signature,
+                    "Ma-Timestamp": str(int(time.time())),
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+                params={
+                    **login_request,
+                },
+            )
+            if resp.status != 200:
+                return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+            data = await resp.json()
         if data.get("code") != 0:
             return Response.from_dict({"code": resp.status, "msg": data.get("msg") or "Login failed"})
         login_response = response_factory(Response[LoginResponseData], data)

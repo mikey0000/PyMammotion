@@ -32,6 +32,7 @@ class TeaCore:
 
     @staticmethod
     def get_adapter(prefix):
+        """Return the HTTP or HTTPS connection adapter based on the URL scheme prefix."""
         if prefix.upper() == "HTTP":
             return TeaCore.http_adapter
         else:
@@ -53,12 +54,13 @@ class TeaCore:
 
         # logger the response
         response_base = (
-            f"\n< HTTP/1.1 {response.status_code}" f" {status_codes._codes.get(response.status_code)[0].upper()}"
+            f"\n< HTTP/1.1 {response.status_code} {status_codes._codes.get(response.status_code)[0].upper()}"
         )
         logger.debug(response_base + TeaCore._prepare_http_debug(response, "<"))
 
     @staticmethod
     def compose_url(request):
+        """Build the full request URL from a TeaRequest's host, protocol, port, path, and query parameters."""
         host = request.headers.get("host")
         if not host:
             raise RequiredArgumentException("endpoint")
@@ -94,6 +96,7 @@ class TeaCore:
 
     @staticmethod
     async def async_do_action(request: TeaRequest, runtime_option=None) -> TeaResponse:
+        """Send an async HTTP/HTTPS request and return the response as a TeaResponse."""
         runtime_option = runtime_option or {}
 
         url = TeaCore.compose_url(request)
@@ -155,6 +158,7 @@ class TeaCore:
 
     @staticmethod
     def do_action(request: TeaRequest, runtime_option=None) -> TeaResponse:
+        """Send a synchronous HTTP/HTTPS request and return the response as a TeaResponse."""
         url = TeaCore.compose_url(request)
 
         runtime_option = runtime_option or {}
@@ -224,10 +228,12 @@ class TeaCore:
 
     @staticmethod
     def get_response_body(resp) -> str:
+        """Decode and return the response body content as a UTF-8 string."""
         return resp.content.decode("utf-8")
 
     @staticmethod
     def allow_retry(dic, retry_times, now=None) -> bool:
+        """Return True if another retry attempt is permitted according to the retry policy dictionary."""
         if retry_times == 0:
             return True
         if dic is None or not dic.__contains__("maxAttempts") or dic.get("retryable") is not True and retry_times >= 1:
@@ -238,6 +244,7 @@ class TeaCore:
 
     @staticmethod
     def get_backoff_time(dic, retry_times) -> int:
+        """Calculate the backoff wait time in milliseconds for the current retry attempt."""
         default_back_off_time = 0
         if dic is None or not dic.get("policy") or dic.get("policy") == "no":
             return default_back_off_time
@@ -254,22 +261,27 @@ class TeaCore:
 
     @staticmethod
     async def sleep_async(t) -> None:
+        """Asynchronously sleep for t seconds."""
         await asyncio.sleep(t)
 
     @staticmethod
     def sleep(t) -> None:
+        """Synchronously sleep for t seconds."""
         time.sleep(t)
 
     @staticmethod
     def is_retryable(ex) -> bool:
+        """Return True if the given exception is a RetryError and qualifies for a retry."""
         return isinstance(ex, RetryError)
 
     @staticmethod
     def bytes_readable(body):
+        """Return the body as-is for use as a readable bytes stream."""
         return body
 
     @staticmethod
     def merge(*dic_list) -> dict:
+        """Merge multiple dicts and TeaModel instances into a single flattened dictionary."""
         dic_result = {}
         for item in dic_list:
             if isinstance(item, dict):
@@ -280,6 +292,7 @@ class TeaCore:
 
     @staticmethod
     def to_map(model: TeaModel | None) -> dict[str, Any]:
+        """Convert a TeaModel instance to a dict, returning an empty dict for non-TeaModel values."""
         if isinstance(model, TeaModel):
             return model.to_map()
         else:
@@ -287,6 +300,7 @@ class TeaCore:
 
     @staticmethod
     def from_map(model: TeaModel, dic: dict[str, Any]) -> TeaModel:
+        """Populate a TeaModel instance from a dictionary, falling back to storing the raw dict on failure."""
         if isinstance(model, TeaModel):
             try:
                 return model.from_map(dic)

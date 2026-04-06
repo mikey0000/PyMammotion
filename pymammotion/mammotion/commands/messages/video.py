@@ -18,6 +18,7 @@ from pymammotion.utility.device_type import DeviceType
 
 class MessageVideo(AbstractMessage, ABC):
     def send_order_msg_video(self, mul: SocMul):
+        """Serialize and return a LubaMsg multimedia video request with the given payload."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.MUL,
             msgattr=MsgAttr.REQ,
@@ -33,6 +34,7 @@ class MessageVideo(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def device_agora_join_channel_with_position(self, enter_state: int):
+        """Join or leave the Agora video channel, selecting the correct camera position for the device type."""
         position = (
             MulCameraPosition.ALL
             if DeviceType.value_of_str(self.get_device_name()).get_value() == DeviceType.LUBA_YUKA.get_value()

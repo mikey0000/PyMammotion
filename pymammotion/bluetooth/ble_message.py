@@ -13,7 +13,6 @@ from pymammotion.bluetooth.const import UUID_WRITE_CHARACTERISTIC
 from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.bluetooth.model.atomic_integer import AtomicInteger
-from pymammotion.proto import DevNet, DrvDevInfoReq, LubaMsg, MsgAttr, MsgCmdType, MsgDevice
 from pymammotion.utility.constant.device_constant import BleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
@@ -306,14 +305,17 @@ class BleMessage:
         self.notification = BlufiNotifyData()
 
     async def get_task(self) -> None:
+        """Request the current task status from the device over BLE."""
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
         await self.post_custom_data(self.get_json_string(BleOrderCmd.task, hash_map))
 
     async def send_ble_alive(self) -> None:
+        """Send a keepalive ping to maintain the BLE connection."""
         hash_map = {"ctrl": 1}
         await self.post_custom_data(self.get_json_string(BleOrderCmd.bleAlive, hash_map))
 
     def get_json_string(self, cmd: int, hash_map: dict[str, int]) -> str:
+        """Build a JSON command string with the given command code and parameter map."""
         jSONObject = {}
         try:
             jSONObject["cmd"] = cmd
@@ -324,31 +326,18 @@ class BleMessage:
             jSONObject["params"] = jSONObject2
             return json.dumps(jSONObject)
         except Exception as e:
-            print(e)
+            _LOGGER.debug("Failed to build JSON command string: %s", e)
             return ""
 
     def clear_notification(self) -> None:
+        """Reset the pending notification buffer to an empty state."""
         self.notification = BlufiNotifyData()
 
     # async def get_device_info(self):
     #     await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
-    async def send_device_info(self) -> None:
-        """Currently not called"""
-        luba_msg = LubaMsg(
-            msgtype=MsgCmdType.ESP,
-            sender=MsgDevice.DEV_MOBILEAPP,
-            rcver=MsgDevice.DEV_COMM_ESP,
-            msgattr=MsgAttr.REQ,
-            seqs=1,
-            version=1,
-            subtype=1,
-            net=DevNet(todev_ble_sync=1, todev_devinfo_req=DrvDevInfoReq()),
-        )
-        byte_arr = luba_msg.SerializeToString()
-        await self.post_custom_data_bytes(byte_arr)
-
     async def requestDeviceStatus(self) -> None:
+        """Request the current device status from the BLE device."""
         request = False
         type = self.getTypeValue(0, 5)
         try:
@@ -363,6 +352,7 @@ class BleMessage:
         #     onStatusResponse(BlufiCallback.CODE_WRITE_DATA_FAILED, null)
 
     async def requestDeviceVersion(self) -> None:
+        """Request the firmware version information from the BLE device."""
         request = False
         type = self.getTypeValue(0, 7)
         try:
@@ -374,9 +364,10 @@ class BleMessage:
             _LOGGER.error(err)
 
     async def gatt_write(self, data: bytes) -> None:
+        """Write raw bytes to the GATT write characteristic with response."""
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
 
-    def parseNotification(self, response: bytes):
+    def parseNotification(self, response: bytes | None) -> int:
         """Parse notification data from BLE device."""
         if response is None:
             # Log.w(TAG, "parseNotification null data");
@@ -451,6 +442,7 @@ class BleMessage:
             return -100
 
     async def parseBlufiNotifyData(self, return_bytes: bool = False):
+        """Parse the accumulated BluFi notification data and dispatch to the appropriate handler."""
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
         dataBytes = self.notification.getDataArray()
@@ -501,6 +493,7 @@ class BleMessage:
     # }
 
     def getJsonString(self, cmd: int) -> str:
+        """Build a minimal JSON command string containing only the command code and timestamp."""
         jSONObject = {}
         try:
             jSONObject["cmd"] = cmd
@@ -510,6 +503,7 @@ class BleMessage:
             return ""
 
     def current_milli_time(self):
+        """Return the current time in milliseconds since the Unix epoch."""
         return round(time.time() * 1000)
 
     def _getPackageType(self, typeValue: int):
@@ -519,9 +513,11 @@ class BleMessage:
         return (typeValue & 252) >> 2
 
     def getTypeValue(self, type: int, subtype: int):
+        """Encode a BluFi packet type byte from the package type and subtype values."""
         return (subtype << 2) | type
 
     def receiveAck(self, expectAck: int) -> bool:
+        """Block until an ACK is received and return True if it matches the expected sequence number."""
         try:
             ack = self.mAck.get()
             return ack == expectAck
@@ -530,9 +526,11 @@ class BleMessage:
             return False
 
     def generate_send_sequence(self) -> int:
+        """Increment and return the next send sequence number, wrapping at 255."""
         return self.mSendSequence.increment_and_get() & 255
 
     async def post_custom_data_bytes(self, data: bytes) -> None:
+        """Send raw protobuf bytes to the device as a custom data BLE packet."""
         if data is None:
             return
         type_val = self.getTypeValue(1, 19)
@@ -546,6 +544,7 @@ class BleMessage:
             _LOGGER.debug(err)
 
     async def post_custom_data(self, data_str: str) -> None:
+        """Encode a JSON command string and send it to the device as a custom data BLE packet."""
         data = data_str.encode()
         if data == None:
             return
@@ -569,12 +568,14 @@ class BleMessage:
         type_of: int,
         data: bytes,
     ) -> bool:
+        """Dispatch a BLE packet, routing to the data or no-data post path as appropriate."""
         if data is None:
             return await self.post_non_data(encrypt, checksum, require_ack, type_of)
 
         return await self.post_contains_data(encrypt, checksum, require_ack, type_of, data)
 
     async def post_non_data(self, encrypt: bool, checksum: bool, require_ack: bool, type_of: int) -> bool:
+        """Send a header-only BLE packet carrying no payload and optionally await an ACK."""
         sequence = self.generate_send_sequence()
         postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, False, sequence, None)
         await self.gatt_write(postBytes)
@@ -588,6 +589,7 @@ class BleMessage:
         type_of: int,
         data: bytes,
     ) -> bool:
+        """Split data into MTU-sized chunks and write each chunk as a BLE packet, handling fragmentation."""
         chunk_size = 517  # self.client.mtu_size - 3
 
         chunks = list()
@@ -627,6 +629,7 @@ class BleMessage:
         sequence: int,
         data: bytes | None,
     ) -> bytes:
+        """Assemble a BluFi packet header with optional payload into a byte buffer ready for GATT write."""
         byteOS = BytesIO()
         dataLength = 0 if data == None else len(data)
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)

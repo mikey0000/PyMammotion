@@ -1,9 +1,12 @@
+import logging
 import math
 
 import numpy as np
 from numpy.typing import NDArray
 
 from pymammotion.data.model.location import LocationPoint
+
+_logger = logging.getLogger(__name__)
 
 
 class CoordinateConverter:
@@ -248,12 +251,12 @@ if __name__ == "__main__":
 
     # Convert ENU to LLA
     point = converter.enu_to_lla(east=100.0, north=200.0)
-    print(f"Latitude: {point.latitude}, Longitude: {point.longitude}")
+    _logger.debug("Latitude: %s, Longitude: %s", point.latitude, point.longitude)
 
     # Convert LLA to ENU
     enu = converter.lla_to_enu(longitude_deg=-105.0, latitude_deg=40.0)
-    print(f"East: {enu[0]}, North: {enu[1]}")
+    _logger.debug("East: %s, North: %s", enu[0], enu[1])
 
     # Transform yaw angle
     transformed_yaw = converter.get_transform_yaw_with_yaw(90.0)
-    print(f"Transformed yaw: {transformed_yaw}°")
+    _logger.debug("Transformed yaw: %s°", transformed_yaw)

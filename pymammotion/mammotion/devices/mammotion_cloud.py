@@ -61,6 +61,7 @@ class MammotionCloud:
         await self.on_ready_event.data_event(None)
 
     def is_connected(self) -> bool:
+        """Return whether the MQTT client is currently connected."""
         return self._mqtt_client.is_connected
 
     def disconnect(self) -> None:
@@ -69,9 +70,11 @@ class MammotionCloud:
             self._mqtt_client.disconnect()
 
     def connect_async(self) -> None:
+        """Initiate a non-blocking MQTT connection."""
         self._mqtt_client.connect_async()
 
     async def send_command(self, iot_id: str, command: bytes) -> None:
+        """Send a raw command to the device identified by iot_id over MQTT."""
         await self._mqtt_client.send_cloud_command(iot_id, command)
 
     async def on_connected(self) -> None:
@@ -95,6 +98,7 @@ class MammotionCloud:
             self._mqtt_client.update_credentials(mqtt_connection)
 
     async def process_queue(self) -> None:
+        """Drain the command queue, executing each command and resolving its future."""
         while True:
             # Get the next item from the queue
             iot_id, key, command, future = await self.command_queue.get()
@@ -190,6 +194,7 @@ class MammotionCloud:
 
     @property
     def waiting_queue(self) -> deque:
+        """Return the deque of commands waiting to be dispatched."""
         return self._waiting_queue
 
 
@@ -246,12 +251,15 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     @property
     def command_sent_time(self) -> float:
+        """Return the timestamp of the most recently dispatched MQTT command."""
         return self._mqtt.command_sent_time
 
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        """Register a callback to be invoked when the device sends a notification."""
         self._state_manager.cloud_on_notification_callback.add_subscribers(func)
 
     def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
+        """Register a callback used to enqueue commands for the cloud device."""
         self._state_manager.cloud_queue_command_callback.add_subscribers(func)
 
     async def on_ready(self) -> None:
@@ -265,6 +273,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
             _LOGGER.debug("Device is offline")
 
     async def on_disconnect(self) -> None:
+        """Disconnect the MQTT client when the disconnected event fires."""
         self._mqtt.disconnect()
 
     async def on_connect(self) -> None:
@@ -290,6 +299,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
         pass
 
     async def queue_command(self, key: str, **kwargs: Any) -> None:
+        """Enqueue a named command for the cloud device and await its completion."""
         # Create a future to hold the result
         _LOGGER.debug("Queueing command: %s", key)
         future = asyncio.Future()
@@ -320,6 +330,7 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     @staticmethod
     def dequeue_by_iot_id(queue, iot_id):
+        """Remove and return the first queue item whose iot_id matches, or None."""
         for item in queue:
             if item.iot_id == iot_id:
                 queue.remove(item)
@@ -381,4 +392,5 @@ class MammotionBaseCloudDevice(MammotionBaseDevice):
 
     @property
     def mqtt(self):
+        """Return the MammotionCloud MQTT client for this device."""
         return self._mqtt

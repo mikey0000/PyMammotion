@@ -2,13 +2,7 @@
 
 from Tea.exceptions import UnretryableException
 
-
-class SetupException(Exception):
-    """Raise when mqtt expires token or token is invalid."""
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(args)
-        self.iot_id = args[1]
+from pymammotion.transport.base import SessionExpiredError, TransportType
 
 
 class AuthRefreshException(Exception):
@@ -55,8 +49,11 @@ class LoginException(Exception):
     """Raise exception when library cannot log in."""
 
 
-class CheckSessionException(Exception):
-    """Raise exception when checking session results in a failure."""
+class CheckSessionException(SessionExpiredError):
+    """Backward-compatible alias for SessionExpiredError defaulting to CLOUD_ALIYUN."""
+
+    def __init__(self, message: str = "") -> None:
+        super().__init__(TransportType.CLOUD_ALIYUN, message)
 
 
-EXPIRED_CREDENTIAL_EXCEPTIONS = (CheckSessionException, SetupException)
+EXPIRED_CREDENTIAL_EXCEPTIONS = SessionExpiredError

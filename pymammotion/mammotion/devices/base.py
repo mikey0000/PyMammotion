@@ -136,6 +136,11 @@ class MammotionBaseDevice(ABC):
 
     async def async_read_settings(self) -> None:
         """Read settings from device."""
+        # expected_field = (
+        #     "nav_sys_param_cmd"
+        #     if DeviceType.is_luba_pro(self.mower.name)
+        #     else "bidire_comm_cmd"
+        # )
         # no cutting in rain nav_sys_param_cmd (id 3 context 1/0)
         await self.queue_command("read_write_device", rw_id=3, context=1, rw=0)
         # ??
@@ -152,6 +157,7 @@ class MammotionBaseDevice(ABC):
     async def async_get_errors(self) -> None:
         """Error codes."""
         await self.queue_command("read_write_device", rw_id=5, rw=1, context=2)
+        # returns bidireCommCmd, systemUpdateBuf and bidireCommCmd
         await self.queue_command("read_write_device", rw_id=5, rw=1, context=3)
 
     async def command(self, key: str, **kwargs: Any) -> None:
@@ -160,4 +166,5 @@ class MammotionBaseDevice(ABC):
 
     @property
     def state_manager(self) -> MowerStateManager:
+        """Return the state manager that holds this device's mowing state."""
         return self._state_manager

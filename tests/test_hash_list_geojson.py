@@ -1,0 +1,756 @@
+"""Tests for HashList GeoJSON generation using real device fixture data."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from pymammotion.data.model.hash_list import (
+    AreaHashNameList,
+    FrameList,
+    HashList,
+    MowPath,
+    MowPathPacket,
+    NavGetCommData,
+    CommDataCouple,
+)
+from pymammotion.data.model.location import Dock, LocationPoint
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _load_fixture(name: str = "hash_list_fixture.json") -> dict:
+    with open(FIXTURES_DIR / name) as f:
+        return json.load(f)
+
+
+def _make_mow_path(raw: dict) -> MowPath:
+    path_packets = [
+        MowPathPacket(
+            path_hash=p["path_hash"],
+            path_type=p["path_type"],
+            path_total=p["path_total"],
+            path_cur=p["path_cur"],
+            zone_hash=p["zone_hash"],
+            data_couple=[CommDataCouple(x=c["x"], y=c["y"]) for c in p["data_couple"]],
+        )
+        for p in raw["path_packets"]
+    ]
+    return MowPath(
+        pver=raw["pver"],
+        sub_cmd=raw["sub_cmd"],
+        result=raw["result"],
+        area=raw["area"],
+        time=raw["time"],
+        total_frame=raw["total_frame"],
+        current_frame=raw["current_frame"],
+        total_path_num=raw["total_path_num"],
+        valid_path_num=raw["valid_path_num"],
+        data_hash=raw["data_hash"],
+        transaction_id=raw["transaction_id"],
+        reserved=raw["reserved"],
+        data_len=raw["data_len"],
+        path_packets=path_packets,
+    )
+
+
+def _make_nav_get_comm_data(raw: dict) -> NavGetCommData:
+    from pymammotion.data.model.hash_list import NavNameTime
+
+    return NavGetCommData(
+        pver=raw["pver"],
+        sub_cmd=raw["sub_cmd"],
+        result=raw["result"],
+        action=raw["action"],
+        type=raw["type"],
+        hash=raw["hash"],
+        paternal_hash_a=raw["paternal_hash_a"],
+        paternal_hash_b=raw["paternal_hash_b"],
+        total_frame=raw["total_frame"],
+        current_frame=raw["current_frame"],
+        data_hash=raw["data_hash"],
+        data_len=raw["data_len"],
+        data_couple=[CommDataCouple(x=c["x"], y=c["y"]) for c in raw["data_couple"]],
+        reserved=raw["reserved"],
+        name_time=NavNameTime(
+            name=raw["name_time"]["name"],
+            create_time=raw["name_time"]["create_time"],
+            modify_time=raw["name_time"]["modify_time"],
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Mow path GeoJSON
+# ---------------------------------------------------------------------------
+
+
+def test_complete_mow_path_generates_features() -> None:
+    """When all frames for a transaction are present, GeoJSON features are generated."""
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+
+    frame1 = _make_mow_path(fixture["mow_path_frames"][0])
+    frame2 = _make_mow_path(fixture["mow_path_frames"][1])
+
+    # Both frames present; total_frame=2 in fixture
+    assert frame1.total_frame == 2
+    assert frame2.total_frame == 2
+
+    hash_list = HashList()
+    hash_list.update_mow_path(frame1)
+    hash_list.update_mow_path(frame2)
+
+    result = hash_list.generate_mowing_geojson(rtk)
+
+    assert result["type"] == "FeatureCollection"
+    assert len(result["features"]) > 0, "Expected at least one mow path feature when all frames are present"
+
+
+def test_incomplete_mow_path_generates_no_features() -> None:
+    """When only frame 1 of 2 is present, no features are generated (transaction skipped)."""
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+
+    frame1 = _make_mow_path(fixture["mow_path_frames"][0])
+    # frame2 is intentionally omitted
+
+    hash_list = HashList()
+    hash_list.update_mow_path(frame1)
+
+    result = hash_list.generate_mowing_geojson(rtk)
+
+    assert result["type"] == "FeatureCollection"
+    assert result["features"] == [], "Expected no features when mow path frames are incomplete"
+
+
+# ---------------------------------------------------------------------------
+# Map (area) GeoJSON
+# ---------------------------------------------------------------------------
+
+
+def _build_hash_list_with_area(area_frames: list[NavGetCommData]) -> HashList:
+    """Build a HashList populated with the given area frames."""
+    hash_list = HashList()
+    hash_id = area_frames[0].hash
+    total_frame = area_frames[0].total_frame
+    hash_list.area[hash_id] = FrameList(total_frame=total_frame, sub_cmd=0, data=list(area_frames))
+    hash_list.area_name.append(AreaHashNameList(name="area 1", hash=hash_id))
+    return hash_list
+
+
+def test_complete_area_generates_features() -> None:
+    """When all area frames are present, GeoJSON features are generated."""
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(latitude=fixture["dock"]["latitude"], longitude=fixture["dock"]["longitude"], rotation=fixture["dock"]["rotation"])
+
+    frame1 = _make_nav_get_comm_data(fixture["area_frames"][0])
+    frame2 = _make_nav_get_comm_data(fixture["area_frames"][1])
+
+    assert frame1.total_frame == 2
+    assert frame2.total_frame == 2
+
+    hash_list = _build_hash_list_with_area([frame1, frame2])
+
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    assert result["type"] == "FeatureCollection"
+    area_features = [f for f in result["features"] if f["properties"].get("type_name") == "area"]
+    assert len(area_features) > 0, "Expected at least one area feature when all frames are present"
+
+
+def test_incomplete_area_generates_no_area_features() -> None:
+    """When only frame 1 of 2 is present for an area, it is skipped in GeoJSON output."""
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(latitude=fixture["dock"]["latitude"], longitude=fixture["dock"]["longitude"], rotation=fixture["dock"]["rotation"])
+
+    frame1 = _make_nav_get_comm_data(fixture["area_frames"][0])
+    # Only frame 1 present; total_frame=2, so _validate_frame_list returns False
+
+    hash_list = _build_hash_list_with_area([frame1])
+
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    assert result["type"] == "FeatureCollection"
+    area_features = [f for f in result["features"] if f["properties"].get("type_name") == "area"]
+    assert area_features == [], "Expected no area features when area frames are incomplete"
+
+
+# ---------------------------------------------------------------------------
+# Yuka device — mow path generation from real device data
+# ---------------------------------------------------------------------------
+
+
+def _load_yuka_fixture() -> dict:
+    return _load_fixture("yuka_fixture.json")
+
+
+def _build_yuka_hash_list(fixture: dict) -> HashList:
+    """Build a HashList with mow path data from the Yuka fixture."""
+    hash_list = HashList()
+    hash_list.area_name = [
+        AreaHashNameList(name=a["name"], hash=a["hash"]) for a in fixture["map"]["area_name"]
+    ]
+    for tid, frames in fixture["map"]["current_mow_path"].items():
+        for fid, frame in frames.items():
+            hash_list.update_mow_path(_make_mow_path(frame))
+    return hash_list
+
+
+def test_yuka_complete_mow_path_populates_current_mow_path() -> None:
+    """Yuka: update_mow_path populates current_mow_path keyed by transaction_id."""
+    fixture = _load_yuka_fixture()
+    hash_list = _build_yuka_hash_list(fixture)
+
+    transaction_id = int(list(fixture["map"]["current_mow_path"].keys())[0])
+    assert transaction_id in hash_list.current_mow_path
+    frames = hash_list.current_mow_path[transaction_id]
+    assert len(frames) == 33, "Expected 33 frames for the transaction"
+    assert 1 in frames and 33 in frames
+
+
+def test_yuka_mow_path_generates_geojson() -> None:
+    """Yuka: complete mow path frames produce valid generated_mow_path_geojson."""
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    result = hash_list.generate_mowing_geojson(rtk)
+
+    assert result["type"] == "FeatureCollection"
+    assert result["name"] == "Mowing Lawn Areas"
+    assert len(result["features"]) > 0, "Expected at least one mow path feature"
+
+    # Verify the stored geojson was also updated
+    assert hash_list.generated_mow_path_geojson == result
+
+
+def test_yuka_mow_path_geojson_has_correct_properties() -> None:
+    """Yuka: generated mow path GeoJSON contains both mow_path and border_pass features."""
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    result = hash_list.generate_mowing_geojson(rtk)
+
+    type_names = {f["properties"]["type_name"] for f in result["features"]}
+    assert "mow_path" in type_names, "Expected a mow_path (stripe) feature"
+    assert "border_pass" in type_names, "Expected a border_pass feature"
+
+    # Verify shared metadata on the mow_path feature
+    mow_feature = next(f for f in result["features"] if f["properties"]["type_name"] == "mow_path")
+    props = mow_feature["properties"]
+    first_tid = int(list(fixture["map"]["current_mow_path"].keys())[0])
+    first_frame = fixture["map"]["current_mow_path"][str(first_tid)]["1"]
+    assert props["transaction_id"] == first_frame["transaction_id"]
+    assert props["total_path_num"] == first_frame["total_path_num"]
+    assert "length" in props
+    assert "area" in props
+    assert "color" in props
+
+
+def test_yuka_mow_path_geojson_has_linestring_coordinates() -> None:
+    """Yuka: all mow path features contain LineStrings with real lon/lat coordinates."""
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    result = hash_list.generate_mowing_geojson(rtk)
+
+    # Pick the mow_path (stripe) feature specifically; border_pass uses the same transform
+    feature = next(f for f in result["features"] if f["properties"]["type_name"] == "mow_path")
+    geometry = feature["geometry"]
+    assert geometry["type"] == "LineString"
+    coords = geometry["coordinates"]
+    assert len(coords) > 0, "Expected coordinates in the LineString"
+
+    # Coordinates should be [lon, lat] pairs near the Yuka's real-world location
+    # RTK is at approximately lon=175.318, lat=-38.002 (New Zealand)
+    for lon, lat in coords:
+        assert 175.0 < lon < 176.0, f"Longitude {lon} out of expected range"
+        assert -39.0 < lat < -37.0, f"Latitude {lat} out of expected range"
+
+
+def test_yuka_incomplete_mow_path_empty_geojson() -> None:
+    """Yuka: when only 1 of 33 frames is present, no features are generated."""
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+
+    hash_list = HashList()
+    # Only add the first frame (total_frame=33, so the transaction is incomplete)
+    first_frame = fixture["map"]["current_mow_path"][list(fixture["map"]["current_mow_path"].keys())[0]]["1"]
+    hash_list.update_mow_path(_make_mow_path(first_frame))
+
+    result = hash_list.generate_mowing_geojson(rtk)
+
+    assert result["type"] == "FeatureCollection"
+    assert result["features"] == [], "Expected no features when mow path is incomplete"
+
+
+def test_yuka_empty_current_mow_path_empty_geojson() -> None:
+    """Yuka: empty current_mow_path produces empty GeoJSON."""
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+
+    hash_list = HashList()
+    # No mow path data at all
+
+    result = hash_list.generate_mowing_geojson(rtk)
+
+    assert result["type"] == "FeatureCollection"
+    assert result["features"] == []
+    assert hash_list.generated_mow_path_geojson == result
+
+
+# ---------------------------------------------------------------------------
+# Yuka — end-to-end: _apply_mow_path_geojson (client.py callback)
+# ---------------------------------------------------------------------------
+
+
+def test_yuka_apply_mow_path_geojson_populates_device() -> None:
+    """_apply_mow_path_geojson generates and stores geojson on MowingDevice after saga completes."""
+    from pymammotion.client import _apply_mow_path_geojson
+    from pymammotion.data.model.device import MowingDevice
+
+    fixture = _load_yuka_fixture()
+    device = MowingDevice(name=fixture["update_check"]["device_name"])
+
+    # Set RTK location from fixture
+    device.location.RTK.latitude = fixture["location"]["RTK"]["latitude"]
+    device.location.RTK.longitude = fixture["location"]["RTK"]["longitude"]
+
+    # Populate current_mow_path (simulating what MowPathSaga does)
+    for tid, frames in fixture["map"]["current_mow_path"].items():
+        for fid, frame in frames.items():
+            device.map.update_mow_path(_make_mow_path(frame))
+
+    assert device.map.current_mow_path, "current_mow_path should be populated before apply"
+    assert not device.map.generated_mow_path_geojson, "generated_mow_path_geojson should be empty before apply"
+
+    # This is what _on_mow_path_complete calls
+    _apply_mow_path_geojson(device)
+
+    result = device.map.generated_mow_path_geojson
+    assert result["type"] == "FeatureCollection"
+    assert len(result["features"]) > 0, "Expected mow path features after apply"
+
+    # Features are split by path_type; find the mow stripe feature specifically
+    mow_feature = next(
+        (f for f in result["features"] if f["properties"]["type_name"] == "mow_path"), None
+    )
+    assert mow_feature is not None, "Expected a mow_path (stripe) feature"
+    assert mow_feature["geometry"]["type"] == "LineString"
+
+    # Verify coordinates are in expected real-world range
+    for lon, lat in mow_feature["geometry"]["coordinates"]:
+        assert 175.0 < lon < 176.0
+        assert -39.0 < lat < -37.0
+
+
+# ---------------------------------------------------------------------------
+# WorkData.real_path_num decoding
+# ---------------------------------------------------------------------------
+
+
+def test_work_data_real_path_num_decoding() -> None:
+    """real_path_num=5889 (0x1701) decodes to now_index=23, start_index=0, path_direction=1."""
+    from pymammotion.data.model.report_info import WorkData
+
+    work = WorkData(real_path_num=5889)
+    # 5889 = 0x1701
+    # now_index      = (0x1701 & 0x00FFFF00) >> 8   = 0x1700 >> 8 = 23
+    # start_index    = (0x1701 & 0xFFFF000000) >> 24 = 0  (value fits in 16 bits)
+    # path_direction = 0x1701 & 0xFF                 = 1
+    assert work.now_index == 23
+    assert work.start_index == 0
+    assert work.path_direction == 1
+
+
+def test_work_data_zero_real_path_num() -> None:
+    """real_path_num=0 gives all-zero decoded fields."""
+    from pymammotion.data.model.report_info import WorkData
+
+    work = WorkData(real_path_num=0)
+    assert work.now_index == 0
+    assert work.start_index == 0
+    assert work.path_direction == 0
+
+
+# ---------------------------------------------------------------------------
+# Mow progress GeoJSON — generate_mow_progress_geojson
+# ---------------------------------------------------------------------------
+
+
+def test_mow_progress_geojson_now_index_zero_returns_empty() -> None:
+    """now_index=0 produces an empty FeatureCollection."""
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    result = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=0,
+        rtk_location=Point(rtk.latitude, rtk.longitude),
+    )
+
+    assert result["type"] == "FeatureCollection"
+    assert result["features"] == []
+
+
+def test_mow_progress_geojson_empty_path_returns_empty() -> None:
+    """Empty current_mow_path produces an empty FeatureCollection even with now_index>0."""
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = HashList()  # no mow path loaded
+
+    result = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=10,
+        rtk_location=Point(rtk.latitude, rtk.longitude),
+    )
+
+    assert result["type"] == "FeatureCollection"
+    assert result["features"] == []
+
+
+def test_mow_progress_geojson_now_index_within_range() -> None:
+    """now_index=10 slices path[9:] (remaining from current section to end) into a LineString."""
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+    ub_path_hash = fixture["report_data"]["work"]["ub_path_hash"]
+
+    result = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=10,
+        rtk_location=Point(rtk.latitude, rtk.longitude),
+        ub_path_hash=ub_path_hash,
+    )
+
+    assert result["type"] == "FeatureCollection"
+    assert len(result["features"]) == 1
+
+    feature = result["features"][0]
+    assert feature["geometry"]["type"] == "LineString"
+    assert feature["properties"]["type_name"] == "mow_progress"
+    assert feature["properties"]["now_index"] == 10
+    assert feature["properties"]["point_count"] == 51  # 60 total - (10-1) = 51 remaining
+    assert len(feature["geometry"]["coordinates"]) == 51
+
+
+def test_mow_progress_geojson_now_index_exceeds_total() -> None:
+    """now_index >= total points means nothing remaining — returns empty FeatureCollection."""
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    # now_index=2000 exceeds the 1180 total points — mow is complete, nothing remaining
+    result = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=2000,
+        rtk_location=Point(rtk.latitude, rtk.longitude),
+    )
+
+    assert result["type"] == "FeatureCollection"
+    assert result["features"] == [], "Expected empty when now_index exceeds total points"
+
+
+def test_mow_progress_geojson_coordinates_in_expected_range() -> None:
+    """Progress GeoJSON coordinates should be near the Yuka's real-world RTK location.
+
+    LocationPoint.latitude/longitude in the Yuka fixture are stored in radians
+    (-0.663 rad ≈ -37.97° S, 3.06 rad ≈ 175.3° E — New Zealand).
+    generate_mow_progress_geojson expects a WGS-84 Point already converted via
+    CoordinateConverter.enu_to_lla, matching the same contract as
+    generate_mow_path_geojson.
+    """
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+
+    result = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=10,
+        rtk_location=Point(rtk_ll.latitude, rtk_ll.longitude),
+    )
+
+    assert result["features"], "Expected at least one feature"
+    for lon, lat in result["features"][0]["geometry"]["coordinates"]:
+        assert 175.0 < lon < 176.0, f"Longitude {lon} out of expected NZ range"
+        assert -39.0 < lat < -37.0, f"Latitude {lat} out of expected NZ range"
+
+
+def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:
+    """Progress path coordinates fall within the bounding box of the planned path."""
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    rtk_point = Point(rtk_ll.latitude, rtk_ll.longitude)
+
+    planned = hash_list.generate_mowing_geojson(rtk)
+    progress = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list, now_index=10, rtk_location=rtk_point
+    )
+
+    # Collect all planned coords across all features
+    planned_coords = [c for f in planned["features"] for c in f["geometry"]["coordinates"]]
+    planned_lons = [c[0] for c in planned_coords]
+    planned_lats = [c[1] for c in planned_coords]
+
+    # Progress coords must be within the planned path bounding box (with 0.001° tolerance)
+    assert progress["features"], "Expected at least one progress feature"
+    for lon, lat in progress["features"][0]["geometry"]["coordinates"]:
+        assert min(planned_lons) - 0.001 < lon < max(planned_lons) + 0.001, (
+            f"Progress lon {lon} outside planned path range [{min(planned_lons)}, {max(planned_lons)}]"
+        )
+        assert min(planned_lats) - 0.001 < lat < max(planned_lats) + 0.001, (
+            f"Progress lat {lat} outside planned path range [{min(planned_lats)}, {max(planned_lats)}]"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Yuka — end-to-end: _apply_mow_progress_geojson (client.py callback)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_mow_progress_geojson_populates_device() -> None:
+    """_apply_mow_progress_geojson stores progress GeoJSON on MowingDevice.
+
+    Uses ub_path_hash=0 (all zones) — work.ub_path_hash is the active segment
+    only; including it would suppress all other zones from the output.
+    Yuka fixture has path_type=1 (902 pts) and path_type=2 (278 pts) across all
+    zones.  At now_index=23 (start=22): type 1 has 880 remaining, type 2 has 256.
+    """
+    from pymammotion.client import _apply_mow_progress_geojson
+    from pymammotion.data.model.device import MowingDevice
+
+    fixture = _load_yuka_fixture()
+    device = MowingDevice(name=fixture["update_check"]["device_name"])
+
+    device.location.RTK.latitude = fixture["location"]["RTK"]["latitude"]
+    device.location.RTK.longitude = fixture["location"]["RTK"]["longitude"]
+
+    for tid, frames in fixture["map"]["current_mow_path"].items():
+        for fid, frame in frames.items():
+            device.map.update_mow_path(_make_mow_path(frame))
+
+    # real_path_num=5889 → now_index=23; all zones included (ub_path_hash=0)
+    device.report_data.work.real_path_num = 5889
+
+    assert not device.map.generated_mow_progress_geojson, "Should be empty before apply"
+
+    _apply_mow_progress_geojson(device)
+
+    result = device.map.generated_mow_progress_geojson
+    assert result["type"] == "FeatureCollection"
+    assert len(result["features"]) == 2  # path_type=1 (mow stripes) + path_type=2 (border passes)
+
+    by_type = {f["properties"]["path_type"]: f for f in result["features"]}
+    assert set(by_type.keys()) == {1, 2}
+
+    for feature in result["features"]:
+        assert feature["geometry"]["type"] == "LineString"
+        assert feature["properties"]["type_name"] == "mow_progress"
+        assert feature["properties"]["now_index"] == 23
+
+    # now_index=23 → start=22; type 1: 902 - 22 = 880 remaining; type 2: 278 - 22 = 256 remaining
+    assert by_type[1]["properties"]["point_count"] == 880
+    assert by_type[2]["properties"]["point_count"] == 256
+
+
+def test_apply_mow_progress_geojson_noop_when_now_index_zero() -> None:
+    """_apply_mow_progress_geojson is a no-op when now_index is 0."""
+    from pymammotion.client import _apply_mow_progress_geojson
+    from pymammotion.data.model.device import MowingDevice
+
+    fixture = _load_yuka_fixture()
+    device = MowingDevice(name=fixture["update_check"]["device_name"])
+    device.location.RTK.latitude = fixture["location"]["RTK"]["latitude"]
+    device.location.RTK.longitude = fixture["location"]["RTK"]["longitude"]
+
+    for tid, frames in fixture["map"]["current_mow_path"].items():
+        for fid, frame in frames.items():
+            device.map.update_mow_path(_make_mow_path(frame))
+
+    device.report_data.work.real_path_num = 0  # now_index=0 → no-op
+
+    _apply_mow_progress_geojson(device)
+
+    assert device.map.generated_mow_progress_geojson == {}
+
+
+# ---------------------------------------------------------------------------
+# Mow progress GeoJSON — multi-type coverage (mow stripes + border passes)
+# ---------------------------------------------------------------------------
+
+
+def test_mow_progress_geojson_matches_example_script_output() -> None:
+    """generate_mow_progress_geojson at now_index 1, 300 and 550 must produce output
+    identical to the reference files written by examples/generate_mow_progress_geojson.py.
+
+    The example script uses ub_path_hash=0 (all paths) and the path_pos decoded from
+    the fixture's report_data.work.  Both must be replicated here to get a byte-for-byte
+    match of every coordinate in the GeoJSON.
+    """
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    fixture = _load_yuka_fixture()
+    hash_list = _build_yuka_hash_list(fixture)
+
+    rtk = LocationPoint(
+        latitude=fixture["location"]["RTK"]["latitude"],
+        longitude=fixture["location"]["RTK"]["longitude"],
+    )
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    rtk_point = Point(rtk_ll.latitude, rtk_ll.longitude)
+
+    work = fixture.get("report_data", {}).get("work", {})
+    raw_x = work.get("path_pos_x", 0)
+    raw_y = work.get("path_pos_y", 0)
+    path_pos = (raw_x / 10000.0, raw_y / 10000.0) if (raw_x or raw_y) else None
+
+    dev_output = Path(__file__).parent.parent / "examples" / "dev_output"
+
+    for now_index in (1, 300, 550):
+        ref_file = dev_output / f"mow_progress_{now_index}.geojson"
+        with open(ref_file) as f:
+            reference = json.load(f)
+
+        result = GeojsonGenerator.generate_mow_progress_geojson(
+            hash_list,
+            now_index=now_index,
+            rtk_location=rtk_point,
+            ub_path_hash=0,
+            path_pos=path_pos,
+        )
+
+        assert result["type"] == reference["type"]
+        assert len(result["features"]) == len(reference["features"]), (
+            f"now_index={now_index}: expected {len(reference['features'])} features, "
+            f"got {len(result['features'])}"
+        )
+
+        ref_by_type = {f["properties"]["path_type"]: f for f in reference["features"]}
+        res_by_type = {f["properties"]["path_type"]: f for f in result["features"]}
+
+        assert set(res_by_type.keys()) == set(ref_by_type.keys()), (
+            f"now_index={now_index}: path_type mismatch — "
+            f"expected {set(ref_by_type.keys())}, got {set(res_by_type.keys())}"
+        )
+
+        for path_type, ref_feat in ref_by_type.items():
+            res_feat = res_by_type[path_type]
+            ref_coords = ref_feat["geometry"]["coordinates"]
+            res_coords = res_feat["geometry"]["coordinates"]
+            assert len(res_coords) == len(ref_coords), (
+                f"now_index={now_index}, path_type={path_type}: "
+                f"{len(res_coords)} pts != {len(ref_coords)} reference pts"
+            )
+            assert res_coords == ref_coords, (
+                f"now_index={now_index}, path_type={path_type}: coordinates differ at index "
+                + str(next(i for i, (a, b) in enumerate(zip(res_coords, ref_coords)) if a != b))
+            )
+
+
+def test_mow_progress_from_start_identical_to_mow_path() -> None:
+    """At now_index=1 (start) the progress geojson coordinates must be identical to the
+    planned mow path geojson, per path_type.
+
+    Both functions must:
+      - cover the same path_types (mow stripes + border passes)
+      - produce the same number of points per type
+      - produce the exact same coordinates per type
+
+    This guards against two regressions:
+      1. Flattening all path types into one feature (loses border_pass / mow_stripe distinction)
+      2. Inconsistent point ordering between the two generation paths
+    """
+    from shapely.geometry import Point
+
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    from pymammotion.utility.map import CoordinateConverter
+
+    fixture = _load_yuka_fixture()
+    rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
+    hash_list = _build_yuka_hash_list(fixture)
+
+    # generate_mowing_geojson converts radian RTK coords via CoordinateConverter internally;
+    # generate_mow_progress_geojson expects the already-converted WGS-84 Point — match that.
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    rtk_point = Point(rtk_ll.latitude, rtk_ll.longitude)
+
+    # Planned mow path — one feature per path_type, keyed by path_type int
+    planned = hash_list.generate_mowing_geojson(rtk)
+    planned_by_type: dict[int, list] = {
+        f["properties"]["path_type"]: f["geometry"]["coordinates"]
+        for f in planned["features"]
+    }
+    assert len(planned_by_type) >= 2, "Fixture should have at least two path types"
+
+    # Progress at now_index=1: start = max(0, 0) = 0, so all points are remaining
+    progress = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=1,
+        rtk_location=rtk_point,
+        ub_path_hash=0,  # all paths, all types
+    )
+    progress_by_type: dict[int, list] = {
+        f["properties"]["path_type"]: f["geometry"]["coordinates"]
+        for f in progress["features"]
+    }
+
+    assert set(progress_by_type.keys()) == set(planned_by_type.keys()), (
+        f"Progress path_types {set(progress_by_type.keys())} != planned {set(planned_by_type.keys())}"
+    )
+
+    for path_type, planned_coords in planned_by_type.items():
+        progress_coords = progress_by_type[path_type]
+        assert len(progress_coords) == len(planned_coords), (
+            f"path_type={path_type}: {len(progress_coords)} progress pts != {len(planned_coords)} planned pts"
+        )
+        assert progress_coords == planned_coords, (
+            f"path_type={path_type}: coordinates differ at index "
+            + str(next(i for i, (a, b) in enumerate(zip(progress_coords, planned_coords)) if a != b))
+        )

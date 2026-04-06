@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.6.10"
+version = "0.7.31"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -17,7 +17,6 @@ dependencies = [
     "bleak>=0.21.0",
     "protobuf>=4.23.1",
     "aiohttp>=3.9.1",
-    "paho-mqtt>=2.1.0,<3",
     "alibabacloud-apigateway-util>=0.0.2,<0.0.3",
     "alibabacloud-iot-api-gateway>=0.0.4,<0.0.5",
     "bleak-retry-connector>=3.5.0",
@@ -33,6 +32,8 @@ dependencies = [
     "websockets>=13.1",
     "webrtc-models>=0.3.0",
     "aiomqtt>=2.5.1",
+    "bluetooth-adapters>=2.0.0",
+    "pyrsistent>=0.20.0",
 ]
 
 [dependency-groups]
@@ -71,7 +72,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.6.10"
+current_version = "0.7.31"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -415,7 +416,6 @@ ignore = [
     "PLR0915", # Too many statements ({statements} > {max_statements})
     "PLR2004", # Magic value used in comparison, consider replacing {value} with a constant variable
     "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
-    "PT004", # Fixture {fixture} does not return anything, add leading underscore
     "PT011", # pytest.raises({exception}) is too broad, set the `match` parameter or use a more specific exception
     "PT012", # `pytest.raises()` block should contain a single simple statement
     "PT018", # Assertion should be broken down into multiple parts
@@ -476,7 +476,7 @@ max-complexity = 25
 # results.
 platform = "linux"
 python_version = "3.12"
-exclude = ['pymammotion/proto', 'tests', "scripts"]
+exclude = ['pymammotion/proto', 'tests', 'examples', "scripts"]
 
 # parity with previous mypy.ini
 show_error_codes = true
@@ -491,7 +491,7 @@ extra_checks = false
 mypy_path = "stubs"
 
 # show error messages from unrelated files
-follow_imports = "normal"
+follow_imports = "skip"
 
 # suppress errors about unsatisfied imports
 ignore_missing_imports = true

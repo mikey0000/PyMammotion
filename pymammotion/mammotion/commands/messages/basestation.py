@@ -19,7 +19,8 @@ logger = getLogger(__name__)
 
 
 class MessageBasestation(AbstractMessage, ABC):
-    def send_order_msg_basestation(self, driver) -> bytes:
+    def send_order_msg_basestation(self, base) -> bytes:
+        """Serialize and return a LubaMsg basestation request with the given driver payload."""
         return LubaMsg(
             msgtype=MsgCmdType.BASESTATION,
             sender=MsgDevice.DEV_MOBILEAPP,
@@ -29,7 +30,7 @@ class MessageBasestation(AbstractMessage, ABC):
             seqs=self.seqs.increment_and_get() & 255,
             version=1,
             subtype=self.user_account,
-            driver=driver,
+            base=base,
         ).SerializeToString()
 
     def basestation_info(self) -> bytes:

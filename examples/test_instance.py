@@ -1,0 +1,167 @@
+import asyncio
+from threading import Thread
+
+from pymammotion.bluetooth.ble import MammotionBLE
+from pymammotion.bluetooth.ble_message import BleMessage
+from pymammotion.data.model import GenerateRouteInformation
+from pymammotion.event.event import BleNotificationEvent
+
+bleNotificationEvt = BleNotificationEvent()
+
+
+async def ble_heartbeat(luba_client):
+    while True:
+        # await luba_client.send_todev_ble_sync(1)
+        # eventually send an event and update data from sync
+        # await asyncio.sleep(1)
+        await asyncio.sleep(0.01)
+
+
+class AsyncLoopThread(Thread):
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.loop = asyncio.new_event_loop()
+
+    def run(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+
+async def run():
+    bleLubaConn = MammotionBLE(bleNotificationEvt)
+    did_connect = await bleLubaConn.scanForLubaAndConnect()
+    if not did_connect:
+        return
+    await bleLubaConn.notifications()
+    client = bleLubaConn.get_client()
+    luba_client = BleMessage(client)
+
+    async def handle_notifications(data: bytearray):
+        print("got ble message", data)
+        result = luba_client.parseNotification(data)
+        print(result)
+        if result == 0:
+            await luba_client.parseBlufiNotifyData()
+            luba_client.clear_notification()
+
+    bleNotificationEvt.AddSubscribersForBleNotificationEvent(handle_notifications)
+    # Run the ble heart beat in the background continuously which still doesn't quite work
+
+    # await luba_client.send_ble_alive()
+
+    await asyncio.sleep(2)
+    await luba_client.send_todev_ble_sync(1)
+
+    # delay call for at least a few seconds
+    ### first call is get device version main
+    ###
+    ###
+
+    await luba_client.get_device_version_main()
+
+    # t = Timer(3, luba_client.get_device_version_main, args=[])
+    # t.start()
+
+    # loop_handler_bleheart = threading.Thread(target=), args=(), daemon=True)
+    # await luba_client.send_ble_alive()
+
+    # gets info about luba and some other stuff
+    # await luba_client.get_all_boundary_hash_list(3)
+    # await luba_client.get_all_boundary_hash_list(0)
+
+    # get map data off Luba
+    # 8656065632562971511
+    #
+
+    # await luba_client.synchronize_hash_data(8656065632562971511)
+
+    # problem one
+    # await asyncio.sleep(1)
+    # await luba_client.synchronize_hash_data(5326333396143256633)
+    # await asyncio.sleep(1)
+    # await luba_client.sendTodevBleSync()
+    # await luba_client.send_ble_alive()
+    # await luba_client.synchronize_hash_data(6316048569363781876)
+    # probably gets paths
+    # await luba_client.get_line_info(4)
+    """
+        private final int knifeHeight = 70;
+    private int pKnifeHeight = 0;
+    private int taskMode = 3;
+    private int line_mode = 1;
+    private int path_space = 25;
+    private float speed_task = 0.3f;
+    private int ultraWave = 1;
+    private int rainTactics = 1;
+    private int knifeHeight_task = 70;
+    private int path_angler = 0;
+    oneHashs=[8656065632562971511], jobId=null, jobVer=0, rainTactics=1, jobMode=3, knifeHeight=70, speed=0.3, UltraWave=2, channelWidth=25, channelMode=1, toward=0, edgeMode=1
+    """
+
+    generate_route_information = GenerateRouteInformation(
+        one_hashs=[8656065632562971511],
+        rain_tactics=1,
+        speed=0.3,
+        ultra_wave=2,  # touch no touch etc
+        toward=0,  # is just angle
+        toward_included_angle=0,  # angle type relative etc
+        knife_height=70,
+        channel_mode=0,  # line mode is grid single double or single2
+        channel_width=25,
+        job_mode=3,  # taskMode
+        edge_mode=1,  # border laps
+        path_order=0,
+        obstacle_laps=0,
+    )
+    """arrayList.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_monday), 2, true, true));
+        this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_tuesday), 3, false, true));
+        this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_wednesday), 4, false, true));
+        this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_thursday), 5, false, true));
+        this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_friday), 6, false, true));
+        this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_saturday), 7, false, true));
+        this.list.add(new TaskModeBean(getContext().getString(C1006R.string.boxchoice_sunday), 1, false, false));
+        this.se"""
+
+    # await luba_client.generate_route_information(generate_route_information)
+    # probably need to wait for this to finish before hitting start
+    # await luba_client.start_job(30)
+    # await luba_client.set_knife_height(70)
+    # await luba_client.send_todev_ble_sync()
+
+    await asyncio.sleep(2)
+    # await luba_client.send_device_info()
+
+    # await luba_client.get_device_info()
+    # initialisation hash??
+
+    await asyncio.sleep(0.5)
+    # await luba_client.get_area_tobe_transferred()
+    await luba_client.send_todev_ble_sync(2)
+    await asyncio.sleep(2)
+    await luba_client.allpowerfull_rw(5, 1, 1)
+
+    # await luba_client.send_order_msg_ota(0)
+    await asyncio.sleep(1)
+
+    # await luba_client.allpowerfull_rw(5, 2, 1)
+    await luba_client.get_report_cfg(10000, 1000, 2000)
+    # await luba_client.send_device_info()
+
+    # await luba_client.send_todev_ble_sync(1)
+    # await luba_client.get_device_info()
+    # await luba_client.get_hash_response(1, 1)
+
+    # await luba_client.send_device_info()
+    # await asyncio.sleep(2)
+    # await luba_client.get_device_version_main()
+    # await luba_client.send_todev_ble_sync(1)
+
+    asyncio.run(await ble_heartbeat(luba_client))
+    print("end run?")
+
+
+if __name__ == "__main__":
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(event_loop)
+    asyncio.run(run())
+    event_loop.run_forever()

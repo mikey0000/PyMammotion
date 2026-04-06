@@ -1,4 +1,5 @@
 """RTK device information."""
+
 from dataclasses import dataclass, field
 
 from mashumaro import field_options

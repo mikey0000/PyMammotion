@@ -114,9 +114,11 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._state_manager.ble_queue_command_callback.remove_subscribers(self.queue_command)
 
     def set_notification_callback(self, func: Callable[[tuple[str, Any | None]], Awaitable[None]]) -> None:
+        """Register a callback to be invoked when the BLE device sends a notification."""
         self._state_manager.ble_on_notification_callback.add_subscribers(func)
 
     def set_queue_callback(self, func: Callable[[str, dict[str, Any]], Awaitable[None]]) -> None:
+        """Register a callback used to enqueue commands for the BLE device."""
         self._state_manager.ble_queue_command_callback.add_subscribers(func)
 
     def update_device(self, device: BLEDevice) -> None:
@@ -150,6 +152,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
             await self._client.disconnect()
 
     async def queue_command(self, key: str, **kwargs: Any) -> None:
+        """Enqueue a named BLE command and await its completion."""
         # Create a future to hold the result
         _LOGGER.debug("Queueing command: %s", key)
         future = asyncio.Future()
@@ -161,6 +164,7 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         # return await self._send_command_with_args(key, **kwargs)
 
     async def process_queue(self) -> None:
+        """Drain the BLE command queue, executing each command and resolving its future."""
         while True:
             # Get the next item from the queue
             key, command, future = await self.command_queue.get()
@@ -493,4 +497,5 @@ class MammotionBaseBLEDevice(MammotionBaseDevice):
         self._client = None
 
     def set_disconnect_strategy(self, *, disconnect: bool) -> None:
+        """Configure whether the device should disconnect after each command completes."""
         self._disconnect_strategy = disconnect

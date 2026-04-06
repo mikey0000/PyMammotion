@@ -83,18 +83,23 @@ class DeviceType(Enum):
         self._model = model
 
     def get_name(self) -> str:
+        """Return the short device-name prefix string (e.g. 'Luba-VS') for this device type."""
         return self._name
 
     def get_model(self) -> str:
+        """Return the human-readable model name (e.g. 'Luba 2') for this device type."""
         return self._model
 
     def get_value(self) -> int:
+        """Return the integer identifier for this device type."""
         return self._value
 
     def get_value_str(self) -> str:
+        """Return the integer identifier for this device type as a string."""
         return str(self._value)
 
     def set_value(self, value: int) -> None:
+        """Override the integer identifier for this device type."""
         self._value = value
 
     @staticmethod
@@ -311,7 +316,7 @@ class DeviceType(Enum):
 
         return (
             device_type.get_value() >= DeviceType.LUBA_2.get_value()
-            and device_type.get_value() != DeviceType.SPINO.get_value()
+            and not DeviceType.is_swimming_pool(device_name)
             and not DeviceType.is_rtk(device_name, product_key)
         )
 
@@ -339,6 +344,7 @@ class DeviceType(Enum):
 
     @staticmethod
     def is_yuka_mini(device_name: str) -> bool:
+        """Return True if the device name identifies a Yuka Mini or Yuka Mini 2 device."""
         return (
             DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
             or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
@@ -486,8 +492,16 @@ class DeviceType(Enum):
         return product_key in YukaPlusProductKey
 
     def is_support_video(self) -> bool:
+        """Return True if this device type supports video streaming (all models except the original Luba 1)."""
         return self != DeviceType.LUBA
 
     @staticmethod
     def is_yuka_ml(device_name: str) -> bool:
+        """Return True if the device name identifies a Yuka ML device."""
         return DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_ML.get_value()
+
+    @staticmethod
+    def is_swimming_pool(device_name: str) -> bool:
+        """Return True if the device name identifies a swimming-pool robot (Spino, S1, or E1)."""
+        device_type = DeviceType.value_of_str(device_name)
+        return device_type in (DeviceType.SPINO, DeviceType.SWIMMINGPOOL_S1, DeviceType.SWIMMINGPOOL_E1)

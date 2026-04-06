@@ -79,6 +79,26 @@ class MowerStateManager:
         self.status_callback = DataEvent()
         self.device_event_callback = DataEvent()
 
+    def cleanup_subscriptions(self, handlers: list[Any] | None = None) -> None:
+        """Remove subscribers from the three HA-facing callback events.
+
+        Args:
+            handlers: If None, removes ALL subscribers from each event.
+                      If a list, removes only those specific handler callables.
+
+        This method is idempotent — calling it multiple times has no additional
+        effect beyond the first successful removal.
+
+        """
+        callbacks = [self.properties_callback, self.status_callback, self.device_event_callback]
+        if handlers is None:
+            for cb in callbacks:
+                cb.on_data_event = type(cb.on_data_event)()
+        else:
+            for cb in callbacks:
+                for handler in handlers:
+                    cb.remove_subscribers(handler)
+
     def get_device(self) -> MowingDevice:
         """Get device."""
         return self._device
@@ -239,9 +259,6 @@ class MowerStateManager:
                 work_settings: NavReqCoverPath = nav_msg[1]
 
                 current_task = CurrentTaskSettings.from_dict(work_settings.to_dict(casing=betterproto2.Casing.SNAKE))
-
-                if current_task.path_hash == 0:
-                    self._device.map.current_mow_path = {}
 
                 if work_settings.sub_cmd == 0:
                     await self.queue_command_callback(key="get_all_boundary_hash_list", sub_cmd=3)

@@ -11,27 +11,27 @@ from logging import getLogger
 import random
 import string
 import time
+from typing import Any
 import uuid
 
 from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
+from mashumaro import MissingField
 
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.exceptions import (
     AuthRefreshException,
-    CheckSessionException,
     DeviceOfflineException,
     FailedRequestException,
     GatewayTimeoutException,
     LoginException,
-    SetupException,
     TooManyRequestsException,
 )
 from pymammotion.aliyun.model.aep_response import AepResponse
 from pymammotion.aliyun.model.connect_response import ConnectResponse
-from pymammotion.aliyun.model.dev_by_account_response import ListingDevAccountResponse
+from pymammotion.aliyun.model.dev_by_account_response import ListingDevAccountResponse, ShareNoticeListResponse
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
@@ -39,6 +39,9 @@ from pymammotion.aliyun.model.thing_response import ThingPropertiesResponse
 from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
+from pymammotion.http.model.http import LoginResponseData, MQTTConnection, Response
+from pymammotion.http.model.response_factory import response_factory
+from pymammotion.transport.base import ReLoginRequiredError, SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
@@ -112,6 +115,7 @@ class CloudIOTGateway:
 
     @staticmethod
     def parse_json_response(response_body_str: str) -> dict:
+        """Parse a JSON response string into a dictionary, returning an error code dict on failure."""
         try:
             return json.loads(response_body_str) if response_body_str is not None else {}
         except JSONDecodeError:
@@ -380,7 +384,7 @@ class CloudIOTGateway:
                 headers["content-type"],
                 headers["date"],
                 header,
-                f"loginByOauthRequest={json.dumps(_bodyParam, separators=(",", ":"))}",
+                f"loginByOauthRequest={json.dumps(_bodyParam, separators=(',', ':'))}",
             )
 
             hash_val = hmac.new(
@@ -460,6 +464,7 @@ class CloudIOTGateway:
         return response.body
 
     async def sign_out(self) -> dict:
+        """Invalidate the current IoT session and return the raw response dictionary."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -551,11 +556,15 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             logger.error(response_body_dict)
             await self.sign_out()
-            raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
+            raise SessionExpiredError(
+                TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
+            )
 
         if response_body_dict.get("code") == 2401:
             await self.sign_out()
-            raise CheckSessionException("Error check or refresh token: " + response_body_dict.__str__())
+            raise SessionExpiredError(
+                TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
+            )
 
         session = SessionByAuthCodeResponse.from_dict(response_body_dict)
         session_data = session.data
@@ -618,6 +627,7 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def list_binding_by_dev(self, iot_id: str):
+        """Retrieve the list of accounts bound to the specified device IoT ID."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -659,6 +669,7 @@ class CloudIOTGateway:
         return self._devices_by_account_response
 
     async def confirm_share(self, record_list: list[str]) -> bool:
+        """Accept pending share invitations for the given list of record IDs."""
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
@@ -698,7 +709,8 @@ class CloudIOTGateway:
 
         return True
 
-    async def get_shared_notice_list(self):
+    async def get_shared_notice_list(self) -> ShareNoticeListResponse:
+        """Fetch the list of share notices for the current account (status: 0=accepted, -1=pending, 3=expired)."""
         ### status 0 accepted status -1 ready to be accepted 3 expired
         config = Config(
             app_key=self._app_key,
@@ -739,8 +751,7 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code")) != 200:
             raise Exception("Error in creating session: " + response_body_dict["msg"])
 
-        self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
-        return self._devices_by_account_response
+        return ShareNoticeListResponse.from_dict(response_body_dict)
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
         """Sends a cloud command to a specified IoT device.
@@ -839,18 +850,16 @@ class CloudIOTGateway:
                 raise GatewayTimeoutException(response_body_dict.get("code"), iot_id)
 
             if response_body_dict.get("code") == 29003:
-                logger.debug(self._session_by_authcode_response.data.identityId)
-                await self.sign_out()
-                raise SetupException(response_body_dict.get("code"), iot_id)
+                logger.debug("identityId is blank, refreshing Aliyun credentials")
+                raise SessionExpiredError(
+                    TransportType.CLOUD_ALIYUN, "identityId is blank (29003) — token refresh required"
+                )
             if response_body_dict.get("code") == 6205:
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
 
-            if response_body_dict.get("code") == 6205:
-                raise CheckSessionException(response_body_dict.get("message"))
-
             if response_body_dict.get("code") == 460:
                 logger.debug("iotToken expired, must re-login.")
-                raise CheckSessionException(response_body_dict.get("message"))
+                raise SessionExpiredError(TransportType.CLOUD_ALIYUN, response_body_dict.get("message"))
 
         if self.message_delay != 1:
             self.message_delay = 1
@@ -896,37 +905,164 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in getting properties: " + response_body_dict["msg"])
+            if msg := response_body_dict.get("msg"):
+                raise ReLoginRequiredError("Error in getting properties: " + msg)
+            raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
 
         return ThingPropertiesResponse.from_dict(response_body_dict)
 
     @property
     def devices_by_account_response(self):
+        """Return the cached device listing response for the current account."""
         return self._devices_by_account_response
 
     def set_http(self, mammotion_http: MammotionHTTP) -> None:
+        """Replace the underlying MammotionHTTP instance used for authentication."""
         self.mammotion_http = mammotion_http
 
     @property
     def region_response(self) -> RegionResponse | None:
+        """Return the cached region response, or None if not yet fetched."""
         return self._region_response
 
     @property
     def aep_response(self) -> AepResponse | None:
+        """Return the cached AEP authentication response, or None if not yet fetched."""
         return self._aep_response
 
     @property
     def session_by_authcode_response(self) -> SessionByAuthCodeResponse:
+        """Return the current session-by-auth-code response containing the IoT token."""
         return self._session_by_authcode_response
 
     @property
     def client_id(self) -> str:
+        """Return the hardware-derived client ID used for MQTT authentication."""
         return self._client_id
 
     @property
     def login_by_oauth_response(self) -> LoginByOAuthResponse | None:
+        """Return the cached OAuth login response, or None if not yet performed."""
         return self._login_by_oauth_response
 
     @property
     def connect_response(self) -> ConnectResponse | None:
+        """Return the cached connect response, or None if not yet performed."""
         return self._connect_response
+
+    def to_cache(self) -> dict[str, Any]:
+        """Serialize cloud credentials to a cache dictionary.
+
+        Returns a dict containing all response objects needed to restore the cloud
+        connection without re-authenticating. Fields with a None value are omitted.
+        """
+        raw: dict[str, Any] = {
+            "connect_response": self._connect_response,
+            "auth_data": self._login_by_oauth_response,
+            "region_data": self._region_response,
+            "aep_data": self._aep_response,
+            "session_data": self._session_by_authcode_response,
+            "device_data": self._devices_by_account_response,
+            "mammotion_data": self.mammotion_http.response,
+            "mammotion_mqtt": self.mammotion_http.mqtt_credentials,
+            "mammotion_device_list": self.mammotion_http.device_info,
+            "mammotion_device_records": self.mammotion_http.device_records,
+            "mammotion_jwt_info": self.mammotion_http.jwt_info,
+        }
+        return {k: v for k, v in raw.items() if v is not None}
+
+    @classmethod
+    async def from_cache(cls, data: dict[str, Any], account: str, password: str) -> "CloudIOTGateway | None":
+        """Reconstruct a CloudIOTGateway from a previously serialized cache dictionary.
+
+        Returns None if any required field is missing or if an error occurs during
+        reconstruction or session refresh.
+
+        Args:
+            data: Cache dictionary previously produced by :meth:`to_cache`.
+            account: User account (email / username) for the MammotionHTTP instance.
+            password: User password for the MammotionHTTP instance.
+
+        """
+        required_keys = (
+            "connect_response",
+            "auth_data",
+            "region_data",
+            "aep_data",
+            "session_data",
+            "device_data",
+            "mammotion_data",
+        )
+        if any(k not in data for k in required_keys):
+            return None
+
+        connect_data = data["connect_response"]
+        auth_data = data["auth_data"]
+        region_data = data["region_data"]
+        aep_data = data["aep_data"]
+        session_data = data["session_data"]
+        device_data = data["device_data"]
+        mammotion_data = data["mammotion_data"]
+        mammotion_mqtt = data.get("mammotion_mqtt")
+        mammotion_device_list = data.get("mammotion_device_list")
+        mammotion_device_records = data.get("mammotion_device_records")
+        mammotion_jwt = data.get("mammotion_jwt_info")
+
+        if any(
+            v is None
+            for v in [connect_data, auth_data, region_data, aep_data, session_data, device_data, mammotion_data]
+        ):
+            return None
+
+        mammotion_response_data: Response[LoginResponseData] = (
+            response_factory(Response[LoginResponseData], mammotion_data)
+            if isinstance(mammotion_data, dict)
+            else mammotion_data
+        )
+
+        mammotion_http = MammotionHTTP(account, password)
+        mammotion_http.response = mammotion_response_data
+        if mammotion_device_list:
+            mammotion_http.device_info = mammotion_device_list
+        if mammotion_device_records:
+            mammotion_http.device_records = mammotion_device_records
+        try:
+            if mammotion_mqtt:
+                mammotion_http.mqtt_credentials = (
+                    MQTTConnection.from_dict(mammotion_mqtt) if isinstance(mammotion_mqtt, dict) else mammotion_mqtt
+                )
+        except MissingField:
+            mammotion_http.mqtt_credentials = None
+
+        if mammotion_jwt:
+            mammotion_http.jwt_info = mammotion_jwt
+        mammotion_http.login_info = (
+            LoginResponseData.from_dict(mammotion_response_data.data)
+            if isinstance(mammotion_response_data.data, dict)
+            else mammotion_response_data.data
+        )
+
+        try:
+            cloud_client = cls(
+                connect_response=ConnectResponse.from_dict(connect_data)
+                if isinstance(connect_data, dict)
+                else connect_data,
+                aep_response=AepResponse.from_dict(aep_data) if isinstance(aep_data, dict) else aep_data,
+                region_response=RegionResponse.from_dict(region_data) if isinstance(region_data, dict) else region_data,
+                session_by_authcode_response=SessionByAuthCodeResponse.from_dict(session_data)
+                if isinstance(session_data, dict)
+                else session_data,
+                dev_by_account=ListingDevAccountResponse.from_dict(device_data)
+                if isinstance(device_data, dict)
+                else device_data,
+                login_by_oauth_response=LoginByOAuthResponse.from_dict(auth_data)
+                if isinstance(auth_data, dict)
+                else auth_data,
+                mammotion_http=mammotion_http,
+            )
+        except Exception:
+            logger.exception("Error while restoring cloud data")
+            return None
+
+        await cloud_client.check_or_refresh_session()
+        return cloud_client

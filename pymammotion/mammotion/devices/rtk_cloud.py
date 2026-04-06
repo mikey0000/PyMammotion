@@ -57,10 +57,12 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
 
     @property
     def command_sent_time(self) -> float:
+        """Return the timestamp of the most recently dispatched MQTT command."""
         return self._mqtt.command_sent_time
 
     @property
     def mqtt(self) -> MammotionCloud:
+        """Return the MammotionCloud MQTT client for this RTK device."""
         return self._mqtt
 
     async def on_ready(self) -> None:
