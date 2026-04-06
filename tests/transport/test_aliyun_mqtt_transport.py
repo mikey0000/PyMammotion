@@ -355,11 +355,13 @@ def _make_thing_status_payload(iot_id: str, status: int) -> bytes:
 async def test_thing_status_online_routes_to_on_device_status(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
-    """thing/status with value=1 must call on_device_status('iot123', 'online')."""
-    calls: list[tuple[str, str]] = []
+    """thing/status with value=1 must call on_device_status('iot123', ThingStatusMessage)."""
+    from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
 
-    async def _status_handler(iot_id: str, status: str) -> None:
-        calls.append((iot_id, status))
+    calls: list[tuple[str, ThingStatusMessage]] = []
+
+    async def _status_handler(iot_id: str, msg: ThingStatusMessage) -> None:
+        calls.append((iot_id, msg))
 
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_device_status = _status_handler
@@ -373,7 +375,11 @@ async def test_thing_status_online_routes_to_on_device_status(
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
         await asyncio.sleep(0.1)
-        assert calls == [("iot123", "online")]
+        assert len(calls) == 1
+        iot_id, msg = calls[0]
+        assert iot_id == "iot123"
+        assert isinstance(msg, ThingStatusMessage)
+        assert msg.params.status.value is StatusType.CONNECTED
         transport.on_message.assert_not_awaited()
         await transport.disconnect()
 
@@ -382,11 +388,13 @@ async def test_thing_status_online_routes_to_on_device_status(
 async def test_thing_status_offline_routes_to_on_device_status(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
-    """thing/status with value=3 must call on_device_status('iot123', 'offline')."""
-    calls: list[tuple[str, str]] = []
+    """thing/status with value=3 must call on_device_status('iot123', ThingStatusMessage)."""
+    from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
 
-    async def _status_handler(iot_id: str, status: str) -> None:
-        calls.append((iot_id, status))
+    calls: list[tuple[str, ThingStatusMessage]] = []
+
+    async def _status_handler(iot_id: str, msg: ThingStatusMessage) -> None:
+        calls.append((iot_id, msg))
 
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_device_status = _status_handler
@@ -399,7 +407,11 @@ async def test_thing_status_offline_routes_to_on_device_status(
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
         await asyncio.sleep(0.1)
-        assert calls == [("iot123", "offline")]
+        assert len(calls) == 1
+        iot_id, msg = calls[0]
+        assert iot_id == "iot123"
+        assert isinstance(msg, ThingStatusMessage)
+        assert msg.params.status.value is StatusType.DISCONNECTED
         await transport.disconnect()
 
 

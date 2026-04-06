@@ -218,12 +218,12 @@ async def test_active_transport_falls_back_to_ble_when_mqtt_disconnected() -> No
     assert active.transport_type == TransportType.BLE
 
 
-async def test_active_transport_falls_back_to_mqtt_when_ble_disconnected() -> None:
-    """When prefer_ble=True but BLE is not connected, MQTT is used as fallback.
+async def test_active_transport_returns_ble_even_when_disconnected() -> None:
+    """When prefer_ble=True and BLE is registered (even disconnected), active_transport() returns BLE.
 
-    active_transport() requires is_connected; it does NOT auto-connect.
-    The caller (_do_send / send_raw) is responsible for triggering a BLE reconnect
-    before calling active_transport().
+    ble_ok = ble is not None — registration alone makes BLE eligible.
+    send_raw() is responsible for calling ble.connect() before the send; active_transport()
+    does not gate on is_connected so that send_raw can always route through BLE when preferred.
     """
     from pymammotion.device.handle import DeviceHandle
 
@@ -240,7 +240,7 @@ async def test_active_transport_falls_back_to_mqtt_when_ble_disconnected() -> No
     await handle.add_transport(ble_transport)
 
     active = handle.active_transport()
-    assert active.transport_type == TransportType.CLOUD_ALIYUN
+    assert active.transport_type == TransportType.BLE
 
 
 async def test_active_transport_raises_when_none_connected() -> None:
