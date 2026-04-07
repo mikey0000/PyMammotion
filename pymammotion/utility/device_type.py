@@ -76,6 +76,10 @@ class DeviceType(Enum):
     RTKNB = (22, "NB", "NB")
     LUBA_MB = (23, "Luba-MB", "HM434")
     CM900 = (24, "Kumar-MK", "KM01")
+    YUKA_MN101 = (25, "Ezy-VT", "MN101")
+    SWIMMINGPOOL_SP = (26, "Spino-SP", "Spino-SP")
+    SD_PX = (27, "SDPX", "SDPX")
+    LUBA_HM = (28, "Luba-HM", "HM610")
 
     def __init__(self, value: int, name: str, model: str) -> None:
         self._value = value
@@ -167,6 +171,14 @@ class DeviceType(Enum):
             return DeviceType.LUBA_MB
         elif value == 24:
             return DeviceType.CM900
+        elif value == 25:
+            return DeviceType.YUKA_MN101
+        elif value == 26:
+            return DeviceType.SWIMMINGPOOL_SP
+        elif value == 27:
+            return DeviceType.SD_PX
+        elif value == 28:
+            return DeviceType.LUBA_HM
         else:
             return DeviceType.UNKNOWN
 
@@ -209,8 +221,6 @@ class DeviceType(Enum):
                 return DeviceType.YUKA_MINI2
             elif DeviceType.LUBA_YUKA.get_name() in substring2:
                 return DeviceType.LUBA_YUKA
-            elif DeviceType.SPINO.get_name() in substring2:
-                return DeviceType.SPINO
             elif DeviceType.RTK3A1.get_name() in substring2:
                 return DeviceType.RTK3A1
             elif DeviceType.RTK3A0.get_name() in substring2:
@@ -227,10 +237,14 @@ class DeviceType(Enum):
                 return DeviceType.LUBA_MD
             elif DeviceType.LUBA_LA.get_name() in substring2:
                 return DeviceType.LUBA_LA
-            elif DeviceType.SWIMMINGPOOL_S1.get_name() in substring2:
+            elif DeviceType.SWIMMINGPOOL_S1.get_name() in device_name[:8]:
                 return DeviceType.SWIMMINGPOOL_S1
-            elif DeviceType.SWIMMINGPOOL_E1.get_name() in substring2:
+            elif DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8]:
                 return DeviceType.SWIMMINGPOOL_E1
+            elif DeviceType.SWIMMINGPOOL_SP.get_name() in device_name[:8]:
+                return DeviceType.SWIMMINGPOOL_SP
+            elif DeviceType.SPINO.get_name() in substring2:
+                return DeviceType.SPINO
             elif DeviceType.YUKA_MN100.get_name() in substring2:
                 return DeviceType.YUKA_MN100
             elif DeviceType.RTKNB.get_name() in substring2:
@@ -239,6 +253,12 @@ class DeviceType(Enum):
                 return DeviceType.LUBA_MB
             elif DeviceType.CM900.get_name() in substring2:
                 return DeviceType.CM900
+            elif DeviceType.YUKA_MN101.get_name() in substring2:
+                return DeviceType.YUKA_MN101
+            elif DeviceType.SD_PX.get_name() in substring2:
+                return DeviceType.SD_PX
+            elif DeviceType.LUBA_HM.get_name() in substring2:
+                return DeviceType.LUBA_HM
             elif DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
                 return DeviceType.LUBA
             else:
@@ -502,6 +522,11 @@ class DeviceType(Enum):
 
     @staticmethod
     def is_swimming_pool(device_name: str) -> bool:
-        """Return True if the device name identifies a swimming-pool robot (Spino, S1, or E1)."""
+        """Return True if the device name identifies a swimming-pool robot (Spino, S1, E1, or SP)."""
         device_type = DeviceType.value_of_str(device_name)
-        return device_type in (DeviceType.SPINO, DeviceType.SWIMMINGPOOL_S1, DeviceType.SWIMMINGPOOL_E1)
+        return device_type in (
+            DeviceType.SPINO,
+            DeviceType.SWIMMINGPOOL_S1,
+            DeviceType.SWIMMINGPOOL_E1,
+            DeviceType.SWIMMINGPOOL_SP,
+        )
