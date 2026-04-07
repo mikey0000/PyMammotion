@@ -1,7 +1,19 @@
-"""StateReducer — decodes LubaMsg and applies it to a MowingDevice copy."""
+"""StateReducer — decodes LubaMsg and applies it to a Device copy.
+
+Polymorphic dispatch by device kind:
+- :class:`MowerStateReducer` — handles every LubaMsg sub-message used by lawn
+  mowers (Luba, Yuka, RTK rovers).
+- :class:`PoolStateReducer` — handles the (much smaller) subset used by Spino
+  pool cleaners. Currently a stub that just marks the device online; the real
+  Spino-specific dispatch lands in the follow-up commit that adds the
+  pool_state / pool_map fields to PoolCleanerDevice.
+
+Pick the right reducer for a device name with :func:`get_state_reducer`.
+"""
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import copy
 import dataclasses
 import logging
@@ -57,17 +69,31 @@ from pymammotion.proto import (
 )
 
 if TYPE_CHECKING:
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice
 
 _logger = logging.getLogger(__name__)
 
 
-class StateReducer:
-    """Decodes incoming LubaMsg bytes and applies them to a MowingDevice.
+class StateReducer(ABC):
+    """Abstract base class for device state reducers.
 
-    Pure-ish: takes current MowingDevice, returns updated MowingDevice.
-    Side-effect free except for logging.
-    Does NOT fire any callbacks — broker request/response correlation handles that.
+    Implementations decode an incoming :class:`LubaMsg` and return an updated
+    :class:`Device` copy. Pure-ish: side-effect free except for logging.
+    Does NOT fire any callbacks — broker request/response correlation handles
+    that.
+    """
+
+    @abstractmethod
+    def apply(self, current: Device, message: LubaMsg) -> Device:
+        """Apply *message* to *current* and return the updated device copy."""
+
+
+class MowerStateReducer(StateReducer):
+    """Reducer for lawn mowers (Luba, Yuka, RTK rovers).
+
+    Handles every LubaMsg sub-message group: nav, sys, driver, net, mul, ota,
+    base. The pre-existing reducer logic — moved here verbatim from the old
+    monolithic StateReducer.
     """
 
     def apply(self, current: MowingDevice, message: LubaMsg) -> MowingDevice:
@@ -432,3 +458,48 @@ class StateReducer:
                     device.mower_state.lamp_info.night_light = bool(lamp_resp.lamp_ctrl.value) or bool(
                         lamp_resp.lamp_bright
                     )
+
+
+class PoolStateReducer(StateReducer):
+    """Reducer for swimming-pool cleaners (Spino, Spino-S1/E1/SP).
+
+    Stub implementation. Spino reuses the LubaMsg envelope but populates a
+    very different subset of sub-messages — primarily ``MctlSys`` (with the
+    Spino-only ``dev_statue_t`` / ``report_info_t`` / ``app_downlink_cmd_t``
+    inner shapes) and the shared ``net``/``ota`` channels. None of the
+    mower-only fields (``map``, ``mowing_state``, ``mower_state``, …) exist
+    on :class:`PoolCleanerDevice`, so trying to reuse the mower dispatch here
+    would AttributeError on the very first incoming message.
+
+    During Phase D this reducer simply marks the device online on every
+    incoming message and returns it. Real Spino dispatch lands in Phase E
+    once :class:`PoolCleanerDevice` has its own state fields.
+    """
+
+    def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:  # type: ignore[override]
+        """Apply *message* to *current*. Phase D stub: only updates online flag."""
+        device: PoolCleanerDevice = dataclasses.replace(current)
+        if not device.online:
+            device.online = True
+        # Pool-specific dispatch (sys/dev_statue_t, MapInfo, etc.) lands in
+        # Phase E. For now, every Spino message just bumps the online flag —
+        # this is intentionally a no-op rather than reusing mower dispatch
+        # because PoolCleanerDevice has none of the mower-only fields.
+        return device
+
+
+def get_state_reducer(device_name: str) -> StateReducer:
+    """Return the appropriate :class:`StateReducer` for *device_name*.
+
+    Spino variants get a :class:`PoolStateReducer`; everything else gets the
+    full :class:`MowerStateReducer`. Picked once per device at handle
+    construction time so the hot path doesn't pay an isinstance check on
+    every incoming message.
+    """
+    # Local import to avoid a circular dependency between the reducer module
+    # and the device-type helpers it consults.
+    from pymammotion.utility.device_type import DeviceType
+
+    if DeviceType.is_swimming_pool(device_name):
+        return PoolStateReducer()
+    return MowerStateReducer()

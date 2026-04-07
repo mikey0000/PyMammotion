@@ -8,7 +8,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from pymammotion.device.state_reducer import StateReducer
+from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.proto import LubaMsg
@@ -157,7 +157,11 @@ class DeviceHandle:
         self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
         self._event_bus: EventBus[ThingEventMessage] = EventBus()
         self._prefer_ble: bool = prefer_ble
-        self._reducer: StateReducer = StateReducer()
+        # Pick a reducer matching the device kind. PoolCleanerDevice instances
+        # get a PoolStateReducer (currently a stub); everything else gets the
+        # full mower reducer. Decided once at construction so the per-message
+        # hot path doesn't pay an isinstance check.
+        self._reducer: StateReducer = get_state_reducer(device_name)
         self._error_bus: EventBus[Exception] = EventBus()
         self._readiness_checker: ReadinessChecker | None = readiness_checker
         self._staleness_watcher: MapStalenessWatcher | None = None
