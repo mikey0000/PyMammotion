@@ -645,7 +645,7 @@ class DeviceHandle:
         mqtt: Transport | None = None
         for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
             t = self._transports.get(transport_type)
-            if t is not None and t.is_connected and not mqtt_reported_offline:
+            if t is not None and t.is_connected:
                 mqtt = t
                 break
         mqtt_ok = mqtt is not None
