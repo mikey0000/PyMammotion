@@ -138,9 +138,12 @@ class MQTTTransport(Transport):
     async def connect(self) -> None:
         """Start the MQTT receive loop task.
 
-        Does nothing if the task is already running (connected or in a retry-sleep).
-        If the task has died unexpectedly it is restarted.
+        Idempotent: does nothing if the task is already running (connected or
+        in a retry-sleep). If the task has died unexpectedly it is restarted.
         """
+        if self.is_connected:
+            _logger.debug("MQTTTransport.connect() called while already connected — ignoring")
+            return
         if self._task is not None and not self._task.done():
             _logger.debug(
                 "MQTTTransport.connect() called while task is running (availability=%s) — ignoring",
@@ -149,19 +152,28 @@ class MQTTTransport(Transport):
             return
 
         self._stop_event.clear()
-        self._availability = TransportAvailability.CONNECTING
+        _logger.debug(
+            "MQTTTransport.connect(): spawning new _run task (transport=%s)",
+            self.transport_type.value,
+        )
         loop = asyncio.get_running_loop()
         self._task = loop.create_task(self._run())
 
     async def disconnect(self) -> None:
         """Signal the receive loop to stop and wait for it to finish."""
+        _logger.debug(
+            "MQTTTransport.disconnect(): state=%s, task_running=%s",
+            self._availability.value,
+            self._task is not None and not self._task.done(),
+        )
         self._stop_event.set()
         if self._task is not None and not self._task.done():
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._task
-        self._availability = TransportAvailability.DISCONNECTED
         self._client = None
+        if self._availability is not TransportAvailability.DISCONNECTED:
+            await self._notify_availability(TransportAvailability.DISCONNECTED)
 
     async def send(self, payload: bytes, iot_id: str = "") -> None:
         """Send *payload* to the device via the Mammotion HTTP invoke API.
@@ -212,6 +224,13 @@ class MQTTTransport(Transport):
 
     async def _notify_availability(self, state: TransportAvailability) -> None:
         """Update internal state and notify all availability listeners."""
+        if self._availability is not state:
+            _logger.debug(
+                "MQTTTransport %s: %s -> %s",
+                self.transport_type.value,
+                self._availability.value,
+                state.value,
+            )
         self._availability = state
         await self._fire_availability_listeners(state)
 
@@ -269,6 +288,7 @@ class MQTTTransport(Transport):
                     tls_context=self._tls_context,
                     protocol=aiomqtt.ProtocolVersion.V311,
                     clean_session=True,
+                    timeout=30,
                 ) as client:
                     self._client = client
                     backoff = 1
@@ -332,6 +352,15 @@ class MQTTTransport(Transport):
                 _logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:
                 break
+            except Exception:
+                # Catch-all so an unexpected error (TLS handshake, aiomqtt
+                # internal RuntimeError, etc.) cannot silently kill the receive
+                # loop and leave the transport wedged in CONNECTING forever.
+                _logger.exception(
+                    "MQTTTransport %s: unexpected error in _run — retry in %ds",
+                    self.transport_type.value,
+                    backoff,
+                )
             finally:
                 self._client = None
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
