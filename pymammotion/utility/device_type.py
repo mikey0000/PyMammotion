@@ -14,7 +14,7 @@ LubaProductKey = [
     "a1ZU6bdGjaM",
 ]
 
-LubaVProductKey = ["a1iMygIwxFC", "a1LLmy1zc0j", "a1LLmy1zc0j"]
+LubaVProductKey = ["a1iMygIwxFC", "a1LLmy1zc0j"]
 
 LubaVProProductKey = ["a1mb8v6tnAa", "a1pHsTqyoPR"]
 
@@ -76,6 +76,10 @@ class DeviceType(Enum):
     RTKNB = (22, "NB", "NB")
     LUBA_MB = (23, "Luba-MB", "HM434")
     CM900 = (24, "Kumar-MK", "KM01")
+    YUKA_MN101 = (25, "Ezy-LD", "MN101")
+    SWIMMINGPOOL_SP = (26, "Spino-SP", "Spino-SP")
+    SD_PX = (27, "SDPX", "SDPX")
+    LUBA_HM = (28, "Luba-HM", "HM610")
 
     def __init__(self, value: int, name: str, model: str) -> None:
         self._value = value
@@ -102,78 +106,627 @@ class DeviceType(Enum):
         """Override the integer identifier for this device type."""
         self._value = value
 
+    # ------------------------------------------------------------------
+    # Instance query methods (mirror the Java instance methods)
+    # ------------------------------------------------------------------
+
+    def is_luba2(self) -> bool:
+        """Return True if this is a Luba 2 (Luba-VS)."""
+        return self == DeviceType.LUBA_2
+
+    def is_luba2_pro(self) -> bool:
+        """Return True if this is a Luba 2 Pro (Luba-VP / HM441)."""
+        return self == DeviceType.LUBA_VP
+
+    def is_luba_hm(self) -> bool:
+        """Return True if this is a Luba HM (HM610)."""
+        return self == DeviceType.LUBA_HM
+
+    def is_luba_la(self) -> bool:
+        """Return True if this is a Luba LA (HM432)."""
+        return self == DeviceType.LUBA_LA
+
+    def is_luba_ld(self) -> bool:
+        """Return True if this is a Luba LD (HM431)."""
+        return self == DeviceType.LUBA_LD
+
+    def is_luba_mb(self) -> bool:
+        """Return True if this is a Luba MB (HM434)."""
+        return self == DeviceType.LUBA_MB
+
+    def is_luba_md(self) -> bool:
+        """Return True if this is a Luba MD (HM433)."""
+        return self == DeviceType.LUBA_MD
+
+    def is_luba_mn(self) -> bool:
+        """Return True if this is a Luba MN (HM430)."""
+        return self == DeviceType.LUBA_MN
+
+    def is_luba_va(self) -> bool:
+        """Return True if this is a Luba VA (HM442)."""
+        return self == DeviceType.LUBA_VA
+
+    def is_luba(self) -> bool:
+        """Return True if this is a mini/pro Luba variant (VP, MN, or LD)."""
+        return self in (DeviceType.LUBA_VP, DeviceType.LUBA_MN, DeviceType.LUBA_LD)
+
+    def is_luba_type(self) -> bool:
+        """Return True if this is any Luba family device (all generations, including CM900)."""
+        return self in (
+            DeviceType.LUBA,
+            DeviceType.LUBA_2,
+            DeviceType.LUBA_VP,
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_LD,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_LA,
+            DeviceType.CM900,
+        )
+
+    def is_cm900(self) -> bool:
+        """Return True if this is a CM900 (Kumar-MK / KM01)."""
+        return self == DeviceType.CM900
+
+    def is_rtk_type(self) -> bool:
+        """Return True if this is any RTK device (instance version of is_rtk)."""
+        return self in (
+            DeviceType.RTK,
+            DeviceType.RTK3A0,
+            DeviceType.RTK3A1,
+            DeviceType.RTK3A2,
+            DeviceType.RTKNB,
+        )
+
+    def is_rtk2(self) -> bool:
+        """Return True if this is an RTK3A2."""
+        return self == DeviceType.RTK3A2
+
+    def is_rtk3(self) -> bool:
+        """Return True if this is a generation-3 RTK (RTK3A0, RTK3A1, RTK3A2, or RTKNB)."""
+        return self in (DeviceType.RTK3A0, DeviceType.RTK3A1, DeviceType.RTK3A2, DeviceType.RTKNB)
+
+    def is_rtk3a1(self) -> bool:
+        """Return True if this is an RTK3A1."""
+        return self == DeviceType.RTK3A1
+
+    def is_rtk_nb(self) -> bool:
+        """Return True if this is an RTK NB."""
+        return self == DeviceType.RTKNB
+
+    def is_yu_ka(self) -> bool:
+        """Return True if this is the original Yuka (LUBA_YUKA)."""
+        return self == DeviceType.LUBA_YUKA
+
+    def is_yu_ka_mini(self) -> bool:
+        """Return True if this is a Yuka Mini or Yuka Mini 2."""
+        return self in (DeviceType.YUKA_MINI, DeviceType.YUKA_MINI2)
+
+    def is_yu_ka_pro(self) -> bool:
+        """Return True if this is a Yuka VP (MN241)."""
+        return self == DeviceType.YUKA_VP
+
+    def is_yuka_mv(self) -> bool:
+        """Return True if this is a Yuka MV (YUKA_MINIV / MN231)."""
+        return self == DeviceType.YUKA_MINIV
+
+    def is_yuka_ml_type(self) -> bool:
+        """Return True if this is a Yuka ML (MN232)."""
+        return self == DeviceType.YUKA_ML
+
+    def is_yuka_mn100(self) -> bool:
+        """Return True if this is a Yuka MN100."""
+        return self == DeviceType.YUKA_MN100
+
+    def is_yuka_mn101(self) -> bool:
+        """Return True if this is a Yuka MN101."""
+        return self == DeviceType.YUKA_MN101
+
+    def is_yu_ka_type(self) -> bool:
+        """Return True if this is any Yuka-family device."""
+        return self in (
+            DeviceType.LUBA_YUKA,
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_VP,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.YUKA_ML,
+        )
+
+    def is_yu_ka_type1(self) -> bool:
+        """Return True if this is a Yuka type 1 variant (original + mini variants + ML + MN101)."""
+        return self in (
+            DeviceType.LUBA_YUKA,
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_VP,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MN101,
+        )
+
+    def is_new_device_yuka(self) -> bool:
+        """Return True if this is a new-generation Yuka (mini/VP/MV/MN variants + ML)."""
+        return self in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_VP,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.YUKA_ML,
+        )
+
+    def is_new_device_type(self) -> bool:
+        """Return True if this is a new-generation device (mini/X5 series and newer)."""
+        return self in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_VP,
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_VP,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.YUKA_ML,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MD,
+            DeviceType.LUBA_MB,
+            DeviceType.CM900,
+            DeviceType.LUBA_LD,
+        )
+
+    def is_x5_device_type(self) -> bool:
+        """Return True if this is an X5-generation device."""
+        return self in (
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_ML,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MD,
+            DeviceType.CM900,
+        )
+
+    def is_x5_pure_radar(self) -> bool:
+        """Return True if this is an X5 device with radar only (no visual)."""
+        return self in (
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_VA,
+        )
+
+    def is_x5_pure_visual(self) -> bool:
+        """Return True if this is an X5 device with visual only (no radar)."""
+        return self in (DeviceType.YUKA_MINIV, DeviceType.LUBA_MB, DeviceType.YUKA_MN100)
+
+    def is_x5_support_2wd(self) -> bool:
+        """Return True if this X5 device supports 2WD mode."""
+        return self in (DeviceType.YUKA_MINIV, DeviceType.YUKA_ML)
+
+    def is_x5_support_4wd(self) -> bool:
+        """Return True if this X5 device supports 4WD mode."""
+        return self in (
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MD,
+            DeviceType.CM900,
+        )
+
+    def is_x5_support_recharge_pile_device_type(self) -> bool:
+        """Return True if this X5 device supports recharge pile deployment."""
+        return self in (DeviceType.YUKA_ML, DeviceType.LUBA_VA, DeviceType.LUBA_HM, DeviceType.LUBA_LA)
+
+    def is_swimming_pool_type(self) -> bool:
+        """Return True if this is a swimming-pool robot (Spino variants + SD_PX charging pile)."""
+        return self in (
+            DeviceType.SPINO,
+            DeviceType.SWIMMINGPOOL_S1,
+            DeviceType.SWIMMINGPOOL_E1,
+            DeviceType.SWIMMINGPOOL_SP,
+            DeviceType.SD_PX,
+        )
+
+    def is_swimming_pool_charging_pile(self) -> bool:
+        """Return True if this is a swimming-pool charging pile (SD_PX)."""
+        return self == DeviceType.SD_PX
+
+    def is_swimming_pool_e1(self) -> bool:
+        """Return True if this is a Spino E1 (PC100)."""
+        return self == DeviceType.SWIMMINGPOOL_E1
+
+    def is_swimming_pool_s1(self) -> bool:
+        """Return True if this is a Spino S1 (PC200)."""
+        return self == DeviceType.SWIMMINGPOOL_S1
+
+    def is_swimming_pool_sp(self) -> bool:
+        """Return True if this is a Spino SP (PC210)."""
+        return self == DeviceType.SWIMMINGPOOL_SP
+
+    def is_sd_px(self) -> bool:
+        """Return True if this is an SD_PX device."""
+        return self == DeviceType.SD_PX
+
+    def is_pc201_device(self) -> bool:
+        """Return True if this is a PC201-class device (Spino SP or SD_PX)."""
+        return self in (DeviceType.SWIMMINGPOOL_SP, DeviceType.SD_PX)
+
+    def is_support_local_add_swimming_pool(self) -> bool:
+        """Return True if this device supports local swimming-pool addition (older Spino models)."""
+        return self in (DeviceType.SPINO, DeviceType.SWIMMINGPOOL_E1, DeviceType.SWIMMINGPOOL_S1)
+
+    def is_pure_radar(self) -> bool:
+        """Return True if this device uses radar only for navigation (no visual system)."""
+        return self in (
+            DeviceType.LUBA_LD,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_MD,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_VA,
+        )
+
+    def is_pure_visual(self) -> bool:
+        """Return True if this device uses visual only for navigation (no radar)."""
+        return self in (DeviceType.YUKA_MINIV, DeviceType.YUKA_MN100, DeviceType.LUBA_MB)
+
+    def is_support_radar(self) -> bool:
+        """Return True if this device has a radar sensor."""
+        return self in (
+            DeviceType.LUBA_LD,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_MD,
+            DeviceType.LUBA_LA,
+        )
+
+    def is_support_radar_rtk_switch(self) -> bool:
+        """Return True if this device supports switching between radar and RTK positioning."""
+        return self in (DeviceType.LUBA_LD, DeviceType.LUBA_MD, DeviceType.LUBA_LA)
+
+    def is_support_radar_self_check(self) -> bool:
+        """Return True if this device supports radar self-check."""
+        return self in (DeviceType.LUBA_VA, DeviceType.YUKA_ML, DeviceType.LUBA_LA)
+
+    def is_support_point_cloud(self) -> bool:
+        """Return True if this device supports point-cloud mapping (Luba LD only)."""
+        return self == DeviceType.LUBA_LD
+
+    def is_support_positioning(self) -> bool:
+        """Return True if this device supports visual or radar positioning."""
+        return self.is_pure_visual() or self == DeviceType.LUBA_LD
+
+    def is_support_vision(self) -> bool:
+        """Return True if this device has a vision (camera) system."""
+        return self in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_VP,
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_VP,
+            DeviceType.LUBA_2,
+            DeviceType.CM900,
+            DeviceType.LUBA_YUKA,
+            DeviceType.LUBA_MB,
+        )
+
+    def is_support_grass_cutting(self) -> bool:
+        """Return True if this device supports grass-cutting mode."""
+        return self in (DeviceType.LUBA_YUKA, DeviceType.YUKA_VP)
+
+    def is_support_iot(self) -> bool:
+        """Return True if this device supports IoT cloud connectivity."""
+        return not self.is_swimming_pool_type() and self != DeviceType.UNKNOWN
+
+    def is_support_rtk_service(self) -> bool:
+        """Return True if this device supports RTK positioning service."""
+        return self in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_VP,
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_VP,
+            DeviceType.LUBA_YUKA,
+            DeviceType.LUBA_2,
+            DeviceType.CM900,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_VA,
+        )
+
+    def is_support_nrtk(self) -> bool:
+        """Return True if this device supports network RTK (not original Luba/Yuka/Luba2 or RTK)."""
+        return self not in (DeviceType.LUBA, DeviceType.LUBA_YUKA, DeviceType.LUBA_2) and not self.is_rtk_type()
+
+    def is_support_all_area(self) -> bool:
+        """Return True if this device supports all-area mowing mode."""
+        return self in (
+            DeviceType.LUBA_LD,
+            DeviceType.LUBA_VP,
+            DeviceType.CM900,
+            DeviceType.YUKA_VP,
+            DeviceType.LUBA_MN,
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+        )
+
+    def is_support_cross_point_device_type(self) -> bool:
+        """Return True if this device supports cross-point boundary mapping."""
+        if self.is_x5_device_type():
+            return False
+        return self in (
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_LD,
+            DeviceType.LUBA_VP,
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_VP,
+            DeviceType.YUKA_ML,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_LA,
+        )
+
+    def is_support_update_map(self) -> bool:
+        """Return True if this device supports map update via visual relocation."""
+        return self in (DeviceType.YUKA_MINIV, DeviceType.YUKA_MN100, DeviceType.LUBA_MB, DeviceType.CM900)
+
+    def is_support_no_area_work_device_model(self) -> bool:
+        """Return True if this device supports no-area (free-range) mowing."""
+        return self in (
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_LA,
+        )
+
+    def is_support_charge_station_deploy(self) -> bool:
+        """Return True if this device supports charge station deployment."""
+        return self in (
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_VA,
+            DeviceType.YUKA_ML,
+            DeviceType.SWIMMINGPOOL_SP,
+            DeviceType.LUBA_LA,
+        )
+
+    def is_only_support_charge_station_deploy(self) -> bool:
+        """Return True if this device only supports charge-station-based deployment (no boundary wire)."""
+        return self in (
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.LUBA_LA,
+            DeviceType.YUKA_ML,
+            DeviceType.SWIMMINGPOOL_SP,
+        )
+
+    def is_support_relocation_animation(self) -> bool:
+        """Return True if this device supports the visual relocation animation."""
+        return self.is_yuka_mv() or self.is_luba_mb() or self.is_yuka_mn100()
+
+    def is_support_box_device(self) -> bool:
+        """Return True if this device supports an external box accessory (Luba VA, Luba HM)."""
+        return self in (DeviceType.LUBA_VA, DeviceType.LUBA_HM)
+
+    def is_support_fill_light(self) -> bool:
+        """Return True if this device supports a fill light / illumination system."""
+        return self in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_VP,
+            DeviceType.CM900,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MD,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_LD,
+        )
+
+    def is_support_blade_speed(self) -> bool:
+        """Return True if this device supports variable blade speed."""
+        return self in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_VP,
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_LD,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MD,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.CM900,
+            DeviceType.LUBA_VP,
+        )
+
+    def is_support_battery_loop_count(self) -> bool:
+        """Return True if this device supports battery loop count display."""
+        return self not in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_ML,
+            DeviceType.LUBA_MN,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_LD,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MB,
+        )
+
+    def is_support_2wd(self) -> bool:
+        """Return True if this device supports 2WD mowing mode."""
+        return self.is_yu_ka_type()
+
+    def is_support_4wd(self) -> bool:
+        """Return True if this device supports 4WD mowing mode."""
+        return not self.is_yu_ka_type()
+
+    def is_no_support_draw_line(self) -> bool:
+        """Return True if this device does NOT support draw-line boundary creation."""
+        return self in (
+            DeviceType.LUBA_LD,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_LA,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MN101,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MINIV,
+            DeviceType.LUBA_MD,
+            DeviceType.LUBA_MB,
+        )
+
+    def is_no_support_auto_map(self) -> bool:
+        """Return True if this device does NOT support automatic mapping."""
+        return self.is_x5_device_type()
+
+    def is_no_support_map_backup(self) -> bool:
+        """Return True if this device does NOT support map backup/restore."""
+        return self in (
+            DeviceType.RTK,
+            DeviceType.RTK3A0,
+            DeviceType.RTK3A1,
+            DeviceType.RTK3A2,
+            DeviceType.RTKNB,
+            DeviceType.LUBA,
+            DeviceType.SWIMMINGPOOL_E1,
+            DeviceType.SWIMMINGPOOL_S1,
+            DeviceType.SWIMMINGPOOL_SP,
+            DeviceType.SPINO,
+            DeviceType.SD_PX,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MINIV,
+        )
+
+    def is_no_positioning_guidance(self) -> bool:
+        """Return True if this device does NOT display positioning guidance UI."""
+        return self in (
+            DeviceType.LUBA_LD,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_MB,
+        )
+
+    def is_not_support_camera_wiper(self) -> bool:
+        """Return True if this device does NOT have a camera wiper."""
+        return self in (
+            DeviceType.LUBA_2,
+            DeviceType.CM900,
+            DeviceType.LUBA_VP,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_MN,
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_ML,
+            DeviceType.LUBA_MB,
+        )
+
+    def is_vertical_screen_remote_control(self) -> bool:
+        """Return True if this device uses a vertical-screen remote control layout."""
+        return self in (DeviceType.YUKA_MINIV, DeviceType.LUBA_VA, DeviceType.LUBA_HM, DeviceType.LUBA_LA)
+
+    def is_231_map_editor_adapter_condition(self) -> bool:
+        """Return True if this device uses the 2.3.1 map editor adapter (visual-only X5 types)."""
+        return self in (DeviceType.YUKA_MINIV, DeviceType.YUKA_MN100, DeviceType.LUBA_MB)
+
+    def is_231_similar_parameter_settings(self) -> bool:
+        """Return True if this device uses 2.3.1-style parameter settings (same set as map editor)."""
+        return self in (DeviceType.YUKA_MINIV, DeviceType.YUKA_MN100, DeviceType.LUBA_MB)
+
+    def get_device_model_type_name(self) -> str:
+        """Return the broad model family name ('Yuka', 'RTK', 'Luba', or 'Spino')."""
+        if self.is_yu_ka_type():
+            return "Yuka"
+        if self.is_rtk_type():
+            return "RTK"
+        if self.is_luba_type() or not self.is_swimming_pool_type():
+            return "Luba"
+        return "Spino"
+
+    def get_school_type_name(self) -> str:
+        """Return the school/tutorial type identifier ('yuka', 'rtk', 'luba1', or 'luba2')."""
+        if self.is_yu_ka_type():
+            return "yuka"
+        if self.is_rtk_type():
+            return "rtk"
+        if self == DeviceType.LUBA:
+            return "luba1"
+        return "luba2"
+
+    # ------------------------------------------------------------------
+    # Static lookup methods
+    # ------------------------------------------------------------------
+
     @staticmethod
     def valueof(value: int) -> "DeviceType":
-        """Return the corresponding DeviceType based on the input value.
-
-        This function takes an integer value as input and returns the
-        corresponding DeviceType enum value.
-
-        Args:
-            value (int): An integer representing the device type.
-
-        Returns:
-            DeviceType: The corresponding DeviceType enum value based on the input value.
-
-        """
-
-        if value == 0:
-            return DeviceType.RTK
-        elif value == 1:
-            return DeviceType.LUBA
-        elif value == 2:
-            return DeviceType.LUBA_2
-        elif value == 3:
-            return DeviceType.LUBA_YUKA
-        elif value == 4:
-            return DeviceType.YUKA_MINI
-        elif value == 5:
-            return DeviceType.YUKA_MINI2
-        elif value == 6:
-            return DeviceType.LUBA_VP
-        elif value == 7:
-            return DeviceType.LUBA_MN
-        elif value == 8:
-            return DeviceType.YUKA_VP
-        elif value == 9:
-            return DeviceType.SPINO
-        elif value == 10:
-            return DeviceType.RTK3A1
-        elif value == 11:
-            return DeviceType.LUBA_LD
-        elif value == 12:
-            return DeviceType.RTK3A0
-        elif value == 13:
-            return DeviceType.RTK3A2
-        elif value == 14:
-            return DeviceType.YUKA_MINIV
-        elif value == 15:
-            return DeviceType.LUBA_VA
-        elif value == 16:
-            return DeviceType.YUKA_ML
-        elif value == 17:
-            return DeviceType.LUBA_MD
-        elif value == 18:
-            return DeviceType.LUBA_LA
-        elif value == 19:
-            return DeviceType.SWIMMINGPOOL_S1
-        elif value == 20:
-            return DeviceType.SWIMMINGPOOL_E1
-        elif value == 21:
-            return DeviceType.YUKA_MN100
-        elif value == 22:
-            return DeviceType.RTKNB
-        elif value == 23:
-            return DeviceType.LUBA_MB
-        elif value == 24:
-            return DeviceType.CM900
-        else:
-            return DeviceType.UNKNOWN
+        """Return the corresponding DeviceType based on the input integer value."""
+        _map: dict[int, DeviceType] = {
+            0: DeviceType.RTK,
+            1: DeviceType.LUBA,
+            2: DeviceType.LUBA_2,
+            3: DeviceType.LUBA_YUKA,
+            4: DeviceType.YUKA_MINI,
+            5: DeviceType.YUKA_MINI2,
+            6: DeviceType.LUBA_VP,
+            7: DeviceType.LUBA_MN,
+            8: DeviceType.YUKA_VP,
+            9: DeviceType.SPINO,
+            10: DeviceType.RTK3A1,
+            11: DeviceType.LUBA_LD,
+            12: DeviceType.RTK3A0,
+            13: DeviceType.RTK3A2,
+            14: DeviceType.YUKA_MINIV,
+            15: DeviceType.LUBA_VA,
+            16: DeviceType.YUKA_ML,
+            17: DeviceType.LUBA_MD,
+            18: DeviceType.LUBA_LA,
+            19: DeviceType.SWIMMINGPOOL_S1,
+            20: DeviceType.SWIMMINGPOOL_E1,
+            21: DeviceType.YUKA_MN100,
+            22: DeviceType.RTKNB,
+            23: DeviceType.LUBA_MB,
+            24: DeviceType.CM900,
+            25: DeviceType.YUKA_MN101,
+            26: DeviceType.SWIMMINGPOOL_SP,
+            27: DeviceType.SD_PX,
+            28: DeviceType.LUBA_HM,
+        }
+        return _map.get(value, DeviceType.UNKNOWN)
 
     @staticmethod
     def value_of_str(device_name: str, product_key: str = "") -> "DeviceType":
-        """Determine the type of device based on the provided device name and
-        product key.
+        """Determine the type of device based on the provided device name and product key.
 
         Args:
             device_name (str): The name of the device.
@@ -183,7 +736,6 @@ class DeviceType(Enum):
             DeviceType: The type of device based on the provided information.
 
         """
-
         if not device_name and not product_key:
             return DeviceType.UNKNOWN
 
@@ -193,127 +745,82 @@ class DeviceType(Enum):
 
             if DeviceType.RTK.get_name() in substring or DeviceType.contain_rtk_product_key(product_key):
                 return DeviceType.RTK
-            elif DeviceType.LUBA_2.get_name() in substring2 or DeviceType.contain_luba_2_product_key(product_key):
+            if DeviceType.LUBA_2.get_name() in substring2 or DeviceType.contain_luba_2_product_key(product_key):
                 return DeviceType.LUBA_2
-            elif DeviceType.LUBA_LD.get_name() in substring2:
+            if DeviceType.LUBA_LD.get_name() in substring2:
                 return DeviceType.LUBA_LD
-            elif DeviceType.LUBA_VP.get_name() in substring2:
+            if DeviceType.LUBA_VP.get_name() in substring2:
                 return DeviceType.LUBA_VP
-            elif DeviceType.LUBA_MN.get_name() in substring2:
+            if DeviceType.LUBA_MN.get_name() in substring2:
                 return DeviceType.LUBA_MN
-            elif DeviceType.YUKA_VP.get_name() in substring2:
+            if DeviceType.YUKA_VP.get_name() in substring2:
                 return DeviceType.YUKA_VP
-            elif DeviceType.YUKA_MINI.get_name() in substring2:
+            if DeviceType.YUKA_MINI.get_name() in substring2:
                 return DeviceType.YUKA_MINI
-            elif DeviceType.YUKA_MINI2.get_name() in substring2:
+            if DeviceType.YUKA_MINI2.get_name() in substring2:
                 return DeviceType.YUKA_MINI2
-            elif DeviceType.LUBA_YUKA.get_name() in substring2:
+            if DeviceType.LUBA_YUKA.get_name() in substring2:
                 return DeviceType.LUBA_YUKA
-            elif DeviceType.SPINO.get_name() in substring2:
-                return DeviceType.SPINO
-            elif DeviceType.RTK3A1.get_name() in substring2:
+            if DeviceType.RTK3A1.get_name() in substring2:
                 return DeviceType.RTK3A1
-            elif DeviceType.RTK3A0.get_name() in substring2:
+            if DeviceType.RTK3A0.get_name() in substring2:
                 return DeviceType.RTK3A0
-            elif DeviceType.RTK3A2.get_name() in substring2:
+            if DeviceType.RTK3A2.get_name() in substring2:
                 return DeviceType.RTK3A2
-            elif DeviceType.YUKA_MINIV.get_name() in substring2:
+            if DeviceType.YUKA_MINIV.get_name() in substring2:
                 return DeviceType.YUKA_MINIV
-            elif DeviceType.LUBA_VA.get_name() in substring2:
+            if DeviceType.LUBA_VA.get_name() in substring2:
                 return DeviceType.LUBA_VA
-            elif DeviceType.YUKA_ML.get_name() in substring2:
+            if DeviceType.YUKA_ML.get_name() in substring2:
                 return DeviceType.YUKA_ML
-            elif DeviceType.LUBA_MD.get_name() in substring2:
+            if DeviceType.LUBA_MD.get_name() in substring2:
                 return DeviceType.LUBA_MD
-            elif DeviceType.LUBA_LA.get_name() in substring2:
+            if DeviceType.LUBA_LA.get_name() in substring2:
                 return DeviceType.LUBA_LA
-            elif DeviceType.SWIMMINGPOOL_S1.get_name() in substring2:
+            if DeviceType.SWIMMINGPOOL_S1.get_name() in device_name[:8]:
                 return DeviceType.SWIMMINGPOOL_S1
-            elif DeviceType.SWIMMINGPOOL_E1.get_name() in substring2:
+            if DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8]:
                 return DeviceType.SWIMMINGPOOL_E1
-            elif DeviceType.YUKA_MN100.get_name() in substring2:
+            if DeviceType.SWIMMINGPOOL_SP.get_name() in device_name[:8]:
+                return DeviceType.SWIMMINGPOOL_SP
+            if DeviceType.SPINO.get_name() in substring2:
+                return DeviceType.SPINO
+            if DeviceType.YUKA_MN100.get_name() in substring2:
                 return DeviceType.YUKA_MN100
-            elif DeviceType.RTKNB.get_name() in substring2:
+            if DeviceType.YUKA_MN101.get_name() in substring2:
+                return DeviceType.YUKA_MN101
+            if DeviceType.RTKNB.get_name() in substring2:
                 return DeviceType.RTKNB
-            elif DeviceType.LUBA_MB.get_name() in substring2:
+            if DeviceType.LUBA_MB.get_name() in substring2:
                 return DeviceType.LUBA_MB
-            elif DeviceType.CM900.get_name() in substring2:
+            if DeviceType.CM900.get_name() in substring2:
                 return DeviceType.CM900
-            elif DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
+            if DeviceType.SD_PX.get_name() in substring2:
+                return DeviceType.SD_PX
+            if DeviceType.LUBA_HM.get_name() in substring2:
+                return DeviceType.LUBA_HM
+            if DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
                 return DeviceType.LUBA
-            else:
-                return DeviceType.UNKNOWN
+            return DeviceType.UNKNOWN
         except Exception:
             return DeviceType.UNKNOWN
 
     @staticmethod
     def has_4g(device_name: str, product_key: str = "") -> bool:
-        """Check if the device has 4G capability based on the device name and
-        optional product key.
-
-        This function determines the device type based on the device name and
-        product key (if provided). It then checks if the device type has a value
-        greater than or equal to the 4G threshold.
-
-        Args:
-            device_name (str): The name of the device.
-            product_key (str?): The product key associated with the device. Defaults to "".
-
-        Returns:
-            bool: True if the device has 4G capability, False otherwise.
-
-        """
-
-        if not product_key:
-            device_type = DeviceType.value_of_str(device_name)
-        else:
-            device_type = DeviceType.value_of_str(device_name, product_key)
-
+        """Check if the device has 4G capability based on the device name and optional product key."""
+        device_type = DeviceType.value_of_str(device_name, product_key)
         return device_type.get_value() >= DeviceType.LUBA_2.get_value()
 
     @staticmethod
     def is_luba1(device_name: str, product_key: str = "") -> bool:
-        """Check if the given device is of type LUBA.
-
-        This function determines if the device specified by 'device_name' is of
-        type LUBA. If 'product_key' is provided, it is used to further identify
-        the device type.
-
-        Args:
-            device_name (str): The name of the device.
-            product_key (str?): The product key associated with the device. Defaults to "".
-
-        Returns:
-            bool: True if the device is of type LUBA, False otherwise.
-
-        """
-
-        if not product_key:
-            device_type = DeviceType.value_of_str(device_name)
-        else:
-            device_type = DeviceType.value_of_str(device_name, product_key)
-
+        """Check if the given device is of type LUBA (original Luba 1)."""
+        device_type = DeviceType.value_of_str(device_name, product_key)
         return device_type.get_value() == DeviceType.LUBA.get_value()
 
     @staticmethod
     def is_luba_pro(device_name: str, product_key: str = "") -> bool:
-        """Check if the device type is LUBA 2 or higher based on the device name
-        and optional product key.
-
-        Args:
-            device_name (str): The name of the device.
-            product_key (str?): The product key associated with the device. Defaults to "".
-
-        Returns:
-            bool: True if the device type is LUBA 2 or higher, False otherwise.
-
-        """
-
-        if not product_key:
-            device_type = DeviceType.value_of_str(device_name)
-        else:
-            device_type = DeviceType.value_of_str(device_name, product_key)
-
+        """Check if the device type is LUBA 2 or higher (non-RTK, non-swimming-pool)."""
+        device_type = DeviceType.value_of_str(device_name, product_key)
         return (
             device_type.get_value() >= DeviceType.LUBA_2.get_value()
             and not DeviceType.is_swimming_pool(device_name)
@@ -322,186 +829,167 @@ class DeviceType(Enum):
 
     @staticmethod
     def is_yuka(device_name: str) -> bool:
-        """Check if the given device name corresponds to a LUBA_YUKA device type.
-
-        Args:
-            device_name (str): The name of the device to be checked.
-
-        Returns:
-            bool: True if the device type is LUBA_YUKA, False otherwise.
-
-        """
-
-        return (
-            DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_YUKA.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_VP.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINIV.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_ML.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MN100.get_value()
+        """Check if the given device name corresponds to any Yuka-family device type."""
+        dt = DeviceType.value_of_str(device_name)
+        return dt in (
+            DeviceType.LUBA_YUKA,
+            DeviceType.YUKA_VP,
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_ML,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
         )
 
     @staticmethod
     def is_yuka_mini(device_name: str) -> bool:
         """Return True if the device name identifies a Yuka Mini or Yuka Mini 2 device."""
-        return (
-            DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
-        )
+        dt = DeviceType.value_of_str(device_name)
+        return dt in (DeviceType.YUKA_MINI, DeviceType.YUKA_MINI2)
 
     @staticmethod
     def is_mini_or_x_series(device_name: str) -> bool:
-        """IsNewDeviceType returns if a device is part of the x or mini series."""
-
-        return (
-            DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINI2.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_MINIV.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_VP.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_MN.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_VP.get_value()
-            or DeviceType.value_of_str(device_name).get_value() == DeviceType.LUBA_LD.get_value()
+        """Return True if the device is part of the mini or X series."""
+        dt = DeviceType.value_of_str(device_name)
+        return dt in (
+            DeviceType.YUKA_MINI,
+            DeviceType.YUKA_MINI2,
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_VP,
+            DeviceType.LUBA_MN,
+            DeviceType.LUBA_VP,
+            DeviceType.LUBA_LD,
         )
 
     @staticmethod
     def is_rtk(device_name: str, product_key: str = "") -> bool:
-        """Check if the device type is within the range of RTK devices.
-
-        This function determines if the device type corresponding to the given
-        device name and optional product key falls within the range of RTK
-        (Real-Time Kinematic) devices.
-
-        Args:
-            device_name (str): The name of the device.
-            product_key (str?): The product key associated with the device. Defaults to "".
-
-        Returns:
-            bool: True if the device type is within the RTK range, False otherwise.
-
-        """
-
-        if not product_key:
-            device_type = DeviceType.value_of_str(device_name)
-        else:
-            device_type = DeviceType.value_of_str(device_name, product_key)
-
-        return (
-            DeviceType.RTK.get_value() == device_type.get_value()
-            or DeviceType.RTK3A0.get_value() == device_type.get_value()
-            or DeviceType.RTK3A1.get_value() == device_type.get_value()
-            or DeviceType.RTK3A2.get_value() == device_type.get_value()
-            or DeviceType.RTKNB.get_value() == device_type.get_value()
+        """Check if the device type is within the range of RTK devices."""
+        device_type = DeviceType.value_of_str(device_name, product_key)
+        return device_type in (
+            DeviceType.RTK,
+            DeviceType.RTK3A0,
+            DeviceType.RTK3A1,
+            DeviceType.RTK3A2,
+            DeviceType.RTKNB,
         )
 
     @staticmethod
-    def contain_rtk_product_key(product_key: str) -> bool:
-        """Check if the given product key is in a predefined list of RTK product
-        keys.
-
-        Args:
-            product_key (str): The product key to be checked.
-
-        Returns:
-            bool: True if the product key is in the predefined list, False otherwise.
-
-        """
-
-        if not product_key:
-            return False
-        return product_key in RTKProductKey
-
-    @staticmethod
-    def contain_luba_product_key(product_key: str) -> bool:
-        """Check if the given product key is in the list of valid product keys.
-
-        Args:
-            product_key (str): The product key to be checked.
-
-        Returns:
-            bool: True if the product key is in the list of valid keys, False otherwise.
-
-        """
-
-        if not product_key:
-            return False
-        return product_key in LubaProductKey
-
-    @staticmethod
-    def contain_luba_2_product_key(product_key: str) -> bool:
-        """Check if the given product key is present in a predefined list.
-
-        Args:
-            product_key (str): The product key to be checked.
-
-        Returns:
-            bool: True if the product key is in the predefined list, False otherwise.
-
-        """
-
-        if not product_key:
-            return False
-        return product_key in LubaVProductKey
-
-    @staticmethod
-    def contain_yuka_product_key(product_key: str) -> bool:
-        """Check if the given product key is present in a predefined list.
-
-        Args:
-            product_key (str): The product key to be checked.
-
-        Returns:
-            bool: True if the product key is in the predefined list, False otherwise.
-
-        """
-
-        if not product_key:
-            return False
-        return product_key in YukaProductKey
-
-    @staticmethod
-    def contain_yuka_mini_product_key(product_key: str) -> bool:
-        """Check if the given product key is present in a predefined list.
-
-        Args:
-            product_key (str): The product key to be checked.
-
-        Returns:
-            bool: True if the product key is in the predefined list, False otherwise.
-
-        """
-
-        if not product_key:
-            return False
-        return product_key in YukaMiniProductKey
-
-    @staticmethod
-    def contain_yuka_plus_product_key(product_key: str) -> bool:
-        """Check if the given product key is present in a predefined list.
-
-        Args:
-            product_key (str): The product key to be checked.
-
-        Returns:
-            bool: True if the product key is in the predefined list, False otherwise.
-
-        """
-
-        if not product_key:
-            return False
-        return product_key in YukaPlusProductKey
-
-    def is_support_video(self) -> bool:
-        """Return True if this device type supports video streaming (all models except the original Luba 1)."""
-        return self != DeviceType.LUBA
+    def is_swimming_pool(device_name: str) -> bool:
+        """Return True if the device name identifies a swimming-pool robot (Spino variants + SD_PX)."""
+        device_type = DeviceType.value_of_str(device_name)
+        return device_type in (
+            DeviceType.SPINO,
+            DeviceType.SWIMMINGPOOL_S1,
+            DeviceType.SWIMMINGPOOL_E1,
+            DeviceType.SWIMMINGPOOL_SP,
+            DeviceType.SD_PX,
+        )
 
     @staticmethod
     def is_yuka_ml(device_name: str) -> bool:
         """Return True if the device name identifies a Yuka ML device."""
-        return DeviceType.value_of_str(device_name).get_value() == DeviceType.YUKA_ML.get_value()
+        return DeviceType.value_of_str(device_name) == DeviceType.YUKA_ML
+
+    # ------------------------------------------------------------------
+    # Product-key contain helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def is_swimming_pool(device_name: str) -> bool:
-        """Return True if the device name identifies a swimming-pool robot (Spino, S1, or E1)."""
-        device_type = DeviceType.value_of_str(device_name)
-        return device_type in (DeviceType.SPINO, DeviceType.SWIMMINGPOOL_S1, DeviceType.SWIMMINGPOOL_E1)
+    def contain_rtk_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to an RTK device."""
+        return bool(product_key) and product_key in RTKProductKey
+
+    @staticmethod
+    def contain_luba_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to an original Luba 1 device."""
+        return bool(product_key) and product_key in LubaProductKey
+
+    @staticmethod
+    def contain_luba_2_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba 2 (Luba-VS) device."""
+        return bool(product_key) and product_key in LubaVProductKey
+
+    @staticmethod
+    def contain_luba_ld_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba LD device."""
+        return bool(product_key) and product_key in LubaLDProductKey
+
+    @staticmethod
+    def contain_luba_va_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba VA device."""
+        return bool(product_key) and product_key in LubaVAProductKey
+
+    @staticmethod
+    def contain_luba_la_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba LA device."""
+        return bool(product_key) and product_key in LubaLAProductKey
+
+    @staticmethod
+    def contain_luba_md_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba MD device."""
+        return bool(product_key) and product_key in LubaMDProductKey
+
+    @staticmethod
+    def contain_luba_mb_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba MB device."""
+        return bool(product_key) and product_key in LubaMBProductKey
+
+    @staticmethod
+    def contain_luba_v_pro_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba VP (Luba 2 Pro) device."""
+        return bool(product_key) and product_key in LubaVProProductKey
+
+    @staticmethod
+    def contain_luba_2_mini_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba MN (Luba 2 Mini) device."""
+        return bool(product_key) and product_key in Luba2MiniProductKey
+
+    @staticmethod
+    def contain_yuka_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to an original Yuka device."""
+        return bool(product_key) and product_key in YukaProductKey
+
+    @staticmethod
+    def contain_yuka_plus_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka Plus device."""
+        return bool(product_key) and product_key in YukaPlusProductKey
+
+    @staticmethod
+    def contain_yuka_mini_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka Mini device."""
+        return bool(product_key) and product_key in YukaMiniProductKey
+
+    @staticmethod
+    def contain_yuka_vp_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka VP device."""
+        return bool(product_key) and product_key in YukaPlusProductKey
+
+    @staticmethod
+    def contain_yuka_mv_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka MV (MINIV) device."""
+        return bool(product_key) and product_key in YukaMVProductKey
+
+    @staticmethod
+    def contain_yuka_ml_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka ML device."""
+        return bool(product_key) and product_key in YukaMLProductKey
+
+    @staticmethod
+    def contain_yuka_mn100_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka MN100 device."""
+        return bool(product_key) and product_key in YukaMN100ProductKey
+
+    @staticmethod
+    def contain_rtk_nb_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to an RTK NB device."""
+        return bool(product_key) and product_key in RTKNBProductKey
+
+    @staticmethod
+    def contain_cm900_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a CM900 device."""
+        return bool(product_key) and product_key in Cm900ProductKey
+
+    def is_support_video(self) -> bool:
+        """Return True if this device type supports video streaming (all models except the original Luba 1)."""
+        return self != DeviceType.LUBA
