@@ -170,6 +170,18 @@ class StateReducer:
 
     def _update_nav_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update navigation data fields on *device* in-place."""
+        # Pool cleaners (Spino) reuse the LubaMsg envelope but do not have a
+        # GNSS RTK origin or a lat/lon dock. Generating GeoJSON from a (0,0)
+        # RTK origin produces nonsense at best and can crash the geometry
+        # library. Bail out until a pool-specific reducer exists.
+        from pymammotion.utility.device_type import DeviceType
+
+        if DeviceType.is_swimming_pool(device.name):
+            _logger.debug(
+                "StateReducer: skipping nav update for swimming-pool device %s",
+                device.name,
+            )
+            return
         nav_msg = betterproto2.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
             case "toapp_gethash_ack":
@@ -312,6 +324,18 @@ class StateReducer:
 
     def _update_driver_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update driver/cutter data fields on *device* in-place."""
+        # Pool cleaners (Spino) do not have cutters, blades, or knife events.
+        # Unpacking driver oneof variants into mower-specific dataclasses would
+        # either silently corrupt mower fields or AttributeError on missing
+        # attributes — skip until a pool-specific reducer exists.
+        from pymammotion.utility.device_type import DeviceType
+
+        if DeviceType.is_swimming_pool(device.name):
+            _logger.debug(
+                "StateReducer: skipping driver update for swimming-pool device %s",
+                device.name,
+            )
+            return
         driver_msg = betterproto2.which_one_of(message.driver, "SubDrvMsg")
         match driver_msg[0]:
             case "current_cutter_mode":
