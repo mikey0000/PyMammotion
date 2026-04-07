@@ -123,64 +123,63 @@ class DeviceType(Enum):
 
         if value == 0:
             return DeviceType.RTK
-        elif value == 1:
+        if value == 1:
             return DeviceType.LUBA
-        elif value == 2:
+        if value == 2:
             return DeviceType.LUBA_2
-        elif value == 3:
+        if value == 3:
             return DeviceType.LUBA_YUKA
-        elif value == 4:
+        if value == 4:
             return DeviceType.YUKA_MINI
-        elif value == 5:
+        if value == 5:
             return DeviceType.YUKA_MINI2
-        elif value == 6:
+        if value == 6:
             return DeviceType.LUBA_VP
-        elif value == 7:
+        if value == 7:
             return DeviceType.LUBA_MN
-        elif value == 8:
+        if value == 8:
             return DeviceType.YUKA_VP
-        elif value == 9:
+        if value == 9:
             return DeviceType.SPINO
-        elif value == 10:
+        if value == 10:
             return DeviceType.RTK3A1
-        elif value == 11:
+        if value == 11:
             return DeviceType.LUBA_LD
-        elif value == 12:
+        if value == 12:
             return DeviceType.RTK3A0
-        elif value == 13:
+        if value == 13:
             return DeviceType.RTK3A2
-        elif value == 14:
+        if value == 14:
             return DeviceType.YUKA_MINIV
-        elif value == 15:
+        if value == 15:
             return DeviceType.LUBA_VA
-        elif value == 16:
+        if value == 16:
             return DeviceType.YUKA_ML
-        elif value == 17:
+        if value == 17:
             return DeviceType.LUBA_MD
-        elif value == 18:
+        if value == 18:
             return DeviceType.LUBA_LA
-        elif value == 19:
+        if value == 19:
             return DeviceType.SWIMMINGPOOL_S1
-        elif value == 20:
+        if value == 20:
             return DeviceType.SWIMMINGPOOL_E1
-        elif value == 21:
+        if value == 21:
             return DeviceType.YUKA_MN100
-        elif value == 22:
+        if value == 22:
             return DeviceType.RTKNB
-        elif value == 23:
+        if value == 23:
             return DeviceType.LUBA_MB
-        elif value == 24:
+        if value == 24:
             return DeviceType.CM900
-        elif value == 25:
+        if value == 25:
             return DeviceType.YUKA_MN101
-        elif value == 26:
+        if value == 26:
             return DeviceType.SWIMMINGPOOL_SP
-        elif value == 27:
+        if value == 27:
             return DeviceType.SD_PX
-        elif value == 28:
+        if value == 28:
             return DeviceType.LUBA_HM
-        else:
-            return DeviceType.UNKNOWN
+        return DeviceType.UNKNOWN
 
     @staticmethod
     def value_of_str(device_name: str, product_key: str = "") -> "DeviceType":
@@ -205,64 +204,63 @@ class DeviceType(Enum):
 
             if DeviceType.RTK.get_name() in substring or DeviceType.contain_rtk_product_key(product_key):
                 return DeviceType.RTK
-            elif DeviceType.LUBA_2.get_name() in substring2 or DeviceType.contain_luba_2_product_key(product_key):
+            if DeviceType.LUBA_2.get_name() in substring2 or DeviceType.contain_luba_2_product_key(product_key):
                 return DeviceType.LUBA_2
-            elif DeviceType.LUBA_LD.get_name() in substring2:
+            if DeviceType.LUBA_LD.get_name() in substring2:
                 return DeviceType.LUBA_LD
-            elif DeviceType.LUBA_VP.get_name() in substring2:
+            if DeviceType.LUBA_VP.get_name() in substring2:
                 return DeviceType.LUBA_VP
-            elif DeviceType.LUBA_MN.get_name() in substring2:
+            if DeviceType.LUBA_MN.get_name() in substring2:
                 return DeviceType.LUBA_MN
-            elif DeviceType.YUKA_VP.get_name() in substring2:
+            if DeviceType.YUKA_VP.get_name() in substring2:
                 return DeviceType.YUKA_VP
-            elif DeviceType.YUKA_MINI.get_name() in substring2:
+            if DeviceType.YUKA_MINI.get_name() in substring2:
                 return DeviceType.YUKA_MINI
-            elif DeviceType.YUKA_MINI2.get_name() in substring2:
+            if DeviceType.YUKA_MINI2.get_name() in substring2:
                 return DeviceType.YUKA_MINI2
-            elif DeviceType.LUBA_YUKA.get_name() in substring2:
+            if DeviceType.LUBA_YUKA.get_name() in substring2:
                 return DeviceType.LUBA_YUKA
-            elif DeviceType.RTK3A1.get_name() in substring2:
+            if DeviceType.RTK3A1.get_name() in substring2:
                 return DeviceType.RTK3A1
-            elif DeviceType.RTK3A0.get_name() in substring2:
+            if DeviceType.RTK3A0.get_name() in substring2:
                 return DeviceType.RTK3A0
-            elif DeviceType.RTK3A2.get_name() in substring2:
+            if DeviceType.RTK3A2.get_name() in substring2:
                 return DeviceType.RTK3A2
-            elif DeviceType.YUKA_MINIV.get_name() in substring2:
+            if DeviceType.YUKA_MINIV.get_name() in substring2:
                 return DeviceType.YUKA_MINIV
-            elif DeviceType.LUBA_VA.get_name() in substring2:
+            if DeviceType.LUBA_VA.get_name() in substring2:
                 return DeviceType.LUBA_VA
-            elif DeviceType.YUKA_ML.get_name() in substring2:
+            if DeviceType.YUKA_ML.get_name() in substring2:
                 return DeviceType.YUKA_ML
-            elif DeviceType.LUBA_MD.get_name() in substring2:
+            if DeviceType.LUBA_MD.get_name() in substring2:
                 return DeviceType.LUBA_MD
-            elif DeviceType.LUBA_LA.get_name() in substring2:
+            if DeviceType.LUBA_LA.get_name() in substring2:
                 return DeviceType.LUBA_LA
-            elif DeviceType.SWIMMINGPOOL_S1.get_name() in device_name[:8]:
+            if DeviceType.SWIMMINGPOOL_S1.get_name() in device_name[:8]:
                 return DeviceType.SWIMMINGPOOL_S1
-            elif DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8]:
+            if DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8]:
                 return DeviceType.SWIMMINGPOOL_E1
-            elif DeviceType.SWIMMINGPOOL_SP.get_name() in device_name[:8]:
+            if DeviceType.SWIMMINGPOOL_SP.get_name() in device_name[:8]:
                 return DeviceType.SWIMMINGPOOL_SP
-            elif DeviceType.SPINO.get_name() in substring2:
+            if DeviceType.SPINO.get_name() in substring2:
                 return DeviceType.SPINO
-            elif DeviceType.YUKA_MN100.get_name() in substring2:
+            if DeviceType.YUKA_MN100.get_name() in substring2:
                 return DeviceType.YUKA_MN100
-            elif DeviceType.RTKNB.get_name() in substring2:
+            if DeviceType.RTKNB.get_name() in substring2:
                 return DeviceType.RTKNB
-            elif DeviceType.LUBA_MB.get_name() in substring2:
+            if DeviceType.LUBA_MB.get_name() in substring2:
                 return DeviceType.LUBA_MB
-            elif DeviceType.CM900.get_name() in substring2:
+            if DeviceType.CM900.get_name() in substring2:
                 return DeviceType.CM900
-            elif DeviceType.YUKA_MN101.get_name() in substring2:
+            if DeviceType.YUKA_MN101.get_name() in substring2:
                 return DeviceType.YUKA_MN101
-            elif DeviceType.SD_PX.get_name() in substring2:
+            if DeviceType.SD_PX.get_name() in substring2:
                 return DeviceType.SD_PX
-            elif DeviceType.LUBA_HM.get_name() in substring2:
+            if DeviceType.LUBA_HM.get_name() in substring2:
                 return DeviceType.LUBA_HM
-            elif DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
+            if DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
                 return DeviceType.LUBA
-            else:
-                return DeviceType.UNKNOWN
+            return DeviceType.UNKNOWN
         except Exception:
             return DeviceType.UNKNOWN
 
