@@ -1,4 +1,4 @@
-"""MowingDevice class to wrap around the betterproto dataclasses."""
+"""Device model hierarchy: Device base + MowerDevice (and future PoolCleanerDevice)."""
 
 from dataclasses import dataclass, field
 import math
@@ -29,17 +29,32 @@ _device_config = DeviceConfig()
 
 
 @dataclass
-class MowingDevice(DataClassORJSONMixin):
-    """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
+class Device(DataClassORJSONMixin):
+    """Base class for any Mammotion device (lawn mower, pool cleaner, RTK, …).
+
+    Holds only the fields that are truly universal — identity, online flag,
+    OTA check, and MQTT envelopes. Device-class-specific state lives on
+    subclasses (``MowerDevice``, ``PoolCleanerDevice``, …).
+    """
 
     name: str = ""
     online: bool = True
     enabled: bool = True
     update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
-    mower_state: MowerInfo = field(default_factory=MowerInfo)
     mqtt_properties: ThingPropertiesMessage | None = None
     status_properties: ThingStatusMessage | None = None
     device_event: ThingEventMessage | None = None
+
+
+@dataclass
+class MowerDevice(Device):
+    """Lawn-mowing robot (Luba, Yuka, RTK rovers).
+
+    Wraps the betterproto dataclasses so we can bypass the oneof groups and
+    keep everything in one place.
+    """
+
+    mower_state: MowerInfo = field(default_factory=MowerInfo)
     map: HashList = field(default_factory=HashList)
     work: CurrentTaskSettings = field(default_factory=CurrentTaskSettings)
     location: Location = field(default_factory=Location)
@@ -263,17 +278,23 @@ class RTKDevice(DataClassORJSONMixin):
     update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
 
 
+# Backwards-compatible alias. The library was previously called MowingDevice
+# everywhere; the rename to MowerDevice is part of the polymorphic device-model
+# refactor (Phase B). External callers can keep using MowingDevice for now.
+MowingDevice = MowerDevice
+
+
 # Mashumaro's __init_subclass__ generates to_jsonb directly on subclasses, overwriting any
 # in-class override.  Patch after class definition so orjson can handle int dict keys
 # (e.g. HashList.area / path / obstacle which are dict[int, FrameList]).
-def _mowing_device_to_jsonb(self: "MowingDevice", **kwargs: Any) -> bytes:
+def _mower_device_to_jsonb(self: "MowerDevice", **kwargs: Any) -> bytes:
     kwargs.setdefault("option", orjson.OPT_NON_STR_KEYS)
     return orjson.dumps(self.to_dict(), **kwargs)
 
 
-def _mowing_device_to_json(self: "MowingDevice", **kwargs: Any) -> str:
-    return _mowing_device_to_jsonb(self, **kwargs).decode()
+def _mower_device_to_json(self: "MowerDevice", **kwargs: Any) -> str:
+    return _mower_device_to_jsonb(self, **kwargs).decode()
 
 
-MowingDevice.to_jsonb = _mowing_device_to_jsonb  # type: ignore[method-assign]
-MowingDevice.to_json = _mowing_device_to_json  # type: ignore[method-assign]
+MowerDevice.to_jsonb = _mower_device_to_jsonb  # type: ignore[method-assign]
+MowerDevice.to_json = _mower_device_to_json  # type: ignore[method-assign]
