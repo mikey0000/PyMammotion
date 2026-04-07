@@ -803,12 +803,12 @@ class MammotionClient:
         self, device_name: str, iot_id: str, transport: AliyunMQTTTransport, user_account: int = 0
     ) -> None:
         """Register a single Aliyun device in the device registry."""
-        from pymammotion.data.model.device import MowingDevice
+        from pymammotion.data.model.device import create_device
 
         handle = DeviceHandle(
             device_id=device_name,
             device_name=device_name,
-            initial_device=MowingDevice(name=device_name),
+            initial_device=create_device(device_name),
             iot_id=iot_id,
             user_account=user_account,
             mqtt_transport=transport,
@@ -824,7 +824,7 @@ class MammotionClient:
         self, record: DeviceRecord, transport: MQTTTransport, user_account: int = 0
     ) -> None:
         """Add MQTT topics and register a single Mammotion device in the device registry."""
-        from pymammotion.data.model.device import MowingDevice
+        from pymammotion.data.model.device import create_device
 
         for topic in (
             f"/sys/{record.product_key}/{record.device_name}/thing/event/+/post",
@@ -837,7 +837,7 @@ class MammotionClient:
         handle = DeviceHandle(
             device_id=record.device_name,
             device_name=record.device_name,
-            initial_device=MowingDevice(name=record.device_name),
+            initial_device=create_device(record.device_name),
             iot_id=record.iot_id,
             user_account=user_account,
             mqtt_transport=transport,

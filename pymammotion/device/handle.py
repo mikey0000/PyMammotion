@@ -25,7 +25,7 @@ from pymammotion.transport.base import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import Device
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
@@ -131,7 +131,7 @@ class DeviceHandle:
         self,
         device_id: str,
         device_name: str,
-        initial_device: MowingDevice,
+        initial_device: Device,
         *,
         iot_id: str = "",
         user_account: int = 0,
@@ -424,7 +424,7 @@ class DeviceHandle:
         """The latest immutable device state snapshot."""
         return self.state_machine.current
 
-    def restore_device(self, device: MowingDevice) -> None:
+    def restore_device(self, device: Device) -> None:
         """Restore previously saved device state (e.g. from HA storage)."""
         self.state_machine.restore(device)
 
@@ -645,7 +645,7 @@ class DeviceHandle:
         mqtt: Transport | None = None
         for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
             t = self._transports.get(transport_type)
-            if t is not None and t.is_connected and not mqtt_reported_offline:
+            if t is not None and t.is_connected:
                 mqtt = t
                 break
         mqtt_ok = mqtt is not None

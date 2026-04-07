@@ -8,7 +8,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import MowingDevice, PoolCleanerDevice
 
 _logger = logging.getLogger(__name__)
 
@@ -113,10 +113,35 @@ class YukaReadinessChecker(ReadinessChecker):
         return commands
 
 
+class SpinoReadinessChecker(ReadinessChecker):
+    """Readiness checker for Spino swimming-pool cleaners.
+
+    A Spino is considered ready as soon as the universal Device fields are
+    populated — specifically, the device name. There is no map_hash_list /
+    knife / lawn report-data prerequisite, and during Phase C the Spino
+    payload schemas are still being mapped, so this checker stays
+    deliberately permissive. It will be tightened in a follow-up commit once
+    PoolCleanerDevice has its own state fields.
+    """
+
+    def check(self, device: PoolCleanerDevice) -> ReadinessStatus:  # type: ignore[override]
+        """Check Spino readiness — minimum bar during the Phase C stub period."""
+        missing: list[str] = []
+        if not device.name:
+            missing.append("device_name")
+        return ReadinessStatus(is_ready=len(missing) == 0, missing=missing)
+
+    def commands_to_fetch_missing(self, device: PoolCleanerDevice) -> list[str]:  # type: ignore[override]
+        """No fetchable commands for the stub Spino device — return empty."""
+        return []
+
+
 def get_readiness_checker(device_name: str) -> ReadinessChecker:
     """Return the appropriate readiness checker for the device type."""
     from pymammotion.utility.device_type import DeviceType
 
+    if DeviceType.is_swimming_pool(device_name):
+        return SpinoReadinessChecker()
     if DeviceType.is_yuka(device_name) or DeviceType.is_yuka_mini(device_name):
         return YukaReadinessChecker()
     return MowerReadinessChecker()

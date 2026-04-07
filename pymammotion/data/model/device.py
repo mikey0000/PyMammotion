@@ -281,6 +281,33 @@ class RTKDevice(DataClassORJSONMixin):
     update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
 
 
+@dataclass
+class PoolCleanerDevice(Device):
+    """Swimming-pool cleaning robot (Spino, Spino-S1/E1/SP).
+
+    Stub during Phase C — only the universal ``Device`` fields are present.
+    Spino-specific state (pool_state, pool_map, …) lands in a follow-up commit
+    once the Spino payload schemas have been confirmed against captured MQTT
+    traffic.
+    """
+
+
+def create_device(name: str) -> "Device":
+    """Construct the appropriate :class:`Device` subclass for *name*.
+
+    Inspects the device-name prefix via :class:`DeviceType` and returns either
+    a :class:`PoolCleanerDevice` (for Spino variants) or a :class:`MowerDevice`
+    (the historical default).
+    """
+    # Local import to avoid a circular dependency between
+    # pymammotion.data.model.device and pymammotion.utility.device_type.
+    from pymammotion.utility.device_type import DeviceType
+
+    if DeviceType.is_swimming_pool(name):
+        return PoolCleanerDevice(name=name)
+    return MowerDevice(name=name)
+
+
 # Backwards-compatible alias. The library was previously called MowingDevice
 # everywhere; the rename to MowerDevice is part of the polymorphic device-model
 # refactor (Phase B). External callers can keep using MowingDevice for now.
