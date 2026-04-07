@@ -32,9 +32,11 @@ from pymammotion.data.model.hash_list import (
     Plan,
     SvgMessage,
 )
+from pymammotion.data.model.pool_state import PoolBottomType, PoolPoint, SpinoSysStatus, SpinoWorkMode, WallMaterial
 from pymammotion.data.model.report_info import BaseScore
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.proto import (
+    AppDownlinkCmdT,
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
@@ -60,6 +62,7 @@ from pymammotion.proto import (
     NavReqCoverPath,
     NavSysParamMsg,
     NavUnableTimeSet,
+    ReportInfoT,
     ResponseBasestationInfoT,
     SvgMessageAckT,
     SysCommCmd,
@@ -463,29 +466,124 @@ class MowerStateReducer(StateReducer):
 class PoolStateReducer(StateReducer):
     """Reducer for swimming-pool cleaners (Spino, Spino-S1/E1/SP).
 
-    Stub implementation. Spino reuses the LubaMsg envelope but populates a
-    very different subset of sub-messages — primarily ``MctlSys`` (with the
-    Spino-only ``dev_statue_t`` / ``report_info_t`` / ``app_downlink_cmd_t``
-    inner shapes) and the shared ``net``/``ota`` channels. None of the
-    mower-only fields (``map``, ``mowing_state``, ``mower_state``, …) exist
-    on :class:`PoolCleanerDevice`, so trying to reuse the mower dispatch here
-    would AttributeError on the very first incoming message.
+    Spino reuses the :class:`LubaMsg` envelope but populates a much smaller
+    subset of sub-messages than lawn mowers. Confirmed wire paths used by
+    the Mammotion Android app:
 
-    During Phase D this reducer simply marks the device online on every
-    incoming message and returns it. Real Spino dispatch lands in Phase E
-    once :class:`PoolCleanerDevice` has its own state fields.
+    - ``sys.report_info`` → :class:`ReportInfoT` → :class:`DevStatueT` —
+      runtime status (sys_status, work_mode, battery, …) shown on the home
+      screen.
+    - ``sys.app_downlink_cmd`` → :class:`AppDownlinkCmdT` — both the
+      outgoing user-settings commands (wall material, bottom type, floor
+      speed) and the device's ack responses that carry pool ``map_info`` /
+      ``line_info`` geometry rendered by ``SwimmingMapActivity``.
+
+    Other LubaMsg sub-message groups (``nav``, ``driver``, ``base``) are
+    not used by Spino in any path the app reads, so they are intentionally
+    no-ops here. Net / mul / ota will be added once their Spino usage is
+    confirmed against captured traffic — leaving them out is safer than
+    reusing mower dispatch on a device that has no ``mower_state``.
     """
 
     def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:  # type: ignore[override]
-        """Apply *message* to *current*. Phase D stub: only updates online flag."""
+        """Apply *message* to *current* and return the updated copy."""
         device: PoolCleanerDevice = dataclasses.replace(current)
         if not device.online:
             device.online = True
-        # Pool-specific dispatch (sys/dev_statue_t, MapInfo, etc.) lands in
-        # Phase E. For now, every Spino message just bumps the online flag —
-        # this is intentionally a no-op rather than reusing mower dispatch
-        # because PoolCleanerDevice has none of the mower-only fields.
+
+        sub_msg_type = betterproto2.which_one_of(message, "LubaSubMsg")[0]
+        if sub_msg_type != "sys":
+            # Only the sys envelope carries Spino payloads we currently model.
+            return device
+
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
+        match sys_msg[0]:
+            case "report_info":
+                device.pool_state = copy.deepcopy(current.pool_state)
+                self._update_report_info(device, sys_msg[1])
+            case "app_downlink_cmd":
+                device.pool_state = copy.deepcopy(current.pool_state)
+                device.pool_map = copy.deepcopy(current.pool_map)
+                self._update_app_downlink_cmd(device, sys_msg[1])
+            case _:
+                _logger.debug(
+                    "PoolStateReducer: ignoring unhandled sys sub-message %r for %s",
+                    sys_msg[0],
+                    device.name,
+                )
+
         return device
+
+    def _update_report_info(self, device: PoolCleanerDevice, report: ReportInfoT) -> None:
+        """Apply a ``ReportInfoT`` (carrying ``DevStatueT``) to *device*."""
+        if report.dev_status is None:
+            return
+        status = report.dev_status
+
+        # sys_status is an int on the wire — coerce to our enum, falling back
+        # to the raw int if a future firmware sends a value we don't yet model.
+        try:
+            device.pool_state.sys_status = SpinoSysStatus(status.sys_status)
+        except ValueError:
+            _logger.debug(
+                "PoolStateReducer: unknown sys_status=%d for %s — leaving previous value",
+                status.sys_status,
+                device.name,
+            )
+        try:
+            device.pool_state.work_mode = SpinoWorkMode(status.work_mode)
+        except ValueError:
+            _logger.debug(
+                "PoolStateReducer: unknown work_mode=%d for %s — leaving previous value",
+                status.work_mode,
+                device.name,
+            )
+        device.pool_state.battery = status.bat_val
+
+    def _update_app_downlink_cmd(self, device: PoolCleanerDevice, cmd: AppDownlinkCmdT) -> None:
+        """Apply an incoming ``AppDownlinkCmdT`` (settings ack or map data) to *device*."""
+        # Settings — only update fields the device actually populated.
+        if cmd.wall_material is not None:
+            try:
+                device.pool_state.wall_material = WallMaterial(cmd.wall_material)
+            except ValueError:
+                _logger.debug(
+                    "PoolStateReducer: unknown wall_material=%d for %s",
+                    cmd.wall_material,
+                    device.name,
+                )
+        if cmd.bottom_type is not None:
+            try:
+                device.pool_state.bottom_type = PoolBottomType(int(cmd.bottom_type))
+            except ValueError:
+                _logger.debug(
+                    "PoolStateReducer: unknown bottom_type=%s for %s",
+                    cmd.bottom_type,
+                    device.name,
+                )
+        if cmd.floor_speed is not None:
+            device.pool_state.floor_speed = cmd.floor_speed
+
+        # Pool geometry — boundary outline (tag=0) and cleaning path (tag=1).
+        # MapInfo is sent in packets (pack_index / pack_num); the simplest
+        # correct behaviour is to wait for the final packet and replace the
+        # whole list. Until we see what real traffic looks like, treat each
+        # incoming MapInfo as a complete payload — the proto allows
+        # total_points to indicate the full length per packet.
+        for map_info in (cmd.map_info, cmd.line_info):
+            if map_info is None:
+                continue
+            points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
+            if map_info.tag == 0:
+                device.pool_map.boundary = points
+            elif map_info.tag == 1:
+                device.pool_map.cleaning_path = points
+            else:
+                _logger.debug(
+                    "PoolStateReducer: unknown MapInfo tag=%d for %s",
+                    map_info.tag,
+                    device.name,
+                )
 
 
 def get_state_reducer(device_name: str) -> StateReducer:

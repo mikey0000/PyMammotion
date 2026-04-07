@@ -14,6 +14,7 @@ from pymammotion.data.model.enums import TaskAreaStatus
 from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
+from pymammotion.data.model.pool_state import PoolMap, PoolState
 from pymammotion.data.model.report_info import ReportData, WorkSessionResult
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -285,11 +286,17 @@ class RTKDevice(DataClassORJSONMixin):
 class PoolCleanerDevice(Device):
     """Swimming-pool cleaning robot (Spino, Spino-S1/E1/SP).
 
-    Stub during Phase C — only the universal ``Device`` fields are present.
-    Spino-specific state (pool_state, pool_map, …) lands in a follow-up commit
-    once the Spino payload schemas have been confirmed against captured MQTT
-    traffic.
+    Carries only the state the Mammotion Android app actually surfaces in
+    its pool-cleaner fragments + settings screens (see ``pool_state.py``
+    for the field-by-field rationale). Internal-only proto fields (pump
+    status, RSSI, wheel state, …) are intentionally omitted until they
+    show up in the UI or there is a concrete consumer for them.
     """
+
+    pool_state: PoolState = field(default_factory=PoolState)
+    pool_map: PoolMap = field(default_factory=PoolMap)
+    device_firmwares: DeviceFirmwares = field(default_factory=DeviceFirmwares)
+    errors: DeviceErrors = field(default_factory=DeviceErrors)
 
 
 def create_device(name: str) -> "Device":
