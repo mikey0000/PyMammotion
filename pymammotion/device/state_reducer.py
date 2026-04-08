@@ -366,24 +366,24 @@ class StateReducer:
     def _update_base_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update base station RTK data from LubaMsg.base.to_app response."""
         base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")
-        if base_msg[0] != "to_app":
-            return
-        resp: ResponseBasestationInfoT = base_msg[1]
-        info = device.report_data.basestation_info
-        info.sats_num = resp.sats_num
-        info.rtk_status = resp.rtk_status
-        info.rtk_channel = resp.rtk_channel
-        info.rtk_switch = resp.rtk_switch
-        info.wifi_rssi = resp.wifi_rssi
-        info.lora_channel = resp.lora_channel
-        info.mqtt_rtk_status = resp.mqtt_rtk_status
-        if resp.score_info is not None:
-            info.score_info = BaseScore(
-                base_score=resp.score_info.base_score,
-                base_leve=resp.score_info.base_leve,
-                base_moved=resp.score_info.base_moved,
-                base_moving=resp.score_info.base_moving,
-            )
+        match base_msg[0]:
+            case "response_basestation_info_t":
+                resp: ResponseBasestationInfoT = base_msg[1]
+                info = device.report_data.basestation_info
+                info.sats_num = resp.sats_num
+                info.rtk_status = resp.rtk_status
+                info.rtk_channel = resp.rtk_channel
+                info.rtk_switch = resp.rtk_switch
+                info.wifi_rssi = resp.wifi_rssi
+                info.lora_channel = resp.lora_channel
+                info.mqtt_rtk_status = resp.mqtt_rtk_status
+                if resp.score_info is not None:
+                    info.score_info = BaseScore(
+                        base_score=resp.score_info.base_score,
+                        base_leve=resp.score_info.base_leve,
+                        base_moved=resp.score_info.base_moved,
+                        base_moving=resp.score_info.base_moving,
+                    )
 
     def _update_mul_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update media/light data fields on *device* in-place."""

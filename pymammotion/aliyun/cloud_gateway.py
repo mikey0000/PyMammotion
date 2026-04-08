@@ -39,7 +39,14 @@ from pymammotion.aliyun.model.thing_response import ThingPropertiesResponse
 from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import LoginResponseData, MQTTConnection, Response
+from pymammotion.http.model.http import (
+    DeviceInfo,
+    DeviceRecords,
+    JWTTokenInfo,
+    LoginResponseData,
+    MQTTConnection,
+    Response,
+)
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.transport.base import ReLoginRequiredError, SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
@@ -1023,9 +1030,17 @@ class CloudIOTGateway:
         mammotion_http = MammotionHTTP(account, password)
         mammotion_http.response = mammotion_response_data
         if mammotion_device_list:
-            mammotion_http.device_info = mammotion_device_list
+            mammotion_http.device_info = (
+                [DeviceInfo.from_dict(d) if isinstance(d, dict) else d for d in mammotion_device_list]
+                if isinstance(mammotion_device_list, list)
+                else mammotion_device_list
+            )
         if mammotion_device_records:
-            mammotion_http.device_records = mammotion_device_records
+            mammotion_http.device_records = (
+                DeviceRecords.from_dict(mammotion_device_records)
+                if isinstance(mammotion_device_records, dict)
+                else mammotion_device_records
+            )
         try:
             if mammotion_mqtt:
                 mammotion_http.mqtt_credentials = (
@@ -1035,7 +1050,9 @@ class CloudIOTGateway:
             mammotion_http.mqtt_credentials = None
 
         if mammotion_jwt:
-            mammotion_http.jwt_info = mammotion_jwt
+            mammotion_http.jwt_info = (
+                JWTTokenInfo.from_dict(mammotion_jwt) if isinstance(mammotion_jwt, dict) else mammotion_jwt
+            )
         mammotion_http.login_info = (
             LoginResponseData.from_dict(mammotion_response_data.data)
             if isinstance(mammotion_response_data.data, dict)

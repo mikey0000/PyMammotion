@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+import json
 import logging
 import os
 from pathlib import Path
@@ -45,6 +46,30 @@ from pymammotion.transport.base import Subscription, TransportType
 
 OUTPUT_DIR = Path(__file__).parent / "dev_output"
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+CREDENTIALS_FILE = Path(__file__).parent / "dev_credentials.json"
+
+
+def _load_credentials() -> tuple[str, str]:
+    """Load saved email/password from dev_credentials.json, if present."""
+    if CREDENTIALS_FILE.exists():
+        try:
+            data = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
+            return data.get("email", ""), data.get("password", "")
+        except Exception:
+            pass
+    return "", ""
+
+
+def _save_credentials(email: str, password: str) -> None:
+    """Persist email/password to dev_credentials.json."""
+    try:
+        CREDENTIALS_FILE.write_text(
+            json.dumps({"email": email, "password": password}, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        _LOGGER.warning("Could not save credentials to %s", CREDENTIALS_FILE)
 
 _rich_console = Console()
 _LOGGER = logging.getLogger(__name__)
@@ -412,8 +437,10 @@ class DevConsole:
 async def _main() -> None:
     _setup_logging()
 
-    email = os.environ.get("EMAIL") or input("Mammotion email: ").strip()
-    password = os.environ.get("PASSWORD") or input("Mammotion password: ").strip()
+    saved_email, saved_password = _load_credentials()
+    email = os.environ.get("EMAIL") or input(f"Mammotion email [{saved_email}]: ").strip() or saved_email
+    password = os.environ.get("PASSWORD") or input(f"Mammotion password [{'*' * len(saved_password) if saved_password else ''}]: ").strip() or saved_password
+    _save_credentials(email, password)
 
     mammotion = MammotionClient()
     main_loop = asyncio.get_running_loop()
