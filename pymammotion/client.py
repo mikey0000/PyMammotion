@@ -775,7 +775,7 @@ class MammotionClient:
         token_manager = acct_session.token_manager
 
         async def _refresh_jwt() -> str:
-            creds = await token_manager.get_mammotion_mqtt_credentials()
+            creds = await token_manager.refresh_mqtt_creds()
             return str(creds.jwt)
 
         transport = MQTTTransport(config, mammotion_http, jwt_refresher=_refresh_jwt, token_manager=token_manager)

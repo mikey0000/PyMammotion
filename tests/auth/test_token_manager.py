@@ -70,9 +70,9 @@ async def test_mqtt_creds_refreshed_when_expiring_soon() -> None:
     http = AsyncMock()
     tm = TokenManager("acc1", http)
     await tm.initialize(make_http_creds(600), None, make_mqtt_creds(900))  # expires in 15 min < 30 min
-    tm._refresh_mqtt_creds = AsyncMock()  # type: ignore[method-assign]
+    tm.refresh_mqtt_creds = AsyncMock()  # type: ignore[method-assign]
     await tm.get_mammotion_mqtt_credentials()
-    tm._refresh_mqtt_creds.assert_awaited_once()  # type: ignore[attr-defined]
+    tm.refresh_mqtt_creds.assert_awaited_once()  # type: ignore[attr-defined]
 
 
 async def test_concurrent_refresh_called_once() -> None:
@@ -132,9 +132,9 @@ async def test_mqtt_creds_not_refreshed_when_fresh() -> None:
     http = AsyncMock()
     tm = TokenManager("acc1", http)
     await tm.initialize(make_http_creds(600), None, make_mqtt_creds(7200))  # expires in 2 hours
-    tm._refresh_mqtt_creds = AsyncMock()  # type: ignore[method-assign]
+    tm.refresh_mqtt_creds = AsyncMock()  # type: ignore[method-assign]
     await tm.get_mammotion_mqtt_credentials()
-    tm._refresh_mqtt_creds.assert_not_awaited()  # type: ignore[attr-defined]
+    tm.refresh_mqtt_creds.assert_not_awaited()  # type: ignore[attr-defined]
 
 
 async def test_initialize_stores_credentials() -> None:
