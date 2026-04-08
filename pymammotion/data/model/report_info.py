@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 
 class NetUsedType(StrEnum):
+    """Active network interface type reported by the device."""
+
     NONE = "NONE"
     WIFI = "WIFI"
     MNET = "MNET"
@@ -37,6 +39,8 @@ class NetSpeed(DataClassORJSONMixin):
 
 @dataclass
 class ConnectData(DataClassORJSONMixin):
+    """Network connectivity details reported by the device."""
+
     connect_type: int = 0
     ble_rssi: int = 0
     wifi_rssi: int = 0
@@ -56,6 +60,8 @@ class ConnectData(DataClassORJSONMixin):
 
 @dataclass
 class CollectorStatus(DataClassORJSONMixin):
+    """Installation status of the grass-clippings collector attachment."""
+
     collector_installation_status: int = 0
 
 
@@ -116,11 +122,15 @@ class MnetInfo(DataClassORJSONMixin):
 
 @dataclass
 class LockStateT(DataClassORJSONMixin):
+    """Physical lock/security state of the mower."""
+
     lock_state: int = 0
 
 
 @dataclass
 class VioSurvivalInfo(DataClassORJSONMixin):
+    """Visual-inertial odometry survival distance since last reliable fix."""
+
     vio_survival_distance: float = 0.0
 
 
@@ -135,6 +145,8 @@ class FpvInfo(DataClassORJSONMixin):
 
 @dataclass
 class DeviceData(DataClassORJSONMixin):
+    """Core device telemetry: system status, battery, sensors, and connectivity."""
+
     sys_status: int = 0
     charge_state: int = 0
     battery_val: int = 0
@@ -272,6 +284,8 @@ class RtkPositionScore(DataClassORJSONMixin):
 
 @dataclass
 class RTKDisStatus(DataClassORJSONMixin):
+    """Unpacked RTK signal quality fields decoded from the packed ``dis_status`` integer."""
+
     pos_status: int = 0
     precision: int = 0
     device_signal: int = 0
@@ -283,6 +297,8 @@ class RTKDisStatus(DataClassORJSONMixin):
 
 @dataclass
 class RTKData(DataClassORJSONMixin):
+    """RTK positioning data including fix status, satellite counts, and correction info."""
+
     # Core fields (existing)
     status: int = 0  # RTKFixStatus: 0=none, 1=SPP, 2=float, 4=fixed
     pos_level: int = 0
@@ -327,6 +343,8 @@ class RTKData(DataClassORJSONMixin):
 
 @dataclass
 class LocationData(DataClassORJSONMixin):
+    """Raw position and heading data from a single location report entry."""
+
     real_pos_x: int = 0
     real_pos_y: int = 0
     real_toward: int = 0
@@ -336,12 +354,16 @@ class LocationData(DataClassORJSONMixin):
 
 @dataclass
 class BladeUsed(DataClassORJSONMixin):
+    """Blade usage time and warning threshold for maintenance tracking."""
+
     blade_used_time: int = 0
     blade_used_warn_time: int = 0
 
 
 @dataclass
 class Maintain(DataClassORJSONMixin):
+    """Maintenance counters: blade hours, mileage, work time, and battery cycles."""
+
     blade_used_time: BladeUsed = field(default_factory=BladeUsed)
     mileage: int = 0
     work_time: int = 0
@@ -350,6 +372,8 @@ class Maintain(DataClassORJSONMixin):
 
 @dataclass
 class VisionInfo(DataClassORJSONMixin):
+    """Visual-inertial odometry state reported by the vision subsystem."""
+
     x: float = 0.0
     y: float = 0.0
     heading: float = 0.0
@@ -361,11 +385,15 @@ class VisionInfo(DataClassORJSONMixin):
 
 @dataclass
 class HeadingState(DataClassORJSONMixin):
+    """Current heading/compass state reported during navigation."""
+
     heading_state: int = 0
 
 
 @dataclass
 class WorkData(DataClassORJSONMixin):
+    """Active mowing session metrics: path, progress, area, and breakpoint info."""
+
     path: int = 0
     path_hash: int = 0
     progress: int = 0
@@ -437,6 +465,8 @@ class BaseScore(DataClassORJSONMixin):
 
 @dataclass
 class BasestationInfo(DataClassORJSONMixin):
+    """RTK base-station status, firmware version, and correction channel details."""
+
     # Fields from RptBasestationInfo (via toapp_report_data subscription)
     ver_major: int = 0
     ver_minor: int = 0
@@ -470,12 +500,16 @@ class BasestationInfo(DataClassORJSONMixin):
 
 @dataclass
 class CutterWorkModeInfo(DataClassORJSONMixin):
+    """Current cutter/blade operating mode and RPM."""
+
     current_cutter_mode: int = 0
     current_cutter_rpm: int = 0
 
 
 @dataclass
 class VisionPointMsg(DataClassORJSONMixin):
+    """A single 3-D point detected by the vision system."""
+
     x: float = 0.0
     y: float = 0.0
     z: float = 0.0
@@ -483,6 +517,8 @@ class VisionPointMsg(DataClassORJSONMixin):
 
 @dataclass
 class VisionPointInfo(DataClassORJSONMixin):
+    """Labelled cluster of vision-detected 3-D points from the camera subsystem."""
+
     label: int = 0
     num: int = 0
     vision_point: list[VisionPointMsg] = field(default_factory=list)
@@ -490,12 +526,16 @@ class VisionPointInfo(DataClassORJSONMixin):
 
 @dataclass
 class VisionStatisticMsg(DataClassORJSONMixin):
+    """Mean and variance statistics for a single vision measurement category."""
+
     mean: float = 0.0
     var: float = 0.0
 
 
 @dataclass
 class VisionStatisticInfo(DataClassORJSONMixin):
+    """Timestamped collection of vision measurement statistics from the camera subsystem."""
+
     timestamp: float = 0.0
     num: int = 0
     vision_statistics: list[VisionStatisticMsg] = field(default_factory=list)
@@ -527,6 +567,8 @@ class WorkSessionResult(DataClassORJSONMixin):
 
 @dataclass
 class ReportData(DataClassORJSONMixin):
+    """Aggregated device report data updated from incoming ``ReportInfoData`` protobuf messages."""
+
     connect: ConnectData = field(default_factory=ConnectData)
     dev: DeviceData = field(default_factory=DeviceData)
     maintenance: Maintain = field(default_factory=Maintain)

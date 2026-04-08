@@ -19,6 +19,8 @@ from pymammotion.transport.base import SessionExpiredError
 
 
 class HomeAssistantRTKApi:
+    """Home Assistant API adapter for RTK base station devices."""
+
     def __init__(self) -> None:
         # TODO(task #8): Replace Mammotion() with MammotionClient() once CloudIOTGateway
         # is accessible from MammotionClient and RTK state is unified with MowingDevice.

@@ -42,6 +42,8 @@ from pymammotion.proto import (
 
 
 class MessageSystem(AbstractMessage, ABC):
+    """Mixin that builds and serialises system protobuf command messages (reset, clock, reporting, RTK)."""
+
     def send_order_msg_sys(self, sys) -> bytes:
         """Serialize a system (MctlSys) payload into a LubaMsg request frame targeting the main controller."""
         luba_msg = LubaMsg(

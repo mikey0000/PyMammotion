@@ -19,6 +19,8 @@ logger = getLogger(__name__)
 
 
 class MessageBasestation(AbstractMessage, ABC):
+    """Mixin that builds and serialises RTK base station protobuf command messages."""
+
     def send_order_msg_basestation(self, base) -> bytes:
         """Serialize and return a LubaMsg basestation request with the given driver payload."""
         return LubaMsg(

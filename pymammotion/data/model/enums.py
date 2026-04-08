@@ -12,6 +12,8 @@ class ConnectionPreference(Enum):
 
 
 class PositionMode(Enum):
+    """RTK position fix quality mode reported by the mower."""
+
     FIX = 0
     SINGLE = 1
     FLOAT = 2
@@ -46,6 +48,8 @@ class PositionMode(Enum):
 
 
 class RTKStatus(Enum):
+    """Overall RTK positioning status of the mower."""
+
     NONE = 0
     SINGLE = 1
     FIX = 4

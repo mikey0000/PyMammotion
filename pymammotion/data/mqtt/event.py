@@ -11,6 +11,8 @@ from pymammotion.proto import luba_msg_pb2
 
 
 class Base64EncodedProtobuf(SerializableType):
+    """Mashumaro serializable type that decodes a base64-encoded LubaMsg protobuf string."""
+
     def __init__(self, proto: str) -> None:
         self.proto = proto
 
@@ -38,11 +40,15 @@ class Base64EncodedProtobuf(SerializableType):
 
 @dataclass
 class DeviceProtobufMsgEventValue(DataClassORJSONMixin):
+    """Payload value for a ``device_protobuf_msg_event`` containing the raw base64 content."""
+
     content: str
 
 
 @dataclass
 class DeviceWarningEventValue(DataClassORJSONMixin):
+    """Payload value for a ``device_warning_event`` carrying a numeric error code."""
+
     # TODO: enum for error codes
     # (see resources/res/values-en-rUS/strings.xml in APK)
     code: int
@@ -50,6 +56,8 @@ class DeviceWarningEventValue(DataClassORJSONMixin):
 
 @dataclass
 class DeviceConfigurationRequestValue(DataClassORJSONMixin):
+    """Payload value for a device configuration request event."""
+
     code: int
     bizId: str
     params: str
@@ -57,17 +65,23 @@ class DeviceConfigurationRequestValue(DataClassORJSONMixin):
 
 @dataclass
 class DeviceNotificationEventCode(DataClassORJSONMixin):
+    """Parsed notification event code with a local timestamp."""
+
     localTime: int
     code: str
 
 
 @dataclass
 class DeviceNotificationEventValue(DataClassORJSONMixin):
+    """Wrapper holding a JSON-encoded ``DeviceNotificationEventCode`` string."""
+
     data: str  # parsed to DeviceNotificationEventCode
 
 
 @dataclass
 class DeviceBizReqEventValue(DataClassORJSONMixin):
+    """Payload value for a ``device_biz_req_event`` business request."""
+
     bizType: str
     bizId: str
     params: str
@@ -75,6 +89,8 @@ class DeviceBizReqEventValue(DataClassORJSONMixin):
 
 @dataclass
 class GeneralParams(DataClassORJSONMixin):
+    """Common envelope fields shared by all Aliyun IoT thing-event parameter payloads."""
+
     group_id_list: Annotated[list[str], Alias("groupIdList")]
     group_id: Annotated[str, Alias("groupId")]
     category_key: Annotated[Literal["LawnMower", "Tracker"], Alias("categoryKey")]
@@ -111,6 +127,8 @@ class GeneralParams(DataClassORJSONMixin):
 
 @dataclass
 class DeviceProtobufMsgEventParams(GeneralParams):
+    """Event parameters for a ``device_protobuf_msg_event`` carrying a LubaMsg payload."""
+
     identifier: Literal["device_protobuf_msg_event"]
     type: Literal["info"]
     value: DeviceProtobufMsgEventValue
@@ -130,6 +148,8 @@ class DeviceNotificationEventParams(GeneralParams):
 
 @dataclass
 class DeviceBizReqEventParams(GeneralParams):
+    """Event parameters for a ``device_biz_req_event`` business request."""
+
     identifier: Literal["device_biz_req_event"]
     type: Literal["info"]
     value: DeviceBizReqEventValue
@@ -137,6 +157,8 @@ class DeviceBizReqEventParams(GeneralParams):
 
 @dataclass
 class DeviceWarningEventParams(GeneralParams):
+    """Event parameters for a ``device_warning_event`` alert."""
+
     identifier: Literal["device_warning_event"]
     type: Literal["alert"]
     value: DeviceWarningEventValue
@@ -144,12 +166,16 @@ class DeviceWarningEventParams(GeneralParams):
 
 @dataclass
 class DeviceConfigurationRequestEvent(GeneralParams):
+    """Event parameters for a device configuration request (no identifier field)."""
+
     type: Literal["info"]
     value: DeviceConfigurationRequestValue
 
 
 @dataclass
 class DeviceLogProgressEventParams(GeneralParams):
+    """Event parameters for a ``device_log_progress_event`` log-upload progress notification."""
+
     identifier: Literal["device_log_progress_event"]
     type: Literal["info"]
     value: DeviceNotificationEventValue
@@ -157,6 +183,8 @@ class DeviceLogProgressEventParams(GeneralParams):
 
 @dataclass
 class ThingEventMessage(DataClassORJSONMixin):
+    """Top-level MQTT thing-event message dispatched to one of the typed event-params variants."""
+
     method: Literal["thing.events", "thing.properties"]
     id: str
     params: (
@@ -206,6 +234,8 @@ class ThingEventMessage(DataClassORJSONMixin):
 
 @dataclass
 class MammotionProtoMsgParams(DataClassORJSONMixin, SerializableType):
+    """Parsed protobuf message parameters from a Mammotion direct-MQTT event."""
+
     value: DeviceProtobufMsgEventValue
     iot_id: str = ""
     product_key: str = ""
@@ -221,6 +251,8 @@ class MammotionProtoMsgParams(DataClassORJSONMixin, SerializableType):
 
 @dataclass
 class MammotionEventMessage(DataClassORJSONMixin):
+    """Top-level event message received over Mammotion's direct MQTT connection."""
+
     id: str
     version: str
     sys: dict

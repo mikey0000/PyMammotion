@@ -2,6 +2,8 @@ import struct
 
 
 class MurMurHashUtil:
+    """MurmurHash2 64-bit implementation used for computing map/path hash values."""
+
     MASK_32 = 0xFFFFFFFF
     MULTIPLIER = 1540483477
 

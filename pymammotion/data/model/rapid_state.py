@@ -8,6 +8,8 @@ from pymammotion.utility.conversions import parse_double
 
 
 class RTKStatus(Enum):
+    """RTK fix quality reported in rapid-state messages."""
+
     NONE = 0
     BAD = 1
     FINE = 4
@@ -15,6 +17,8 @@ class RTKStatus(Enum):
 
 @dataclass
 class RapidState(DataClassORJSONMixin):
+    """Live position and RTK fix state decoded from a rapid-state tunnel message."""
+
     pos_x: float = 0
     pos_y: float = 0
     rtk_status: RTKStatus = RTKStatus.NONE

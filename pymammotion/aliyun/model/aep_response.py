@@ -6,6 +6,8 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 @dataclass
 class DeviceData(DataClassORJSONMixin):
+    """AEP device credential data returned from device registration."""
+
     deviceSecret: str
     productKey: str
     deviceName: str
@@ -13,6 +15,8 @@ class DeviceData(DataClassORJSONMixin):
 
 @dataclass
 class AepResponse(DataClassORJSONMixin):
+    """Top-level response envelope for the AEP device registration API."""
+
     code: int
     data: DeviceData
     id: str | None = None

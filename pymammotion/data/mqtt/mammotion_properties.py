@@ -8,6 +8,8 @@ from mashumaro.types import Alias
 
 @dataclass
 class FirmwareInfo(DataClassORJSONMixin):
+    """Firmware component descriptor with type, component, and version fields."""
+
     t: str
     c: str
     v: str
@@ -15,6 +17,8 @@ class FirmwareInfo(DataClassORJSONMixin):
 
 @dataclass
 class DeviceVersionInfo(DataClassORJSONMixin):
+    """Overall device version and per-module firmware list."""
+
     dev_ver: Annotated[str, Alias("devVer")]
     whole: int
     fw_info: Annotated[list[FirmwareInfo], Alias("fwInfo")]
@@ -25,12 +29,16 @@ class DeviceVersionInfo(DataClassORJSONMixin):
 
 @dataclass
 class Coordinate(DataClassORJSONMixin):
+    """Geographic coordinate as longitude/latitude decimal degrees."""
+
     lon: float
     lat: float
 
 
 @dataclass
 class InternalNavigation(DataClassORJSONMixin):
+    """Internal navigation subsystem bandwidth breakdown."""
+
     nav: Annotated[str, Alias("NAV")]
     pau: Annotated[str, Alias("Pau")]
     r_pau: Annotated[str, Alias("rPau")]
@@ -45,6 +53,8 @@ class InternalNavigation(DataClassORJSONMixin):
 
 @dataclass
 class BandwidthTraffic(DataClassORJSONMixin):
+    """Per-channel bandwidth traffic measurements for IoT, RoI, FPV, and internal navigation."""
+
     iot: Annotated[str, Alias("IoT")]
     roi: Annotated[str, Alias("RoI")]
     fpv: Annotated[str, Alias("FPV")]
@@ -56,6 +66,8 @@ class BandwidthTraffic(DataClassORJSONMixin):
 
 @dataclass
 class TrafficPeriod(DataClassORJSONMixin):
+    """Network traffic statistics for a single time period (received, transmitted, speed)."""
+
     r: str
     t: str
     s: str
@@ -63,6 +75,8 @@ class TrafficPeriod(DataClassORJSONMixin):
 
 @dataclass
 class TrafficData(DataClassORJSONMixin):
+    """Aggregated traffic statistics grouped by hour, day, and month."""
+
     upt: str
     hour: Annotated[dict[str, TrafficPeriod], Alias("Hour")]
     day: Annotated[dict[str, TrafficPeriod], Alias("Day")]
@@ -74,6 +88,8 @@ class TrafficData(DataClassORJSONMixin):
 
 @dataclass
 class NetworkInfo(DataClassORJSONMixin):
+    """Comprehensive network information including WiFi, cellular, and traffic statistics."""
+
     ssid: str
     ip: str
     wifi_sta_mac: str
@@ -120,6 +136,8 @@ class NetworkInfo(DataClassORJSONMixin):
 
 @dataclass
 class DeviceOtherInfo(DataClassORJSONMixin):
+    """Miscellaneous diagnostic information reported in the ``deviceOtherInfo`` property."""
+
     soc_up_time: Annotated[int, Alias("socUpTime")]
     mcu_up_time: Annotated[int, Alias("mcuUpTime")]
     soc_loads: Annotated[str, Alias("socLoads")]
@@ -208,6 +226,8 @@ class DeviceOtherInfo(DataClassORJSONMixin):
 
 @dataclass
 class CheckData(DataClassORJSONMixin):
+    """Self-test result with categorised error, warning, and OK code lists."""
+
     result: str
     error: Annotated[list[int], Alias("Error")]
     warn: Annotated[list[int], Alias("Warn")]
@@ -219,6 +239,8 @@ class CheckData(DataClassORJSONMixin):
 
 @dataclass
 class DeviceProperties(DataClassORJSONMixin):
+    """Full set of device properties received in a Mammotion direct-MQTT properties message."""
+
     device_state: Annotated[int, Alias("deviceState")]
     battery_percentage: Annotated[int, Alias("batteryPercentage")]
     device_version: Annotated[str, Alias("deviceVersion")]

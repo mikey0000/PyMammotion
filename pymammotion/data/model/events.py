@@ -7,6 +7,8 @@ from pymammotion.data.model.enums import TaskAreaStatus
 
 @dataclass
 class WorkTaskEvent(DataClassORJSONMixin):
+    """Work task progress event mapping zone hashes to their current mowing status."""
+
     hash_area_map: dict[int, TaskAreaStatus] = field(default_factory=dict)
     ids: list[int] = field(default_factory=list)
 
@@ -47,6 +49,8 @@ class OTAProgress(DataClassORJSONMixin):
 
 @dataclass
 class Events(DataClassORJSONMixin):
+    """Container for all device event types tracked during a mowing session."""
+
     work_tasks_event: WorkTaskEvent = field(default_factory=WorkTaskEvent)
     blade_height_event: BladeHeightEvent = field(default_factory=BladeHeightEvent)
     ota_progress: OTAProgress = field(default_factory=OTAProgress)

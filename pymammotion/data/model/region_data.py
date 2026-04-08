@@ -5,6 +5,8 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 @dataclass
 class RegionData(DataClassORJSONMixin):
+    """Mutable container for a single region's boundary data and metadata."""
+
     def __init__(self) -> None:
         self.hash: int = 0
         self.action: int = 0

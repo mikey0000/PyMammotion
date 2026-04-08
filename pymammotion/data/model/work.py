@@ -7,6 +7,8 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 @dataclass
 class CurrentTaskSettings(DataClassORJSONMixin):
+    """Configuration parameters for the currently active or most recent mowing task."""
+
     pver: int = 0
     job_id: int = 0
     job_ver: int = 0

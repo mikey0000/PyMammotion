@@ -12,6 +12,8 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EncryptionUtils:
+    """AES and RSA encryption utilities used for Mammotion HTTP authentication."""
+
     PRIVATE_KEY = """MIICdwIBADANBgkqhkiG9w0BAQEFAASCAmEwggJdAgEAAoGBAOFizbd1fC5XNKJ89u0XNvPZNR/L
                          0h547iSWjOCuvvMu76ZSaS3/Tu2C1C+XmlnmBWTyY4ON+xECiNUXm/aWQ3P0g+wf60zjPbNzgL2Q
                          7njXJG6wka4KkbdQxUdS0TTpL256LnV1LsG855bsbJIJiQPbfUq6HbB5xH7sXdrmFu1DAgMBAAEC

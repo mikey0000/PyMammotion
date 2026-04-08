@@ -2,6 +2,8 @@ import base64
 
 
 class DatatypeConverter:
+    """Utility class for Base64 encoding and decoding, mirroring the Java DatatypeConverter API."""
+
     encode_map: list[str | int] | None = None
 
     @staticmethod

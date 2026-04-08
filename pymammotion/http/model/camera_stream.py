@@ -5,12 +5,16 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 @dataclass
 class Camera(DataClassORJSONMixin):
+    """Single camera entry within a stream subscription response."""
+
     cameraId: int
     token: str
 
 
 @dataclass
 class StreamSubscriptionResponse(DataClassORJSONMixin):
+    """Agora stream subscription token and channel details returned by the cloud API."""
+
     appid: str
     openEncrypt: int
     cameras: list[Camera]
@@ -24,6 +28,8 @@ class StreamSubscriptionResponse(DataClassORJSONMixin):
 
 @dataclass
 class VideoResourceResponse(DataClassORJSONMixin):
+    """Video resource usage and availability data returned for a device."""
+
     id: str
     deviceId: str
     deviceName: str

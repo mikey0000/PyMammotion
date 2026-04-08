@@ -251,7 +251,7 @@ class MammotionClient:
                 except Exception:  # noqa: BLE001
                     _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
-            if actively_working and device.map.current_mow_path and work.now_index > 0:
+            if actively_working and device.map.current_mow_path:
                 _apply_mow_progress_geojson(device)
 
         sub = handle.subscribe_state_changed(_on_state_changed)

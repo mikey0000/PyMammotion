@@ -6,6 +6,8 @@ from pymammotion.utility.device_type import DeviceType
 
 
 class AbstractMessage:
+    """Abstract base class providing sequence-counter and device-routing helpers for command builders."""
+
     seqs = AtomicInteger(0)
     user_account: int
 

@@ -9,6 +9,8 @@ DataT = TypeVar("DataT")
 
 @dataclass
 class RegionResponseData(DataClassORJSONMixin):
+    """Region endpoint details including MQTT, API gateway, and push channel URLs."""
+
     shortRegionId: str
     oaApiGatewayEndpoint: str
     regionId: str
@@ -20,6 +22,8 @@ class RegionResponseData(DataClassORJSONMixin):
 
 @dataclass
 class RegionResponse(DataClassORJSONMixin):
+    """Top-level response from the region-lookup API."""
+
     data: RegionResponseData
     code: int
     id: str | None = None

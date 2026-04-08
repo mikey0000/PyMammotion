@@ -53,17 +53,23 @@ class PathType(IntEnum):
 
 @dataclass
 class CommDataCouple:
+    """An (x, y) coordinate pair from a common-data map frame."""
+
     x: float = 0.0
     y: float = 0.0
 
 
 @dataclass
 class AreaLabelName(DataClassORJSONMixin):
+    """User-visible label name for a mowing area."""
+
     label: str = ""
 
 
 @dataclass
 class NavNameTime(DataClassORJSONMixin):
+    """Name and creation/modification timestamps for a navigation map entry."""
+
     name: str = ""
     create_time: int = 0
     modify_time: int = 0
@@ -71,6 +77,8 @@ class NavNameTime(DataClassORJSONMixin):
 
 @dataclass
 class NavGetCommData(DataClassORJSONMixin):
+    """Decoded payload of a ``toapp_get_commondata_ack`` response frame."""
+
     pver: int = 0
     sub_cmd: int = 0
     result: int = 0
@@ -90,6 +98,8 @@ class NavGetCommData(DataClassORJSONMixin):
 
 @dataclass
 class MowPathPacket(DataClassORJSONMixin):
+    """A single packet of mow-path coordinate data within a MowPath frame."""
+
     path_hash: int = 0
     path_type: int = 0
     path_total: int = 0
@@ -100,6 +110,8 @@ class MowPathPacket(DataClassORJSONMixin):
 
 @dataclass
 class MowPath(DataClassORJSONMixin):
+    """Complete mow-path response assembled from one or more ``MowPathPacket`` frames."""
+
     pver: int = 0
     sub_cmd: int = 0
     result: int = 0
@@ -118,6 +130,8 @@ class MowPath(DataClassORJSONMixin):
 
 @dataclass
 class SvgMessageData(DataClassORJSONMixin):
+    """Transform and metadata fields contained in an SVG map tile message."""
+
     x_move: float = 0.0
     y_move: float = 0.0
     scale: float = 0.0
@@ -135,6 +149,8 @@ class SvgMessageData(DataClassORJSONMixin):
 
 @dataclass
 class SvgMessage(DataClassORJSONMixin):
+    """Envelope for a device-rendered SVG map tile response frame."""
+
     pver: int = 0
     sub_cmd: int = 0
     total_frame: int = 0
@@ -148,6 +164,8 @@ class SvgMessage(DataClassORJSONMixin):
 
 @dataclass
 class FrameList(DataClassORJSONMixin):
+    """Accumulates the ordered frames for a single hash-keyed map data entry."""
+
     total_frame: int = 0
     sub_cmd: int = 0
     data: list[NavGetCommData | SvgMessage] = field(default_factory=list)
@@ -187,6 +205,8 @@ class EdgePoints(DataClassORJSONMixin):
 
 @dataclass
 class Plan(DataClassORJSONMixin):
+    """A scheduled mowing plan (job) retrieved from the device."""
+
     pver: int = 0
     sub_cmd: int = 2
     area: int = 0
@@ -244,6 +264,8 @@ class NavGetHashListData(DataClassORJSONMixin):
 
 @dataclass
 class RootHashList(DataClassORJSONMixin):
+    """Top-level hash list grouping all hash IDs for a given sub-command type."""
+
     total_frame: int = 0
     sub_cmd: int = 0
     data: list[NavGetHashListData] = field(default_factory=list)
@@ -270,7 +292,9 @@ class HashList(DataClassORJSONMixin):
     obstacle: dict[int, FrameList] = field(default_factory=dict)  # type 1
     dump: dict[int, FrameList] = field(default_factory=dict)  # type 12? / sub cmd 4
     svg: dict[int, FrameList] = field(default_factory=dict)  # type 13
-    line: dict[int, FrameList] = field(default_factory=dict)  # type 10 possibly breakpoint? / sub cmd 3
+    line: dict[int, FrameList] = field(
+        default_factory=dict
+    )  # type 10, sub cmd 3 — breakpoint line data, keyed by ub_path_hash
     visual_safety_zone: dict[int, FrameList] = field(default_factory=dict)  # type 25
     visual_obstacle_zone: dict[int, FrameList] = field(default_factory=dict)  # type 26
     plan: dict[str, Plan] = field(default_factory=dict)
@@ -278,7 +302,6 @@ class HashList(DataClassORJSONMixin):
     current_mow_path: dict[int, dict[int, MowPath]] = field(default_factory=dict)
     generated_geojson: dict[str, Any] = field(default_factory=dict)
     generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
-    last_ub_zone_hash: int = 0
     last_ub_path_hash: int = 0
     plans_stale: bool = False
     edge_points: dict[int, EdgePoints] = field(default_factory=dict)  # hash → EdgePoints
@@ -303,7 +326,7 @@ class HashList(DataClassORJSONMixin):
         """Prune all map dictionaries to only retain entries whose hash is present in hashlist."""
         if not hashlist:
             return
-        if bol_hash:
+        if bol_hash and bol_hash != 0:
             self.invalidate_maps(bol_hash)
         self.area = {hash_id: frames for hash_id, frames in self.area.items() if hash_id in hashlist}
         self.path = {hash_id: frames for hash_id, frames in self.path.items() if hash_id in hashlist}
@@ -613,21 +636,6 @@ class HashList(DataClassORJSONMixin):
         if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
             self.root_hash_lists = []
 
-    def invalidate_zones(self, ub_zone_hash: int) -> bool:
-        """Return True if zone data is stale because the device's ub_zone_hash changed.
-
-        Unlike bol_hash, ub_zone_hash cannot be locally recomputed, so staleness is
-        detected by watching for transitions rather than by value comparison.  Zero
-        is the uninitialised sentinel and never triggers a re-sync.
-
-        When stale, root_hash_lists is cleared so the next MapFetchSaga starts fresh.
-        """
-        if ub_zone_hash in (0, self.last_ub_zone_hash):
-            return False
-        self.last_ub_zone_hash = ub_zone_hash
-        self.root_hash_lists = []
-        return True
-
     def invalidate_mow_path(self, ub_path_hash: int) -> None:
         """Clear current_mow_path when ub_path_hash transitions.
 
@@ -636,24 +644,35 @@ class HashList(DataClassORJSONMixin):
         non-zero value (new job, refetch required) or to 0 (job ended).
         Repeated calls with the same value are no-ops.
         """
+        if ub_path_hash == 0 and self.generated_mow_path_geojson:
+            self.current_mow_path = {}
+            self.generated_mow_path_geojson = {}
+
         if ub_path_hash == self.last_ub_path_hash:
             return
         self.last_ub_path_hash = ub_path_hash
         self.current_mow_path = {}
         self.generated_mow_path_geojson = {}
 
-    def invalidate_paths(self, ub_path_hash: int) -> bool:
-        """Return True if recorded-path data is stale because the device's ub_path_hash changed.
+    def invalidate_breakpoint_line(self, ub_path_hash: int) -> bool:
+        """Synchronise self.line to the device's current ub_path_hash.
 
-        Zero is the uninitialised sentinel (device has no recorded paths) and never
-        triggers a re-sync.  On a detected change, HashList.path is cleared so
-        stale type-2 path frames are not served to callers.
+        self.line holds type-10 breakpoint line data (sub cmd 3), keyed by
+        ub_path_hash.  The device reports the hash of the line segment it has
+        breakpointed on via work.ub_path_hash.
+
+        - Zero means the mower is not on a breakpoint line; clear everything.
+        - Non-zero: retain only the entry matching ub_path_hash (the currently
+          active line) and discard any others that are now stale.
+
+        Returns True if the caller should re-fetch line data from the device
+        (i.e. the active hash is not yet cached), False if no re-fetch is needed.
         """
-        if ub_path_hash in (0, self.last_ub_path_hash):
+        if ub_path_hash == 0:
+            self.line = {}
             return False
-        self.last_ub_path_hash = ub_path_hash
-        self.path = {}
-        return True
+        self.line = {h: frames for h, frames in self.line.items() if h == ub_path_hash}
+        return ub_path_hash not in self.line
 
     def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
         """Generate geojson from frames."""

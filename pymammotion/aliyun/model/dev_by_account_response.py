@@ -182,6 +182,8 @@ class Device(DataClassORJSONMixin):
 
 @dataclass
 class Data(DataClassORJSONMixin):
+    """Paginated list of devices associated with an account."""
+
     total: int
     data: list[Device]
     pageNo: int
@@ -190,6 +192,8 @@ class Data(DataClassORJSONMixin):
 
 @dataclass
 class ListingDevAccountResponse(DataClassORJSONMixin):
+    """Top-level response for the list-devices-by-account API."""
+
     code: int
     data: Data | None
     id: str | None = None
@@ -197,6 +201,8 @@ class ListingDevAccountResponse(DataClassORJSONMixin):
 
 @dataclass
 class ShareNotification(DataClassORJSONMixin):
+    """Device share notification containing initiator, receiver, and device metadata."""
+
     gmt_modified: Annotated[int, Alias("gmtModified")]
     target_id: Annotated[str, Alias("targetId")]
     receiver_identity_id: Annotated[str, Alias("receiverIdentityId")]
@@ -221,6 +227,8 @@ class ShareNotification(DataClassORJSONMixin):
 
 @dataclass
 class ShareNoticeData(DataClassORJSONMixin):
+    """Paginated list of share notifications."""
+
     total: int
     data: list[ShareNotification]
     pageNo: int
@@ -229,6 +237,8 @@ class ShareNoticeData(DataClassORJSONMixin):
 
 @dataclass
 class ShareNoticeListResponse(DataClassORJSONMixin):
+    """Top-level response for the list-share-notifications API."""
+
     code: int
     data: ShareNoticeData | None
     id: str | None = None

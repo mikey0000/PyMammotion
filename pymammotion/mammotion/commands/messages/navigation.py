@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 class MessageNavigation(AbstractMessage, ABC):
+    """Mixin that builds and serialises navigation protobuf command messages (maps, routes, tasks)."""
+
     def send_order_msg_nav(self, build: MctlNav) -> bytes:
         """Wrap a navigation command in a LubaMsg envelope and serialise it to bytes."""
         luba_msg = LubaMsg(

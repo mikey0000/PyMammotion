@@ -50,6 +50,8 @@ Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m"]
 
 
 class DeviceType(Enum):
+    """Enum of all supported Mammotion device types with their numeric ID, name prefix, and model string."""
+
     UNKNOWN = (-1, "UNKNOWN", "Unknown")
     RTK = (0, "RTK", "RTK")
     LUBA = (1, "Luba", "Luba 1")

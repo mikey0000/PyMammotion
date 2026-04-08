@@ -4,6 +4,8 @@ from pymammotion.data.model.report_info import ConnectData
 
 
 class BleOrderCmd(IntEnum):
+    """BLE command opcode identifiers used in the Mammotion protocol."""
+
     allpowerfullRW = 67
     alongBorder = 9
     areaAndTimeAndPathUpdate = 27
@@ -84,6 +86,8 @@ class BleOrderCmd(IntEnum):
 
 
 class SystemUpdateBuf(IntEnum):
+    """Byte-buffer index constants for parsing legacy system status update packets."""
+
     BATTERY_STATE_INDEX = 2
     CHARGE_POS_VAILD_INDEX = 9
     CHARGE_POS_X_F_INDEX = 7
@@ -126,6 +130,8 @@ class SystemUpdateBuf(IntEnum):
 
 
 class SystemRapidStateTunnelIndex(IntEnum):
+    """Byte-buffer index constants for parsing rapid (high-frequency) device state tunnel packets."""
+
     DIS_CAR_RTK_STARS_INDEX = 15
     DIS_RTK_STATUS_INDEX = 13
     L1_SATS_INDEX = 2
@@ -146,6 +152,8 @@ class SystemRapidStateTunnelIndex(IntEnum):
 
 
 class SystemTardStateTunnel(IntEnum):
+    """Byte-buffer index constants for parsing slow (low-frequency) device state tunnel packets."""
+
     APP_CONNECTED_INFO = 27
     BATTERY_VAL_INDEX = 2
     BOL_HASH_INDEX = 6
@@ -188,6 +196,8 @@ class SystemTardStateTunnel(IntEnum):
 
 
 class WorkMode(IntEnum):
+    """Numeric work-mode identifiers reported by the device status field."""
+
     MODE_NOT_ACTIVE = 0
     MODE_ONLINE = 1
     MODE_OFFLINE = 2

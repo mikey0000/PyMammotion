@@ -14,6 +14,8 @@ from pymammotion.mammotion.devices.managers.managers import AbstractDeviceManage
 
 
 class MammotionMowerDeviceManager(AbstractDeviceManager):
+    """Manager that owns and coordinates the BLE and cloud transport instances for a single mower."""
+
     def __init__(
         self,
         name: str,

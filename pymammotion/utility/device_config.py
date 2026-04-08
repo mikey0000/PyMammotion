@@ -21,6 +21,8 @@ default_yuka_config = {
 
 
 class DeviceConfig:
+    """Per-product-key device capability configuration (blade height, speed, area limits)."""
+
     def __init__(self) -> None:
         # Dictionary to store all device configurations
 

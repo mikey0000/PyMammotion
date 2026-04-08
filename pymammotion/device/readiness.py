@@ -43,6 +43,16 @@ class ReadinessChecker(ABC):
         """
 
 
+class NoReadinessChecker(ReadinessChecker):
+    """No-op readiness checker that always reports the device as ready."""
+
+    def check(self, device: MowingDevice) -> ReadinessStatus:
+        return ReadinessStatus(is_ready=True)
+
+    def commands_to_fetch_missing(self, device: MowingDevice) -> list[str]:
+        return []
+
+
 class MowerReadinessChecker(ReadinessChecker):
     """Readiness checker for Luba mowers (Luba 1, Luba 2, Luba 3000)."""
 
@@ -80,43 +90,10 @@ class MowerReadinessChecker(ReadinessChecker):
         return commands
 
 
-class YukaReadinessChecker(ReadinessChecker):
-    """Readiness checker for Yuka pool cleaners."""
-
-    def check(self, device: MowingDevice) -> ReadinessStatus:
-        """Check Yuka readiness — does NOT require map data."""
-        missing: list[str] = []
-
-        if not device.mower_state.product_key:
-            missing.append("product_key")
-
-        if device.report_data.dev.sys_status == 0 and device.report_data.dev.battery_val == 0:
-            missing.append("report_data")
-
-        if not device.mower_state.swversion:
-            missing.append("firmware_version")
-
-        return ReadinessStatus(is_ready=len(missing) == 0, missing=missing)
-
-    def commands_to_fetch_missing(self, device: MowingDevice) -> list[str]:
-        """Return commands to fetch missing Yuka data."""
-        status = self.check(device)
-        commands: list[str] = []
-        for item in status.missing:
-            match item:
-                case "product_key":
-                    commands.append("get_device_product_model")
-                case "report_data":
-                    commands.append("get_report_cfg")
-                case "firmware_version":
-                    commands.append("get_device_version_main")
-        return commands
-
-
 def get_readiness_checker(device_name: str) -> ReadinessChecker:
     """Return the appropriate readiness checker for the device type."""
     from pymammotion.utility.device_type import DeviceType
 
-    if DeviceType.is_yuka(device_name) or DeviceType.is_yuka_mini(device_name):
-        return YukaReadinessChecker()
-    return MowerReadinessChecker()
+    if not DeviceType.is_swimming_pool(device_name) or not DeviceType.is_rtk(device_name):
+        return MowerReadinessChecker()
+    return NoReadinessChecker()

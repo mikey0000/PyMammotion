@@ -3,12 +3,16 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RangeLimit:
+    """Minimum and maximum bounds for a single device parameter."""
+
     min: float
     max: float
 
 
 @dataclass
 class DeviceLimits:
+    """Operational limits for blade height, working speed, and path spacing."""
+
     blade_height: RangeLimit = field(default_factory=RangeLimit)
     working_speed: RangeLimit = field(default_factory=RangeLimit)
     path_spacing: RangeLimit = field(default_factory=RangeLimit)

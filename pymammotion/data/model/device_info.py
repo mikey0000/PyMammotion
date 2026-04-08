@@ -5,6 +5,8 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 @dataclass
 class SideLight(DataClassORJSONMixin):
+    """Side LED light configuration including schedule and action settings."""
+
     operate: int = 0
     enable: int = 0
     start_hour: int = 0
@@ -16,6 +18,8 @@ class SideLight(DataClassORJSONMixin):
 
 @dataclass
 class DeviceNonWorkingHours(DataClassORJSONMixin):
+    """Time window during which the mower is not permitted to operate."""
+
     sub_cmd: int = 0
     start_time: str = ""
     end_time: str = ""
@@ -23,6 +27,8 @@ class DeviceNonWorkingHours(DataClassORJSONMixin):
 
 @dataclass
 class LampInfo(DataClassORJSONMixin):
+    """Lamp brightness and auto/night-light mode settings."""
+
     lamp_bright: int = 0
     manual_light: bool = False
     night_light: bool = False
@@ -30,12 +36,16 @@ class LampInfo(DataClassORJSONMixin):
 
 @dataclass
 class AnimalProtection(DataClassORJSONMixin):
+    """Animal protection mode and status configuration."""
+
     mode: int = 0
     status: int = 0
 
 
 @dataclass
 class AudioSettings(DataClassORJSONMixin):
+    """Audio output settings including language, volume, and voice gender."""
+
     language: str = ""
     volume: int = 0
     sex: int = 0
@@ -43,6 +53,8 @@ class AudioSettings(DataClassORJSONMixin):
 
 @dataclass
 class MowerInfo(DataClassORJSONMixin):
+    """Aggregated mower configuration including blade, navigation, and peripheral settings."""
+
     blade_status: bool = False
     rain_detection: bool = False
     traversal_mode: int = 0
@@ -68,6 +80,8 @@ class MowerInfo(DataClassORJSONMixin):
 
 @dataclass
 class DeviceFirmwares(DataClassORJSONMixin):
+    """Firmware version strings for all sub-components of the mower."""
+
     device_version: str = ""
     # Core modules (Luba 1 + 2)
     main_controller: str = ""  # type 1 / 101

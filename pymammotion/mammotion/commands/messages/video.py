@@ -17,6 +17,8 @@ from pymammotion.utility.device_type import DeviceType
 
 
 class MessageVideo(AbstractMessage, ABC):
+    """Mixin that builds and serialises video protobuf command messages (Agora channel, FPV)."""
+
     def send_order_msg_video(self, mul: SocMul):
         """Serialize and return a LubaMsg multimedia video request with the given payload."""
         luba_msg = LubaMsg(

@@ -1,4 +1,6 @@
 class tmp_constant:
+    """Namespace of Aliyun IoT protocol constants used across the linkkit/cloud stack."""
+
     ALGECC = "ecc"
     ALGHMACMD5 = "hmacmd5"
     ALGNONE = "none"

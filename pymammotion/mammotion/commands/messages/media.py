@@ -21,6 +21,8 @@ from pymammotion.proto import (
 
 
 class MessageMedia(AbstractMessage, ABC):
+    """Mixin that builds and serialises multimedia protobuf command messages (audio, lights, wiper)."""
+
     def send_order_msg_media(self, mul):
         """Serialize and return a LubaMsg multimedia request with the given payload."""
         luba_msg = LubaMsg(

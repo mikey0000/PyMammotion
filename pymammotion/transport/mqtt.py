@@ -275,7 +275,13 @@ class MQTTTransport(Transport):
                 try:
                     new_jwt = await self._jwt_refresher()
                     self._config = replace(self._config, password=new_jwt)
-                except ReLoginRequiredError:
+                except ReLoginRequiredError as rle:
+                    # JWT refresh failed permanently — notify and surface to caller
+                    _logger.error("Pre-connect JWT refresh raised ReLoginRequiredError: %s", rle)
+                    self._stop_event.set()
+                    if self.on_fatal_auth_error is not None:
+                        with contextlib.suppress(Exception):
+                            await self.on_fatal_auth_error(rle)
                     raise
                 except Exception:
                     _logger.warning("Pre-connect JWT refresh failed", exc_info=True)
@@ -308,37 +314,34 @@ class MQTTTransport(Transport):
 
             except aiomqtt.MqttCodeError as exc:
                 rc = exc.rc
-                if rc == 134 or "bad user name" in str(exc).lower():
-                    # rc=134 = Bad User Name or Password — JWT is expired/invalid
+                exc_str = str(exc).lower()
+                # rc=4/134 = Bad User Name or Password (MQTT 3.1.1 / 5.0)
+                # rc=5/135 = Not Authorized (MQTT 3.1.1 / 5.0)
+                is_auth_failure = rc in (4, 5, 134, 135) or "bad user name" in exc_str or "not authorized" in exc_str
+                if is_auth_failure:
                     _bad_credentials_attempts += 1
-                    if _bad_credentials_attempts <= _BAD_CREDENTIALS_MAX:
+                    if _bad_credentials_attempts < _BAD_CREDENTIALS_MAX:
                         _logger.debug(
-                            "MQTT rc=134 (bad credentials), JWT refresh attempt %d/%d",
+                            "MQTT auth failure (rc=%s), attempt %d/%d — retrying",
+                            rc,
                             _bad_credentials_attempts,
                             _BAD_CREDENTIALS_MAX,
                         )
+                        if self._jwt_refresher is not None:
+                            # Pre-connect refresh on next loop iteration rotates the JWT;
+                            # don't double-refresh here.
+                            continue
                         if await self._refresh_jwt():
-                            _bad_credentials_attempts = 0
                             continue
                     _logger.error(
-                        "MQTT auth failed after %d JWT refresh attempt(s) — stopping",
+                        "MQTT auth failed after %d attempt(s) (rc=%s) — stopping",
                         _bad_credentials_attempts,
+                        rc,
                     )
                     self._stop_event.set()
                     auth_exc = ReLoginRequiredError(
-                        "", f"MQTT JWT auth exhausted after {_bad_credentials_attempts} attempt(s)"
+                        "", f"MQTT auth exhausted after {_bad_credentials_attempts} attempt(s) (rc={rc})"
                     )
-                    if self.on_fatal_auth_error is not None:
-                        with contextlib.suppress(Exception):
-                            await self.on_fatal_auth_error(auth_exc)
-                    raise auth_exc from exc
-                if rc in (4, 5, 135) or "not authorized" in str(exc).lower():
-                    _logger.error("MQTT auth refused (rc=%s): %s — attempting JWT refresh", rc, exc)
-                    if await self._refresh_jwt():
-                        _logger.debug("Credentials refreshed after auth failure — retrying")
-                        continue
-                    self._stop_event.set()
-                    auth_exc = ReLoginRequiredError("", f"MQTT auth refused (rc={rc}) and JWT refresh failed")
                     if self.on_fatal_auth_error is not None:
                         with contextlib.suppress(Exception):
                             await self.on_fatal_auth_error(auth_exc)

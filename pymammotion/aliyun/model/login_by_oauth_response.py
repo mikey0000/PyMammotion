@@ -5,6 +5,8 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 @dataclass
 class OpenAccount(DataClassORJSONMixin):
+    """Open account profile returned after OAuth login."""
+
     displayName: str
     openId: str
     hasPassword: str
@@ -22,11 +24,15 @@ class OpenAccount(DataClassORJSONMixin):
 
 @dataclass
 class OauthOtherInfo(DataClassORJSONMixin):
+    """Additional OAuth metadata including session ID expiry."""
+
     SidExpiredTime: int
 
 
 @dataclass
 class LoginSuccessResult(DataClassORJSONMixin):
+    """Successful login result containing tokens and account information."""
+
     reTokenExpireIn: int
     uidToken: str
     openAccount: OpenAccount
@@ -40,12 +46,16 @@ class LoginSuccessResult(DataClassORJSONMixin):
 
 @dataclass
 class InnerDataContent(DataClassORJSONMixin):
+    """Inner data payload of an OAuth login response."""
+
     loginSuccessResult: LoginSuccessResult
     mobileBindRequired: str
 
 
 @dataclass
 class InnerData(DataClassORJSONMixin):
+    """Inner envelope of the OAuth login response with trace and status fields."""
+
     traceId: str
     vid: str
     code: int
@@ -58,6 +68,8 @@ class InnerData(DataClassORJSONMixin):
 
 @dataclass
 class LoginByOAuthResponse(DataClassORJSONMixin):
+    """Top-level response from the login-by-OAuth API."""
+
     data: InnerData
     success: str
     api: str

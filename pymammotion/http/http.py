@@ -121,6 +121,8 @@ def create_oauth_signature(login_req: dict, client_id: str, client_secret: str, 
 
 
 class MammotionHTTP:
+    """HTTP client for the Mammotion cloud API (login, device list, MQTT credentials, OTA)."""
+
     def __init__(
         self, account: str | None = None, password: str | None = None, session: ClientSession | None = None
     ) -> None:

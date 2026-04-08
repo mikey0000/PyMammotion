@@ -175,9 +175,11 @@ class MowingDevice(DataClassORJSONMixin):
             and toapp_report_data.work.ub_path_hash == 0
         ):
             self.work.zone_hashs = []
+            self.map.invalidate_breakpoint_line(0)
 
         if toapp_report_data.work:
             self.map.invalidate_mow_path(toapp_report_data.work.ub_path_hash)
+            self.map.invalidate_breakpoint_line(toapp_report_data.work.ub_path_hash)
 
         self.report_data.update(toapp_report_data)
 
@@ -251,6 +253,8 @@ class MowingDevice(DataClassORJSONMixin):
 
 @dataclass
 class RTKDevice(DataClassORJSONMixin):
+    """Represents an RTK base-station device paired with a mower."""
+
     name: str
     iot_id: str
     product_key: str

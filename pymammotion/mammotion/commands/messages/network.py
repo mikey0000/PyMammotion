@@ -33,6 +33,8 @@ from pymammotion.proto import (
 
 
 class MessageNetwork(AbstractMessage, ABC):
+    """Mixin that builds and serialises network protobuf command messages (WiFi, 4G, BLE, logging)."""
+
     def send_order_msg_net(self, build: DevNet) -> bytes:
         """Serialize a network (DevNet) payload into a LubaMsg request frame targeting the ESP comm module."""
         luba_msg = LubaMsg(

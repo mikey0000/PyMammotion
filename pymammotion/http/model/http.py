@@ -7,7 +7,7 @@ from mashumaro.types import Alias
 
 
 class UnauthorizedException(Exception):
-    pass
+    """Raised when the Mammotion API returns a 401 Unauthorized response."""
 
 
 DataT = TypeVar("DataT")
@@ -15,6 +15,8 @@ DataT = TypeVar("DataT")
 
 @dataclass
 class ErrorInfo(DataClassORJSONMixin):
+    """Localised error code entry with implication and solution text for multiple languages."""
+
     code: str
     platform: str
     module: str
@@ -117,6 +119,8 @@ class DeviceInfo(DataClassORJSONMixin):
 
 @dataclass
 class DeviceRecord(DataClassORJSONMixin):
+    """Single device record returned from the user device page endpoint."""
+
     identity_id: Annotated[str, Alias("identityId")]
     iot_id: Annotated[str, Alias("iotId")]
     product_key: Annotated[str, Alias("productKey")]
@@ -132,6 +136,8 @@ class DeviceRecord(DataClassORJSONMixin):
 
 @dataclass
 class DeviceRecords(DataClassORJSONMixin):
+    """Paginated list of device records from the user device page endpoint."""
+
     records: list[DeviceRecord] = field(default_factory=list)
     total: int = 0
     size: int = 0
@@ -141,6 +147,8 @@ class DeviceRecords(DataClassORJSONMixin):
 
 @dataclass
 class MQTTConnection(DataClassORJSONMixin):
+    """MQTT broker connection parameters including JWT credential and client ID."""
+
     host: str
     jwt: str
     client_id: Annotated[str, Alias("clientId")]
@@ -152,6 +160,8 @@ class MQTTConnection(DataClassORJSONMixin):
 
 @dataclass
 class Response(DataClassORJSONMixin, Generic[DataT]):
+    """Generic API response envelope carrying a status code, message, and optional payload."""
+
     code: int
     msg: str
     request_id: Annotated[str | None, Alias("requestId")] = None
@@ -164,6 +174,8 @@ class Response(DataClassORJSONMixin, Generic[DataT]):
 
 @dataclass
 class LoginResponseUserInformation(DataClassORJSONMixin):
+    """User account metadata embedded in the login response."""
+
     areaCode: str
     domainAbbreviation: str
     userId: str
@@ -185,6 +197,8 @@ class JWTTokenInfo(DataClassORJSONMixin):
 
 @dataclass
 class LoginResponseData(DataClassORJSONMixin):
+    """OAuth token response data returned after a successful login or token refresh."""
+
     access_token: str
     token_type: Literal["bearer", "Bearer"]
     refresh_token: str
@@ -201,6 +215,8 @@ class LoginResponseData(DataClassORJSONMixin):
 
 @dataclass
 class FirmwareVersions(DataClassORJSONMixin):
+    """Firmware version information for a single device component."""
+
     firmware_version: Annotated[str, Alias("firmwareVersion")] = ""
     firmware_code: Annotated[str, Alias("firmwareCode")] = ""
     firmware_latest_version: Annotated[str, Alias("firmwareLatestVersion")] = ""
@@ -212,6 +228,8 @@ class FirmwareVersions(DataClassORJSONMixin):
 
 @dataclass
 class ProductVersionInfo(DataClassORJSONMixin):
+    """Release note and version string for an available OTA firmware update."""
+
     release_note: Annotated[str, Alias("releaseNote")] = ""
     release_version: Annotated[str, Alias("releaseVersion")] = ""
     data_location: str | None = None
@@ -222,6 +240,8 @@ class ProductVersionInfo(DataClassORJSONMixin):
 
 @dataclass
 class CheckDeviceVersion(DataClassORJSONMixin):
+    """OTA upgrade eligibility and current/available version info for a single device."""
+
     cause_code: Annotated[int, Alias("causeCode")] = 0
     product_version_info_vo: Annotated[ProductVersionInfo | None, Alias("productVersionInfoVo")] = None
     progress: int | None = 0

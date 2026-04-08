@@ -27,6 +27,8 @@ logger.addHandler(ch)
 
 
 class TeaCore:
+    """Utility class providing HTTP request execution and retry helpers for the Aliyun Tea SDK."""
+
     http_adapter = adapters.HTTPAdapter(pool_connections=DEFAULT_POOL_SIZE, pool_maxsize=DEFAULT_POOL_SIZE * 4)
     https_adapter = adapters.HTTPAdapter(pool_connections=DEFAULT_POOL_SIZE, pool_maxsize=DEFAULT_POOL_SIZE * 4)
 

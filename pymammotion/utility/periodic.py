@@ -3,6 +3,8 @@ from contextlib import suppress
 
 
 class Periodic:
+    """Asyncio-based helper that runs an async callable repeatedly at a fixed time interval."""
+
     def __init__(self, func, time) -> None:
         self.func = func
         self.time = time

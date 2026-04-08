@@ -7,6 +7,8 @@ from pymammotion.proto import DevNet, LubaMsg, MctlDriver, MctlNav, MctlOta, Mct
 
 @dataclass
 class RawMowerData:
+    """Holds the raw LubaMsg protobuf and provides typed sub-message accessors."""
+
     raw: LubaMsg | None = field(default_factory=LubaMsg)
 
     @classmethod

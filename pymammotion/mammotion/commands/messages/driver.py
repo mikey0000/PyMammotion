@@ -25,6 +25,8 @@ logger = getLogger(__name__)
 
 
 class MessageDriver(AbstractMessage, ABC):
+    """Mixin that builds and serialises driver-layer protobuf command messages (blade, speed, motion)."""
+
     def send_order_msg_driver(self, driver) -> bytes:
         """Build and serialize a driver command message."""
         return LubaMsg(

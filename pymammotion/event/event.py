@@ -23,6 +23,8 @@ class _StrongRef:
 
 
 class Event:
+    """Async multicast event that dispatches to all registered handlers concurrently."""
+
     def __init__(self) -> None:
         self.__eventhandlers: list[weakref.ReferenceType | _StrongRef] = []
 
@@ -66,6 +68,8 @@ class Event:
 
 
 class MoveEvent:
+    """Event source that fires when a movement command completes."""
+
     def __init__(self) -> None:
         self.OnMoveFinished = Event()
 
@@ -85,6 +89,8 @@ class MoveEvent:
 
 
 class BleNotificationEvent:
+    """Event source that fires when BLE notification data is received from the device."""
+
     def __init__(self) -> None:
         self.OnBleNotification = Event()
 

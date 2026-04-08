@@ -20,11 +20,14 @@ _logger = logging.getLogger(__name__)
 # Maps a LubaSubMsg field name to its sub-message oneof group name.
 # Used by on_message() to extract the leaf field name for correlation.
 _LUBA_SUB_GROUP: dict[str, str] = {
+    "net": "NetSubType",
     "nav": "SubNavMsg",
     "sys": "SubSysMsg",
     "driver": "SubDrvMsg",
     "ota": "SubOtaMsg",
+    "mul": "SubMul",
     "pept": "SubPeptMsg",
+    "base": "BaseStationSubType",
 }
 
 

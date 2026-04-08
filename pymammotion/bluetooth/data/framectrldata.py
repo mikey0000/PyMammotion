@@ -1,4 +1,6 @@
 class FrameCtrlData:
+    """BLE frame control byte parser and builder for Mammotion BLE protocol frames."""
+
     FRAME_CTRL_POSITION_CHECKSUM = 1
     FRAME_CTRL_POSITION_DATA_DIRECTION = 2
     FRAME_CTRL_POSITION_ENCRYPTED = 0

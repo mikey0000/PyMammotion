@@ -9,24 +9,32 @@ from mashumaro.types import Alias
 
 @dataclass
 class GroupIdListItem(DataClassORJSONMixin):
+    """A single group membership entry in the device status message."""
+
     groupId: str
     groupType: Literal["ISOLATION", "ILOP_APP"]
 
 
 # are there other values?
 class StatusType(Enum):
+    """Online/offline connection state values used in ``thing.status`` messages."""
+
     CONNECTED = 1
     DISCONNECTED = 3
 
 
 @dataclass
 class Status(DataClassORJSONMixin):
+    """Timestamped connection status value from a ``thing.status`` message."""
+
     time: int
     value: StatusType
 
 
 @dataclass
 class Params(DataClassORJSONMixin):
+    """Envelope parameters for an Aliyun IoT ``thing.status`` MQTT message."""
+
     group_id_list: Annotated[list[GroupIdListItem], Alias("groupIdList")]
     net_type: Annotated[Literal["NET_WIFI", "NET_MNET"], Alias("netType")]
     active_time: Annotated[int, Alias("activeTime")]
@@ -51,6 +59,8 @@ class Params(DataClassORJSONMixin):
 
 @dataclass
 class ThingStatusMessage(DataClassORJSONMixin):
+    """Top-level Aliyun IoT ``thing.status`` MQTT message reporting device online/offline state."""
+
     method: Literal["thing.status"]
     id: str
     params: Params
