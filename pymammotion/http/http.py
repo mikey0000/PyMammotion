@@ -255,7 +255,7 @@ class MammotionHTTP:
                 json={"clientId": MAMMOTION_CLIENT_ID},
             )
             data = await resp.json()
-        _logger.debug("handle_expiry response: %s", data)
+        _LOGGER.debug("handle_expiry response: %s", data)
         self.login_info.access_token = data["data"].get("accessToken", self.login_info.access_token)
         self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
         await self.get_mqtt_credentials()
@@ -271,7 +271,7 @@ class MammotionHTTP:
                 json={"mowerName": mower_name, "rtkName": rtk_name},
             )
             data = await resp.json()
-        _logger.debug("pair_devices_mqtt response: %s", data)
+        _LOGGER.debug("pair_devices_mqtt response: %s", data)
         return Response.from_dict(data)
 
     @refresh_token_decorator
@@ -284,7 +284,7 @@ class MammotionHTTP:
                 json={"mowerName": mower_name, "rtkName": rtk_name},
             )
             data = await resp.json()
-        _logger.debug("unpair_devices_mqtt response: %s", data)
+        _LOGGER.debug("unpair_devices_mqtt response: %s", data)
         return Response.from_dict(data)
 
     @refresh_token_decorator
@@ -297,7 +297,7 @@ class MammotionHTTP:
                 json={"deviceId": device_id},
             )
             data = await resp.json()
-        _logger.debug("net_rtk_enable response: %s", data)
+        _LOGGER.debug("net_rtk_enable response: %s", data)
         return Response.from_dict(data)
 
     @refresh_token_decorator
@@ -560,12 +560,12 @@ class MammotionHTTP:
                 },
             )
             if resp.status != 200:
-                _logger.debug("login_v2 failed (status=%s): %s", resp.status, resp.json())
+                _LOGGER.debug("login_v2 failed (status=%s): %s", resp.status, resp.json())
                 return Response.from_dict({"code": resp.status, "msg": "Login failed"})
             data = await resp.json()
         login_response = response_factory(Response[LoginResponseData], data)
         if login_response is None or login_response.data is None:
-            _logger.debug("login_v2 returned empty response: %s", login_response)
+            _LOGGER.debug("login_v2 returned empty response: %s", login_response)
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
