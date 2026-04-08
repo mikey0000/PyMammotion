@@ -21,7 +21,6 @@ from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.http.model.http import CheckDeviceVersion
 from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemTardStateTunnelMsg, SystemUpdateBufMsg
-from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.conversions import parse_double
 from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.map import CoordinateConverter
@@ -154,17 +153,14 @@ class MowingDevice(DataClassORJSONMixin):
 
         coordinate_converter = CoordinateConverter(self.location.RTK.latitude, self.location.RTK.longitude)
         for index, location in enumerate(toapp_report_data.locations):
-            if index == 0 and location.real_pos_y != 0:
+            if index == 0:
                 self.location.position_type = location.pos_type
                 self.location.orientation = int(location.real_toward / 10000)
                 self.location.device = coordinate_converter.enu_to_lla(
                     parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
                 )
                 self.map.invalidate_maps(location.bol_hash)
-                if location.zone_hash:
-                    self.location.work_zone = (
-                        location.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
-                    )
+                self.location.work_zone = location.zone_hash
 
         if toapp_report_data.fw_info:
             self.update_device_firmwares(toapp_report_data.fw_info)
@@ -192,10 +188,7 @@ class MowingDevice(DataClassORJSONMixin):
         self.location.device = coordinate_converter.enu_to_lla(
             parse_double(self.mowing_state.pos_y, 4.0), parse_double(self.mowing_state.pos_x, 4.0)
         )
-        if self.mowing_state.zone_hash:
-            self.location.work_zone = (
-                self.mowing_state.zone_hash if self.report_data.dev.sys_status == WorkMode.MODE_WORKING else 0
-            )
+        self.location.work_zone = self.mowing_state.zone_hash
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
         """Set mow info."""
