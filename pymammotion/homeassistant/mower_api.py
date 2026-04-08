@@ -295,7 +295,8 @@ class HomeAssistantMowerApi:
         await self.async_send_command(
             device_name,
             "set_plan_unable_time",
-            sub_cmd=device.non_work_hours.sub_cmd,
+            sub_cmd=1,
+            trigger=1,
             device_id=handle.iot_id,
             unable_end_time=end_time,
             unable_start_time=start_time,

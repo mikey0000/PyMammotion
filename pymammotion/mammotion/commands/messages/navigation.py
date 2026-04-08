@@ -277,7 +277,7 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Send command--Read plan time {sub_cmd}")
         return self.send_order_msg_nav(build2)
 
-    def read_job_not_not_disturb(self) -> bytes:
+    def read_job_do_not_disturb(self) -> bytes:
         """Read the do-not-disturb schedule currently configured on the device."""
         build = NavUnableTimeSet(sub_cmd=2)
         build2 = MctlNav(todev_unable_time_set=build)
