@@ -137,9 +137,9 @@ async def test_watchdog_auth_error_triggers_force_refresh() -> None:
     refresh_called = asyncio.Event()
     original_refresh = tm.force_refresh
 
-    async def _spy_refresh() -> None:
+    async def _spy_refresh(*args: object, **kwargs: object) -> None:
         refresh_called.set()
-        await original_refresh()
+        await original_refresh(*args, **kwargs)
 
     tm.force_refresh = _spy_refresh
 

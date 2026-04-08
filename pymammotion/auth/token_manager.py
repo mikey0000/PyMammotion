@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from pymammotion.aliyun.exceptions import LoginException
 from pymammotion.http.model.http import MQTTConnection
 from pymammotion.transport import AuthError
-from pymammotion.transport.base import ReLoginRequiredError
+from pymammotion.transport.base import ReLoginRequiredError, TransportType
 
 if TYPE_CHECKING:
     from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
@@ -175,11 +175,19 @@ class TokenManager:
                 raise ReLoginRequiredError(self._account_id, "MQTT credentials unavailable after refresh")
             return self._mqtt_creds
 
-    async def force_refresh(self) -> None:
-        """Forcibly refresh all active credentials; called by a watchdog on auth errors.
+    async def force_refresh(self, transport_type: TransportType | None = None) -> None:
+        """Forcibly refresh credentials, bypassing cached expiry timestamps.
 
-        Refreshes HTTP credentials first, then MQTT and Aliyun credentials if they were
-        previously initialised.
+        Called by a watchdog or error handler when credentials are known to be stale.
+        Always refreshes HTTP credentials first. The *transport_type* argument controls
+        which cloud-specific credentials are also refreshed:
+
+        - ``TransportType.CLOUD_MAMMOTION``: HTTP + Mammotion MQTT JWT only.
+        - ``TransportType.CLOUD_ALIYUN``: HTTP + Aliyun IoT token only.
+        - ``None`` (default): HTTP + all active credential types (MQTT and/or Aliyun).
+
+        Args:
+            transport_type: Which transport's credentials to refresh, or ``None`` for all.
 
         Raises:
             ReLoginRequiredError: If the HTTP refresh itself signals that re-login is required.
@@ -187,9 +195,11 @@ class TokenManager:
         """
         async with self._lock:
             await self.refresh_http()
-            if self._mqtt_creds is not None:
+            refresh_mqtt = transport_type in (TransportType.CLOUD_MAMMOTION, None)
+            refresh_aliyun = transport_type in (TransportType.CLOUD_ALIYUN, None)
+            if refresh_mqtt and self._mqtt_creds is not None:
                 await self.refresh_mqtt_creds()
-            if self._cloud_gateway is not None:
+            if refresh_aliyun and self._cloud_gateway is not None:
                 await self._refresh_aliyun()
 
     async def refresh_aliyun_credentials(self) -> None:

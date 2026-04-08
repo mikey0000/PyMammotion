@@ -229,8 +229,8 @@ async def test_get_valid_http_token_raises_relogin_when_data_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_send_unauthorized_calls_get_valid_http_token_not_mqtt_credentials() -> None:
-    """UnauthorizedException → token_manager.get_valid_http_token(), NOT get_mammotion_mqtt_credentials."""
+async def test_send_unauthorized_calls_force_refresh_not_mqtt_credentials() -> None:
+    """UnauthorizedException → token_manager.force_refresh(), NOT get_mammotion_mqtt_credentials."""
     from pymammotion.http.model.http import UnauthorizedException
 
     http = AsyncMock()
@@ -241,12 +241,14 @@ async def test_send_unauthorized_calls_get_valid_http_token_not_mqtt_credentials
     transport = _make_transport(http, tm)
     await transport.send(b"\x00\x01", iot_id="device-001")
 
-    tm.refresh_http.assert_awaited_once()
+    from pymammotion.transport.base import TransportType
+
+    tm.force_refresh.assert_awaited_once_with(TransportType.CLOUD_MAMMOTION)
     tm.get_mammotion_mqtt_credentials.assert_not_awaited()
 
 
 async def test_send_retries_successfully_after_http_token_refresh() -> None:
-    """After get_valid_http_token() refreshes, the retry invoke must succeed."""
+    """After force_refresh() updates credentials, the retry invoke must succeed."""
     from pymammotion.http.model.http import UnauthorizedException
 
     http = AsyncMock()
@@ -258,15 +260,15 @@ async def test_send_retries_successfully_after_http_token_refresh() -> None:
     assert http.mqtt_invoke.await_count == 2
 
 
-async def test_send_propagates_relogin_required_from_get_valid_http_token() -> None:
-    """ReLoginRequiredError from get_valid_http_token() must bubble out of send()."""
+async def test_send_propagates_relogin_required_from_force_refresh() -> None:
+    """ReLoginRequiredError from force_refresh() must bubble out of send()."""
     from pymammotion.http.model.http import UnauthorizedException
 
     http = AsyncMock()
     http.mqtt_invoke.side_effect = UnauthorizedException("expired")
 
     tm = AsyncMock()
-    tm.refresh_http.side_effect = ReLoginRequiredError("acc", "refresh token expired")
+    tm.force_refresh.side_effect = ReLoginRequiredError("acc", "refresh token expired")  # any transport_type
 
     transport = _make_transport(http, tm)
 

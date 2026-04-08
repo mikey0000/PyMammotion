@@ -193,7 +193,7 @@ class ConnectionWatchdog:
                 type(self._transport).__name__,
             )
             try:
-                await self._token_manager.force_refresh()
+                await self._token_manager.force_refresh(self._transport.transport_type)
                 await self._transport.connect()
                 self._circuit.record_success()
                 _logger.info("Transport %s connected after token refresh", type(self._transport).__name__)
