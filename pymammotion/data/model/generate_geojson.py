@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 GEOMETRY_TYPES: list[str] = ["Polygon", "Polygon", "LineString", "Point"]
 MAP_OBJECT_TYPES: list[str] = ["area", "path", "obstacle", "dump"]
 
-image_path = "/local/community/ha-mammotion-map/dist/assets/map/"
+image_path = "/local/community/ha-mammotion-assets/dist/assets/map/"
 
 RTK_IMAGE = {
     "iconImage": "map_icon_base_station_rtk.webp",
