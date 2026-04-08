@@ -131,8 +131,8 @@ class TokenManager:
 
         """
         async with self._lock:
-            if self._http_creds is None or self._http_creds.expires_at < time.time() + 300:
-                await self._refresh_http()
+            if self._http_creds is None or self._http_creds.expires_at < time.time():
+                await self.refresh_http()
             if self._http_creds is None:
                 raise ReLoginRequiredError(self._account_id, "HTTP credentials unavailable after refresh")
             return self._http_creds.access_token
@@ -186,7 +186,7 @@ class TokenManager:
 
         """
         async with self._lock:
-            await self._refresh_http()
+            await self.refresh_http()
             if self._mqtt_creds is not None:
                 await self._refresh_mqtt_creds()
             if self._cloud_gateway is not None:
@@ -220,7 +220,7 @@ class TokenManager:
     # Private helpers — callers are responsible for holding self._lock.
     # ------------------------------------------------------------------
 
-    async def _refresh_http(self) -> None:
+    async def refresh_http(self) -> None:
         """Refresh the HTTP OAuth access token using the stored MammotionHTTP instance.
 
         Updates *_http_creds* in place.

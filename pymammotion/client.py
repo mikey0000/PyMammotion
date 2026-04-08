@@ -1004,7 +1004,7 @@ class MammotionClient:
         handle = self._handle_for_iot_id(iot_id, "_route_device_message")
         if handle is None:
             return
-        await handle._on_raw_message(payload)  # noqa: SLF001
+        await handle.on_raw_message(payload)
 
     async def _route_device_status(self, iot_id: str, msg: ThingStatusMessage) -> None:
         """Update a device handle's MQTT availability and status_properties from a thing/status message."""
@@ -1022,7 +1022,7 @@ class MammotionClient:
         online = msg.params.status.value is StatusType.CONNECTED
         avail = TransportAvailability.CONNECTED if online else TransportAvailability.DISCONNECTED
         handle.update_availability(transport_type, avail, mqtt_reported_offline=not online)
-        await handle._on_status_message(msg)  # noqa: SLF001
+        await handle.on_status_message(msg)
         _logger.info(
             "Device '%s' is now %s (thing/status)",
             self._iot_id_to_device_id.get(iot_id),
@@ -1034,14 +1034,14 @@ class MammotionClient:
         handle = self._handle_for_iot_id(iot_id, "_route_device_event")
         if handle is None:
             return
-        await handle._on_device_event(event)  # noqa: SLF001
+        await handle.on_device_event(event)
 
     async def _route_device_properties(self, iot_id: str, properties: ThingPropertiesMessage) -> None:
         """Forward a thing.properties message to the correct DeviceHandle."""
         handle = self._handle_for_iot_id(iot_id, "_route_device_properties")
         if handle is None:
             return
-        await handle._on_device_properties(properties)  # noqa: SLF001
+        await handle.on_device_properties(properties)
 
     # ------------------------------------------------------------------
     # Map sync

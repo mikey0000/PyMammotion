@@ -203,11 +203,13 @@ class MQTTTransport(Transport):
             # Only the HTTP Bearer token is relevant here; refresh it via refresh_token_v2.
             # Raises ReLoginRequiredError (bubbles up) if the refresh token is also expired.
             assert self._token_manager is not None, "MQTTTransport requires a TokenManager"
-            await self._token_manager.get_valid_http_token()
+            await self._token_manager.refresh_http()
             try:
                 res = await self._http.mqtt_invoke(content, "", iot_id)
             except Exception as retry_exc:
-                raise AuthError("Access token expired and retry failed after credential refresh") from retry_exc
+                raise AuthError(
+                    f"Access token expired and retry failed after credential refresh {retry_exc}"
+                ) from retry_exc
         if res.code in (401, 460):
             raise AuthError(f"Access token expired (code={res.code})")
         if res.code in (6205, 50104):

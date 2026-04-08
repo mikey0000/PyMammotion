@@ -241,7 +241,7 @@ async def test_send_unauthorized_calls_get_valid_http_token_not_mqtt_credentials
     transport = _make_transport(http, tm)
     await transport.send(b"\x00\x01", iot_id="device-001")
 
-    tm.get_valid_http_token.assert_awaited_once()
+    tm.refresh_http.assert_awaited_once()
     tm.get_mammotion_mqtt_credentials.assert_not_awaited()
 
 
@@ -266,7 +266,7 @@ async def test_send_propagates_relogin_required_from_get_valid_http_token() -> N
     http.mqtt_invoke.side_effect = UnauthorizedException("expired")
 
     tm = AsyncMock()
-    tm.get_valid_http_token.side_effect = ReLoginRequiredError("acc", "refresh token expired")
+    tm.refresh_http.side_effect = ReLoginRequiredError("acc", "refresh token expired")
 
     transport = _make_transport(http, tm)
 

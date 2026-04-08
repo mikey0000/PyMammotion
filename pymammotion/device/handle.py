@@ -189,7 +189,7 @@ class DeviceHandle:
         """Create a per-transport message callback that carries the transport type."""
 
         async def _handler(payload: bytes) -> None:
-            await self._on_raw_message(payload, transport_type)
+            await self.on_raw_message(payload, transport_type)
 
         return _handler
 
@@ -222,7 +222,7 @@ class DeviceHandle:
         if transport is not None:
             await transport.disconnect()
 
-    async def _on_raw_message(self, payload: bytes, transport_type: TransportType = TransportType.CLOUD_ALIYUN) -> None:
+    async def on_raw_message(self, payload: bytes, transport_type: TransportType = TransportType.CLOUD_ALIYUN) -> None:
         """Receive raw bytes from transport, decode, update state, route to broker.
 
         Called via the per-transport closure created in _make_message_handler so
@@ -259,7 +259,7 @@ class DeviceHandle:
         # 5. Route to broker for request/response correlation
         await self.broker.on_message(luba_msg)
 
-    async def _on_status_message(self, msg: ThingStatusMessage) -> None:
+    async def on_status_message(self, msg: ThingStatusMessage) -> None:
         """Store status_properties on the device model from a thing/status message."""
         import dataclasses
 
@@ -269,7 +269,7 @@ class DeviceHandle:
             await self._state_changed_bus.emit(snapshot)
             await self._status_bus.emit(msg)
 
-    async def _on_device_event(self, event: ThingEventMessage) -> None:
+    async def on_device_event(self, event: ThingEventMessage) -> None:
         """Update device state with a non-protobuf thing.events message."""
         import dataclasses
 
@@ -279,7 +279,7 @@ class DeviceHandle:
             await self._state_changed_bus.emit(snapshot)
             await self._event_bus.emit(event)
 
-    async def _on_device_properties(self, properties: ThingPropertiesMessage) -> None:
+    async def on_device_properties(self, properties: ThingPropertiesMessage) -> None:
         """Update device state with a thing.properties message."""
         import dataclasses
 
@@ -347,6 +347,11 @@ class DeviceHandle:
                     expected_field=field,
                 )
             except DeviceOfflineException:
+                self.update_availability(
+                    transport.transport_type,
+                    self._availability.mqtt,
+                    mqtt_reported_offline=True,
+                )
                 ble = self._transports.get(TransportType.BLE)
                 if ble is not None and ble.is_connected:
                     _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
@@ -359,11 +364,6 @@ class DeviceHandle:
                         "Device '%s' reported offline by cloud — marking %s unavailable",
                         self.device_name,
                         transport.transport_type,
-                    )
-                    self.update_availability(
-                        transport.transport_type,
-                        self._availability.mqtt,
-                        mqtt_reported_offline=True,
                     )
                     raise
 
@@ -533,6 +533,11 @@ class DeviceHandle:
         try:
             await transport.send(payload, iot_id=self.iot_id)
         except DeviceOfflineException:
+            self.update_availability(
+                transport.transport_type,
+                self._availability.mqtt,
+                mqtt_reported_offline=True,
+            )
             ble = self._transports.get(TransportType.BLE)
             if ble is not None and ble.is_connected:
                 _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
@@ -542,11 +547,6 @@ class DeviceHandle:
                     "Device '%s' reported offline by cloud — marking %s unavailable",
                     self.device_name,
                     transport.transport_type,
-                )
-                self.update_availability(
-                    transport.transport_type,
-                    self._availability.mqtt,
-                    mqtt_reported_offline=True,
                 )
                 raise
 

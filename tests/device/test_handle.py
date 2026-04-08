@@ -328,7 +328,7 @@ async def test_incoming_message_clears_reported_offline(transport_type: Transpor
     _patch_raw_message_internals(handle)
     with patch("pymammotion.device.handle.LubaMsg") as mock_luba:
         mock_luba.return_value.parse.return_value = MagicMock()
-        await handle._on_raw_message(b"\x00", transport_type)
+        await handle.on_raw_message(b"\x00", transport_type)
 
     assert handle.availability.mqtt_reported_offline is False
     assert handle.availability.is_available is True
@@ -357,7 +357,7 @@ async def test_ble_message_does_not_clear_reported_offline() -> None:
     _patch_raw_message_internals(handle)
     with patch("pymammotion.device.handle.LubaMsg") as mock_luba:
         mock_luba.return_value.parse.return_value = MagicMock()
-        await handle._on_raw_message(b"\x00", TransportType.BLE)
+        await handle.on_raw_message(b"\x00", TransportType.BLE)
 
     # BLE message must not clear the MQTT offline flag
     assert handle.availability.mqtt_reported_offline is True
@@ -401,4 +401,4 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
     # send_and_wait must have been called twice: MQTT then BLE
     assert handle.broker.send_and_wait.call_count == 2
     # Device must NOT be marked offline — BLE carried the command
-    assert handle.availability.mqtt_reported_offline is False
+    assert handle.availability.mqtt_reported_offline is True

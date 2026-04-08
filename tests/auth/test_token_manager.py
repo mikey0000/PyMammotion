@@ -48,11 +48,11 @@ async def test_http_token_refreshed_when_expiring_soon() -> None:
     tm = TokenManager("acc1", http)
     await tm.initialize(make_http_creds(180), None, None)  # expires in 3 min
     # Patch _refresh_http to verify it's called
-    tm._refresh_http = AsyncMock()  # type: ignore[method-assign]
+    tm.refresh_http = AsyncMock()  # type: ignore[method-assign]
     # Re-set creds to force refresh
     tm._http_creds = make_http_creds(180)
     await tm.get_valid_http_token()
-    tm._refresh_http.assert_awaited_once()  # type: ignore[attr-defined]
+    tm.refresh_http.assert_awaited_once()  # type: ignore[attr-defined]
 
 
 async def test_http_token_not_refreshed_when_fresh() -> None:
@@ -60,9 +60,9 @@ async def test_http_token_not_refreshed_when_fresh() -> None:
     http = AsyncMock()
     tm = TokenManager("acc1", http)
     await tm.initialize(make_http_creds(600), None, None)  # expires in 10 min
-    tm._refresh_http = AsyncMock()  # type: ignore[method-assign]
+    tm.refresh_http = AsyncMock()  # type: ignore[method-assign]
     await tm.get_valid_http_token()
-    tm._refresh_http.assert_not_awaited()  # type: ignore[attr-defined]
+    tm.refresh_http.assert_not_awaited()  # type: ignore[attr-defined]
 
 
 async def test_mqtt_creds_refreshed_when_expiring_soon() -> None:
@@ -89,7 +89,7 @@ async def test_concurrent_refresh_called_once() -> None:
         await asyncio.sleep(0.01)
         tm._http_creds = make_http_creds(3600)
 
-    tm._refresh_http = counting_refresh  # type: ignore[method-assign]
+    tm.refresh_http = counting_refresh  # type: ignore[method-assign]
     await asyncio.gather(
         tm.get_valid_http_token(),
         tm.get_valid_http_token(),
@@ -106,7 +106,7 @@ async def test_force_refresh_raises_relogin_on_auth_failure() -> None:
     async def failing_refresh() -> None:
         raise ReLoginRequiredError("acc1", "401")
 
-    tm._refresh_http = failing_refresh  # type: ignore[method-assign]
+    tm.refresh_http = failing_refresh  # type: ignore[method-assign]
     with pytest.raises(ReLoginRequiredError):
         await tm.force_refresh()
 
