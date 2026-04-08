@@ -179,29 +179,29 @@ async def test_refresh_mqtt_creds_raises_relogin_on_unexpected_get_credentials_e
 # ---------------------------------------------------------------------------
 
 
-async def test_get_valid_http_token_uses_refresh_token_v2() -> None:
-    """Expiring HTTP token must be refreshed via refresh_token_v2, not refresh_login."""
+async def test_get_valid_http_token_uses_refresh_login() -> None:
+    """Expiring HTTP token must be refreshed via refresh_login (which handles fallback to login_v2)."""
     http = AsyncMock()
     data = MagicMock()
-    data.access_token = "tok-via-v2"
+    data.access_token = "tok-via-refresh"
     data.refresh_token = "ref-new"
     data.expires_in = 3600.0
-    http.refresh_token_v2.return_value = MagicMock(data=data)
+    http.refresh_login.return_value = MagicMock(data=data)
 
     tm = TokenManager("acc", http)
     await tm.initialize(_expiring_http_creds(100), None, None)
 
     token = await tm.get_valid_http_token()
 
-    assert token == "tok-via-v2"
-    http.refresh_token_v2.assert_awaited_once()
-    http.refresh_login.assert_not_awaited()
+    assert token == "tok-via-refresh"
+    http.refresh_login.assert_awaited_once()
+    http.refresh_token_v2.assert_not_awaited()
 
 
-async def test_get_valid_http_token_raises_relogin_when_refresh_token_v2_fails() -> None:
-    """refresh_token_v2 failure → ReLoginRequiredError with the correct account_id."""
+async def test_get_valid_http_token_raises_relogin_when_refresh_login_fails() -> None:
+    """refresh_login failure → ReLoginRequiredError with the correct account_id."""
     http = AsyncMock()
-    http.refresh_token_v2.side_effect = RuntimeError("token endpoint down")
+    http.refresh_login.side_effect = RuntimeError("token endpoint down")
 
     tm = TokenManager("user@example.com", http)
     await tm.initialize(None, None, None)
@@ -213,9 +213,9 @@ async def test_get_valid_http_token_raises_relogin_when_refresh_token_v2_fails()
 
 
 async def test_get_valid_http_token_raises_relogin_when_data_none() -> None:
-    """refresh_token_v2 returning data=None → ReLoginRequiredError."""
+    """refresh_login returning data=None → ReLoginRequiredError."""
     http = AsyncMock()
-    http.refresh_token_v2.return_value = MagicMock(data=None)
+    http.refresh_login.return_value = MagicMock(data=None)
 
     tm = TokenManager("acc", http)
     await tm.initialize(None, None, None)

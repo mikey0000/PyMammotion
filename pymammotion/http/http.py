@@ -533,10 +533,9 @@ class MammotionHTTP:
 
     async def refresh_login(self) -> Response[LoginResponseData]:
         """Attempt a token refresh, falling back to a full re-login if the token has already expired."""
-        if self.expires_in > time.time():
-            res = await self.refresh_token_v2()
-            if res.code == 0:
-                return res
+        res = await self.refresh_token_v2()
+        if res.code == 0:
+            return res
         return await self.login_v2(self.account, self._password)
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:

@@ -131,7 +131,7 @@ class TokenManager:
 
         """
         async with self._lock:
-            if self._http_creds is None or self._http_creds.expires_at < time.time():
+            if self._http_creds is None or self._http_creds.expires_at < time.time() + 300:
                 await self.refresh_http()
             if self._http_creds is None:
                 raise ReLoginRequiredError(self._account_id, "HTTP credentials unavailable after refresh")
@@ -169,7 +169,7 @@ class TokenManager:
 
         """
         async with self._lock:
-            if self._mqtt_creds is None or self._mqtt_creds.expires_at < time.time():
+            if self._mqtt_creds is None or self._mqtt_creds.expires_at < time.time() + 1800:
                 await self.refresh_mqtt_creds()
             if self._mqtt_creds is None:
                 raise ReLoginRequiredError(self._account_id, "MQTT credentials unavailable after refresh")
@@ -230,7 +230,7 @@ class TokenManager:
 
         """
         try:
-            response = await self._http.refresh_token_v2()
+            response = await self._http.refresh_login()
             data = response.data
             if data is None:
                 raise ReLoginRequiredError(self._account_id, "refresh_login returned no data")
