@@ -24,7 +24,7 @@ async def run():
         # error_codes = await mammotion.get_all_error_codes()
         # firmware = await mammotion.get_device_ota_firmware(["UTpbwGC7vxd4DpNvbFGL000000"])
         print(mammotion.login_info)
-        res = await mammotion.refresh_authorization_code()
+        res = await mammotion.refresh_authorization_token()
         print(res)
         return
         cloud_client = CloudIOTGateway(mammotion)

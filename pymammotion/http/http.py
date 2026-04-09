@@ -248,7 +248,7 @@ class MammotionHTTP:
         return Response.from_dict(data)
 
     @refresh_token_decorator
-    async def refresh_authorization_code(self) -> Response:
+    async def refresh_authorization_token(self) -> Response:
         """Refresh token."""
         async with self._client_session() as session:
             resp = await session.post(
@@ -264,7 +264,6 @@ class MammotionHTTP:
         _LOGGER.debug("handle_expiry response: %s", data)
         self.login_info.access_token = data["data"].get("accessToken", self.login_info.access_token)
         self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
-        await self.get_mqtt_credentials()
         return Response.from_dict(data)
 
     @refresh_token_decorator

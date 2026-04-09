@@ -391,6 +391,10 @@ class HomeAssistantMowerApi:
         The cover path is stored in device.map.current_mow_path and
         device.map.generated_mow_path_geojson on completion.
         """
+        if not operation_settings.areas:
+            device = self._mammotion.get_device_by_name(device_name)
+            if device is not None:
+                operation_settings.areas = set(device.map.area.keys())
         route_information = self.generate_route_information(device_name, operation_settings)
         await self._mammotion.start_mow_path_saga(
             device_name,

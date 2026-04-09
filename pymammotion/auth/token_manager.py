@@ -197,9 +197,9 @@ class TokenManager:
             await self.refresh_http()
             refresh_mqtt = transport_type in (TransportType.CLOUD_MAMMOTION, None)
             refresh_aliyun = transport_type in (TransportType.CLOUD_ALIYUN, None)
-            if refresh_mqtt and self._mqtt_creds is not None:
+            if refresh_mqtt:
                 await self.refresh_mqtt_creds()
-            if refresh_aliyun and self._cloud_gateway is not None:
+            if refresh_aliyun:
                 await self._refresh_aliyun()
 
     async def refresh_aliyun_credentials(self) -> None:
@@ -309,6 +309,15 @@ class TokenManager:
         await cloud_client.session_by_auth_code()
         await cloud_client.list_binding_by_account()
 
+    async def refresh_mqtt_token(self) -> None:
+        """Refresh the Mammotion MQTT JWT token using the stored MammotionHTTP instance."""
+        try:
+            await self._http.refresh_authorization_token()
+        except UnauthorizedException as exc:
+            raise ReLoginRequiredError(exc)
+        except Exception as exc:
+            raise AuthError(exc)
+
     async def refresh_mqtt_creds(self) -> MQTTCredentials:
         """Fetch fresh MQTT credentials from the Mammotion API.
 
@@ -340,8 +349,7 @@ class TokenManager:
             # JWT endpoint failed — refresh the authorization code first (which
             # internally calls get_mqtt_credentials() and stores the result on self._http).
             try:
-                await self._http.refresh_token_v2()
-                await self._http.refresh_authorization_code()
+                await self._http.refresh_authorization_token()
                 creds = self._http.mqtt_credentials
                 if creds is None:
                     raise AuthError("refresh_authorization_code returned no MQTT credentials")
@@ -350,7 +358,7 @@ class TokenManager:
                 # Authorization code refresh also failed — fall back to a full HTTP re-login.
                 try:
                     await self._http.refresh_login()
-                    await self._http.refresh_authorization_code()
+                    await self._http.refresh_authorization_token()
                 except ReLoginRequiredError:
                     raise
                 except Exception as exc:
