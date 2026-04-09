@@ -197,9 +197,9 @@ class TokenManager:
             await self.refresh_http()
             refresh_mqtt = transport_type in (TransportType.CLOUD_MAMMOTION, None)
             refresh_aliyun = transport_type in (TransportType.CLOUD_ALIYUN, None)
-            if refresh_mqtt:
+            if refresh_mqtt and self._mqtt_creds is not None:
                 await self.refresh_mqtt_creds()
-            if refresh_aliyun:
+            if refresh_aliyun and self._cloud_gateway is not None:
                 await self._refresh_aliyun()
 
     async def refresh_aliyun_credentials(self) -> None:
@@ -309,14 +309,40 @@ class TokenManager:
         await cloud_client.session_by_auth_code()
         await cloud_client.list_binding_by_account()
 
-    async def refresh_mqtt_token(self) -> None:
-        """Refresh the Mammotion MQTT JWT token using the stored MammotionHTTP instance."""
-        try:
-            await self._http.refresh_authorization_token()
-        except UnauthorizedException as exc:
-            raise ReLoginRequiredError(exc)
-        except Exception as exc:
-            raise AuthError(exc)
+    async def refresh_invoke_token(self) -> None:
+        """Proactively refresh the HTTP bearer token used for mqtt_invoke.
+
+        Delegates to the decorated refresh_authorization_token() which checks
+        whether the OAuth access token is close to expiry and calls
+        refresh_login() first only when necessary.  Suitable for scheduled
+        background refreshes; do NOT call this after a 401 — use
+        force_refresh_invoke_token() instead.
+        """
+        async with self._lock:
+            try:
+                await self._http.refresh_authorization_token()
+            except UnauthorizedException as exc:
+                raise ReLoginRequiredError(self._account_id, str(exc)) from exc
+            except Exception as exc:
+                raise AuthError(exc)
+
+    async def force_refresh_invoke_token(self) -> None:
+        """Reactive refresh of the HTTP bearer token after a 401 from mqtt_invoke.
+
+        Unconditionally force-refreshes the OAuth access token first (bypassing
+        the time-based decorator check), then fetches a fresh authorization code
+        via POST /authorization/code.  Use this whenever an actual 401 has
+        already been received so that a potentially server-revoked token is
+        replaced regardless of what the local expiry clock says.
+        """
+        async with self._lock:
+            await self.refresh_http()  # force: uses refresh_token or full re-login
+            try:
+                await self._http.fetch_authorization_token()
+            except UnauthorizedException as exc:
+                raise ReLoginRequiredError(self._account_id, str(exc)) from exc
+            except Exception as exc:
+                raise AuthError(exc)
 
     async def refresh_mqtt_creds(self) -> MQTTCredentials:
         """Fetch fresh MQTT credentials from the Mammotion API.

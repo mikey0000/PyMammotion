@@ -9,8 +9,9 @@ Mammotion MQTT (MQTTTransport)
         → on_fatal_auth_error is invoked
 
     Path 2 — mqtt_invoke HTTP API returns 401:
-        UnauthorizedException → send() calls force_refresh(CLOUD_MAMMOTION)
-        → ReLoginRequiredError propagates from send()
+        UnauthorizedException → send() calls refresh_mqtt_token()
+        → ReLoginRequiredError propagates from send() if token refresh fails
+        → ReLoginRequiredError also raised if retry still returns 401
 
 Aliyun MQTT (AliyunMQTTTransport)
     Only the cloud_gateway invoke path is relevant once connected
@@ -39,7 +40,6 @@ from pymammotion.transport.base import (
     AuthError,
     LoginFailedError,
     ReLoginRequiredError,
-    TransportType,
 )
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 
@@ -159,8 +159,8 @@ async def test_mammotion_mqtt_broker_auth_failure_exhausts_retries_then_relogin(
 
 
 @pytest.mark.asyncio
-async def test_mammotion_invoke_401_force_refresh_with_correct_transport_type() -> None:
-    """UnauthorizedException from mqtt_invoke must call force_refresh(CLOUD_MAMMOTION)."""
+async def test_mammotion_invoke_401_force_refresh_invoke_token_called() -> None:
+    """UnauthorizedException from mqtt_invoke must call force_refresh_invoke_token()."""
     from pymammotion.http.model.http import UnauthorizedException
 
     http = AsyncMock()
@@ -171,12 +171,12 @@ async def test_mammotion_invoke_401_force_refresh_with_correct_transport_type() 
 
     await transport.send(b"\x00\x01", iot_id="device-001")
 
-    tm.force_refresh.assert_awaited_once_with(TransportType.CLOUD_MAMMOTION)
+    tm.force_refresh_invoke_token.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_mammotion_invoke_401_force_refresh_raises_relogin_propagates() -> None:
-    """If force_refresh(CLOUD_MAMMOTION) raises ReLoginRequiredError it must
+async def test_mammotion_invoke_401_force_refresh_invoke_token_raises_relogin_propagates() -> None:
+    """If force_refresh_invoke_token() raises ReLoginRequiredError it must
     propagate from send() so the caller can trigger a full re-login."""
     from pymammotion.http.model.http import UnauthorizedException
 
@@ -184,14 +184,14 @@ async def test_mammotion_invoke_401_force_refresh_raises_relogin_propagates() ->
     http.mqtt_invoke.side_effect = UnauthorizedException("expired")
 
     tm = AsyncMock()
-    tm.force_refresh.side_effect = ReLoginRequiredError("acc", "all credentials exhausted")
+    tm.force_refresh_invoke_token.side_effect = ReLoginRequiredError("acc", "all credentials exhausted")
 
     transport = MQTTTransport(_mammotion_config(), http, token_manager=tm)
 
     with pytest.raises(ReLoginRequiredError, match="all credentials exhausted"):
         await transport.send(b"\x00\x01", iot_id="device-001")
 
-    tm.force_refresh.assert_awaited_once_with(TransportType.CLOUD_MAMMOTION)
+    tm.force_refresh_invoke_token.assert_awaited_once()
 
 
 @pytest.mark.asyncio

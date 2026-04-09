@@ -80,11 +80,11 @@ async def test_refresh_mqtt_creds_fast_path_stores_credentials() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_refresh_mqtt_creds_falls_back_to_authorization_code() -> None:
-    """get_mqtt_credentials() returns None data → refresh_authorization_code is called."""
+async def test_refresh_mqtt_creds_falls_back_to_authorization_token() -> None:
+    """get_mqtt_credentials() returns None data → refresh_authorization_token is called."""
     http = AsyncMock()
     http.get_mqtt_credentials.return_value = MagicMock(data=None)
-    # refresh_authorization_code() sets self.mqtt_credentials as a side effect on the real
+    # refresh_authorization_token() sets self.mqtt_credentials as a side effect on the real
     # http object; on the mock we pre-set it so _refresh_mqtt_creds can read it back.
     http.mqtt_credentials = _make_mqtt_data("jwt-via-authcode")
 
@@ -93,14 +93,14 @@ async def test_refresh_mqtt_creds_falls_back_to_authorization_code() -> None:
     creds = await tm.get_mammotion_mqtt_credentials()
 
     assert creds.jwt == "jwt-via-authcode"
-    http.refresh_authorization_code.assert_awaited_once()
+    http.refresh_authorization_token.assert_awaited_once()
 
 
 async def test_refresh_mqtt_creds_authcode_fallback_raises_relogin_when_credentials_absent() -> None:
-    """refresh_authorization_code() leaves mqtt_credentials=None → falls to refresh_login tier."""
+    """refresh_authorization_token() leaves mqtt_credentials=None → falls to refresh_login tier."""
     http = AsyncMock()
     http.get_mqtt_credentials.return_value = MagicMock(data=None)
-    http.mqtt_credentials = None  # auth code refresh didn't populate credentials
+    http.mqtt_credentials = None  # auth token refresh didn't populate credentials
 
     # refresh_login fallback succeeds but MQTT creds still not set → ReLoginRequiredError
     tm = TokenManager("acc", http)
@@ -109,9 +109,8 @@ async def test_refresh_mqtt_creds_authcode_fallback_raises_relogin_when_credenti
     with pytest.raises(ReLoginRequiredError, match="MQTT credentials unavailable"):
         await tm.get_mammotion_mqtt_credentials()
 
-    # Both tiers of the auth-code path were attempted
-    assert http.refresh_token_v2.await_count >= 1
-    assert http.refresh_authorization_code.await_count >= 1
+    # refresh_authorization_token called in both the first tier and the fallback tier
+    assert http.refresh_authorization_token.await_count >= 1
     http.refresh_login.assert_awaited_once()
 
 
@@ -120,13 +119,13 @@ async def test_refresh_mqtt_creds_authcode_fallback_raises_relogin_when_credenti
 # ---------------------------------------------------------------------------
 
 
-async def test_refresh_mqtt_creds_falls_back_to_refresh_login_when_authcode_raises() -> None:
-    """refresh_authorization_code() raising → refresh_login() is called as last resort."""
+async def test_refresh_mqtt_creds_falls_back_to_refresh_login_when_authtoken_raises() -> None:
+    """refresh_authorization_token() raising → refresh_login() is called as last resort."""
     http = AsyncMock()
     http.get_mqtt_credentials.return_value = MagicMock(data=None)
-    # First call (inside the refresh_token_v2/refresh_authorization_code tier) raises;
-    # second call (inside the refresh_login tier) also raises to trigger full failure.
-    http.refresh_authorization_code.side_effect = RuntimeError("authcode endpoint down")
+    # Both calls to refresh_authorization_token() raise, forcing the code into the
+    # refresh_login fallback and ultimately into ReLoginRequiredError.
+    http.refresh_authorization_token.side_effect = RuntimeError("authtoken endpoint down")
 
     tm = TokenManager("acc", http)
     await tm.initialize(None, None, None)
@@ -146,7 +145,7 @@ async def test_refresh_mqtt_creds_raises_relogin_when_all_fail() -> None:
     """When every tier of the cascade fails, ReLoginRequiredError propagates."""
     http = AsyncMock()
     http.get_mqtt_credentials.return_value = MagicMock(data=None)
-    http.refresh_authorization_code.side_effect = RuntimeError("authcode down")
+    http.refresh_authorization_token.side_effect = RuntimeError("authtoken down")
     http.refresh_login.side_effect = RuntimeError("login also down")
 
     tm = TokenManager("acc", http)
@@ -229,8 +228,8 @@ async def test_get_valid_http_token_raises_relogin_when_data_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_send_unauthorized_calls_force_refresh_not_mqtt_credentials() -> None:
-    """UnauthorizedException → token_manager.force_refresh(), NOT get_mammotion_mqtt_credentials."""
+async def test_send_unauthorized_calls_force_refresh_invoke_token_not_mqtt_credentials() -> None:
+    """UnauthorizedException → token_manager.force_refresh_invoke_token(), NOT get_mammotion_mqtt_credentials."""
     from pymammotion.http.model.http import UnauthorizedException
 
     http = AsyncMock()
@@ -241,9 +240,7 @@ async def test_send_unauthorized_calls_force_refresh_not_mqtt_credentials() -> N
     transport = _make_transport(http, tm)
     await transport.send(b"\x00\x01", iot_id="device-001")
 
-    from pymammotion.transport.base import TransportType
-
-    tm.force_refresh.assert_awaited_once_with(TransportType.CLOUD_MAMMOTION)
+    tm.force_refresh_invoke_token.assert_awaited_once()
     tm.get_mammotion_mqtt_credentials.assert_not_awaited()
 
 
