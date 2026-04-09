@@ -647,12 +647,14 @@ class HashList(DataClassORJSONMixin):
         if ub_path_hash == 0 and self.generated_mow_path_geojson:
             self.current_mow_path = {}
             self.generated_mow_path_geojson = {}
+            self.generated_mow_progress_geojson = {}
 
         if ub_path_hash == self.last_ub_path_hash:
             return
         self.last_ub_path_hash = ub_path_hash
         self.current_mow_path = {}
         self.generated_mow_path_geojson = {}
+        self.generated_mow_progress_geojson = {}
 
     def invalidate_breakpoint_line(self, ub_path_hash: int) -> bool:
         """Synchronise self.line to the device's current ub_path_hash.
