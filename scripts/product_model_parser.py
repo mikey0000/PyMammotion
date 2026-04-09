@@ -5,7 +5,7 @@ def load_json_from_file(file_path):
     with open(file_path) as file:
         return json.load(file)
 
-json_file_path = 'models_2.json'
+json_file_path = 'device_configuration_form.json'
 
 # Assuming new_data is the JSON string you provided
 new_data = """
@@ -40,14 +40,16 @@ for item in data['deviceMode']:
     # Convert keys for compatibility if necessary
     updated_item = {
         "extMod": item["extMod"],
-        "cutter_height_min": item["cutter_height_min"],
-        "cutter_height_max": item["cutter_height_max"],
+        "blade_height_min": item["cutter_height_min"],
+        "blade_height_max": item["cutter_height_max"],
+        "cutting_speed_min": item["cutting_speed_min"],
+        "cutting_speed_max": item["cutting_speed_max"],
         "working_speed_min": item["working_speed_min"],
         "working_speed_max": item["working_speed_max"],
         "work_area_num_max": item["work_area_num_max"],
-        "working_path_min": item.get("working_pathSpace_min", 20),
-        "working_path_max": item.get("working_pathSpace_max", 35),
-        "display_imge_type": item["display_imge_type"]
+        "path_spacing_min": item.get("working_pathSpace_min", 20),
+        "path_spacing_max": item.get("working_pathSpace_max", 35),
+        "display_image_type": item["display_imge_type"]
     }
 
     # Update existing entry or add a new one
