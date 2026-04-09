@@ -244,9 +244,9 @@ class DeviceHandle:
 
         _logger.debug("← %s  %s", self.device_name, luba_msg.to_dict(include_default_values=False))
 
-        # 2. Clear mqtt_reported_offline — device is clearly reachable if it's sending messages
-        if self._availability.mqtt_reported_offline and transport_type != TransportType.BLE:
-            self.update_availability(transport_type, self._availability.mqtt, mqtt_reported_offline=False)
+        # 2. (mqtt_reported_offline is only cleared by an explicit thing/status=CONNECTED message,
+        #     not by incoming protobuf data — a queued message can arrive after the offline
+        #     notification due to MQTT broker ordering, which would falsely restore online state.)
 
         # 3. Apply to state via reducer (returns a new MowingDevice copy)
         updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)

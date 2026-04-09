@@ -644,7 +644,7 @@ class HashList(DataClassORJSONMixin):
         non-zero value (new job, refetch required) or to 0 (job ended).
         Repeated calls with the same value are no-ops.
         """
-        if ub_path_hash == 0 and self.generated_mow_path_geojson:
+        if ub_path_hash == 0 and (self.generated_mow_path_geojson or self.generated_mow_progress_geojson):
             self.current_mow_path = {}
             self.generated_mow_path_geojson = {}
             self.generated_mow_progress_geojson = {}
