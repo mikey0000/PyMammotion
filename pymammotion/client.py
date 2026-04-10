@@ -138,7 +138,7 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
         device.map,
         now_index,
         Point(rtk_ll.latitude, rtk_ll.longitude),
-        ub_path_hash=0,  # 0 = include all zones; work.ub_path_hash is the active segment only
+        ub_path_hash=work.ub_path_hash,
         path_pos=path_pos,
     )
 

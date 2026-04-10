@@ -11,6 +11,7 @@ from pymammotion.data.model.hash_list import (
     FrameList,
     HashList,
     MowPath,
+    MowPathPacket,
     NavGetCommData,
 )
 
@@ -251,28 +252,34 @@ class GeojsonGenerator:
     ) -> GeoJSONCollection:
         """Generate a GeoJSON FeatureCollection showing the remaining mow path portion.
 
-        Filters ``hash_list.current_mow_path`` packets to those whose ``path_hash``
-        matches ``ub_path_hash``, then slices from ``now_index`` onwards to produce
-        the remaining (not-yet-mowed) portion of the planned path.
+        Produces one feature per unique ``path_hash`` found in
+        ``hash_list.current_mow_path``.  ``now_index`` is specific to the
+        currently-active path segment identified by ``ub_path_hash``; other
+        segments (downloaded as part of the same task but not yet started —
+        ``current_mow_path`` is cleared on hash change) are shown in full.
 
-        When ``path_pos`` is provided (ENU metres decoded from ``report_data.work.path_pos_x/y``),
-        it is prepended as the precise starting coordinate — matching APK behaviour where the
-        current device position begins the remaining-path line.  Without it the function falls back
-        to starting from ``all_points[now_index - 1]``.
+        When ``path_pos`` is provided (ENU metres decoded from
+        ``report_data.work.path_pos_x/y``) it is prepended as the precise
+        starting coordinate for the active segment — matching APK behaviour
+        where the current device position begins the remaining-path line.
 
         Args:
             hash_list:    HashList containing ``current_mow_path`` data.
-            now_index:    Current path position index from ``report_data.work.now_index``
-                          or ``mowing_state.now_index``.  Points 0..now_index are completed.
-            rtk_location: Shapely ``Point(latitude, longitude)`` for the RTK base station.
-            ub_path_hash: The path hash from ``report_data.work.ub_path_hash`` used to
-                          filter the correct path packets.  Pass 0 to include all packets.
-            path_pos:     Optional ``(x_metres, y_metres)`` ENU position of the device
-                          (``report_data.work.path_pos_x / 10000``, same for y``).
-                          When non-zero this replaces the ``now_index - 1`` fallback start point.
+            now_index:    Current point index within the active path segment
+                          (``report_data.work.now_index``).  Applied only to
+                          the segment whose ``path_hash == ub_path_hash``.
+            rtk_location: Shapely ``Point(latitude, longitude)`` for the RTK
+                          base station.
+            ub_path_hash: Active path hash from ``report_data.work.ub_path_hash``.
+                          Selects which segment gets ``now_index`` applied.
+                          Pass 0 to treat all segments as active (fallback).
+            path_pos:     Optional ``(x_metres, y_metres)`` ENU position of the
+                          device (``report_data.work.path_pos_x / 10000``, same
+                          for y).  Prepended to the active segment's remaining
+                          points when non-zero.
 
         Returns:
-            GeoJSON FeatureCollection with zero or one LineString features.
+            GeoJSON FeatureCollection with one LineString feature per path hash.
 
         """
         geo_json: GeoJSONCollection = {
@@ -284,36 +291,72 @@ class GeojsonGenerator:
         if now_index <= 0 or not hash_list.current_mow_path:
             return geo_json
 
-        # Collect matching packets grouped by path_type so each type becomes a separate
-        # feature (matching the structure of generate_mow_path_geojson).
-        # Frames are iterated in sorted order — same traversal used by _process_mow_map_objects —
-        # so that generate_mow_progress_geojson at now_index=1 produces identical coordinates
-        # to the planned mow path geojson.
-        points_by_type: dict[int, list[CommDataCouple]] = {}
-        total_by_type: dict[int, int] = {}
+        # Build ordered path-hash list from root_hash_lists sub_cmd=3.
+        # This list reflects the mowing order the device will follow.
+        ordered_hashes: list[int] = []
+        for rhl in hash_list.root_hash_lists:
+            if rhl.sub_cmd == 3:
+                for entry in rhl.data:
+                    ordered_hashes.extend(entry.data_couple)
+                break
+
+        # Determine which hashes are still remaining (active or not yet started).
+        # Hashes that appear before ub_path_hash in the ordered list are already
+        # completed and should not be shown.
+        if ub_path_hash and ordered_hashes:
+            try:
+                active_idx = ordered_hashes.index(ub_path_hash)
+            except ValueError:
+                active_idx = 0
+            visible_hashes: set[int] = set(ordered_hashes[active_idx:])
+        else:
+            visible_hashes = set()  # empty = no filtering when no order info
+
+        # Collect packets per path_hash, grouped by path_cur for correct ordering.
+        # path_cur is the packet's sequence number within its path_hash stream.
+        packets_by_hash: dict[int, dict[int, MowPathPacket]] = {}  # hash → {path_cur: packet}
+        type_by_hash: dict[int, int] = {}
         for transaction_id in sorted(hash_list.current_mow_path.keys()):
             frames = hash_list.current_mow_path[transaction_id]
             for frame_idx in sorted(frames.keys()):
                 mow_path = frames[frame_idx]
                 for packet in mow_path.path_packets:
-                    if ub_path_hash == 0 or packet.path_hash == ub_path_hash:
-                        points_by_type.setdefault(packet.path_type, []).extend(packet.data_couple)
+                    if visible_hashes and packet.path_hash not in visible_hashes:
+                        continue
+                    packets_by_hash.setdefault(packet.path_hash, {})[packet.path_cur] = packet
+                    type_by_hash.setdefault(packet.path_hash, packet.path_type)
 
-        for path_type in points_by_type:
-            total_by_type[path_type] = len(points_by_type[path_type])
+        # Assemble points per hash in path_cur order.
+        points_by_hash: dict[int, list[CommDataCouple]] = {}
+        for path_hash, cur_map in packets_by_hash.items():
+            pts: list[CommDataCouple] = []
+            for cur in sorted(cur_map.keys()):
+                pts.extend(cur_map[cur].data_couple)
+            points_by_hash[path_hash] = pts
 
-        # Build remaining path per type: APK does path[nowIndex:] then prepends the exact
-        # device position (path_pos_x/y) as the first point so the line begins at the
-        # mower's current location rather than the next planned waypoint.
-        for path_type, all_points in sorted(points_by_type.items()):
-            if path_pos is not None and (path_pos[0] != 0.0 or path_pos[1] != 0.0):
-                remaining: list[CommDataCouple] = [CommDataCouple(x=path_pos[0], y=path_pos[1])] + all_points[
-                    now_index:
-                ]
+        def _hash_order(h: int) -> int:
+            try:
+                return ordered_hashes.index(h)
+            except ValueError:
+                return len(ordered_hashes)
+
+        # One feature per path_hash, emitted in mowing order.
+        for path_hash in sorted(points_by_hash.keys(), key=_hash_order):
+            all_points = points_by_hash[path_hash]
+            total = len(all_points)
+            is_active = ub_path_hash == 0 or path_hash == ub_path_hash
+
+            if is_active:
+                if path_pos is not None and (path_pos[0] != 0.0 or path_pos[1] != 0.0):
+                    remaining: list[CommDataCouple] = [CommDataCouple(x=path_pos[0], y=path_pos[1])] + all_points[
+                        now_index:
+                    ]
+                else:
+                    remaining = all_points[max(0, now_index - 1) :]
+                applied_index = now_index
             else:
-                # Fallback: start one point before nowIndex to include the current section.
-                start = max(0, now_index - 1)
-                remaining = all_points[start:]
+                remaining = all_points
+                applied_index = 0
 
             if len(remaining) < 2:
                 continue
@@ -326,10 +369,12 @@ class GeojsonGenerator:
                     "type": "Feature",
                     "properties": {
                         "type_name": "mow_progress",
-                        "path_type": path_type,
+                        "path_hash": path_hash,
+                        "path_type": type_by_hash[path_hash],
+                        "is_active": is_active,
                         "point_count": len(remaining),
-                        "now_index": now_index,
-                        "total_points": total_by_type[path_type],
+                        "now_index": applied_index,
+                        "total_points": total,
                         "length": length,
                         **MOW_PROGRESS_STYLE,
                     },

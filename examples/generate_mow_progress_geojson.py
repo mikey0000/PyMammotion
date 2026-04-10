@@ -35,7 +35,15 @@ import sys
 from shapely.geometry import Point
 
 from pymammotion.data.model.generate_geojson import GeojsonGenerator
-from pymammotion.data.model.hash_list import AreaHashNameList, CommDataCouple, HashList, MowPath, MowPathPacket
+from pymammotion.data.model.hash_list import (
+    AreaHashNameList,
+    CommDataCouple,
+    HashList,
+    MowPath,
+    MowPathPacket,
+    NavGetHashListData,
+    RootHashList,
+)
 from pymammotion.data.model.location import LocationPoint
 from pymammotion.utility.map import CoordinateConverter
 
@@ -102,6 +110,27 @@ if "map" in fixture:
     for tid, frames in fixture["map"].get("current_mow_path", {}).items():
         for fid, frame in frames.items():
             hash_list.update_mow_path(_make_mow_path(frame))
+    # Load root_hash_lists so generate_mow_progress_geojson can filter completed hashes.
+    for rhl_raw in fixture["map"].get("root_hash_lists", []):
+        rhl = RootHashList(
+            total_frame=rhl_raw.get("total_frame", 0),
+            sub_cmd=rhl_raw["sub_cmd"],
+            data=[
+                NavGetHashListData(
+                    pver=e.get("pver", 0),
+                    sub_cmd=e.get("sub_cmd", 0),
+                    total_frame=e.get("total_frame", 0),
+                    current_frame=e.get("current_frame", 0),
+                    data_hash=e.get("data_hash", 0),
+                    hash_len=e.get("hash_len", 0),
+                    reserved=e.get("reserved", ""),
+                    result=e.get("result", 0),
+                    data_couple=e.get("data_couple", []),
+                )
+                for e in rhl_raw.get("data", [])
+            ],
+        )
+        hash_list.root_hash_lists.append(rhl)
 else:
     # Legacy flat list format
     hash_list.area_name = [AreaHashNameList(name=a["name"], hash=a["hash"]) for a in fixture.get("area_names", [])]
@@ -148,7 +177,7 @@ _fixture_now_index = (real_path_num & 0x00FFFF00) >> 8
 _fixture_ub_path_hash = int(_work.get("ub_path_hash", 0))
 
 now_index = _cli_now_index if _cli_now_index is not None else _fixture_now_index
-ub_path_hash = _cli_ub_path_hash if _cli_ub_path_hash is not None else 0
+ub_path_hash = _cli_ub_path_hash if _cli_ub_path_hash is not None else _fixture_ub_path_hash
 
 # Decode exact device position (raw int ÷ 10000 → ENU metres), matching APK logic.
 _raw_path_pos_x = _work.get("path_pos_x", 0)
@@ -160,7 +189,7 @@ path_pos = (path_pos_x, path_pos_y) if (_raw_path_pos_x or _raw_path_pos_y) else
 if _cli_now_index is None:
     print(f"now_index={now_index} (decoded from real_path_num={real_path_num})")
 if _cli_ub_path_hash is None:
-    print(f"ub_path_hash=0 (all paths; active segment from fixture: {_fixture_ub_path_hash})")
+    print(f"ub_path_hash={_fixture_ub_path_hash} (from fixture)")
 if path_pos:
     print(f"path_pos=({path_pos_x:.4f}m, {path_pos_y:.4f}m) (from fixture report_data.work.path_pos_x/y)")
 
@@ -218,8 +247,9 @@ if not progress["features"]:
 for feat in progress["features"]:
     coords = feat["geometry"]["coordinates"]
     props = feat["properties"]
-    print(f"  [path_type={props['path_type']}]  {props['point_count']} pts "
-          f"(of {props['total_points']} total, now_index={props['now_index']})")
+    active_flag = " [ACTIVE]" if props.get("is_active") else ""
+    print(f"  [hash={props['path_hash']} type={props['path_type']}]{active_flag}  "
+          f"{props['point_count']} pts (of {props['total_points']} total, now_index={props['now_index']})")
     print(f"  first={coords[0]}  last={coords[-1]}")
     print(f"  length={props['length']:.3f} m")
 
