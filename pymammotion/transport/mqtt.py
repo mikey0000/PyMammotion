@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+_MQTT_RECONNECT_MIN_SEC = 1
+_MQTT_RECONNECT_MAX_SEC = 120
+
 
 @dataclass(frozen=True)
 class MQTTTransportConfig:
@@ -66,8 +69,8 @@ class MQTTTransport(Transport):
         self,
         config: MQTTTransportConfig,
         mammotion_http: MammotionHTTP,
+        token_manager: TokenManager,
         jwt_refresher: Callable[[], Awaitable[str]] | None = None,
-        token_manager: TokenManager | None = None,
     ) -> None:
         """Initialise the transport with the supplied configuration.
 
@@ -205,7 +208,9 @@ class MQTTTransport(Transport):
             try:
                 res = await self._http.mqtt_invoke(content, "", iot_id)
             except UnauthorizedException as exc:
-                raise ReLoginRequiredError("", f"MQTT invoke still 401 after token refresh: {exc}") from exc
+                raise ReLoginRequiredError(
+                    self._token_manager.account_id, f"MQTT invoke still 401 after token refresh: {exc}"
+                ) from exc
             except Exception as retry_exc:
                 raise AuthError(
                     f"Access token expired and retry failed after credential refresh {retry_exc}"
@@ -262,7 +267,7 @@ class MQTTTransport(Transport):
 
     async def _run(self) -> None:
         """Run the main connection loop, reconnecting with exponential backoff."""
-        backoff = 1
+        backoff = _MQTT_RECONNECT_MIN_SEC
         _bad_credentials_attempts = 0
         _BAD_CREDENTIALS_MAX = 3
 
@@ -299,7 +304,7 @@ class MQTTTransport(Transport):
                     timeout=30,
                 ) as client:
                     self._client = client
-                    backoff = 1
+                    backoff = _MQTT_RECONNECT_MIN_SEC
                     _bad_credentials_attempts = 0
                     await self._notify_availability(TransportAvailability.CONNECTED)
 
@@ -339,7 +344,8 @@ class MQTTTransport(Transport):
                     )
                     self._stop_event.set()
                     auth_exc = ReLoginRequiredError(
-                        "", f"MQTT auth exhausted after {_bad_credentials_attempts} attempt(s) (rc={rc})"
+                        self._token_manager.account_id,
+                        f"MQTT auth exhausted after {_bad_credentials_attempts} attempt(s) (rc={rc})",
                     )
                     if self.on_fatal_auth_error is not None:
                         with contextlib.suppress(Exception):
@@ -375,7 +381,7 @@ class MQTTTransport(Transport):
                     await asyncio.sleep(backoff)
                 except asyncio.CancelledError:
                     break
-                backoff = min(backoff * 2, 120)
+                backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
 
     async def _dispatch(self, topic: str, raw: bytes) -> None:
         """Route an incoming message to the appropriate callback.

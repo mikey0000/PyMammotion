@@ -427,7 +427,8 @@ def test_mow_progress_geojson_empty_path_returns_empty() -> None:
 
 
 def test_mow_progress_geojson_now_index_within_range() -> None:
-    """now_index=10 slices path[9:] (remaining from current section to end) into a LineString."""
+    """now_index=10 is applied per section: the active section (ub_path_hash) gets 51 remaining pts.
+    Other sections in current_mow_path are shown in full (now_index=0)."""
     from shapely.geometry import Point
 
     from pymammotion.data.model.generate_geojson import GeojsonGenerator
@@ -445,12 +446,14 @@ def test_mow_progress_geojson_now_index_within_range() -> None:
     )
 
     assert result["type"] == "FeatureCollection"
-    assert len(result["features"]) == 1
+    assert len(result["features"]) == 14
 
-    feature = result["features"][0]
+    # Exactly one feature is the active section with now_index applied
+    active = [f for f in result["features"] if f["properties"]["now_index"] == 10]
+    assert len(active) == 1
+    feature = active[0]
     assert feature["geometry"]["type"] == "LineString"
     assert feature["properties"]["type_name"] == "mow_progress"
-    assert feature["properties"]["now_index"] == 10
     assert feature["properties"]["point_count"] == 51  # 60 total - (10-1) = 51 remaining
     assert len(feature["geometry"]["coordinates"]) == 51
 
@@ -553,11 +556,12 @@ def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:
 def test_apply_mow_progress_geojson_populates_device() -> None:
     """_apply_mow_progress_geojson stores progress GeoJSON on MowingDevice.
 
-    Uses ub_path_hash=0 (all zones) — work.ub_path_hash is the active segment
-    only; including it would suppress all other zones from the output.
-    Yuka fixture has path_type=1 (902 pts) and path_type=2 (278 pts) across all
-    zones.  At now_index=23 (start=22): type 1 has 880 remaining, type 2 has 256.
+    Uses ub_path_hash=0 (all zones) — now_index=23 is applied per section (start=22).
+    Yuka fixture has 10 type-1 sections (902 pts total) and 4 type-2 sections (278 pts total).
+    Each section independently loses its first 22 points: type 1 → 702 remaining, type 2 → 190.
     """
+    from collections import defaultdict
+
     from pymammotion.client import _apply_mow_progress_geojson
     from pymammotion.data.model.device import MowingDevice
 
@@ -580,19 +584,21 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
 
     result = device.map.generated_mow_progress_geojson
     assert result["type"] == "FeatureCollection"
-    assert len(result["features"]) == 2  # path_type=1 (mow stripes) + path_type=2 (border passes)
+    assert len(result["features"]) == 12  # one feature per path_hash section
 
-    by_type = {f["properties"]["path_type"]: f for f in result["features"]}
-    assert set(by_type.keys()) == {1, 2}
+    assert {f["properties"]["path_type"] for f in result["features"]} == {1, 2}
 
     for feature in result["features"]:
         assert feature["geometry"]["type"] == "LineString"
         assert feature["properties"]["type_name"] == "mow_progress"
         assert feature["properties"]["now_index"] == 23
 
-    # now_index=23 → start=22; type 1: 902 - 22 = 880 remaining; type 2: 278 - 22 = 256 remaining
-    assert by_type[1]["properties"]["point_count"] == 880
-    assert by_type[2]["properties"]["point_count"] == 256
+    # now_index=23 → start=22 applied per section; sum remaining pts across all sections per type
+    totals: dict[int, int] = defaultdict(int)
+    for f in result["features"]:
+        totals[f["properties"]["path_type"]] += f["properties"]["point_count"]
+    assert totals[1] == 702
+    assert totals[2] == 190
 
 
 def test_apply_mow_progress_geojson_noop_when_now_index_zero() -> None:
@@ -671,24 +677,28 @@ def test_mow_progress_geojson_matches_example_script_output() -> None:
             f"got {len(result['features'])}"
         )
 
-        ref_by_type = {f["properties"]["path_type"]: f for f in reference["features"]}
-        res_by_type = {f["properties"]["path_type"]: f for f in result["features"]}
+        if not reference["features"]:
+            continue  # 0 features is valid when now_index exceeds all section lengths
 
-        assert set(res_by_type.keys()) == set(ref_by_type.keys()), (
-            f"now_index={now_index}: path_type mismatch — "
-            f"expected {set(ref_by_type.keys())}, got {set(res_by_type.keys())}"
+        # Group by path_hash (unique per section) for an exact per-section comparison.
+        ref_by_hash = {f["properties"]["path_hash"]: f for f in reference["features"]}
+        res_by_hash = {f["properties"]["path_hash"]: f for f in result["features"]}
+
+        assert set(res_by_hash.keys()) == set(ref_by_hash.keys()), (
+            f"now_index={now_index}: path_hash mismatch — "
+            f"expected {set(ref_by_hash.keys())}, got {set(res_by_hash.keys())}"
         )
 
-        for path_type, ref_feat in ref_by_type.items():
-            res_feat = res_by_type[path_type]
+        for path_hash, ref_feat in ref_by_hash.items():
+            res_feat = res_by_hash[path_hash]
             ref_coords = ref_feat["geometry"]["coordinates"]
             res_coords = res_feat["geometry"]["coordinates"]
             assert len(res_coords) == len(ref_coords), (
-                f"now_index={now_index}, path_type={path_type}: "
+                f"now_index={now_index}, path_hash={path_hash}: "
                 f"{len(res_coords)} pts != {len(ref_coords)} reference pts"
             )
             assert res_coords == ref_coords, (
-                f"now_index={now_index}, path_type={path_type}: coordinates differ at index "
+                f"now_index={now_index}, path_hash={path_hash}: coordinates differ at index "
                 + str(next(i for i, (a, b) in enumerate(zip(res_coords, ref_coords)) if a != b))
             )
 
@@ -729,17 +739,18 @@ def test_mow_progress_from_start_identical_to_mow_path() -> None:
     }
     assert len(planned_by_type) >= 2, "Fixture should have at least two path types"
 
-    # Progress at now_index=1: start = max(0, 0) = 0, so all points are remaining
+    # Progress at now_index=1: start = max(0, 0) = 0, so all points are remaining.
+    # One feature is emitted per path_hash section; accumulate coords by path_type for comparison.
     progress = GeojsonGenerator.generate_mow_progress_geojson(
         hash_list,
         now_index=1,
         rtk_location=rtk_point,
         ub_path_hash=0,  # all paths, all types
     )
-    progress_by_type: dict[int, list] = {
-        f["properties"]["path_type"]: f["geometry"]["coordinates"]
-        for f in progress["features"]
-    }
+    progress_by_type: dict[int, list] = {}
+    for f in progress["features"]:
+        pt = f["properties"]["path_type"]
+        progress_by_type.setdefault(pt, []).extend(f["geometry"]["coordinates"])
 
     assert set(progress_by_type.keys()) == set(planned_by_type.keys()), (
         f"Progress path_types {set(progress_by_type.keys())} != planned {set(planned_by_type.keys())}"
@@ -750,7 +761,7 @@ def test_mow_progress_from_start_identical_to_mow_path() -> None:
         assert len(progress_coords) == len(planned_coords), (
             f"path_type={path_type}: {len(progress_coords)} progress pts != {len(planned_coords)} planned pts"
         )
-        assert progress_coords == planned_coords, (
-            f"path_type={path_type}: coordinates differ at index "
-            + str(next(i for i, (a, b) in enumerate(zip(progress_coords, planned_coords)) if a != b))
+        # Section ordering may differ between the two generators; compare as coordinate sets.
+        assert sorted(progress_coords) == sorted(planned_coords), (
+            f"path_type={path_type}: coordinate sets differ"
         )

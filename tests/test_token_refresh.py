@@ -421,7 +421,7 @@ async def test_mqtt_transport_send_raises_auth_error_on_expired_token(code: int)
     http.mqtt_invoke.return_value = MagicMock(code=code, msg="token expired")
 
     config = MQTTTransportConfig(host="mqtt.example.com", client_id="c1", username="u", password="p")
-    transport = MQTTTransport(config=config, mammotion_http=http)
+    transport = MQTTTransport(config=config, mammotion_http=http, token_manager=AsyncMock())
 
     with pytest.raises(AuthError):
         await transport.send(b"\x00\x01", iot_id="device-001")
@@ -434,7 +434,7 @@ async def test_mqtt_transport_send_raises_transport_error_when_no_iot_id() -> No
 
     http = AsyncMock()
     config = MQTTTransportConfig(host="mqtt.example.com", client_id="c1", username="u", password="p")
-    transport = MQTTTransport(config=config, mammotion_http=http)
+    transport = MQTTTransport(config=config, mammotion_http=http, token_manager=AsyncMock())
 
     with pytest.raises(TransportError):
         await transport.send(b"\x00\x01", iot_id="")

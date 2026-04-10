@@ -599,7 +599,7 @@ class MammotionClient:
 
             acct_session.cloud_client = cloud_client
             acct_session.token_manager = TokenManager(account, mammotion_http, cloud_client)
-            al_transport = self._setup_aliyun_transport(cloud_client)
+            al_transport = self._setup_aliyun_transport(cloud_client, acct_session)
             acct_session.aliyun_transport = al_transport
             ua = acct_session.user_account
             for device in cloud_client.devices_by_account_response.data.data:
@@ -730,7 +730,9 @@ class MammotionClient:
             return int(mammotion_http.login_info.userInformation.userAccount)
         return 0
 
-    def _setup_aliyun_transport(self, cloud_client: CloudIOTGateway) -> AliyunMQTTTransport:
+    def _setup_aliyun_transport(
+        self, cloud_client: CloudIOTGateway, acct_session: AccountSession
+    ) -> AliyunMQTTTransport:
         """Build an AliyunMQTTTransport from a ready CloudIOTGateway."""
         aep = cloud_client.aep_response.data
         region_id = cloud_client.region_response.data.regionId
@@ -749,6 +751,32 @@ class MammotionClient:
         transport.on_device_status = self._route_device_status
         transport.on_device_event = self._route_device_event
         transport.on_device_properties = self._route_device_properties
+
+        token_manager = acct_session.token_manager
+
+        async def _on_aliyun_auth_failure() -> bool:
+            """Refresh Aliyun IoT credentials and update the bind token on the transport."""
+            if token_manager is None:
+                return False
+            try:
+                await token_manager.refresh_aliyun_credentials()
+                creds = await token_manager.get_aliyun_credentials()
+                transport.update_iot_token(creds.iot_token)
+                _logger.info("Aliyun IoT token refreshed after bind token expiry")
+                return True
+            except ReLoginRequiredError:
+                _logger.warning("Aliyun token refresh requires full re-login — attempting")
+                try:
+                    await self._full_relogin(acct_session)
+                    creds = await token_manager.get_aliyun_credentials()
+                    transport.update_iot_token(creds.iot_token)
+                    _logger.info("Aliyun IoT token refreshed after full re-login")
+                    return True
+                except Exception:
+                    _logger.exception("Full re-login failed after Aliyun bind token expiry")
+                    return False
+
+        transport.on_auth_failure = _on_aliyun_auth_failure
         return transport
 
     def _setup_mammotion_transport(
@@ -756,6 +784,7 @@ class MammotionClient:
         mqtt_creds: MQTTConnection,
         mammotion_http: MammotionHTTP,
         acct_session: AccountSession,
+        token_manager: TokenManager,
     ) -> MQTTTransport:
         """Build a MQTTTransport from MQTTConnection credentials."""
         from urllib.parse import urlparse
@@ -772,7 +801,6 @@ class MammotionClient:
         )
 
         # Build a jwt_refresher that uses the TokenManager to get a fresh JWT.
-        token_manager = acct_session.token_manager
 
         async def _refresh_jwt() -> str:
             creds = await token_manager.refresh_mqtt_creds()
@@ -877,7 +905,7 @@ class MammotionClient:
         acct_session.user_account = self._extract_user_account(cloud_client.mammotion_http)
         acct_session.token_manager = TokenManager(account, cloud_client.mammotion_http, cloud_client)
 
-        transport = self._setup_aliyun_transport(cloud_client)
+        transport = self._setup_aliyun_transport(cloud_client, acct_session)
         acct_session.aliyun_transport = transport
 
         known_ids: set[str] = set()
@@ -952,7 +980,9 @@ class MammotionClient:
             mammotion_http.mqtt_credentials = mqtt_creds
             if acct_session.token_manager is None:
                 acct_session.token_manager = TokenManager(account, mammotion_http)
-            transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http, acct_session)
+            transport = self._setup_mammotion_transport(
+                mqtt_creds, mammotion_http, acct_session, acct_session.token_manager
+            )
             acct_session.mammotion_transport = transport
             ua = acct_session.user_account
             for record in cached_records.records:

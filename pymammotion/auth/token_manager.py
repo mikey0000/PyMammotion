@@ -392,3 +392,7 @@ class TokenManager:
         except Exception as exc:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         return self._mqtt_creds
+
+    @property
+    def account_id(self):
+        return self._account_id

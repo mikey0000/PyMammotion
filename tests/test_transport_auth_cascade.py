@@ -106,6 +106,7 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
     transport = MQTTTransport(
         _mammotion_config(),
         http,
+        AsyncMock(),
         jwt_refresher=_jwt_refresher,
     )
     transport.on_fatal_auth_error = _on_fatal
@@ -138,6 +139,7 @@ async def test_mammotion_mqtt_broker_auth_failure_exhausts_retries_then_relogin(
     transport = MQTTTransport(
         _mammotion_config(),
         http,
+        AsyncMock(),
         jwt_refresher=_jwt_refresher,
     )
     transport.on_fatal_auth_error = _on_fatal

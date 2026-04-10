@@ -30,7 +30,7 @@ def mammotion_http() -> MagicMock:
 
 @pytest.fixture
 def transport(config: MQTTTransportConfig, mammotion_http: MagicMock) -> MQTTTransport:
-    return MQTTTransport(config, mammotion_http)
+    return MQTTTransport(config, mammotion_http, AsyncMock())
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ class _FakeMQTTClient:
 @pytest.mark.asyncio
 async def test_connect_sets_is_connected(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """connect() should set is_connected to True once the MQTT loop starts."""
-    transport = MQTTTransport(config, mammotion_http)
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
     fake_client = _FakeMQTTClient()
 
     with patch("aiomqtt.Client", return_value=fake_client):
@@ -114,7 +114,7 @@ async def test_connect_sets_is_connected(config: MQTTTransportConfig, mammotion_
 @pytest.mark.asyncio
 async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """disconnect() should set is_connected to False."""
-    transport = MQTTTransport(config, mammotion_http)
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
     fake_client = _FakeMQTTClient()
 
     with patch("aiomqtt.Client", return_value=fake_client):
@@ -136,7 +136,7 @@ async def test_send_calls_mqtt_invoke(config: MQTTTransportConfig) -> None:
 
     http = MagicMock()
     http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=0))
-    transport = MQTTTransport(config, http)
+    transport = MQTTTransport(config, http, AsyncMock())
 
     payload = b"\x01\x02\x03"
     await transport.send(payload, iot_id="dev123")
@@ -152,7 +152,7 @@ async def test_send_calls_mqtt_invoke(config: MQTTTransportConfig) -> None:
 @pytest.mark.asyncio
 async def test_send_raises_when_no_iot_id(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """send() with an empty iot_id should raise TransportError."""
-    transport = MQTTTransport(config, mammotion_http)
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
     with pytest.raises(TransportError, match="iot_id"):
         await transport.send(b"hello")
 
@@ -170,7 +170,7 @@ async def test_on_message_callback_called(config: MQTTTransportConfig, mammotion
     async def _handler(data: bytes) -> None:
         received.append(data)
 
-    transport = MQTTTransport(config, mammotion_http)
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
     transport.on_message = _handler
 
     incoming = [_FakeMessage("some/topic", b"hello")]
@@ -181,3 +181,86 @@ async def test_on_message_callback_called(config: MQTTTransportConfig, mammotion
         await asyncio.sleep(0.1)
         assert received == [b"hello"]
         await transport.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Network errors (OSError / DNS) — retry with backoff, no auth count
+# ---------------------------------------------------------------------------
+
+
+class _NetworkErrorClient:
+    """Client whose __aenter__ raises a bare OSError."""
+
+    def __init__(self, exc: OSError) -> None:
+        self._exc = exc
+
+    async def __aenter__(self) -> "_NetworkErrorClient":
+        raise self._exc
+
+    async def __aexit__(self, *args: object) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_oserror_retries_without_counting_as_auth_failure(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """OSError (e.g. ENETUNREACHABLE) must retry with backoff and never call on_fatal_auth_error."""
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+    transport.on_fatal_auth_error = AsyncMock()
+
+    connect_attempts = 0
+
+    def _client_factory(**_kwargs: object) -> object:
+        nonlocal connect_attempts
+        connect_attempts += 1
+        if connect_attempts < 3:
+            return _NetworkErrorClient(OSError(101, "Network is unreachable"))
+        return _FakeMQTTClient()  # succeeds on 3rd attempt
+
+    # Zero-out backoff so retries happen immediately; real asyncio.sleep(0) yields the event loop.
+    with patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0), \
+         patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0), \
+         patch("aiomqtt.Client", side_effect=_client_factory):
+        await transport.connect()
+        for _ in range(100):
+            if connect_attempts >= 3:
+                break
+            await asyncio.sleep(0)
+        await transport.disconnect()
+
+    assert connect_attempts >= 3
+    transport.on_fatal_auth_error.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dns_error_retries_without_counting_as_auth_failure(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """socket.gaierror (DNS failure) must retry and not trigger on_fatal_auth_error."""
+    import socket
+
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+    transport.on_fatal_auth_error = AsyncMock()
+
+    connect_attempts = 0
+
+    def _client_factory(**_kwargs: object) -> object:
+        nonlocal connect_attempts
+        connect_attempts += 1
+        if connect_attempts < 2:
+            return _NetworkErrorClient(socket.gaierror(-2, "Name or service not known"))
+        return _FakeMQTTClient()
+
+    with patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0), \
+         patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0), \
+         patch("aiomqtt.Client", side_effect=_client_factory):
+        await transport.connect()
+        for _ in range(100):
+            if connect_attempts >= 2:
+                break
+            await asyncio.sleep(0)
+        await transport.disconnect()
+
+    assert connect_attempts >= 2
+    transport.on_fatal_auth_error.assert_not_awaited()

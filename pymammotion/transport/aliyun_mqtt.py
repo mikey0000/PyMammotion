@@ -27,7 +27,14 @@ import aiomqtt
 from Tea.exceptions import UnretryableException
 
 from pymammotion.data.mqtt.status import ThingStatusMessage
-from pymammotion.transport.base import AuthError, Transport, TransportAvailability, TransportError, TransportType
+from pymammotion.transport.base import (
+    AuthError,
+    SessionExpiredError,
+    Transport,
+    TransportAvailability,
+    TransportError,
+    TransportType,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -146,6 +153,7 @@ class AliyunMQTTTransport(Transport):
         super().__init__()
         self._config = config
         self._cloud_gateway = cloud_gateway
+        self._iot_token: str = config.iot_token
         self._client: aiomqtt.Client | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event = asyncio.Event()
@@ -165,6 +173,14 @@ class AliyunMQTTTransport(Transport):
         """
         if topic not in self._subscribe_topics:
             self._subscribe_topics.append(topic)
+
+    def update_iot_token(self, token: str) -> None:
+        """Replace the Aliyun IoT session token used in the next bind message.
+
+        Called by the auth-failure callback after a successful credential refresh
+        so that the reconnect loop sends the updated token to the broker.
+        """
+        self._iot_token = token
 
     # ------------------------------------------------------------------
     # Transport ABC
@@ -338,7 +354,7 @@ class AliyunMQTTTransport(Transport):
                                 "id": "msgid1",
                                 "version": "1.0",
                                 "request": {"clientId": self._config.username},
-                                "params": {"iotToken": self._config.iot_token},
+                                "params": {"iotToken": self._iot_token},
                             }
                         ),
                         qos=1,
@@ -352,7 +368,12 @@ class AliyunMQTTTransport(Transport):
                         if topic.endswith("/thing/status"):
                             await self._dispatch_device_status(topic, raw)
                         elif topic.endswith("/account/bind_reply"):
-                            self._handle_bind_reply(raw)
+                            code = self._handle_bind_reply(raw)
+                            if code == 2043:
+                                raise SessionExpiredError(
+                                    TransportType.CLOUD_ALIYUN,
+                                    "Aliyun IoT token rejected by broker (bind_reply 2043) — token needs refresh",
+                                )
                         elif topic.endswith(("/thing/events", "/thing/properties")):
                             await self._dispatch_aliyun_event(topic, raw)
                         else:
@@ -380,10 +401,27 @@ class AliyunMQTTTransport(Transport):
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
                     raise AuthError(str(exc)) from exc
                 _logger.warning("Aliyun MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
+            except SessionExpiredError as exc:
+                _logger.warning("Aliyun bind token expired — attempting credential refresh: %s", exc)
+                if self.on_auth_failure is not None:
+                    try:
+                        if await self.on_auth_failure():
+                            _logger.info("Aliyun credentials refreshed after bind token expiry — reconnecting")
+                            continue
+                    except Exception:
+                        _logger.warning("on_auth_failure callback failed", exc_info=True)
+                self._stop_event.set()
+                self._client = None
+                await self._notify_availability(TransportAvailability.DISCONNECTED)
+                raise AuthError(str(exc)) from exc
             except aiomqtt.MqttError as exc:
                 _logger.debug("Aliyun MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:
                 break
+            except OSError as exc:
+                # Covers DNS failure (socket.gaierror), ENETUNREACHABLE, connection timeout,
+                # and other network-layer errors that aiomqtt does not always wrap.
+                _logger.warning("Aliyun MQTT network error: %s — retry in %ds", exc, backoff)
             finally:
                 self._client = None
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
@@ -415,15 +453,18 @@ class AliyunMQTTTransport(Transport):
         except Exception:
             _logger.debug("AliyunMQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
 
-    def _handle_bind_reply(self, raw: bytes) -> None:
+    def _handle_bind_reply(self, raw: bytes) -> int:
         """Check the account bind reply and log an error if it failed."""
+        code = 200
         try:
             parsed = json.loads(raw)
             code = parsed.get("code", 200)
             if code != 200:
+                # (code=2043): {'code': 2043, 'id': 'msgid1', 'message': 'check iotToken failed'}
                 _logger.error("Aliyun account bind failed (code=%s): %s", code, parsed)
         except Exception:  # noqa: BLE001
             _logger.debug("AliyunMQTTTransport: failed to parse bind_reply", exc_info=True)
+        return code
 
     async def _dispatch_aliyun_event(self, topic: str, raw: bytes) -> None:
         """Dispatch a thing/events or thing/properties message.
