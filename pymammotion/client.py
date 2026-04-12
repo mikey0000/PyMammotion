@@ -1100,6 +1100,7 @@ class MammotionClient:
             is_luba1=DeviceType.is_luba1(device_name),
             command_builder=commands,
             send_command=lambda cmd: transport.send(cmd, iot_id=_iot_id),
+            get_map=lambda: handle.snapshot.raw.map,
         )
 
         async def _on_map_complete() -> None:
@@ -1144,6 +1145,7 @@ class MammotionClient:
             is_luba1=False,
             command_builder=commands,
             send_command=lambda cmd: transport.send(cmd, iot_id=_iot_id),
+            get_map=lambda: handle.snapshot.raw.map,
             area_names_only=True,
             existing_area_hashes=existing_area_hashes,
         )
@@ -1205,6 +1207,7 @@ class MammotionClient:
         saga = MowPathSaga(
             command_builder=commands,
             send_command=_send,
+            get_map=lambda: handle.snapshot.raw.map,
             zone_hashs=zone_hashs,
             route_info=route_info,
             skip_planning=skip_planning,
