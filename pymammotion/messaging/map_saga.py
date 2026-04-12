@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import betterproto2
 
-from pymammotion.data.model.hash_list import AreaHashNameList, HashList, NavGetCommData, NavGetHashListData, SvgMessage
+from pymammotion.data.model.hash_list import AreaHashNameList, HashList
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.messaging.saga import Saga
 from pymammotion.transport.base import CommandTimeoutError
@@ -33,7 +33,18 @@ class MapFetchSaga(Saga):
 
     Steps 2-4 use subscribe_unsolicited so that device-pushed frames are never
     dropped due to a race between receiving and registering a send_and_wait.
-    All state is cleared at the start of each _run() call.
+
+    The saga relies entirely on the device's HashList (via ``get_map``) as the
+    source of truth.  The StateReducer applies every incoming message to
+    device.map before the saga's queue handlers fire, so checking
+    ``get_map().missing_hashlist()`` after a ``comm_queue.get()`` already
+    reflects the newly received frame — no separate internal tracking needed.
+
+    Resume behaviour on restart:
+      On restart the saga probes the first missing root hash frame; if the
+      device responds the attempt counter is reset and execution continues
+      from that frame.  If the probe times out, the saga falls through to a
+      full get_all_boundary_hash_list request from the device.
     """
 
     name = "map_fetch"
@@ -48,10 +59,16 @@ class MapFetchSaga(Saga):
         is_luba1: bool,
         command_builder: Any,  # Navigation instance — typed as Any to avoid tight coupling
         send_command: Callable[[bytes], Awaitable[None]],
+        get_map: Callable[[], HashList],
         area_names_only: bool = False,
         existing_area_hashes: list[int] | None = None,
     ) -> None:
         """Initialise the saga with device info and transport helpers.
+
+        *get_map* must return the device's current ``HashList`` (e.g.
+        ``lambda: handle.snapshot.raw.map``).  The saga never creates its
+        own HashList — it operates directly on the device state so that
+        partial data is preserved across retries without any extra bookkeeping.
 
         When *area_names_only* is True the saga only executes step 1 (area
         name fetch) and skips the expensive hash-list + chunk steps.  Use this
@@ -67,20 +84,21 @@ class MapFetchSaga(Saga):
         self._is_luba1 = is_luba1
         self._command_builder = command_builder
         self._send_command = send_command
+        self._get_map = get_map
         self._area_names_only = area_names_only
         self._existing_area_hashes: list[int] = existing_area_hashes or []
 
         # Result — set on success, None until then
         self.result: HashList | None = None
 
-    async def _run(self, broker: DeviceMessageBroker) -> None:
-        """Execute all saga steps. Clears partial state at the start."""
+    async def _run(self, broker: DeviceMessageBroker) -> None:  # noqa: C901
+        """Execute all saga steps.  Uses device.map (via get_map) as the source of truth."""
         self.result = None
-        hash_list = HashList()
+        self._reset_attempt_counter = False
 
         # ------------------------------------------------------------------
-        # Step 1: Fetch area names (non-Luba1 only, mandatory — saga will not
-        # proceed past this point until a toapp_all_hash_name response arrives).
+        # Step 1: Fetch area names (non-Luba1 only, always fresh — re-requested
+        # on every run so names stay current even after a mid-saga restart).
         # ------------------------------------------------------------------
         if not self._is_luba1:
             _logger.debug("MapFetchSaga[%s]: fetching area names", self._device_name)
@@ -96,25 +114,25 @@ class MapFetchSaga(Saga):
                 and hasattr(area_hash_name_msg, "hashnames")
                 and area_hash_name_msg.hashnames
             ):
-                hash_list.area_name = [
+                self._get_map().area_name = [
                     AreaHashNameList(name=item.name, hash=item.hash) for item in area_hash_name_msg.hashnames
                 ]
             elif self._existing_area_hashes:
                 # Device returned no names — generate fallbacks from known area hashes
-                hash_list.area_name = [
+                self._get_map().area_name = [
                     AreaHashNameList(name=f"area {i + 1}", hash=h)
                     for i, h in enumerate(sorted(self._existing_area_hashes))
                 ]
                 _logger.debug(
                     "MapFetchSaga[%s]: device returned no area names — generated %d fallback name(s)",
                     self._device_name,
-                    len(hash_list.area_name),
+                    len(self._get_map().area_name),
                 )
-            _logger.debug("MapFetchSaga[%s]: got %d area names", self._device_name, len(hash_list.area_name))
+            _logger.debug("MapFetchSaga[%s]: got %d area names", self._device_name, len(self._get_map().area_name))
 
         if self._area_names_only:
             _logger.debug("MapFetchSaga[%s]: area-names-only mode — skipping hash list fetch", self._device_name)
-            self.result = hash_list
+            self.result = self._get_map()
             return
 
         # ------------------------------------------------------------------
@@ -122,6 +140,13 @@ class MapFetchSaga(Saga):
         # Subscribe before sending so no frame is dropped if the device
         # pushes multiple frames at once before we can register a second
         # send_and_wait.
+        #
+        # Resume logic:
+        #   a) Root list already complete  → skip straight to step 4.
+        #   b) Some frames received        → probe the first missing frame;
+        #      success → resume + reset attempt counter;
+        #      timeout → fall through to fresh get_all_boundary_hash_list.
+        #   c) No partial data             → normal fresh start.
         # ------------------------------------------------------------------
         _logger.debug("MapFetchSaga[%s]: requesting hash list", self._device_name)
 
@@ -134,81 +159,125 @@ class MapFetchSaga(Saga):
                     leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
                     if leaf_name == "toapp_gethash_ack":
                         hash_frame_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         with broker.subscribe_unsolicited(_collect_hash_frame):
-            cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
-            await self._send_command(cmd)
-
-            try:
-                response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
-            except TimeoutError:
-                raise CommandTimeoutError("toapp_gethash_ack", 1) from None
-
-            hash_list_ack = getattr(response.nav, "toapp_gethash_ack", None)
-            if hash_list_ack is None:
-                raise CommandTimeoutError("toapp_gethash_ack", 1)
-
-            hash_list.update_root_hash_list(
-                NavGetHashListData(
-                    pver=hash_list_ack.pver,
-                    sub_cmd=hash_list_ack.sub_cmd,
-                    total_frame=hash_list_ack.total_frame,
-                    current_frame=hash_list_ack.current_frame,
-                    data_hash=hash_list_ack.data_hash,
-                    hash_len=hash_list_ack.hash_len,
-                    result=hash_list_ack.result,
-                    data_couple=list(hash_list_ack.data_couple),
-                )
+            partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
+            root_list_complete = (
+                partial_root is not None
+                and partial_root.total_frame > 0
+                and len(partial_root.data) >= partial_root.total_frame
             )
 
-            total_frame = hash_list_ack.total_frame
-            received_frames = {hash_list_ack.current_frame}
-            all_frames = set(range(1, total_frame + 1))
-
-            while received_frames != all_frames:
-                missing = sorted(all_frames - received_frames)
-                next_frame = missing[0]
+            if root_list_complete:
+                # (a) Root hash list fully fetched — skip to comm data.
+                assert partial_root is not None  # noqa: S101
+                self._reset_attempt_counter = True
                 _logger.debug(
-                    "MapFetchSaga[%s]: requesting hash frame %d/%d", self._device_name, next_frame, total_frame
+                    "MapFetchSaga[%s]: root hash list already complete (%d frame(s)) — skipping to comm data",
+                    self._device_name,
+                    partial_root.total_frame,
                 )
-                chunk_cmd = self._command_builder.get_hash_response(total_frame=total_frame, current_frame=next_frame)
-                await self._send_command(chunk_cmd)
+            elif partial_root is not None and partial_root.data:
+                # (b) Some frames received — probe the first missing one.
+                received = {d.current_frame for d in partial_root.data}
+                all_f = set(range(1, partial_root.total_frame + 1))
+                first_missing = sorted(all_f - received)[0]
+                _logger.debug(
+                    "MapFetchSaga[%s]: probing root hash frame %d/%d to attempt resume",
+                    self._device_name,
+                    first_missing,
+                    partial_root.total_frame,
+                )
+                probe_cmd = self._command_builder.get_hash_response(
+                    total_frame=partial_root.total_frame, current_frame=first_missing - 1
+                )
+                await self._send_command(probe_cmd)
+                try:
+                    await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
+                    # Probe succeeded — state reducer already stored the frame.
+                    self._reset_attempt_counter = True
+                    _logger.debug(
+                        "MapFetchSaga[%s]: resume probe succeeded",
+                        self._device_name,
+                    )
+                except TimeoutError:
+                    # Probe timed out — fall through to a fresh start.
+                    _logger.debug(
+                        "MapFetchSaga[%s]: resume probe timed out — restarting root hash list from scratch",
+                        self._device_name,
+                    )
+                    partial_root = None
+
+            # (c) Fresh start — either first run, probe timed out, or no partial root data.
+            if not root_list_complete and (partial_root is None or not partial_root.data):
+                cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
+                await self._send_command(cmd)
 
                 try:
-                    chunk_response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
+                    response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
                 except TimeoutError:
                     raise CommandTimeoutError("toapp_gethash_ack", 1) from None
 
-                chunk_ack = getattr(chunk_response.nav, "toapp_gethash_ack", None)
-                if chunk_ack is None:
+                hash_list_ack = getattr(response.nav, "toapp_gethash_ack", None)
+                if hash_list_ack is None:
                     raise CommandTimeoutError("toapp_gethash_ack", 1)
+                # State reducer already stored this frame in device.map.
 
-                hash_list.update_root_hash_list(
-                    NavGetHashListData(
-                        pver=chunk_ack.pver,
-                        sub_cmd=chunk_ack.sub_cmd,
-                        total_frame=chunk_ack.total_frame,
-                        current_frame=chunk_ack.current_frame,
-                        data_hash=chunk_ack.data_hash,
-                        hash_len=chunk_ack.hash_len,
-                        result=chunk_ack.result,
-                        data_couple=list(chunk_ack.data_couple),
+            # Fetch any remaining frames.  Re-read device.map each iteration since
+            # the state reducer has already applied received frames.
+            if not root_list_complete:
+                partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
+                if partial_root is not None:
+                    total_frame = partial_root.total_frame
+                    received_frames = {d.current_frame for d in partial_root.data}
+                    all_frames = set(range(1, total_frame + 1))
+
+                    while received_frames != all_frames:
+                        missing = sorted(all_frames - received_frames)
+                        next_frame = missing[0]
+                        _logger.debug(
+                            "MapFetchSaga[%s]: requesting hash frame %d/%d",
+                            self._device_name,
+                            next_frame,
+                            total_frame,
+                        )
+                        chunk_cmd = self._command_builder.get_hash_response(
+                            total_frame=total_frame, current_frame=next_frame - 1
+                        )
+                        await self._send_command(chunk_cmd)
+
+                        try:
+                            await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
+                        except TimeoutError:
+                            raise CommandTimeoutError("toapp_gethash_ack", 1) from None
+
+                        # Re-read received_frames from device.map (state reducer updated it).
+                        partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
+                        received_frames = {d.current_frame for d in partial_root.data} if partial_root else set()
+
+                    # Acknowledge the last frame (including when total_frame == 1 and the while loop never ran).
+                    final_ack = self._command_builder.get_hash_response(
+                        total_frame=total_frame, current_frame=total_frame
                     )
-                )
-                received_frames.add(chunk_ack.current_frame)
+                    await self._send_command(final_ack)
 
         _logger.debug(
             "MapFetchSaga[%s]: hash list complete — %d hash IDs to fetch",
             self._device_name,
-            len(hash_list.hashlist),
+            len(self._get_map().hashlist),
         )
 
         # ------------------------------------------------------------------
         # Step 4: Fetch boundary/obstacle/path data for every hash ID.
         # Same unsolicited-subscription pattern: subscribe before first send
         # so rapid multi-frame responses are never lost.
+        #
+        # The StateReducer already applies each toapp_get_commondata_ack /
+        # toapp_svg_msg to device.map before the saga's queue handler fires,
+        # so get_map().missing_hashlist(0) reflects the up-to-date state after
+        # every comm_queue.get().
         # ------------------------------------------------------------------
         comm_queue: asyncio.Queue[Any] = asyncio.Queue()
 
@@ -219,21 +288,14 @@ class MapFetchSaga(Saga):
                     leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
                     if leaf_name in ("toapp_get_commondata_ack", "toapp_svg_msg"):
                         comm_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         with broker.subscribe_unsolicited(_collect_comm_data):
-            # Mirrors commdata_response / datahash_response in mower_device.py:
-            # receive any message → store it → if missing frames request them,
-            # else chain to the first item in missing_hashlist (same hash or next).
-            #
-            # Circuit breaker: if no hash is removed from missing_hashes after
-            # _NO_PROGRESS_LIMIT consecutive responses the device is stuck —
-            # raise CommandTimeoutError so the Saga base retries (max_attempts=3).
-            _NO_PROGRESS_LIMIT = 10
+            _no_progress_limit = 10
             no_progress = 0
 
-            missing_hashes = hash_list.missing_hashlist(0)
+            missing_hashes = self._get_map().missing_hashlist(0)
             if missing_hashes:
                 _logger.debug("MapFetchSaga[%s]: fetching data for hash %d", self._device_name, missing_hashes[0])
                 cmd = self._command_builder.synchronize_hash_data(hash_num=missing_hashes[0])
@@ -245,23 +307,27 @@ class MapFetchSaga(Saga):
                 except TimeoutError:
                     raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
 
+                # State reducer has already applied this frame to device.map.
                 leaf_name, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
-                self._apply_comm_data(hash_list, leaf_name, leaf_val)
 
-                missing_frames = hash_list.missing_frame(leaf_val)
+                current_map = self._get_map()
+                missing_frames = current_map.missing_frame(leaf_val)
                 if missing_frames:
-                    # Request the next missing frame for the received hash (mirrors commdata_response else-branch)
-                    region_data = self._make_region_data(leaf_name, leaf_val, missing_frames[0] - 1)
+                    # More frames needed — request the first missing one.
+                    current_frame = leaf_val.current_frame
+                    if current_frame != missing_frames[0] - 1:
+                        current_frame = missing_frames[0] - 1
+                    region_data = self._make_region_data(leaf_name, leaf_val, current_frame)
                     cmd = self._command_builder.get_regional_data(regional_data=region_data)
                     await self._send_command(cmd)
                 else:
-                    # Received hash is complete — chain to first still-missing hash (mirrors commdata_response)
-                    new_missing = hash_list.missing_hashlist(0)
+                    # Hash is complete — chain to first still-missing hash.
+                    new_missing = current_map.missing_hashlist(0)
                     if len(new_missing) < len(missing_hashes):
                         no_progress = 0
                     else:
                         no_progress += 1
-                        if no_progress >= _NO_PROGRESS_LIMIT:
+                        if no_progress >= _no_progress_limit:
                             raise CommandTimeoutError("map_sync_stall", no_progress)
                     missing_hashes = new_missing
                     if missing_hashes:
@@ -271,35 +337,27 @@ class MapFetchSaga(Saga):
                         cmd = self._command_builder.synchronize_hash_data(hash_num=missing_hashes[0])
                         await self._send_command(cmd)
 
-        # If the device never returned area names and update() hasn't generated
-        # fallbacks yet (can happen when toapp_all_hash_name arrived before area
-        # chunks), fill in fallbacks now so saga.result always has names.
-        if not hash_list.area_name and hash_list.area:
-            hash_list.area_name = [
-                AreaHashNameList(name=f"area {i + 1}", hash=h) for i, h in enumerate(sorted(hash_list.area.keys()))
+        # If the device never returned area names and no names have been set yet,
+        # fill in fallbacks from fetched area hashes.
+        current_map = self._get_map()
+        if not current_map.area_name and current_map.area:
+            current_map.area_name = [
+                AreaHashNameList(name=f"area {i + 1}", hash=h) for i, h in enumerate(sorted(current_map.area.keys()))
             ]
             _logger.debug(
                 "MapFetchSaga[%s]: generated %d fallback area name(s) after full sync",
                 self._device_name,
-                len(hash_list.area_name),
+                len(current_map.area_name),
             )
 
         _logger.debug(
             "MapFetchSaga[%s]: map fetch complete — areas=%d obstacles=%d paths=%d",
             self._device_name,
-            len(hash_list.area),
-            len(hash_list.obstacle),
-            len(hash_list.path),
+            len(current_map.area),
+            len(current_map.obstacle),
+            len(current_map.path),
         )
-        self.result = hash_list
-
-    @staticmethod
-    def _apply_comm_data(hash_list: HashList, leaf_name: str, leaf_val: Any) -> None:
-        """Convert a protobuf comm-data message to a model object and store it."""
-        if leaf_name == "toapp_get_commondata_ack":
-            hash_list.update(NavGetCommData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
-        elif leaf_name == "toapp_svg_msg":
-            hash_list.update(SvgMessage.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+        self.result = current_map
 
     @staticmethod
     def _make_region_data(leaf_name: str, leaf_val: Any, current_frame: int) -> RegionData:

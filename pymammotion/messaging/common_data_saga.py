@@ -48,7 +48,7 @@ class CommonDataSaga(Saga):
 
     name = "common_data_fetch"
     max_attempts = 3
-    step_timeout = 15.0
+    step_timeout = 5.0
 
     def __init__(
         self,

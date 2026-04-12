@@ -35,7 +35,7 @@ class PlanFetchSaga(Saga):
 
     name = "plan_fetch"
     max_attempts = 3
-    step_timeout = 15.0
+    step_timeout = 2.0
 
     def __init__(
         self,
