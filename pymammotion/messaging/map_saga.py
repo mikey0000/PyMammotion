@@ -257,6 +257,12 @@ class MapFetchSaga(Saga):
                         partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
                         received_frames = {d.current_frame for d in partial_root.data} if partial_root else set()
 
+                    # Acknowledge the last frame (including when total_frame == 1 and the while loop never ran).
+                    final_ack = self._command_builder.get_hash_response(
+                        total_frame=total_frame, current_frame=total_frame
+                    )
+                    await self._send_command(final_ack)
+
         _logger.debug(
             "MapFetchSaga[%s]: hash list complete — %d hash IDs to fetch",
             self._device_name,
