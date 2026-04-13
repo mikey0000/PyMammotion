@@ -283,10 +283,20 @@ class DeviceHandle:
             await self._event_bus.emit(event)
 
     async def on_device_properties(self, properties: ThingPropertiesMessage) -> None:
-        """Update device state with a thing.properties message."""
+        """Update device state with a thing.properties message.
+
+        For mower devices the properties are stored as ``mqtt_properties`` on the
+        device (unchanged behaviour).  For device types whose reducer overrides
+        :meth:`StateReducer.apply_properties` (currently :class:`RTKStateReducer`),
+        the JSON payloads are also unpacked into typed model fields so the state
+        machine remains the single source of truth.
+        """
         import dataclasses
 
-        updated = dataclasses.replace(self.state_machine.current.raw, mqtt_properties=properties)
+        # Let the reducer extract any typed fields it knows about (no-op for mowers).
+        device_with_props = self._reducer.apply_properties(self.state_machine.current.raw, properties)
+        # Always persist the raw envelope so subscribers can inspect it.
+        updated = dataclasses.replace(device_with_props, mqtt_properties=properties)
         snapshot, _ = self.state_machine.apply(updated, self._availability)
         if not self._stopping:
             await self._state_changed_bus.emit(snapshot)

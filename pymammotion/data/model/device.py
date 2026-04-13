@@ -307,21 +307,39 @@ class RTKBaseStationDevice(Device):
     messages with the *mower's* ``iot_id`` via ``base.to_app`` and is stored
     on ``MowerDevice.report_data.basestation_info`` — not here.
 
-    Fields here come from messages tagged with the RTK device's ``iot_id``:
+    Fields populated from LubaMsg protobuf (``iot_id``-routed):
 
-    - ``basestation_status``: operational status code from
-      ``sys.toapp_report_data`` → ``rpt_basestation_info.basestation_status``.
-    - ``connect_status_since_poweron``: connectivity uptime from same source.
-    - ``firmware_version``: version string from ``sys.toapp_dev_fw_info``.
-    - ``wifi_mac``: Wi-Fi MAC address from ``net.toapp_networkinfo_rsp``.
-    - ``product_key``: Aliyun product key from ``net.toapp_wifi_iot_status``.
+    - ``basestation_status``: from ``sys.toapp_report_data`` →
+      ``rpt_basestation_info.basestation_status``.
+    - ``connect_status_since_poweron``: connectivity uptime, same source.
+    - ``device_version``: from ``sys.toapp_dev_fw_info`` or thing/properties.
+    - ``wifi_mac``: from ``net.toapp_networkinfo_rsp``.
+    - ``product_key``: from ``net.toapp_wifi_iot_status``.
+
+    Fields populated from thing/properties JSON pushes:
+
+    - ``lat``, ``lon``: radians, from ``coordinate`` property.
+    - ``wifi_rssi``: dBm, from ``networkInfo`` property.
+    - ``wifi_sta_mac``, ``bt_mac``: MAC addresses from ``networkInfo``.
+
+    Fields populated from HTTP API (``MammotionClient.fetch_rtk_lora_info``):
+
+    - ``lora_version``: LoRa radio firmware version / number.
     """
 
     basestation_status: int = 0
     connect_status_since_poweron: int = 0
-    firmware_version: str = ""
+    device_version: str = ""
     wifi_mac: str = ""
     product_key: str = ""
+    # thing/properties sourced
+    lat: float = 0.0
+    lon: float = 0.0
+    wifi_rssi: int = 0
+    wifi_sta_mac: str = ""
+    bt_mac: str = ""
+    # HTTP sourced
+    lora_version: str = ""
 
 
 def create_device(name: str) -> "Device":

@@ -33,6 +33,7 @@ from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, Acco
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
+from pymammotion.data.model.device import RTKBaseStationDevice
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.http.http import MammotionHTTP
@@ -51,6 +52,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -419,6 +421,48 @@ class MammotionClient:
     def mower(self, name: str) -> DeviceHandle | None:
         """Return the DeviceHandle for the named device, or None."""
         return self._device_registry.get_by_name(name)
+
+    def rtk_device(self, name: str) -> DeviceHandle | None:
+        """Return the DeviceHandle for the named RTK base station, or None."""
+        return self._device_registry.get_by_name(name)
+
+    async def fetch_rtk_lora_info(self, device_name: str) -> None:
+        """Fetch LoRa version info for an RTK device via HTTP and apply it to device state.
+
+        Calls the ``/rtk/devices`` HTTP endpoint, finds the entry matching
+        *device_name*, and writes the ``lora`` field into the RTK device's
+        state machine so it is available on ``handle.snapshot.raw.lora_version``.
+
+        No-op if the device is not registered, is not an RTK base station, or
+        if no HTTP session is available.
+        """
+
+        if not DeviceType.is_rtk(device_name):
+            return
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+        session = self._get_session_for_device(device_name) or self._get_default_session()
+        if session is None or session.mammotion_http is None:
+            return
+
+        try:
+            response = await session.mammotion_http.get_rtk_devices()
+            if not response.data:
+                return
+            for rtk in response.data:
+                if rtk.device_name == device_name:
+                    current = handle.snapshot.raw
+                    if isinstance(current, RTKBaseStationDevice):
+                        import dataclasses
+
+                        updated = dataclasses.replace(current, lora_version=rtk.lora)
+                        snapshot, _ = handle.state_machine.apply(updated, handle.availability)
+                        if not handle._stopping:  # noqa: SLF001
+                            await handle._state_changed_bus.emit(snapshot)  # noqa: SLF001
+                    break
+        except Exception:  # noqa: BLE001
+            _logger.warning("fetch_rtk_lora_info: failed to fetch RTK devices for %s", device_name, exc_info=True)
 
     # ------------------------------------------------------------------
     # BLE
@@ -878,7 +922,15 @@ class MammotionClient:
         _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, record.iot_id)
 
     def _enable_staleness_watcher(self, handle: DeviceHandle, device_name: str) -> None:
-        """Enable auto-refetch of stale maps and plans for a device."""
+        """Enable auto-refetch of stale maps and plans for a mower device.
+
+        RTK base stations and pool cleaners have no map or plan data, so the
+        staleness watcher is a no-op for them.
+        """
+        from pymammotion.utility.device_type import DeviceType
+
+        if DeviceType.is_rtk(device_name) or DeviceType.is_swimming_pool(device_name):
+            return
         handle.enable_staleness_watcher(
             on_maps_stale=lambda: self.start_map_sync(device_name),
             on_plans_stale=lambda: self.start_plan_sync(device_name),

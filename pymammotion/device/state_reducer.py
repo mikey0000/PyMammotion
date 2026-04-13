@@ -16,6 +16,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import copy
 import dataclasses
+import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -74,6 +75,7 @@ from pymammotion.proto import (
 
 if TYPE_CHECKING:
     from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice, RTKBaseStationDevice
+    from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 
 _logger = logging.getLogger(__name__)
 
@@ -90,6 +92,16 @@ class StateReducer(ABC):
     @abstractmethod
     def apply(self, current: Device, message: LubaMsg) -> Device:
         """Apply *message* to *current* and return the updated device copy."""
+
+    def apply_properties(self, current: Device, properties: ThingPropertiesMessage) -> Device:
+        """Apply a thing/properties message to *current* and return the updated copy.
+
+        The default implementation is a no-op — subclasses that derive meaningful
+        state from JSON thing/properties (e.g. :class:`RTKStateReducer`) override
+        this method. Mower state is driven entirely by LubaMsg protobuf so the
+        default suffices there.
+        """
+        return current
 
 
 class MowerStateReducer(StateReducer):
@@ -640,7 +652,7 @@ class RTKStateReducer(StateReducer):
             case "toapp_dev_fw_info":
                 fw_info: DeviceFwInfo = sys_msg[1]
                 if fw_info.result != 0:
-                    device.firmware_version = fw_info.version
+                    device.device_version = fw_info.version
             case _:
                 _logger.debug(
                     "RTKStateReducer: ignoring sys sub-message %r for %s",
@@ -664,6 +676,45 @@ class RTKStateReducer(StateReducer):
                     net_msg[0],
                     device.name,
                 )
+
+    def apply_properties(  # type: ignore[override]
+        self, current: RTKBaseStationDevice, properties: ThingPropertiesMessage
+    ) -> RTKBaseStationDevice:
+        """Extract RTK state from a thing/properties JSON push.
+
+        RTK base stations report location (``coordinate``), connectivity
+        (``networkInfo``), and firmware version (``deviceVersion``) as Aliyun
+        thing/properties rather than LubaMsg protobuf fields.  This method
+        converts those JSON payloads into fields on :class:`RTKBaseStationDevice`
+        so the state machine stays the single source of truth.
+        """
+        device: RTKBaseStationDevice = dataclasses.replace(current)
+        params = properties.params
+
+        if coord_prop := getattr(params, "coordinate", None):
+            try:
+                coord = json.loads(coord_prop.value)
+                # The coordinate property is already in radians (protocol-level unit).
+                if coord.get("lat"):
+                    device.lat = float(coord["lat"])
+                if coord.get("lon"):
+                    device.lon = float(coord["lon"])
+            except (ValueError, KeyError, TypeError):
+                _logger.debug("RTKStateReducer: failed to parse coordinate property")
+
+        if net_prop := getattr(params, "networkInfo", None):
+            try:
+                net = json.loads(net_prop.value)
+                device.wifi_rssi = int(net.get("wifi_rssi", device.wifi_rssi))
+                device.wifi_sta_mac = str(net.get("wifi_sta_mac", device.wifi_sta_mac))
+                device.bt_mac = str(net.get("bt_mac", device.bt_mac))
+            except (ValueError, KeyError, TypeError):
+                _logger.debug("RTKStateReducer: failed to parse networkInfo property")
+
+        if ver_prop := getattr(params, "deviceVersion", None):
+            device.device_version = str(ver_prop.value)
+
+        return device
 
 
 def get_state_reducer(device_name: str) -> StateReducer:

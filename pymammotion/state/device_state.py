@@ -13,7 +13,7 @@ from pymammotion.transport.base import TransportAvailability
 from pymammotion.utility.constant.device_constant import WorkMode
 
 if TYPE_CHECKING:
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import Device
 
 _logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class DeviceSnapshot:
     battery_level: int
     mowing_activity: str  # e.g. "idle", "mowing", "returning", "charging", "unknown"
     blade_height: int  # mm; 0 if unknown
-    raw: MowingDevice  # full underlying device — use for fields not yet in snapshot
+    raw: Device  # full underlying device — use for fields not yet in snapshot
 
 
 @dataclass(frozen=True)
@@ -113,8 +113,8 @@ class DeviceStateMachine:
     number. Old snapshots remain valid — consumers can diff old vs new.
     """
 
-    def __init__(self, device_id: str, initial: MowingDevice) -> None:
-        """Initialise the state machine with a device ID and initial MowingDevice."""
+    def __init__(self, device_id: str, initial: Device) -> None:
+        """Initialise the state machine with a device ID and initial device."""
         self._device_id = device_id
         self._sequence = 0
         self._current = self._make_snapshot(initial, DeviceAvailability())
@@ -124,16 +124,16 @@ class DeviceStateMachine:
         """The most recent immutable state snapshot."""
         return self._current
 
-    def restore(self, device: MowingDevice) -> None:
-        """Replace current state with a restored MowingDevice (e.g. from HA storage)."""
+    def restore(self, device: Device) -> None:
+        """Replace current state with a restored device (e.g. from HA storage)."""
         self._current = self._make_snapshot(device, DeviceAvailability())
 
     def apply(
         self,
-        updated_device: MowingDevice,
+        updated_device: Device,
         availability: DeviceAvailability,
     ) -> tuple[DeviceSnapshot, frozenset[str]]:
-        """Apply an updated MowingDevice and return (new_snapshot, changed_fields).
+        """Apply an updated device and return (new_snapshot, changed_fields).
 
         changed_fields is the set of snapshot field names that changed value,
         excluding 'sequence', 'timestamp', and 'raw'.
@@ -147,22 +147,27 @@ class DeviceStateMachine:
 
     def _make_snapshot(
         self,
-        device: MowingDevice,
+        device: Device,
         availability: DeviceAvailability | None = None,
     ) -> DeviceSnapshot:
-        """Build a DeviceSnapshot from a MowingDevice."""
+        """Build a DeviceSnapshot from any Device subclass.
+
+        Mower-specific fields (battery, activity, blade height) are extracted
+        when present (``MowingDevice``); RTK and pool devices get neutral defaults.
+        """
         if availability is None:
             availability = DeviceAvailability()
 
-        # Battery level is stored in report_data.dev.battery_val (DeviceData)
-        battery: int = device.report_data.dev.battery_val
-
-        # Mowing activity comes from report_data.dev.sys_status (int, maps to WorkMode)
-        sys_status: int = device.report_data.dev.sys_status
-        mowing_activity: str = _WORK_MODE_TO_ACTIVITY.get(sys_status, f"unknown({sys_status})")
-
-        # Blade height (knife_height) is stored in report_data.work.knife_height (WorkData)
-        blade_height: int = device.report_data.work.knife_height
+        report_data = getattr(device, "report_data", None)
+        if report_data is not None:
+            battery: int = report_data.dev.battery_val
+            sys_status: int = report_data.dev.sys_status
+            mowing_activity: str = _WORK_MODE_TO_ACTIVITY.get(sys_status, f"unknown({sys_status})")
+            blade_height: int = report_data.work.knife_height
+        else:
+            battery = 0
+            mowing_activity = "unknown"
+            blade_height = 0
 
         return DeviceSnapshot(
             sequence=self._sequence,
