@@ -51,6 +51,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from pymammotion.utility.constant import WorkMode
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -231,7 +232,12 @@ class MammotionClient:
             device = snapshot.raw
             task_ids = device.events.work_tasks_event.ids
             work = device.report_data.work
-            actively_working = bool(task_ids) and work.ub_path_hash != 0
+            actively_working = (
+                bool(task_ids)
+                or work.ub_path_hash != 0
+                or work.path_hash != 0
+                or device.report_data.dev.sys_status == WorkMode.MODE_WORKING.value
+            )
             path_missing = actively_working and not device.map.current_mow_path
 
             if path_missing:
@@ -245,13 +251,13 @@ class MammotionClient:
                 try:
                     await self.start_mow_path_saga(
                         device_name,
-                        zone_hashs=list(task_ids),
+                        zone_hashs=[],
                         skip_planning=True,
                     )
                 except Exception:  # noqa: BLE001
                     _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
-            if actively_working and device.map.current_mow_path:
+            if device.map.current_mow_path and not device.map.generated_mow_progress_geojson:
                 _apply_mow_progress_geojson(device)
 
         sub = handle.subscribe_state_changed(_on_state_changed)
