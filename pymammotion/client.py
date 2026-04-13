@@ -616,7 +616,7 @@ class MammotionClient:
                 if acct_session.token_manager is None:
                     acct_session.token_manager = TokenManager(account, mammotion_http)
                 transport = self._setup_mammotion_transport(
-                    mammotion_http.mqtt_credentials, mammotion_http, acct_session
+                    mammotion_http.mqtt_credentials, mammotion_http, acct_session, acct_session.token_manager
                 )
                 acct_session.mammotion_transport = transport
                 ua = acct_session.user_account
