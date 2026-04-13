@@ -249,11 +249,9 @@ class DeviceType(Enum):
             DeviceType.YUKA_MN101,
         )
 
-==== BASE ====
-        """
-==== BASE ====
-
-==== BASE ====
+    @staticmethod
+    def from_value(value: int) -> DeviceType:
+        """Return the DeviceType corresponding to the given value."""
         if value == 0:
             return DeviceType.RTK
         if value == 1:
@@ -313,7 +311,6 @@ class DeviceType(Enum):
         if value == 28:
             return DeviceType.LUBA_HM
         return DeviceType.UNKNOWN
-==== BASE ====
 
     @staticmethod
     def value_of_str(device_name: str, product_key: str = "") -> "DeviceType":
