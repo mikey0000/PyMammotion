@@ -296,11 +296,40 @@ class PoolCleanerDevice(Device):
     errors: DeviceErrors = field(default_factory=DeviceErrors)
 
 
+@dataclass
+class RTKBaseStationDevice(Device):
+    """RTK base station (RTK, RBS03A0/A1/A2, RTKNB).
+
+    All devices share one MQTT connection per account (Aliyun or Mammotion
+    MQTT); messages are routed by ``iot_id``.  This model holds state from
+    messages that carry the RTK device's own ``iot_id``.  The mower-side
+    relay data (satellite count, fix status, LoRa channel) arrives in
+    messages with the *mower's* ``iot_id`` via ``base.to_app`` and is stored
+    on ``MowerDevice.report_data.basestation_info`` — not here.
+
+    Fields here come from messages tagged with the RTK device's ``iot_id``:
+
+    - ``basestation_status``: operational status code from
+      ``sys.toapp_report_data`` → ``rpt_basestation_info.basestation_status``.
+    - ``connect_status_since_poweron``: connectivity uptime from same source.
+    - ``firmware_version``: version string from ``sys.toapp_dev_fw_info``.
+    - ``wifi_mac``: Wi-Fi MAC address from ``net.toapp_networkinfo_rsp``.
+    - ``product_key``: Aliyun product key from ``net.toapp_wifi_iot_status``.
+    """
+
+    basestation_status: int = 0
+    connect_status_since_poweron: int = 0
+    firmware_version: str = ""
+    wifi_mac: str = ""
+    product_key: str = ""
+
+
 def create_device(name: str) -> "Device":
     """Construct the appropriate :class:`Device` subclass for *name*.
 
-    Inspects the device-name prefix via :class:`DeviceType` and returns either
-    a :class:`PoolCleanerDevice` (for Spino variants) or a :class:`MowerDevice`
+    Inspects the device-name prefix via :class:`DeviceType` and returns the
+    correct subclass: :class:`RTKBaseStationDevice` for RTK base stations,
+    :class:`PoolCleanerDevice` for Spino variants, or :class:`MowerDevice`
     (the historical default).
     """
     # Local import to avoid a circular dependency between
@@ -309,6 +338,8 @@ def create_device(name: str) -> "Device":
 
     if DeviceType.is_swimming_pool(name):
         return PoolCleanerDevice(name=name)
+    if DeviceType.is_rtk(name):
+        return RTKBaseStationDevice(name=name)
     return MowerDevice(name=name)
 
 

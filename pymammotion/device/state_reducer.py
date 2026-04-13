@@ -62,6 +62,7 @@ from pymammotion.proto import (
     NavReqCoverPath,
     NavSysParamMsg,
     NavUnableTimeSet,
+    ReportInfoData,
     ReportInfoT,
     ResponseBasestationInfoT,
     SvgMessageAckT,
@@ -72,7 +73,7 @@ from pymammotion.proto import (
 )
 
 if TYPE_CHECKING:
-    from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice
+    from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice, RTKBaseStationDevice
 
 _logger = logging.getLogger(__name__)
 
@@ -586,13 +587,95 @@ class PoolStateReducer(StateReducer):
                 )
 
 
+class RTKStateReducer(StateReducer):
+    """Reducer for RTK base station devices (RTK, RBS03A0/A1/A2, RTKNB).
+
+    All devices share one MQTT connection per account; messages are routed by
+    ``iot_id``.  This reducer handles :class:`LubaMsg` frames that carry the
+    RTK device's own ``iot_id``.  RTK base stations use a small subset of
+    LubaMsg sub-messages:
+
+    - ``sys.toapp_report_data`` → ``basestation_info`` — operational status
+      and connectivity uptime (``rpt_basestation_info``, field 11 of
+      ``report_info_data``).
+    - ``sys.toapp_dev_fw_info`` → firmware version string.
+    - ``net.toapp_wifi_iot_status`` → Aliyun product key.
+    - ``net.toapp_networkinfo_rsp`` → Wi-Fi MAC address.
+
+    Satellite count, fix quality, and LoRa channel come in messages tagged
+    with the *mower's* ``iot_id`` via ``base.to_app`` and are handled by
+    :class:`MowerStateReducer._update_base_data` — not here.
+    """
+
+    def apply(self, current: RTKBaseStationDevice, message: LubaMsg) -> RTKBaseStationDevice:  # type: ignore[override]
+        """Apply *message* to *current* and return the updated copy."""
+        device: RTKBaseStationDevice = dataclasses.replace(current)
+        if not device.online:
+            device.online = True
+
+        sub_msg_type = betterproto2.which_one_of(message, "LubaSubMsg")[0]
+        match sub_msg_type:
+            case "sys":
+                self._update_sys_data(device, message)
+            case "net":
+                self._update_net_data(device, message)
+            case _:
+                _logger.debug(
+                    "RTKStateReducer: ignoring unhandled sub-message %r for %s",
+                    sub_msg_type,
+                    device.name,
+                )
+
+        return device
+
+    def _update_sys_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
+        """Apply sys sub-messages from the base station's own connection."""
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
+        match sys_msg[0]:
+            case "toapp_report_data":
+                report: ReportInfoData = sys_msg[1]
+                if report.basestation_info is not None:
+                    device.basestation_status = report.basestation_info.basestation_status
+                    device.connect_status_since_poweron = report.basestation_info.connect_status_since_poweron
+            case "toapp_dev_fw_info":
+                fw_info: DeviceFwInfo = sys_msg[1]
+                if fw_info.result != 0:
+                    device.firmware_version = fw_info.version
+            case _:
+                _logger.debug(
+                    "RTKStateReducer: ignoring sys sub-message %r for %s",
+                    sys_msg[0],
+                    device.name,
+                )
+
+    def _update_net_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
+        """Apply net sub-messages (connectivity info) from the base station."""
+        net_msg = betterproto2.which_one_of(message.net, "NetSubType")
+        match net_msg[0]:
+            case "toapp_wifi_iot_status":
+                wifi_iot: WifiIotStatusReport = net_msg[1]
+                device.product_key = wifi_iot.productkey
+            case "toapp_networkinfo_rsp":
+                net_info: GetNetworkInfoRsp = net_msg[1]
+                device.wifi_mac = net_info.wifi_mac
+            case _:
+                _logger.debug(
+                    "RTKStateReducer: ignoring net sub-message %r for %s",
+                    net_msg[0],
+                    device.name,
+                )
+
+
 def get_state_reducer(device_name: str) -> StateReducer:
     """Return the appropriate :class:`StateReducer` for *device_name*.
 
-    Spino variants get a :class:`PoolStateReducer`; everything else gets the
-    full :class:`MowerStateReducer`. Picked once per device at handle
-    construction time so the hot path doesn't pay an isinstance check on
-    every incoming message.
+    Dispatches to:
+    - :class:`RTKStateReducer` for RTK base stations (RTK, RBS03A0/A1/A2, RTKNB)
+    - :class:`PoolStateReducer` for Spino pool cleaners
+    - :class:`MowerStateReducer` for all lawn mowers (the historical default)
+
+    Picked once per device at handle construction time so the hot path
+    doesn't pay an isinstance check on every incoming message.
     """
     # Local import to avoid a circular dependency between the reducer module
     # and the device-type helpers it consults.
@@ -600,4 +683,6 @@ def get_state_reducer(device_name: str) -> StateReducer:
 
     if DeviceType.is_swimming_pool(device_name):
         return PoolStateReducer()
+    if DeviceType.is_rtk(device_name):
+        return RTKStateReducer()
     return MowerStateReducer()
