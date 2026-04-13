@@ -1,4 +1,4 @@
-"""MowingDevice class to wrap around the betterproto dataclasses."""
+"""Device model hierarchy: Device base + MowerDevice (and future PoolCleanerDevice)."""
 
 from dataclasses import dataclass, field
 import math
@@ -14,6 +14,7 @@ from pymammotion.data.model.enums import TaskAreaStatus
 from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
+from pymammotion.data.model.pool_state import PoolMap, PoolState
 from pymammotion.data.model.report_info import ReportData, WorkSessionResult
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -29,17 +30,32 @@ _device_config = DeviceConfig()
 
 
 @dataclass
-class MowingDevice(DataClassORJSONMixin):
-    """Wraps the betterproto dataclasses, so we can bypass the groups for keeping all data."""
+class Device(DataClassORJSONMixin):
+    """Base class for any Mammotion device (lawn mower, pool cleaner, RTK, …).
+
+    Holds only the fields that are truly universal — identity, online flag,
+    OTA check, and MQTT envelopes. Device-class-specific state lives on
+    subclasses (``MowerDevice``, ``PoolCleanerDevice``, …).
+    """
 
     name: str = ""
     online: bool = True
     enabled: bool = True
     update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
-    mower_state: MowerInfo = field(default_factory=MowerInfo)
     mqtt_properties: ThingPropertiesMessage | None = None
     status_properties: ThingStatusMessage | None = None
     device_event: ThingEventMessage | None = None
+
+
+@dataclass
+class MowerDevice(Device):
+    """Lawn-mowing robot (Luba, Yuka, RTK rovers).
+
+    Wraps the betterproto dataclasses so we can bypass the oneof groups and
+    keep everything in one place.
+    """
+
+    mower_state: MowerInfo = field(default_factory=MowerInfo)
     map: HashList = field(default_factory=HashList)
     work: CurrentTaskSettings = field(default_factory=CurrentTaskSettings)
     location: Location = field(default_factory=Location)
@@ -263,17 +279,87 @@ class RTKDevice(DataClassORJSONMixin):
     update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
 
 
+@dataclass
+class PoolCleanerDevice(Device):
+    """Swimming-pool cleaning robot (Spino, Spino-S1/E1/SP).
+
+    Carries only the state the Mammotion Android app actually surfaces in
+    its pool-cleaner fragments + settings screens (see ``pool_state.py``
+    for the field-by-field rationale). Internal-only proto fields (pump
+    status, RSSI, wheel state, …) are intentionally omitted until they
+    show up in the UI or there is a concrete consumer for them.
+    """
+
+    pool_state: PoolState = field(default_factory=PoolState)
+    pool_map: PoolMap = field(default_factory=PoolMap)
+    device_firmwares: DeviceFirmwares = field(default_factory=DeviceFirmwares)
+    errors: DeviceErrors = field(default_factory=DeviceErrors)
+
+
+@dataclass
+class RTKBaseStationDevice(Device):
+    """RTK base station (RTK, RBS03A0/A1/A2, RTKNB).
+
+    All devices share one MQTT connection per account (Aliyun or Mammotion
+    MQTT); messages are routed by ``iot_id``.  This model holds state from
+    messages that carry the RTK device's own ``iot_id``.  The mower-side
+    relay data (satellite count, fix status, LoRa channel) arrives in
+    messages with the *mower's* ``iot_id`` via ``base.to_app`` and is stored
+    on ``MowerDevice.report_data.basestation_info`` — not here.
+
+    Fields here come from messages tagged with the RTK device's ``iot_id``:
+
+    - ``basestation_status``: operational status code from
+      ``sys.toapp_report_data`` → ``rpt_basestation_info.basestation_status``.
+    - ``connect_status_since_poweron``: connectivity uptime from same source.
+    - ``firmware_version``: version string from ``sys.toapp_dev_fw_info``.
+    - ``wifi_mac``: Wi-Fi MAC address from ``net.toapp_networkinfo_rsp``.
+    - ``product_key``: Aliyun product key from ``net.toapp_wifi_iot_status``.
+    """
+
+    basestation_status: int = 0
+    connect_status_since_poweron: int = 0
+    firmware_version: str = ""
+    wifi_mac: str = ""
+    product_key: str = ""
+
+
+def create_device(name: str) -> "Device":
+    """Construct the appropriate :class:`Device` subclass for *name*.
+
+    Inspects the device-name prefix via :class:`DeviceType` and returns the
+    correct subclass: :class:`RTKBaseStationDevice` for RTK base stations,
+    :class:`PoolCleanerDevice` for Spino variants, or :class:`MowerDevice`
+    (the historical default).
+    """
+    # Local import to avoid a circular dependency between
+    # pymammotion.data.model.device and pymammotion.utility.device_type.
+    from pymammotion.utility.device_type import DeviceType
+
+    if DeviceType.is_swimming_pool(name):
+        return PoolCleanerDevice(name=name)
+    if DeviceType.is_rtk(name):
+        return RTKBaseStationDevice(name=name)
+    return MowerDevice(name=name)
+
+
+# Backwards-compatible alias. The library was previously called MowingDevice
+# everywhere; the rename to MowerDevice is part of the polymorphic device-model
+# refactor (Phase B). External callers can keep using MowingDevice for now.
+MowingDevice = MowerDevice
+
+
 # Mashumaro's __init_subclass__ generates to_jsonb directly on subclasses, overwriting any
 # in-class override.  Patch after class definition so orjson can handle int dict keys
 # (e.g. HashList.area / path / obstacle which are dict[int, FrameList]).
-def _mowing_device_to_jsonb(self: "MowingDevice", **kwargs: Any) -> bytes:
+def _mower_device_to_jsonb(self: "MowerDevice", **kwargs: Any) -> bytes:
     kwargs.setdefault("option", orjson.OPT_NON_STR_KEYS)
     return orjson.dumps(self.to_dict(), **kwargs)
 
 
-def _mowing_device_to_json(self: "MowingDevice", **kwargs: Any) -> str:
-    return _mowing_device_to_jsonb(self, **kwargs).decode()
+def _mower_device_to_json(self: "MowerDevice", **kwargs: Any) -> str:
+    return _mower_device_to_jsonb(self, **kwargs).decode()
 
 
-MowingDevice.to_jsonb = _mowing_device_to_jsonb  # type: ignore[method-assign]
-MowingDevice.to_json = _mowing_device_to_json  # type: ignore[method-assign]
+MowerDevice.to_jsonb = _mower_device_to_jsonb  # type: ignore[method-assign]
+MowerDevice.to_json = _mower_device_to_json  # type: ignore[method-assign]

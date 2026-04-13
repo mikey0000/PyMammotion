@@ -1,7 +1,19 @@
-"""StateReducer — decodes LubaMsg and applies it to a MowingDevice copy."""
+"""StateReducer — decodes LubaMsg and applies it to a Device copy.
+
+Polymorphic dispatch by device kind:
+- :class:`MowerStateReducer` — handles every LubaMsg sub-message used by lawn
+  mowers (Luba, Yuka, RTK rovers).
+- :class:`PoolStateReducer` — handles the (much smaller) subset used by Spino
+  pool cleaners. Currently a stub that just marks the device online; the real
+  Spino-specific dispatch lands in the follow-up commit that adds the
+  pool_state / pool_map fields to PoolCleanerDevice.
+
+Pick the right reducer for a device name with :func:`get_state_reducer`.
+"""
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import copy
 import dataclasses
 import logging
@@ -20,9 +32,11 @@ from pymammotion.data.model.hash_list import (
     Plan,
     SvgMessage,
 )
+from pymammotion.data.model.pool_state import PoolBottomType, PoolPoint, SpinoSysStatus, SpinoWorkMode, WallMaterial
 from pymammotion.data.model.report_info import BaseScore
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.proto import (
+    AppDownlinkCmdT,
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
@@ -48,6 +62,8 @@ from pymammotion.proto import (
     NavReqCoverPath,
     NavSysParamMsg,
     NavUnableTimeSet,
+    ReportInfoData,
+    ReportInfoT,
     ResponseBasestationInfoT,
     SvgMessageAckT,
     SysCommCmd,
@@ -57,17 +73,31 @@ from pymammotion.proto import (
 )
 
 if TYPE_CHECKING:
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice, RTKBaseStationDevice
 
 _logger = logging.getLogger(__name__)
 
 
-class StateReducer:
-    """Decodes incoming LubaMsg bytes and applies them to a MowingDevice.
+class StateReducer(ABC):
+    """Abstract base class for device state reducers.
 
-    Pure-ish: takes current MowingDevice, returns updated MowingDevice.
-    Side-effect free except for logging.
-    Does NOT fire any callbacks — broker request/response correlation handles that.
+    Implementations decode an incoming :class:`LubaMsg` and return an updated
+    :class:`Device` copy. Pure-ish: side-effect free except for logging.
+    Does NOT fire any callbacks — broker request/response correlation handles
+    that.
+    """
+
+    @abstractmethod
+    def apply(self, current: Device, message: LubaMsg) -> Device:
+        """Apply *message* to *current* and return the updated device copy."""
+
+
+class MowerStateReducer(StateReducer):
+    """Reducer for lawn mowers (Luba, Yuka, RTK rovers).
+
+    Handles every LubaMsg sub-message group: nav, sys, driver, net, mul, ota,
+    base. The pre-existing reducer logic — moved here verbatim from the old
+    monolithic StateReducer.
     """
 
     def apply(self, current: MowingDevice, message: LubaMsg) -> MowingDevice:
@@ -170,6 +200,18 @@ class StateReducer:
 
     def _update_nav_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update navigation data fields on *device* in-place."""
+        # Pool cleaners (Spino) reuse the LubaMsg envelope but do not have a
+        # GNSS RTK origin or a lat/lon dock. Generating GeoJSON from a (0,0)
+        # RTK origin produces nonsense at best and can crash the geometry
+        # library. Bail out until a pool-specific reducer exists.
+        from pymammotion.utility.device_type import DeviceType
+
+        if DeviceType.is_swimming_pool(device.name):
+            _logger.debug(
+                "StateReducer: skipping nav update for swimming-pool device %s",
+                device.name,
+            )
+            return
         nav_msg = betterproto2.which_one_of(message.nav, "SubNavMsg")
         match nav_msg[0]:
             case "toapp_gethash_ack":
@@ -312,6 +354,18 @@ class StateReducer:
 
     def _update_driver_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update driver/cutter data fields on *device* in-place."""
+        # Pool cleaners (Spino) do not have cutters, blades, or knife events.
+        # Unpacking driver oneof variants into mower-specific dataclasses would
+        # either silently corrupt mower fields or AttributeError on missing
+        # attributes — skip until a pool-specific reducer exists.
+        from pymammotion.utility.device_type import DeviceType
+
+        if DeviceType.is_swimming_pool(device.name):
+            _logger.debug(
+                "StateReducer: skipping driver update for swimming-pool device %s",
+                device.name,
+            )
+            return
         driver_msg = betterproto2.which_one_of(message.driver, "SubDrvMsg")
         match driver_msg[0]:
             case "current_cutter_mode":
@@ -408,3 +462,227 @@ class StateReducer:
                     device.mower_state.lamp_info.night_light = bool(lamp_resp.lamp_ctrl.value) or bool(
                         lamp_resp.lamp_bright
                     )
+
+
+class PoolStateReducer(StateReducer):
+    """Reducer for swimming-pool cleaners (Spino, Spino-S1/E1/SP).
+
+    Spino reuses the :class:`LubaMsg` envelope but populates a much smaller
+    subset of sub-messages than lawn mowers. Confirmed wire paths used by
+    the Mammotion Android app:
+
+    - ``sys.report_info`` → :class:`ReportInfoT` → :class:`DevStatueT` —
+      runtime status (sys_status, work_mode, battery, …) shown on the home
+      screen.
+    - ``sys.app_downlink_cmd`` → :class:`AppDownlinkCmdT` — both the
+      outgoing user-settings commands (wall material, bottom type, floor
+      speed) and the device's ack responses that carry pool ``map_info`` /
+      ``line_info`` geometry rendered by ``SwimmingMapActivity``.
+
+    Other LubaMsg sub-message groups (``nav``, ``driver``, ``base``) are
+    not used by Spino in any path the app reads, so they are intentionally
+    no-ops here. Net / mul / ota will be added once their Spino usage is
+    confirmed against captured traffic — leaving them out is safer than
+    reusing mower dispatch on a device that has no ``mower_state``.
+    """
+
+    def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:  # type: ignore[override]
+        """Apply *message* to *current* and return the updated copy."""
+        device: PoolCleanerDevice = dataclasses.replace(current)
+        if not device.online:
+            device.online = True
+
+        sub_msg_type = betterproto2.which_one_of(message, "LubaSubMsg")[0]
+        if sub_msg_type != "sys":
+            # Only the sys envelope carries Spino payloads we currently model.
+            return device
+
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
+        match sys_msg[0]:
+            case "report_info":
+                device.pool_state = copy.deepcopy(current.pool_state)
+                self._update_report_info(device, sys_msg[1])
+            case "app_downlink_cmd":
+                device.pool_state = copy.deepcopy(current.pool_state)
+                device.pool_map = copy.deepcopy(current.pool_map)
+                self._update_app_downlink_cmd(device, sys_msg[1])
+            case _:
+                _logger.debug(
+                    "PoolStateReducer: ignoring unhandled sys sub-message %r for %s",
+                    sys_msg[0],
+                    device.name,
+                )
+
+        return device
+
+    def _update_report_info(self, device: PoolCleanerDevice, report: ReportInfoT) -> None:
+        """Apply a ``ReportInfoT`` (carrying ``DevStatueT``) to *device*."""
+        if report.dev_status is None:
+            return
+        status = report.dev_status
+
+        # sys_status is an int on the wire — coerce to our enum, falling back
+        # to the raw int if a future firmware sends a value we don't yet model.
+        try:
+            device.pool_state.sys_status = SpinoSysStatus(status.sys_status)
+        except ValueError:
+            _logger.debug(
+                "PoolStateReducer: unknown sys_status=%d for %s — leaving previous value",
+                status.sys_status,
+                device.name,
+            )
+        try:
+            device.pool_state.work_mode = SpinoWorkMode(status.work_mode)
+        except ValueError:
+            _logger.debug(
+                "PoolStateReducer: unknown work_mode=%d for %s — leaving previous value",
+                status.work_mode,
+                device.name,
+            )
+        device.pool_state.battery = status.bat_val
+
+    def _update_app_downlink_cmd(self, device: PoolCleanerDevice, cmd: AppDownlinkCmdT) -> None:
+        """Apply an incoming ``AppDownlinkCmdT`` (settings ack or map data) to *device*."""
+        # Settings — only update fields the device actually populated.
+        if cmd.wall_material is not None:
+            try:
+                device.pool_state.wall_material = WallMaterial(cmd.wall_material)
+            except ValueError:
+                _logger.debug(
+                    "PoolStateReducer: unknown wall_material=%d for %s",
+                    cmd.wall_material,
+                    device.name,
+                )
+        if cmd.bottom_type is not None:
+            try:
+                device.pool_state.bottom_type = PoolBottomType(int(cmd.bottom_type))
+            except ValueError:
+                _logger.debug(
+                    "PoolStateReducer: unknown bottom_type=%s for %s",
+                    cmd.bottom_type,
+                    device.name,
+                )
+        if cmd.floor_speed is not None:
+            device.pool_state.floor_speed = cmd.floor_speed
+
+        # Pool geometry — boundary outline (tag=0) and cleaning path (tag=1).
+        # MapInfo is sent in packets (pack_index / pack_num); the simplest
+        # correct behaviour is to wait for the final packet and replace the
+        # whole list. Until we see what real traffic looks like, treat each
+        # incoming MapInfo as a complete payload — the proto allows
+        # total_points to indicate the full length per packet.
+        for map_info in (cmd.map_info, cmd.line_info):
+            if map_info is None:
+                continue
+            points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
+            if map_info.tag == 0:
+                device.pool_map.boundary = points
+            elif map_info.tag == 1:
+                device.pool_map.cleaning_path = points
+            else:
+                _logger.debug(
+                    "PoolStateReducer: unknown MapInfo tag=%d for %s",
+                    map_info.tag,
+                    device.name,
+                )
+
+
+class RTKStateReducer(StateReducer):
+    """Reducer for RTK base station devices (RTK, RBS03A0/A1/A2, RTKNB).
+
+    All devices share one MQTT connection per account; messages are routed by
+    ``iot_id``.  This reducer handles :class:`LubaMsg` frames that carry the
+    RTK device's own ``iot_id``.  RTK base stations use a small subset of
+    LubaMsg sub-messages:
+
+    - ``sys.toapp_report_data`` → ``basestation_info`` — operational status
+      and connectivity uptime (``rpt_basestation_info``, field 11 of
+      ``report_info_data``).
+    - ``sys.toapp_dev_fw_info`` → firmware version string.
+    - ``net.toapp_wifi_iot_status`` → Aliyun product key.
+    - ``net.toapp_networkinfo_rsp`` → Wi-Fi MAC address.
+
+    Satellite count, fix quality, and LoRa channel come in messages tagged
+    with the *mower's* ``iot_id`` via ``base.to_app`` and are handled by
+    :class:`MowerStateReducer._update_base_data` — not here.
+    """
+
+    def apply(self, current: RTKBaseStationDevice, message: LubaMsg) -> RTKBaseStationDevice:  # type: ignore[override]
+        """Apply *message* to *current* and return the updated copy."""
+        device: RTKBaseStationDevice = dataclasses.replace(current)
+        if not device.online:
+            device.online = True
+
+        sub_msg_type = betterproto2.which_one_of(message, "LubaSubMsg")[0]
+        match sub_msg_type:
+            case "sys":
+                self._update_sys_data(device, message)
+            case "net":
+                self._update_net_data(device, message)
+            case _:
+                _logger.debug(
+                    "RTKStateReducer: ignoring unhandled sub-message %r for %s",
+                    sub_msg_type,
+                    device.name,
+                )
+
+        return device
+
+    def _update_sys_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
+        """Apply sys sub-messages from the base station's own connection."""
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
+        match sys_msg[0]:
+            case "toapp_report_data":
+                report: ReportInfoData = sys_msg[1]
+                if report.basestation_info is not None:
+                    device.basestation_status = report.basestation_info.basestation_status
+                    device.connect_status_since_poweron = report.basestation_info.connect_status_since_poweron
+            case "toapp_dev_fw_info":
+                fw_info: DeviceFwInfo = sys_msg[1]
+                if fw_info.result != 0:
+                    device.firmware_version = fw_info.version
+            case _:
+                _logger.debug(
+                    "RTKStateReducer: ignoring sys sub-message %r for %s",
+                    sys_msg[0],
+                    device.name,
+                )
+
+    def _update_net_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
+        """Apply net sub-messages (connectivity info) from the base station."""
+        net_msg = betterproto2.which_one_of(message.net, "NetSubType")
+        match net_msg[0]:
+            case "toapp_wifi_iot_status":
+                wifi_iot: WifiIotStatusReport = net_msg[1]
+                device.product_key = wifi_iot.productkey
+            case "toapp_networkinfo_rsp":
+                net_info: GetNetworkInfoRsp = net_msg[1]
+                device.wifi_mac = net_info.wifi_mac
+            case _:
+                _logger.debug(
+                    "RTKStateReducer: ignoring net sub-message %r for %s",
+                    net_msg[0],
+                    device.name,
+                )
+
+
+def get_state_reducer(device_name: str) -> StateReducer:
+    """Return the appropriate :class:`StateReducer` for *device_name*.
+
+    Dispatches to:
+    - :class:`RTKStateReducer` for RTK base stations (RTK, RBS03A0/A1/A2, RTKNB)
+    - :class:`PoolStateReducer` for Spino pool cleaners
+    - :class:`MowerStateReducer` for all lawn mowers (the historical default)
+
+    Picked once per device at handle construction time so the hot path
+    doesn't pay an isinstance check on every incoming message.
+    """
+    # Local import to avoid a circular dependency between the reducer module
+    # and the device-type helpers it consults.
+    from pymammotion.utility.device_type import DeviceType
+
+    if DeviceType.is_swimming_pool(device_name):
+        return PoolStateReducer()
+    if DeviceType.is_rtk(device_name):
+        return RTKStateReducer()
+    return MowerStateReducer()

@@ -8,7 +8,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from pymammotion.device.state_reducer import StateReducer
+from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.proto import LubaMsg
@@ -25,7 +25,7 @@ from pymammotion.transport.base import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import Device
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
@@ -131,7 +131,7 @@ class DeviceHandle:
         self,
         device_id: str,
         device_name: str,
-        initial_device: MowingDevice,
+        initial_device: Device,
         *,
         iot_id: str = "",
         user_account: int = 0,
@@ -157,7 +157,11 @@ class DeviceHandle:
         self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
         self._event_bus: EventBus[ThingEventMessage] = EventBus()
         self._prefer_ble: bool = prefer_ble
-        self._reducer: StateReducer = StateReducer()
+        # Pick a reducer matching the device kind. PoolCleanerDevice instances
+        # get a PoolStateReducer (currently a stub); everything else gets the
+        # full mower reducer. Decided once at construction so the per-message
+        # hot path doesn't pay an isinstance check.
+        self._reducer: StateReducer = get_state_reducer(device_name)
         self._error_bus: EventBus[Exception] = EventBus()
         self._readiness_checker: ReadinessChecker | None = readiness_checker
         self._staleness_watcher: MapStalenessWatcher | None = None
@@ -423,7 +427,7 @@ class DeviceHandle:
         """The latest immutable device state snapshot."""
         return self.state_machine.current
 
-    def restore_device(self, device: MowingDevice) -> None:
+    def restore_device(self, device: Device) -> None:
         """Restore previously saved device state (e.g. from HA storage)."""
         self.state_machine.restore(device)
 
