@@ -637,24 +637,30 @@ class HashList(DataClassORJSONMixin):
             self.root_hash_lists = []
 
     def invalidate_mow_path(self, ub_path_hash: int) -> None:
-        """Clear current_mow_path when ub_path_hash transitions.
+        """Clear current_mow_path when ub_path_hash transitions to 0 (job ended).
 
-        Mirrors APK HashDataManager.updateTotalHash: clears the active cover
-        path whenever the device's ub_path_hash changes — either to a new
-        non-zero value (new job, refetch required) or to 0 (job ended).
-        Repeated calls with the same value are no-ops.
+        Only clears on transition to zero — ub_path_hash changes during a mow
+        as the device advances through segments, so non-zero transitions must
+        not discard already-fetched cover path data.
         """
-        if ub_path_hash == 0 and (self.generated_mow_path_geojson or self.generated_mow_progress_geojson):
+        if ub_path_hash == 0:
             self.current_mow_path = {}
             self.generated_mow_path_geojson = {}
             self.generated_mow_progress_geojson = {}
+            self.last_ub_path_hash = 0
 
-        if ub_path_hash == self.last_ub_path_hash:
-            return
-        self.last_ub_path_hash = ub_path_hash
-        self.current_mow_path = {}
-        self.generated_mow_path_geojson = {}
-        self.generated_mow_progress_geojson = {}
+    def has_mow_path_for_hash(self, ub_path_hash: int) -> bool:
+        """Return True if ub_path_hash appears as path_hash in any transaction's first packet.
+
+        Checks current_mow_path[transaction_id][frame].path_packets[0].path_hash
+        across all transactions, so the caller can determine whether cover path
+        data for the device's current segment is already held locally.
+        """
+        for frames in self.current_mow_path.values():
+            for mow_path in frames.values():
+                if mow_path.path_packets and mow_path.path_packets[0].path_hash == ub_path_hash:
+                    return True
+        return False
 
     def invalidate_breakpoint_line(self, ub_path_hash: int) -> bool:
         """Synchronise self.line to the device's current ub_path_hash.

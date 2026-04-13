@@ -125,6 +125,21 @@ Commands: `pymammotion/mammotion/commands/mammotion_command.py` and `messages/`.
 HA-facing API: `pymammotion/homeassistant/mower_api.py` and `rtk_api.py`.
 Device variants (25+): `pymammotion/utility/device_type.py` — `DeviceType.has_4g()`, `is_yuka()`, `is_rtk()`, etc.
 
+## APK Reference Source
+
+Decompiled APK source (Mammotion 2.2.4.13) is available at:
+```
+/home/michael/Downloads/Mammotion_2.2.4.13_APKPure/com.agilexrobotics/java_src/com/agilexrobotics/
+```
+
+Key files for protocol/logic research:
+- `mvp/fieldmower/device/HashDataManager.java` — map/hash/line/cover-path fetch logic, clearing conditions, retry logic
+- `mvp/fieldmower/device/MACarDataManager.java` — incoming message parsing, device state callbacks, calls to HashDataManager
+- `mvp/fieldmower/device/MACommandHelper.java` — outgoing command builders (field-mower variant)
+- `command/MACommandHelper.java` — outgoing command builders (top-level variant)
+- `proto/MctrlNav.java` — nav protobuf definitions
+- `proto/MctrlSys.java` — sys/report protobuf definitions (device status, work report fields)
+
 ## Key Conventions
 
 - **Async throughout:** All I/O uses `asyncio`/`async`/`await`

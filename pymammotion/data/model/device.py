@@ -174,7 +174,7 @@ class MowingDevice(DataClassORJSONMixin):
             self.map.invalidate_breakpoint_line(0)
 
         if toapp_report_data.work:
-            self.map.invalidate_mow_path(toapp_report_data.work.ub_path_hash)
+            self.map.invalidate_mow_path(toapp_report_data.work.path_hash)
             self.map.invalidate_breakpoint_line(toapp_report_data.work.ub_path_hash)
 
         self.report_data.update(toapp_report_data)
