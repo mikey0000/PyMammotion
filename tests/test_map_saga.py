@@ -5,7 +5,9 @@ import asyncio
 import contextlib
 from unittest.mock import MagicMock
 
+import betterproto2
 
+from pymammotion.data.model.hash_list import HashList, NavGetCommData, NavGetHashListData
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.proto import LubaMsg, MctlNav, NavGetCommDataAck, NavGetHashListAck
@@ -57,17 +59,38 @@ def _comm_data_msg(hash_id: int, type_code: int) -> LubaMsg:
     )
 
 
+def _apply_msg_to_map(msg: LubaMsg, m: HashList) -> None:
+    """Minimal StateReducer simulation: update m with each incoming nav message."""
+    if not msg.nav:
+        return
+    try:
+        leaf_name, leaf_val = betterproto2.which_one_of(msg.nav, "SubNavMsg")
+        if leaf_name == "toapp_gethash_ack":
+            m.update_root_hash_list(NavGetHashListData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+        elif leaf_name == "toapp_get_commondata_ack":
+            m.update(NavGetCommData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _run_saga_with_messages(
     broker: DeviceMessageBroker,
     saga: MapFetchSaga,
     messages: list[LubaMsg],
     delay: float = 0.02,
+    map_update: HashList | None = None,
 ) -> None:
-    """Drive saga + sequential message injection concurrently."""
+    """Drive saga + sequential message injection concurrently.
+
+    If *map_update* is provided, each message is also applied to that HashList
+    to simulate the StateReducer updating device.map before the saga reads it.
+    """
 
     async def _inject() -> None:
         for msg in messages:
             await asyncio.sleep(delay)
+            if map_update is not None:
+                _apply_msg_to_map(msg, map_update)
             await broker.on_message(msg)
 
     injector = asyncio.create_task(_inject())
@@ -92,12 +115,14 @@ async def test_saga_terminates_with_known_type() -> None:
     async def send_command(cmd: bytes) -> None:
         sends.append(cmd)
 
+    _map = HashList()
     saga = MapFetchSaga(
         device_id="dev-1",
         device_name="Luba-Test",
         is_luba1=True,  # skip area-names step
         command_builder=_make_command_builder(),
         send_command=send_command,
+        get_map=lambda: _map,
     )
 
     hash_id = 1640341264244214677
@@ -109,6 +134,7 @@ async def test_saga_terminates_with_known_type() -> None:
             _hash_list_msg([hash_id]),
             _comm_data_msg(hash_id, type_code=0),  # PathType.AREA
         ],
+        map_update=_map,
     )
 
     assert saga.result is not None
@@ -133,12 +159,14 @@ async def test_saga_does_not_loop_on_unknown_type() -> None:
     async def send_command(cmd: bytes) -> None:
         sends.append(cmd)
 
+    _map = HashList()
     saga = MapFetchSaga(
         device_id="dev-2",
         device_name="Luba-Test",
         is_luba1=True,
         command_builder=_make_command_builder(),
         send_command=send_command,
+        get_map=lambda: _map,
     )
 
     hash_id = 1640341264244214677
@@ -152,6 +180,7 @@ async def test_saga_does_not_loop_on_unknown_type() -> None:
                 _hash_list_msg([hash_id]),
                 _comm_data_msg(hash_id, type_code=26),  # unknown / unhandled type
             ],
+            map_update=_map,
         ),
         timeout=5.0,  # would hang indefinitely before the fix
     )
@@ -182,12 +211,14 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
     async def send_command(cmd: bytes) -> None:
         sends.append(cmd)
 
+    _map = HashList()
     saga = MapFetchSaga(
         device_id="dev-3",
         device_name="Luba-Test",
         is_luba1=True,
         command_builder=_make_command_builder(),
         send_command=send_command,
+        get_map=lambda: _map,
     )
 
     area_hash = 1111111111111111111
@@ -202,6 +233,7 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
                 _comm_data_msg(area_hash, type_code=0),    # PathType.AREA — stored
                 _comm_data_msg(unknown_hash, type_code=26),  # unknown — skipped
             ],
+            map_update=_map,
         ),
         timeout=5.0,
     )

@@ -149,6 +149,7 @@ async def test_map_saga_fetches_area_names_for_non_luba1() -> None:
             is_luba1=False,
             command_builder=builder,
             send_command=send_command,
+            get_map=HashList,
         )
         await saga.execute(broker)
 
@@ -181,6 +182,7 @@ async def test_map_saga_skips_area_names_for_luba1() -> None:
             is_luba1=True,
             command_builder=builder,
             send_command=send_command,
+            get_map=HashList,
         )
         await saga.execute(broker)
 
@@ -213,6 +215,7 @@ async def test_map_saga_refetches_area_names_on_restart() -> None:
         elif active_callbacks:
             await active_callbacks[-1](hash_response)
 
+    _map = HashList()
     with patch("betterproto2.which_one_of", side_effect=_which_one_of_for_hash):
         with patch("asyncio.sleep", new_callable=AsyncMock):
             saga = MapFetchSaga(
@@ -221,6 +224,7 @@ async def test_map_saga_refetches_area_names_on_restart() -> None:
                 is_luba1=False,
                 command_builder=builder,
                 send_command=send_command,
+                get_map=lambda: _map,
             )
             saga.step_timeout = 0.01  # short timeout so the test doesn't hang
             await saga.execute(broker)
@@ -262,6 +266,7 @@ async def test_map_saga_clears_partial_state_on_restart() -> None:
                 is_luba1=True,
                 command_builder=builder,
                 send_command=send_command,
+                get_map=HashList,
             )
             saga.step_timeout = 0.01
 
@@ -284,6 +289,7 @@ async def test_map_saga_raises_saga_failed_after_max_attempts() -> None:
         is_luba1=True,
         command_builder=builder,
         send_command=send_command,
+        get_map=HashList,
     )
 
     with patch("asyncio.sleep", new_callable=AsyncMock):  # skip 1s delays

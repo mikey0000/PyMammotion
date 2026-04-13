@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pymammotion.data.model.hash_list import HashList
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import Priority
@@ -366,12 +367,14 @@ async def test_map_saga_refetches_area_names_on_each_run() -> None:
         return ("toapp_gethash_ack", obj.toapp_gethash_ack)
 
     with patch("betterproto2.which_one_of", side_effect=_which_hash):
+        _map = HashList()
         saga = MapFetchSaga(
             device_id="dev-006",
             device_name="Luba2Test",
             is_luba1=False,
             command_builder=builder,
             send_command=send_command,
+            get_map=lambda: _map,
         )
 
         # First run
