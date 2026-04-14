@@ -52,6 +52,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
@@ -115,7 +116,7 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
     ``report_data.work.now_index``) and stores the resulting GeoJSON in
     ``device.map.generated_mow_progress_geojson``.
 
-    A no-op when the RTK location is unknown or ``now_index`` is 0.
+    A no-op when the RTK location is unknown or ``now_index`` is negative.
     """
     from shapely.geometry import Point
 
@@ -125,7 +126,7 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
     rtk = device.location.RTK
     work = device.report_data.work
     now_index = work.now_index
-    if rtk.latitude == 0 or now_index <= 0 or not device.map.current_mow_path:
+    if rtk.latitude == 0 or now_index < 0 or not device.map.current_mow_path:
         return
 
     # Decode exact device position from path_pos_x/y (raw int ÷ 10000 → ENU metres).
@@ -233,7 +234,12 @@ class MammotionClient:
             device = snapshot.raw
             task_ids = device.events.work_tasks_event.ids
             work = device.report_data.work
-            actively_working = bool(task_ids) and work.ub_path_hash != 0
+            actively_working = (
+                bool(task_ids)
+                or work.ub_path_hash != 0
+                or work.path_hash != 0
+                or device.report_data.dev.sys_status == WorkMode.MODE_WORKING.value
+            )
             path_missing = actively_working and not device.map.current_mow_path
 
             if path_missing:
@@ -247,13 +253,13 @@ class MammotionClient:
                 try:
                     await self.start_mow_path_saga(
                         device_name,
-                        zone_hashs=list(task_ids),
+                        zone_hashs=[],
                         skip_planning=True,
                     )
                 except Exception:  # noqa: BLE001
                     _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
-            if actively_working and device.map.current_mow_path:
+            if device.map.current_mow_path and not device.map.generated_mow_progress_geojson:
                 _apply_mow_progress_geojson(device)
 
         sub = handle.subscribe_state_changed(_on_state_changed)
@@ -660,7 +666,7 @@ class MammotionClient:
                 if acct_session.token_manager is None:
                     acct_session.token_manager = TokenManager(account, mammotion_http)
                 transport = self._setup_mammotion_transport(
-                    mammotion_http.mqtt_credentials, mammotion_http, acct_session
+                    mammotion_http.mqtt_credentials, mammotion_http, acct_session, acct_session.token_manager
                 )
                 acct_session.mammotion_transport = transport
                 ua = acct_session.user_account

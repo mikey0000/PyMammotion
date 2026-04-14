@@ -394,7 +394,7 @@ class HomeAssistantMowerApi:
         if not operation_settings.areas:
             device = self._mammotion.get_device_by_name(device_name)
             if device is not None:
-                operation_settings.areas = set(device.map.area.keys())
+                operation_settings.areas = list(dict.fromkeys(device.map.area.keys()))
         route_information = self.generate_route_information(device_name, operation_settings)
         await self._mammotion.start_mow_path_saga(
             device_name,
@@ -408,7 +408,7 @@ class HomeAssistantMowerApi:
         device = self._mammotion.get_device_by_name(device_name)
 
         if device is not None and (work := device.work):
-            operation_settings.areas = set(work.zone_hashs)
+            operation_settings.areas = list(dict.fromkeys(work.zone_hashs))
             operation_settings.toward = work.toward
             operation_settings.toward_mode = work.toward_mode
             operation_settings.toward_included_angle = work.toward_included_angle
