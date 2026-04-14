@@ -386,8 +386,8 @@ def test_work_data_zero_real_path_num() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_mow_progress_geojson_now_index_zero_returns_empty() -> None:
-    """now_index=0 produces an empty FeatureCollection."""
+def test_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
+    """now_index=0 returns the entire planned path (no slicing)."""
     from shapely.geometry import Point
 
     from pymammotion.data.model.generate_geojson import GeojsonGenerator
@@ -403,7 +403,7 @@ def test_mow_progress_geojson_now_index_zero_returns_empty() -> None:
     )
 
     assert result["type"] == "FeatureCollection"
-    assert result["features"] == []
+    assert len(result["features"]) > 0, "now_index=0 should return the full path, not empty"
 
 
 def test_mow_progress_geojson_empty_path_returns_empty() -> None:
@@ -601,8 +601,8 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
     assert totals[2] == 190
 
 
-def test_apply_mow_progress_geojson_noop_when_now_index_zero() -> None:
-    """_apply_mow_progress_geojson is a no-op when now_index is 0."""
+def test_apply_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
+    """_apply_mow_progress_geojson with now_index=0 returns the entire planned path."""
     from pymammotion.client import _apply_mow_progress_geojson
     from pymammotion.data.model.device import MowingDevice
 
@@ -615,11 +615,13 @@ def test_apply_mow_progress_geojson_noop_when_now_index_zero() -> None:
         for fid, frame in frames.items():
             device.map.update_mow_path(_make_mow_path(frame))
 
-    device.report_data.work.real_path_num = 0  # now_index=0 → no-op
+    device.report_data.work.real_path_num = 0  # now_index=0 → full path
 
     _apply_mow_progress_geojson(device)
 
-    assert device.map.generated_mow_progress_geojson == {}
+    result = device.map.generated_mow_progress_geojson
+    assert result["type"] == "FeatureCollection"
+    assert len(result["features"]) > 0, "now_index=0 should return full path, not empty"
 
 
 # ---------------------------------------------------------------------------

@@ -114,7 +114,7 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
     ``report_data.work.now_index``) and stores the resulting GeoJSON in
     ``device.map.generated_mow_progress_geojson``.
 
-    A no-op when the RTK location is unknown or ``now_index`` is 0.
+    A no-op when the RTK location is unknown or ``now_index`` is negative.
     """
     from shapely.geometry import Point
 
@@ -124,7 +124,7 @@ def _apply_mow_progress_geojson(device: MowingDevice) -> None:
     rtk = device.location.RTK
     work = device.report_data.work
     now_index = work.now_index
-    if rtk.latitude == 0 or now_index <= 0 or not device.map.current_mow_path:
+    if rtk.latitude == 0 or now_index < 0 or not device.map.current_mow_path:
         return
 
     # Decode exact device position from path_pos_x/y (raw int ÷ 10000 → ENU metres).

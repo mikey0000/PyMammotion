@@ -30,7 +30,7 @@ class OperationSettings(DataClassORJSONMixin):
     obstacle_laps: int = 1
     mowing_laps: int = 1  # border laps
     start_progress: int = 0
-    areas: set[int] = field(default_factory=set)
+    areas: list[int] = field(default_factory=list)
 
 
 def create_path_order(operation_mode: OperationSettings, device_name: str) -> str:

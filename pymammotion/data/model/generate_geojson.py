@@ -288,7 +288,7 @@ class GeojsonGenerator:
             "features": [],
         }
 
-        if now_index <= 0 or not hash_list.current_mow_path:
+        if now_index < 0 or not hash_list.current_mow_path:
             return geo_json
 
         # Build ordered path-hash list from root_hash_lists sub_cmd=3.

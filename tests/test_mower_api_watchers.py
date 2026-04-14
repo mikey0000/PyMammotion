@@ -16,12 +16,15 @@ def _make_snapshot(
     work_path_hash: int = 0,
     current_mow_path: dict | None = None,
     now_index: int = 0,
+    work_path_hash_b: int = 0,
 ) -> MagicMock:
     """Return a DeviceSnapshot-shaped MagicMock."""
     device = MagicMock()
     device.events.work_tasks_event.ids = task_ids or []
     device.report_data.work.ub_path_hash = work_path_hash
+    device.report_data.work.path_hash = work_path_hash_b
     device.report_data.work.now_index = now_index
+    device.report_data.dev.sys_status = 0  # not MODE_WORKING
     device.map.current_mow_path = current_mow_path if current_mow_path is not None else {}
     return MagicMock(raw=device)
 
@@ -65,30 +68,34 @@ def _make_client_with_handle(
 
 
 # ---------------------------------------------------------------------------
-# Test: no task_ids → no saga triggered
+# Test: no working signals → no saga triggered
 # ---------------------------------------------------------------------------
 
 
-async def test_watcher_no_trigger_when_no_task_ids() -> None:
-    """When work_tasks_event.ids is empty the watcher must not trigger the saga."""
+async def test_watcher_no_trigger_when_no_working_signals() -> None:
+    """When all working signals are absent the watcher must not trigger the saga."""
     client, handle, handlers = _make_client_with_handle()
 
-    snapshot = _make_snapshot(task_ids=[], work_path_hash=42)
+    snapshot = _make_snapshot(task_ids=[], work_path_hash=0, work_path_hash_b=0)
     await handlers[0](snapshot)
 
     client.start_mow_path_saga.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
-# Test: task_ids present but path_hash zero → no saga
+# Test: actively working but cover path already loaded → no saga
 # ---------------------------------------------------------------------------
 
 
-async def test_watcher_no_trigger_when_path_hash_zero() -> None:
-    """When report_data.work.path_hash is 0 the watcher must not trigger the saga."""
+async def test_watcher_no_trigger_when_path_already_loaded() -> None:
+    """When current_mow_path is already populated the watcher must not trigger the saga."""
     client, handle, handlers = _make_client_with_handle()
 
-    snapshot = _make_snapshot(task_ids=[1, 2], work_path_hash=0)
+    snapshot = _make_snapshot(
+        task_ids=[1, 2],
+        work_path_hash=99,
+        current_mow_path={123: {0: MagicMock()}},  # already present
+    )
     await handlers[0](snapshot)
 
     client.start_mow_path_saga.assert_not_awaited()
@@ -108,28 +115,9 @@ async def test_watcher_triggers_when_path_missing_and_actively_working() -> None
 
     client.start_mow_path_saga.assert_awaited_once_with(
         "Luba-Test",
-        zone_hashs=[1, 2],
+        zone_hashs=[],
         skip_planning=True,
     )
-
-
-# ---------------------------------------------------------------------------
-# Test: mow path already present → no duplicate saga
-# ---------------------------------------------------------------------------
-
-
-async def test_watcher_no_trigger_when_plan_present() -> None:
-    """No saga when current_mow_path is already populated."""
-    client, handle, handlers = _make_client_with_handle()
-
-    snapshot = _make_snapshot(
-        task_ids=[1, 2],
-        work_path_hash=99,
-        current_mow_path={123: {0: MagicMock()}},  # non-empty
-    )
-    await handlers[0](snapshot)
-
-    client.start_mow_path_saga.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
