@@ -382,7 +382,17 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            data = await resp.json()
+            data = await _read_json_tolerant(resp)
+        if not isinstance(data, dict):
+            # Same CDN-degradation failure mode as /rtk/devices and
+            # /devices/version/check — camera streams are a supplementary
+            # feature so we degrade to code=-1 and let the camera coordinator
+            # retry rather than raise a ContentTypeError.
+            return Response[StreamSubscriptionResponse](
+                code=-1,
+                msg=f"Unparseable response from /device-server/v1/stream/token (status={resp.status})",
+                data=None,
+            )
         response = response_factory(Response[StreamSubscriptionResponse], data)
         await self.handle_expiry(response)
         return response
