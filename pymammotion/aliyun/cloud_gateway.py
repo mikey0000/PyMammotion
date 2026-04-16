@@ -31,6 +31,7 @@ from pymammotion.aliyun.exceptions import (
 )
 from pymammotion.aliyun.model.aep_response import AepResponse
 from pymammotion.aliyun.model.connect_response import ConnectResponse
+from pymammotion.aliyun.rate_limiter import AdaptiveRateLimiter, RequestCoalescer
 from pymammotion.aliyun.model.dev_by_account_response import ListingDevAccountResponse, ShareNoticeListResponse
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.aliyun.model.regions_response import RegionResponse
@@ -90,7 +91,6 @@ class CloudIOTGateway:
         self._app_key = APP_KEY
         self._app_secret = APP_SECRET
         self.domain = ALIYUN_DOMAIN
-        self.message_delay = 1
         self._client_id = self.generate_hardware_string(8)  # 8 characters
         self._device_sn = self.generate_hardware_string(32)  # 32 characters
         self._utdid = self.generate_hardware_string(32)  # 32 characters
@@ -107,6 +107,16 @@ class CloudIOTGateway:
                 if self._session_by_authcode_response.token_issued_at is not None
                 else int(time.time())
             )
+        # Single shared rate limiter for every HTTP path that hits Aliyun's
+        # per-account quotas.  A 429 here pauses ALL outbound sends, not just
+        # retries of the current command — that's how we stop the startup
+        # saga burst from thundering-herding the gateway.
+        self._rate_limiter = AdaptiveRateLimiter()
+        # Coalescer for idempotent reads: if two callers ask for the same
+        # device's properties simultaneously (common during startup, when the
+        # coordinator and map saga both want fresh state), only one HTTP
+        # request goes out.
+        self._read_coalescer: RequestCoalescer = RequestCoalescer()
 
     @staticmethod
     def generate_random_string(length: int) -> str:
@@ -821,8 +831,15 @@ class CloudIOTGateway:
             version="1.0",
         )
         logger.debug(self.converter.printBase64Binary(command))
-        # send request
-        runtime_options = RuntimeOptions(autoretry=True, backoff_policy="yes")
+
+        # Respect the global rate-limit gate before spending a request slot.
+        # NOTE: we intentionally disable the Aliyun SDK's autoretry — it was
+        # silently re-issuing 429'd requests inside a single `async_do_request`
+        # call, which compounded rate-limit pressure and made the exception
+        # surface minutes *after* the first failure.  We own retry/backoff now
+        # via AdaptiveRateLimiter + the DeviceCommandQueue retry loop.
+        await self._rate_limiter.wait_until_clear()
+        runtime_options = RuntimeOptions(autoretry=False)
         response = await client.async_do_request("/thing/service/invoke", "https", "POST", None, body, runtime_options)
         logger.debug(response.status_message)
         logger.debug(response.headers)
@@ -831,14 +848,11 @@ class CloudIOTGateway:
         logger.debug(iot_id)
 
         if response.status_code == 429:
-            logger.debug("too many requests.")
-            if self.message_delay > 8:
-                raise TooManyRequestsException(response.status_message, iot_id)
-            asyncio.get_event_loop().call_later(
-                self.message_delay, lambda: asyncio.ensure_future(self.send_cloud_command(iot_id, command))
-            )
-            self.message_delay = self.message_delay * 2
-            return message_id
+            self._rate_limiter.note_rate_limited()
+            logger.warning("Cloud API rate limited (429) for iot_id=%s", iot_id)
+            raise TooManyRequestsException(response.status_message, iot_id)
+
+        self._rate_limiter.note_success()
 
         response_body_str = response.body.decode("utf-8")
         response_body_dict = self.parse_json_response(response_body_str)
@@ -868,60 +882,86 @@ class CloudIOTGateway:
                 logger.debug("iotToken expired, must re-login.")
                 raise SessionExpiredError(TransportType.CLOUD_ALIYUN, response_body_dict.get("message"))
 
-        if self.message_delay != 1:
-            self.message_delay = 1
-
         return message_id
 
     async def get_device_properties(self, iot_id: str) -> ThingPropertiesResponse:
-        """List bindings by account."""
-        config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-        )
+        """Fetch the current property snapshot for a device.
 
-        client = Client(config)
+        Concurrent requests for the same ``iot_id`` are coalesced — see
+        :class:`~pymammotion.aliyun.rate_limiter.RequestCoalescer`.  The HA
+        integration routinely fires multiple reads in parallel during
+        startup / state-reducer settle, and they used to become distinct
+        quota-consuming requests each.
+        """
 
-        # build request
-        request = CommonParams(
-            api_ver="1.0.0",
-            language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
-        )
-        body = IoTApiRequest(
-            id=str(uuid.uuid4()),
-            params={
-                "iotId": f"{iot_id}",
-            },
-            request=request,
-            version="1.0",
-        )
+        async def _do_fetch() -> ThingPropertiesResponse:
+            config = Config(
+                app_key=self._app_key,
+                app_secret=self._app_secret,
+                domain=self._region_response.data.apiGatewayEndpoint,
+            )
 
-        # send request
-        response = await client.async_do_request("/thing/properties/get", "https", "POST", None, body, RuntimeOptions())
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+            client = Client(config)
 
-        # Decode the response body
-        response_body_str = response.body.decode("utf-8")
+            request = CommonParams(
+                api_ver="1.0.0",
+                language="en-US",
+                iot_token=self._session_by_authcode_response.data.iotToken,
+            )
+            body = IoTApiRequest(
+                id=str(uuid.uuid4()),
+                params={
+                    "iotId": f"{iot_id}",
+                },
+                request=request,
+                version="1.0",
+            )
 
-        # Load the JSON string into a dictionary
-        response_body_dict = self.parse_json_response(response_body_str)
+            # Shared rate-limit gate: property reads use the same per-account
+            # quota as service invokes, so a 429 here should back off the
+            # whole gateway.
+            await self._rate_limiter.wait_until_clear()
+            response = await client.async_do_request(
+                "/thing/properties/get", "https", "POST", None, body, RuntimeOptions(autoretry=False)
+            )
+            logger.debug(response.status_message)
+            logger.debug(response.headers)
+            logger.debug(response.status_code)
+            logger.debug(response.body)
 
-        if int(response_body_dict.get("code")) != 200:
-            if msg := response_body_dict.get("msg"):
-                raise ReLoginRequiredError("Error in getting properties: " + msg)
-            raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
+            if response.status_code == 429:
+                self._rate_limiter.note_rate_limited()
+                raise TooManyRequestsException(response.status_message, iot_id)
 
-        return ThingPropertiesResponse.from_dict(response_body_dict)
+            self._rate_limiter.note_success()
+
+            response_body_str = response.body.decode("utf-8")
+            response_body_dict = self.parse_json_response(response_body_str)
+
+            if int(response_body_dict.get("code")) != 200:
+                if msg := response_body_dict.get("msg"):
+                    raise ReLoginRequiredError("Error in getting properties: " + msg)
+                raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
+
+            return ThingPropertiesResponse.from_dict(response_body_dict)
+
+        return await self._read_coalescer.run(("thing.properties.get", iot_id), _do_fetch)
 
     @property
     def devices_by_account_response(self):
         """Return the cached device listing response for the current account."""
         return self._devices_by_account_response
+
+    @property
+    def rate_limiter(self) -> AdaptiveRateLimiter:
+        """Expose the shared rate limiter for inspection / testing.
+
+        Mostly useful for diagnostics (``gateway.rate_limiter.is_blocked`` or
+        ``gateway.rate_limiter.consecutive_hits``).  Callers should not mutate
+        state directly; use the normal send paths so bookkeeping stays
+        consistent.
+        """
+        return self._rate_limiter
 
     def set_http(self, mammotion_http: MammotionHTTP) -> None:
         """Replace the underlying MammotionHTTP instance used for authentication."""
