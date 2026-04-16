@@ -36,6 +36,20 @@ _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 120
 
 
+def _consume_task_exception(task: asyncio.Task) -> None:
+    """Retrieve a transport task's exception to prevent GC warnings.
+
+    Without this done-callback, an AuthError / OSError raised inside the
+    ``_run()`` loop leaks as ``Future exception was never retrieved`` the
+    next time Python garbage-collects the completed task.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        _logger.debug("MQTTTransport task exited with exception: %r", exc)
+
+
 @dataclass(frozen=True)
 class MQTTTransportConfig:
     """Frozen configuration for an MQTTTransport instance."""
@@ -161,6 +175,7 @@ class MQTTTransport(Transport):
         )
         loop = asyncio.get_running_loop()
         self._task = loop.create_task(self._run())
+        self._task.add_done_callback(_consume_task_exception)
 
     async def disconnect(self) -> None:
         """Signal the receive loop to stop and wait for it to finish."""

@@ -51,6 +51,37 @@ _MQTT_MAX_INFLIGHT = 20
 _MQTT_MAX_QUEUED = 40
 _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 60
+# When the Aliyun broker rejects a bind with a transient conflict (e.g.
+# ``code=2152 distributed lock failed`` — the prior session is still held
+# in the distributed store) we *must* sleep long enough for the broker to
+# release the lock.  Reconnecting in 1–2 seconds keeps losing the race and
+# makes paho-mqtt leak internal "Future exception was never retrieved" and
+# "Bad file descriptor" errors.
+_MQTT_BIND_CONFLICT_BACKOFF_SEC = 30
+
+
+class _BindLockConflictError(Exception):
+    """Raised when the broker rejects the bind because a prior session still holds the lock."""
+
+    def __init__(self, code: int, parsed: dict) -> None:
+        super().__init__(f"bind rejected with code={code}: {parsed}")
+        self.code = code
+        self.parsed = parsed
+
+
+def _consume_task_exception(task: asyncio.Task) -> None:
+    """Done-callback that swallows / logs a background task's exception.
+
+    Prevents Python from emitting ``Future exception was never retrieved``
+    when the transport task dies with an unhandled exception during a
+    reconnect cycle.  We only log at DEBUG because the connection loop
+    already logs meaningful errors at WARNING/ERROR before raising.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        _logger.debug("AliyunMQTTTransport task exited with exception: %r", exc)
 
 
 @dataclass(frozen=True)
@@ -220,6 +251,11 @@ class AliyunMQTTTransport(Transport):
         self._availability = TransportAvailability.CONNECTING
         loop = asyncio.get_running_loop()
         self._task = loop.create_task(self._run())
+        # Retrieve the task's exception on completion so that Python's GC
+        # doesn't emit "Future exception was never retrieved" when the loop
+        # dies with AuthError / OSError / etc.  Without this callback, each
+        # reconnect cycle that ends in an exception leaks one warning.
+        self._task.add_done_callback(_consume_task_exception)
 
     async def disconnect(self) -> None:
         """Signal the receive loop to stop and wait for it to finish."""
@@ -368,12 +404,17 @@ class AliyunMQTTTransport(Transport):
                         if topic.endswith("/thing/status"):
                             await self._dispatch_device_status(topic, raw)
                         elif topic.endswith("/account/bind_reply"):
-                            code = self._handle_bind_reply(raw)
+                            code, parsed = self._handle_bind_reply(raw)
                             if code == 2043:
                                 raise SessionExpiredError(
                                     TransportType.CLOUD_ALIYUN,
                                     "Aliyun IoT token rejected by broker (bind_reply 2043) — token needs refresh",
                                 )
+                            if code == 2152:
+                                # Distributed lock conflict — the previous session is
+                                # still held by the broker.  Bail out of the message
+                                # loop and take a long backoff so the lock can clear.
+                                raise _BindLockConflictError(code, parsed)
                         elif topic.endswith(("/thing/events", "/thing/properties")):
                             await self._dispatch_aliyun_event(topic, raw)
                         else:
@@ -385,6 +426,15 @@ class AliyunMQTTTransport(Transport):
                                 elif self.on_message is not None:
                                     await self.on_message(decoded)
 
+            except _BindLockConflictError as exc:
+                _logger.warning(
+                    "Aliyun bind conflict (code=%s) — backing off %ds before reconnecting to let the "
+                    "previous session's lock expire: %s",
+                    exc.code,
+                    _MQTT_BIND_CONFLICT_BACKOFF_SEC,
+                    exc.parsed,
+                )
+                backoff = max(backoff, _MQTT_BIND_CONFLICT_BACKOFF_SEC)
             except aiomqtt.MqttCodeError as exc:
                 rc = exc.rc
                 if rc in (4, 5):
@@ -400,6 +450,12 @@ class AliyunMQTTTransport(Transport):
                     self._client = None
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
                     raise AuthError(str(exc)) from exc
+                # rc=128 "Unspecified error" typically means the broker kicked us
+                # because a prior session is still holding the slot (we saw a bind
+                # conflict a moment ago).  Apply the longer backoff to avoid a
+                # reconnect storm and let paho-mqtt's internal socket state settle.
+                if rc == 128:
+                    backoff = max(backoff, _MQTT_BIND_CONFLICT_BACKOFF_SEC)
                 _logger.warning("Aliyun MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except SessionExpiredError as exc:
                 _logger.warning("Aliyun bind token expired — attempting credential refresh: %s", exc)
@@ -453,18 +509,25 @@ class AliyunMQTTTransport(Transport):
         except Exception:
             _logger.debug("AliyunMQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
 
-    def _handle_bind_reply(self, raw: bytes) -> int:
-        """Check the account bind reply and log an error if it failed."""
+    def _handle_bind_reply(self, raw: bytes) -> tuple[int, dict]:
+        """Parse the account bind reply and log an error if it failed.
+
+        Returns the ``(code, parsed_payload)`` tuple so the caller can reason
+        about specific codes (2043 → token refresh, 2152 → lock conflict, …).
+        """
+        parsed: dict = {}
         code = 200
         try:
             parsed = json.loads(raw)
             code = parsed.get("code", 200)
             if code != 200:
-                # (code=2043): {'code': 2043, 'id': 'msgid1', 'message': 'check iotToken failed'}
+                # Known codes observed in the wild:
+                #   2043 — check iotToken failed (token expired / wrong)
+                #   2152 — distributed lock failed (previous session still held)
                 _logger.error("Aliyun account bind failed (code=%s): %s", code, parsed)
         except Exception:  # noqa: BLE001
             _logger.debug("AliyunMQTTTransport: failed to parse bind_reply", exc_info=True)
-        return code
+        return code, parsed
 
     async def _dispatch_aliyun_event(self, topic: str, raw: bytes) -> None:
         """Dispatch a thing/events or thing/properties message.
