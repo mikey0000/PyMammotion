@@ -403,7 +403,15 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
-        """Checks device firmware versions for a list of IoT IDs."""
+        """Check device firmware versions for a list of IoT IDs.
+
+        Hits ``{MAMMOTION_API_DOMAIN}/device-server/v1/devices/version/check``
+        which — like ``/device-server/v1/rtk/devices`` — sits behind
+        Mammotion's own CDN and degrades to ``200 OK`` with empty Content-Type
+        or ``5xx text/html`` under load.  Degrade to an empty-result
+        ``Response`` so the firmware-check coordinator can proceed without
+        blocking integration setup; it'll retry on its next polling cycle.
+        """
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/devices/version/check",
@@ -416,8 +424,16 @@ class MammotionHTTP:
                     "Client-Type": "1",
                 },
             )
-            data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
+            data = await _read_json_tolerant(resp)
+        if not isinstance(data, dict):
+            return Response[list[CheckDeviceVersion]](
+                code=-1,
+                msg=(
+                    f"Unparseable response from /device-server/v1/devices/version/check "
+                    f"(status={resp.status})"
+                ),
+                data=[],
+            )
         return response_factory(Response[list[CheckDeviceVersion]], data)
 
     @refresh_token_decorator
