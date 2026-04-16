@@ -273,8 +273,25 @@ class DeviceHandle:
             await self._status_bus.emit(msg)
 
     async def on_device_event(self, event: ThingEventMessage) -> None:
-        """Update device state with a non-protobuf thing.events message."""
+        """Update device state with a thing.events message.
+
+        If the event carries a ``device_protobuf_msg_event`` payload the
+        base64-encoded protobuf is decoded and forwarded to ``on_raw_message``
+        so that the state reducer and broker can process it (same path as a
+        ``thing/model/down_raw`` delivery).  All other event types are stored
+        as ``device_event`` on the device model.
+        """
+        import base64
         import dataclasses
+
+        from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
+
+        if isinstance(event.params, DeviceProtobufMsgEventParams):
+            try:
+                raw_bytes = base64.b64decode(event.params.value.content)
+                await self.on_raw_message(raw_bytes)
+            except Exception:
+                _logger.debug("on_device_event: failed to decode protobuf content", exc_info=True)
 
         updated = dataclasses.replace(self.state_machine.current.raw, device_event=event)
         snapshot, _ = self.state_machine.apply(updated, self._availability)

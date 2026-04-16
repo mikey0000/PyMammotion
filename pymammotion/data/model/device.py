@@ -15,7 +15,7 @@ from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.pool_state import PoolMap, PoolState
-from pymammotion.data.model.report_info import ReportData, WorkSessionResult
+from pymammotion.data.model.report_info import BaseScore, ReportData, WorkSessionResult
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -316,6 +316,18 @@ class RTKBaseStationDevice(Device):
     - ``wifi_mac``: from ``net.toapp_networkinfo_rsp``.
     - ``product_key``: from ``net.toapp_wifi_iot_status``.
 
+    Fields populated from ``base.to_app`` (``ResponseBasestationInfoT``):
+
+    - ``sats_num``: number of satellites in view.
+    - ``rtk_status``: RTK fix quality.
+    - ``app_connect_type``: connection type (BLE/Wi-Fi/MQTT).
+    - ``lora_scan``, ``lora_channel``, ``lora_locid``, ``lora_netid``: LoRa radio config.
+    - ``mqtt_rtk_status``, ``rtk_channel``, ``rtk_switch``: additional RTK state.
+    - ``lowpower_status``: low-power mode flag.
+    - ``ble_rssi``: BLE signal strength.
+    - ``score_info``: RTK quality scores (``BaseScore``).
+    - ``wifi_rssi``: dBm (also updated via thing/properties ``networkInfo``).
+
     Fields populated from thing/properties JSON pushes:
 
     - ``lat``, ``lon``: radians, from ``coordinate`` property.
@@ -332,6 +344,20 @@ class RTKBaseStationDevice(Device):
     device_version: str = ""
     wifi_mac: str = ""
     product_key: str = ""
+    # base.to_app (ResponseBasestationInfoT) sourced
+    sats_num: int = 0
+    rtk_status: int = 0
+    app_connect_type: int = 0
+    lora_scan: int = 0
+    lora_channel: int = 0
+    lora_locid: int = 0
+    lora_netid: int = 0
+    mqtt_rtk_status: int = 0
+    rtk_channel: int = 0
+    rtk_switch: int = 0
+    lowpower_status: int = 0
+    ble_rssi: int = 0
+    score_info: BaseScore | None = None
     # thing/properties sourced
     lat: float = 0.0
     lon: float = 0.0
@@ -342,13 +368,18 @@ class RTKBaseStationDevice(Device):
     lora_version: str = ""
 
 
-def create_device(name: str) -> "Device":
+def create_device(name: str, product_key: str = "") -> "Device":
     """Construct the appropriate :class:`Device` subclass for *name*.
 
-    Inspects the device-name prefix via :class:`DeviceType` and returns the
-    correct subclass: :class:`RTKBaseStationDevice` for RTK base stations,
+    Inspects the device-name prefix (and optionally *product_key*) via
+    :class:`DeviceType` and returns the correct subclass:
+    :class:`RTKBaseStationDevice` for RTK base stations,
     :class:`PoolCleanerDevice` for Spino variants, or :class:`MowerDevice`
     (the historical default).
+
+    *product_key* is used as a fallback when the device name alone is not
+    sufficient to identify the device family (e.g. some RTK base-station
+    variants whose names don't carry the "RTK" prefix).
     """
     # Local import to avoid a circular dependency between
     # pymammotion.data.model.device and pymammotion.utility.device_type.
@@ -356,7 +387,7 @@ def create_device(name: str) -> "Device":
 
     if DeviceType.is_swimming_pool(name):
         return PoolCleanerDevice(name=name)
-    if DeviceType.is_rtk(name):
+    if DeviceType.is_rtk(name, product_key):
         return RTKBaseStationDevice(name=name)
     return MowerDevice(name=name)
 

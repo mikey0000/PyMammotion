@@ -141,7 +141,7 @@ class DeviceCommandQueue:
         """Queue processor loop — runs as an asyncio background task."""
         while self._running:
             try:
-                item = await asyncio.wait_for(self._queue.get(), timeout=0.2)
+                item = await asyncio.wait_for(self._queue.get(), timeout=0.4)
             except TimeoutError:
                 continue
             except asyncio.CancelledError:

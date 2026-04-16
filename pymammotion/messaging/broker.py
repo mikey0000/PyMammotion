@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import betterproto2
 
+from pymammotion.aliyun.exceptions import TooManyRequestsException
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, EventBus, Subscription
 
 if TYPE_CHECKING:
@@ -118,6 +119,8 @@ class DeviceMessageBroker:
                         )
                     else:
                         raise CommandTimeoutError(expected_field, retries) from None
+        except TooManyRequestsException:
+            _logger.error("Too many requests for '%s'", expected_field)
         finally:
             async with self._lock:
                 self._pending.pop(expected_field, None)

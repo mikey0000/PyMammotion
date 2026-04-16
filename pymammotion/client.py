@@ -27,18 +27,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
-from pymammotion.data.model.device import RTKBaseStationDevice
+from pymammotion.data.model.device import MowerDevice, RTKBaseStationDevice
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import DeviceRecord, DeviceRecords, Response
 from pymammotion.messaging.command_queue import Priority
+from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import (
     AuthError,
@@ -70,107 +71,6 @@ if TYPE_CHECKING:
     from pymammotion.state.device_state import DeviceSnapshot
 
 _logger = logging.getLogger(__name__)
-
-
-def _apply_geojson(device: MowingDevice) -> None:
-    """Generate and store the map GeoJSON on *device* using its current RTK/dock location."""
-    from shapely.geometry import Point
-
-    from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
-
-    rtk = device.location.RTK
-    dock = device.location.dock
-    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-    rtk_ll = conv.enu_to_lla(0, 0)
-    dock_ll = conv.enu_to_lla(dock.latitude, dock.longitude)
-    dock_rotation = int(conv.get_transform_yaw_with_yaw(dock.rotation) + 180)
-    device.map.generated_geojson = GeojsonGenerator.generate_geojson(
-        device.map,
-        Point(rtk_ll.latitude, rtk_ll.longitude),
-        Point(dock_ll.latitude, dock_ll.longitude),
-        dock_rotation,
-    )
-
-
-def _apply_mow_path_geojson(device: MowingDevice) -> None:
-    """Generate and store the mow-path GeoJSON on *device* using its current RTK location."""
-    from shapely.geometry import Point
-
-    from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
-
-    rtk = device.location.RTK
-    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-    rtk_ll = conv.enu_to_lla(0, 0)
-    device.map.generated_mow_path_geojson = GeojsonGenerator.generate_mow_path_geojson(
-        device.map,
-        Point(rtk_ll.latitude, rtk_ll.longitude),
-    )
-
-
-def _apply_mow_progress_geojson(device: MowingDevice) -> None:
-    """Generate and store the mow-progress GeoJSON on *device*.
-
-    Slices ``device.map.current_mow_path`` to ``now_index`` (from
-    ``report_data.work.now_index``) and stores the resulting GeoJSON in
-    ``device.map.generated_mow_progress_geojson``.
-
-    A no-op when the RTK location is unknown or ``now_index`` is negative.
-    """
-    from shapely.geometry import Point
-
-    from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
-
-    rtk = device.location.RTK
-    work = device.report_data.work
-    now_index = work.now_index
-    if rtk.latitude == 0 or now_index < 0 or not device.map.current_mow_path:
-        return
-
-    # Decode exact device position from path_pos_x/y (raw int ÷ 10000 → ENU metres).
-    # Non-zero values give a more precise start point for the remaining-path line.
-    path_pos_x = work.path_pos_x / 10000.0
-    path_pos_y = work.path_pos_y / 10000.0
-    path_pos = (path_pos_x, path_pos_y) if (path_pos_x != 0.0 or path_pos_y != 0.0) else None
-
-    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-    rtk_ll = conv.enu_to_lla(0, 0)
-    device.map.generated_mow_progress_geojson = GeojsonGenerator.generate_mow_progress_geojson(
-        device.map,
-        now_index,
-        Point(rtk_ll.latitude, rtk_ll.longitude),
-        ub_path_hash=work.ub_path_hash,
-        path_pos=path_pos,
-    )
-
-
-def _apply_dynamics_line_geojson(device: MowingDevice) -> None:
-    """Generate and store the dynamics-line GeoJSON on *device*.
-
-    Converts ``device.map.dynamics_line`` (raw x/y metre offsets from the RTK
-    base) to a GeoJSON LineString in WGS-84 and stores the result in
-    ``device.map.generated_dynamics_line_geojson``.
-
-    A no-op when the RTK location is unknown (latitude == 0) or the dynamics
-    line has fewer than two points.
-    """
-    from shapely.geometry import Point
-
-    from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
-
-    rtk = device.location.RTK
-    if rtk.latitude == 0 or len(device.map.dynamics_line) < 2:
-        return
-
-    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-    rtk_ll = conv.enu_to_lla(0, 0)
-    device.map.generated_dynamics_line_geojson = GeojsonGenerator.generate_dynamics_line_geojson(
-        device.map.dynamics_line,
-        Point(rtk_ll.latitude, rtk_ll.longitude),
-    )
 
 
 class MammotionClient:
@@ -260,7 +160,13 @@ class MammotionClient:
                     _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
             if device.map.current_mow_path and not device.map.generated_mow_progress_geojson:
-                _apply_mow_progress_geojson(device)
+                device.map.apply_mow_progress_geojson(
+                    device.location.RTK,
+                    work.now_index,
+                    work.ub_path_hash,
+                    work.path_pos_x,
+                    work.path_pos_y,
+                )
 
         sub = handle.subscribe_state_changed(_on_state_changed)
         self._watcher_subscriptions[device_name] = sub
@@ -618,10 +524,19 @@ class MammotionClient:
         if login_resp.code != 0:
             raise LoginFailedError(account, login_resp.msg)
 
+        device_list_owned_resp = await mammotion_http.get_user_device_list()
         device_list_resp = await mammotion_http.get_user_shared_device_page()
         device_page_resp = await mammotion_http.get_user_device_page()
         aliyun_devices: DeviceRecords = device_list_resp.data or []
         mammotion_records = (device_page_resp.data.records if device_page_resp.data else []) or []
+
+        # Build an authoritative device_name→iot_id map from /device-server/v1/device/list.
+        # This endpoint returns the canonical Mammotion iot_id for every owned device and
+        # is used to correct stale or wrong iot_ids that may appear in the Aliyun binding
+        # list or the Mammotion device-page records (particularly for RTK base stations).
+        owned_iot_id_map: dict[str, str] = {
+            d.device_name: d.iot_id for d in (device_list_owned_resp.data or []) if d.device_name and d.iot_id
+        }
 
         acct_session = AccountSession(
             account_id=account,
@@ -654,7 +569,8 @@ class MammotionClient:
             ua = acct_session.user_account
             for device in cloud_client.devices_by_account_response.data.data:
                 if device.device_name:
-                    await self._register_aliyun_device(device.device_name, device.iot_id, al_transport, ua)
+                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                    await self._register_aliyun_device(device.device_name, iot_id, al_transport, ua, device.product_key)
                     acct_session.device_ids.add(device.device_name)
             await al_transport.connect()
 
@@ -672,7 +588,8 @@ class MammotionClient:
                 ua = acct_session.user_account
                 for record in mammotion_records:
                     if record.device_name:
-                        await self._register_mammotion_device(record, transport, ua)
+                        iot_id_override = owned_iot_id_map.get(record.device_name, "")
+                        await self._register_mammotion_device(record, transport, ua, iot_id_override)
                         acct_session.device_ids.add(record.device_name)
                 await transport.connect()
 
@@ -878,7 +795,12 @@ class MammotionClient:
         return transport
 
     async def _register_aliyun_device(
-        self, device_name: str, iot_id: str, transport: AliyunMQTTTransport, user_account: int = 0
+        self,
+        device_name: str,
+        iot_id: str,
+        transport: AliyunMQTTTransport,
+        user_account: int = 0,
+        product_key: str = "",
     ) -> None:
         """Register a single Aliyun device in the device registry."""
         from pymammotion.data.model.device import create_device
@@ -886,11 +808,11 @@ class MammotionClient:
         handle = DeviceHandle(
             device_id=device_name,
             device_name=device_name,
-            initial_device=create_device(device_name),
+            initial_device=create_device(device_name, product_key),
             iot_id=iot_id,
             user_account=user_account,
             mqtt_transport=transport,
-            readiness_checker=get_readiness_checker(device_name),
+            readiness_checker=get_readiness_checker(device_name, product_key),
         )
         await self._device_registry.register(handle)
         await handle.start()
@@ -899,33 +821,49 @@ class MammotionClient:
         _logger.info("Aliyun device registered: %s (iot_id=%s)", device_name, iot_id)
 
     async def _register_mammotion_device(
-        self, record: DeviceRecord, transport: MQTTTransport, user_account: int = 0
+        self,
+        record: DeviceRecord,
+        transport: MQTTTransport,
+        user_account: int = 0,
+        iot_id_override: str = "",
     ) -> None:
-        """Add MQTT topics and register a single Mammotion device in the device registry."""
+        """Add MQTT topics and register a single Mammotion device in the device registry.
+
+        Args:
+            record:          DeviceRecord from the Mammotion device page API.
+            transport:       Mammotion MQTT transport to register the device on.
+            user_account:    Numeric user-account identifier (0 if unknown).
+            iot_id_override: When non-empty, replace ``record.iot_id`` with this
+                             value.  Use this to supply the authoritative iot_id
+                             from ``get_user_device_list()`` when the device-page
+                             record carries a stale or incorrect value.
+
+        """
         from pymammotion.data.model.device import create_device
 
+        iot_id = iot_id_override or record.iot_id
         for topic in (
             f"/sys/{record.product_key}/{record.device_name}/thing/event/+/post",
             f"/sys/proto/{record.product_key}/{record.device_name}/thing/event/+/post",
             f"/sys/{record.product_key}/{record.device_name}/app/down/thing/status",
         ):
             transport.add_topic(topic)
-        transport.register_device(record.product_key, record.device_name, record.iot_id)
+        transport.register_device(record.product_key, record.device_name, iot_id)
 
         handle = DeviceHandle(
             device_id=record.device_name,
             device_name=record.device_name,
-            initial_device=create_device(record.device_name),
-            iot_id=record.iot_id,
+            initial_device=create_device(record.device_name, record.product_key),
+            iot_id=iot_id,
             user_account=user_account,
             mqtt_transport=transport,
-            readiness_checker=get_readiness_checker(record.device_name),
+            readiness_checker=get_readiness_checker(record.device_name, record.product_key),
         )
         await self._device_registry.register(handle)
         await handle.start()
         self._enable_staleness_watcher(handle, record.device_name)
-        self._iot_id_to_device_id[record.iot_id] = record.device_name
-        _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, record.iot_id)
+        self._iot_id_to_device_id[iot_id] = record.device_name
+        _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, iot_id)
 
     def _enable_staleness_watcher(self, handle: DeviceHandle, device_name: str) -> None:
         """Enable auto-refetch of stale maps and plans for a mower device.
@@ -966,12 +904,22 @@ class MammotionClient:
         transport = self._setup_aliyun_transport(cloud_client, acct_session)
         acct_session.aliyun_transport = transport
 
+        # Fetch the authoritative iot_id map from Mammotion's device-list API so that
+        # stale Aliyun binding iot_ids (e.g. for RTK base stations) are corrected.
+        owned_iot_id_map: dict[str, str] = {}
+        try:
+            owned_resp = await cloud_client.mammotion_http.get_user_device_list()
+            owned_iot_id_map = {d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id}
+        except Exception:  # noqa: BLE001
+            _logger.warning("restore_credentials: failed to fetch device iot_id map (Aliyun restore)", exc_info=True)
+
         known_ids: set[str] = set()
         ua = acct_session.user_account
         if cloud_client.devices_by_account_response is not None and cloud_client.devices_by_account_response.data:
             for device in cloud_client.devices_by_account_response.data.data:
                 if device.device_name:
-                    await self._register_aliyun_device(device.device_name, device.iot_id, transport, ua)
+                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                    await self._register_aliyun_device(device.device_name, iot_id, transport, ua, device.product_key)
                     known_ids.add(device.device_name)
 
         if check_for_new_devices:
@@ -980,7 +928,10 @@ class MammotionClient:
                 if fresh.data:
                     for device in fresh.data.data:
                         if device.device_name and device.device_name not in known_ids:
-                            await self._register_aliyun_device(device.device_name, device.iot_id, transport, ua)
+                            iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                            await self._register_aliyun_device(
+                                device.device_name, iot_id, transport, ua, device.product_key
+                            )
                             known_ids.add(device.device_name)
             except Exception:  # noqa: BLE001
                 _logger.warning("restore_credentials: new-device discovery failed (Aliyun)", exc_info=True)
@@ -1042,10 +993,24 @@ class MammotionClient:
                 mqtt_creds, mammotion_http, acct_session, acct_session.token_manager
             )
             acct_session.mammotion_transport = transport
+
+            # Fetch the authoritative iot_id map so stale cached iot_ids are corrected.
+            owned_iot_id_map: dict[str, str] = {}
+            try:
+                owned_resp = await mammotion_http.get_user_device_list()
+                owned_iot_id_map = {
+                    d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id
+                }
+            except Exception:  # noqa: BLE001
+                _logger.warning(
+                    "restore_credentials: failed to fetch device iot_id map (Mammotion restore)", exc_info=True
+                )
+
             ua = acct_session.user_account
             for record in cached_records.records:
                 if record.device_name:
-                    await self._register_mammotion_device(record, transport, ua)
+                    iot_id_override = owned_iot_id_map.get(record.device_name, "")
+                    await self._register_mammotion_device(record, transport, ua, iot_id_override)
                     known_ids.add(record.device_name)
 
             await transport.connect()
@@ -1055,7 +1020,8 @@ class MammotionClient:
                     page_resp = await mammotion_http.get_user_device_page()
                     for record in (page_resp.data.records if page_resp.data else []) or []:
                         if record.device_name and record.device_name not in known_ids:
-                            await self._register_mammotion_device(record, transport, ua)
+                            iot_id_override = owned_iot_id_map.get(record.device_name, "")
+                            await self._register_mammotion_device(record, transport, ua, iot_id_override)
                             known_ids.add(record.device_name)
                 except Exception:  # noqa: BLE001
                     _logger.warning("restore_credentials: new-device discovery failed (Mammotion)", exc_info=True)
@@ -1142,40 +1108,41 @@ class MammotionClient:
         (no other commands execute while the map fetch is in progress).
         Map data is automatically applied to device state as messages arrive.
         """
-        from pymammotion.messaging.map_saga import MapFetchSaga
-        from pymammotion.utility.device_type import DeviceType
 
         handle = self._device_registry.get_by_name(device_name)
-        if handle is None:
+        if handle is not None:
+            commands = handle.commands
+            transport = handle.active_transport()
+            _iot_id = handle.iot_id
+            saga = MapFetchSaga(
+                device_id=handle.device_id,
+                device_name=handle.device_name,
+                is_luba1=DeviceType.is_luba1(device_name),
+                command_builder=commands,
+                send_command=lambda cmd: transport.send(cmd, iot_id=_iot_id),
+                get_map=lambda: cast(MowerDevice, handle.snapshot.raw).map,
+            )
+
+            async def _on_map_complete() -> None:
+                device = self.get_device_by_name(device_name)
+                if device is None:
+                    return
+                # Restore root_hash_lists from the saga result.  Reports arriving
+                # during the sync may have cleared device.map.root_hash_lists via
+                # invalidate_maps() because the partial area set didn't hash-match.
+                # Copying the completed saga's list ensures the next invalidate_maps()
+                # call sees a consistent hash and doesn't immediately clear it again.
+                if saga.result is not None:
+                    _logger.debug(f"Restoring root_hash_lists for {device.map} from saga result")
+                    _logger.debug(f"Restoring root_hash_lists for {saga.result} from saga result")
+                    device.map.root_hash_lists = saga.result.root_hash_lists
+                if device.location.RTK.latitude != 0:
+                    device.map.generate_geojson(device.location.RTK, device.location.dock)
+
+            await handle.enqueue_saga(saga, on_complete=_on_map_complete)
+        else:
             _logger.warning("start_map_sync: device '%s' not registered", device_name)
             return
-        commands = handle.commands
-        transport = handle.active_transport()
-        _iot_id = handle.iot_id
-        saga = MapFetchSaga(
-            device_id=handle.device_id,
-            device_name=handle.device_name,
-            is_luba1=DeviceType.is_luba1(device_name),
-            command_builder=commands,
-            send_command=lambda cmd: transport.send(cmd, iot_id=_iot_id),
-            get_map=lambda: handle.snapshot.raw.map,
-        )
-
-        async def _on_map_complete() -> None:
-            device = self.get_device_by_name(device_name)
-            if device is None:
-                return
-            # Restore root_hash_lists from the saga result.  Reports arriving
-            # during the sync may have cleared device.map.root_hash_lists via
-            # invalidate_maps() because the partial area set didn't hash-match.
-            # Copying the completed saga's list ensures the next invalidate_maps()
-            # call sees a consistent hash and doesn't immediately clear it again.
-            if saga.result is not None:
-                device.map.root_hash_lists = saga.result.root_hash_lists
-            if device.location.RTK.latitude != 0:
-                _apply_geojson(device)
-
-        await handle.enqueue_saga(saga, on_complete=_on_map_complete)
 
     async def start_area_name_sync(self, device_name: str) -> None:
         """Fetch area names for *device_name* without re-fetching the full map.
@@ -1274,7 +1241,7 @@ class MammotionClient:
         async def _on_mow_path_complete() -> None:
             device = self.get_device_by_name(device_name)
             if device is not None and device.location.RTK.latitude != 0:
-                _apply_mow_path_geojson(device)
+                device.map.generate_mowing_geojson(device.location.RTK)
 
         await handle.enqueue_saga(saga, on_complete=_on_mow_path_complete)
 
@@ -1320,7 +1287,7 @@ class MammotionClient:
             device = self.get_device_by_name(device_name)
             if device is not None and saga.result:
                 device.map.update_dynamics_line(saga.result)
-                _apply_dynamics_line_geojson(device)
+                device.map.apply_dynamics_line_geojson(device.location.RTK)
 
         await handle.enqueue_saga(saga, on_complete=_on_complete)
 

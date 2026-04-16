@@ -313,12 +313,11 @@ def test_yuka_empty_current_mow_path_empty_geojson() -> None:
 
 
 def test_yuka_apply_mow_path_geojson_populates_device() -> None:
-    """_apply_mow_path_geojson generates and stores geojson on MowingDevice after saga completes."""
-    from pymammotion.client import _apply_mow_path_geojson
-    from pymammotion.data.model.device import MowingDevice
+    """generate_mowing_geojson generates and stores geojson on MowerDevice after saga completes."""
+    from pymammotion.data.model.device import MowerDevice
 
     fixture = _load_yuka_fixture()
-    device = MowingDevice(name=fixture["update_check"]["device_name"])
+    device = MowerDevice(name=fixture["update_check"]["device_name"])
 
     # Set RTK location from fixture
     device.location.RTK.latitude = fixture["location"]["RTK"]["latitude"]
@@ -333,7 +332,7 @@ def test_yuka_apply_mow_path_geojson_populates_device() -> None:
     assert not device.map.generated_mow_path_geojson, "generated_mow_path_geojson should be empty before apply"
 
     # This is what _on_mow_path_complete calls
-    _apply_mow_path_geojson(device)
+    device.map.generate_mowing_geojson(device.location.RTK)
 
     result = device.map.generated_mow_path_geojson
     assert result["type"] == "FeatureCollection"
@@ -554,7 +553,7 @@ def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:
 
 
 def test_apply_mow_progress_geojson_populates_device() -> None:
-    """_apply_mow_progress_geojson stores progress GeoJSON on MowingDevice.
+    """apply_mow_progress_geojson stores progress GeoJSON on MowerDevice.
 
     Uses ub_path_hash=0 (all zones) — now_index=23 is applied per section (start=22).
     Yuka fixture has 10 type-1 sections (902 pts total) and 4 type-2 sections (278 pts total).
@@ -562,11 +561,10 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
     """
     from collections import defaultdict
 
-    from pymammotion.client import _apply_mow_progress_geojson
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import MowerDevice
 
     fixture = _load_yuka_fixture()
-    device = MowingDevice(name=fixture["update_check"]["device_name"])
+    device = MowerDevice(name=fixture["update_check"]["device_name"])
 
     device.location.RTK.latitude = fixture["location"]["RTK"]["latitude"]
     device.location.RTK.longitude = fixture["location"]["RTK"]["longitude"]
@@ -580,7 +578,14 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
 
     assert not device.map.generated_mow_progress_geojson, "Should be empty before apply"
 
-    _apply_mow_progress_geojson(device)
+    work = device.report_data.work
+    device.map.apply_mow_progress_geojson(
+        device.location.RTK,
+        work.now_index,
+        work.ub_path_hash,
+        work.path_pos_x,
+        work.path_pos_y,
+    )
 
     result = device.map.generated_mow_progress_geojson
     assert result["type"] == "FeatureCollection"
@@ -602,12 +607,11 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
 
 
 def test_apply_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
-    """_apply_mow_progress_geojson with now_index=0 returns the entire planned path."""
-    from pymammotion.client import _apply_mow_progress_geojson
-    from pymammotion.data.model.device import MowingDevice
+    """apply_mow_progress_geojson with now_index=0 returns the entire planned path."""
+    from pymammotion.data.model.device import MowerDevice
 
     fixture = _load_yuka_fixture()
-    device = MowingDevice(name=fixture["update_check"]["device_name"])
+    device = MowerDevice(name=fixture["update_check"]["device_name"])
     device.location.RTK.latitude = fixture["location"]["RTK"]["latitude"]
     device.location.RTK.longitude = fixture["location"]["RTK"]["longitude"]
 
@@ -617,7 +621,14 @@ def test_apply_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
 
     device.report_data.work.real_path_num = 0  # now_index=0 → full path
 
-    _apply_mow_progress_geojson(device)
+    work = device.report_data.work
+    device.map.apply_mow_progress_geojson(
+        device.location.RTK,
+        work.now_index,
+        work.ub_path_hash,
+        work.path_pos_x,
+        work.path_pos_y,
+    )
 
     result = device.map.generated_mow_progress_geojson
     assert result["type"] == "FeatureCollection"

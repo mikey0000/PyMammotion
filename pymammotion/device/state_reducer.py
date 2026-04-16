@@ -433,7 +433,7 @@ class MowerStateReducer(StateReducer):
         """Update base station RTK data from LubaMsg.base.to_app response."""
         base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")
         match base_msg[0]:
-            case "response_basestation_info_t":
+            case "to_app":
                 resp: ResponseBasestationInfoT = base_msg[1]
                 info = device.report_data.basestation_info
                 info.sats_num = resp.sats_num
@@ -614,9 +614,10 @@ class RTKStateReducer(StateReducer):
     - ``net.toapp_wifi_iot_status`` → Aliyun product key.
     - ``net.toapp_networkinfo_rsp`` → Wi-Fi MAC address.
 
-    Satellite count, fix quality, and LoRa channel come in messages tagged
-    with the *mower's* ``iot_id`` via ``base.to_app`` and are handled by
-    :class:`MowerStateReducer._update_base_data` — not here.
+    Satellite count, fix quality, and LoRa channel can arrive both from the
+    *mower's* ``iot_id`` (handled by :class:`MowerStateReducer._update_base_data`)
+    and directly from the RTK device's own ``iot_id`` via ``base.to_app``
+    (handled here).
     """
 
     def apply(self, current: RTKBaseStationDevice, message: LubaMsg) -> RTKBaseStationDevice:  # type: ignore[override]
@@ -631,6 +632,8 @@ class RTKStateReducer(StateReducer):
                 self._update_sys_data(device, message)
             case "net":
                 self._update_net_data(device, message)
+            case "base":
+                self._update_base_data(device, message)
             case _:
                 _logger.debug(
                     "RTKStateReducer: ignoring unhandled sub-message %r for %s",
@@ -674,6 +677,39 @@ class RTKStateReducer(StateReducer):
                 _logger.debug(
                     "RTKStateReducer: ignoring net sub-message %r for %s",
                     net_msg[0],
+                    device.name,
+                )
+
+    def _update_base_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
+        """Apply base.to_app (ResponseBasestationInfoT) from the RTK device."""
+        base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")
+        match base_msg[0]:
+            case "to_app":
+                resp: ResponseBasestationInfoT = base_msg[1]
+                device.app_connect_type = resp.app_connect_type
+                device.ble_rssi = resp.ble_rssi
+                device.wifi_rssi = resp.wifi_rssi
+                device.sats_num = resp.sats_num
+                device.lora_scan = resp.lora_scan
+                device.lora_channel = resp.lora_channel
+                device.lora_locid = resp.lora_locid
+                device.lora_netid = resp.lora_netid
+                device.rtk_status = resp.rtk_status
+                device.lowpower_status = resp.lowpower_status
+                device.mqtt_rtk_status = resp.mqtt_rtk_status
+                device.rtk_channel = resp.rtk_channel
+                device.rtk_switch = resp.rtk_switch
+                if resp.score_info is not None:
+                    device.score_info = BaseScore(
+                        base_score=resp.score_info.base_score,
+                        base_leve=resp.score_info.base_leve,
+                        base_moved=resp.score_info.base_moved,
+                        base_moving=resp.score_info.base_moving,
+                    )
+            case _:
+                _logger.debug(
+                    "RTKStateReducer: ignoring base sub-message %r for %s",
+                    base_msg[0],
                     device.name,
                 )
 

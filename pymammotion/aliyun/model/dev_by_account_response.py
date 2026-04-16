@@ -205,7 +205,6 @@ class ShareNotification(DataClassORJSONMixin):
 
     gmt_modified: Annotated[int, Alias("gmtModified")]
     target_id: Annotated[str, Alias("targetId")]
-    receiver_identity_id: Annotated[str, Alias("receiverIdentityId")]
     description: str
     target_type: Annotated[str, Alias("targetType")]
     gmt_create: Annotated[int, Alias("gmtCreate")]
@@ -217,8 +216,13 @@ class ShareNotification(DataClassORJSONMixin):
     initiator_identity_id: Annotated[str, Alias("initiatorIdentityId")]
     is_receiver: Annotated[int, Alias("isReceiver")]
     initiator_alias: Annotated[str, Alias("initiatorAlias")]
-    receiver_alias: Annotated[str, Alias("receiverAlias")]
     status: int
+    # Absent on expired (status=3) share records
+    receiver_identity_id: Annotated[str | None, Alias("receiverIdentityId")] = None
+    receiver_alias: Annotated[str | None, Alias("receiverAlias")] = None
+    # Only present for RTK/ReferenceStation devices
+    product_image: Annotated[str | None, Alias("productImage")] = None
+    category_image: Annotated[str | None, Alias("categoryImage")] = None
 
     class Config(BaseConfig):
         omit_default = True
