@@ -13,7 +13,7 @@ import random
 import time
 from typing import Any, TypeVar, cast
 
-from aiohttp import ClientSession
+from aiohttp import ClientResponse, ClientSession
 import jwt
 
 from pymammotion.const import (
@@ -118,6 +118,41 @@ def create_oauth_signature(login_req: dict, client_id: str, client_secret: str, 
     signature = sign_with_hmac_sha256(str_to_sign, hashed_secret)
 
     return signature
+
+
+async def _read_json_tolerant(resp: ClientResponse) -> dict | list | None:
+    """Decode a JSON body even when the server returns a wrong/empty ``Content-Type``.
+
+    Mammotion's HTTP edge (``domestic.mammotion.com``) occasionally replies with
+    a ``200 OK`` carrying an empty ``Content-Type`` header and an empty or
+    partial body — typically when their CDN / WAF is degraded.  ``aiohttp``'s
+    default ``resp.json()`` rejects that with ``ContentTypeError`` ("Attempt to
+    decode JSON with unexpected mimetype: ") before we ever see the payload.
+
+    Returns the parsed JSON, or ``None`` if the body is empty or not valid
+    JSON.  Callers must be prepared to handle ``None``.
+    """
+    raw = await resp.read()
+    if not raw or not raw.strip():
+        _LOGGER.debug(
+            "Empty body from %s (status=%s, content_type=%r)",
+            resp.url,
+            resp.status,
+            resp.headers.get("Content-Type", ""),
+        )
+        return None
+    try:
+        return json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as err:
+        _LOGGER.debug(
+            "Non-JSON body from %s (status=%s, content_type=%r): %s — %s",
+            resp.url,
+            resp.status,
+            resp.headers.get("Content-Type", ""),
+            raw[:200],
+            err,
+        )
+        return None
 
 
 class MammotionHTTP:
@@ -406,7 +441,16 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_rtk_devices(self) -> Response[list[RTK]]:
-        """Fetches stream subscription data from agora.io for a given IoT device."""
+        """Fetch the RTK base stations paired to the account.
+
+        The upstream endpoint (``{MAMMOTION_API_DOMAIN}/device-server/v1/rtk/devices``)
+        is fronted by Mammotion's own CDN and is known to degrade under load —
+        it occasionally returns a ``200 OK`` with an empty body / empty
+        ``Content-Type``, or a ``5xx`` HTML error page.  Rather than raise a
+        raw ``aiohttp.ContentTypeError`` (which aborts config-entry setup), we
+        degrade to an empty-result ``Response`` so callers can proceed without
+        RTK data and pick it up on the next refresh.
+        """
         async with self._client_session() as session:
             resp = await session.get(
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/rtk/devices",
@@ -416,7 +460,16 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            data = await resp.json()
+            data = await _read_json_tolerant(resp)
+        if not isinstance(data, dict):
+            return Response[list[RTK]](
+                code=-1,
+                msg=(
+                    f"Unparseable response from /device-server/v1/rtk/devices "
+                    f"(status={resp.status})"
+                ),
+                data=[],
+            )
         return response_factory(Response[list[RTK]], data)
 
     @refresh_token_decorator
