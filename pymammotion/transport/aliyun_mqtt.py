@@ -474,19 +474,10 @@ class AliyunMQTTTransport(Transport):
         as typed objects via on_device_event (thing/events) or on_device_properties
         (thing/properties).
         """
-        # Try protobuf path first — covers device_protobuf_msg_event on thing/events
-        result = self._unwrap_envelope(topic, raw)
-        if result is not None:
-            decoded, iot_id = result
-            if iot_id and self.on_device_message is not None:
-                await self.on_device_message(iot_id, decoded)
-            elif self.on_message is not None:
-                await self.on_message(decoded)
-            return
-
         # Non-protobuf: parse and forward typed event
         try:
             parsed = json.loads(raw)
+            _logger.debug(parsed)
         except (json.JSONDecodeError, ValueError):
             return
 

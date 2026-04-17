@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import dataclasses
 import logging
 import time
 from typing import TYPE_CHECKING
 
+from pymammotion.aliyun.exceptions import DeviceOfflineException
+from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
+from pymammotion.device.staleness_watcher import MapStalenessWatcher
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
+from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.proto import LubaMsg
@@ -30,8 +36,6 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.device.readiness import ReadinessChecker, ReadinessStatus
-    from pymammotion.device.staleness_watcher import MapStalenessWatcher
-    from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
     from pymammotion.messaging.saga import Saga
 
 _logger = logging.getLogger(__name__)
@@ -179,8 +183,6 @@ class DeviceHandle:
     @property
     def commands(self) -> MammotionCommand:
         """Return a MammotionCommand builder for this device."""
-        from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
-
         return MammotionCommand(self.device_name, self.user_account)
 
     def _wire_transport(self, transport: Transport) -> None:
@@ -264,8 +266,6 @@ class DeviceHandle:
 
     async def on_status_message(self, msg: ThingStatusMessage) -> None:
         """Store status_properties on the device model from a thing/status message."""
-        import dataclasses
-
         updated = dataclasses.replace(self.state_machine.current.raw, status_properties=msg)
         snapshot, _ = self.state_machine.apply(updated, self._availability)
         if not self._stopping:
@@ -273,8 +273,20 @@ class DeviceHandle:
             await self._status_bus.emit(msg)
 
     async def on_device_event(self, event: ThingEventMessage) -> None:
-        """Update device state with a non-protobuf thing.events message."""
-        import dataclasses
+        """Update device state with a thing.events message.
+
+        If the event carries a ``device_protobuf_msg_event`` payload the
+        base64-encoded protobuf is decoded and forwarded to ``on_raw_message``
+        so that the state reducer and broker can process it (same path as a
+        ``thing/model/down_raw`` delivery).  All other event types are stored
+        as ``device_event`` on the device model.
+        """
+        if isinstance(event.params, DeviceProtobufMsgEventParams):
+            try:
+                raw_bytes = base64.b64decode(event.params.value.content)
+                await self.on_raw_message(raw_bytes)
+            except Exception:
+                _logger.debug("on_device_event: failed to decode protobuf content", exc_info=True)
 
         updated = dataclasses.replace(self.state_machine.current.raw, device_event=event)
         snapshot, _ = self.state_machine.apply(updated, self._availability)
@@ -291,8 +303,6 @@ class DeviceHandle:
         the JSON payloads are also unpacked into typed model fields so the state
         machine remains the single source of truth.
         """
-        import dataclasses
-
         # Let the reducer extract any typed fields it knows about (no-op for mowers).
         device_with_props = self._reducer.apply_properties(self.state_machine.current.raw, properties)
         # Always persist the raw envelope so subscribers can inspect it.
@@ -317,8 +327,6 @@ class DeviceHandle:
         """
 
         async def _do_send(cmd: bytes, field: str) -> None:
-            from pymammotion.aliyun.exceptions import DeviceOfflineException
-
             _logger.debug(
                 "_do_send '%s': field=%s transports=%s",
                 self.device_name,
@@ -517,8 +525,6 @@ class DeviceHandle:
 
     async def send_raw(self, payload: bytes, *, prefer_ble: bool = False) -> None:
         """Send raw bytes via the best available transport, with BLE fallback on offline."""
-        from pymammotion.aliyun.exceptions import DeviceOfflineException
-
         _logger.debug(
             "send_raw '%s': %d bytes prefer_ble=%s transports=%s",
             self.device_name,
@@ -612,8 +618,6 @@ class DeviceHandle:
         *on_area_names_stale* is called when map data is valid but area names
         are missing.  Defaults to *on_maps_stale* (full re-fetch) when omitted.
         """
-        from pymammotion.device.staleness_watcher import MapStalenessWatcher
-
         watcher = MapStalenessWatcher(
             on_maps_stale=on_maps_stale,
             on_plans_stale=on_plans_stale,

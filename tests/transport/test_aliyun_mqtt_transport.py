@@ -229,7 +229,13 @@ def _make_thing_events_envelope(proto_bytes: bytes) -> bytes:
 
 @pytest.mark.asyncio
 async def test_on_message_called_with_unwrapped_bytes(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
-    """on_message should receive the decoded protobuf bytes, not the JSON envelope."""
+    """on_message should receive the decoded protobuf bytes, not the JSON envelope.
+
+    The Aliyun thing.events envelope shape (params.value.content) arrives on topics
+    such as _thing/event/notify and thing/model/down_raw, which go through
+    _unwrap_envelope → on_message.  The /thing/events topic routes to on_device_event
+    instead and is tested separately.
+    """
     received: list[bytes] = []
 
     async def _handler(data: bytes) -> None:
@@ -240,7 +246,9 @@ async def test_on_message_called_with_unwrapped_bytes(config: AliyunMQTTConfig, 
 
     proto_bytes = b"\x08\x01\x12\x03foo"
     envelope = _make_thing_events_envelope(proto_bytes)
-    fake_client = _FakeMQTTClient(messages=[_FakeMessage("/sys/pk/dn/app/down/thing/events", envelope)])
+    fake_client = _FakeMQTTClient(
+        messages=[_FakeMessage("/sys/pk/dn/app/down/_thing/event/notify", envelope)]
+    )
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()

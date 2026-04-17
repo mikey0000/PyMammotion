@@ -2,10 +2,10 @@ import json
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
 from pymammotion.client import MammotionClient
-from pymammotion.data.model.device import RTKDevice
+from pymammotion.data.model.device import RTKBaseStationDevice
 from pymammotion.http.model.http import CheckDeviceVersion
 
-# TODO(task #8): RTKDevice is a separate dataclass from MowingDevice, and the new
+# TODO(task #8): RTKBaseStationDevice is a separate dataclass from MowingDevice, and the new
 # MammotionClient does not yet expose CloudIOTGateway (only AliyunMQTTTransport is
 # stored as _cloud_transport).  Full migration of the HTTP polling path
 # (get_device_properties, get_device_ota_firmware) requires either:
@@ -37,10 +37,10 @@ class HomeAssistantRTKApi:
         """Return the MammotionClient instance."""
         return self._client
 
-    async def update(self, device_name: str) -> RTKDevice:
+    async def update(self, device_name: str) -> RTKBaseStationDevice:
         """Update RTK data."""
         # TODO(task #8): Replace with self._client.mower(device_name) once RTK devices
-        # are registered via MammotionClient.login_and_initiate_cloud and RTKDevice
+        # are registered via MammotionClient.login_and_initiate_cloud and RTKBaseStationDevice
         # state is accessible from DeviceHandle (currently all devices use MowingDevice).
         device = self.mammotion.get_rtk_device_by_name(device_name)
         try:

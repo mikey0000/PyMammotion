@@ -26,7 +26,7 @@ YukaPlusProductKey = ["a1lNESu9VST", "a1zAEzmvWDa"]
 
 YukaMiniProductKey = ["a1BqmEWMRbX", "a1biqVGvxrE"]
 
-RTKProductKey = ["a1qXkZ5P39W", "a1Nc68bGZzX"]
+RTKProductKey = ["a1qXkZ5P39W", "a1Nc68bGZzX", "a1wIIUUdAMX", "a1mGLcddn4u"]
 
 YukaMVProductKey = ["a1jFe8HzcDb", "a16cz0iXgUJ", "USpE46bNTC7", "pdA6uJrBfjz"]
 
@@ -47,6 +47,29 @@ LubaLAProductKey = ["CDYuKXTYrSP"]
 YukaMN100ProductKey = ["NnbeYtaEUGE"]
 
 Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m"]
+
+# Exhaustive list of all known Aliyun-platform product keys.
+# Any product key NOT in this list is assumed to be a Mammotion-IoT device.
+# This "closed Aliyun / open Mammotion-IoT" policy means new device types are
+# handled correctly without a library update.
+AliyunProductKey = [
+    *LubaProductKey,
+    *LubaVProductKey,
+    *LubaVProProductKey,
+    *Luba2MiniProductKey,
+    *YukaProductKey,
+    *YukaPlusProductKey,
+    *YukaMiniProductKey,
+    *RTKProductKey,
+    "a1jFe8HzcDb",  # YukaMV (Aliyun variant — USpE46bNTC7 / pdA6uJrBfjz are Mammotion IoT)
+    "a16cz0iXgUJ",  # YukaMV (Aliyun variant)
+    *LubaLDProductKey,
+    *LubaVAProductKey,
+    *YukaMLProductKey,
+    *LubaMDProductKey,
+    *LubaMBProductKey,
+    *RTKNBProductKey,
+]
 
 
 class DeviceType(Enum):
@@ -577,6 +600,24 @@ class DeviceType(Enum):
     def contain_cm900_product_key(product_key: str) -> bool:
         """Return True if the product key belongs to a CM900 device."""
         return bool(product_key) and product_key in Cm900ProductKey
+
+    @staticmethod
+    def is_aliyun_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a known Aliyun-platform device.
+
+        Any product key NOT in the explicit Aliyun list is treated as a
+        Mammotion-IoT device so that new device types work without a library update.
+        """
+        return bool(product_key) and product_key in AliyunProductKey
+
+    @staticmethod
+    def is_mammotion_iot_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Mammotion-IoT (post-2025) device.
+
+        Defaults to True for any unrecognised key — new devices are assumed to
+        use the Mammotion MQTT broker until proven otherwise.
+        """
+        return not product_key or product_key not in AliyunProductKey
 
     def is_support_video(self) -> bool:
         """Return True if this device type supports video streaming (all models except the original Luba 1)."""

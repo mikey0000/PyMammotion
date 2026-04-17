@@ -636,14 +636,14 @@ class HashList(DataClassORJSONMixin):
         if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
             self.root_hash_lists = []
 
-    def invalidate_mow_path(self, ub_path_hash: int) -> None:
+    def invalidate_mow_path(self, path_hash: int) -> None:
         """Clear current_mow_path when ub_path_hash transitions to 0 (job ended).
 
         Only clears on transition to zero — ub_path_hash changes during a mow
         as the device advances through segments, so non-zero transitions must
         not discard already-fetched cover path data.
         """
-        if ub_path_hash == 0:
+        if path_hash == 0 or path_hash == 1:
             self.current_mow_path = {}
             self.generated_mow_path_geojson = {}
             self.generated_mow_progress_geojson = {}
@@ -712,3 +712,57 @@ class HashList(DataClassORJSONMixin):
         )
 
         return self.generated_mow_path_geojson
+
+    def apply_mow_progress_geojson(
+        self,
+        rtk: LocationPoint,
+        now_index: int,
+        ub_path_hash: int,
+        path_pos_x: int,
+        path_pos_y: int,
+    ) -> None:
+        """Generate and store the mow-progress GeoJSON.
+
+        Slices ``current_mow_path`` to ``now_index`` and stores the result in
+        ``generated_mow_progress_geojson``.  A no-op when the RTK location is
+        unknown (latitude == 0), ``now_index`` is negative, or there is no
+        current mow path.
+        """
+        from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+        if rtk.latitude == 0 or now_index < 0 or not self.current_mow_path:
+            return
+
+        raw_x = path_pos_x / 10000.0
+        raw_y = path_pos_y / 10000.0
+        path_pos = (raw_x, raw_y) if (raw_x != 0.0 or raw_y != 0.0) else None
+
+        conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+        rtk_ll = conv.enu_to_lla(0, 0)
+        self.generated_mow_progress_geojson = GeojsonGenerator.generate_mow_progress_geojson(
+            self,
+            now_index,
+            Point(rtk_ll.latitude, rtk_ll.longitude),
+            ub_path_hash=ub_path_hash,
+            path_pos=path_pos,
+        )
+
+    def apply_dynamics_line_geojson(self, rtk: LocationPoint) -> None:
+        """Generate and store the dynamics-line GeoJSON.
+
+        Converts ``dynamics_line`` (raw x/y metre offsets from the RTK base) to
+        a GeoJSON LineString in WGS-84 and stores the result in
+        ``generated_dynamics_line_geojson``.  A no-op when the RTK location is
+        unknown or the dynamics line has fewer than two points.
+        """
+        from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+        if rtk.latitude == 0 or len(self.dynamics_line) < 2:
+            return
+
+        conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+        rtk_ll = conv.enu_to_lla(0, 0)
+        self.generated_dynamics_line_geojson = GeojsonGenerator.generate_dynamics_line_geojson(
+            self.dynamics_line,
+            Point(rtk_ll.latitude, rtk_ll.longitude),
+        )

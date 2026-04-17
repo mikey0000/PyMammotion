@@ -4,7 +4,7 @@ Usage:
     EMAIL=your@email.com PASSWORD=yourpass uv run python examples/dev_console.py
 
 Output files (written to examples/dev_output/):
-    state_{device_name}.json        Full MowingDevice state, updated on every
+    state_{device_name}.json        Full device state (mower or RTK), updated on every
                                     incoming state change.
     mammotion_dev.log               Full DEBUG log.
 
@@ -13,6 +13,7 @@ Available in the IPython REPL:
     devices                         list[DeviceHandle]
     send(name, cmd, **kwargs)       Queue a command and block until complete
     send_and_wait(name, cmd, field) Send and block until the response arrives
+    fetch_rtk(name)                 Fetch LoRa version for an RTK base station
     dump(name)                      Force-write state_{name}.json right now
     console                         DevConsole instance
     loop                            The main asyncio event loop
@@ -290,8 +291,70 @@ class DevConsole:
         _LOGGER.info("Hooked broker callback for [bold]%s[/bold]", device_name)
 
     def hook_all_devices(self) -> None:
+        from pymammotion.utility.device_type import DeviceType
+
         for handle in self.mammotion.device_registry.all_devices:
+            if DeviceType.is_rtk(handle.device_name):
+                continue
             self.hook_device(handle.device_name)
+
+    # ── RTK device wiring ─────────────────────────────────────────────────────
+
+    def _make_rtk_state_cb(self, device_name: str) -> Callable[[Any], Awaitable[None]]:
+        """Return an async callback for state_changed_bus on an RTK base station."""
+        from pymammotion.state.device_state import DeviceSnapshot
+
+        async def _on_state_changed(snapshot: DeviceSnapshot) -> None:
+            self.dump(device_name)
+            _LOGGER.info(
+                "[bold magenta]← %s[/bold magenta]  [green]state updated[/green]",
+                device_name,
+            )
+
+        return _on_state_changed
+
+    def hook_rtk_device(self, device_name: str) -> None:
+        """Attach a state-change callback to an RTK base station device (idempotent).
+
+        RTK devices push most of their data via thing/properties events rather
+        than protobuf broker messages, so this subscribes to state_changed_bus
+        instead of the unsolicited broker.
+        """
+        if device_name in self._notification_cbs:
+            return
+        handle = self.mammotion.device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+        cb = self._make_rtk_state_cb(device_name)
+        sub = handle.subscribe_state_changed(cb)
+        self._notification_cbs[device_name] = (cb, sub)
+        _LOGGER.info("Hooked state-change callback for RTK [bold]%s[/bold]", device_name)
+
+    def hook_all_rtk_devices(self) -> None:
+        """Attach state-change callbacks to every registered RTK base station."""
+        from pymammotion.utility.device_type import DeviceType
+
+        for handle in self.mammotion.device_registry.all_devices:
+            if DeviceType.is_rtk(handle.device_name):
+                self.hook_rtk_device(handle.device_name)
+
+    def fetch_rtk(self, name: str) -> None:
+        """Fetch LoRa version info for an RTK base station (blocking).
+
+        Example:
+            fetch_rtk("Luba-RTK-XXXXXX")
+
+        """
+        try:
+            fut = asyncio.run_coroutine_threadsafe(
+                self.mammotion.fetch_rtk_lora_info(name), self.loop
+            )
+            fut.result(timeout=15)
+            print(f"✓  fetch_rtk_lora_info → {name!r}")
+        except TimeoutError:
+            print(f"✗  Timed out fetching RTK info for {name!r}")
+        except Exception as exc:
+            print(f"✗  Error: {exc}")
 
     # ── REPL helpers ──────────────────────────────────────────────────────────
 
@@ -453,8 +516,17 @@ async def _main() -> None:
     await asyncio.sleep(3)
 
     dev.hook_all_devices()
+    dev.hook_all_rtk_devices()
     dev.log_mqtt_credentials()
     dev.dump_all()
+
+    # Fetch supplemental HTTP data for any RTK base stations
+    from pymammotion.utility.device_type import DeviceType
+
+    for handle in mammotion.device_registry.all_devices:
+        if DeviceType.is_rtk(handle.device_name):
+            _LOGGER.info("Fetching RTK LoRa info for [bold]%s[/bold] …", handle.device_name)
+            await mammotion.fetch_rtk_lora_info(handle.device_name)
 
     device_names = [h.device_name for h in mammotion.device_registry.all_devices]
     _LOGGER.info(
@@ -470,6 +542,7 @@ async def _main() -> None:
         "send": dev.send,
         "send_and_wait": dev.send_and_wait,
         "sync_map": dev.sync_map,
+        "fetch_rtk": dev.fetch_rtk,
         "dump": dev.dump,
         "dump_all": dev.dump_all,
         "status": dev.status,
@@ -485,6 +558,7 @@ async def _main() -> None:
         "  [cyan]send(name, cmd, **kwargs)[/cyan]                          — queue a command (blocking)\n"
         "  [cyan]send_and_wait(name, cmd, expected_field, **kwargs)[/cyan]  — send and block for response\n"
         "  [cyan]sync_map(name)[/cyan]                                     — run a full MapFetchSaga (blocking)\n"
+        "  [cyan]fetch_rtk(name)[/cyan]                                    — fetch LoRa version for an RTK base station\n"
         "  [cyan]dump(name)[/cyan]                                         — write state_{name}.json\n"
         "  [cyan]dump_all()[/cyan]                                         — write state JSON for all devices\n"
         "  [cyan]status()[/cyan]                                           — show connection status\n"

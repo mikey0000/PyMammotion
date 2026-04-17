@@ -229,53 +229,6 @@ def _make_device_with_rtk(lat: float = 0.5, lon: float = 0.5) -> MagicMock:
     return device
 
 
-async def test_apply_geojson_calls_generator() -> None:
-    """_apply_geojson must call GeojsonGenerator.generate_geojson and store the result."""
-    from pymammotion.client import _apply_geojson
-
-    device = _make_device_with_rtk()
-    fake_geojson = {"type": "FeatureCollection", "features": []}
-
-    with (
-        patch("pymammotion.utility.map.CoordinateConverter") as mock_conv_cls,
-        patch("pymammotion.data.model.generate_geojson.GeojsonGenerator") as mock_gen,
-        patch("shapely.geometry.Point"),
-    ):
-        mock_conv = MagicMock()
-        mock_conv_cls.return_value = mock_conv
-        mock_conv.enu_to_lla.return_value = MagicMock(latitude=1.0, longitude=2.0)
-        mock_conv.get_transform_yaw_with_yaw.return_value = 0
-        mock_gen.generate_geojson.return_value = fake_geojson
-
-        _apply_geojson(device)
-
-    mock_gen.generate_geojson.assert_called_once()
-    assert device.map.generated_geojson == fake_geojson
-
-
-async def test_apply_mow_path_geojson_calls_generator() -> None:
-    """_apply_mow_path_geojson must call GeojsonGenerator.generate_mow_path_geojson."""
-    from pymammotion.client import _apply_mow_path_geojson
-
-    device = _make_device_with_rtk()
-    fake_geojson = {"type": "FeatureCollection", "features": []}
-
-    with (
-        patch("pymammotion.utility.map.CoordinateConverter") as mock_conv_cls,
-        patch("pymammotion.data.model.generate_geojson.GeojsonGenerator") as mock_gen,
-        patch("shapely.geometry.Point"),
-    ):
-        mock_conv = MagicMock()
-        mock_conv_cls.return_value = mock_conv
-        mock_conv.enu_to_lla.return_value = MagicMock(latitude=1.0, longitude=2.0)
-        mock_gen.generate_mow_path_geojson.return_value = fake_geojson
-
-        _apply_mow_path_geojson(device)
-
-    mock_gen.generate_mow_path_geojson.assert_called_once()
-    assert device.map.generated_mow_path_geojson == fake_geojson
-
-
 # ---------------------------------------------------------------------------
 # start_map_sync / start_mow_path_saga — geojson generated on completion
 # ---------------------------------------------------------------------------
@@ -300,7 +253,7 @@ async def _make_handle_with_transport(device_id: str, device_name: str) -> Devic
 
 
 async def test_start_map_sync_generates_geojson_on_completion() -> None:
-    """start_map_sync must call _apply_geojson after the MapFetchSaga succeeds."""
+    """start_map_sync must call device.map.generate_geojson after the MapFetchSaga succeeds."""
     client = MammotionClient()
     handle = await _make_handle_with_transport("dev1", "Luba-Map")
     await client._device_registry.register(handle)
@@ -308,27 +261,23 @@ async def test_start_map_sync_generates_geojson_on_completion() -> None:
     mock_device = _make_device_with_rtk(lat=0.5, lon=0.5)
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    applied: list[int] = []
-
-    with (
-        patch("pymammotion.messaging.map_saga.MapFetchSaga") as MockSaga,
-        patch("pymammotion.client._apply_geojson", side_effect=lambda d: applied.append(1)),
-    ):
+    with patch("pymammotion.client.MapFetchSaga") as MockSaga:
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "map_fetch"
         mock_saga_instance.max_attempts = 1
         mock_saga_instance.execute = AsyncMock()
+        mock_saga_instance.result = None
         MockSaga.return_value = mock_saga_instance
 
         await client.start_map_sync("Luba-Map")
         await asyncio.sleep(0.15)
 
-    assert applied == [1], "geojson must be generated after map saga completes"
+    mock_device.map.generate_geojson.assert_called_once()
     await handle.stop()
 
 
 async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
-    """start_mow_path_saga must call _apply_mow_path_geojson after the saga succeeds."""
+    """start_mow_path_saga must call device.map.generate_mowing_geojson after the saga succeeds."""
     client = MammotionClient()
     handle = await _make_handle_with_transport("dev1", "Luba-Mow")
     await client._device_registry.register(handle)
@@ -336,12 +285,7 @@ async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
     mock_device = _make_device_with_rtk(lat=0.5, lon=0.5)
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    applied: list[int] = []
-
-    with (
-        patch("pymammotion.messaging.mow_path_saga.MowPathSaga") as MockSaga,
-        patch("pymammotion.client._apply_mow_path_geojson", side_effect=lambda d: applied.append(1)),
-    ):
+    with patch("pymammotion.messaging.mow_path_saga.MowPathSaga") as MockSaga:
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "mow_path_fetch"
         mock_saga_instance.max_attempts = 1
@@ -351,12 +295,12 @@ async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
         await client.start_mow_path_saga("Luba-Mow", zone_hashs=[1, 2])
         await asyncio.sleep(0.15)
 
-    assert applied == [1], "mow path geojson must be generated after mow path saga completes"
+    mock_device.map.generate_mowing_geojson.assert_called_once()
     await handle.stop()
 
 
 async def test_start_map_sync_skips_geojson_when_rtk_zero() -> None:
-    """_apply_geojson must not be called when RTK location is 0,0 (not yet received)."""
+    """generate_geojson must not be called when RTK location is 0,0 (not yet received)."""
     client = MammotionClient()
     handle = await _make_handle_with_transport("dev1", "Luba-NoRTK")
     await client._device_registry.register(handle)
@@ -364,22 +308,18 @@ async def test_start_map_sync_skips_geojson_when_rtk_zero() -> None:
     mock_device = _make_device_with_rtk(lat=0.0, lon=0.0)  # zero = no RTK fix
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    applied: list[int] = []
-
-    with (
-        patch("pymammotion.messaging.map_saga.MapFetchSaga") as MockSaga,
-        patch("pymammotion.client._apply_geojson", side_effect=lambda d: applied.append(1)),
-    ):
+    with patch("pymammotion.client.MapFetchSaga") as MockSaga:
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "map_fetch"
         mock_saga_instance.max_attempts = 1
         mock_saga_instance.execute = AsyncMock()
+        mock_saga_instance.result = None
         MockSaga.return_value = mock_saga_instance
 
         await client.start_map_sync("Luba-NoRTK")
         await asyncio.sleep(0.15)
 
-    assert applied == [], "geojson must NOT be generated when RTK is 0,0"
+    mock_device.map.generate_geojson.assert_not_called()
     await handle.stop()
 
 
@@ -462,6 +402,7 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
 
     mock_http = MagicMock()
     mock_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
+    mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=None))
     mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=["placeholder"]))
     mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=None))
     mock_http.login_info = None

@@ -1,6 +1,5 @@
 """Module for interacting with Aliyun Cloud IoT Gateway."""
 
-import asyncio
 import base64
 import hashlib
 import hmac
@@ -91,6 +90,13 @@ class CloudIOTGateway:
         self._app_secret = APP_SECRET
         self.domain = ALIYUN_DOMAIN
         self.message_delay = 1
+        # Rate-limiting circuit breaker for send_cloud_command.
+        # When a 429 is received, _rate_limited_until is set to a future
+        # monotonic timestamp.  All send attempts before that time raise
+        # TooManyRequestsException immediately without hitting the network.
+        # _rate_limit_backoff doubles on each successive 429 (60 s → 120 s → …).
+        self._rate_limited_until: float = 0.0
+        self._rate_limit_backoff: float = 60.0
         self._client_id = self.generate_hardware_string(8)  # 8 characters
         self._device_sn = self.generate_hardware_string(32)  # 32 characters
         self._utdid = self.generate_hardware_string(32)  # 32 characters
@@ -756,7 +762,7 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in creating session: " + response_body_dict["msg"])
+            raise Exception("Error in getting shared notice list: " + response_body_dict["msg"])
 
         return ShareNoticeListResponse.from_dict(response_body_dict)
 
@@ -769,6 +775,13 @@ class CloudIOTGateway:
         various error codes and exceptions based on the response from the cloud
         service.
 
+        When the gateway returns HTTP 429 (Too Many Requests) the call raises
+        :exc:`TooManyRequestsException` and a circuit-breaker is armed: all
+        subsequent calls are rejected immediately (without touching the network)
+        until the backoff window expires.  The window starts at 60 seconds and
+        doubles on each consecutive 429 (60 s → 120 s → 240 s → …).  A
+        successful response resets both the window and the backoff counter.
+
         Args:
             iot_id (str): The unique identifier of the IoT device.
             command (bytes): The command to be sent to the IoT device in binary format.
@@ -776,9 +789,17 @@ class CloudIOTGateway:
         Returns:
             str: A unique message ID for the sent command.
 
+        Raises:
+            TooManyRequestsException: If the gateway returned 429 or the rate-limit
+                window from a previous 429 has not yet expired.
+
         """
         if command is None:
             raise Exception("Command is missing / None")
+
+        # Circuit-breaker gate: reject immediately while rate-limited.
+        if time.monotonic() < self._rate_limited_until:
+            raise TooManyRequestsException("rate limited — retry after backoff window", iot_id)
 
         """Check if iotToken is expired"""
         if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (
@@ -821,6 +842,7 @@ class CloudIOTGateway:
             version="1.0",
         )
         logger.debug(self.converter.printBase64Binary(command))
+        logger.debug(body)
         # send request
         runtime_options = RuntimeOptions(autoretry=True, backoff_policy="yes")
         response = await client.async_do_request("/thing/service/invoke", "https", "POST", None, body, runtime_options)
@@ -831,14 +853,10 @@ class CloudIOTGateway:
         logger.debug(iot_id)
 
         if response.status_code == 429:
-            logger.debug("too many requests.")
-            if self.message_delay > 8:
-                raise TooManyRequestsException(response.status_message, iot_id)
-            asyncio.get_event_loop().call_later(
-                self.message_delay, lambda: asyncio.ensure_future(self.send_cloud_command(iot_id, command))
-            )
-            self.message_delay = self.message_delay * 2
-            return message_id
+            logger.debug("too many requests — arming rate-limit circuit breaker for %.0f s", self._rate_limit_backoff)
+            self._rate_limited_until = time.monotonic() + self._rate_limit_backoff
+            self._rate_limit_backoff = self._rate_limit_backoff * 2
+            raise TooManyRequestsException(response.status_message, iot_id)
 
         response_body_str = response.body.decode("utf-8")
         response_body_dict = self.parse_json_response(response_body_str)
@@ -870,6 +888,9 @@ class CloudIOTGateway:
 
         if self.message_delay != 1:
             self.message_delay = 1
+        # Successful response — reset the rate-limit circuit breaker.
+        self._rate_limited_until = 0.0
+        self._rate_limit_backoff = 60.0
 
         return message_id
 
@@ -916,6 +937,51 @@ class CloudIOTGateway:
                 raise ReLoginRequiredError("Error in getting properties: " + msg)
             raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
 
+        return ThingPropertiesResponse.from_dict(response_body_dict)
+
+    async def get_device_status(self, iot_id: str) -> ThingPropertiesResponse:
+        """List bindings by account."""
+        config = Config(
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,
+        )
+
+        client = Client(config)
+
+        # build request
+        request = CommonParams(
+            api_ver="1.0.5",
+            language="en-US",
+            iot_token=self._session_by_authcode_response.data.iotToken,
+        )
+        body = IoTApiRequest(
+            id=str(uuid.uuid4()),
+            params={
+                "iotId": f"{iot_id}",
+            },
+            request=request,
+            version="1.0",
+        )
+
+        # send request
+        response = await client.async_do_request("/thing/status/get", "https", "POST", None, body, RuntimeOptions())
+        logger.debug(response.status_message)
+        logger.debug(response.headers)
+        logger.debug(response.status_code)
+        logger.debug(response.body)
+
+        # Decode the response body
+        response_body_str = response.body.decode("utf-8")
+
+        # Load the JSON string into a dictionary
+        response_body_dict = self.parse_json_response(response_body_str)
+
+        if int(response_body_dict.get("code")) != 200:
+            if msg := response_body_dict.get("msg"):
+                raise ReLoginRequiredError("Error in getting properties: " + msg)
+            raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
+        logger.debug(response_body_dict)
         return ThingPropertiesResponse.from_dict(response_body_dict)
 
     @property
@@ -979,7 +1045,13 @@ class CloudIOTGateway:
         return {k: v for k, v in raw.items() if v is not None}
 
     @classmethod
-    async def from_cache(cls, data: dict[str, Any], account: str, password: str) -> "CloudIOTGateway | None":
+    async def from_cache(
+        cls,
+        data: dict[str, Any],
+        account: str,
+        password: str,
+        ha_version: str | None = None,
+    ) -> "CloudIOTGateway | None":
         """Reconstruct a CloudIOTGateway from a previously serialized cache dictionary.
 
         Returns None if any required field is missing or if an error occurs during
@@ -989,6 +1061,8 @@ class CloudIOTGateway:
             data: Cache dictionary previously produced by :meth:`to_cache`.
             account: User account (email / username) for the MammotionHTTP instance.
             password: User password for the MammotionHTTP instance.
+            ha_version: Optional Home Assistant integration version forwarded to
+                the inner MammotionHTTP for the ``App-Version`` header.
 
         """
         required_keys = (
@@ -1027,7 +1101,7 @@ class CloudIOTGateway:
             else mammotion_data
         )
 
-        mammotion_http = MammotionHTTP(account, password)
+        mammotion_http = MammotionHTTP(account, password, ha_version=ha_version)
         mammotion_http.response = mammotion_response_data
         if mammotion_device_list:
             mammotion_http.device_info = (

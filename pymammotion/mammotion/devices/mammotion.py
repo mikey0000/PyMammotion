@@ -153,7 +153,7 @@ class MammotionDeviceManager:
             if device_for_removal.cloud:
                 if self._should_disconnect_mqtt(device_for_removal):
                     await loop.run_in_executor(None, device_for_removal.cloud.mqtt.disconnect)
-                    device_for_removal.cloud.stop()
+                    await device_for_removal.cloud.stop()
 
             if device_for_removal.ble:
                 await device_for_removal.ble.stop()

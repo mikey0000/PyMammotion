@@ -5,7 +5,7 @@ from bleak import BLEDevice
 
 from pymammotion import CloudIOTGateway
 from pymammotion.aliyun.model.dev_by_account_response import Device
-from pymammotion.data.model.device import MowingDevice, RTKDevice
+from pymammotion.data.model.device import MowingDevice, RTKBaseStationDevice
 from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 
@@ -30,12 +30,12 @@ class AbstractDeviceManager(ABC):
 
     @property
     @abstractmethod
-    def state(self) -> MowingDevice | RTKDevice:
+    def state(self) -> MowingDevice | RTKBaseStationDevice:
         """Return the state of the device."""
 
     @state.setter
     @abstractmethod
-    def state(self, value: MowingDevice | RTKDevice) -> None:
+    def state(self, value: MowingDevice | RTKBaseStationDevice) -> None:
         """Set the device state."""
 
     @property

@@ -146,10 +146,12 @@ class SpinoReadinessChecker(ReadinessChecker):
         return []
 
 
-def get_readiness_checker(device_name: str) -> ReadinessChecker:
+def get_readiness_checker(device_name: str, product_key: str = "") -> ReadinessChecker:
     """Return the appropriate readiness checker for the device type."""
     from pymammotion.utility.device_type import DeviceType
 
+    if DeviceType.is_rtk(device_name, product_key):
+        return NoReadinessChecker()
     if DeviceType.is_swimming_pool(device_name):
         return SpinoReadinessChecker()
     if DeviceType.is_yuka(device_name) or DeviceType.is_yuka_mini(device_name):
