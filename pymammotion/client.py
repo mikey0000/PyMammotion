@@ -76,8 +76,15 @@ _logger = logging.getLogger(__name__)
 class MammotionClient:
     """Top-level client — stable HA-facing API for the new architecture."""
 
-    def __init__(self) -> None:
-        """Initialise the client with empty registries."""
+    def __init__(self, ha_version: str | None = None) -> None:
+        """Initialise the client with empty registries.
+
+        Args:
+            ha_version: Optional Home Assistant integration version string,
+                surfaced to Mammotion servers via the ``App-Version`` HTTP header
+                (e.g. ``"Home Assistant,0.5.7"``).
+
+        """
         self._device_registry: DeviceRegistry = DeviceRegistry()
         self._account_registry: AccountRegistry = AccountRegistry()
         self._ble_manager: BLETransportManager = BLETransportManager()
@@ -86,6 +93,7 @@ class MammotionClient:
         self._iot_id_to_device_id: dict[str, str] = {}
         # RAII subscriptions for state-change watchers (keyed by device_name)
         self._watcher_subscriptions: dict[str, Subscription] = {}
+        self._ha_version: str | None = ha_version
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -519,7 +527,7 @@ class MammotionClient:
 
         """
         await self._sign_out_existing_session(account)
-        mammotion_http = MammotionHTTP(session=session)
+        mammotion_http = MammotionHTTP(session=session, ha_version=self._ha_version)
         login_resp = await mammotion_http.login_v2(account, password)
         if login_resp.code != 0:
             raise LoginFailedError(account, login_resp.msg)
@@ -890,7 +898,7 @@ class MammotionClient:
         check_for_new_devices: bool,
     ) -> None:
         """Restore an Aliyun cloud session and register all known devices."""
-        cloud_client = await CloudIOTGateway.from_cache(cached_data, account, password)
+        cloud_client = await CloudIOTGateway.from_cache(cached_data, account, password, ha_version=self._ha_version)
         if cloud_client is None:
             _logger.error("restore_credentials: CloudIOTGateway.from_cache returned None — falling back to full login")
             await self.login_and_initiate_cloud(account, password)
@@ -958,7 +966,7 @@ class MammotionClient:
         from pymammotion.http.model.http import LoginResponseData, MQTTConnection
         from pymammotion.http.model.response_factory import response_factory
 
-        mammotion_http = MammotionHTTP(account, password, session=session)
+        mammotion_http = MammotionHTTP(account, password, session=session, ha_version=self._ha_version)
         acct_session.mammotion_http = mammotion_http
 
         mammotion_data = cached_data.get("mammotion_data")

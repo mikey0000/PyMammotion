@@ -1045,7 +1045,13 @@ class CloudIOTGateway:
         return {k: v for k, v in raw.items() if v is not None}
 
     @classmethod
-    async def from_cache(cls, data: dict[str, Any], account: str, password: str) -> "CloudIOTGateway | None":
+    async def from_cache(
+        cls,
+        data: dict[str, Any],
+        account: str,
+        password: str,
+        ha_version: str | None = None,
+    ) -> "CloudIOTGateway | None":
         """Reconstruct a CloudIOTGateway from a previously serialized cache dictionary.
 
         Returns None if any required field is missing or if an error occurs during
@@ -1055,6 +1061,8 @@ class CloudIOTGateway:
             data: Cache dictionary previously produced by :meth:`to_cache`.
             account: User account (email / username) for the MammotionHTTP instance.
             password: User password for the MammotionHTTP instance.
+            ha_version: Optional Home Assistant integration version forwarded to
+                the inner MammotionHTTP for the ``App-Version`` header.
 
         """
         required_keys = (
@@ -1093,7 +1101,7 @@ class CloudIOTGateway:
             else mammotion_data
         )
 
-        mammotion_http = MammotionHTTP(account, password)
+        mammotion_http = MammotionHTTP(account, password, ha_version=ha_version)
         mammotion_http.response = mammotion_response_data
         if mammotion_device_list:
             mammotion_http.device_info = (

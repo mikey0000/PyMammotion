@@ -124,7 +124,11 @@ class MammotionHTTP:
     """HTTP client for the Mammotion cloud API (login, device list, MQTT credentials, OTA)."""
 
     def __init__(
-        self, account: str | None = None, password: str | None = None, session: ClientSession | None = None
+        self,
+        account: str | None = None,
+        password: str | None = None,
+        session: ClientSession | None = None,
+        ha_version: str | None = None,
     ) -> None:
         self.device_info: list[DeviceInfo] = []
         self.mqtt_credentials: MQTTConnection | None = None
@@ -138,7 +142,8 @@ class MammotionHTTP:
         self._response: Response | None = None
         self.login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
-        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": "Home Assistant,2.2.4.13"}
+        app_version = f"Home Assistant,{ha_version}" if ha_version else "Home Assistant,2.2.4.13"
+        self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": app_version}
         self.encryption_utils = EncryptionUtils()
 
         # Add this method to generate a 10-digit random number
