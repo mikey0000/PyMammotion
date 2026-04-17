@@ -254,6 +254,12 @@ class MowerDevice(Device):
                     self.device_firmwares.rtk_version = mod.version
                 case 103:
                     self.device_firmwares.lora_version = mod.version
+                case 201:
+                    self.device_firmwares.left_motor_driver = mod.version
+                    self.device_firmwares.right_motor_driver = mod.version
+                case 202:
+                    self.device_firmwares.left_motor_driver_bt = mod.version
+                    self.device_firmwares.right_motor_driver_bt = mod.version
                 case 203:
                     self.device_firmwares.cutter_driver = mod.version
                 case 204:
@@ -315,17 +321,20 @@ class RTKBaseStationDevice(Device):
     - ``lat``, ``lon``: radians, from ``coordinate`` property.
     - ``wifi_rssi``: dBm, from ``networkInfo`` property.
     - ``wifi_sta_mac``, ``bt_mac``: MAC addresses from ``networkInfo``.
+    - ``device_version`` + ``device_firmwares``: from ``deviceVersionInfo`` blob
+      (main firmware version plus per-module versions keyed by component type).
+    - ``lora_version``: from ``loraGeneralConfig`` property (also populated from
+      HTTP API ``fetch_rtk_lora_info``).
 
-    Fields populated from HTTP API (``MammotionClient.fetch_rtk_lora_info``):
+    Fields populated from ``net.toapp_networkinfo_rsp`` protobuf:
 
-    - ``lora_version``: LoRa radio firmware version / number.
+    - ``wifi_ssid``, ``wifi_mac``, ``wifi_rssi``, ``ip``, ``mask``, ``gateway``.
     """
 
     iot_id: str = ""
     basestation_status: int = 0
     connect_status_since_poweron: int = 0
     device_version: str = ""
-    wifi_mac: str = ""
     product_key: str = ""
     # base.to_app (ResponseBasestationInfoT) sourced
     sats_num: int = 0
@@ -345,10 +354,15 @@ class RTKBaseStationDevice(Device):
     lat: float = 0.0
     lon: float = 0.0
     wifi_rssi: int = 0
-    wifi_sta_mac: str = ""
+    wifi_mac: str = ""
     bt_mac: str = ""
-    # HTTP sourced
     lora_version: str = ""
+    device_firmwares: DeviceFirmwares = field(default_factory=DeviceFirmwares)
+    # net.toapp_networkinfo_rsp sourced
+    wifi_ssid: str = ""
+    ip: int = 0
+    mask: int = 0
+    gateway: int = 0
 
 
 def create_device(name: str, product_key: str = "") -> "Device":
@@ -393,5 +407,5 @@ def _mower_device_to_json(self: "MowerDevice", **kwargs: Any) -> str:
     return _mower_device_to_jsonb(self, **kwargs).decode()
 
 
-MowerDevice.to_jsonb = _mower_device_to_jsonb  # type: ignore[method-assign]
-MowerDevice.to_json = _mower_device_to_json  # type: ignore[method-assign]
+MowerDevice.to_jsonb = _mower_device_to_jsonb
+MowerDevice.to_json = _mower_device_to_json

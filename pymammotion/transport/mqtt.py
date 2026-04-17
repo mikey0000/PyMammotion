@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
 
+from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import (
     AuthError,
@@ -400,6 +401,10 @@ class MQTTTransport(Transport):
             await self._dispatch_device_status(topic, raw)
             return
 
+        if topic.endswith("/thing/properties"):
+            await self._dispatch_device_properties(topic, raw)
+            return
+
         if self.on_device_message is not None:
             # Extract (product_key, device_name) from topic: /sys/<pk>/<dn>/...
             parts = topic.split("/")
@@ -427,6 +432,17 @@ class MQTTTransport(Transport):
                 await self.on_device_status(msg.params.iot_id, msg)
         except Exception:
             _logger.debug("MQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
+
+    async def _dispatch_device_properties(self, topic: str, raw: bytes) -> None:
+        """Parse a thing/properties message and notify on_device_properties."""
+        if self.on_device_properties is None:
+            return
+        try:
+            props = ThingPropertiesMessage.from_json(raw)
+            if props.params.iot_id:
+                await self.on_device_properties(props.params.iot_id, props)
+        except Exception:  # noqa: BLE001
+            _logger.debug("MQTTTransport: failed to parse thing/properties on %s", topic, exc_info=True)
 
     @staticmethod
     def _unwrap_envelope(topic: str, raw: bytes) -> bytes | None:

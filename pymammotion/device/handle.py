@@ -287,12 +287,12 @@ class DeviceHandle:
                 await self.on_raw_message(raw_bytes)
             except Exception:
                 _logger.debug("on_device_event: failed to decode protobuf content", exc_info=True)
-
-        updated = dataclasses.replace(self.state_machine.current.raw, device_event=event)
-        snapshot, _ = self.state_machine.apply(updated, self._availability)
-        if not self._stopping:
-            await self._state_changed_bus.emit(snapshot)
-            await self._event_bus.emit(event)
+        else:
+            updated = dataclasses.replace(self.state_machine.current.raw, device_event=event)
+            snapshot, _ = self.state_machine.apply(updated, self._availability)
+            if not self._stopping:
+                await self._state_changed_bus.emit(snapshot)
+                await self._event_bus.emit(event)
 
     async def on_device_properties(self, properties: ThingPropertiesMessage) -> None:
         """Update device state with a thing.properties message.

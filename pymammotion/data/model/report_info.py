@@ -161,6 +161,9 @@ class DeviceData(DataClassORJSONMixin):
     lock_state: LockStateT = field(default_factory=LockStateT)
     # Hardware self-check bitmask (rpt_dev_status.self_check_status)
     self_check_status: int = 0
+    # Lifetime counters sourced from thing/properties deviceOtherInfo JSON
+    mileage: int = 0  # lifetime distance travelled, metres
+    work_time_sec: int = 0  # lifetime working time, seconds (thing/properties wt_sec)
 
     # ------------------------------------------------------------------
     # sensor_status bit-field accessors

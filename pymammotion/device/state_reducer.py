@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 import betterproto2
 
-from pymammotion.data.model.device_info import SideLight
+from pymammotion.data.model.device_info import DeviceFirmwares, SideLight
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     CommDataCouple,
@@ -475,6 +475,132 @@ class MowerStateReducer(StateReducer):
                         lamp_resp.lamp_bright
                     )
 
+    def apply_properties(
+        self, current: MowingDevice, properties: ThingPropertiesMessage
+    ) -> MowingDevice:
+        """Extract mower state from a thing/properties JSON push.
+
+        Mirrors the mapping in :meth:`MowerDevice.update_device_firmwares` for
+        firmware types, plus pulls Wi-Fi/BLE MAC + RSSI from the ``networkInfo``
+        JSON blob and the LoRa radio configuration from ``loraGeneralConfig``.
+        """
+        device: MowingDevice = dataclasses.replace(current)
+        device.mower_state = copy.deepcopy(current.mower_state)
+        device.device_firmwares = copy.deepcopy(current.device_firmwares)
+        device.report_data = copy.deepcopy(current.report_data)
+        items = properties.params.items
+
+        if net_prop := items.networkInfo:
+            try:
+                net = json.loads(net_prop.value)
+                device.mower_state.wifi_mac = str(net.get("wifi_sta_mac", device.mower_state.wifi_mac))
+                device.mower_state.ble_mac = str(net.get("bt_mac", device.mower_state.ble_mac))
+                device.mower_state.wifi_ssid = str(net.get("ssid", device.mower_state.wifi_ssid))
+                device.mower_state.ip_address = str(net.get("ip", device.mower_state.ip_address))
+                device.report_data.connect.wifi_rssi = int(net.get("wifi_rssi", device.report_data.connect.wifi_rssi))
+            except (ValueError, KeyError, TypeError):
+                _logger.debug("MowerStateReducer: failed to parse networkInfo property")
+
+        if dev_ver_info := items.deviceVersionInfo:
+            try:
+                blob = json.loads(dev_ver_info.value)
+                if dev_ver := blob.get("devVer"):
+                    device.device_firmwares.device_version = str(dev_ver)
+                for module in blob.get("fwInfo", []):
+                    fw_type = str(module.get("t", ""))
+                    fw_version = str(module.get("v", ""))
+                    if not fw_version:
+                        continue
+                    _apply_mower_fw_module(device.device_firmwares, fw_type, fw_version)
+            except (ValueError, TypeError):
+                _logger.debug("MowerStateReducer: failed to parse deviceVersionInfo property")
+
+        if ver_prop := items.deviceVersion:
+            device.device_firmwares.device_version = str(ver_prop.value)
+        if lora_prop := items.loraGeneralConfig:
+            device.mower_state.lora_config = str(lora_prop.value)
+        if ext_mod := items.extMod:
+            device.mower_state.model = str(ext_mod.value)
+        if int_mod := items.intMod:
+            device.mower_state.internal_model = str(int_mod.value)
+        if bms_hw := items.bmsHardwareVersion:
+            device.mower_state.battery_hardware = str(bms_hw.value)
+
+        if other_info := items.deviceOtherInfo:
+            try:
+                info = json.loads(other_info.value)
+                if (mileage := info.get("mileage")) is not None:
+                    device.report_data.dev.mileage = int(mileage)
+                if (wt_sec := info.get("wt_sec")) is not None:
+                    device.report_data.dev.work_time_sec = int(wt_sec)
+            except (ValueError, TypeError):
+                _logger.debug("MowerStateReducer: failed to parse deviceOtherInfo property")
+
+        # Individual firmware properties (duplicates of deviceVersionInfo.fwInfo
+        # on newer devices, but some older devices may only send these).
+        for prop_name, fw_type in (
+            ("stm32H7Version", "1"),
+            ("mcBootVersion", "8"),
+            ("leftMotorVersion", "3"),
+            ("rightMotorVersion", "4"),
+            ("leftMotorBootVersion", "9"),
+            ("rightMotorBootVersion", "10"),
+            ("bmsVersion", "7"),
+            ("rtkVersion", "5"),
+        ):
+            if prop := getattr(items, prop_name, None):
+                value = str(prop.value)
+                if value:
+                    _apply_mower_fw_module(device.device_firmwares, fw_type, value)
+
+        return device
+
+
+def _apply_mower_fw_module(firmwares: DeviceFirmwares, fw_type: str, version: str) -> None:
+    """Map a mower firmware type code to the matching DeviceFirmwares field.
+
+    Kept aligned with :meth:`MowerDevice.update_device_firmwares`.
+    """
+    match fw_type:
+        case "1":
+            firmwares.main_controller = version
+        case "3":
+            firmwares.left_motor_driver = version
+        case "4":
+            firmwares.right_motor_driver = version
+        case "5":
+            firmwares.rtk_rover_station = version
+        case "7":
+            firmwares.bms = version
+        case "8":
+            firmwares.main_controller_bt = version
+        case "9":
+            firmwares.left_motor_driver_bt = version
+        case "10":
+            firmwares.right_motor_driver_bt = version
+        case "11":
+            firmwares.bsp = version
+        case "12":
+            firmwares.middleware = version
+        case "14":
+            firmwares.lora_module = version
+        case "16":
+            firmwares.lte_module = version
+        case "17":
+            firmwares.lidar = version
+        case "201":
+            # MNWheelG4 — unified wheel driver (Yuka mini & newer); single board
+            # drives both wheels, so populate both legacy split fields.
+            firmwares.left_motor_driver = version
+            firmwares.right_motor_driver = version
+        case "202":
+            firmwares.left_motor_driver_bt = version
+            firmwares.right_motor_driver_bt = version
+        case "203":
+            firmwares.cutter_driver = version
+        case "204":
+            firmwares.cutter_driver_bt = version
+
 
 class PoolStateReducer(StateReducer):
     """Reducer for swimming-pool cleaners (Spino, Spino-S1/E1/SP).
@@ -498,7 +624,7 @@ class PoolStateReducer(StateReducer):
     reusing mower dispatch on a device that has no ``mower_state``.
     """
 
-    def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:  # type: ignore[override]
+    def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:
         """Apply *message* to *current* and return the updated copy."""
         device: PoolCleanerDevice = dataclasses.replace(current)
         if not device.online:
@@ -620,7 +746,7 @@ class RTKStateReducer(StateReducer):
     (handled here).
     """
 
-    def apply(self, current: RTKBaseStationDevice, message: LubaMsg) -> RTKBaseStationDevice:  # type: ignore[override]
+    def apply(self, current: RTKBaseStationDevice, message: LubaMsg) -> RTKBaseStationDevice:
         """Apply *message* to *current* and return the updated copy."""
         device: RTKBaseStationDevice = dataclasses.replace(current)
         if not device.online:
@@ -672,7 +798,12 @@ class RTKStateReducer(StateReducer):
                 device.product_key = wifi_iot.productkey
             case "toapp_networkinfo_rsp":
                 net_info: GetNetworkInfoRsp = net_msg[1]
+                device.wifi_ssid = net_info.wifi_ssid
                 device.wifi_mac = net_info.wifi_mac
+                device.wifi_rssi = net_info.wifi_rssi
+                device.ip = net_info.ip
+                device.mask = net_info.mask
+                device.gateway = net_info.gateway
             case _:
                 _logger.debug(
                     "RTKStateReducer: ignoring net sub-message %r for %s",
@@ -713,7 +844,7 @@ class RTKStateReducer(StateReducer):
                     device.name,
                 )
 
-    def apply_properties(  # type: ignore[override]
+    def apply_properties(
         self, current: RTKBaseStationDevice, properties: ThingPropertiesMessage
     ) -> RTKBaseStationDevice:
         """Extract RTK state from a thing/properties JSON push.
@@ -725,20 +856,20 @@ class RTKStateReducer(StateReducer):
         so the state machine stays the single source of truth.
         """
         device: RTKBaseStationDevice = dataclasses.replace(current)
-        params = properties.params
+        items = properties.params.items
 
-        if coord_prop := getattr(params, "coordinate", None):
+        if coord_prop := items.coordinate:
             try:
                 coord = json.loads(coord_prop.value)
                 # The coordinate property is already in radians (protocol-level unit).
-                if coord.get("lat"):
+                if (lat := coord.get("lat")) and lat != 0:
                     device.lat = float(coord["lat"])
-                if coord.get("lon"):
+                if (lon := coord.get("lon")) and lon != 0:
                     device.lon = float(coord["lon"])
             except (ValueError, KeyError, TypeError):
                 _logger.debug("RTKStateReducer: failed to parse coordinate property")
 
-        if net_prop := getattr(params, "networkInfo", None):
+        if net_prop := items.networkInfo:
             try:
                 net = json.loads(net_prop.value)
                 device.wifi_rssi = int(net.get("wifi_rssi", device.wifi_rssi))
@@ -747,8 +878,32 @@ class RTKStateReducer(StateReducer):
             except (ValueError, KeyError, TypeError):
                 _logger.debug("RTKStateReducer: failed to parse networkInfo property")
 
-        if ver_prop := getattr(params, "deviceVersion", None):
+        if ver_prop := items.deviceVersion:
             device.device_version = str(ver_prop.value)
+
+        if dev_ver_info := items.deviceVersionInfo:
+            try:
+                blob = json.loads(dev_ver_info.value)
+                if dev_ver := blob.get("devVer"):
+                    device.device_version = str(dev_ver)
+                    device.device_firmwares.device_version = str(dev_ver)
+                for module in blob.get("fwInfo", []):
+                    fw_type = str(module.get("t", ""))
+                    fw_version = str(module.get("v", ""))
+                    if not fw_version:
+                        continue
+                    match fw_type:
+                        case "101":
+                            device.device_firmwares.main_controller = fw_version
+                        case "102":
+                            device.device_firmwares.rtk_version = fw_version
+                        case "103":
+                            device.device_firmwares.lora_version = fw_version
+            except (ValueError, TypeError):
+                _logger.debug("RTKStateReducer: failed to parse deviceVersionInfo property")
+
+        if lora_prop := items.loraGeneralConfig:
+            device.lora_version = str(lora_prop.value)
 
         return device
 

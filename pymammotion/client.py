@@ -400,7 +400,7 @@ class MammotionClient:
         handle = self._device_registry.get(device_id)
         if handle is not None:
             transport = BLETransport(BLETransportConfig(device_id=device_id))
-            transport.set_ble_device(ble_device)  # type: ignore[arg-type]
+            transport.set_ble_device(ble_device)
             await handle.add_transport(transport)
             _logger.info("BLE transport added to existing handle for device %s", device_id)
 
@@ -417,7 +417,7 @@ class MammotionClient:
 
             ble = handle._transports.get(TransportType.BLE)  # noqa: SLF001
             if isinstance(ble, _BLETransport):
-                ble.set_ble_device(ble_device)  # type: ignore[arg-type]
+                ble.set_ble_device(ble_device)
 
     async def add_ble_only_device(
         self,
@@ -784,6 +784,7 @@ class MammotionClient:
         transport = MQTTTransport(config, mammotion_http, jwt_refresher=_refresh_jwt, token_manager=token_manager)
         transport.on_device_message = self._route_device_message
         transport.on_device_status = self._route_device_status
+        transport.on_device_properties = self._route_device_properties
 
         # When the connection loop permanently fails auth, trigger a full
         # re-login and reconnect so the integration recovers automatically.
@@ -854,6 +855,7 @@ class MammotionClient:
             f"/sys/{record.product_key}/{record.device_name}/thing/event/+/post",
             f"/sys/proto/{record.product_key}/{record.device_name}/thing/event/+/post",
             f"/sys/{record.product_key}/{record.device_name}/app/down/thing/status",
+            # f"/sys/{record.product_key}/{record.device_name}/app/down/thing/properties",
         ):
             transport.add_topic(topic)
         transport.register_device(record.product_key, record.device_name, iot_id)

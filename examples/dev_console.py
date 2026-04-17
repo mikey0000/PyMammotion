@@ -291,11 +291,8 @@ class DevConsole:
         _LOGGER.info("Hooked broker callback for [bold]%s[/bold]", device_name)
 
     def hook_all_devices(self) -> None:
-        from pymammotion.utility.device_type import DeviceType
 
         for handle in self.mammotion.device_registry.all_devices:
-            if DeviceType.is_rtk(handle.device_name):
-                continue
             self.hook_device(handle.device_name)
 
     # ── RTK device wiring ─────────────────────────────────────────────────────
