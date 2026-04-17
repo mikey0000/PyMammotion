@@ -17,6 +17,7 @@ from aiohttp import ClientSession
 import jwt
 
 from pymammotion.const import (
+    APP_VERSION,
     MAMMOTION_API_DOMAIN,
     MAMMOTION_CLIENT_ID,
     MAMMOTION_CLIENT_SECRET,
@@ -142,7 +143,8 @@ class MammotionHTTP:
         self._response: Response | None = None
         self.login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
-        app_version = f"Home Assistant,{ha_version}" if ha_version else "Home Assistant,2.2.4.13"
+        # f"Home Assistant,{ha_version}" if ha_version else
+        app_version = f"ALIYUN DEMO,{APP_VERSION}"
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": app_version}
         self.encryption_utils = EncryptionUtils()
 
@@ -227,13 +229,16 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            data = await resp.json()
-        reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
-        codes = dict()
-        for row in reader:
-            error_info = ErrorInfo(**cast(dict[str, Any], row))
-            codes[error_info.code] = error_info
-        return codes
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
+                codes = dict()
+                for row in reader:
+                    error_info = ErrorInfo(**cast(dict[str, Any], row))
+                    codes[error_info.code] = error_info
+                return codes
+
+        return {}
 
     async def oauth_check(self) -> Response:
         """Check if token is valid.
@@ -249,8 +254,11 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            data = await resp.json()
-        return Response.from_dict(data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                return Response.from_dict(data)
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def refresh_authorization_token(self) -> Response:
@@ -282,11 +290,14 @@ class MammotionHTTP:
                 },
                 json={"clientId": MAMMOTION_CLIENT_ID},
             )
-            data = await resp.json()
-        _LOGGER.debug("handle_expiry response: %s", data)
-        self.login_info.access_token = data["data"].get("accessToken", self.login_info.access_token)
-        self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
-        return Response.from_dict(data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                _LOGGER.debug("handle_expiry response: %s", data)
+                self.login_info.access_token = data["data"].get("accessToken", self.login_info.access_token)
+                self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
+                return Response.from_dict(data)
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def pair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
@@ -297,9 +308,12 @@ class MammotionHTTP:
                 headers=self._headers,
                 json={"mowerName": mower_name, "rtkName": rtk_name},
             )
-            data = await resp.json()
-        _LOGGER.debug("pair_devices_mqtt response: %s", data)
-        return Response.from_dict(data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                _LOGGER.debug("pair_devices_mqtt response: %s", data)
+                return Response.from_dict(data)
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def unpair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
@@ -310,9 +324,12 @@ class MammotionHTTP:
                 headers=self._headers,
                 json={"mowerName": mower_name, "rtkName": rtk_name},
             )
-            data = await resp.json()
-        _LOGGER.debug("unpair_devices_mqtt response: %s", data)
-        return Response.from_dict(data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                _LOGGER.debug("unpair_devices_mqtt response: %s", data)
+                return Response.from_dict(data)
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def net_rtk_enable(self, device_id: str) -> Response:
@@ -323,9 +340,12 @@ class MammotionHTTP:
                 headers=self._headers,
                 json={"deviceId": device_id},
             )
-            data = await resp.json()
-        _LOGGER.debug("net_rtk_enable response: %s", data)
-        return Response.from_dict(data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                _LOGGER.debug("net_rtk_enable response: %s", data)
+                return Response.from_dict(data)
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def get_stream_subscription(self, iot_id: str, is_yuka: bool) -> Response[StreamSubscriptionResponse]:
@@ -352,10 +372,13 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            data = await resp.json()
-        response = response_factory(Response[StreamSubscriptionResponse], data)
-        await self.handle_expiry(response)
-        return response
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                response = response_factory(Response[StreamSubscriptionResponse], data)
+                await self.handle_expiry(response)
+                return response
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
@@ -368,8 +391,11 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            data = await resp.json()
-        return response_factory(Response[VideoResourceResponse], data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                return response_factory(Response[VideoResourceResponse], data)
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
@@ -386,9 +412,12 @@ class MammotionHTTP:
                     "Client-Type": "1",
                 },
             )
-            data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
-        return response_factory(Response[list[CheckDeviceVersion]], data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                # TODO catch errors from mismatch like token expire etc
+                return response_factory(Response[list[CheckDeviceVersion]], data)
+
+        return Response(code=200, msg="success", data=[])
 
     @refresh_token_decorator
     async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
@@ -405,9 +434,12 @@ class MammotionHTTP:
                     "Client-Type": "1",
                 },
             )
-            data = await resp.json()
-        # TODO catch errors from mismatch like token expire etc
-        return response_factory(Response[str], data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                # TODO catch errors from mismatch like token expire etc
+                return response_factory(Response[str], data)
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def get_rtk_devices(self) -> Response[list[RTK]]:
@@ -421,8 +453,11 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            data = await resp.json()
-        return response_factory(Response[list[RTK]], data)
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                return response_factory(Response[list[RTK]], data)
+
+        return Response(code=200, msg="success", data=[])
 
     @refresh_token_decorator
     async def get_user_device_list(self) -> Response[list[DeviceInfo]]:
@@ -438,10 +473,13 @@ class MammotionHTTP:
                     "Client-Type": "1",
                 },
             )
-            resp_dict = await resp.json()
-        response = response_factory(Response[list[DeviceInfo]], resp_dict)
-        self.device_info = response.data if response.data else self.device_info
-        return response
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                resp_dict = await resp.json()
+                response = response_factory(Response[list[DeviceInfo]], resp_dict)
+                self.device_info = response.data if response.data else self.device_info
+                return response
+
+        return Response(code=200, msg="success", data=[])
 
     @refresh_token_decorator
     async def get_user_shared_device_page(self) -> Response[DeviceRecords]:
@@ -458,10 +496,13 @@ class MammotionHTTP:
                     "User-Agent": "okhttp/4.9.3",
                 },
             )
-            resp_dict = await resp.json()
-        response = response_factory(Response[DeviceRecords], resp_dict)
-        self.devices_shared_info = response.data if response.data else self.devices_shared_info
-        return response
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                resp_dict = await resp.json()
+                response = response_factory(Response[DeviceRecords], resp_dict)
+                self.devices_shared_info = response.data if response.data else self.devices_shared_info
+                return response
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def get_user_device_page(self) -> Response[DeviceRecords]:
@@ -485,10 +526,13 @@ class MammotionHTTP:
             )
             if resp.status != 200:
                 return Response.from_dict({"code": resp.status, "msg": "get device list failed"})
-            resp_dict = await resp.json()
-        response = response_factory(Response[DeviceRecords], resp_dict)
-        self.device_records = response.data if response.data else self.device_records
-        return response
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                resp_dict = await resp.json()
+                response = response_factory(Response[DeviceRecords], resp_dict)
+                self.device_records = response.data if response.data else self.device_records
+                return response
+
+        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def get_mqtt_credentials(self) -> Response[MQTTConnection]:
@@ -505,10 +549,13 @@ class MammotionHTTP:
             )
             if resp.status != 200:
                 return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
-            resp_dict = await resp.json()
-        response = response_factory(Response[MQTTConnection], resp_dict)
-        self.mqtt_credentials = response.data
-        return response
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                resp_dict = await resp.json()
+                response = response_factory(Response[MQTTConnection], resp_dict)
+                self.mqtt_credentials = response.data
+                return response
+
+        return Response(code=200, msg="success")
 
     async def mqtt_invoke(self, content: str, device_name: str, iot_id: str) -> Response[dict]:
         """Send mqtt commands to devices."""
