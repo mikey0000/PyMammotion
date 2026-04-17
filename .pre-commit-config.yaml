@@ -21,3 +21,12 @@ repos:
     hooks:
       - id: mypy
         exclude: ^(pymammotion/proto/|tests/|scripts/|examples/)
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest tests/
+        language: system
+        pass_filenames: false
+        always_run: true

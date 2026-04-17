@@ -261,7 +261,7 @@ async def test_start_map_sync_generates_geojson_on_completion() -> None:
     mock_device = _make_device_with_rtk(lat=0.5, lon=0.5)
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    with patch("pymammotion.messaging.map_saga.MapFetchSaga") as MockSaga:
+    with patch("pymammotion.client.MapFetchSaga") as MockSaga:
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "map_fetch"
         mock_saga_instance.max_attempts = 1
@@ -308,7 +308,7 @@ async def test_start_map_sync_skips_geojson_when_rtk_zero() -> None:
     mock_device = _make_device_with_rtk(lat=0.0, lon=0.0)  # zero = no RTK fix
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    with patch("pymammotion.messaging.map_saga.MapFetchSaga") as MockSaga:
+    with patch("pymammotion.client.MapFetchSaga") as MockSaga:
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "map_fetch"
         mock_saga_instance.max_attempts = 1

@@ -10,7 +10,7 @@ from bleak_retry_connector import BleakClientWithServiceCache
 
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.bluetooth import BleMessage
-from pymammotion.data.model.device import RTKDevice
+from pymammotion.data.model.device import RTKBaseStationDevice
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.mammotion.devices.rtk_device import MammotionRTKDevice
 
@@ -21,7 +21,12 @@ class MammotionRTKBLEDevice(MammotionRTKDevice):
     """RTK device with BLE connectivity - simpler than mowers, no map sync."""
 
     def __init__(
-        self, cloud_device: Device, rtk_state: RTKDevice, device: BLEDevice, interface: int = 0, **kwargs: Any
+        self,
+        cloud_device: Device,
+        rtk_state: RTKBaseStationDevice,
+        device: BLEDevice,
+        interface: int = 0,
+        **kwargs: Any,
     ) -> None:
         """Initialize MammotionRTKBLEDevice."""
         super().__init__(cloud_device, rtk_state)
@@ -76,7 +81,7 @@ class MammotionRTKBLEDevice(MammotionRTKDevice):
         """Queue a command to the RTK device."""
         await self.command_queue.put((key, kwargs))
 
-    async def command(self, key: str, **kwargs):
+    async def command(self, key: str, **kwargs: Any) -> None:
         """Send a command to the RTK device."""
         return await self.queue_command(key, **kwargs)
 

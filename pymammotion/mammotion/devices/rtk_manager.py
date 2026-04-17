@@ -6,7 +6,7 @@ from bleak import BLEDevice
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.model.dev_by_account_response import Device
-from pymammotion.data.model.device import RTKDevice
+from pymammotion.data.model.device import RTKBaseStationDevice
 from pymammotion.data.model.enums import ConnectionPreference
 from pymammotion.mammotion.devices.mammotion_cloud import MammotionCloud
 from pymammotion.mammotion.devices.managers.managers import AbstractDeviceManager
@@ -40,7 +40,7 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
         self.preference = preference
 
         # Initialize RTK state
-        self._rtk_state = RTKDevice(
+        self._rtk_state = RTKBaseStationDevice(
             name=name,
             iot_id=iot_id,
             product_key=cloud_device.product_key,
@@ -53,12 +53,12 @@ class MammotionRTKDeviceManager(AbstractDeviceManager):
             self.add_cloud(mqtt)
 
     @property
-    def state(self) -> RTKDevice:
+    def state(self) -> RTKBaseStationDevice:
         """Return the RTK device state."""
         return self._rtk_state
 
     @state.setter
-    def state(self, value: RTKDevice) -> None:
+    def state(self, value: RTKBaseStationDevice) -> None:
         """Set the RTK device state."""
         self._rtk_state = value
 

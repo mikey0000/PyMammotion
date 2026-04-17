@@ -8,7 +8,7 @@ import time
 from typing import TYPE_CHECKING
 
 from pymammotion.aliyun.exceptions import LoginException
-from pymammotion.http.model.http import MQTTConnection
+from pymammotion.http.model.http import MQTTConnection, UnauthorizedException
 from pymammotion.transport import AuthError
 from pymammotion.transport.base import ReLoginRequiredError, TransportType
 

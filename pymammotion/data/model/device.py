@@ -261,25 +261,6 @@ class MowerDevice(Device):
 
 
 @dataclass
-class RTKDevice(DataClassORJSONMixin):
-    """Represents an RTK base-station device paired with a mower."""
-
-    name: str
-    iot_id: str
-    product_key: str
-    online: bool = True
-    lat: float = 0.0
-    lon: float = 0.0
-    lora: str = ""
-    wifi_rssi: int = 0
-    device_version: str = ""
-    lora_version: str = ""
-    wifi_sta_mac: str = ""
-    bt_mac: str = ""
-    update_check: CheckDeviceVersion = field(default_factory=CheckDeviceVersion)
-
-
-@dataclass
 class PoolCleanerDevice(Device):
     """Swimming-pool cleaning robot (Spino, Spino-S1/E1/SP).
 
@@ -290,6 +271,7 @@ class PoolCleanerDevice(Device):
     show up in the UI or there is a concrete consumer for them.
     """
 
+    iot_id: str = ""
     pool_state: PoolState = field(default_factory=PoolState)
     pool_map: PoolMap = field(default_factory=PoolMap)
     device_firmwares: DeviceFirmwares = field(default_factory=DeviceFirmwares)
@@ -339,6 +321,7 @@ class RTKBaseStationDevice(Device):
     - ``lora_version``: LoRa radio firmware version / number.
     """
 
+    iot_id: str = ""
     basestation_status: int = 0
     connect_status_since_poweron: int = 0
     device_version: str = ""

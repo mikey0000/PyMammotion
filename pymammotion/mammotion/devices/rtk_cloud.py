@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from pymammotion.aliyun.model.dev_by_account_response import Device
-from pymammotion.data.model.device import RTKDevice
+from pymammotion.data.model.device import RTKBaseStationDevice
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 class MammotionRTKCloudDevice(MammotionRTKDevice):
     """RTK device with cloud connectivity - simpler than mowers, no map sync."""
 
-    def __init__(self, mqtt: MammotionCloud, cloud_device: Device, rtk_state: RTKDevice) -> None:
+    def __init__(self, mqtt: MammotionCloud, cloud_device: Device, rtk_state: RTKBaseStationDevice) -> None:
         """Initialize MammotionRTKCloudDevice.
         :rtype: None
         """
@@ -79,7 +79,7 @@ class MammotionRTKCloudDevice(MammotionRTKDevice):
     async def on_connect(self) -> None:
         """Callback for when MQTT connects."""
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Stop all tasks and disconnect."""
         self.stopped = True
 

@@ -149,3 +149,4 @@ Key files for protocol/logic research:
 - Ruff excludes `pymammotion/proto/`, `tests/`, and `scripts/` from linting
 - mypy excludes `pymammotion/proto/`, `tests/`, `scripts/`, and `pymammotion/mqtt/linkkit/`
 - Strict mypy config: `disallow_untyped_defs`, `disallow_untyped_calls`, `disallow_any_generics`
+- **No local imports inside function bodies** — always use top-level imports. Exception: `TYPE_CHECKING` guards for type-hint-only imports that would cause circular imports at runtime.
