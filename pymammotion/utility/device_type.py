@@ -1,3 +1,5 @@
+"""Device type definitions and product key mappings for Mammotion robot mowers."""
+
 from enum import Enum
 
 LubaProductKey = [
@@ -107,6 +109,7 @@ class DeviceType(Enum):
     LUBA_HM = (28, "Luba-HM", "HM610")
 
     def __init__(self, value: int, name: str, model: str) -> None:
+        """Initialize device type with its integer id, short name, and model string."""
         self._value = value
         self._name = name
         self._model = model
@@ -273,7 +276,7 @@ class DeviceType(Enum):
         )
 
     @staticmethod
-    def from_value(value: int) -> DeviceType:
+    def from_value(value: int) -> "DeviceType":
         """Return the DeviceType corresponding to the given value."""
         if value == 0:
             return DeviceType.RTK
