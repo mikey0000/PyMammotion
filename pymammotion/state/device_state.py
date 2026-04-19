@@ -81,8 +81,6 @@ class DeviceSnapshot:
     online: bool
     enabled: bool
     battery_level: int
-    mowing_activity: str  # e.g. "idle", "mowing", "returning", "charging", "unknown"
-    blade_height: int  # mm; 0 if unknown
     raw: Device  # full underlying device — use for fields not yet in snapshot
 
 
@@ -161,13 +159,8 @@ class DeviceStateMachine:
         report_data = getattr(device, "report_data", None)
         if report_data is not None:
             battery: int = report_data.dev.battery_val
-            sys_status: int = report_data.dev.sys_status
-            mowing_activity: str = _WORK_MODE_TO_ACTIVITY.get(sys_status, f"unknown({sys_status})")
-            blade_height: int = report_data.work.knife_height
         else:
             battery = 0
-            mowing_activity = "unknown"
-            blade_height = 0
 
         return DeviceSnapshot(
             sequence=self._sequence,
@@ -176,8 +169,6 @@ class DeviceStateMachine:
             online=device.online,
             enabled=device.enabled,
             battery_level=battery,
-            mowing_activity=mowing_activity,
-            blade_height=blade_height,
             raw=device,
         )
 

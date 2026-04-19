@@ -33,8 +33,6 @@ def make_snapshot(seq: int = 1, battery: int = 80) -> DeviceSnapshot:
         online=True,
         enabled=True,
         battery_level=battery,
-        mowing_activity="idle",
-        blade_height=50,
         raw=device,
     )
 

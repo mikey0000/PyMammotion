@@ -7,10 +7,12 @@ from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Any
 
+from bleak.exc import BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from pymammotion.bluetooth.const import UUID_NOTIFICATION_CHARACTERISTIC
 from pymammotion.transport.base import (
+    BLEUnavailableError,
     NoBLEAddressKnownError,
     Transport,
     TransportAvailability,
@@ -124,14 +126,18 @@ class BLETransport(Transport):
         await self._notify_availability(TransportAvailability.CONNECTING)
         _logger.debug("BLETransport connecting to %s", self._config.device_id)
 
-        self._client = await establish_connection(
-            BleakClientWithServiceCache,
-            self._ble_device,
-            self._config.device_id,
-            self._handle_disconnect,
-            max_attempts=10,
-            ble_device_callback=lambda: self._ble_device,  # type: ignore[arg-type,return-value]
-        )
+        try:
+            self._client = await establish_connection(
+                BleakClientWithServiceCache,
+                self._ble_device,
+                self._config.device_id,
+                self._handle_disconnect,
+                max_attempts=10,
+                ble_device_callback=lambda: self._ble_device,  # type: ignore[arg-type,return-value]
+            )
+        except BleakError as exc:
+            await self._notify_availability(TransportAvailability.DISCONNECTED)
+            raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
 
         from pymammotion.bluetooth.ble_message import BleMessage
 
@@ -169,8 +175,15 @@ class BLETransport(Transport):
         _logger.debug("BLETransport send: %d bytes to %s", len(payload), self._config.device_id)
         if not self._client.is_connected:
             await self.connect()
-        async with self._operation_lock:
-            await self._message.post_custom_data_bytes(payload)
+        try:
+            async with self._operation_lock:
+                await self._message.post_custom_data_bytes(payload)
+        except BleakError as exc:
+            await self._notify_availability(TransportAvailability.DISCONNECTED)
+            raise TransportError(f"BLE send failed for {self._config.device_id!r}: {exc}") from exc
+        # post_custom_data_bytes swallows exceptions but calls disconnect() on failure
+        if not self._client.is_connected:
+            raise TransportError(f"BLE send failed for {self._config.device_id!r}: client disconnected during write")
         self._reset_idle_disconnect_timer()
 
     # ------------------------------------------------------------------

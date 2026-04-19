@@ -142,10 +142,10 @@ def test_state_machine_battery_stored_in_snapshot() -> None:
     assert sm.current.battery_level == 75
 
 
-def test_state_machine_blade_height_stored_in_snapshot() -> None:
+def test_state_machine_blade_height_accessible_via_raw() -> None:
     device = make_device()
     sm = DeviceStateMachine("dev1", device)
-    assert sm.current.blade_height == 60
+    assert sm.current.raw.report_data.work.knife_height == 60
 
 
 def test_state_machine_connection_state_propagated() -> None:

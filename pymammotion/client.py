@@ -1246,6 +1246,7 @@ class MammotionClient:
             zone_hashs=zone_hashs,
             route_info=route_info,
             skip_planning=skip_planning,
+            device_name=device_name,
         )
 
         async def _on_mow_path_complete() -> None:
@@ -1537,7 +1538,7 @@ class MammotionClient:
         _prefer_ble = prefer_ble
         _session = self._get_session_for_device(name)
 
-        _no_transport_max = 5
+        _no_transport_max = 3
         _no_transport_delay = 2.0
 
         async def _do_send() -> None:

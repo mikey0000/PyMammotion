@@ -56,6 +56,7 @@ class MowPathSaga(Saga):
         route_info: GenerateRouteInformation | None = None,
         *,
         skip_planning: bool = False,
+        device_name: str = "",
     ) -> None:
         """Initialise the saga.
 
@@ -80,6 +81,7 @@ class MowPathSaga(Saga):
         self._zone_hashs = zone_hashs
         self._route_info = route_info
         self._skip_planning = skip_planning
+        self._device_name = device_name
         self.result: dict[int, dict[int, MowPath]] = {}
         self._route_val: Any = None  # persists across retries to skip step 2 if already fetched
 
@@ -115,11 +117,18 @@ class MowPathSaga(Saga):
                 try:
                     ack_response = await asyncio.wait_for(hash_ack_queue.get(), timeout=self.step_timeout)
                 except TimeoutError:
-                    _logger.warning(
-                        "MowPathSaga: line hash list interrupted at frame %d/%d",
-                        _current_frame,
-                        _total_frame,
-                    )
+                    if _total_frame == 0:
+                        _logger.warning(
+                            "MowPathSaga [%s]: no response to line hash list request (sub_cmd=3)",
+                            self._device_name,
+                        )
+                    else:
+                        _logger.warning(
+                            "MowPathSaga [%s]: line hash list interrupted at frame %d/%d",
+                            self._device_name,
+                            _current_frame,
+                            _total_frame,
+                        )
                     raise CommandTimeoutError("toapp_gethash_ack(sub_cmd=3)", 1) from None
 
                 ack = ack_response.nav.toapp_gethash_ack

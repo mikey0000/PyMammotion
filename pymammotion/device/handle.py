@@ -8,7 +8,9 @@ import contextlib
 import dataclasses
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
+
+_T = TypeVar("_T")
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
@@ -25,6 +27,7 @@ from pymammotion.transport.base import (
     Subscription,
     Transport,
     TransportAvailability,
+    TransportError,
     TransportType,
 )
 
@@ -345,13 +348,14 @@ class DeviceHandle:
                 # The fixed connect() is a no-op if the task is still running (retry-sleep).
                 for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
                     mqtt_t = self._transports.get(t_type)
-                    if mqtt_t is not None and not mqtt_t.is_connected:
-                        _logger.warning(
-                            "DeviceHandle[%s]: %s not connected on send — restarting loop",
-                            self.device_name,
-                            t_type.value,
-                        )
-                        await mqtt_t.connect()
+                    if mqtt_t is not None:
+                        if not mqtt_t.is_connected:
+                            _logger.warning(
+                                "DeviceHandle[%s]: %s not connected on send — restarting loop",
+                                self.device_name,
+                                t_type.value,
+                            )
+                            await mqtt_t.connect()
                 ble = self._transports.get(TransportType.BLE)
                 if ble is not None and not ble.is_connected:
                     _logger.debug("BLE disconnected for '%s' — reconnecting before send", self.device_name)
@@ -363,10 +367,16 @@ class DeviceHandle:
                 "_do_send '%s': sending field=%s via %s", self.device_name, field, transport.transport_type.value
             )
             try:
-                await self.broker.send_and_wait(
-                    send_fn=lambda: transport.send(cmd, iot_id=self.iot_id),
-                    expected_field=field,
-                )
+                if not transport.is_connected and transport.transport_type in (
+                    TransportType.CLOUD_ALIYUN,
+                    TransportType.CLOUD_MAMMOTION,
+                ):
+                    await transport.send(cmd, iot_id=self.iot_id)
+                else:
+                    await self.broker.send_and_wait(
+                        send_fn=lambda: transport.send(cmd, iot_id=self.iot_id),
+                        expected_field=field,
+                    )
             except DeviceOfflineException:
                 self.update_availability(
                     transport.transport_type,
@@ -455,6 +465,31 @@ class DeviceHandle:
     ) -> Subscription:
         """Subscribe to state changes. Returns RAII Subscription handle."""
         return self._state_changed_bus.subscribe(handler)
+
+    _UNSET: object = object()
+
+    def watch_field(
+        self,
+        getter: Callable[[DeviceSnapshot], _T],
+        handler: Callable[[_T], Awaitable[None]],
+    ) -> Subscription:
+        """Fire handler only when the value returned by getter changes.
+
+        The handler is not called on the first snapshot — only on subsequent
+        snapshots where the extracted value differs from the previous one.
+        """
+        last: list[object] = [self._UNSET]
+
+        async def _on_state(snapshot: DeviceSnapshot) -> None:
+            new_val = getter(snapshot)
+            if last[0] is self._UNSET:
+                last[0] = new_val
+                return
+            if new_val != last[0]:
+                last[0] = new_val
+                await handler(new_val)
+
+        return self._state_changed_bus.subscribe(_on_state)
 
     def subscribe_device_status(
         self,
@@ -568,6 +603,27 @@ class DeviceHandle:
                     transport.transport_type,
                 )
                 raise
+        except TransportError:
+            if transport.transport_type is not TransportType.BLE:
+                raise
+            mqtt: Transport | None = None
+            for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                t = self._transports.get(transport_type)
+                if t is not None:
+                    mqtt = t
+                    break
+            if mqtt is None:
+                _logger.warning(
+                    "Device '%s' BLE send failed and no MQTT transport available — giving up",
+                    self.device_name,
+                )
+                raise
+            _logger.debug(
+                "Device '%s' BLE send failed — falling back to %s",
+                self.device_name,
+                mqtt.transport_type.value,
+            )
+            await mqtt.send(payload, iot_id=self.iot_id)
 
     # ------------------------------------------------------------------
     # Error bus

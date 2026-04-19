@@ -248,7 +248,11 @@ class AliyunMQTTTransport(Transport):
         try:
             await self._cloud_gateway.send_cloud_command(iot_id, payload)
         except UnretryableException as ex:
+            self.record_error()
             raise TransportError(ex.message) from None
+        except Exception:
+            self.record_error()
+            raise
 
     # ------------------------------------------------------------------
     # Credential helpers

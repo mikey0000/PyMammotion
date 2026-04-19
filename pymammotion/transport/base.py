@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import collections
 import contextlib
 from enum import Enum
 import logging
+import time
 from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
 if TYPE_CHECKING:
@@ -192,6 +194,9 @@ class Transport(ABC):
     Concrete implementations: MQTTTransport, BLETransport.
     """
 
+    # Maximum window kept in memory (1 hour); older entries are pruned on record_error().
+    _ERROR_RETENTION_SECONDS: float = 3600.0
+
     #: Set by the broker layer to receive raw incoming messages.
     on_message: Callable[[bytes], Awaitable[None]] | None = None
 
@@ -208,8 +213,32 @@ class Transport(ABC):
     on_device_properties: Callable[[str, ThingPropertiesMessage], Awaitable[None]] | None = None
 
     def __init__(self) -> None:
-        """Initialise the availability listener list."""
+        """Initialise the availability listener list and error window."""
         self._availability_listeners: list[Callable[[TransportAvailability], Awaitable[None]]] = []
+        self._error_timestamps: collections.deque[float] = collections.deque()
+
+    def record_error(self) -> None:
+        """Record an error occurrence at the current time.
+
+        Prunes entries older than _ERROR_RETENTION_SECONDS to bound memory use.
+        """
+        now = time.monotonic()
+        self._error_timestamps.append(now)
+        cutoff = now - self._ERROR_RETENTION_SECONDS
+        while self._error_timestamps and self._error_timestamps[0] < cutoff:
+            self._error_timestamps.popleft()
+
+    def errors_in_window(self, window_seconds: float = 1200.0) -> int:
+        """Return the number of errors recorded in the last *window_seconds* seconds."""
+        cutoff = time.monotonic() - window_seconds
+        # deque is sorted ascending; bisect from the left
+        count = 0
+        for ts in reversed(self._error_timestamps):
+            if ts >= cutoff:
+                count += 1
+            else:
+                break
+        return count
 
     def add_availability_listener(
         self,

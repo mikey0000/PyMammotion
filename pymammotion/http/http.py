@@ -40,6 +40,7 @@ from pymammotion.http.model.http import (
 )
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
+from pymammotion.transport.base import AuthError
 
 T = TypeVar("T")
 
@@ -141,9 +142,9 @@ class MammotionHTTP:
         self.account = account
         self._password = password
         self._response: Response | None = None
-        self.login_info: LoginResponseData | None = None
+        self._login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
-        # f"Home Assistant,{ha_version}" if ha_version else
+        #  app_version =f"Home Assistant,{ha_version}" if ha_version else f"ALIYUN DEMO,{APP_VERSION}"
         app_version = f"ALIYUN DEMO,{APP_VERSION}"
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": app_version}
         self.encryption_utils = EncryptionUtils()
@@ -164,6 +165,22 @@ class MammotionHTTP:
         else:
             async with ClientSession() as session:
                 yield session
+
+    @property
+    def login_info(self) -> LoginResponseData | None:
+        """Return login info, or None if not yet logged in."""
+        return self._login_info
+
+    @login_info.setter
+    def login_info(self, value: LoginResponseData | None) -> None:
+        self._login_info = value
+
+    @property
+    def _require_login_info(self) -> LoginResponseData:
+        """Return login_info, raising AuthError if not logged in."""
+        if self._login_info is None:
+            raise AuthError("Not logged in — login_info is None")
+        return self._login_info
 
     @property
     def response(self) -> Response | None:
@@ -225,7 +242,7 @@ class MammotionHTTP:
                 f"{MAMMOTION_API_DOMAIN}/user-server/v1/code/record/export-data",
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                 },
             )
@@ -250,7 +267,7 @@ class MammotionHTTP:
                 f"{MAMMOTION_DOMAIN}/user-server/v1/user/oauth/check",
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                 },
             )
@@ -285,7 +302,7 @@ class MammotionHTTP:
                 f"{MAMMOTION_DOMAIN}/authorization/code",
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                 },
                 json={"clientId": MAMMOTION_CLIENT_ID},
@@ -293,8 +310,9 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
                 _LOGGER.debug("handle_expiry response: %s", data)
-                self.login_info.access_token = data["data"].get("accessToken", self.login_info.access_token)
-                self.login_info.authorization_code = data["data"].get("code", self.login_info.authorization_code)
+                login_info = self._require_login_info
+                login_info.access_token = data["data"].get("accessToken", login_info.access_token)
+                login_info.authorization_code = data["data"].get("code", login_info.authorization_code)
                 return Response.from_dict(data)
 
         return Response(code=200, msg="success")
@@ -368,7 +386,7 @@ class MammotionHTTP:
                 json=payload,
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                 },
             )
@@ -387,7 +405,7 @@ class MammotionHTTP:
             resp = await session.get(
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/video-resource/{iot_id}",
                 headers={
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                 },
             )
@@ -406,7 +424,7 @@ class MammotionHTTP:
                 json={"deviceIds": iot_ids},
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "Client-Id": self.client_id,
                     "Client-Type": "1",
@@ -428,7 +446,7 @@ class MammotionHTTP:
                 json={"deviceId": iot_id, "version": version},
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "Client-Id": self.client_id,
                     "Client-Type": "1",
@@ -449,7 +467,7 @@ class MammotionHTTP:
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/rtk/devices",
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                 },
             )
@@ -467,7 +485,7 @@ class MammotionHTTP:
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/device/list",
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "Client-Id": self.client_id,
                     "Client-Type": "1",
@@ -491,7 +509,7 @@ class MammotionHTTP:
                 json={"iotId": "", "owned": 0, "pageNumber": 1, "pageSize": 200, "statusList": [-1]},
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
                 },
@@ -517,7 +535,7 @@ class MammotionHTTP:
                 },
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
                     "Client-Id": self.client_id,
@@ -542,7 +560,7 @@ class MammotionHTTP:
                 f"{self.jwt_info.iot}/v1/mqtt/auth/jwt",
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
                 },
@@ -572,7 +590,7 @@ class MammotionHTTP:
                 },
                 headers={
                     **self._headers,
-                    "Authorization": f"Bearer {self.login_info.access_token}",
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "User-Agent": "okhttp/4.9.3",
                     "Client-Id": self.client_id,
@@ -599,7 +617,7 @@ class MammotionHTTP:
         async with self._client_session() as client:
             await client.post(
                 f"{MAMMOTION_API_DOMAIN}/user-server/v3/user/logout",
-                headers=self.generate_headers(self.login_info.access_token),
+                headers=self.generate_headers(self._require_login_info.access_token),
             )
         self.login_info = None
         self._headers.pop("Authorization", None)
@@ -642,7 +660,9 @@ class MammotionHTTP:
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
-        self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if login_response.data else None
+        self._headers["Authorization"] = (
+            f"Bearer {self._require_login_info.access_token}" if login_response.data else None
+        )
         self.response = login_response
         self.msg = login_response.msg
         self.code = login_response.code
@@ -655,7 +675,7 @@ class MammotionHTTP:
 
         refresh_request = {
             "client_id": MAMMOTION_OUATH2_CLIENT_ID,
-            "refresh_token": self.login_info.refresh_token,
+            "refresh_token": self._require_login_info.refresh_token,
             "grant_type": "refresh_token",
         }
 
@@ -686,7 +706,9 @@ class MammotionHTTP:
             return Response.from_dict({"code": resp.status, "msg": "Refresh login token failed"})
         self.login_info = refresh_response.data
         self.expires_in = refresh_response.data.expires_in + time.time()
-        self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if refresh_response.data else None
+        self._headers["Authorization"] = (
+            f"Bearer {self._require_login_info.access_token}" if refresh_response.data else None
+        )
         self.response = refresh_response
         self.msg = refresh_response.msg
         self.code = refresh_response.code
@@ -737,7 +759,9 @@ class MammotionHTTP:
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
-        self._headers["Authorization"] = f"Bearer {self.login_info.access_token}" if login_response.data else None
+        self._headers["Authorization"] = (
+            f"Bearer {self._require_login_info.access_token}" if login_response.data else None
+        )
         self.response = login_response
         self.msg = login_response.msg
         self.code = login_response.code
