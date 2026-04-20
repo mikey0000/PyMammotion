@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 _T = TypeVar("_T")
 
-from pymammotion.aliyun.exceptions import DeviceOfflineException
+from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.device.staleness_watcher import MapStalenessWatcher
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
@@ -586,6 +586,8 @@ class DeviceHandle:
         _logger.debug("send_raw '%s': sending via %s", self.device_name, transport.transport_type.value)
         try:
             await transport.send(payload, iot_id=self.iot_id)
+        except TooManyRequestsException:
+            _logger.warning("Device '%s' rate limited", self.device_name)
         except DeviceOfflineException:
             self.update_availability(
                 transport.transport_type,

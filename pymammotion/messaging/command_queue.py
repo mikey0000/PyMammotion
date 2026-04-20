@@ -169,11 +169,12 @@ class DeviceCommandQueue:
                     except GatewayTimeoutException:
                         if _attempt < _gateway_timeout_max:
                             _logger.warning(
-                                "DeviceCommandQueue[%s]: gateway timeout (attempt %d/%d) — retrying",
+                                "DeviceCommandQueue[%s]: gateway timeout (attempt %d/%d) — retrying in 1s",
                                 self._device_name,
                                 _attempt,
                                 _gateway_timeout_max,
                             )
+                            await asyncio.sleep(1.0)
                         else:
                             _logger.warning(
                                 "DeviceCommandQueue[%s]: gateway timeout after %d attempts — dropping command",

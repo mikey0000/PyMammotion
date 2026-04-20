@@ -95,7 +95,7 @@ class Saga(ABC):
                 if attempt >= self.max_attempts:
                     raise SagaFailedError(self.name, self.max_attempts) from exc
                 _logger.warning(
-                    "Saga '%s'[%s] interrupted on attempt %d/%d: %s. Restarting in 1s.",
+                    "Saga '%s'[%s] interrupted on attempt %d/%d: %s. Restarting in 0.5s.",
                     self.name,
                     self.device_name,
                     attempt,
