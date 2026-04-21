@@ -400,3 +400,25 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
     assert handle.broker.send_and_wait.call_count == 2
     # Device must NOT be marked offline — BLE carried the command
     assert handle.availability.mqtt_reported_offline is True
+
+
+# ---------------------------------------------------------------------------
+# snapshot.raw reflects updated device state after on_raw_message
+# ---------------------------------------------------------------------------
+
+
+async def test_snapshot_raw_updates_after_on_raw_message() -> None:
+    """snapshot.raw must reflect new field values after a real LubaMsg is processed."""
+    from pymammotion.data.model.device import MowerDevice
+    from pymammotion.proto import LubaMsg, MctlSys, ReportInfoData, RptDevStatus
+
+    handle = DeviceHandle(
+        device_id="dev-snap",
+        device_name="Luba-Test",
+        initial_device=MowerDevice(name="Luba-Test"),
+    )
+
+    msg = LubaMsg(sys=MctlSys(toapp_report_data=ReportInfoData(dev=RptDevStatus(battery_val=42))))
+    await handle.on_raw_message(bytes(msg))
+
+    assert handle.snapshot.raw.report_data.dev.battery_val == 42

@@ -614,8 +614,8 @@ class MammotionHTTP:
         """Invalidate the current session by calling the v3 logout endpoint."""
         if self.login_info is None:
             return
-        async with self._client_session() as client:
-            await client.post(
+        async with self._client_session() as session:
+            await session.post(
                 f"{MAMMOTION_API_DOMAIN}/user-server/v3/user/logout",
                 headers=self.generate_headers(self._require_login_info.access_token),
             )
