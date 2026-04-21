@@ -205,8 +205,8 @@ async def test_active_transport_prefer_ble_flag_reverses_order() -> None:
     assert active.transport_type == TransportType.BLE
 
 
-async def test_active_transport_falls_back_to_ble_when_mqtt_disconnected() -> None:
-    """When MQTT is disconnected, BLE is used as fallback (default MQTT-preference mode)."""
+async def test_active_transport_prefers_mqtt_even_when_disconnected() -> None:
+    """MQTT is preferred over BLE even when disconnected — send_raw handles reconnect/fallback."""
     ble_transport = make_transport(TransportType.BLE, connected=True)
     mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=False)
 
@@ -215,7 +215,7 @@ async def test_active_transport_falls_back_to_ble_when_mqtt_disconnected() -> No
     await handle.add_transport(ble_transport)
 
     active = handle.active_transport()
-    assert active.transport_type == TransportType.BLE
+    assert active.transport_type == TransportType.CLOUD_ALIYUN
 
 
 async def test_active_transport_returns_ble_even_when_disconnected() -> None:
@@ -243,11 +243,9 @@ async def test_active_transport_returns_ble_even_when_disconnected() -> None:
     assert active.transport_type == TransportType.BLE
 
 
-async def test_active_transport_raises_when_none_connected() -> None:
-    """NoTransportAvailableError is raised when no transport is connected."""
+async def test_active_transport_raises_when_none_registered() -> None:
+    """NoTransportAvailableError is raised when no transport is registered at all."""
     handle = make_handle()
-    transport = make_transport(TransportType.CLOUD_ALIYUN, connected=False)
-    await handle.add_transport(transport)
 
     with pytest.raises(NoTransportAvailableError):
         handle.active_transport()

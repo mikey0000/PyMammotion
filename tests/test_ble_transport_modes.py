@@ -106,14 +106,13 @@ async def test_wifi_only_active_transport_is_mqtt() -> None:
     assert handle.active_transport() is mqtt
 
 
-async def test_wifi_only_no_ble_fallback() -> None:
-    """With no BLE transport registered, a disconnected MQTT raises NoTransportAvailableError."""
+async def test_wifi_only_disconnected_mqtt_still_selected() -> None:
+    """A disconnected MQTT transport is still returned — send_raw handles the actual send."""
     handle = _make_handle()
     mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=False)
     await handle.add_transport(mqtt)
 
-    with pytest.raises(NoTransportAvailableError):
-        handle.active_transport()
+    assert handle.active_transport() is mqtt
 
 
 async def test_wifi_only_send_uses_mqtt() -> None:

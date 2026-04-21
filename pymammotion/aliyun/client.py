@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 import time
+import uuid
 
 from Tea.exceptions import UnretryableException
 from Tea.request import TeaRequest
@@ -109,7 +110,8 @@ class Client:
                         "x-ca-key": self._app_key,
                         "x-ca-signaturemethod": "HmacSHA256",
                         "accept": "application/json",
-                        "user-agent": self.get_user_agent(),
+                        "user-agent": "ALYIUN-ANDROID-DEMO",
+                        "x-ca-timestamp": str(int(time.time_ns())),
                     },
                     header,
                 )
@@ -122,6 +124,7 @@ class Client:
                     )
                     _request.body = UtilClient.to_jsonstring(TeaCore.to_map(body))
                 _request.headers["x-ca-signature"] = APIGatewayUtilClient.get_signature(_request, self._app_secret)
+                _request.headers["ca_version"] = "1"
                 _last_request = _request
                 _response = TeaCore.do_action(_request, _runtime)
                 if _response.body.get("code") == 20056:
@@ -135,7 +138,7 @@ class Client:
                 raise e
         raise UnretryableException(_last_request, _last_exception)
 
-    async def async_do_request(self, pathname, protocol, method, header, body, runtime):
+    async def async_do_request(self, pathname: str, protocol: str, method: str, header: dict[str, str], body, runtime):
         """Send request
 
         @type pathname: str
@@ -194,6 +197,7 @@ class Client:
                 _request.protocol = UtilClient.default_string(self._protocol, protocol)
                 _request.method = UtilClient.default_string(method, "POST")
                 _request.pathname = pathname
+                _request.query = {"x-ca-request-id": str(uuid.uuid4())}
                 _request.headers = TeaCore.merge(
                     {
                         "host": self._domain,
@@ -201,8 +205,10 @@ class Client:
                         "x-ca-nonce": UtilClient.get_nonce(),
                         "x-ca-key": self._app_key,
                         "x-ca-signaturemethod": "HmacSHA256",
-                        "accept": "application/json",
-                        "user-agent": self.get_user_agent(),
+                        "accept": "application/json; charset=utf-8",
+                        "Accept-Encoding": "gzip",
+                        "user-agent": "ALIYUN-ANDROID-DEMO",
+                        "x-ca-timestamp": str(int(time.time_ns())),
                     },
                     header,
                 )
@@ -215,6 +221,7 @@ class Client:
                     )
                     _request.body = UtilClient.to_jsonstring(TeaCore.to_map(body))
                 _request.headers["x-ca-signature"] = APIGatewayUtilClient.get_signature(_request, self._app_secret)
+                _request.headers["ca_version"] = "1"
                 _last_request = _request
                 _response = await TeaCore.async_do_action(_request, _runtime)
                 return _response
@@ -231,5 +238,5 @@ class Client:
         @rtype: str
         @return: user agent
         """
-        user_agent = UtilClient.get_user_agent(self._user_agent)
+        user_agent = self._user_agent
         return user_agent

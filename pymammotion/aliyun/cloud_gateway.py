@@ -157,11 +157,7 @@ class CloudIOTGateway:
         if self._region_response is not None:
             return self._region_response
 
-        config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self.domain,
-        )
+        config = Config(app_key=self._app_key, app_secret=self._app_secret, domain=self.domain)
         client = Client(config)
 
         # build request
@@ -180,7 +176,7 @@ class CloudIOTGateway:
         # send request
         try:
             response = await client.async_do_request(
-                "/living/account/region/get", "https", "POST", None, body, RuntimeOptions()
+                "/living/account/region/get", "https", "POST", {}, body, RuntimeOptions()
             )
             logger.debug(response.status_message)
             logger.debug(response.headers)
@@ -202,12 +198,11 @@ class CloudIOTGateway:
             return body
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
-
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in getting regions: " + response_body_dict["msg"])
+            raise Exception("Error in getting regions: " + response_body_dict)
 
         self._region_response = RegionResponse.from_dict(response_body_dict)
         logger.debug("Endpoint: %s", self._region_response.data.mqttEndpoint)
@@ -221,11 +216,7 @@ class CloudIOTGateway:
         if self._region_response.data.apiGatewayEndpoint is not None:
             aep_domain = self._region_response.data.apiGatewayEndpoint
 
-        config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=aep_domain,
-        )
+        config = Config(app_key=self._app_key, app_secret=self._app_secret, domain=aep_domain)
         client = Client(config)
 
         request = CommonParams(api_ver="1.0.0", language="en-US")
@@ -422,9 +413,7 @@ class CloudIOTGateway:
     async def session_by_auth_code(self) -> SessionByAuthCodeResponse:
         """Create a session by auth code."""
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
         client = Client(config)
 
@@ -479,9 +468,7 @@ class CloudIOTGateway:
     async def sign_out(self) -> dict:
         """Invalidate the current IoT session and return the raw response dictionary."""
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
         client = Client(config)
 
@@ -525,9 +512,7 @@ class CloudIOTGateway:
         """Check or refresh the session."""
         logger.debug("Trying to refresh token")
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
         client = Client(config)
 
@@ -598,9 +583,7 @@ class CloudIOTGateway:
     async def list_binding_by_account(self) -> ListingDevAccountResponse:
         """List bindings by account."""
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
 
         client = Client(config)
@@ -642,9 +625,7 @@ class CloudIOTGateway:
     async def list_binding_by_dev(self, iot_id: str):
         """Retrieve the list of accounts bound to the specified device IoT ID."""
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
 
         client = Client(config)
@@ -684,9 +665,7 @@ class CloudIOTGateway:
     async def confirm_share(self, record_list: list[str]) -> bool:
         """Accept pending share invitations for the given list of record IDs."""
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
 
         client = Client(config)
@@ -726,9 +705,7 @@ class CloudIOTGateway:
         """Fetch the list of share notices for the current account (status: 0=accepted, -1=pending, 3=expired)."""
         ### status 0 accepted status -1 ready to be accepted 3 expired
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
 
         client = Client(config)
@@ -814,9 +791,7 @@ class CloudIOTGateway:
                 raise AuthRefreshException("Refresh token expired. Please re-login")
 
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
 
         client = Client(config)
@@ -897,9 +872,7 @@ class CloudIOTGateway:
     async def get_device_properties(self, iot_id: str) -> ThingPropertiesResponse:
         """List bindings by account."""
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
 
         client = Client(config)
@@ -942,9 +915,7 @@ class CloudIOTGateway:
     async def get_device_status(self, iot_id: str) -> ThingPropertiesResponse:
         """List bindings by account."""
         config = Config(
-            app_key=self._app_key,
-            app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
+            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
         )
 
         client = Client(config)

@@ -10,8 +10,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, TypeVar
 
-_T = TypeVar("_T")
-
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.device.staleness_watcher import MapStalenessWatcher
@@ -30,6 +28,8 @@ from pymammotion.transport.base import (
     TransportError,
     TransportType,
 )
+
+_T = TypeVar("_T")
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -720,7 +720,7 @@ class DeviceHandle:
         mqtt: Transport | None = None
         for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
             t = self._transports.get(transport_type)
-            if t is not None and t.is_connected:
+            if t is not None:
                 mqtt = t
                 break
         mqtt_ok = mqtt is not None
