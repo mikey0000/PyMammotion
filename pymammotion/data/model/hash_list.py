@@ -12,15 +12,13 @@ from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 
 
 class PathType(IntEnum):
-    """Path types for NavGetCommData / NavGetCommDataAck ``type`` field.
+    """``type`` field values for NavGetCommData / NavGetCommDataAck.
 
-    These are the numeric values the device uses to identify what kind of
-    map data is carried in a ``toapp_get_commondata_ack`` response.  See
-    ``docs/hash_guide.md`` for a full description of each type.
+    See ``docs/hash_guide.md`` for the full protocol reference.
     """
 
     AREA = 0
-    """Mowing-area (zone) boundary polygon points."""
+    """Mowing-area (zone) boundary points."""
 
     OBSTACLE = 1
     """Keep-out / no-go obstacle boundary points."""
@@ -29,26 +27,26 @@ class PathType(IntEnum):
     """Recorded travel path segments (Luba 1 path-mode)."""
 
     LINE = 10
-    """Stored mowing-line segments (breakpoint / sub_cmd=3 path segments)."""
+    """Breakpoint line segments (sub_cmd=3)."""
 
     DUMP = 12
-    """Dump / clippings-collection zone boundary points."""
+    """Clippings-collection zone boundary points."""
 
     SVG = 13
-    """Pre-rendered SVG map tile (device-side raster overview)."""
+    """Pre-rendered SVG map tile."""
 
     VISUAL_SAFETY_ZONE = 25
-    """Vision-camera detected safety zone (Luba 2 Vision / Pro only)."""
+    """Vision-detected safety zone (Luba 2 Vision / Pro only)."""
 
     VISUAL_OBSTACLE_ZONE = 26
-    """Vision-camera detected obstacle zone (Luba 2 Vision / Pro only)."""
+    """Vision-detected obstacle zone (Luba 2 Vision / Pro only)."""
 
     DYNAMICS_LINE = 18
-    """Live mow-progress path: the actual path the mower has driven so far
-    during the current work session.  Fetched via ``CommonDataSaga`` with
-    ``action=8, type=18`` and stored in ``HashList.dynamics_line``.
-    Unlike the other types this has no hash key — a single request always
-    returns the current session's data in sequential frames."""
+    """Live mow-progress path for the current session.
+
+    Frameless w.r.t. hash keys; stored flat in ``HashList.dynamics_line``.
+    Fetched via ``CommonDataSaga`` with ``action=8, type=18``.
+    """
 
 
 @dataclass
@@ -173,10 +171,9 @@ class FrameList(DataClassORJSONMixin):
 
 @dataclass
 class EdgePoints(DataClassORJSONMixin):
-    """Edge/boundary points received during edgewise mapping (toapp_edge_points).
+    """Edge/boundary points from ``toapp_edge_points``, keyed by hash.
 
-    Keyed by hash in HashList.edge_points.  Frames are appended as they arrive;
-    complete when len(frames) == total_frame.
+    Complete once ``len(frames) == total_frame``.
     """
 
     hash: int = 0
@@ -187,7 +184,7 @@ class EdgePoints(DataClassORJSONMixin):
 
     @property
     def is_complete(self) -> bool:
-        """True when all frames have been received."""
+        """Return True once all frames have arrived."""
         return self.total_frame > 0 and len(self.frames) >= self.total_frame
 
     def missing_frames(self) -> list[int]:
@@ -196,7 +193,7 @@ class EdgePoints(DataClassORJSONMixin):
 
     @property
     def all_points(self) -> list[CommDataCouple]:
-        """Return all points in frame order."""
+        """Return all points concatenated in frame order."""
         result: list[CommDataCouple] = []
         for frame_num in sorted(self.frames):
             result.extend(self.frames[frame_num])
@@ -281,9 +278,11 @@ class AreaHashNameList(DataClassORJSONMixin):
 
 @dataclass
 class HashList(DataClassORJSONMixin):
-    """stores our map data.
-    [hashID, FrameList].
-    hashlist for all our hashIDs for verification
+    """Map data store keyed by hash ID.
+
+    ``root_hash_lists`` holds the device-reported manifest of hash IDs; the
+    per-type dicts (``area``, ``path``, ``obstacle``, …) hold the actual
+    frames as they arrive.
     """
 
     root_hash_lists: list[RootHashList] = field(default_factory=list)
@@ -306,24 +305,18 @@ class HashList(DataClassORJSONMixin):
     plans_stale: bool = False
     edge_points: dict[int, EdgePoints] = field(default_factory=dict)  # hash → EdgePoints
     dynamics_line: list[CommDataCouple] = field(default_factory=list)
-    """Assembled live mow-progress path from the most recent CommonDataSaga
-    (action=8, type=18) response.  Each entry is an (x, y) coordinate pair
-    in the device's local coordinate system.  Cleared and replaced on each
-    successful fetch.  Empty list when no mowing session is active or the
-    first fetch has not completed yet."""
+    """Assembled live mow-progress path from the latest type=18 fetch.
+
+    (x, y) pairs in device-local coordinates.  Replaced wholesale on each
+    successful fetch; empty when no session is active.
+    """
     generated_dynamics_line_geojson: dict[str, Any] = field(default_factory=dict)
-    """GeoJSON FeatureCollection generated from ``dynamics_line`` after each
-    successful fetch.  Contains a single LineString feature representing the
-    path the mower has actually driven in the current session.  Updated in
-    place by ``_apply_dynamics_line_geojson`` in ``client.py``."""
+    """WGS-84 LineString of ``dynamics_line``, regenerated after each fetch."""
     generated_mow_progress_geojson: dict[str, Any] = field(default_factory=dict)
-    """GeoJSON FeatureCollection showing the completed portion of the planned
-    mow path, sliced to ``mowing_state.now_index``.  Updated by
-    ``_apply_mow_progress_geojson`` in ``client.py`` on each state change
-    while the device is actively mowing."""
+    """Completed portion of the planned mow path, sliced to ``now_index``."""
 
     def update_hash_lists(self, hashlist: list[int], bol_hash: int | None = None) -> None:
-        """Prune all map dictionaries to only retain entries whose hash is present in hashlist."""
+        """Drop entries from every per-type dict whose hash isn't in *hashlist*."""
         if not hashlist:
             return
         if bol_hash and bol_hash != 0:
@@ -355,27 +348,21 @@ class HashList(DataClassORJSONMixin):
 
     @property
     def area_names_stale(self) -> bool:
-        """True when area data is present but no area names have been fetched.
-
-        Used by MapStalenessWatcher to trigger a lightweight area-name-only
-        re-fetch without requiring a full map sync.
-        """
+        """Return True when areas exist but none have been named yet."""
         return bool(self.area) and not self.area_name
 
     @property
     def hashlist(self) -> list[int]:
-        """Return all hash IDs from every RootHashList as a flat list."""
+        """Return every hash ID in ``root_hash_lists`` as a flat list."""
         if not self.root_hash_lists:
             return []
-        # Combine data_couple from all RootHashLists
         return [i for root_list in self.root_hash_lists for obj in root_list.data for i in obj.data_couple]
 
     @property
     def area_root_hashlist(self) -> list[int]:
-        """Return hash IDs from RootHashLists whose sub_cmd indicates area data (sub_cmd == 0)."""
+        """Return hash IDs from ``root_hash_lists`` entries with ``sub_cmd == 0`` (area)."""
         if not self.root_hash_lists:
             return []
-        # Combine data_couple from all RootHashLists
         return [
             i
             for root_list in self.root_hash_lists
@@ -385,7 +372,7 @@ class HashList(DataClassORJSONMixin):
         ]
 
     def missing_hashlist(self, sub_cmd: int = 0) -> list[int]:
-        """Return missing hashlist."""
+        """Return hash IDs declared in ``root_hash_lists`` for *sub_cmd* but not yet fetched."""
         all_hash_ids = set(self.area.keys()).union(
             self.path.keys(),
             self.obstacle.keys(),
@@ -406,7 +393,7 @@ class HashList(DataClassORJSONMixin):
         ]
 
     def missing_root_hash_frame(self, hash_list: NavGetHashListAck) -> list[int]:
-        """Return missing root hash frame."""
+        """Return 1-based frame numbers missing from the RootHashList matching *hash_list*."""
         target_root_list = next(
             (
                 rhl
@@ -421,7 +408,10 @@ class HashList(DataClassORJSONMixin):
         return self.find_missing_frames(target_root_list)
 
     def update_root_hash_list(self, hash_list: NavGetHashListData) -> None:
-        """Insert or replace a NavGetHashListData frame in the matching RootHashList, creating one if needed."""
+        """Insert or replace *hash_list* in its matching RootHashList, creating one if absent.
+
+        Matching is by (total_frame, sub_cmd); within a match, by current_frame.
+        """
         target_root_list = next(
             (
                 rhl
@@ -432,22 +422,19 @@ class HashList(DataClassORJSONMixin):
         )
 
         if target_root_list is None:
-            # Create new RootHashList if none exists for this total_frame
             new_root_list = RootHashList(total_frame=hash_list.total_frame, sub_cmd=hash_list.sub_cmd, data=[hash_list])
             self.root_hash_lists.append(new_root_list)
             return
 
         for index, obj in enumerate(target_root_list.data):
             if obj.current_frame == hash_list.current_frame:
-                # Replace the item if current_frame matches
                 target_root_list.data[index] = hash_list
                 return
 
-        # If no match was found, append the new item
         target_root_list.data.append(hash_list)
 
     def missing_hash_frame(self, hash_ack: NavGetHashListAck) -> list[int]:
-        """Returns a combined list of all missing frames across all RootHashLists."""
+        """Return missing frame numbers across every RootHashList matching ``hash_ack.sub_cmd``."""
         missing_frames = []
         filtered_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd == hash_ack.sub_cmd]
         for root_list in filtered_lists:
@@ -457,32 +444,33 @@ class HashList(DataClassORJSONMixin):
         return missing_frames
 
     def missing_frame(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> list[int]:
-        """Return frame numbers not yet received for the FrameList identified by hash_data."""
+        """Return frame numbers not yet received for the FrameList identified by *hash_data*."""
         frame_list = self._get_frame_list_by_type_and_hash(hash_data)
         return self.find_missing_frames(frame_list)
 
     def _get_frame_list_by_type_and_hash(self, hash_data: NavGetCommDataAck | SvgMessageAckT) -> FrameList | None:
-        """Get the appropriate FrameList based on hash_data type and hash."""
+        """Return the FrameList for *hash_data*, or ``None`` if the type isn't tracked.
+
+        SvgMessageAckT keys by ``data_hash``; NavGetCommDataAck keys by ``hash``.
+        """
         path_type_mapping = self._get_path_type_mapping()
         target_dict = path_type_mapping.get(hash_data.type)
 
         if target_dict is None:
             return None
 
-        # Handle SvgMessage with data_hash attribute
         if isinstance(hash_data, SvgMessageAckT):
             return target_dict.get(hash_data.data_hash)
 
-        # Handle NavGetCommDataAck with hash attribute
         return target_dict.get(hash_data.hash)
 
     def update_plan(self, plan: Plan) -> None:
-        """Store a Plan by its plan_id, ignoring plans with a zero total_plan_num."""
+        """Store *plan* by ``plan_id``; drop plans whose ``total_plan_num`` is zero."""
         if plan.total_plan_num != 0:
             self.plan[plan.plan_id] = plan
 
     def _get_path_type_mapping(self) -> dict[int, dict[int, FrameList]]:
-        """Return mapping of PathType to corresponding hash dictionary."""
+        """Return a ``PathType → per-type dict`` mapping for dispatch."""
         return {
             PathType.AREA: self.area,
             PathType.OBSTACLE: self.obstacle,
@@ -495,8 +483,12 @@ class HashList(DataClassORJSONMixin):
         }
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
-        """Update the map data."""
+        """Route *hash_data* into the appropriate per-type dict and return whether it was new.
 
+        AREA frames also auto-assign an ``area_name`` ("area N") if none exists
+        for the hash yet.  DYNAMICS_LINE (type 18) is keyed by frame order and
+        resets on ``current_frame == 1``.
+        """
         if hash_data.type == PathType.AREA and isinstance(hash_data, NavGetCommData):
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
             if not existing_name:
@@ -513,10 +505,8 @@ class HashList(DataClassORJSONMixin):
             self.update_hash_lists(self.hashlist)
             return result
 
-        # DYNAMICS_LINE (type 18) is frameless with respect to hash keys — frames
-        # are assembled by CommonDataSaga and the final flat list is stored via
-        # update_dynamics_line().  If a raw NavGetCommDataAck somehow arrives here
-        # we still handle it gracefully by accumulating the data_couple points.
+        # DYNAMICS_LINE is normally assembled by CommonDataSaga and stored via
+        # update_dynamics_line; handle direct arrivals defensively here.
         if hash_data.type == PathType.DYNAMICS_LINE and isinstance(hash_data, NavGetCommData):
             if hash_data.current_frame == 1:
                 self.dynamics_line = []
@@ -532,21 +522,14 @@ class HashList(DataClassORJSONMixin):
         return False
 
     def update_dynamics_line(self, points: list[CommDataCouple]) -> None:
-        """Replace the live mow-progress path with a freshly assembled point list.
+        """Replace ``dynamics_line`` with *points*.
 
-        Called by ``CommonDataSaga`` (via the client's ``on_complete`` callback)
-        once all frames for a type-18 response have been collected and assembled
-        in order.  Replaces the previous path entirely — the device always returns
-        the full current-session path, not a delta.
+        The device always returns the full current-session path, not a delta.
         """
         self.dynamics_line = points
 
     def find_missing_mow_path_frames(self) -> dict[int, list[int]]:
-        """Find missing frames in current_mow_path grouped by transaction_id.
-
-        Returns a mapping of transaction_id -> list of missing frame numbers.
-        Only transaction_ids with at least one missing frame are included.
-        """
+        """Return ``{transaction_id: [missing_frame, …]}`` for incomplete transactions only."""
         missing_frames: dict[int, list[int]] = {}
 
         if not self.current_mow_path:
@@ -573,16 +556,49 @@ class HashList(DataClassORJSONMixin):
         return missing_frames
 
     def update_mow_path(self, path: MowPath) -> None:
-        """Update the current_mow_path with the latest MowPath data."""
+        """Store *path* at ``current_mow_path[transaction_id][current_frame]``."""
         # TODO check if we need to clear the current_mow_path first
         transaction_id = path.transaction_id
         if transaction_id not in self.current_mow_path:
             self.current_mow_path[transaction_id] = {}
         self.current_mow_path[transaction_id][path.current_frame] = path
 
+    def upsert_edge_frame(
+        self,
+        hash_key: int,
+        action: int,
+        edge_type: int,
+        total_frame: int,
+        current_frame: int,
+        points: list[CommDataCouple],
+    ) -> None:
+        """Insert or update one edge-point frame for *hash_key*.
+
+        ``total_frame`` is refreshed on each call because the device can adjust
+        it mid-stream.
+        """
+        existing = self.edge_points.get(hash_key)
+        if existing is None:
+            existing = EdgePoints(
+                hash=hash_key,
+                action=action,
+                type=edge_type,
+                total_frame=total_frame,
+            )
+            self.edge_points[hash_key] = existing
+        else:
+            existing.total_frame = total_frame
+        existing.frames[current_frame] = points
+
+    def drop_incomplete_frames(self) -> None:
+        """Drop ``area``/``path``/``obstacle`` entries missing any frame."""
+        for target in (self.area, self.path, self.obstacle):
+            for hash_id in [h for h, frame in target.items() if self.find_missing_frames(frame)]:
+                del target[hash_id]
+
     @staticmethod
     def find_missing_frames(frame_list: FrameList | RootHashList | None) -> list[int]:
-        """Return 1-based frame numbers absent from frame_list.data relative to total_frame."""
+        """Return 1-based frame numbers absent from ``frame_list.data``."""
         if frame_list is None:
             return []
 
@@ -595,7 +611,11 @@ class HashList(DataClassORJSONMixin):
 
     @staticmethod
     def _add_hash_data(hash_dict: dict[int, FrameList], hash_data: NavGetCommData | SvgMessage) -> bool:
-        """Insert hash_data into hash_dict, creating a new FrameList or appending a new frame as needed."""
+        """Insert *hash_data* into *hash_dict*; return True if anything was stored.
+
+        Creates a new FrameList for a first sighting, otherwise appends the
+        frame unless its ``current_frame`` is already present.
+        """
         if isinstance(hash_data, SvgMessage):
             if hash_dict.get(hash_data.data_hash, None) is None:
                 hash_dict[hash_data.data_hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
@@ -632,16 +652,16 @@ class HashList(DataClassORJSONMixin):
         return False
 
     def invalidate_maps(self, bol_hash: int) -> None:
-        """Clear root_hash_lists if the locally computed area hash no longer matches the device-reported bol_hash."""
+        """Clear ``root_hash_lists`` if its computed hash no longer matches *bol_hash*."""
         if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
             self.root_hash_lists = []
 
     def invalidate_mow_path(self, path_hash: int) -> None:
-        """Clear current_mow_path when ub_path_hash transitions to 0 (job ended).
+        """Clear cached mow-path data once the job has ended.
 
-        Only clears on transition to zero — ub_path_hash changes during a mow
-        as the device advances through segments, so non-zero transitions must
-        not discard already-fetched cover path data.
+        Only fires for ``path_hash in (0, 1)``.  Non-zero mid-job values must
+        be preserved — the device advances ub_path_hash through segments during
+        a mow and wiping on every change would discard live data.
         """
         if path_hash == 0 or path_hash == 1:
             self.current_mow_path = {}
@@ -650,11 +670,10 @@ class HashList(DataClassORJSONMixin):
             self.last_ub_path_hash = 0
 
     def has_mow_path_for_hash(self, ub_path_hash: int) -> bool:
-        """Return True if ub_path_hash appears as path_hash in any transaction's first packet.
+        """Return True if cover-path data for *ub_path_hash* is already cached.
 
-        Checks current_mow_path[transaction_id][frame].path_packets[0].path_hash
-        across all transactions, so the caller can determine whether cover path
-        data for the device's current segment is already held locally.
+        Matches against ``path_packets[0].path_hash`` in any transaction's first
+        frame — the device uses ub_path_hash to identify the active segment.
         """
         for frames in self.current_mow_path.values():
             for mow_path in frames.values():
@@ -663,18 +682,12 @@ class HashList(DataClassORJSONMixin):
         return False
 
     def invalidate_breakpoint_line(self, ub_path_hash: int) -> bool:
-        """Synchronise self.line to the device's current ub_path_hash.
+        """Sync ``self.line`` to the device's active breakpoint hash; return True if a fetch is needed.
 
-        self.line holds type-10 breakpoint line data (sub cmd 3), keyed by
-        ub_path_hash.  The device reports the hash of the line segment it has
-        breakpointed on via work.ub_path_hash.
-
-        - Zero means the mower is not on a breakpoint line; clear everything.
-        - Non-zero: retain only the entry matching ub_path_hash (the currently
-          active line) and discard any others that are now stale.
-
-        Returns True if the caller should re-fetch line data from the device
-        (i.e. the active hash is not yet cached), False if no re-fetch is needed.
+        ``self.line`` caches type-10 breakpoint segments keyed by ub_path_hash.
+        Passing 0 clears the cache (mower is not on a breakpoint line).  A
+        non-zero hash keeps only the matching entry and discards stale ones;
+        returns True when the active hash isn't yet cached.
         """
         if ub_path_hash == 0:
             self.line = {}
@@ -683,7 +696,7 @@ class HashList(DataClassORJSONMixin):
         return ub_path_hash not in self.line
 
     def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
-        """Generate geojson from frames."""
+        """Rebuild ``generated_geojson`` from the cached frames."""
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
         coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
@@ -700,7 +713,7 @@ class HashList(DataClassORJSONMixin):
         )
 
     def generate_mowing_geojson(self, rtk: LocationPoint) -> Any:
-        """Generate geojson from frames."""
+        """Rebuild ``generated_mow_path_geojson`` from the cached mow-path frames."""
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
         coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
@@ -721,12 +734,11 @@ class HashList(DataClassORJSONMixin):
         path_pos_x: int,
         path_pos_y: int,
     ) -> None:
-        """Generate and store the mow-progress GeoJSON.
+        """Slice ``current_mow_path`` to *now_index* and store as progress GeoJSON.
 
-        Slices ``current_mow_path`` to ``now_index`` and stores the result in
-        ``generated_mow_progress_geojson``.  A no-op when the RTK location is
-        unknown (latitude == 0), ``now_index`` is negative, or there is no
-        current mow path.
+        No-op when RTK isn't fixed (``latitude == 0``), ``now_index`` is
+        negative, or no mow path is cached.  ``path_pos_x``/``path_pos_y`` are
+        device-side integers scaled by 1e4.
         """
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
@@ -748,12 +760,9 @@ class HashList(DataClassORJSONMixin):
         )
 
     def apply_dynamics_line_geojson(self, rtk: LocationPoint) -> None:
-        """Generate and store the dynamics-line GeoJSON.
+        """Convert ``dynamics_line`` to a WGS-84 LineString GeoJSON.
 
-        Converts ``dynamics_line`` (raw x/y metre offsets from the RTK base) to
-        a GeoJSON LineString in WGS-84 and stores the result in
-        ``generated_dynamics_line_geojson``.  A no-op when the RTK location is
-        unknown or the dynamics line has fewer than two points.
+        No-op when RTK isn't fixed or fewer than two points have been received.
         """
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 

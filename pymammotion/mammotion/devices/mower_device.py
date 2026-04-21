@@ -104,17 +104,4 @@ class MammotionMowerDevice(MammotionBaseDevice, ABC):
         if len(self.mower.map.root_hash_lists) == 0 or len(self.mower.map.missing_hashlist()) > 0:
             await self.queue_command("get_all_boundary_hash_list", sub_cmd=0)
 
-        for hash_id, frame in list(self.mower.map.area.items()):
-            missing_frames = self.mower.map.find_missing_frames(frame)
-            if len(missing_frames) > 0:
-                del self.mower.map.area[hash_id]
-
-        for hash_id, frame in list(self.mower.map.path.items()):
-            missing_frames = self.mower.map.find_missing_frames(frame)
-            if len(missing_frames) > 0:
-                del self.mower.map.path[hash_id]
-
-        for hash_id, frame in list(self.mower.map.obstacle.items()):
-            missing_frames = self.mower.map.find_missing_frames(frame)
-            if len(missing_frames) > 0:
-                del self.mower.map.obstacle[hash_id]
+        self.mower.map.drop_incomplete_frames()

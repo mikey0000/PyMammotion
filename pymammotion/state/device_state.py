@@ -173,7 +173,17 @@ class DeviceStateMachine:
         )
 
     def _diff(self, old: DeviceSnapshot, new: DeviceSnapshot) -> frozenset[str]:
-        """Return field names that changed, excluding sequence, timestamp, raw."""
+        """Return the names of changed fields across snapshot + device model.
+
+        Walks both the snapshot's promoted summary fields (``connection_state``,
+        ``online``, ``enabled``, ``battery_level``) AND the top-level fields of
+        ``raw`` (the underlying Device), so deep mutations such as
+        ``report_data.dev.sys_status`` are detected.
+
+        The state reducer shares unchanged sub-trees with the previous snapshot
+        by identity, so the ``is`` check short-circuits the expensive recursive
+        dataclass ``__eq__`` for most fields on every incoming message.
+        """
         skip: frozenset[str] = frozenset({"sequence", "timestamp", "raw"})
         changed: set[str] = set()
         for f in dataclasses.fields(old):
@@ -181,4 +191,10 @@ class DeviceStateMachine:
                 continue
             if getattr(old, f.name) != getattr(new, f.name):
                 changed.add(f.name)
+        if dataclasses.is_dataclass(old.raw) and dataclasses.is_dataclass(new.raw):
+            for f in dataclasses.fields(old.raw):
+                old_val = getattr(old.raw, f.name)
+                new_val = getattr(new.raw, f.name)
+                if old_val is not new_val and old_val != new_val:
+                    changed.add(f.name)
         return frozenset(changed)

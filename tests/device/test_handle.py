@@ -422,3 +422,43 @@ async def test_snapshot_raw_updates_after_on_raw_message() -> None:
     await handle.on_raw_message(bytes(msg))
 
     assert handle.snapshot.raw.report_data.dev.battery_val == 42
+
+
+# ---------------------------------------------------------------------------
+# Regression: protobuf path must emit even when no snapshot-level field changes.
+# DeviceSnapshot._diff only looks at connection_state/online/enabled/battery.
+# A nav message updating mower_state.rain_detection (or any other deep field)
+# must still propagate to state_changed_bus subscribers.
+# ---------------------------------------------------------------------------
+
+
+async def test_on_raw_message_emits_even_when_diff_is_empty() -> None:
+    """state_changed_bus must fire for every protobuf message.
+
+    Subscribers (watch_field, HA coordinators) inspect snapshot.raw fields
+    that _diff() deliberately skips. If we gate emission on _diff, updates
+    to deep fields like mower_state.rain_detection never reach HA.
+    """
+    from pymammotion.data.model.device import MowerDevice
+    from pymammotion.proto import LubaMsg, MctlNav, NavSysParamMsg
+
+    handle = DeviceHandle(
+        device_id="dev-emit",
+        device_name="Luba-Emit",
+        initial_device=MowerDevice(name="Luba-Emit"),
+    )
+
+    received: list[object] = []
+
+    async def _handler(snapshot: object) -> None:
+        received.append(snapshot)
+
+    handle.subscribe_state_changed(_handler)
+
+    # A nav_sys_param_cmd only mutates mower_state.rain_detection — no snapshot
+    # top-level field changes, so _diff returns an empty frozenset.
+    msg = LubaMsg(nav=MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=3, context=1)))
+    await handle.on_raw_message(bytes(msg))
+
+    assert len(received) == 1
+    assert handle.snapshot.raw.mower_state.rain_detection is True

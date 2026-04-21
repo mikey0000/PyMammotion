@@ -26,7 +26,6 @@ from pymammotion.data.model.device_info import DeviceFirmwares, SideLight
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     CommDataCouple,
-    EdgePoints,
     MowPath,
     NavGetCommData,
     NavGetHashListData,
@@ -138,57 +137,115 @@ class MowerStateReducer(StateReducer):
 
         match sub_msg_type:
             case "nav":
-                # nav messages may modify map, work, mower_state, non_work_hours,
-                # and work_session_result — deep-copy all of those.
-                device.map = copy.deepcopy(current.map)
-                device.work = copy.deepcopy(current.work)
-                device.mower_state = copy.deepcopy(current.mower_state)
-                device.non_work_hours = copy.deepcopy(current.non_work_hours)
-                device.work_session_result = copy.deepcopy(current.work_session_result)
+                # Granular dispatch — each nav sub-message only mutates a
+                # subset of fields.  Copying map (HashList) on every nav
+                # message was a ~150 MiB/h leak (#125).
+                nav_msg_name = betterproto2.which_one_of(message.nav, "SubNavMsg")[0]
+                match nav_msg_name:
+                    case (
+                        "toapp_gethash_ack"
+                        | "toapp_get_commondata_ack"
+                        | "cover_path_upload"
+                        | "todev_planjob_set"
+                        | "all_plan_task"
+                        | "toapp_svg_msg"
+                        | "toapp_all_hash_name"
+                        | "toapp_edge_points"
+                    ):
+                        device.map = copy.deepcopy(current.map)
+                    case "bidire_reqconver_path":
+                        pass  # handler wholesale-rebinds device.work
+                    case "nav_sys_param_cmd":
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                    case "todev_unable_time_set":
+                        device.non_work_hours = copy.deepcopy(current.non_work_hours)
+                    case "toapp_work_report_ack" | "toapp_work_report_upload":
+                        device.work_session_result = copy.deepcopy(current.work_session_result)
+                    case _:
+                        # Unknown nav sub-message — defensively copy everything.
+                        device.map = copy.deepcopy(current.map)
+                        device.work = copy.deepcopy(current.work)
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                        device.non_work_hours = copy.deepcopy(current.non_work_hours)
+                        device.work_session_result = copy.deepcopy(current.work_session_result)
                 self._update_nav_data(device, message)
 
             case "sys":
-                # Dispatch based on the inner sys sub-message to be more granular.
-                # The most frequent message (system_tard_state_tunnel) only needs
-                # mowing_state + location, so we avoid deep-copying report_data /
-                # device_firmwares / events on those calls.
-                sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
-                match sys_msg[0]:
+                # Granular dispatch.  The hot path (system_tard_state_tunnel,
+                # ~4x/sec during mowing) avoids copying mowing_state because
+                # run_state_update() wholesale-rebinds it.
+                sys_msg_name = betterproto2.which_one_of(message.sys, "SubSysMsg")[0]
+                match sys_msg_name:
                     case "system_tard_state_tunnel":
-                        # Hot path: ~4x/sec during mowing — minimal copy.
-                        device.mowing_state = copy.deepcopy(current.mowing_state)
+                        # run_state_update rebinds device.mowing_state wholesale;
+                        # only location is mutated in-place.
                         device.location = copy.deepcopy(current.location)
                     case "system_update_buf":
-                        # Touches location and errors only.
+                        # buffer() mutates location, errors, and events in-place.
                         device.location = copy.deepcopy(current.location)
                         device.errors = copy.deepcopy(current.errors)
                         device.events = copy.deepcopy(current.events)
                     case "toapp_report_data":
-                        # Touches report_data, location, map, work, device_firmwares.
+                        # update_report_data always mutates report_data and location;
+                        # map/work/device_firmwares are mutated conditionally — copy
+                        # defensively since the condition isn't known in advance.
                         device.report_data = copy.deepcopy(current.report_data)
                         device.location = copy.deepcopy(current.location)
                         device.map = copy.deepcopy(current.map)
                         device.work = copy.deepcopy(current.work)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
+                    case "toapp_dev_fw_info":
+                        # Only sys handler that touches both mower_state and device_firmwares.
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                        device.device_firmwares = copy.deepcopy(current.device_firmwares)
+                    case (
+                        "bidire_comm_cmd"
+                        | "todev_time_ctrl_light"
+                        | "toapp_lora_cfg_rsp"
+                        | "device_product_type_info"
+                    ):
+                        # These handlers only touch mower_state.
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                    case "mow_to_app_info":
+                        pass  # mow_info() is a no-op — nothing to copy.
                     case _:
-                        # Other sys messages (firmware info, light, product type, etc.)
-                        # touch mower_state and device_firmwares.
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                 self._update_sys_data(device, message)
 
             case "driver":
-                # driver messages touch mower_state and events.
-                device.mower_state = copy.deepcopy(current.mower_state)
-                device.events = copy.deepcopy(current.events)
+                # Granular dispatch — knife events touch only `events`,
+                # everything else only touches `mower_state`.
+                drv_msg_name = betterproto2.which_one_of(message.driver, "SubDrvMsg")[0]
+                match drv_msg_name:
+                    case "toapp_knife_status_change":
+                        device.events = copy.deepcopy(current.events)
+                    case "current_cutter_mode" | "cutter_mode_ctrl_by_hand" | "bidire_speed_read_set":
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                    case _:
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                        device.events = copy.deepcopy(current.events)
                 self._update_driver_data(device, message)
 
             case "net":
-                # net messages touch mower_state, report_data, device_firmwares, events.
-                device.mower_state = copy.deepcopy(current.mower_state)
-                device.report_data = copy.deepcopy(current.report_data)
-                device.device_firmwares = copy.deepcopy(current.device_firmwares)
-                device.events = copy.deepcopy(current.events)
+                # Granular dispatch — most net handlers only touch one field.
+                net_msg_name = betterproto2.which_one_of(message.net, "NetSubType")[0]
+                match net_msg_name:
+                    case "toapp_wifi_iot_status" | "toapp_networkinfo_rsp":
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                    case "toapp_devinfo_resp":
+                        # Writes both mower_state.swversion and device_firmwares.device_version.
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                        device.device_firmwares = copy.deepcopy(current.device_firmwares)
+                    case "toapp_upgrade_report":
+                        device.events = copy.deepcopy(current.events)
+                    case "toapp_mnet_info_rsp":
+                        device.report_data = copy.deepcopy(current.report_data)
+                    case _:
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                        device.report_data = copy.deepcopy(current.report_data)
+                        device.device_firmwares = copy.deepcopy(current.device_firmwares)
+                        device.events = copy.deepcopy(current.events)
                 self._update_net_data(device, message)
 
             case "mul":
@@ -297,21 +354,14 @@ class MowerStateReducer(StateReducer):
                 device.non_work_hours.end_time = nav_non_work_time.unable_end_time
             case "toapp_edge_points":
                 edge_msg: NavEdgePoints = nav_msg[1]
-                hash_key = edge_msg.hash
-                existing = device.map.edge_points.get(hash_key)
-                if existing is None:
-                    existing = EdgePoints(
-                        hash=hash_key,
-                        action=edge_msg.action,
-                        type=edge_msg.type,
-                        total_frame=edge_msg.total_frame,
-                    )
-                    device.map.edge_points[hash_key] = existing
-                else:
-                    # Update metadata in case it changed (e.g. total_frame)
-                    existing.total_frame = edge_msg.total_frame
-                points = [CommDataCouple(x=p.x, y=p.y) for p in edge_msg.data_couple]
-                existing.frames[edge_msg.current_frame] = points
+                device.map.upsert_edge_frame(
+                    hash_key=edge_msg.hash,
+                    action=edge_msg.action,
+                    edge_type=edge_msg.type,
+                    total_frame=edge_msg.total_frame,
+                    current_frame=edge_msg.current_frame,
+                    points=[CommDataCouple(x=p.x, y=p.y) for p in edge_msg.data_couple],
+                )
             case "toapp_work_report_ack" | "toapp_work_report_upload":
                 work_report: WorkReportInfoAck = nav_msg[1]
                 device.work_session_result.interrupt_flag = work_report.interrupt_flag
@@ -475,9 +525,7 @@ class MowerStateReducer(StateReducer):
                         lamp_resp.lamp_bright
                     )
 
-    def apply_properties(
-        self, current: MowingDevice, properties: ThingPropertiesMessage
-    ) -> MowingDevice:
+    def apply_properties(self, current: MowingDevice, properties: ThingPropertiesMessage) -> MowingDevice:
         """Extract mower state from a thing/properties JSON push.
 
         Mirrors the mapping in :meth:`MowerDevice.update_device_firmwares` for

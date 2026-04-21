@@ -241,7 +241,7 @@ class DeviceHandle:
           1. Decode bytes → LubaMsg (log and return on error)
           2. Clear mqtt_reported_offline if this message arrived over a cloud transport
           3. Apply LubaMsg to state via StateReducer
-          4. Update DeviceStateMachine, emit to _state_changed_bus if fields changed
+          4. Update DeviceStateMachine and emit the new snapshot
           5. Route LubaMsg to broker for request/response correlation
         """
         # 1. Parse bytes → LubaMsg
@@ -259,9 +259,11 @@ class DeviceHandle:
         # 3. Apply to state via reducer (returns a new MowingDevice copy)
         updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
 
-        # 4. Update state machine and emit if anything observable changed
+        # 4. Update state machine and emit if anything in the model changed.
+        # _diff now walks `raw`, so deep-field mutations (e.g.
+        # report_data.dev.sys_status) correctly produce a non-empty `changed`.
         snapshot, changed = self.state_machine.apply(updated_device, self._availability)
-        if changed:
+        if changed and not self._stopping:
             await self._state_changed_bus.emit(snapshot)
 
         # 5. Route to broker for request/response correlation
