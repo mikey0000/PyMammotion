@@ -53,7 +53,6 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
-from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
@@ -68,7 +67,6 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.http.model.http import MQTTConnection
-    from pymammotion.state.device_state import DeviceSnapshot
 
 _logger = logging.getLogger(__name__)
 
@@ -125,47 +123,37 @@ class MammotionClient:
     # ------------------------------------------------------------------
 
     def setup_device_watchers(self, device_name: str) -> Subscription | None:
-        """Subscribe to state changes for a device.
+        """Register auto-fetch watchers for *device_name*.
 
-        Automatically triggers MowPathSaga (fetch-only, no re-planning) when the
-        device is found to be actively working (non-empty work_tasks_event.ids and
-        a non-zero report_data.work.path_hash) but the cover path has not yet been
-        collected.  Call teardown_device_watchers() when the device is removed.
-
-        Returns the Subscription handle, or None if the device is not yet registered.
+        Fires MowPathSaga (fetch-only, no re-planning) when the device's
+        ``work.ub_path_hash`` or ``work.path_hash`` changes to a valid value
+        while no cover path is cached.  Call ``teardown_device_watchers`` to
+        cancel.  Returns the first registered Subscription, or None if the
+        device isn't registered yet.
         """
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             return None
 
-        async def _on_state_changed(snapshot: DeviceSnapshot) -> None:
-            device = snapshot.raw
-            task_ids = device.events.work_tasks_event.ids
+        async def _on_path_hashes_changed(_hashes: tuple[int, int]) -> None:
+            device = cast(MowerDevice, handle.snapshot.raw)
             work = device.report_data.work
-            actively_working = (
-                bool(task_ids)
-                or work.ub_path_hash != 0
-                or work.path_hash != 0
-                or device.report_data.dev.sys_status == WorkMode.MODE_WORKING.value
+            # path_hash in (0, 1) means "no job" / "job ended".
+            has_active_job = work.ub_path_hash != 0 or work.path_hash not in (0, 1)
+            if not has_active_job or device.map.current_mow_path:
+                return
+            if handle.queue.is_saga_active:
+                return
+            _logger.debug(
+                "Device %s path_hash=%d ub_path_hash=%d — auto-fetching cover path",
+                device_name,
+                work.path_hash,
+                work.ub_path_hash,
             )
-            path_missing = actively_working and not device.map.current_mow_path
-
-            if path_missing:
-                if handle.queue.is_saga_active:
-                    return
-                _logger.debug(
-                    "Device %s is actively working — auto-fetching cover path for %d zone(s)",
-                    device_name,
-                    len(task_ids),
-                )
-                try:
-                    await self.start_mow_path_saga(
-                        device_name,
-                        zone_hashs=[],
-                        skip_planning=True,
-                    )
-                except Exception:  # noqa: BLE001
-                    _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
+            try:
+                await self.start_mow_path_saga(device_name, zone_hashs=[], skip_planning=True)
+            except Exception:  # noqa: BLE001
+                _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
         async def _on_mow_progress_changed(_pos: tuple[int, int]) -> None:
             device = cast(MowerDevice, handle.snapshot.raw)
@@ -179,7 +167,10 @@ class MammotionClient:
                     work.path_pos_y,
                 )
 
-        sub = handle.subscribe_state_changed(_on_state_changed)
+        sub = handle.watch_field(
+            lambda s: (s.raw.report_data.work.ub_path_hash, s.raw.report_data.work.path_hash),
+            _on_path_hashes_changed,
+        )
         progress_sub = handle.watch_field(
             lambda s: (s.raw.report_data.work.path_pos_x, s.raw.report_data.work.path_pos_y),
             _on_mow_progress_changed,
