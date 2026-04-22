@@ -8,7 +8,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from bleak.exc import BleakError
-from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+from bleak import BleakClient
+from bleak_retry_connector import establish_connection
 
 from pymammotion.bluetooth.const import UUID_NOTIFICATION_CHARACTERISTIC
 from pymammotion.transport.base import (
@@ -66,7 +67,7 @@ class BLETransport(Transport):
         super().__init__()
         self._config = config
         self._ble_device: BLEDevice | None = None
-        self._client: BleakClientWithServiceCache | None = None
+        self._client: BleakClient | None = None
         self._message: BleMessage | None = None
         self._availability: TransportAvailability = TransportAvailability.DISCONNECTED
         self._disconnect_on_idle: bool = True
@@ -128,7 +129,7 @@ class BLETransport(Transport):
 
         try:
             self._client = await establish_connection(
-                BleakClientWithServiceCache,
+                BleakClient,
                 self._ble_device,
                 self._config.device_id,
                 self._handle_disconnect,
