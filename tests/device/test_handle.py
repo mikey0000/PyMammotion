@@ -480,3 +480,35 @@ async def test_on_raw_message_emits_even_when_diff_is_empty() -> None:
 
     assert len(received) == 1
     assert handle.snapshot.raw.mower_state.rain_detection is True
+
+
+# ---------------------------------------------------------------------------
+# MQTT unusable when mqtt_reported_offline: active_transport skips MQTT
+# ---------------------------------------------------------------------------
+
+
+async def test_active_transport_skips_mqtt_when_reported_offline() -> None:
+    """mqtt_reported_offline=True → MQTT treated as unusable; BLE used if registered."""
+    mqtt = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    ble = make_transport(TransportType.BLE, connected=False)  # registered, not connected
+
+    handle = make_handle()
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED, mqtt_reported_offline=True)
+
+    active = handle.active_transport()
+    assert active.transport_type == TransportType.BLE
+
+
+async def test_active_transport_raises_when_only_mqtt_and_offline() -> None:
+    """mqtt_reported_offline=True and no BLE → NoTransportAvailableError."""
+    mqtt = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    handle = make_handle()
+    await handle.add_transport(mqtt)
+
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED, mqtt_reported_offline=True)
+
+    with pytest.raises(NoTransportAvailableError):
+        handle.active_transport()

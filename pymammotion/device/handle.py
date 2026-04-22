@@ -784,8 +784,14 @@ class DeviceHandle:
              regardless of ``prefer_ble``).
           2. If ``prefer_ble`` is True (via argument or ``self._prefer_ble``):
              registered-but-disconnected BLE (caller is expected to reconnect),
-             falling back to MQTT.
-          3. Otherwise: MQTT if registered, falling back to registered BLE.
+             falling back to MQTT when MQTT is usable.
+          3. Otherwise: MQTT if usable, falling back to registered BLE.
+
+        MQTT is considered unusable when the cloud has reported the device as
+        offline (``mqtt_reported_offline`` is True).  In that state we raise
+        ``NoTransportAvailableError`` rather than firing commands into the
+        cloud that the device can't receive.  The flag is automatically
+        cleared by ``on_raw_message`` as soon as any MQTT frame arrives.
 
         Args:
             prefer_ble: Per-call override.  When None (default) the handle's
@@ -793,7 +799,7 @@ class DeviceHandle:
                         BLE for a single call without mutating the handle state.
 
         Raises:
-            NoTransportAvailableError: if nothing is registered.
+            NoTransportAvailableError: if nothing usable is registered.
 
         """
         use_ble_first = self._prefer_ble if prefer_ble is None else prefer_ble
@@ -810,14 +816,17 @@ class DeviceHandle:
                 mqtt = t
                 break
         mqtt_registered = mqtt is not None
+        mqtt_usable = mqtt_registered and not mqtt_reported_offline
 
         _logger.debug(
-            "active_transport '%s': prefer_ble=%s ble_registered=%s ble_connected=%s mqtt_registered=%s mqtt_offline=%s",
+            "active_transport '%s': prefer_ble=%s ble_registered=%s ble_connected=%s"
+            " mqtt_registered=%s mqtt_usable=%s mqtt_offline=%s",
             self.device_name,
             use_ble_first,
             ble_registered,
             ble_connected,
             mqtt_registered,
+            mqtt_usable,
             mqtt_reported_offline,
         )
 
@@ -833,7 +842,7 @@ class DeviceHandle:
                     self.device_name,
                 )
                 return ble
-            if mqtt_registered:
+            if mqtt_usable:
                 _logger.debug(
                     "active_transport '%s': BLE preferred but not registered — falling back to %s",
                     self.device_name,
@@ -841,17 +850,18 @@ class DeviceHandle:
                 )
                 return mqtt
         else:
-            if mqtt_registered:
+            if mqtt_usable:
                 _logger.debug("active_transport '%s': selected %s", self.device_name, mqtt.transport_type)
                 return mqtt
             if ble_registered:
-                _logger.debug("active_transport '%s': MQTT not registered — falling back to BLE", self.device_name)
+                _logger.debug("active_transport '%s': MQTT unusable — falling back to BLE", self.device_name)
                 return ble
 
         transport_states = (
             ", ".join(f"{tt.value}={t.availability.value}" for tt, t in self._transports.items()) or "none registered"
         )
-        msg = f"No transport available for device '{self.device_id}' [{transport_states}]"
+        offline_suffix = " (mqtt_reported_offline=True)" if mqtt_reported_offline else ""
+        msg = f"No transport available for device '{self.device_id}' [{transport_states}]{offline_suffix}"
         _logger.debug("active_transport '%s': %s", self.device_name, msg)
         raise NoTransportAvailableError(msg)
 
