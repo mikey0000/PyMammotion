@@ -166,6 +166,8 @@ class MammotionClient:
                     work.path_pos_x,
                     work.path_pos_y,
                 )
+            else:
+                await _on_path_hashes_changed((0, 0))
 
         sub = handle.watch_field(
             lambda s: (s.raw.report_data.work.ub_path_hash, s.raw.report_data.work.path_hash),
