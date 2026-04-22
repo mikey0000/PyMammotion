@@ -206,6 +206,46 @@ class DeviceData(DataClassORJSONMixin):
         raw = (self.sensor_status >> 21) & 0x7
         return SensorCheckState(min(raw, int(SensorCheckState.ERROR)))
 
+    # ------------------------------------------------------------------
+    # vslam_status bit-field accessors
+    #
+    # Packed 32-bit field: the APK splits it into three named sub-bytes at
+    # MACarDataManager.java:10561-10575 (byte 0 / ``raw & 0xFF`` is unused
+    # in the APK we have).  Value-space notes per property below.
+    # ------------------------------------------------------------------
+
+    @property
+    def fuse_status(self) -> int:
+        """Fuse-status sub-byte (vslam_status bits 8-15).
+
+        Stored as ``CarStatusBean.fuseStatus`` in the APK.  Observed values
+        0-5 in the APK code — does **not** share the 0-3 scheme used by
+        ``VioState``.  No named enum constants in the APK.
+        """
+        return (self.vslam_status >> 8) & 0xFF
+
+    @property
+    def vision_distance(self) -> int:
+        """Vision Distance sub-byte (vslam_status bits 16-23).
+
+        Displayed in the app as "Vision Distance" — rendered as ``"(N)"``
+        next to the vision state on the RTK status screen
+        (``RTKStatusFragment.java:1181-1183`` via ``tvRtkVisionDis``).
+        Stored as ``CarStatusBean.dis`` in the APK; no enum — raw integer.
+        """
+        return (self.vslam_status >> 16) & 0xFF
+
+    @property
+    def vision_state(self) -> int:
+        """Vision / VSLAM-state sub-byte (vslam_status bits 24-31).
+
+        Stored as ``CarStatusBean.visionState`` in the APK.  No observed
+        comparisons in the APK code; value space unverified.  Consumers
+        that need named values should compare against the ``VioState``
+        enum cautiously (unconfirmed whether it uses the same 0-3 scheme).
+        """
+        return (self.vslam_status >> 24) & 0xFF
+
 
 @dataclass
 class LoraInfo(DataClassORJSONMixin):
@@ -485,6 +525,7 @@ class BasestationInfo(DataClassORJSONMixin):
     wifi_rssi: int = 0
     lora_channel: int = 0
     mqtt_rtk_status: int = 0
+    app_connect_type: int = 0
     score_info: BaseScore = field(default_factory=BaseScore)
 
     @property

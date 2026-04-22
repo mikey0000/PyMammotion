@@ -195,6 +195,57 @@ class SystemTardStateTunnel(IntEnum):
     UB_ZONE_STATE_HASH_INDEX = 17
 
 
+class VioState(IntEnum):
+    """Visual-inertial odometry signal quality.
+
+    Surfaces on ``vio_to_app_info_msg.vio_state``.  Sourced from the APK's
+    ``SignalHelper.VioSignalType`` interface
+    (``newui/mvp/view/activity/status/newstatus/SignalHelper.java:265``).
+    """
+
+    SIGNAL_NONE = 0
+    SIGNAL_INIT = 1
+    SIGNAL_GOOD = 2
+    SIGNAL_BAD = 3
+
+
+class RTKPositionMode(IntEnum):
+    """Positioning / RTK source mode reported on ``rpt_basestation_info.rtk_status``.
+
+    Labelled "Positioning status" in the app UI.  Sourced from the APK's
+    ``SignalHelper.RTKPositionModeType`` interface
+    (``newui/mvp/view/activity/status/newstatus/SignalHelper.java:217``).
+    """
+
+    #: Antenna Over DataLink — RTK corrections via the LoRa pairing to a base station.
+    RTK_OVER_DATALINK = 0
+    #: RTK Over Internet — network-RTK via the device's 4G/Wi-Fi uplink.
+    RTK_OVER_INTERNET = 1
+    #: iNavi network RTK (cloud-sourced).
+    INAVI_NET_RTK = 2
+    #: iNavi RTK Box (dedicated external box).
+    INAVI_RTK_BOX = 3
+
+
+class AppConnectType(IntEnum):
+    """How the app/client is linked to the device, reported on the RTK base station.
+
+    Surfaces on ``rpt_basestation_info.app_connect_type``.  Sourced from the
+    APK's ``MACarDataManager.java``:
+
+    - ``currentConn 1=ble`` debug string (``:5689, :9444, :9739, :10172``)
+    - ``if (appConnectType != 2 && wifiRssi == 0)`` gate at ``:7774`` —
+      establishes that ``2`` implies Wi-Fi
+
+    No APK reference to other values has been confirmed; ``0`` is treated as
+    the unset/unknown sentinel.
+    """
+
+    UNKNOWN = 0
+    CON_BLE = 1
+    CON_WIFI = 2
+
+
 class WorkMode(IntEnum):
     """Numeric work-mode identifiers reported by the device status field."""
 

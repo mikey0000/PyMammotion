@@ -493,6 +493,7 @@ class MowerStateReducer(StateReducer):
                 info.wifi_rssi = resp.wifi_rssi
                 info.lora_channel = resp.lora_channel
                 info.mqtt_rtk_status = resp.mqtt_rtk_status
+                info.app_connect_type = resp.app_connect_type
                 if resp.score_info is not None:
                     info.score_info = BaseScore(
                         base_score=resp.score_info.base_score,
