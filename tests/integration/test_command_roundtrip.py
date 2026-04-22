@@ -199,8 +199,8 @@ async def test_command_timeout_raises_command_timeout_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_mqtt_preferred_over_ble_by_default() -> None:
-    """With both connected and default preference, MQTT is used (longer range, no proximity needed)."""
+async def test_ble_preferred_when_connected() -> None:
+    """With both connected, BLE wins unconditionally (lower latency, bypasses cloud throttle)."""
     mqtt_transport = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
     ble_transport = _make_transport(TransportType.BLE, connected=True)
 
@@ -210,14 +210,14 @@ async def test_mqtt_preferred_over_ble_by_default() -> None:
     broker = handle.broker
     mock_response = _make_mock_response("toapp_gethash_ack")
 
-    async def mqtt_fake_send(payload: bytes) -> None:
+    async def ble_fake_send(payload: bytes, iot_id: str = "") -> None:  # noqa: ARG001
         async def _deliver() -> None:
             await asyncio.sleep(0.05)
             await broker.on_message(mock_response)
 
         asyncio.get_running_loop().create_task(_deliver())
 
-    mqtt_transport.send.side_effect = mqtt_fake_send
+    ble_transport.send.side_effect = ble_fake_send
 
     handle.queue.start()
     try:
@@ -227,8 +227,8 @@ async def test_mqtt_preferred_over_ble_by_default() -> None:
     finally:
         await handle.stop()
 
-    mqtt_transport.send.assert_awaited_once()
-    ble_transport.send.assert_not_awaited()
+    ble_transport.send.assert_awaited_once()
+    mqtt_transport.send.assert_not_awaited()
 
 
 async def test_ble_used_when_prefer_ble_set() -> None:

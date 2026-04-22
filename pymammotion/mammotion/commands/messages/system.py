@@ -44,7 +44,7 @@ from pymammotion.proto import (
 class MessageSystem(AbstractMessage, ABC):
     """Mixin that builds and serialises system protobuf command messages (reset, clock, reporting, RTK)."""
 
-    def send_order_msg_sys(self, sys) -> bytes:
+    def send_order_msg_sys(self, sys: MctlSys) -> bytes:
         """Serialize a system (MctlSys) payload into a LubaMsg request frame targeting the main controller."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,
@@ -58,9 +58,9 @@ class MessageSystem(AbstractMessage, ABC):
             timestamp=round(time.time() * 1000),
         )
 
-        return luba_msg.SerializeToString()
+        return bytes(luba_msg.SerializeToString())
 
-    def send_order_msg_sys_legacy(self, sys) -> bytes:
+    def send_order_msg_sys_legacy(self, sys: MctlSys) -> bytes:
         """Serialize a system payload into a LubaMsg frame using the legacy fixed receiver address."""
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,
@@ -74,7 +74,7 @@ class MessageSystem(AbstractMessage, ABC):
             timestamp=round(time.time() * 1000),
         )
 
-        return luba_msg.SerializeToString()
+        return bytes(luba_msg.SerializeToString())
 
     def reset_system(self) -> bytes:
         """Send a factory reset command to the device."""
@@ -243,7 +243,8 @@ class MessageSystem(AbstractMessage, ABC):
         i5 = calendar.hour
         i6 = calendar.minute
         i7 = calendar.second
-        i8 = calendar.utcoffset().total_seconds() // 60 if calendar.utcoffset() else 0
+        _utcoffset = calendar.utcoffset()
+        i8 = _utcoffset.total_seconds() // 60 if _utcoffset is not None else 0
         i9 = 1 if calendar.dst() else 0
         logger.debug(f"Print time zone, time zone={i8}, daylight saving time={i9} week={i4}")
         build = MctlSys(
@@ -316,7 +317,7 @@ class MessageSystem(AbstractMessage, ABC):
             count=3,
         )
 
-    def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000):
+    def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000) -> bytes:
         """Send a command to stop all active IoT status reporting subscriptions on the device."""
         # TODO use send_order_msg_sys_legacy
         mctl_sys = MctlSys(
@@ -350,10 +351,52 @@ class MessageSystem(AbstractMessage, ABC):
             timestamp=round(time.time() * 1000),
         )
 
-        return luba_msg.SerializeToString()
+        return bytes(luba_msg.SerializeToString())
 
-    def get_report_cfg(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 2000):
-        """Start full-status IoT reporting covering connectivity, RTK, work, vision, and base station info."""
+    def get_report_cfg(
+        self,
+        timeout: int = 10000,
+        period: int = 1000,
+        no_change_period: int = 2000,
+        count: int = 1,
+    ) -> bytes:
+        """Start full-status IoT reporting covering connectivity, RTK, work, vision, and base station info.
+
+        Wraps the ``todev_report_cfg`` (``ReportInfoCfg``) protobuf sent to the
+        device.  Field mapping (from ``MctrlSys.java`` in the APK):
+
+        ============================  =========================================
+        Field                          Purpose
+        ============================  =========================================
+        ``act``                        ``RPT_START`` (0) to begin reporting,
+                                       ``RPT_STOP`` (1) to end it.
+        ``timeout``                    Request timeout in milliseconds.  The
+                                       device drops the subscription if no new
+                                       config arrives within this window.
+        ``period``                     Interval between reports in ms.  Lower
+                                       = faster updates (e.g. 250 ms → 4 Hz).
+        ``no_change_period``           Report interval in ms when the data
+                                       hasn't changed.  Keeps a heartbeat alive
+                                       without spamming identical payloads.
+        ``count``                      Number of reports before auto-stop.
+                                       ``1`` = one-shot poll (default, matches
+                                       ``homeassistant/mower_api.py`` usage).
+                                       ``0`` = continuous stream until
+                                       ``get_report_cfg_stop`` is sent — use
+                                       this for a live view.
+        ``sub``                        Repeated ``rpt_info_type`` list selecting
+                                       which report channels to subscribe to.
+                                       Populated below: ``RIT_CONNECT``,
+                                       ``RIT_RTK``, ``RIT_DEV_LOCAL``,
+                                       ``RIT_WORK``, ``RIT_DEV_STA``,
+                                       ``RIT_VISION_POINT``, ``RIT_VIO``,
+                                       ``RIT_VISION_STATISTIC``,
+                                       ``RIT_BASESTATION_INFO``.
+        ============================  =========================================
+
+        The ~4 Hz ``system_tard_state_tunnel`` frames observed during active
+        mowing are a separate always-on channel (not controlled by this cfg).
+        """
         # TODO use send_order_msg_sys_legacy
         mctl_sys = MctlSys(
             todev_report_cfg=ReportInfoCfg(
@@ -361,7 +404,7 @@ class MessageSystem(AbstractMessage, ABC):
                 timeout=timeout,
                 period=period,
                 no_change_period=no_change_period,
-                count=1,
+                count=count,
             )
         )
 
@@ -386,7 +429,7 @@ class MessageSystem(AbstractMessage, ABC):
             sys=mctl_sys,
             timestamp=round(time.time() * 1000),
         )
-        return luba_msg.SerializeToString()
+        return bytes(luba_msg.SerializeToString())
 
     def remote_restart(self, force_reset: int = 1) -> bytes:
         """Send a remote restart command.

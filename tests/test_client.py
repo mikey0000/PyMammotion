@@ -491,12 +491,37 @@ async def test_send_command_with_args_prefer_ble_uses_ble_transport() -> None:
     mqtt.send.assert_not_awaited()
 
 
-async def test_send_command_with_args_default_uses_mqtt_transport() -> None:
-    """send_command_with_args without prefer_ble routes through MQTT (default preference)."""
+async def test_send_command_with_args_uses_connected_ble_over_mqtt() -> None:
+    """When both transports are connected, BLE is chosen unconditionally."""
     client = MammotionClient()
 
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     ble = _make_connected_transport(TransportType.BLE)
+
+    handle = make_handle("Luba-MQTT", "Luba-MQTT")
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    fake_bytes = b"\xCA\xFE"
+    patcher = _stub_commands(handle, fake_bytes)
+    try:
+        await client._device_registry.register(handle)
+        await client.send_command_with_args("Luba-MQTT", "get_report_cfg")
+        await _drain(handle)
+    finally:
+        patcher.stop()
+
+    ble.send.assert_awaited_once_with(fake_bytes, iot_id="")
+    mqtt.send.assert_not_awaited()
+
+
+async def test_send_command_with_args_uses_mqtt_when_ble_disconnected() -> None:
+    """When BLE is registered but not connected, MQTT is used."""
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False  # registered but not connected
 
     handle = make_handle("Luba-MQTT", "Luba-MQTT")
     await handle.add_transport(mqtt)

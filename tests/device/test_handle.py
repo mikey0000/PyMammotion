@@ -172,8 +172,8 @@ async def test_registry_unregister_calls_stop() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_active_transport_prefers_mqtt_by_default() -> None:
-    """With both connected, MQTT is preferred by default (longer range, no proximity needed)."""
+async def test_active_transport_prefers_connected_ble_by_default() -> None:
+    """With both connected, BLE wins unconditionally (lower latency, bypasses cloud throttle)."""
     ble_transport = make_transport(TransportType.BLE, connected=True)
     mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
 
@@ -182,7 +182,7 @@ async def test_active_transport_prefers_mqtt_by_default() -> None:
     await handle.add_transport(ble_transport)
 
     active = handle.active_transport()
-    assert active.transport_type == TransportType.CLOUD_ALIYUN
+    assert active.transport_type == TransportType.BLE
 
 
 async def test_active_transport_prefer_ble_flag_reverses_order() -> None:
@@ -205,10 +205,23 @@ async def test_active_transport_prefer_ble_flag_reverses_order() -> None:
     assert active.transport_type == TransportType.BLE
 
 
-async def test_active_transport_prefers_mqtt_even_when_disconnected() -> None:
-    """MQTT is preferred over BLE even when disconnected — send_raw handles reconnect/fallback."""
+async def test_active_transport_prefers_connected_ble_over_disconnected_mqtt() -> None:
+    """Connected BLE always wins, even over a disconnected MQTT — BLE is the faster path."""
     ble_transport = make_transport(TransportType.BLE, connected=True)
     mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=False)
+
+    handle = make_handle()
+    await handle.add_transport(mqtt_transport)
+    await handle.add_transport(ble_transport)
+
+    active = handle.active_transport()
+    assert active.transport_type == TransportType.BLE
+
+
+async def test_active_transport_falls_back_to_mqtt_when_ble_disconnected() -> None:
+    """If BLE is registered but not actively connected, MQTT is used."""
+    ble_transport = make_transport(TransportType.BLE, connected=False)
+    mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
 
     handle = make_handle()
     await handle.add_transport(mqtt_transport)
@@ -362,7 +375,12 @@ async def test_ble_message_does_not_clear_reported_offline() -> None:
 
 
 # ---------------------------------------------------------------------------
-# test 11: BLE fallback when MQTT reports device offline
+# test 11: BLE fallback when MQTT is used and reports the device offline
+#
+# With the current transport-selection rule (connected BLE always wins), this
+# fallback only fires when BLE is *not* connected at selection time — MQTT
+# is picked, it raises DeviceOfflineException, and BLE has since come online
+# (or is available to retry on).
 # ---------------------------------------------------------------------------
 
 
@@ -372,11 +390,10 @@ async def test_ble_message_does_not_clear_reported_offline() -> None:
     ids=["aliyun", "mammotion"],
 )
 async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType) -> None:
-    """When the MQTT send raises DeviceOfflineException and a connected BLE transport
-    exists, the command is retried over BLE without marking the device unavailable."""
+    """When MQTT raises DeviceOfflineException and BLE becomes connected, retry over BLE."""
     handle = make_handle()
     mqtt = make_transport(transport_type, connected=True)
-    ble = make_transport(TransportType.BLE, connected=True)
+    ble = make_transport(TransportType.BLE, connected=False)  # not connected → MQTT chosen
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
     handle.update_availability(transport_type, TransportAvailability.CONNECTED)
@@ -387,7 +404,8 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            # First call (MQTT) fails with DeviceOfflineException
+            # Simulate BLE coming online between MQTT failure and retry
+            ble.is_connected = True
             raise DeviceOfflineException(6205, "iot-id")
         # Second call (BLE) succeeds
 

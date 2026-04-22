@@ -28,8 +28,21 @@ from pymammotion.transport.base import (
     TransportError,
     TransportType,
 )
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES
 
 _T = TypeVar("_T")
+
+#: Keep-alive interval when the mower is actively working / returning, or when
+#: sending over BLE — matches the APK's 20 s ``todev_ble_sync`` heartbeat.
+_KEEP_ALIVE_INTERVAL: float = 20.0
+#: Extended keep-alive interval used when the device is docked/paused/idle AND
+#: the active transport is MQTT — reduces cloud-path chatter while docked.
+#: BLE always uses the short interval regardless of sys_status.
+_KEEP_ALIVE_IDLE_INTERVAL: float = 600.0  # 10 minutes
+#: ``sync_type`` for BLE heartbeats (matches APK ``sendBlueToothDeviceSync(2, ...)``).
+_KEEP_ALIVE_SYNC_TYPE_BLE: int = 2
+#: ``sync_type`` for MQTT/IoT heartbeats.
+_KEEP_ALIVE_SYNC_TYPE_MQTT: int = 3
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -173,6 +186,7 @@ class DeviceHandle:
         self._readiness_checker: ReadinessChecker | None = readiness_checker
         self._staleness_watcher: MapStalenessWatcher | None = None
         self._stopping: bool = False
+        self._keep_alive_task: asyncio.Task[None] | None = None
 
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
@@ -515,13 +529,20 @@ class DeviceHandle:
         return self._event_bus.subscribe(handler)
 
     async def start(self) -> None:
-        """Start the command queue processor."""
+        """Start the command queue processor and the 20 s keep-alive loop."""
         self._stopping = False
         self.queue.start()
+        if self._keep_alive_task is None or self._keep_alive_task.done():
+            self._keep_alive_task = asyncio.get_running_loop().create_task(self._keep_alive_loop())
 
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
         self._stopping = True
+        if self._keep_alive_task is not None and not self._keep_alive_task.done():
+            self._keep_alive_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._keep_alive_task
+        self._keep_alive_task = None
         if self._staleness_watcher is not None:
             self._staleness_watcher.stop()
         await self.queue.stop()
@@ -530,6 +551,63 @@ class DeviceHandle:
         for transport in list(self._transports.values()):
             await transport.disconnect()
         self._transports.clear()
+
+    def keep_alive_interval(self) -> float:
+        """Return the keep-alive sleep duration in seconds for the current state.
+
+        - BLE active → always 20 s.
+        - MQTT active + mower actively mowing/returning → 20 s.
+        - MQTT active + mower docked/paused/idle → 10 min (reduces cloud chatter).
+        - No transport → 20 s so we re-check availability quickly.
+        """
+        try:
+            transport = self.active_transport()
+        except NoTransportAvailableError:
+            return _KEEP_ALIVE_INTERVAL
+        if transport.transport_type == TransportType.BLE:
+            return _KEEP_ALIVE_INTERVAL
+        raw = self.state_machine.current.raw
+        report_data = getattr(raw, "report_data", None)
+        sys_status = getattr(getattr(report_data, "dev", None), "sys_status", 0) if report_data else 0
+        if sys_status in MOWING_ACTIVE_MODES:
+            return _KEEP_ALIVE_INTERVAL
+        return _KEEP_ALIVE_IDLE_INTERVAL
+
+    async def _keep_alive_loop(self) -> None:
+        """Send ``send_todev_ble_sync`` on a variable schedule over the active transport.
+
+        Mirrors the APK's ``handler.sendEmptyMessageDelayed(10001, 20000L)``
+        heartbeat (see ``MACarDataManager.java:13346``), extended with a
+        10-minute interval when the mower is idle over MQTT.  ``sync_type``
+        differs per transport: 2 over BLE, 3 over MQTT/IoT.
+        """
+        while not self._stopping:
+            interval = self.keep_alive_interval()
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
+            if self._stopping:
+                return
+            try:
+                transport = self.active_transport()
+            except NoTransportAvailableError:
+                continue
+            sync_type = (
+                _KEEP_ALIVE_SYNC_TYPE_BLE
+                if transport.transport_type == TransportType.BLE
+                else _KEEP_ALIVE_SYNC_TYPE_MQTT
+            )
+            try:
+                cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
+                await transport.send(cmd_bytes, iot_id=self.iot_id)
+            except Exception:  # noqa: BLE001
+                _logger.debug(
+                    "keep_alive [%s]: send via %s failed",
+                    self.device_name,
+                    transport.transport_type.value,
+                    exc_info=True,
+                )
 
     # ------------------------------------------------------------------
     # Public transport API (replaces private _transports access from HA)
@@ -698,11 +776,16 @@ class DeviceHandle:
         self._prefer_ble = value
 
     def active_transport(self, *, prefer_ble: bool | None = None) -> Transport:
-        """Return the best connected transport.
+        """Return the best transport to send on.
 
-        By default: MQTT preferred, BLE fallback.
-        If prefer_ble=True (either from the handle setting or the per-call override):
-        BLE preferred, MQTT fallback.
+        Selection order:
+          1. **BLE if it's actively connected** — always preferred because it's
+             lower latency and bypasses the cloud throttle (unconditional,
+             regardless of ``prefer_ble``).
+          2. If ``prefer_ble`` is True (via argument or ``self._prefer_ble``):
+             registered-but-disconnected BLE (caller is expected to reconnect),
+             falling back to MQTT.
+          3. Otherwise: MQTT if registered, falling back to registered BLE.
 
         Args:
             prefer_ble: Per-call override.  When None (default) the handle's
@@ -710,13 +793,14 @@ class DeviceHandle:
                         BLE for a single call without mutating the handle state.
 
         Raises:
-            NoTransportAvailableError: if nothing is connected.
+            NoTransportAvailableError: if nothing is registered.
 
         """
         use_ble_first = self._prefer_ble if prefer_ble is None else prefer_ble
 
         ble = self._transports.get(TransportType.BLE)
-        ble_ok = ble is not None
+        ble_registered = ble is not None
+        ble_connected = ble_registered and ble.is_connected
 
         mqtt_reported_offline = self._availability.mqtt_reported_offline
         mqtt: Transport | None = None
@@ -725,41 +809,49 @@ class DeviceHandle:
             if t is not None:
                 mqtt = t
                 break
-        mqtt_ok = mqtt is not None
+        mqtt_registered = mqtt is not None
 
         _logger.debug(
-            "active_transport '%s': prefer_ble=%s ble_registered=%s ble_connected=%s mqtt_connected=%s mqtt_offline=%s",
+            "active_transport '%s': prefer_ble=%s ble_registered=%s ble_connected=%s mqtt_registered=%s mqtt_offline=%s",
             self.device_name,
             use_ble_first,
-            ble is not None,
-            ble_ok,
-            mqtt_ok,
+            ble_registered,
+            ble_connected,
+            mqtt_registered,
             mqtt_reported_offline,
         )
 
+        # Rule 1: an actively-connected BLE link always wins.
+        if ble_connected:
+            _logger.debug("active_transport '%s': selected BLE (actively connected)", self.device_name)
+            return ble
+
         if use_ble_first:
-            if ble_ok:
-                _logger.debug("active_transport '%s': selected BLE", self.device_name)
-                return ble
-            if mqtt_ok:
+            if ble_registered:
                 _logger.debug(
-                    "active_transport '%s': BLE preferred but not connected — falling back to %s",
+                    "active_transport '%s': BLE preferred and registered — returning BLE for caller to (re)connect",
+                    self.device_name,
+                )
+                return ble
+            if mqtt_registered:
+                _logger.debug(
+                    "active_transport '%s': BLE preferred but not registered — falling back to %s",
                     self.device_name,
                     mqtt.transport_type,
                 )
                 return mqtt
         else:
-            if mqtt_ok:
+            if mqtt_registered:
                 _logger.debug("active_transport '%s': selected %s", self.device_name, mqtt.transport_type)
                 return mqtt
-            if ble_ok:
-                _logger.debug("active_transport '%s': MQTT not connected — falling back to BLE", self.device_name)
+            if ble_registered:
+                _logger.debug("active_transport '%s': MQTT not registered — falling back to BLE", self.device_name)
                 return ble
 
         transport_states = (
             ", ".join(f"{tt.value}={t.availability.value}" for tt, t in self._transports.items()) or "none registered"
         )
-        msg = f"No connected transport available for device '{self.device_id}' [{transport_states}]"
+        msg = f"No transport available for device '{self.device_id}' [{transport_states}]"
         _logger.debug("active_transport '%s': %s", self.device_name, msg)
         raise NoTransportAvailableError(msg)
 

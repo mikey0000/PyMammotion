@@ -1,3 +1,3 @@
-from .device_constant import PosType, WorkMode, device_mode
+from .device_constant import MOWING_ACTIVE_MODES, PosType, WorkMode, device_mode
 
-__all__ = ["WorkMode", "device_mode", "PosType"]
+__all__ = ["MOWING_ACTIVE_MODES", "PosType", "WorkMode", "device_mode"]

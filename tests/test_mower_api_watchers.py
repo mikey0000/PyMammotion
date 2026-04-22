@@ -38,6 +38,7 @@ def _make_client_with_handle(
     """
     client = MammotionClient.__new__(MammotionClient)
     client._watcher_subscriptions = {}
+    client._watchdog_cleanups = {}
 
     handle = MagicMock()
     handle.device_name = device_name
@@ -58,6 +59,7 @@ def _make_client_with_handle(
     client._device_registry = registry
 
     client.start_mow_path_saga = AsyncMock()
+    client.send_command_with_args = AsyncMock()
 
     client.setup_device_watchers(device_name)
 
@@ -165,3 +167,107 @@ async def test_watcher_skips_when_saga_already_active() -> None:
     await handlers[0]((42, 0))
 
     client.start_mow_path_saga.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# sys_status watcher: starts/stops the rapid report subscription
+# ---------------------------------------------------------------------------
+
+
+async def test_sys_status_working_starts_rapid_stream() -> None:
+    """Transition into MODE_WORKING must send request_iot_sys(RPT_START)."""
+    from pymammotion.proto import RptAct
+    from pymammotion.utility.constant import WorkMode
+
+    client, handle, handlers = _make_client_with_handle()
+
+    # handlers[2] is the sys_status watcher (order: path_hashes, progress, sys_status)
+    await handlers[2](WorkMode.MODE_WORKING.value)
+
+    client.send_command_with_args.assert_awaited_once()
+    call = client.send_command_with_args.await_args
+    assert call.args == ("Luba-Test", "request_iot_sys")
+    assert call.kwargs["rpt_act"] == RptAct.RPT_START
+    assert call.kwargs["count"] == 0
+    assert call.kwargs["period"] == 1000
+
+
+async def test_sys_status_returning_also_starts_rapid_stream() -> None:
+    """MODE_RETURNING is treated as an active state — stream must start."""
+    from pymammotion.proto import RptAct
+    from pymammotion.utility.constant import WorkMode
+
+    client, _handle, handlers = _make_client_with_handle()
+
+    await handlers[2](WorkMode.MODE_RETURNING.value)
+
+    call = client.send_command_with_args.await_args
+    assert call.kwargs["rpt_act"] == RptAct.RPT_START
+
+
+async def test_sys_status_pause_stops_rapid_stream() -> None:
+    """Transition into MODE_PAUSE must send request_iot_sys(RPT_STOP)."""
+    from pymammotion.proto import RptAct
+    from pymammotion.utility.constant import WorkMode
+
+    client, _handle, handlers = _make_client_with_handle()
+
+    await handlers[2](WorkMode.MODE_PAUSE.value)
+
+    call = client.send_command_with_args.await_args
+    assert call.kwargs["rpt_act"] == RptAct.RPT_STOP
+
+
+async def test_sys_status_charging_stops_rapid_stream() -> None:
+    """Transition into MODE_CHARGING (docked) must send RPT_STOP."""
+    from pymammotion.proto import RptAct
+    from pymammotion.utility.constant import WorkMode
+
+    client, _handle, handlers = _make_client_with_handle()
+
+    await handlers[2](WorkMode.MODE_CHARGING.value)
+
+    call = client.send_command_with_args.await_args
+    assert call.kwargs["rpt_act"] == RptAct.RPT_STOP
+
+
+# ---------------------------------------------------------------------------
+# Saga subscription hooks (stop continuous during saga, restart after)
+# ---------------------------------------------------------------------------
+
+
+async def test_saga_hooks_installed_on_setup() -> None:
+    """setup_device_watchers must wire DeviceCommandQueue.on_saga_start / on_saga_end."""
+    client, handle, _handlers = _make_client_with_handle()
+
+    assert handle.queue.on_saga_start is not None
+    assert handle.queue.on_saga_end is not None
+
+
+async def test_on_saga_start_stops_continuous_stream() -> None:
+    """The on_saga_start hook fires request_iot_sync_continuous_stop."""
+    from pymammotion.proto import RptAct
+
+    client, handle, _handlers = _make_client_with_handle()
+
+    await handle.queue.on_saga_start()
+
+    client.send_command_with_args.assert_awaited_once()
+    call = client.send_command_with_args.await_args
+    assert call.args == ("Luba-Test", "request_iot_sys")
+    assert call.kwargs["rpt_act"] == RptAct.RPT_STOP
+    assert call.kwargs["count"] == 1
+
+
+async def test_on_saga_end_restarts_continuous_stream() -> None:
+    """The on_saga_end hook fires request_iot_sync_continuous (START, count=0)."""
+    from pymammotion.proto import RptAct
+
+    client, handle, _handlers = _make_client_with_handle()
+
+    await handle.queue.on_saga_end()
+
+    call = client.send_command_with_args.await_args
+    assert call.kwargs["rpt_act"] == RptAct.RPT_START
+    assert call.kwargs["count"] == 0
+    assert call.kwargs["period"] == 1000

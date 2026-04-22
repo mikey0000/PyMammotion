@@ -59,6 +59,12 @@ class DeviceCommandQueue:
         self._device_name = device_name
         #: Called on critical errors (AuthError, SagaFailedError) so DeviceHandle can propagate them.
         self.on_critical_error: Callable[[Exception], Awaitable[None]] | None = None
+        #: Fired when an exclusive saga is about to start.  Clients use this to pause the
+        #: rapid-report subscription so it doesn't fight the saga for the MQTT channel.
+        self.on_saga_start: Callable[[], Awaitable[None]] | None = None
+        #: Fired once the saga returns (success or failure).  Pair with ``on_saga_start``
+        #: to restart the subscription after the saga yields the channel.
+        self.on_saga_end: Callable[[], Awaitable[None]] | None = None
 
     @property
     def is_saga_active(self) -> bool:
@@ -124,11 +130,21 @@ class DeviceCommandQueue:
 
         async def _run() -> None:
             self._exclusive_active.clear()
+            if self.on_saga_start is not None:
+                try:
+                    await self.on_saga_start()
+                except Exception:
+                    _logger.exception("on_saga_start callback failed for saga '%s'", saga.name)
             try:
                 saga.device_name = self._device_name
                 await saga.execute(broker)
             finally:
                 self._exclusive_active.set()
+                if self.on_saga_end is not None:
+                    try:
+                        await self.on_saga_end()
+                    except Exception:
+                        _logger.exception("on_saga_end callback failed for saga '%s'", saga.name)
             if on_complete is not None:
                 try:
                     await on_complete()

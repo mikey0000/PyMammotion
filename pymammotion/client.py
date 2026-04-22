@@ -29,6 +29,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
+import betterproto2
+
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
@@ -40,6 +42,7 @@ from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import DeviceRecord, DeviceRecords, Response
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.messaging.map_saga import MapFetchSaga
+from pymammotion.proto import RptAct, RptInfoType
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import (
     AuthError,
@@ -53,7 +56,52 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES
 from pymammotion.utility.device_type import DeviceType
+
+# Rapid report-stream subscription — see docs/report_channels.md for the full
+# channel reference and rationale.
+_RAPID_STREAM_ACTIVE_STATES: frozenset[int] = MOWING_ACTIVE_MODES
+_RAPID_STREAM_CHANNELS: list[RptInfoType] = [
+    RptInfoType.RIT_CONNECT,
+    RptInfoType.RIT_WORK,
+    RptInfoType.RIT_DEV_LOCAL,
+    RptInfoType.RIT_DEV_STA,
+    RptInfoType.RIT_VISION_POINT,
+]
+_RAPID_STREAM_PERIOD_MS: int = 1000  # 1 Hz, matches APK requestConnectingChannels
+
+#: Channels for the continuous subscription (matches HA-Luba async_request_iot_sync_continuous).
+_CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
+    RptInfoType.RIT_DEV_STA,
+    RptInfoType.RIT_DEV_LOCAL,
+    RptInfoType.RIT_WORK,
+    RptInfoType.RIT_MAINTAIN,
+    RptInfoType.RIT_BASESTATION_INFO,
+    RptInfoType.RIT_VIO,
+]
+#: Full channel list used by the one-shot request_iot_sync.
+_ONE_SHOT_CHANNELS: list[RptInfoType] = [
+    RptInfoType.RIT_DEV_STA,
+    RptInfoType.RIT_DEV_LOCAL,
+    RptInfoType.RIT_WORK,
+    RptInfoType.RIT_MAINTAIN,
+    RptInfoType.RIT_BASESTATION_INFO,
+    RptInfoType.RIT_VIO,
+    RptInfoType.RIT_CONNECT,
+    RptInfoType.RIT_FW_INFO,
+    RptInfoType.RIT_VISION_POINT,
+    RptInfoType.RIT_VISION_STATISTIC,
+    RptInfoType.RIT_CUTTER_INFO,
+    RptInfoType.RIT_RTK,
+]
+#: Watchdog window when the mower is actively mowing / returning, or when the
+#: active transport is BLE.  If no ``toapp_report_data`` arrives within this
+#: many seconds, refire the continuous subscription (unless a saga is active).
+_REPORT_DATA_SILENCE_SECONDS: float = 20.0
+#: Extended watchdog window when the mower is docked/paused/idle AND the
+#: active transport is MQTT.  Keeps cloud-path chatter low while docked.
+_REPORT_DATA_IDLE_SILENCE_SECONDS: float = 600.0  # 10 minutes
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -91,6 +139,8 @@ class MammotionClient:
         self._iot_id_to_device_id: dict[str, str] = {}
         # RAII subscriptions for state-change watchers (keyed by device_name)
         self._watcher_subscriptions: dict[str, list[Subscription]] = {}
+        #: Per-device cleanup callbacks (cancels watchdog task + broker subscription).
+        self._watchdog_cleanups: dict[str, Callable[[], None]] = {}
         self._ha_version: str | None = ha_version
 
     # ------------------------------------------------------------------
@@ -123,13 +173,21 @@ class MammotionClient:
     # ------------------------------------------------------------------
 
     def setup_device_watchers(self, device_name: str) -> Subscription | None:
-        """Register auto-fetch watchers for *device_name*.
+        """Register auto-fetch / auto-subscribe watchers for *device_name*.
 
-        Fires MowPathSaga (fetch-only, no re-planning) when the device's
-        ``work.ub_path_hash`` or ``work.path_hash`` changes to a valid value
-        while no cover path is cached.  Call ``teardown_device_watchers`` to
-        cancel.  Returns the first registered Subscription, or None if the
-        device isn't registered yet.
+        Installs three field watchers on the device handle:
+
+        * ``(ub_path_hash, path_hash)`` — fires ``MowPathSaga`` (fetch-only)
+          when either hash transitions to an active value while no cover path
+          is cached.
+        * ``(path_pos_x, path_pos_y)`` — rebuilds ``generated_mow_progress_geojson``
+          as the mower progresses along the path.
+        * ``sys_status`` — starts a 4 Hz ``report_info_cfg`` subscription on
+          transition into WORKING/RETURNING and sends ``RPT_STOP`` on any
+          other transition.
+
+        Call ``teardown_device_watchers`` to cancel.  Returns the first
+        registered Subscription, or None if the device isn't registered yet.
         """
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
@@ -169,6 +227,49 @@ class MammotionClient:
             else:
                 await _on_path_hashes_changed((0, 0))
 
+        async def _on_sys_status_changed(sys_status: int) -> None:
+            try:
+                if sys_status in _RAPID_STREAM_ACTIVE_STATES:
+                    await self.send_command_with_args(
+                        device_name,
+                        "request_iot_sys",
+                        rpt_act=RptAct.RPT_START,
+                        rpt_info_type=_RAPID_STREAM_CHANNELS,
+                        timeout=10000,
+                        period=_RAPID_STREAM_PERIOD_MS,
+                        no_change_period=4000,
+                        count=0,
+                    )
+                    _logger.debug(
+                        "Device %s sys_status=%d — started rapid report stream (%d Hz)",
+                        device_name,
+                        sys_status,
+                        1000 // _RAPID_STREAM_PERIOD_MS,
+                    )
+                else:
+                    await self.send_command_with_args(
+                        device_name,
+                        "request_iot_sys",
+                        rpt_act=RptAct.RPT_STOP,
+                        rpt_info_type=_RAPID_STREAM_CHANNELS,
+                        timeout=10000,
+                        period=_RAPID_STREAM_PERIOD_MS,
+                        no_change_period=4000,
+                        count=0,
+                    )
+                    _logger.debug(
+                        "Device %s sys_status=%d — stopped rapid report stream",
+                        device_name,
+                        sys_status,
+                    )
+            except Exception:  # noqa: BLE001
+                _logger.warning(
+                    "Failed to toggle rapid report stream for %s (sys_status=%d)",
+                    device_name,
+                    sys_status,
+                    exc_info=True,
+                )
+
         sub = handle.watch_field(
             lambda s: (s.raw.report_data.work.ub_path_hash, s.raw.report_data.work.path_hash),
             _on_path_hashes_changed,
@@ -177,8 +278,186 @@ class MammotionClient:
             lambda s: (s.raw.report_data.work.path_pos_x, s.raw.report_data.work.path_pos_y),
             _on_mow_progress_changed,
         )
-        self._watcher_subscriptions[device_name] = [sub, progress_sub]
+        sys_status_sub = handle.watch_field(
+            lambda s: s.raw.report_data.dev.sys_status,
+            _on_sys_status_changed,
+        )
+        self._watcher_subscriptions[device_name] = [sub, progress_sub, sys_status_sub]
+        self._install_report_data_watchdog(device_name)
+        self._install_saga_subscription_hooks(device_name)
         return sub
+
+    # ------------------------------------------------------------------
+    # IoT reporting — request_iot_sys helpers (ported from HA-Luba)
+    # ------------------------------------------------------------------
+
+    async def request_iot_sync(self, device_name: str, *, stop: bool = False) -> None:
+        """Send a one-shot request_iot_sys (count=1) covering the full channel list."""
+        await self.send_command_with_args(
+            device_name,
+            "request_iot_sys",
+            rpt_act=RptAct.RPT_STOP if stop else RptAct.RPT_START,
+            rpt_info_type=_ONE_SHOT_CHANNELS,
+            timeout=10000,
+            period=3000,
+            no_change_period=4000,
+            count=1,
+        )
+
+    async def request_iot_sync_continuous(
+        self,
+        device_name: str,
+        *,
+        stop: bool = False,
+        period: int = 1000,
+        no_change_period: int = 4000,
+    ) -> None:
+        """Start (or stop, via ``stop=True``) a continuous (count=0) report stream."""
+        await self.send_command_with_args(
+            device_name,
+            "request_iot_sys",
+            rpt_act=RptAct.RPT_STOP if stop else RptAct.RPT_START,
+            rpt_info_type=_CONTINUOUS_STREAM_CHANNELS,
+            timeout=10000,
+            period=period,
+            no_change_period=no_change_period,
+            count=0,
+        )
+
+    async def request_iot_sync_continuous_stop(self, device_name: str) -> None:
+        """Explicit stop of the continuous stream — use before an exclusive saga."""
+        await self.send_command_with_args(
+            device_name,
+            "request_iot_sys",
+            rpt_act=RptAct.RPT_STOP,
+            rpt_info_type=_CONTINUOUS_STREAM_CHANNELS,
+            count=1,
+        )
+
+    # ------------------------------------------------------------------
+    # Report-data watchdog: refire continuous sub on 20 s of silence
+    # ------------------------------------------------------------------
+
+    def _install_report_data_watchdog(self, device_name: str) -> None:
+        """Install a watchdog that refires the continuous sub after 20 s of silence.
+
+        Subscribes to unsolicited ``toapp_report_data`` messages; each arrival
+        resets the timer.  If no data arrives within ``_REPORT_DATA_SILENCE_SECONDS``
+        the continuous subscription is resent — unless a saga is active, in
+        which case we defer but keep the timer alive so detection resumes
+        automatically once the saga finishes.
+
+        Stores a cleanup callback in ``self._watchdog_cleanups[device_name]``
+        so ``teardown_device_watchers`` can cancel both the asyncio task and
+        the broker subscription.  Also exposes ``_arm()`` on the state dict
+        so the saga-end hook can prime a fresh window after restarting the
+        subscription.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+
+        state: dict[str, Any] = {"task": None, "arm": None}
+
+        def _current_silence_window() -> float:
+            """Pick the silence window based on active transport + sys_status.
+
+            BLE always uses the short 20 s window.  MQTT uses the long 10 min
+            window when the mower is docked/paused/idle.
+            """
+            try:
+                transport = handle.active_transport()
+            except NoTransportAvailableError:
+                return _REPORT_DATA_SILENCE_SECONDS
+            if transport.transport_type == TransportType.BLE:
+                return _REPORT_DATA_SILENCE_SECONDS
+            raw = handle.snapshot.raw
+            report_data = getattr(raw, "report_data", None)
+            sys_status = getattr(getattr(report_data, "dev", None), "sys_status", 0) if report_data else 0
+            if sys_status in _RAPID_STREAM_ACTIVE_STATES:
+                return _REPORT_DATA_SILENCE_SECONDS
+            return _REPORT_DATA_IDLE_SILENCE_SECONDS
+
+        async def _on_timeout() -> None:
+            window = _current_silence_window()
+            try:
+                await asyncio.sleep(window)
+            except asyncio.CancelledError:
+                return
+            if handle.queue.is_saga_active:
+                _logger.debug(
+                    "report_data watchdog [%s]: silence but saga active — deferring",
+                    device_name,
+                )
+                # Keep the timer alive so detection resumes once the saga finishes.
+                _arm()
+                return
+            _logger.debug(
+                "report_data watchdog [%s]: %ds silence — refiring continuous subscription",
+                device_name,
+                int(window),
+            )
+            try:
+                await self.request_iot_sync_continuous(device_name)
+            except Exception:  # noqa: BLE001
+                _logger.warning("report_data watchdog [%s]: refire failed", device_name, exc_info=True)
+            _arm()
+
+        def _arm() -> None:
+            existing = state["task"]
+            if existing is not None and not existing.done():
+                existing.cancel()
+            state["task"] = asyncio.create_task(_on_timeout())
+
+        async def _on_report_data(msg: Any) -> None:
+            sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
+            if sub_name != "sys":
+                return
+            inner_name, _ = betterproto2.which_one_of(sub_val, "SubSysMsg")
+            if inner_name == "toapp_report_data":
+                _arm()
+
+        broker_sub = handle.broker.subscribe_unsolicited(_on_report_data)
+        state["arm"] = _arm
+        _arm()  # prime the first window
+
+        def _cleanup() -> None:
+            task = state["task"]
+            if task is not None and not task.done():
+                task.cancel()
+            state["task"] = None
+            broker_sub.cancel()
+
+        # Attach `arm` on the cleanup callable so saga-end can re-arm the timer
+        # without needing a second lookup dict.
+        _cleanup._arm = _arm  # type: ignore[attr-defined]
+        self._watchdog_cleanups[device_name] = _cleanup
+
+    def _install_saga_subscription_hooks(self, device_name: str) -> None:
+        """Wire up DeviceCommandQueue so sagas pause/resume the continuous stream."""
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+
+        async def _on_saga_start() -> None:
+            try:
+                await self.request_iot_sync_continuous_stop(device_name)
+            except Exception:  # noqa: BLE001
+                _logger.debug("saga_start stop-stream failed [%s]", device_name, exc_info=True)
+
+        async def _on_saga_end() -> None:
+            try:
+                await self.request_iot_sync_continuous(device_name)
+            except Exception:  # noqa: BLE001
+                _logger.debug("saga_end start-stream failed [%s]", device_name, exc_info=True)
+            # Re-arm the watchdog so the fresh subscription is monitored again.
+            cleanup = self._watchdog_cleanups.get(device_name)
+            arm = getattr(cleanup, "_arm", None) if cleanup is not None else None
+            if arm is not None:
+                arm()
+
+        handle.queue.on_saga_start = _on_saga_start
+        handle.queue.on_saga_end = _on_saga_end
 
     def subscribe_device_status(
         self,
@@ -208,9 +487,17 @@ class MammotionClient:
         return handle.subscribe_device_event(handler) if handle is not None else None
 
     def teardown_device_watchers(self, device_name: str) -> None:
-        """Cancel state-change subscriptions for the named device."""
+        """Cancel state-change subscriptions and the report-data watchdog for *device_name*."""
         for sub in self._watcher_subscriptions.pop(device_name, []):
             sub.cancel()
+        cleanup = self._watchdog_cleanups.pop(device_name, None)
+        if cleanup is not None:
+            cleanup()
+        # Drop the saga hooks so callbacks don't fire after teardown.
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is not None:
+            handle.queue.on_saga_start = None
+            handle.queue.on_saga_end = None
 
     def setup_all_mower_watchers(self) -> None:
         """Set up state-change watchers for all registered mower devices.

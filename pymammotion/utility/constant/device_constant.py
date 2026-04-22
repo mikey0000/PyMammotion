@@ -235,6 +235,11 @@ NO_REQUEST_MODES = (
     WorkMode.MODE_MANUAL_MOWING,
 )
 
+#: sys_status values that indicate the device is actively moving (mow / return
+#: to dock).  Used to pick the short keep-alive / watchdog interval; everything
+#: else uses the extended idle interval over MQTT (BLE always uses the short one).
+MOWING_ACTIVE_MODES: frozenset[int] = frozenset({WorkMode.MODE_WORKING.value, WorkMode.MODE_RETURNING.value})
+
 
 def device_connection(connect: ConnectData) -> str:
     """Return string representation of device connection."""

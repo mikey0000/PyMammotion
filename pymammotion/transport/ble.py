@@ -30,10 +30,6 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# How long between periodic BLE keepalive syncs (seconds) — matches the working
-# MammotionBaseBLEDevice implementation.
-_BLE_SYNC_INTERVAL = 130
-
 # How long to wait after the last command before dropping the idle BLE connection.
 _DISCONNECT_DELAY = 10
 
@@ -70,7 +66,6 @@ class BLETransport(Transport):
         self._message: BleMessage | None = None
         self._availability: TransportAvailability = TransportAvailability.DISCONNECTED
         self._disconnect_on_idle: bool = True
-        self._ble_sync_task: asyncio.TimerHandle | None = None
         self._idle_disconnect_timer: asyncio.TimerHandle | None = None
         self._operation_lock: asyncio.Lock = asyncio.Lock()
 
@@ -150,13 +145,13 @@ class BLETransport(Transport):
         # Clear any stale idle-disconnect timer from a previous session.
         self._cancel_idle_disconnect_timer()
 
+        # One-shot sync on connect — subsequent periodic syncs are driven by
+        # DeviceHandle._keep_alive_loop (20 s).
         await self._ble_sync()
-        self._schedule_ble_sync()
 
     async def disconnect(self) -> None:
         """Gracefully disconnect the BLE client."""
         self._cancel_idle_disconnect_timer()
-        self._cancel_ble_sync()
         if self._client is not None and self._client.is_connected:
             await self._ble_sync()
             await self._client.disconnect()
@@ -198,7 +193,6 @@ class BLETransport(Transport):
     def _handle_disconnect(self, _client: Any) -> None:
         """Handle unexpected disconnect reported by bleak."""
         _logger.warning("BLETransport: device %s disconnected", self._config.device_id)
-        self._cancel_ble_sync()
         self._message = None
         self._availability = TransportAvailability.DISCONNECTED
         if self._availability_listeners:
@@ -282,36 +276,14 @@ class BLETransport(Transport):
     # ------------------------------------------------------------------
 
     async def _ble_sync(self) -> None:
-        """Send a BLE sync keepalive to the device."""
+        """Send a one-shot ``todev_ble_sync(2)`` packet.
+
+        Fired on connect (and as a courtesy on clean disconnect).  Periodic
+        heartbeats are driven by ``DeviceHandle._keep_alive_loop`` (20 s).
+        """
         if self._client is None or not self._client.is_connected or self._message is None:
             return
         from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 
         command_bytes = MammotionCommand(self._config.device_id, 0).send_todev_ble_sync(2)
         await self._message.post_custom_data_bytes(command_bytes)
-
-    def _schedule_ble_sync(self) -> None:
-        """Schedule the next periodic BLE sync."""
-        if not self.is_connected:
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self._ble_sync_task = loop.call_later(
-            _BLE_SYNC_INTERVAL,
-            lambda: asyncio.ensure_future(self._run_periodic_sync()),
-        )
-
-    async def _run_periodic_sync(self) -> None:
-        """Send BLE sync and reschedule."""
-        try:
-            await self._ble_sync()
-        finally:
-            self._schedule_ble_sync()
-
-    def _cancel_ble_sync(self) -> None:
-        """Cancel any pending BLE sync timer."""
-        if self._ble_sync_task is not None:
-            self._ble_sync_task.cancel()
-            self._ble_sync_task = None

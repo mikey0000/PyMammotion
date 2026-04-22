@@ -127,19 +127,19 @@ async def test_wifi_only_send_uses_mqtt() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Hybrid — default preference (MQTT first)
+# Hybrid — connected BLE always wins
 # ---------------------------------------------------------------------------
 
 
-async def test_hybrid_default_prefers_mqtt() -> None:
-    """When both are connected and prefer_ble=False, MQTT is chosen."""
+async def test_hybrid_default_prefers_connected_ble() -> None:
+    """When both are connected, BLE is chosen unconditionally (lower latency)."""
     handle = _make_handle(prefer_ble=False)
     mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
     ble = _make_transport(TransportType.BLE, connected=True)
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
 
-    assert handle.active_transport() is mqtt
+    assert handle.active_transport() is ble
 
 
 async def test_hybrid_prefer_ble_chooses_ble() -> None:
