@@ -20,7 +20,7 @@ from pymammotion.mqtt import AliyunMQTT, MammotionMQTT
 logger = logging.getLogger(__name__)
 
 
-__all__ = ["MammotionBLE", "MammotionHTTP", "AliyunMQTT", "MammotionMQTT", "logger"]
+__all__ = ["AliyunMQTT", "MammotionBLE", "MammotionHTTP", "MammotionMQTT", "logger"]
 
 
 # TODO provide interface to pick between mqtt/cloud/bluetooth

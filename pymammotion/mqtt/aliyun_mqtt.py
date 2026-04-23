@@ -229,7 +229,7 @@ class AliyunMQTT:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
 
-    async def _dispatch(self, topic: str, payload: bytes | bytearray | str | int | float | None) -> None:
+    async def _dispatch(self, topic: str, payload: bytes | bytearray | str | float | None) -> None:
         """Parse and route an incoming MQTT message."""
         logger.debug("Message on topic %s", topic)
         if isinstance(payload, (bytes, bytearray)):

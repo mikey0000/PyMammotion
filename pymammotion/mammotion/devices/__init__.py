@@ -14,14 +14,14 @@ from .rtk_manager import MammotionRTKDeviceManager
 
 __all__ = [
     "Mammotion",
-    "MammotionDeviceManager",
-    "MammotionMowerDeviceManager",
     "MammotionBaseBLEDevice",
     "MammotionBaseCloudDevice",
     "MammotionCloud",
+    "MammotionDeviceManager",
     "MammotionMowerBLEDevice",
     "MammotionMowerCloudDevice",
     "MammotionMowerDevice",
+    "MammotionMowerDeviceManager",
     "MammotionRTKBLEDevice",
     "MammotionRTKCloudDevice",
     "MammotionRTKDevice",

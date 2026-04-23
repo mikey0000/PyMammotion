@@ -706,14 +706,13 @@ class GeojsonGenerator:
         if type_id == TYPE_MOWING_ZONE:
             properties.update(AREA_STYLE)
             return {"type": "Polygon", "coordinates": [lonlat_coords]}
-        elif type_id == TYPE_OBSTACLE:
+        if type_id == TYPE_OBSTACLE:
             properties.update(OBSTACLE_STYLE)
             return {"type": "Polygon", "coordinates": [lonlat_coords]}
-        elif type_id == TYPE_PATH and len(lonlat_coords) > 1:
+        if type_id == TYPE_PATH and len(lonlat_coords) > 1:
             properties.update(PATH_STYLE)
             return {"type": "LineString", "coordinates": lonlat_coords}
-        else:
-            return None  # Point (ignore)
+        return None  # Point (ignore)
 
     @staticmethod
     def _save_geojson(geoJSON: GeoJSONCollection) -> None:

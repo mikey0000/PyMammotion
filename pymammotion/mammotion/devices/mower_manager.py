@@ -63,7 +63,7 @@ class MammotionMowerDeviceManager(AbstractDeviceManager):
         """Return True if the active transport has pending commands in its queue."""
         if self.cloud and self.preference == ConnectionPreference.WIFI:
             return not self.cloud.mqtt.command_queue.empty()
-        elif self.ble:
+        if self.ble:
             return not self.ble.command_queue.empty()
         return False
 

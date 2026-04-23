@@ -19,8 +19,7 @@ def find_next_integer(lst: list[int], current_hash: int) -> int | None:
         current_index = lst.index(current_hash)
         if current_index + 1 < len(lst):
             return lst[current_index + 1]
-        else:
-            return None
+        return None
     except ValueError:
         return None
 

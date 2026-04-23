@@ -1,4 +1,4 @@
-from pymammotion.mammotion.commands.mammotion_command import LubaCommandProtoBLE, MammotionCommand
+from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.proto.luba_msg import LubaMsg
 from pymammotion.utility.constant.device_constant import WorkMode, device_mode
 

@@ -37,8 +37,7 @@ class TeaCore:
         """Return the HTTP or HTTPS connection adapter based on the URL scheme prefix."""
         if prefix.upper() == "HTTP":
             return TeaCore.http_adapter
-        else:
-            return TeaCore.https_adapter
+        return TeaCore.https_adapter
 
     @staticmethod
     def _prepare_http_debug(request, symbol):
@@ -66,8 +65,7 @@ class TeaCore:
         host = request.headers.get("host")
         if not host:
             raise RequiredArgumentException("endpoint")
-        else:
-            host = host.rstrip("/")
+        host = host.rstrip("/")
         protocol = f"{request.protocol.lower()}://"
         pathname = request.pathname
 
@@ -238,10 +236,13 @@ class TeaCore:
         """Return True if another retry attempt is permitted according to the retry policy dictionary."""
         if retry_times == 0:
             return True
-        if dic is None or not dic.__contains__("maxAttempts") or dic.get("retryable") is not True and retry_times >= 1:
+        if (
+            dic is None
+            or not dic.__contains__("maxAttempts")
+            or (dic.get("retryable") is not True and retry_times >= 1)
+        ):
             return False
-        else:
-            retry = 0 if dic.get("maxAttempts") is None else int(dic.get("maxAttempts"))
+        retry = 0 if dic.get("maxAttempts") is None else int(dic.get("maxAttempts"))
         return retry >= retry_times
 
     @staticmethod
@@ -297,8 +298,7 @@ class TeaCore:
         """Convert a TeaModel instance to a dict, returning an empty dict for non-TeaModel values."""
         if isinstance(model, TeaModel):
             return model.to_map()
-        else:
-            return dict()
+        return dict()
 
     @staticmethod
     def from_map(model: TeaModel, dic: dict[str, Any]) -> TeaModel:

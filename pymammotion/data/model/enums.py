@@ -25,26 +25,24 @@ class PositionMode(Enum):
         """Return the PositionMode enum member corresponding to the given integer value."""
         if value == 0:
             return PositionMode.FIX
-        elif value == 1:
+        if value == 1:
             return PositionMode.SINGLE
-        elif value == 2:
+        if value == 2:
             return PositionMode.FLOAT
-        elif value == 3:
+        if value == 3:
             return PositionMode.NONE
-        else:
-            return PositionMode.UNKNOWN
+        return PositionMode.UNKNOWN
 
     def __str__(self) -> str:
         if self == PositionMode.FIX:
             return "Fix"
-        elif self == PositionMode.SINGLE:
+        if self == PositionMode.SINGLE:
             return "Single"
-        elif self == PositionMode.FLOAT:
+        if self == PositionMode.FLOAT:
             return "Float"
-        elif self == PositionMode.NONE:
+        if self == PositionMode.NONE:
             return "None"
-        else:
-            return "-"
+        return "-"
 
 
 class RTKStatus(Enum):
@@ -61,26 +59,24 @@ class RTKStatus(Enum):
         """Return the RTKStatus enum member corresponding to the given integer value."""
         if value == 0:
             return RTKStatus.NONE
-        elif value == 1 or value == 2:
+        if value == 1 or value == 2:
             return RTKStatus.SINGLE
-        elif value == 4:
+        if value == 4:
             return RTKStatus.FIX
-        elif value == 5:
+        if value == 5:
             return RTKStatus.FLOAT
-        else:
-            return RTKStatus.UNKNOWN
+        return RTKStatus.UNKNOWN
 
     def __str__(self) -> str:
         if self == RTKStatus.NONE:
             return "None"
-        elif self == RTKStatus.SINGLE:
+        if self == RTKStatus.SINGLE:
             return "Single"
-        elif self == RTKStatus.FIX:
+        if self == RTKStatus.FIX:
             return "Fix"
-        elif self == RTKStatus.FLOAT:
+        if self == RTKStatus.FLOAT:
             return "Float"
-        else:
-            return "Unknown"
+        return "Unknown"
 
 
 class RtkSwitchMode(IntEnum):

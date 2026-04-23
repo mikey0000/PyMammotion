@@ -266,7 +266,6 @@ class CheckDeviceVersion(DataClassORJSONMixin):
             if self.product_version_info_vo.release_version != other.product_version_info_vo.release_version:
                 return False
             return True
-        elif self.product_version_info_vo is None and other.product_version_info_vo is None:
+        if self.product_version_info_vo is None and other.product_version_info_vo is None:
             return False
-        else:
-            return True
+        return True
