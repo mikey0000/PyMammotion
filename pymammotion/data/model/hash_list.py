@@ -35,18 +35,27 @@ class PathType(IntEnum):
     SVG = 13
     """Pre-rendered SVG map tile."""
 
-    VISUAL_SAFETY_ZONE = 25
-    """Vision-detected safety zone (Luba 2 Vision / Pro only)."""
-
-    VISUAL_OBSTACLE_ZONE = 26
-    """Vision-detected obstacle zone (Luba 2 Vision / Pro only)."""
-
     DYNAMICS_LINE = 18
     """Live mow-progress path for the current session.
 
     Frameless w.r.t. hash keys; stored flat in ``HashList.dynamics_line``.
     Fetched via ``CommonDataSaga`` with ``action=8, type=18``.
     """
+
+    CORRIDOR_LINE = 19
+    """Corridor line between mowing zones (MN231)."""
+
+    CORRIDOR_POINT = 20
+    """Corridor waypoint between mowing zones (MN231)."""
+
+    VIRTUAL_WALL = 21
+    """User-drawn virtual fence / keep-out line."""
+
+    VISUAL_SAFETY_ZONE = 25
+    """Vision-detected safety zone (Luba 2 Vision / Pro only)."""
+
+    VISUAL_OBSTACLE_ZONE = 26
+    """Vision-detected obstacle zone (Luba 2 Vision / Pro only)."""
 
 
 @dataclass
@@ -296,6 +305,9 @@ class HashList(DataClassORJSONMixin):
     )  # type 10, sub cmd 3 — breakpoint line data, keyed by ub_path_hash
     visual_safety_zone: dict[int, FrameList] = field(default_factory=dict)  # type 25
     visual_obstacle_zone: dict[int, FrameList] = field(default_factory=dict)  # type 26
+    corridor_line: dict[int, FrameList] = field(default_factory=dict)  # type 19
+    corridor_point: dict[int, FrameList] = field(default_factory=dict)  # type 20
+    virtual_wall: dict[int, FrameList] = field(default_factory=dict)  # type 21
     plan: dict[str, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
     current_mow_path: dict[int, dict[int, MowPath]] = field(default_factory=dict)
@@ -332,6 +344,13 @@ class HashList(DataClassORJSONMixin):
         self.visual_obstacle_zone = {
             hash_id: frames for hash_id, frames in self.visual_obstacle_zone.items() if hash_id in hashlist
         }
+        self.corridor_line = {
+            hash_id: frames for hash_id, frames in self.corridor_line.items() if hash_id in hashlist
+        }
+        self.corridor_point = {
+            hash_id: frames for hash_id, frames in self.corridor_point.items() if hash_id in hashlist
+        }
+        self.virtual_wall = {hash_id: frames for hash_id, frames in self.virtual_wall.items() if hash_id in hashlist}
 
         area_hashes = list(self.area.keys())
         for hash_id, plan_task in self.plan.copy().items():
@@ -380,6 +399,9 @@ class HashList(DataClassORJSONMixin):
             self.svg.keys(),
             self.visual_safety_zone.keys(),
             self.visual_obstacle_zone.keys(),
+            self.corridor_line.keys(),
+            self.corridor_point.keys(),
+            self.virtual_wall.keys(),
         )
         if sub_cmd == 3:
             all_hash_ids = set(self.line.keys())
@@ -480,6 +502,9 @@ class HashList(DataClassORJSONMixin):
             PathType.SVG: self.svg,
             PathType.VISUAL_SAFETY_ZONE: self.visual_safety_zone,
             PathType.VISUAL_OBSTACLE_ZONE: self.visual_obstacle_zone,
+            PathType.CORRIDOR_LINE: self.corridor_line,
+            PathType.CORRIDOR_POINT: self.corridor_point,
+            PathType.VIRTUAL_WALL: self.virtual_wall,
         }
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
