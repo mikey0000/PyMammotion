@@ -26,6 +26,8 @@ Example::
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import json
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
@@ -39,7 +41,7 @@ from pymammotion.data.model.device import MowerDevice, RTKBaseStationDevice
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import DeviceRecord, DeviceRecords, Response
+from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, DeviceRecords, Response
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.proto import RptAct, RptInfoType
@@ -664,8 +666,6 @@ class MammotionClient:
                 if rtk.device_name == device_name:
                     current = handle.snapshot.raw
                     if isinstance(current, RTKBaseStationDevice):
-                        import dataclasses
-
                         updated = dataclasses.replace(current, lora_version=rtk.lora)
                         snapshot, _ = handle.state_machine.apply(updated, handle.availability)
                         if not handle._stopping:  # noqa: SLF001
@@ -673,6 +673,59 @@ class MammotionClient:
                     break
         except Exception:  # noqa: BLE001
             _logger.warning("fetch_rtk_lora_info: failed to fetch RTK devices for %s", device_name, exc_info=True)
+
+    async def fetch_rtk_properties(self, device_name: str) -> None:
+        """Fetch RTK device properties from the Aliyun gateway and apply them to device state.
+
+        Retrieves networkInfo, coordinate, deviceVersion, and OTA progress for
+        the named RTK base station and writes them into the device state machine.
+
+        No-op if the device is not registered, not an RTK base station, not an
+        Aliyun device, or if no cloud gateway session is available.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+        current = handle.snapshot.raw
+        if not isinstance(current, RTKBaseStationDevice):
+            return
+        if not current.iot_id or not DeviceType.is_aliyun_product_key(current.product_key):
+            return
+        gateway = self.cloud_gateway
+        if gateway is None:
+            return
+
+        try:
+            response = await gateway.get_device_properties(current.iot_id)
+            if response.code != 200:
+                return
+            data = response.data
+            updated = current
+            if ota_progress := data.otaProgress:
+                updated = dataclasses.replace(updated, update_check=CheckDeviceVersion.from_dict(ota_progress.value))
+            if network_info := data.networkInfo:
+                network = json.loads(network_info.value)
+                updated = dataclasses.replace(
+                    updated,
+                    wifi_rssi=network["wifi_rssi"],
+                    wifi_mac=network["wifi_sta_mac"],
+                    bt_mac=network["bt_mac"],
+                )
+            if coordinate := data.coordinate:
+                coord_val = json.loads(coordinate.value)
+                _logger.debug("Raw RTK coordinate payload: %s", coord_val)
+                if coord_val["lat"] != 0:
+                    updated = dataclasses.replace(updated, lat=coord_val["lat"])
+                if coord_val["lon"] != 0:
+                    updated = dataclasses.replace(updated, lon=coord_val["lon"])
+            if device_version := data.deviceVersion:
+                updated = dataclasses.replace(updated, device_version=device_version.value)
+            if updated is not current:
+                snapshot, _ = handle.state_machine.apply(updated, handle.availability)
+                if not handle._stopping:  # noqa: SLF001
+                    await handle._state_changed_bus.emit(snapshot)  # noqa: SLF001
+        except Exception:  # noqa: BLE001
+            _logger.warning("fetch_rtk_properties: failed for %s", device_name, exc_info=True)
 
     # ------------------------------------------------------------------
     # BLE
