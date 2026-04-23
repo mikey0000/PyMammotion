@@ -837,6 +837,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
+            if response_body_dict.get("code") == 6205:
+                logger.debug("Device offline (6205): %s", iot_id)
+                raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
             logger.error(
                 "Error in sending cloud command: %s - %s",
                 str(response_body_dict.get("code")),
@@ -854,8 +857,6 @@ class CloudIOTGateway:
                 raise SessionExpiredError(
                     TransportType.CLOUD_ALIYUN, "identityId is blank (29003) — token refresh required"
                 )
-            if response_body_dict.get("code") == 6205:
-                raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
 
             if response_body_dict.get("code") == 460:
                 logger.debug("iotToken expired, must re-login.")

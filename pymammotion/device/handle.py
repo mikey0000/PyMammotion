@@ -601,6 +601,22 @@ class DeviceHandle:
             try:
                 cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
                 await transport.send(cmd_bytes, iot_id=self.iot_id)
+            except DeviceOfflineException:
+                # Cloud rejected the send as "device offline" (code 6205).
+                # Flip the availability flag so subsequent active_transport()
+                # calls skip MQTT until a message arrives (on_raw_message
+                # clears the flag automatically).
+                if transport.transport_type != TransportType.BLE:
+                    self.update_availability(
+                        transport.transport_type,
+                        self._availability.mqtt,
+                        mqtt_reported_offline=True,
+                    )
+                _logger.debug(
+                    "keep_alive [%s]: %s reports device offline — marking mqtt_reported_offline",
+                    self.device_name,
+                    transport.transport_type.value,
+                )
             except Exception:  # noqa: BLE001
                 _logger.debug(
                     "keep_alive [%s]: send via %s failed",
