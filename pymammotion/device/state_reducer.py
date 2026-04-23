@@ -72,6 +72,8 @@ from pymammotion.proto import (
     WorkReportInfoAck,
 )
 
+from pymammotion.data.mqtt.properties import OTAProgressItems
+
 if TYPE_CHECKING:
     from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice, RTKBaseStationDevice
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -602,6 +604,21 @@ class MowerStateReducer(StateReducer):
                 if value:
                     _apply_mower_fw_module(device.device_firmwares, fw_type, value)
 
+        if ota_prop := items.otaProgress:
+            try:
+                ota = OTAProgressItems.from_dict(ota_prop.value)
+                done = ota.progress == 100
+                device.update_check = dataclasses.replace(
+                    device.update_check,
+                    progress=ota.progress,
+                    isupgrading=not done,
+                    upgradeable=False if done else device.update_check.upgradeable,
+                )
+                if done:
+                    device.device_firmwares.device_version = ota.version
+            except (ValueError, KeyError, TypeError):
+                _logger.debug("MowerStateReducer: failed to parse otaProgress property")
+
         return device
 
 
@@ -953,6 +970,21 @@ class RTKStateReducer(StateReducer):
 
         if lora_prop := items.loraGeneralConfig:
             device.lora_version = str(lora_prop.value)
+
+        if ota_prop := items.otaProgress:
+            try:
+                ota = OTAProgressItems.from_dict(ota_prop.value)
+                done = ota.progress == 100
+                device.update_check = dataclasses.replace(
+                    device.update_check,
+                    progress=ota.progress,
+                    isupgrading=not done,
+                    upgradeable=False if done else device.update_check.upgradeable,
+                )
+                if done:
+                    device.device_version = ota.version
+            except (ValueError, KeyError, TypeError):
+                _logger.debug("RTKStateReducer: failed to parse otaProgress property")
 
         return device
 

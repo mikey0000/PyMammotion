@@ -727,6 +727,21 @@ class MammotionClient:
         except Exception:  # noqa: BLE001
             _logger.warning("fetch_rtk_properties: failed for %s", device_name, exc_info=True)
 
+    async def apply_device_properties(self, device_name: str, properties: ThingPropertiesMessage) -> None:
+        """Apply a thing/properties message to the named device's state machine.
+
+        Routes *properties* through :meth:`DeviceHandle.on_device_properties`,
+        which runs the reducer's ``apply_properties`` (OTA progress, networkInfo,
+        coordinate, etc.) and emits a state-changed event so all subscribers
+        (including HA coordinators) see the update.
+
+        No-op if the device is not registered.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+        await handle.on_device_properties(properties)
+
     # ------------------------------------------------------------------
     # BLE
     # ------------------------------------------------------------------
