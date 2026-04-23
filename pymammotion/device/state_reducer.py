@@ -35,6 +35,7 @@ from pymammotion.data.model.hash_list import (
 from pymammotion.data.model.pool_state import PoolBottomType, PoolPoint, SpinoSysStatus, SpinoWorkMode, WallMaterial
 from pymammotion.data.model.report_info import BaseScore
 from pymammotion.data.model.work import CurrentTaskSettings
+from pymammotion.data.mqtt.properties import OTAProgressItems
 from pymammotion.proto import (
     AppDownlinkCmdT,
     AppGetAllAreaHashName,
@@ -71,8 +72,6 @@ from pymammotion.proto import (
     WifiIotStatusReport,
     WorkReportInfoAck,
 )
-
-from pymammotion.data.mqtt.properties import OTAProgressItems
 
 if TYPE_CHECKING:
     from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice, RTKBaseStationDevice
