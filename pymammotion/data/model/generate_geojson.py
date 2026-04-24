@@ -1,3 +1,35 @@
+"""Build styled GeoJSON ``FeatureCollection`` output from a ``HashList``.
+
+Styling convention
+------------------
+Every feature's ``properties`` dict carries **Leaflet Path options**
+(https://leafletjs.com/reference.html#path) so a frontend can pipe
+``feature.properties`` straight into ``L.Path.setStyle()`` / a
+``L.geoJSON(data, {style: f => f.properties})`` call.
+
+Supported keys (stroke + fill, Leaflet spelling):
+
+* ``color`` — stroke colour (string)
+* ``weight`` — stroke width in px
+* ``opacity`` — stroke opacity (0..1)
+* ``dashArray`` — dash pattern, e.g. ``"8, 6"``
+* ``lineCap`` / ``lineJoin`` — ``"round"`` etc.
+* ``fillColor`` — fill colour (polygon / ``CircleMarker``).  Leaflet's
+  ``fill`` key is a *boolean*, so fill colour **must** be ``fillColor``
+  — earlier versions of this module emitted ``fill: "<color>"`` which
+  Leaflet silently ignored, falling back to ``color`` for the fill.
+* ``fillOpacity`` — fill opacity (0..1)
+* ``radius`` — ``CircleMarker`` radius in px (station / point features)
+
+``simplestyle-spec`` (``stroke``, ``stroke-width``, ``fill``,
+``fill-opacity`` … — hyphenated) is **not** used.  Consumers that want
+that spec can map the keys themselves.
+
+Icon features (RTK, dock) additionally carry ``iconImage`` /
+``iconSize`` / ``iconAnchor`` / ``iconUrl`` — a Mapbox-GL-style symbol
+layer shape that the HA-Mammotion-Assets icon pack consumes.
+"""
+
 import json
 import logging
 import math
@@ -41,13 +73,27 @@ DOCK_IMAGE = {
 # STYLE CONFIGURATION
 #############################
 
-DOCK_STYLE = {"color": "lightgray", "fill": "lightgray", "weight": 2, "opacity": 1.0, "fillOpacity": 0.7, "radius": 10}
+DOCK_STYLE = {
+    "color": "lightgray",
+    "fillColor": "lightgray",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.7,
+    "radius": 10,
+}
 
-RTK_STYLE = {"color": "purple", "fill": "purple", "weight": 2, "opacity": 1.0, "fillOpacity": 0.7, "radius": 7}
+RTK_STYLE = {
+    "color": "purple",
+    "fillColor": "purple",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.7,
+    "radius": 7,
+}
 
 AREA_STYLE = {
     "color": "green",
-    "fill": "darkgreen",
+    "fillColor": "darkgreen",
     "weight": 3,
     "opacity": 0.8,
     "fillOpacity": 0.3,
@@ -58,7 +104,7 @@ AREA_STYLE = {
 
 OBSTACLE_STYLE = {
     "color": "#FF4D00",
-    "fill": "darkorange",
+    "fillColor": "darkorange",
     "weight": 2,
     "opacity": 0.9,
     "fillOpacity": 0.4,
@@ -71,15 +117,19 @@ PATH_STYLE = {
     "color": "#ffffff",
     "weight": 8,
     "opacity": 1.0,
-    "zIndex": -1,
     "dashArray": "",
     "lineCap": "round",
     "lineJoin": "round",
-    "road_center_color": "#696969",
-    "road_center_dash": "8, 8",
 }
 
-POINT_STYLE = {"color": "blue", "fill": "lightblue", "weight": 2, "opacity": 1.0, "fillOpacity": 0.7, "radius": 5}
+POINT_STYLE = {
+    "color": "blue",
+    "fillColor": "lightblue",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.7,
+    "radius": 5,
+}
 
 DYNAMICS_LINE_STYLE = {
     "color": "#FFD700",  # gold — visually distinct from the planned green mow path
@@ -134,7 +184,7 @@ CORRIDOR_LINE_STYLE = {
 # PathType 20 — MN231 corridor waypoints. APK renders these as circular markers.
 CORRIDOR_POINT_STYLE = {
     "color": "#145FF2",
-    "fill": "#145FF2",
+    "fillColor": "#145FF2",
     "weight": 2,
     "opacity": 1.0,
     "fillOpacity": 0.8,
@@ -157,7 +207,7 @@ VIRTUAL_WALL_STYLE = {
 # APK: map_no_stop_zone #007aff with reduced fill alpha — safety buffer around obstacles.
 VISUAL_SAFETY_ZONE_STYLE = {
     "color": "#007AFF",
-    "fill": "#007AFF",
+    "fillColor": "#007AFF",
     "weight": 2,
     "opacity": 0.9,
     "fillOpacity": 0.3,
@@ -171,7 +221,7 @@ VISUAL_SAFETY_ZONE_STYLE = {
 # (vision-picked obstacles rendered in orange).
 VISUAL_OBSTACLE_ZONE_STYLE = {
     "color": "#CC7700",
-    "fill": "#CC7700",
+    "fillColor": "#CC7700",
     "weight": 2,
     "opacity": 0.9,
     "fillOpacity": 0.4,

@@ -379,6 +379,49 @@ def test_corridor_wall_and_visual_zone_styles_are_distinct() -> None:
     assert colors["visual_obstacle_zone"] == "#CC7700"
 
 
+def test_feature_styles_use_leaflet_path_options() -> None:
+    """Styles must emit Leaflet Path keys, not the common mis-spellings.
+
+    Guards against regressing to ``fill: "<color>"`` (Leaflet treats ``fill``
+    as a Boolean — the color is silently ignored, falling back to ``color``).
+    Also verifies the dead ``zIndex`` / ``road_center_*`` keys stay removed.
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    for feat in result["features"]:
+        props = feat["properties"]
+        # ``fill`` must never be a color string on any feature — Leaflet would
+        # treat a non-empty string as truthy but ignore the color value.
+        if "fill" in props:
+            assert isinstance(props["fill"], bool), (
+                f"feature {props.get('type_name')!r} has fill={props['fill']!r} "
+                f"(must be bool or absent; use fillColor for colors)"
+            )
+        # Any feature that declares a fill colour must use the Leaflet key.
+        if props.get("type_name") in {
+            "area",
+            "visual_safety_zone",
+            "visual_obstacle_zone",
+            "corridor_point",
+        }:
+            assert "fillColor" in props, f"{props['type_name']} missing fillColor"
+
+        # Dead keys from the previous convention must stay out.
+        assert "zIndex" not in props
+        assert "road_center_color" not in props
+        assert "road_center_dash" not in props
+
+
 # ---------------------------------------------------------------------------
 # Yuka device — mow path generation from real device data
 # ---------------------------------------------------------------------------
