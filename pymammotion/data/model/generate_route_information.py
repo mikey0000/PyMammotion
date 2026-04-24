@@ -1,6 +1,11 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 import logging
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from pymammotion.data.model.work import CurrentTaskSettings
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +58,47 @@ class GenerateRouteInformation:
     toward_mode: int = 0  # angle type relative etc
     edge_mode: int = 1  # border laps
     obstacle_laps: int = 1
+
+    @classmethod
+    def from_current_task_settings(cls, settings: CurrentTaskSettings) -> GenerateRouteInformation:
+        """Build a :class:`GenerateRouteInformation` from a received :class:`CurrentTaskSettings`.
+
+        ``CurrentTaskSettings`` arrives via ``bidire_reqconver_path`` and
+        describes the task the device is currently running.  This helper maps
+        it back into the command-shape used to start a new route, which is
+        useful for re-issuing or cloning an existing job.
+
+        Field mapping:
+
+        - ``job_id``, ``job_mode``, ``edge_mode``, ``channel_width``,
+          ``ultra_wave``, ``channel_mode``, ``toward``, ``speed``,
+          ``toward_mode``, ``toward_included_angle`` — direct copy.
+        - ``job_ver`` → ``job_version``
+        - ``knife_height`` → ``blade_height``
+        - ``zone_hashs`` → ``one_hashs`` (copied, not aliased)
+        - ``reserved`` → ``path_order`` — additionally decoded via
+          :meth:`decode_path_order` so ``obstacle_laps`` and ``rain_tactics``
+          surface as top-level fields on the returned instance.
+        """
+        decoded = cls.decode_path_order(settings.reserved)
+        return cls(
+            one_hashs=list(settings.zone_hashs),
+            job_mode=settings.job_mode,
+            job_version=settings.job_ver,
+            job_id=settings.job_id,
+            speed=settings.speed,
+            ultra_wave=settings.ultra_wave,
+            channel_mode=settings.channel_mode,
+            channel_width=settings.channel_width,
+            rain_tactics=decoded.rain_tactics,
+            blade_height=settings.knife_height,
+            path_order=settings.reserved,
+            toward=settings.toward,
+            toward_included_angle=settings.toward_included_angle,
+            toward_mode=settings.toward_mode,
+            edge_mode=settings.edge_mode,
+            obstacle_laps=decoded.obstacle_laps,
+        )
 
     @staticmethod
     def decode_path_order(path_order: str) -> PathOrderSettings:

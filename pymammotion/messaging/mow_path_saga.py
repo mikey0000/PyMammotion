@@ -83,12 +83,14 @@ class MowPathSaga(Saga):
         self._skip_planning = skip_planning
         self._device_name = device_name
         self.result: dict[int, dict[int, MowPath]] = {}
-        self._route_val: Any = None  # persists across retries to skip step 2 if already fetched
+        self._route_val: GenerateRouteInformation | None = (
+            route_info  # persists across retries to skip step 2 if already fetched
+        )
 
     async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute all saga steps."""
         self.result = {}
-        hash_list = HashList()
+        self._get_map().current_mow_path = {}
 
         # ------------------------------------------------------------------
         # Step 1: Request the line hash list (sub_cmd=3), collect all frames,
@@ -168,19 +170,7 @@ class MowPathSaga(Saga):
                 )
             else:
                 # running task mode: query the currently running job's route info (sub_cmd=2)
-                _logger.debug("MowPathSaga: querying running job route info (sub_cmd=2)")
-                cmd = self._command_builder.query_generate_route_information()
-                response = await broker.send_and_wait(
-                    send_fn=lambda: self._send_command(cmd),
-                    expected_field="bidire_reqconver_path",
-                    send_timeout=self.step_timeout,
-                )
-                _, self._route_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
-                _logger.debug(
-                    "MowPathSaga: running job info — path_hash=%d  zone_hashs=%s",
-                    self._route_val.path_hash,
-                    list(self._route_val.zone_hashs),
-                )
+                return
         else:
             _logger.debug("MowPathSaga: reusing cached route info — skipping step 2")
 
@@ -226,9 +216,12 @@ class MowPathSaga(Saga):
             except Exception:  # noqa: BLE001, S110
                 pass
 
+        current_run_tx_ids: set[int] = set()
+
         with broker.subscribe_unsolicited(_collect_path):
             for batch_idx, batch_hashes in enumerate(hash_batches):
                 transaction_id = int(time.time() * 1000)
+                current_run_tx_ids.add(transaction_id)
                 _logger.debug(
                     "MowPathSaga: requesting cover path batch %d/%d — transaction_id=%d  hashes=%s",
                     batch_idx + 1,
@@ -248,6 +241,16 @@ class MowPathSaga(Saga):
                     self._reset_attempt_counter = True
                     _, path_val = betterproto2.which_one_of(frame_response.nav, "SubNavMsg")
                     mow_path = MowPath.from_dict(path_val.to_dict(casing=betterproto2.Casing.SNAKE))
+
+                    if mow_path.transaction_id not in current_run_tx_ids:
+                        _logger.debug(
+                            "MowPathSaga: dropping residual frame tx=%d (current run tx_ids=%s)",
+                            mow_path.transaction_id,
+                            current_run_tx_ids,
+                        )
+                        self._get_map().current_mow_path.pop(mow_path.transaction_id, None)
+                        continue
+
                     _logger.debug(
                         "MowPathSaga: got cover_path_upload frame %d/%d  tx=%d  batch=%d/%d",
                         mow_path.current_frame,

@@ -37,6 +37,7 @@ from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, Acco
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
+from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowerDevice, RTKBaseStationDevice
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
@@ -111,7 +112,6 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
     from bleak import BLEDevice
 
-    from pymammotion.data.model import GenerateRouteInformation
     from pymammotion.data.model.device import MowingDevice
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
@@ -177,7 +177,7 @@ class MammotionClient:
     def setup_device_watchers(self, device_name: str) -> Subscription | None:
         """Register auto-fetch / auto-subscribe watchers for *device_name*.
 
-        Installs three field watchers on the device handle:
+        Installs field watchers on the device handle:
 
         * ``(ub_path_hash, path_hash)`` — fires ``MowPathSaga`` (fetch-only)
           when either hash transitions to an active value while no cover path
@@ -187,6 +187,11 @@ class MammotionClient:
         * ``sys_status`` — starts a 4 Hz ``report_info_cfg`` subscription on
           transition into WORKING/RETURNING and sends ``RPT_STOP`` on any
           other transition.
+        * ``bol_hash`` (from ``report_data.locations[0].bol_hash``) — fires
+          ``MapFetchSaga`` when the device reports a different map hash,
+          replacing the old ``MapStalenessWatcher`` for the maps case.  Plan
+          staleness is not watched — we don't yet know which field indicates
+          plan changes.
 
         Call ``teardown_device_watchers`` to cancel.  Returns the first
         registered Subscription, or None if the device isn't registered yet.
@@ -211,7 +216,8 @@ class MammotionClient:
                 work.ub_path_hash,
             )
             try:
-                await self.start_mow_path_saga(device_name, zone_hashs=[], skip_planning=True)
+                current_work = GenerateRouteInformation.from_current_task_settings(device.work)
+                await self.start_mow_path_saga(device_name, zone_hashs=[], route_info=current_work, skip_planning=True)
             except Exception:  # noqa: BLE001
                 _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
@@ -272,6 +278,22 @@ class MammotionClient:
                     exc_info=True,
                 )
 
+        async def _on_bol_hash_changed(bol_hash: int) -> None:
+            # bol_hash changes when the device's map data has been edited or
+            # re-synced on the device side — trigger a re-fetch so our
+            # cached HashList reflects the new topology.
+            if handle.queue.is_saga_active:
+                return
+            _logger.debug(
+                "Device %s bol_hash changed to %d — syncing map",
+                device_name,
+                bol_hash,
+            )
+            try:
+                await self.start_map_sync(device_name)
+            except Exception:  # noqa: BLE001
+                _logger.warning("Auto-trigger map sync failed for %s", device_name, exc_info=True)
+
         sub = handle.watch_field(
             lambda s: (s.raw.report_data.work.ub_path_hash, s.raw.report_data.work.path_hash),
             _on_path_hashes_changed,
@@ -284,7 +306,16 @@ class MammotionClient:
             lambda s: s.raw.report_data.dev.sys_status,
             _on_sys_status_changed,
         )
-        self._watcher_subscriptions[device_name] = [sub, progress_sub, sys_status_sub]
+        bol_hash_sub = handle.watch_field(
+            lambda s: s.raw.report_data.locations[0].bol_hash if s.raw.report_data.locations else 0,
+            _on_bol_hash_changed,
+        )
+        self._watcher_subscriptions[device_name] = [
+            sub,
+            progress_sub,
+            sys_status_sub,
+            bol_hash_sub,
+        ]
         self._install_report_data_watchdog(device_name)
         self._install_saga_subscription_hooks(device_name)
         return sub
@@ -1183,7 +1214,6 @@ class MammotionClient:
         )
         await self._device_registry.register(handle)
         await handle.start()
-        self._enable_staleness_watcher(handle, device_name)
         self._iot_id_to_device_id[iot_id] = device_name
         _logger.info("Aliyun device registered: %s (iot_id=%s)", device_name, iot_id)
 
@@ -1229,24 +1259,8 @@ class MammotionClient:
         )
         await self._device_registry.register(handle)
         await handle.start()
-        self._enable_staleness_watcher(handle, record.device_name)
         self._iot_id_to_device_id[iot_id] = record.device_name
         _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, iot_id)
-
-    def _enable_staleness_watcher(self, handle: DeviceHandle, device_name: str) -> None:
-        """Enable auto-refetch of stale maps and plans for a mower device.
-
-        RTK base stations and pool cleaners have no map or plan data, so the
-        staleness watcher is a no-op for them.
-        """
-        from pymammotion.utility.device_type import DeviceType
-
-        if DeviceType.is_rtk(device_name) or DeviceType.is_swimming_pool(device_name):
-            return
-        handle.enable_staleness_watcher(
-            on_maps_stale=lambda: self.start_map_sync(device_name),
-            on_plans_stale=lambda: self.start_plan_sync(device_name),
-        )
 
     async def _restore_aliyun(
         self,
@@ -1511,38 +1525,6 @@ class MammotionClient:
         else:
             _logger.warning("start_map_sync: device '%s' not registered", device_name)
             return
-
-    async def start_area_name_sync(self, device_name: str) -> None:
-        """Fetch area names for *device_name* without re-fetching the full map.
-
-        Enqueues a MapFetchSaga in area-names-only mode.  Use this when the
-        map hash is still valid (bol_hash matches) but area names are missing.
-        """
-        from pymammotion.messaging.map_saga import MapFetchSaga
-        from pymammotion.utility.device_type import DeviceType
-
-        handle = self._device_registry.get_by_name(device_name)
-        if handle is None:
-            _logger.warning("start_area_name_sync: device '%s' not registered", device_name)
-            return
-        if DeviceType.is_luba1(device_name):
-            return  # Luba 1 has no area names
-        commands = handle.commands
-        transport = handle.active_transport()
-        _iot_id = handle.iot_id
-        device = self.get_device_by_name(device_name)
-        existing_area_hashes = list(device.map.area.keys()) if device is not None else []
-        saga = MapFetchSaga(
-            device_id=handle.device_id,
-            device_name=handle.device_name,
-            is_luba1=False,
-            command_builder=commands,
-            send_command=lambda cmd: transport.send(cmd, iot_id=_iot_id),
-            get_map=lambda: handle.snapshot.raw.map,
-            area_names_only=True,
-            existing_area_hashes=existing_area_hashes,
-        )
-        await handle.enqueue_saga(saga)
 
     async def start_plan_sync(self, device_name: str) -> None:
         """Enqueue a PlanFetchSaga to fetch all stored schedule plans.
@@ -1839,11 +1821,13 @@ class MammotionClient:
         """
         subscription = await self.get_stream_subscription(device_name, iot_id)
 
-        handle = self._device_registry.get_by_name(device_name)
-        if handle is not None:
-            commands = handle.commands
-            await handle.send_command(commands.device_agora_join_channel_with_position(0), "set_video_ack")
-            await handle.send_command(commands.device_agora_join_channel_with_position(1), "set_video_ack")
+        if self._device_registry.get_by_name(device_name) is not None:
+            await self.send_command_and_wait(
+                device_name, "device_agora_join_channel_with_position", "set_video_ack", enter_state=0
+            )
+            await self.send_command_and_wait(
+                device_name, "device_agora_join_channel_with_position", "set_video_ack", enter_state=1
+            )
 
         return subscription
 

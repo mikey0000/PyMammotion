@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, TypeVar
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
-from pymammotion.device.staleness_watcher import MapStalenessWatcher
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
@@ -184,9 +183,12 @@ class DeviceHandle:
         self._reducer: StateReducer = get_state_reducer(device_name)
         self._error_bus: EventBus[Exception] = EventBus()
         self._readiness_checker: ReadinessChecker | None = readiness_checker
-        self._staleness_watcher: MapStalenessWatcher | None = None
         self._stopping: bool = False
         self._keep_alive_task: asyncio.Task[None] | None = None
+        #: monotonic timestamp of the last outbound send per transport, used by
+        #: ``_keep_alive_loop`` to skip heartbeats when the transport has seen
+        #: recent activity (set via ``_send_marked``).
+        self._last_send_monotonic: dict[TransportType, float] = {}
 
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
@@ -225,6 +227,17 @@ class DeviceHandle:
             self.update_availability(transport_type, state)
 
         return _handler
+
+    async def _send_marked(self, transport: Transport, payload: bytes) -> None:
+        """Send *payload* on *transport* and record the send time.
+
+        Call this instead of ``transport.send()`` from any path that a
+        keep-alive heartbeat should debounce against.  The recorded timestamp
+        is read by :meth:`_keep_alive_loop` to skip heartbeat sends when the
+        transport has seen activity within the keep-alive window.
+        """
+        self._last_send_monotonic[transport.transport_type] = time.monotonic()
+        await transport.send(payload, iot_id=self.iot_id)
 
     async def _on_critical_error(self, error: Exception) -> None:
         """Propagate critical errors to the error bus."""
@@ -387,10 +400,10 @@ class DeviceHandle:
                     TransportType.CLOUD_ALIYUN,
                     TransportType.CLOUD_MAMMOTION,
                 ):
-                    await transport.send(cmd, iot_id=self.iot_id)
+                    await self._send_marked(transport, cmd)
                 else:
                     await self.broker.send_and_wait(
-                        send_fn=lambda: transport.send(cmd, iot_id=self.iot_id),
+                        send_fn=lambda: self._send_marked(transport, cmd),
                         expected_field=field,
                     )
             except DeviceOfflineException:
@@ -403,7 +416,7 @@ class DeviceHandle:
                 if ble is not None and ble.is_connected:
                     _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
                     await self.broker.send_and_wait(
-                        send_fn=lambda: ble.send(cmd, iot_id=self.iot_id),
+                        send_fn=lambda: self._send_marked(ble, cmd),
                         expected_field=field,
                     )
                 else:
@@ -417,7 +430,7 @@ class DeviceHandle:
         await self.queue.enqueue(
             lambda: _do_send(command, expected_field),
             priority=priority,
-            skip_if_saga_active=skip_if_saga_active,
+            skip_if_saga_active=False,
         )
 
     async def enqueue_saga(
@@ -543,8 +556,6 @@ class DeviceHandle:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._keep_alive_task
         self._keep_alive_task = None
-        if self._staleness_watcher is not None:
-            self._staleness_watcher.stop()
         await self.queue.stop()
         await self.broker.close()
         await self._state_changed_bus.stop()
@@ -580,19 +591,50 @@ class DeviceHandle:
         heartbeat (see ``MACarDataManager.java:13346``), extended with a
         10-minute interval when the mower is idle over MQTT.  ``sync_type``
         differs per transport: 2 over BLE, 3 over MQTT/IoT.
+
+        Debounced against ``_last_send_monotonic``: if any outbound command
+        has gone over the chosen transport within the current interval, the
+        heartbeat for that cycle is skipped and the timer is re-anchored to
+        that send.  Every send site in this class routes through
+        :meth:`_send_marked`, which updates the timestamp.
         """
         while not self._stopping:
-            interval = self.keep_alive_interval()
             try:
-                await asyncio.sleep(interval)
+                transport = self.active_transport()
+            except NoTransportAvailableError:
+                # No transport; wait and re-check availability.
+                try:
+                    await asyncio.sleep(_KEEP_ALIVE_INTERVAL)
+                except asyncio.CancelledError:
+                    return
+                continue
+
+            interval = self.keep_alive_interval()
+            last_send = self._last_send_monotonic.get(transport.transport_type, 0.0)
+            now = time.monotonic()
+            # Sleep until `interval` seconds have elapsed since the last send
+            # on this transport.  If we're already past that (first loop, or
+            # nothing has sent), sleep a full interval.
+            wait_for = interval - (now - last_send)
+            if wait_for <= 0:
+                wait_for = interval
+
+            try:
+                await asyncio.sleep(wait_for)
             except asyncio.CancelledError:
                 return
-            if self._stopping:
-                return
+
+            # Re-check after sleep — transport choice or send state may have
+            # changed.  If another command sent within the window, skip this
+            # cycle; the next iteration will sleep the remaining time.
             try:
                 transport = self.active_transport()
             except NoTransportAvailableError:
                 continue
+            last_send = self._last_send_monotonic.get(transport.transport_type, 0.0)
+            if time.monotonic() - last_send < self.keep_alive_interval():
+                continue
+
             sync_type = (
                 _KEEP_ALIVE_SYNC_TYPE_BLE
                 if transport.transport_type == TransportType.BLE
@@ -600,7 +642,7 @@ class DeviceHandle:
             )
             try:
                 cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
-                await transport.send(cmd_bytes, iot_id=self.iot_id)
+                await self._send_marked(transport, cmd_bytes)
             except DeviceOfflineException:
                 # Cloud rejected the send as "device offline" (code 6205).
                 # Flip the availability flag so subsequent active_transport()
@@ -681,7 +723,7 @@ class DeviceHandle:
                 raise
         _logger.debug("send_raw '%s': sending via %s", self.device_name, transport.transport_type.value)
         try:
-            await transport.send(payload, iot_id=self.iot_id)
+            await self._send_marked(transport, payload)
         except TooManyRequestsException:
             _logger.warning("Device '%s' rate limited", self.device_name)
         except DeviceOfflineException:
@@ -693,7 +735,7 @@ class DeviceHandle:
             ble = self._transports.get(TransportType.BLE)
             if ble is not None and ble.is_connected:
                 _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
-                await ble.send(payload, iot_id=self.iot_id)
+                await self._send_marked(ble, payload)
             else:
                 _logger.warning(
                     "Device '%s' reported offline by cloud — marking %s unavailable",
@@ -721,7 +763,7 @@ class DeviceHandle:
                 self.device_name,
                 mqtt.transport_type.value,
             )
-            await mqtt.send(payload, iot_id=self.iot_id)
+            await self._send_marked(mqtt, payload)
 
     # ------------------------------------------------------------------
     # Error bus
@@ -756,31 +798,6 @@ class DeviceHandle:
         if self._readiness_checker is None:
             return []
         return self._readiness_checker.commands_to_fetch_missing(self.snapshot.raw)
-
-    # ------------------------------------------------------------------
-    # Staleness watcher
-    # ------------------------------------------------------------------
-
-    def enable_staleness_watcher(
-        self,
-        on_maps_stale: Callable[[], Awaitable[None]],
-        on_plans_stale: Callable[[], Awaitable[None]],
-        on_area_names_stale: Callable[[], Awaitable[None]] | None = None,
-    ) -> None:
-        """Enable auto-refetch of stale maps, plans, and area names.
-
-        *on_area_names_stale* is called when map data is valid but area names
-        are missing.  Defaults to *on_maps_stale* (full re-fetch) when omitted.
-        """
-        watcher = MapStalenessWatcher(
-            on_maps_stale=on_maps_stale,
-            on_plans_stale=on_plans_stale,
-            on_area_names_stale=on_area_names_stale,
-            is_saga_active=lambda: self.queue.is_saga_active,
-        )
-        sub = self._state_changed_bus.subscribe(watcher.on_state_changed)
-        watcher._subscription = sub  # noqa: SLF001
-        self._staleness_watcher = watcher
 
     @property
     def prefer_ble(self) -> bool:

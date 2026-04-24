@@ -201,12 +201,24 @@ class VioState(IntEnum):
     Surfaces on ``vio_to_app_info_msg.vio_state``.  Sourced from the APK's
     ``SignalHelper.VioSignalType`` interface
     (``newui/mvp/view/activity/status/newstatus/SignalHelper.java:265``).
+
+    The APK only recognises values 0-3; anything outside that range
+    (e.g. ``172`` observed when the camera pipeline is initialising) is
+    treated as unknown in both the app UI and this enum.  ``VioState(x)``
+    for any unrecognised ``x`` returns :data:`SIGNAL_UNKNOWN` instead of
+    raising :exc:`ValueError` — see :meth:`_missing_`.
     """
 
+    SIGNAL_UNKNOWN = -1
     SIGNAL_NONE = 0
     SIGNAL_INIT = 1
     SIGNAL_GOOD = 2
     SIGNAL_BAD = 3
+
+    @classmethod
+    def _missing_(cls, value: object) -> "VioState":
+        """Return :data:`SIGNAL_UNKNOWN` for values outside the documented range."""
+        return cls.SIGNAL_UNKNOWN
 
 
 class RTKPositionMode(IntEnum):

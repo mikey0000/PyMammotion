@@ -123,16 +123,19 @@ async def test_watcher_no_trigger_when_path_already_loaded() -> None:
 
 async def test_watcher_triggers_on_ub_path_hash_change() -> None:
     """Saga must fire when ub_path_hash becomes non-zero and no path is cached."""
+    from pymammotion.data.model import GenerateRouteInformation
+
     client, handle, handlers = _make_client_with_handle()
     _set_snapshot(handle, ub_path_hash=99, path_hash=0, current_mow_path={})
 
     await handlers[0]((99, 0))
 
-    client.start_mow_path_saga.assert_awaited_once_with(
-        "Luba-Test",
-        zone_hashs=[],
-        skip_planning=True,
-    )
+    client.start_mow_path_saga.assert_awaited_once()
+    call = client.start_mow_path_saga.await_args
+    assert call.args == ("Luba-Test",)
+    assert call.kwargs["zone_hashs"] == []
+    assert call.kwargs["skip_planning"] is True
+    assert isinstance(call.kwargs["route_info"], GenerateRouteInformation)
 
 
 # ---------------------------------------------------------------------------
@@ -142,16 +145,19 @@ async def test_watcher_triggers_on_ub_path_hash_change() -> None:
 
 async def test_watcher_triggers_on_path_hash_change() -> None:
     """Saga must fire when path_hash transitions to a value that is not 0 or 1."""
+    from pymammotion.data.model import GenerateRouteInformation
+
     client, handle, handlers = _make_client_with_handle()
     _set_snapshot(handle, ub_path_hash=0, path_hash=42, current_mow_path={})
 
     await handlers[0]((0, 42))
 
-    client.start_mow_path_saga.assert_awaited_once_with(
-        "Luba-Test",
-        zone_hashs=[],
-        skip_planning=True,
-    )
+    client.start_mow_path_saga.assert_awaited_once()
+    call = client.start_mow_path_saga.await_args
+    assert call.args == ("Luba-Test",)
+    assert call.kwargs["zone_hashs"] == []
+    assert call.kwargs["skip_planning"] is True
+    assert isinstance(call.kwargs["route_info"], GenerateRouteInformation)
 
 
 # ---------------------------------------------------------------------------

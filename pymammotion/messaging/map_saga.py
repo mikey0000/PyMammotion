@@ -41,10 +41,11 @@ class MapFetchSaga(Saga):
     reflects the newly received frame — no separate internal tracking needed.
 
     Resume behaviour on restart:
-      On restart the saga probes the first missing root hash frame; if the
-      device responds the attempt counter is reset and execution continues
-      from that frame.  If the probe times out, the saga falls through to a
-      full get_all_boundary_hash_list request from the device.
+      * Root list complete → skip to step 4.
+      * Otherwise → call get_all_boundary_hash_list once; the device starts
+        streaming, and each incoming frame is acked with get_hash_response
+        which tells the device to send the next one.  get_hash_response is
+        never sent proactively — only in response to an incoming frame.
     """
 
     name = "map_fetch"
@@ -143,10 +144,11 @@ class MapFetchSaga(Saga):
         #
         # Resume logic:
         #   a) Root list already complete  → skip straight to step 4.
-        #   b) Some frames received        → probe the first missing frame;
-        #      success → resume + reset attempt counter;
-        #      timeout → fall through to fresh get_all_boundary_hash_list.
-        #   c) No partial data             → normal fresh start.
+        #   b) Otherwise                   → get_all_boundary_hash_list once;
+        #      every incoming frame is acked via get_hash_response which also
+        #      requests the next frame.  get_hash_response is never sent
+        #      proactively — only as an ack to an incoming frame.  This matches
+        #      HashDataManager.setHashList in the APK (line 1173).
         # ------------------------------------------------------------------
         _logger.debug("MapFetchSaga[%s]: requesting hash list", self._device_name)
 
@@ -171,7 +173,6 @@ class MapFetchSaga(Saga):
             )
 
             if root_list_complete:
-                # (a) Root hash list fully fetched — skip to comm data.
                 assert partial_root is not None  # noqa: S101
                 self._reset_attempt_counter = True
                 _logger.debug(
@@ -179,89 +180,31 @@ class MapFetchSaga(Saga):
                     self._device_name,
                     partial_root.total_frame,
                 )
-            elif partial_root is not None and partial_root.data:
-                # (b) Some frames received — probe the first missing one.
-                received = {d.current_frame for d in partial_root.data}
-                all_f = set(range(1, partial_root.total_frame + 1))
-                first_missing = sorted(all_f - received)[0]
-                _logger.debug(
-                    "MapFetchSaga[%s]: probing root hash frame %d/%d to attempt resume",
-                    self._device_name,
-                    first_missing,
-                    partial_root.total_frame,
-                )
-                probe_cmd = self._command_builder.get_hash_response(
-                    total_frame=partial_root.total_frame, current_frame=first_missing - 1
-                )
-                await self._send_command(probe_cmd)
-                try:
-                    await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
-                    # Probe succeeded — state reducer already stored the frame.
-                    self._reset_attempt_counter = True
-                    _logger.debug(
-                        "MapFetchSaga[%s]: resume probe succeeded",
-                        self._device_name,
-                    )
-                except TimeoutError:
-                    # Probe timed out — fall through to a fresh start.
-                    _logger.debug(
-                        "MapFetchSaga[%s]: resume probe timed out — restarting root hash list from scratch",
-                        self._device_name,
-                    )
-                    partial_root = None
-
-            # (c) Fresh start — either first run, probe timed out, or no partial root data.
-            if not root_list_complete and (partial_root is None or not partial_root.data):
+            else:
                 cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
                 await self._send_command(cmd)
 
-                try:
-                    response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
-                except TimeoutError:
-                    raise CommandTimeoutError("toapp_gethash_ack", 1) from None
+                # Ack-driven loop: every frame received from the device is
+                # acked via get_hash_response, which tells the device to send
+                # the next one.  We never call get_hash_response proactively.
+                while True:
+                    try:
+                        response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
+                    except TimeoutError:
+                        raise CommandTimeoutError("toapp_gethash_ack", 1) from None
 
-                hash_list_ack = getattr(response.nav, "toapp_gethash_ack", None)
-                if hash_list_ack is None:
-                    raise CommandTimeoutError("toapp_gethash_ack", 1)
-                # State reducer already stored this frame in device.map.
+                    hash_ack = getattr(response.nav, "toapp_gethash_ack", None)
+                    if hash_ack is None:
+                        raise CommandTimeoutError("toapp_gethash_ack", 1)
 
-            # Fetch any remaining frames.  Re-read device.map each iteration since
-            # the state reducer has already applied received frames.
-            if not root_list_complete:
-                partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
-                if partial_root is not None:
-                    total_frame = partial_root.total_frame
-                    received_frames = {d.current_frame for d in partial_root.data}
-                    all_frames = set(range(1, total_frame + 1))
-
-                    while received_frames != all_frames:
-                        missing = sorted(all_frames - received_frames)
-                        next_frame = missing[0]
-                        _logger.debug(
-                            "MapFetchSaga[%s]: requesting hash frame %d/%d",
-                            self._device_name,
-                            next_frame,
-                            total_frame,
-                        )
-                        chunk_cmd = self._command_builder.get_hash_response(
-                            total_frame=total_frame, current_frame=next_frame - 1
-                        )
-                        await self._send_command(chunk_cmd)
-
-                        try:
-                            await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
-                        except TimeoutError:
-                            raise CommandTimeoutError("toapp_gethash_ack", 1) from None
-
-                        # Re-read received_frames from device.map (state reducer updated it).
-                        partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
-                        received_frames = {d.current_frame for d in partial_root.data} if partial_root else set()
-
-                    # Acknowledge the last frame (including when total_frame == 1 and the while loop never ran).
-                    final_ack = self._command_builder.get_hash_response(
-                        total_frame=total_frame, current_frame=total_frame
+                    # Ack this frame (device interprets as "send me the next one").
+                    ack_cmd = self._command_builder.get_hash_response(
+                        total_frame=hash_ack.total_frame, current_frame=hash_ack.current_frame
                     )
-                    await self._send_command(final_ack)
+                    await self._send_command(ack_cmd)
+
+                    if hash_ack.current_frame >= hash_ack.total_frame:
+                        break
 
         _logger.debug(
             "MapFetchSaga[%s]: hash list complete — %d hash IDs to fetch",
@@ -295,7 +238,14 @@ class MapFetchSaga(Saga):
             _no_progress_limit = 10
             no_progress = 0
 
-            missing_hashes = self._get_map().missing_hashlist(0)
+            # ``find_incomplete_hashes`` includes BOTH never-started hashes AND
+            # key-present-but-missing-frames hashes.  This is critical for saga
+            # resume — a previous run that got interrupted mid-area will have
+            # added a partial FrameList to ``device.map.area[hash]``; the saga
+            # must re-send ``synchronize_hash_data`` so the device re-streams
+            # the missing frames from scratch (``get_hash_response`` is only a
+            # per-frame ack, not a request-to-resume).
+            missing_hashes = self._get_map().find_incomplete_hashes(0)
             if missing_hashes:
                 _logger.debug("MapFetchSaga[%s]: fetching data for hash %d", self._device_name, missing_hashes[0])
                 cmd = self._command_builder.synchronize_hash_data(hash_num=missing_hashes[0])
@@ -321,8 +271,8 @@ class MapFetchSaga(Saga):
                     cmd = self._command_builder.get_regional_data(regional_data=region_data)
                     await self._send_command(cmd)
                 else:
-                    # Hash is complete — chain to first still-missing hash.
-                    new_missing = current_map.missing_hashlist(0)
+                    # Hash is complete — chain to first still-incomplete hash.
+                    new_missing = current_map.find_incomplete_hashes(0)
                     if len(new_missing) < len(missing_hashes):
                         no_progress = 0
                     else:
