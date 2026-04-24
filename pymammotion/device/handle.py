@@ -690,23 +690,22 @@ class DeviceHandle:
                 _logger.debug("keep_alive [%s]: concurrent request — skipping heartbeat", self.device_name)
             except DeviceOfflineException:
                 # Cloud rejected the send as "device offline" (code 6205).
-                # Flip the availability flag so subsequent active_transport()
-                # calls skip MQTT until a message arrives (on_raw_message
-                # clears the flag automatically).  Exit the loop — the
-                # report-data watchdog will call restart_keep_alive() when
-                # the device comes back.
+                # Flip the availability flag and exit the loop for MQTT — the
+                # report-data watchdog will call restart_keep_alive() when the
+                # device comes back.  BLE never raises this so the loop
+                # continues uninterrupted on BLE connections.
                 if not is_ble:
                     self.update_availability(
                         transport.transport_type,
                         self._availability.mqtt,
                         mqtt_reported_offline=True,
                     )
-                _logger.warning(
-                    "keep_alive [%s]: %s reports device offline — stopping keep-alive loop",
-                    self.device_name,
-                    transport.transport_type.value,
-                )
-                break
+                    _logger.warning(
+                        "keep_alive [%s]: %s reports device offline — stopping keep-alive loop",
+                        self.device_name,
+                        transport.transport_type.value,
+                    )
+                    break
             except Exception:  # noqa: BLE001
                 _logger.debug(
                     "keep_alive [%s]: send via %s failed",
