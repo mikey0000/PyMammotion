@@ -15,6 +15,7 @@ from pymammotion.transport.base import ReLoginRequiredError, TransportType
 if TYPE_CHECKING:
     from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
     from pymammotion.http.http import MammotionHTTP
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,9 @@ class TokenManager:
         self._aliyun_creds: AliyunCredentials | None = None
         self._mqtt_creds: MQTTCredentials | None = None
         self._lock: asyncio.Lock = asyncio.Lock()
+        # Called with the fresh iotToken whenever _aliyun_creds is updated, so the
+        # AliyunMQTTTransport's bind token stays current without waiting for a bind failure.
+        self.on_aliyun_token_refreshed: Callable[[str], None] | None = None
 
     async def initialize(
         self,
@@ -272,7 +276,11 @@ class TokenManager:
             try:
                 await self._cloud_gateway.check_or_refresh_session()
             except SessionExpiredError:
-                return await self.connect_iot(self._cloud_gateway)
+                # refreshToken was rejected (2401) — re-run the full IoT login sequence.
+                # Do NOT return here: fall through so _aliyun_creds is updated from the
+                # newly established session.  Returning early was the bug that handed the
+                # caller a stale iotToken and caused an infinite bind-failure loop.
+                await self.connect_iot(self._cloud_gateway)
 
             session = self._cloud_gateway.session_by_authcode_response
             session_data = session.data
@@ -285,6 +293,8 @@ class TokenManager:
                 refresh_token=session_data.refreshToken,
                 refresh_token_expires_at=issued_at + session_data.refreshTokenExpire,
             )
+            if self.on_aliyun_token_refreshed is not None:
+                self.on_aliyun_token_refreshed(session_data.iotToken)
         except ReLoginRequiredError:
             raise
         except (AuthRefreshException, LoginException) as exc:
@@ -385,6 +395,9 @@ class TokenManager:
                 try:
                     await self._http.refresh_login()
                     await self._http.refresh_authorization_token()
+                    creds = self._http.mqtt_credentials
+                    if creds is not None:
+                        _store_mqtt_creds(creds)
                 except ReLoginRequiredError:
                     raise
                 except Exception as exc:
@@ -394,5 +407,6 @@ class TokenManager:
         return self._mqtt_creds
 
     @property
-    def account_id(self):
+    def account_id(self) -> str:
+        """Return the account identifier for this token manager."""
         return self._account_id

@@ -274,8 +274,10 @@ class DeviceHandle:
         # 1. Parse bytes → LubaMsg
         try:
             luba_msg = LubaMsg().parse(payload)
+        except UnicodeDecodeError:
+            return
         except Exception:
-            _logger.exception("Failed to parse incoming bytes as LubaMsg (%d bytes)", len(payload))
+            _logger.info("Failed to parse incoming bytes as LubaMsg (%d bytes)", len(payload))
             return
 
         _logger.debug("← %s  %s", self.device_name, luba_msg.to_dict(include_default_values=False))
@@ -357,6 +359,9 @@ class DeviceHandle:
         Does NOT return the response — responses update device state via on_message.
         The queue handles priority and saga blocking.
         """
+        if skip_if_saga_active and self.queue.is_saga_active:
+            _logger.debug("send_command '%s': saga active — skipping field=%s", self.device_name, expected_field)
+            return
 
         async def _do_send(cmd: bytes, field: str) -> None:
             _logger.debug(

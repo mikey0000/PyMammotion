@@ -39,6 +39,7 @@ def _make_client_with_handle(
     client = MammotionClient.__new__(MammotionClient)
     client._watcher_subscriptions = {}
     client._watchdog_cleanups = {}
+    client._last_user_command_ts = {}
 
     handle = MagicMock()
     handle.device_name = device_name

@@ -1,5 +1,8 @@
+"""Device-level constants re-exported for convenient top-level import."""
+
 from .device_constant import (
     MOWING_ACTIVE_MODES,
+    NO_REQUEST_MODES,
     AppConnectType,
     PosType,
     RTKPositionMode,
@@ -10,6 +13,7 @@ from .device_constant import (
 
 __all__ = [
     "MOWING_ACTIVE_MODES",
+    "NO_REQUEST_MODES",
     "AppConnectType",
     "PosType",
     "RTKPositionMode",

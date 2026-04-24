@@ -574,6 +574,178 @@ async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback
     mqtt.send.assert_not_awaited()
 
 
+# ---------------------------------------------------------------------------
+# set_scheduled_updates: transport + watchdog lifecycle
+# ---------------------------------------------------------------------------
+
+
+async def test_set_scheduled_updates_false_disconnects_and_stops_watchdog() -> None:
+    """set_scheduled_updates(enabled=False) must disconnect all transports and cancel the watchdog."""
+    client = MammotionClient()
+    handle = make_handle("dev1", "Luba-Sched")
+    handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
+    handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
+    await client._device_registry.register(handle)
+
+    # Simulate a running watchdog (pre-installed cleanup callable).
+    mock_cleanup = MagicMock()
+    mock_cleanup._arm = MagicMock()  # noqa: SLF001
+    client._watchdog_cleanups["Luba-Sched"] = mock_cleanup
+
+    await client.set_scheduled_updates("Luba-Sched", enabled=False)
+
+    # Watchdog cleanup must be called and the entry removed.
+    mock_cleanup.assert_called_once()
+    assert "Luba-Sched" not in client._watchdog_cleanups
+
+    # All three transport types must be disconnected.
+    disconnected = [call.args[0] for call in handle.disconnect_transport.await_args_list]
+    assert TransportType.CLOUD_ALIYUN in disconnected
+    assert TransportType.CLOUD_MAMMOTION in disconnected
+    assert TransportType.BLE in disconnected
+
+    handle.connect_transport.assert_not_awaited()
+
+
+async def test_set_scheduled_updates_true_connects_and_reinstalls_watchdog() -> None:
+    """set_scheduled_updates(enabled=True) must reconnect transports and reinstall the watchdog."""
+    client = MammotionClient()
+    handle = make_handle("dev1", "Luba-Sched2")
+    handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
+    handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
+    await client._device_registry.register(handle)
+
+    # No watchdog present (as it would be after a disable).
+    assert "Luba-Sched2" not in client._watchdog_cleanups
+
+    with patch.object(client, "_install_report_data_watchdog") as mock_install:
+        await client.set_scheduled_updates("Luba-Sched2", enabled=True)
+
+    # All three transport types must be connected.
+    connected = [call.args[0] for call in handle.connect_transport.await_args_list]
+    assert TransportType.CLOUD_ALIYUN in connected
+    assert TransportType.CLOUD_MAMMOTION in connected
+    assert TransportType.BLE in connected
+
+    handle.disconnect_transport.assert_not_awaited()
+
+    # Watchdog must be reinstalled since it was absent.
+    mock_install.assert_called_once_with("Luba-Sched2")
+
+
+async def test_set_scheduled_updates_true_skips_watchdog_if_already_installed() -> None:
+    """set_scheduled_updates(enabled=True) must not double-install the watchdog."""
+    client = MammotionClient()
+    handle = make_handle("dev1", "Luba-Sched3")
+    handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
+    handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
+    await client._device_registry.register(handle)
+
+    # Watchdog already present.
+    existing_cleanup = MagicMock()
+    client._watchdog_cleanups["Luba-Sched3"] = existing_cleanup
+
+    with patch.object(client, "_install_report_data_watchdog") as mock_install:
+        await client.set_scheduled_updates("Luba-Sched3", enabled=True)
+
+    mock_install.assert_not_called()
+    # Existing cleanup must not have been touched.
+    existing_cleanup.assert_not_called()
+
+
+async def test_set_scheduled_updates_noop_for_unknown_device() -> None:
+    """set_scheduled_updates must silently do nothing for an unregistered device name."""
+    client = MammotionClient()
+    # Must not raise even when the device is not registered.
+    await client.set_scheduled_updates("ghost-device", enabled=False)
+    await client.set_scheduled_updates("ghost-device", enabled=True)
+
+
+# ---------------------------------------------------------------------------
+# User-command active window: send_command_* stamps _last_user_command_ts
+# ---------------------------------------------------------------------------
+
+
+async def test_send_command_with_args_stamps_last_user_command_ts() -> None:
+    """send_command_with_args must update _last_user_command_ts for the device."""
+    import time
+
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    handle = make_handle("dev1", "Luba-TS")
+    await handle.add_transport(mqtt)
+    await client._device_registry.register(handle)
+
+    assert "Luba-TS" not in client._last_user_command_ts
+
+    before = time.monotonic()
+    await client.send_command_with_args("Luba-TS", "start_job")
+    after = time.monotonic()
+
+    assert "Luba-TS" in client._last_user_command_ts
+    assert before <= client._last_user_command_ts["Luba-TS"] <= after
+
+
+async def test_send_command_and_wait_stamps_last_user_command_ts() -> None:
+    """send_command_and_wait must update _last_user_command_ts for the device."""
+    import time
+
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    handle = make_handle("dev1", "Luba-TS2")
+    await handle.add_transport(mqtt)
+    await client._device_registry.register(handle)
+
+    assert "Luba-TS2" not in client._last_user_command_ts
+
+    # send_command_and_wait will time out waiting for a response — that's fine,
+    # we only care that the timestamp is stamped before the await.
+    with pytest.raises(Exception):  # noqa: BLE001
+        await client.send_command_and_wait("Luba-TS2", "start_job", "some_field", send_timeout=0.01)
+
+    assert "Luba-TS2" in client._last_user_command_ts
+    ts = client._last_user_command_ts["Luba-TS2"]
+    assert time.monotonic() - ts < 5.0  # stamped very recently
+
+
+async def test_watchdog_window_uses_short_after_user_command() -> None:
+    """When a user command was sent within 30 min on MQTT, watchdog uses the short window.
+
+    Verified by checking that send_command_with_args sets _last_user_command_ts,
+    which _current_silence_window() then reads to return _REPORT_DATA_SILENCE_SECONDS.
+    """
+    import time as _time
+
+    from pymammotion.client import _REPORT_DATA_SILENCE_SECONDS, _USER_COMMAND_ACTIVE_SECONDS
+
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    handle = make_handle("dev1", "Luba-Win")
+    handle.snapshot.raw.report_data.dev.battery_val = 50
+    handle.snapshot.raw.report_data.dev.charge_state = 0
+    handle.snapshot.raw.report_data.dev.sys_status = 0
+    await handle.add_transport(mqtt)
+    await client._device_registry.register(handle)
+
+    # No command yet — timestamp absent, should NOT be in the short window.
+    assert "Luba-Win" not in client._last_user_command_ts
+
+    # Stamp a recent command.
+    client._last_user_command_ts["Luba-Win"] = _time.monotonic()
+
+    # Stamp is recent → still within the 30-min window.
+    elapsed = _time.monotonic() - client._last_user_command_ts["Luba-Win"]
+    assert elapsed < _USER_COMMAND_ACTIVE_SECONDS
+
+    # Stamp an expired command (31 minutes ago) → window should revert.
+    client._last_user_command_ts["Luba-Win"] = _time.monotonic() - (_USER_COMMAND_ACTIVE_SECONDS + 60)
+    elapsed_expired = _time.monotonic() - client._last_user_command_ts["Luba-Win"]
+    assert elapsed_expired > _USER_COMMAND_ACTIVE_SECONDS
+
+
 async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> None:
     """When prefer_ble=True and BLE is registered (disconnected), send_raw reconnects and sends via BLE.
 

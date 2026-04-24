@@ -29,12 +29,14 @@ import asyncio
 import dataclasses
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 import betterproto2
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.exceptions import TooManyRequestsException
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
 from pymammotion.data.model import GenerateRouteInformation
@@ -59,7 +61,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
-from pymammotion.utility.constant import MOWING_ACTIVE_MODES
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
 from pymammotion.utility.device_type import DeviceType
 
 # Rapid report-stream subscription — see docs/report_channels.md for the full
@@ -70,6 +72,7 @@ _RAPID_STREAM_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_WORK,
     RptInfoType.RIT_DEV_LOCAL,
     RptInfoType.RIT_DEV_STA,
+    RptInfoType.RIT_VIO,
     RptInfoType.RIT_VISION_POINT,
 ]
 _RAPID_STREAM_PERIOD_MS: int = 1000  # 1 Hz, matches APK requestConnectingChannels
@@ -82,6 +85,7 @@ _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_MAINTAIN,
     RptInfoType.RIT_BASESTATION_INFO,
     RptInfoType.RIT_VIO,
+    RptInfoType.RIT_CONNECT,
 ]
 #: Full channel list used by the one-shot request_iot_sync.
 _ONE_SHOT_CHANNELS: list[RptInfoType] = [
@@ -101,10 +105,16 @@ _ONE_SHOT_CHANNELS: list[RptInfoType] = [
 #: Watchdog window when the mower is actively mowing / returning, or when the
 #: active transport is BLE.  If no ``toapp_report_data`` arrives within this
 #: many seconds, refire the continuous subscription (unless a saga is active).
-_REPORT_DATA_SILENCE_SECONDS: float = 20.0
-#: Extended watchdog window when the mower is docked/paused/idle AND the
-#: active transport is MQTT.  Keeps cloud-path chatter low while docked.
+_REPORT_DATA_SILENCE_SECONDS: float = 60.0
+#: Default watchdog window for MQTT when no quicker trigger applies
+#: (mowing, returning, paused, regular docked).
 _REPORT_DATA_IDLE_SILENCE_SECONDS: float = 600.0  # 10 minutes
+#: Watchdog window when the battery is at 100 % and the mower is on the dock.
+_REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS: float = 1800.0  # 30 minutes
+#: Backoff window applied after a ``TooManyRequestsException`` from the cloud.
+_REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS: float = 900.0  # 15 minutes
+#: How long after the last user-initiated command to keep the short watchdog window active.
+_USER_COMMAND_ACTIVE_SECONDS: float = 1800.0  # 30 minutes
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -143,6 +153,9 @@ class MammotionClient:
         self._watcher_subscriptions: dict[str, list[Subscription]] = {}
         #: Per-device cleanup callbacks (cancels watchdog task + broker subscription).
         self._watchdog_cleanups: dict[str, Callable[[], None]] = {}
+        #: Monotonic timestamp of the last user-initiated command per device.
+        #: Used to keep the watchdog on a short window for 30 min after activity.
+        self._last_user_command_ts: dict[str, float] = {}
         self._ha_version: str | None = ha_version
 
     # ------------------------------------------------------------------
@@ -390,25 +403,39 @@ class MammotionClient:
         if handle is None:
             return
 
-        state: dict[str, Any] = {"task": None, "arm": None}
+        state: dict[str, Any] = {"task": None, "arm": None, "rate_limited": False}
+
+        def _is_full_battery_docked() -> bool:
+            try:
+                dev = handle.snapshot.raw.report_data.dev
+                return int(dev.battery_val) >= 100 and int(dev.charge_state) != 0
+            except (AttributeError, TypeError, ValueError):
+                return False
 
         def _current_silence_window() -> float:
-            """Pick the silence window based on active transport + sys_status.
+            """Pick the silence window based on active transport + device state.
 
-            BLE always uses the short 20 s window.  MQTT uses the long 10 min
-            window when the mower is docked/paused/idle.
+            Priority order:
+              1. Rate-limited → 15 min backoff (all transports).
+              2. BLE transport → 60 s (always).
+              [MQTT only from here]
+              3. Recent user command (within 30 min) → 60 s.
+              4. Full battery + docked → 30 min.
+              5. Default (mowing, returning, paused, regular docked) → 10 min.
             """
+            if state["rate_limited"]:
+                return _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS
             try:
                 transport = handle.active_transport()
             except NoTransportAvailableError:
                 return _REPORT_DATA_SILENCE_SECONDS
             if transport.transport_type == TransportType.BLE:
                 return _REPORT_DATA_SILENCE_SECONDS
-            raw = handle.snapshot.raw
-            report_data = getattr(raw, "report_data", None)
-            sys_status = getattr(getattr(report_data, "dev", None), "sys_status", 0) if report_data else 0
-            if sys_status in _RAPID_STREAM_ACTIVE_STATES:
+            last_cmd = self._last_user_command_ts.get(device_name, 0.0)
+            if time.monotonic() - last_cmd < _USER_COMMAND_ACTIVE_SECONDS:
                 return _REPORT_DATA_SILENCE_SECONDS
+            if _is_full_battery_docked():
+                return _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
             return _REPORT_DATA_IDLE_SILENCE_SECONDS
 
         async def _on_timeout() -> None:
@@ -422,9 +449,20 @@ class MammotionClient:
                     "report_data watchdog [%s]: silence but saga active — deferring",
                     device_name,
                 )
-                # Keep the timer alive so detection resumes once the saga finishes.
                 _arm()
                 return
+            try:
+                sys_status = handle.snapshot.raw.report_data.dev.sys_status
+                if sys_status in NO_REQUEST_MODES:
+                    _logger.debug(
+                        "report_data watchdog [%s]: skipping refire — device in no-request mode %s",
+                        device_name,
+                        sys_status,
+                    )
+                    _arm()
+                    return
+            except (AttributeError, TypeError):
+                pass
             _logger.debug(
                 "report_data watchdog [%s]: %ds silence — refiring continuous subscription",
                 device_name,
@@ -432,6 +470,14 @@ class MammotionClient:
             )
             try:
                 await self.request_iot_sync_continuous(device_name)
+                state["rate_limited"] = False
+            except TooManyRequestsException:
+                _logger.warning(
+                    "report_data watchdog [%s]: rate limited — backing off %.0fs",
+                    device_name,
+                    _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS,
+                )
+                state["rate_limited"] = True
             except Exception:  # noqa: BLE001
                 _logger.warning("report_data watchdog [%s]: refire failed", device_name, exc_info=True)
             _arm()
@@ -450,7 +496,15 @@ class MammotionClient:
             if inner_name == "toapp_report_data":
                 _arm()
 
+        async def _on_sys_status_changed(_sys_status: int) -> None:
+            # Re-arm immediately so _current_silence_window() recalculates for the new state.
+            _arm()
+
         broker_sub = handle.broker.subscribe_unsolicited(_on_report_data)
+        sys_status_sub = handle.watch_field(
+            lambda s: s.raw.report_data.dev.sys_status,
+            _on_sys_status_changed,
+        )
         state["arm"] = _arm
         _arm()  # prime the first window
 
@@ -460,6 +514,7 @@ class MammotionClient:
                 task.cancel()
             state["task"] = None
             broker_sub.cancel()
+            sys_status_sub.cancel()
 
         # Attach `arm` on the cleanup callable so saga-end can re-arm the timer
         # without needing a second lookup dict.
@@ -1141,6 +1196,10 @@ class MammotionClient:
                     return False
 
         transport.on_auth_failure = _on_aliyun_auth_failure
+        # Keep the transport's bind token current on every proactive refresh so that
+        # reconnects after a network blip don't carry a stale iotToken.
+        if token_manager is not None:
+            token_manager.on_aliyun_token_refreshed = transport.update_iot_token
         return transport
 
     def _setup_mammotion_transport(
@@ -1673,6 +1732,36 @@ class MammotionClient:
         await handle.enqueue_saga(saga)
 
     # ------------------------------------------------------------------
+    # Scheduled-updates control (called from HA schedule_updates switch)
+    # ------------------------------------------------------------------
+
+    async def set_scheduled_updates(self, device_name: str, *, enabled: bool) -> None:
+        """Connect or disconnect all transports and manage the watchdog for *device_name*.
+
+        Called by HA when the user toggles the 'schedule updates' switch.
+
+        When *enabled* is True, all registered transports are reconnected and
+        the report-data watchdog is re-installed (it was torn down on disable).
+        When *enabled* is False, the watchdog is stopped first so no refire
+        attempts fire while the transports are coming down, then all transports
+        are disconnected.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+        if enabled:
+            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION, TransportType.BLE):
+                await handle.connect_transport(t_type)
+            if device_name not in self._watchdog_cleanups:
+                self._install_report_data_watchdog(device_name)
+        else:
+            cleanup = self._watchdog_cleanups.pop(device_name, None)
+            if cleanup is not None:
+                cleanup()
+            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION, TransportType.BLE):
+                await handle.disconnect_transport(t_type)
+
+    # ------------------------------------------------------------------
     # BLE connection
     # ------------------------------------------------------------------
 
@@ -1835,6 +1924,19 @@ class MammotionClient:
     # Commands
     # ------------------------------------------------------------------
 
+    def _record_user_command(self, device_name: str) -> None:
+        """Stamp the user-command timestamp and immediately re-arm the watchdog.
+
+        Called by send_command_with_args and send_command_and_wait so that a
+        user action on a 10-min idle window snaps the watchdog back to 60 s
+        without waiting for the current sleep to expire.
+        """
+        self._last_user_command_ts[device_name] = time.monotonic()
+        cleanup = self._watchdog_cleanups.get(device_name)
+        arm = getattr(cleanup, "_arm", None)
+        if arm is not None:
+            arm()
+
     async def send_command_with_args(
         self,
         name: str,
@@ -1865,6 +1967,7 @@ class MammotionClient:
         if handle is None:
             msg = f"Device '{name}' not registered"
             raise KeyError(msg)
+        self._record_user_command(name)
         commands = handle.commands
         command_bytes: bytes = getattr(commands, key)(**kwargs)
         _logger.debug(
@@ -1947,6 +2050,7 @@ class MammotionClient:
         if handle is None:
             msg = f"Device '{name}' not registered"
             raise KeyError(msg)
+        self._record_user_command(name)
         commands = handle.commands
         command_bytes: bytes = getattr(commands, key)(**kwargs)
         _session = self._get_session_for_device(name)
