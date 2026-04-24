@@ -181,12 +181,6 @@ def test_incomplete_area_generates_no_area_features() -> None:
     assert area_features == [], "Expected no area features when area frames are incomplete"
 
 
-# ---------------------------------------------------------------------------
-# Corridor / virtual wall / visual zone GeoJSON — each PathType gets its own
-# feature with geometry and style matching the APK's layer-per-type approach.
-# ---------------------------------------------------------------------------
-
-
 def _make_frame(
     type_code: int,
     hash_id: int,

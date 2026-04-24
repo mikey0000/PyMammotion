@@ -171,7 +171,8 @@ BORDER_PASS_STYLE = {
 }
 
 # PathType 19 — MN231 corridor line between zones.
-# APK: MapColorTag.Map_Color_Corridor_231 = #145FF2, lineWidth 14 at max zoom.
+# APK uses MapColorTag.Map_Color_Corridor_231 = #145FF2,
+# with lineWidth 14 at max zoom.
 CORRIDOR_LINE_STYLE = {
     "color": "#145FF2",
     "weight": 5,
@@ -192,8 +193,9 @@ CORRIDOR_POINT_STYLE = {
 }
 
 # PathType 21 — user-drawn virtual fence / keep-out line.
-# APK uses an image line-pattern (icon_virtual_machine_line) which doesn't
-# translate cleanly to GeoJSON; render as a red dashed line to signal "keep out".
+# The APK uses an image line-pattern (icon_virtual_machine_line),
+# which does not translate cleanly to GeoJSON.
+# Render it as a red dashed line to signal "keep out".
 VIRTUAL_WALL_STYLE = {
     "color": "#FF4D00",
     "weight": 3,
@@ -204,7 +206,8 @@ VIRTUAL_WALL_STYLE = {
 }
 
 # PathType 25 — vision-detected safety zone (Luba 2 Vision / Pro).
-# APK: map_no_stop_zone #007aff with reduced fill alpha — safety buffer around obstacles.
+# The APK uses map_no_stop_zone #007AFF with reduced fill alpha,
+# representing a safety buffer around obstacles.
 VISUAL_SAFETY_ZONE_STYLE = {
     "color": "#007AFF",
     "fillColor": "#007AFF",
@@ -217,8 +220,8 @@ VISUAL_SAFETY_ZONE_STYLE = {
 }
 
 # PathType 26 — vision-detected obstacle zone (Luba 2 Vision / Pro).
-# Colour #CC7700 comes from the Android app's Map_Color_Fill_CC7700 tag
-# (vision-picked obstacles rendered in orange).
+# The colour #CC7700 comes from the Android app's
+# Map_Color_Fill_CC7700 tag for vision-picked obstacles.
 VISUAL_OBSTACLE_ZONE_STYLE = {
     "color": "#CC7700",
     "fillColor": "#CC7700",
@@ -552,6 +555,12 @@ class GeojsonGenerator:
     ) -> int:
         """Process all map objects and add them to GeoJSON.
 
+        ``type_mapping`` is the dispatch table from logical map object names to
+        their corresponding ``HashList`` buckets. The keys are informational;
+        geometry and styling are chosen later from each frame's ``type`` field.
+        Adding a bucket here enables GeoJSON output for that ``PathType``, while
+        omitting one silently drops that object type from the generated output.
+
         Args:
             hash_list: HashList object containing map data
             rtk_location: Tuple of (longitude, latitude) for rtk position
@@ -564,11 +573,6 @@ class GeojsonGenerator:
         """
         total_frames = 0
 
-        # Map type names to their corresponding dictionaries in HashList.
-        # Keys here are informational — the actual styling / geometry is
-        # selected in _create_feature_geometry via the per-frame ``type`` field
-        # (PathType).  Adding a dict here enables dispatch; omitting it silently
-        # drops the type from the GeoJSON output.
         type_mapping: dict[str, dict[int, FrameList]] = {
             "area": hash_list.area,
             "path": hash_list.path,
@@ -582,8 +586,9 @@ class GeojsonGenerator:
         }
 
         for type_name, map_objects in type_mapping.items():
-            # Sort by hash so the per-type index is stable across runs — human-readable
-            # fallback names like "Virtual Wall 1" should not flip between invocations.
+            # Sort by hash so the per-type index is stable across runs.
+            # That keeps fallback names like "Virtual Wall 1"
+            # from flipping between invocations.
             index = 0
             for hash_key, frame_list in sorted(map_objects.items()):
                 if not GeojsonGenerator._validate_frame_list(frame_list, hash_key, area_names):
@@ -795,8 +800,9 @@ class GeojsonGenerator:
 
         return {"type": "Feature", "properties": properties, "geometry": geometry}
 
-    # Human-readable title template per PathType.  ``{n}`` is the 1-based index
-    # within the type, used when the device has no user label for this hash.
+    # Human-readable title template per PathType.
+    # ``{n}`` is the 1-based index within the type.
+    # It is used when the device has no user label for this hash.
     _NAME_TEMPLATES: ClassVar[dict[str, str]] = {
         "area": "Zone {n}",
         "path": "Path {n}",
@@ -809,7 +815,8 @@ class GeojsonGenerator:
         "visual_obstacle_zone": "Obstacle zone {n}",
     }
 
-    # Short description per PathType.  For obstacles we append " in <area>"
+    # Short description per PathType.
+    # For obstacles, append " in <area>"
     # when a parent hash is known.
     _DESCRIPTION_TEMPLATES: ClassVar[dict[str, str]] = {
         "area": "Mowing zone",
@@ -967,8 +974,8 @@ class GeojsonGenerator:
             properties.update(CORRIDOR_LINE_STYLE)
             return {"type": "LineString", "coordinates": lonlat_coords}
         if type_id == TYPE_CORRIDOR_POINT:
-            # Corridor waypoints — each coord is a separate marker in the APK.
-            # Emit a MultiPoint so every waypoint is rendered at its own location.
+            # Corridor waypoints are separate markers in the APK.
+            # Emit a MultiPoint so each waypoint renders at its own location.
             if not lonlat_coords:
                 return None
             properties.update(CORRIDOR_POINT_STYLE)
