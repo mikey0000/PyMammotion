@@ -294,6 +294,57 @@ def test_corridor_wall_and_visual_zones_emit_geojson_features() -> None:
         assert features_by_type[type_name]["geometry"]["type"] == geom_type
 
 
+def test_features_get_meaningful_names_and_descriptions() -> None:
+    """Every feature gets a non-empty Name/title and a real description.
+
+    Guards a regression where the generator emitted ``description: "description <b>test</b>"``
+    and left ``title``/``Name`` blank for any type the device hadn't user-labeled
+    (most of them — only areas carry a name_time.name).
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    expected_descriptions = {
+        "corridor_line": "Corridor line between zones (MN231)",
+        "corridor_point": "Corridor waypoint between zones (MN231)",
+        "virtual_wall": "User-drawn virtual fence",
+        "visual_safety_zone": "Vision-detected safety zone",
+        "visual_obstacle_zone": "Vision-detected obstacle zone",
+    }
+    expected_name_prefix = {
+        "corridor_line": "Corridor",
+        "corridor_point": "Corridor waypoint",
+        "virtual_wall": "Virtual wall",
+        "visual_safety_zone": "Safety zone",
+        "visual_obstacle_zone": "Obstacle zone",
+    }
+
+    features_by_type = {f["properties"].get("type_name"): f for f in result["features"]}
+    for type_name, expected_desc in expected_descriptions.items():
+        feat = features_by_type.get(type_name)
+        assert feat is not None, f"missing feature for {type_name}"
+        props = feat["properties"]
+        assert props["description"] == expected_desc
+        # Name must be non-empty and start with the type-specific prefix
+        assert props["Name"], f"{type_name} has empty Name"
+        assert props["title"], f"{type_name} has empty title"
+        assert props["Name"] == props["title"], "title and Name should match"
+        assert props["Name"].startswith(expected_name_prefix[type_name]), (
+            f"{type_name} name {props['Name']!r} should start with {expected_name_prefix[type_name]!r}"
+        )
+        # The old placeholder must never come back.
+        assert "test" not in props["description"]
+
+
 def test_corridor_wall_and_visual_zone_styles_are_distinct() -> None:
     """Each new type gets its own style — colors must not collide with existing types."""
     fixture = _load_fixture()
