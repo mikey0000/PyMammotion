@@ -181,6 +181,241 @@ def test_incomplete_area_generates_no_area_features() -> None:
     assert area_features == [], "Expected no area features when area frames are incomplete"
 
 
+def _make_frame(
+    type_code: int,
+    hash_id: int,
+    coords: list[tuple[float, float]],
+) -> NavGetCommData:
+    """Build a single-frame NavGetCommData with the given type and coord list."""
+    from pymammotion.data.model.hash_list import NavNameTime
+
+    return NavGetCommData(
+        pver=1,
+        sub_cmd=0,
+        result=0,
+        action=0,
+        type=type_code,
+        hash=hash_id,
+        paternal_hash_a=0,
+        paternal_hash_b=0,
+        total_frame=1,
+        current_frame=1,
+        data_hash=hash_id,
+        data_len=len(coords) * 16,
+        data_couple=[CommDataCouple(x=x, y=y) for x, y in coords],
+        reserved="",
+        name_time=NavNameTime(name="", create_time=0, modify_time=0),
+    )
+
+
+def _install_frame(target: dict[int, FrameList], frame: NavGetCommData) -> None:
+    target[frame.hash] = FrameList(total_frame=frame.total_frame, sub_cmd=0, data=[frame])
+
+
+def _hash_list_with_extra_types() -> tuple[HashList, dict[str, int]]:
+    """Return a HashList with one frame per new PathType and the hash IDs used."""
+    hash_list = HashList()
+    hashes = {
+        "corridor_line": 1_900_000_000_000_000_001,
+        "corridor_point": 2_000_000_000_000_000_001,
+        "virtual_wall": 2_100_000_000_000_000_001,
+        "visual_safety_zone": 2_500_000_000_000_000_001,
+        "visual_obstacle_zone": 2_600_000_000_000_000_001,
+    }
+    _install_frame(
+        hash_list.corridor_line,
+        _make_frame(19, hashes["corridor_line"], [(0.0, 0.0), (5.0, 0.0), (10.0, 0.0)]),
+    )
+    _install_frame(
+        hash_list.corridor_point,
+        _make_frame(20, hashes["corridor_point"], [(1.0, 1.0), (2.0, 2.0)]),
+    )
+    _install_frame(
+        hash_list.virtual_wall,
+        _make_frame(21, hashes["virtual_wall"], [(0.0, 3.0), (0.0, 6.0), (3.0, 6.0)]),
+    )
+    _install_frame(
+        hash_list.visual_safety_zone,
+        _make_frame(
+            25,
+            hashes["visual_safety_zone"],
+            [(4.0, 4.0), (6.0, 4.0), (6.0, 6.0), (4.0, 6.0), (4.0, 4.0)],
+        ),
+    )
+    _install_frame(
+        hash_list.visual_obstacle_zone,
+        _make_frame(
+            26,
+            hashes["visual_obstacle_zone"],
+            [(8.0, 8.0), (10.0, 8.0), (10.0, 10.0), (8.0, 10.0), (8.0, 8.0)],
+        ),
+    )
+    return hash_list, hashes
+
+
+def test_corridor_wall_and_visual_zones_emit_geojson_features() -> None:
+    """Each of the five new PathTypes (19/20/21/25/26) produces one styled feature.
+
+    Guards the two gaps the previous PR left open:
+      1. The generator's ``_process_map_objects.type_mapping`` silently dropped
+         these dicts.
+      2. ``_create_feature_geometry`` returned ``None`` for any type_id other
+         than 0/1/2, so even if dispatch worked the feature was discarded.
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    features_by_type = {f["properties"].get("type_name"): f for f in result["features"]}
+
+    expected_geometry = {
+        "corridor_line": "LineString",
+        "corridor_point": "MultiPoint",
+        "virtual_wall": "LineString",
+        "visual_safety_zone": "Polygon",
+        "visual_obstacle_zone": "Polygon",
+    }
+    for type_name, geom_type in expected_geometry.items():
+        assert type_name in features_by_type, f"Expected a {type_name} feature in generator output"
+        assert features_by_type[type_name]["geometry"]["type"] == geom_type
+
+
+def test_features_get_meaningful_names_and_descriptions() -> None:
+    """Every feature gets a non-empty Name/title and a real description.
+
+    Guards a regression where the generator emitted ``description: "description <b>test</b>"``
+    and left ``title``/``Name`` blank for any type the device hadn't user-labeled
+    (most of them — only areas carry a name_time.name).
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    expected_descriptions = {
+        "corridor_line": "Corridor line between zones (MN231)",
+        "corridor_point": "Corridor waypoint between zones (MN231)",
+        "virtual_wall": "User-drawn virtual fence",
+        "visual_safety_zone": "Vision-detected safety zone",
+        "visual_obstacle_zone": "Vision-detected obstacle zone",
+    }
+    expected_name_prefix = {
+        "corridor_line": "Corridor",
+        "corridor_point": "Corridor waypoint",
+        "virtual_wall": "Virtual wall",
+        "visual_safety_zone": "Safety zone",
+        "visual_obstacle_zone": "Obstacle zone",
+    }
+
+    features_by_type = {f["properties"].get("type_name"): f for f in result["features"]}
+    for type_name, expected_desc in expected_descriptions.items():
+        feat = features_by_type.get(type_name)
+        assert feat is not None, f"missing feature for {type_name}"
+        props = feat["properties"]
+        assert props["description"] == expected_desc
+        # Name must be non-empty and start with the type-specific prefix
+        assert props["Name"], f"{type_name} has empty Name"
+        assert props["title"], f"{type_name} has empty title"
+        assert props["Name"] == props["title"], "title and Name should match"
+        assert props["Name"].startswith(expected_name_prefix[type_name]), (
+            f"{type_name} name {props['Name']!r} should start with {expected_name_prefix[type_name]!r}"
+        )
+        # The old placeholder must never come back.
+        assert "test" not in props["description"]
+
+
+def test_corridor_wall_and_visual_zone_styles_are_distinct() -> None:
+    """Each new type gets its own style — colors must not collide with existing types."""
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    colors = {
+        f["properties"]["type_name"]: f["properties"].get("color")
+        for f in result["features"]
+        if f["properties"].get("type_name")
+        in {
+            "corridor_line",
+            "corridor_point",
+            "virtual_wall",
+            "visual_safety_zone",
+            "visual_obstacle_zone",
+        }
+    }
+    # Color values lifted from the Mammotion Android app's MapColorTag / render code.
+    assert colors["corridor_line"] == "#145FF2"
+    assert colors["corridor_point"] == "#145FF2"
+    assert colors["virtual_wall"] == "#FF4D00"
+    assert colors["visual_safety_zone"] == "#007AFF"
+    assert colors["visual_obstacle_zone"] == "#CC7700"
+
+
+def test_feature_styles_use_leaflet_path_options() -> None:
+    """Styles must emit Leaflet Path keys, not the common mis-spellings.
+
+    Guards against regressing to ``fill: "<color>"`` (Leaflet treats ``fill``
+    as a Boolean — the color is silently ignored, falling back to ``color``).
+    Also verifies the dead ``zIndex`` / ``road_center_*`` keys stay removed.
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    for feat in result["features"]:
+        props = feat["properties"]
+        # ``fill`` must never be a color string on any feature — Leaflet would
+        # treat a non-empty string as truthy but ignore the color value.
+        if "fill" in props:
+            assert isinstance(props["fill"], bool), (
+                f"feature {props.get('type_name')!r} has fill={props['fill']!r} "
+                f"(must be bool or absent; use fillColor for colors)"
+            )
+        # Any feature that declares a fill colour must use the Leaflet key.
+        if props.get("type_name") in {
+            "area",
+            "visual_safety_zone",
+            "visual_obstacle_zone",
+            "corridor_point",
+        }:
+            assert "fillColor" in props, f"{props['type_name']} missing fillColor"
+
+        # Dead keys from the previous convention must stay out.
+        assert "zIndex" not in props
+        assert "road_center_color" not in props
+        assert "road_center_dash" not in props
+
+
 # ---------------------------------------------------------------------------
 # Yuka device — mow path generation from real device data
 # ---------------------------------------------------------------------------

@@ -1,7 +1,39 @@
+"""Build styled GeoJSON ``FeatureCollection`` output from a ``HashList``.
+
+Styling convention
+------------------
+Every feature's ``properties`` dict carries **Leaflet Path options**
+(https://leafletjs.com/reference.html#path) so a frontend can pipe
+``feature.properties`` straight into ``L.Path.setStyle()`` / a
+``L.geoJSON(data, {style: f => f.properties})`` call.
+
+Supported keys (stroke + fill, Leaflet spelling):
+
+* ``color`` — stroke colour (string)
+* ``weight`` — stroke width in px
+* ``opacity`` — stroke opacity (0..1)
+* ``dashArray`` — dash pattern, e.g. ``"8, 6"``
+* ``lineCap`` / ``lineJoin`` — ``"round"`` etc.
+* ``fillColor`` — fill colour (polygon / ``CircleMarker``).  Leaflet's
+  ``fill`` key is a *boolean*, so fill colour **must** be ``fillColor``
+  — earlier versions of this module emitted ``fill: "<color>"`` which
+  Leaflet silently ignored, falling back to ``color`` for the fill.
+* ``fillOpacity`` — fill opacity (0..1)
+* ``radius`` — ``CircleMarker`` radius in px (station / point features)
+
+``simplestyle-spec`` (``stroke``, ``stroke-width``, ``fill``,
+``fill-opacity`` … — hyphenated) is **not** used.  Consumers that want
+that spec can map the keys themselves.
+
+Icon features (RTK, dock) additionally carry ``iconImage`` /
+``iconSize`` / ``iconAnchor`` / ``iconUrl`` — a Mapbox-GL-style symbol
+layer shape that the HA-Mammotion-Assets icon pack consumes.
+"""
+
 import json
 import logging
 import math
-from typing import Any
+from typing import Any, ClassVar
 
 from shapely.geometry import Point
 
@@ -41,13 +73,27 @@ DOCK_IMAGE = {
 # STYLE CONFIGURATION
 #############################
 
-DOCK_STYLE = {"color": "lightgray", "fill": "lightgray", "weight": 2, "opacity": 1.0, "fillOpacity": 0.7, "radius": 10}
+DOCK_STYLE = {
+    "color": "lightgray",
+    "fillColor": "lightgray",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.7,
+    "radius": 10,
+}
 
-RTK_STYLE = {"color": "purple", "fill": "purple", "weight": 2, "opacity": 1.0, "fillOpacity": 0.7, "radius": 7}
+RTK_STYLE = {
+    "color": "purple",
+    "fillColor": "purple",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.7,
+    "radius": 7,
+}
 
 AREA_STYLE = {
     "color": "green",
-    "fill": "darkgreen",
+    "fillColor": "darkgreen",
     "weight": 3,
     "opacity": 0.8,
     "fillOpacity": 0.3,
@@ -58,7 +104,7 @@ AREA_STYLE = {
 
 OBSTACLE_STYLE = {
     "color": "#FF4D00",
-    "fill": "darkorange",
+    "fillColor": "darkorange",
     "weight": 2,
     "opacity": 0.9,
     "fillOpacity": 0.4,
@@ -71,15 +117,19 @@ PATH_STYLE = {
     "color": "#ffffff",
     "weight": 8,
     "opacity": 1.0,
-    "zIndex": -1,
     "dashArray": "",
     "lineCap": "round",
     "lineJoin": "round",
-    "road_center_color": "#696969",
-    "road_center_dash": "8, 8",
 }
 
-POINT_STYLE = {"color": "blue", "fill": "lightblue", "weight": 2, "opacity": 1.0, "fillOpacity": 0.7, "radius": 5}
+POINT_STYLE = {
+    "color": "blue",
+    "fillColor": "lightblue",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.7,
+    "radius": 5,
+}
 
 DYNAMICS_LINE_STYLE = {
     "color": "#FFD700",  # gold — visually distinct from the planned green mow path
@@ -120,12 +170,80 @@ BORDER_PASS_STYLE = {
     "lineJoin": "round",
 }
 
+# PathType 19 — MN231 corridor line between zones.
+# APK uses MapColorTag.Map_Color_Corridor_231 = #145FF2,
+# with lineWidth 14 at max zoom.
+CORRIDOR_LINE_STYLE = {
+    "color": "#145FF2",
+    "weight": 5,
+    "opacity": 0.9,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# PathType 20 — MN231 corridor waypoints. APK renders these as circular markers.
+CORRIDOR_POINT_STYLE = {
+    "color": "#145FF2",
+    "fillColor": "#145FF2",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.8,
+    "radius": 5,
+}
+
+# PathType 21 — user-drawn virtual fence / keep-out line.
+# The APK uses an image line-pattern (icon_virtual_machine_line),
+# which does not translate cleanly to GeoJSON.
+# Render it as a red dashed line to signal "keep out".
+VIRTUAL_WALL_STYLE = {
+    "color": "#FF4D00",
+    "weight": 3,
+    "opacity": 0.95,
+    "dashArray": "8, 6",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# PathType 25 — vision-detected safety zone (Luba 2 Vision / Pro).
+# The APK uses map_no_stop_zone #007AFF with reduced fill alpha,
+# representing a safety buffer around obstacles.
+VISUAL_SAFETY_ZONE_STYLE = {
+    "color": "#007AFF",
+    "fillColor": "#007AFF",
+    "weight": 2,
+    "opacity": 0.9,
+    "fillOpacity": 0.3,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# PathType 26 — vision-detected obstacle zone (Luba 2 Vision / Pro).
+# The colour #CC7700 comes from the Android app's
+# Map_Color_Fill_CC7700 tag for vision-picked obstacles.
+VISUAL_OBSTACLE_ZONE_STYLE = {
+    "color": "#CC7700",
+    "fillColor": "#CC7700",
+    "weight": 2,
+    "opacity": 0.9,
+    "fillOpacity": 0.4,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
 geojson_metadata = {"name": "Lawn Areas", "description": "Generated from Mammotion diagnostics data"}
 
 # Map type IDs — these match PathType enum values from NavGetCommData.type
 TYPE_MOWING_ZONE: int = 0
 TYPE_OBSTACLE: int = 1
 TYPE_PATH: int = 2
+TYPE_CORRIDOR_LINE: int = 19
+TYPE_CORRIDOR_POINT: int = 20
+TYPE_VIRTUAL_WALL: int = 21
+TYPE_VISUAL_SAFETY_ZONE: int = 25
+TYPE_VISUAL_OBSTACLE_ZONE: int = 26
 
 # Coordinate conversion constants
 METERS_PER_DEGREE: int = 111320
@@ -437,6 +555,12 @@ class GeojsonGenerator:
     ) -> int:
         """Process all map objects and add them to GeoJSON.
 
+        ``type_mapping`` is the dispatch table from logical map object names to
+        their corresponding ``HashList`` buckets. The keys are informational;
+        geometry and styling are chosen later from each frame's ``type`` field.
+        Adding a bucket here enables GeoJSON output for that ``PathType``, while
+        omitting one silently drops that object type from the generated output.
+
         Args:
             hash_list: HashList object containing map data
             rtk_location: Tuple of (longitude, latitude) for rtk position
@@ -449,26 +573,44 @@ class GeojsonGenerator:
         """
         total_frames = 0
 
-        # Map type names to their corresponding dictionaries in HashList
         type_mapping: dict[str, dict[int, FrameList]] = {
             "area": hash_list.area,
             "path": hash_list.path,
             "obstacle": hash_list.obstacle,
             "dump": hash_list.dump,
+            "corridor_line": hash_list.corridor_line,
+            "corridor_point": hash_list.corridor_point,
+            "virtual_wall": hash_list.virtual_wall,
+            "visual_safety_zone": hash_list.visual_safety_zone,
+            "visual_obstacle_zone": hash_list.visual_obstacle_zone,
         }
 
         for type_name, map_objects in type_mapping.items():
-            for hash_key, frame_list in map_objects.items():
+            # Sort by hash so the per-type index is stable across runs.
+            # That keeps fallback names like "Virtual Wall 1"
+            # from flipping between invocations.
+            index = 0
+            for hash_key, frame_list in sorted(map_objects.items()):
                 if not GeojsonGenerator._validate_frame_list(frame_list, hash_key, area_names):
                     continue
 
+                index += 1
                 local_coords = GeojsonGenerator._collect_frame_coordinates(frame_list)
                 total_frames += len(frame_list.data)
 
                 lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location)
                 length, area = GeojsonGenerator.map_object_stats(local_coords)
 
-                feature = GeojsonGenerator._create_feature(hash_key, frame_list, type_name, lonlat_coords, length, area)
+                feature = GeojsonGenerator._create_feature(
+                    hash_key,
+                    frame_list,
+                    type_name,
+                    lonlat_coords,
+                    length,
+                    area,
+                    index=index,
+                    area_names=area_names,
+                )
                 if feature:
                     geo_json["features"].append(feature)
 
@@ -593,7 +735,14 @@ class GeojsonGenerator:
 
     @staticmethod
     def _create_feature(
-        hash_key: int, frame_list: FrameList, type_name: str, lonlat_coords: CoordinateList, length: float, area: float
+        hash_key: int,
+        frame_list: FrameList,
+        type_name: str,
+        lonlat_coords: CoordinateList,
+        length: float,
+        area: float,
+        index: int = 1,
+        area_names: dict[int, str] | None = None,
     ) -> GeoJSONFeature | None:
         """Create a GeoJSON feature from frame list data.
 
@@ -604,6 +753,12 @@ class GeojsonGenerator:
             lonlat_coords: List of [longitude, latitude] coordinate pairs
             length: Calculated length of the feature
             area: Calculated area of the feature
+            index: 1-based sequence number within *type_name* — used for
+                fallback names like "Virtual Wall 2" when the device has
+                not stored a user label for this type.
+            area_names: hash → name lookup built from ``HashList.area_name``.
+                Used to name area features and to qualify obstacles with
+                their parent zone.
 
         Returns:
             GeoJSON feature dictionary or None if invalid
@@ -611,12 +766,32 @@ class GeojsonGenerator:
         """
         first_frame = frame_list.data[0]
         type_id = first_frame.type
-        object_name = ""
+        user_label = ""
         if isinstance(first_frame, NavGetCommData):
-            object_name = first_frame.name_time.name
+            user_label = first_frame.name_time.name
+
+        object_name = GeojsonGenerator._build_feature_name(
+            type_name=type_name,
+            hash_key=hash_key,
+            index=index,
+            user_label=user_label,
+            area_names=area_names or {},
+        )
+        description = GeojsonGenerator._build_feature_description(
+            type_name=type_name,
+            first_frame=first_frame,
+            area_names=area_names or {},
+        )
 
         properties = GeojsonGenerator._create_feature_properties(
-            hash_key, type_id, type_name, first_frame, length, area, object_name
+            hash_key,
+            type_id,
+            type_name,
+            first_frame,
+            length,
+            area,
+            object_name,
+            description,
         )
         geometry = GeojsonGenerator._create_feature_geometry(type_id, lonlat_coords, properties)
 
@@ -624,6 +799,81 @@ class GeojsonGenerator:
             return None
 
         return {"type": "Feature", "properties": properties, "geometry": geometry}
+
+    # Human-readable title template per PathType.
+    # ``{n}`` is the 1-based index within the type.
+    # It is used when the device has no user label for this hash.
+    _NAME_TEMPLATES: ClassVar[dict[str, str]] = {
+        "area": "Zone {n}",
+        "path": "Path {n}",
+        "obstacle": "Obstacle {n}",
+        "dump": "Dump zone {n}",
+        "corridor_line": "Corridor {n}",
+        "corridor_point": "Corridor waypoint {n}",
+        "virtual_wall": "Virtual wall {n}",
+        "visual_safety_zone": "Safety zone {n}",
+        "visual_obstacle_zone": "Obstacle zone {n}",
+    }
+
+    # Short description per PathType.
+    # For obstacles, append " in <area>"
+    # when a parent hash is known.
+    _DESCRIPTION_TEMPLATES: ClassVar[dict[str, str]] = {
+        "area": "Mowing zone",
+        "path": "Planned path",
+        "obstacle": "Obstacle",
+        "dump": "Clippings dump zone",
+        "corridor_line": "Corridor line between zones (MN231)",
+        "corridor_point": "Corridor waypoint between zones (MN231)",
+        "virtual_wall": "User-drawn virtual fence",
+        "visual_safety_zone": "Vision-detected safety zone",
+        "visual_obstacle_zone": "Vision-detected obstacle zone",
+    }
+
+    @staticmethod
+    def _build_feature_name(
+        *,
+        type_name: str,
+        hash_key: int,
+        index: int,
+        user_label: str,
+        area_names: dict[int, str],
+    ) -> str:
+        """Return a non-empty display name for a feature.
+
+        Priority: user label from ``name_time`` → area-name lookup (covers
+        areas whose name is held in ``HashList.area_name`` rather than on the
+        frame itself) → synthesized "Type N" fallback.
+        """
+        if user_label:
+            return user_label
+        if type_name == "area":
+            looked_up = area_names.get(hash_key)
+            if looked_up:
+                return looked_up
+        template = GeojsonGenerator._NAME_TEMPLATES.get(type_name, "{type} {n}")
+        return template.format(n=index, type=type_name)
+
+    @staticmethod
+    def _build_feature_description(
+        *,
+        type_name: str,
+        first_frame: Any,
+        area_names: dict[int, str],
+    ) -> str:
+        """Return a short human-readable description for a feature.
+
+        For obstacles the parent area (via ``paternal_hash_a`` / ``_b``) is
+        appended when it maps to a known area name — this matches how the
+        APK tags obstacles "Obstacle in Front Lawn".
+        """
+        base = GeojsonGenerator._DESCRIPTION_TEMPLATES.get(type_name, type_name.replace("_", " "))
+        if type_name == "obstacle":
+            parent_hash = getattr(first_frame, "paternal_hash_a", 0) or getattr(first_frame, "paternal_hash_b", 0)
+            parent_name = area_names.get(parent_hash) if parent_hash else None
+            if parent_name:
+                return f"{base} in {parent_name}"
+        return base
 
     @staticmethod
     def _create_mow_path_feature(
@@ -658,18 +908,26 @@ class GeojsonGenerator:
 
     @staticmethod
     def _create_feature_properties(
-        hash_key: int, type_id: int, type_name: str, first_frame: Any, length: float, area: float, object_name: str = ""
+        hash_key: int,
+        type_id: int,
+        type_name: str,
+        first_frame: Any,
+        length: float,
+        area: float,
+        object_name: str = "",
+        description: str = "",
     ) -> dict[str, Any]:
         """Create properties dictionary for GeoJSON feature.
 
         Args:
             hash_key: Hash identifier
-            object_name: Name of the object
             type_id: Type ID of the feature
             type_name: Type name of the feature
             first_frame: First frame from the FrameList
             length: Calculated length
             area: Calculated area
+            object_name: Display name (from device or synthesized)
+            description: Human-readable description
 
         Returns:
             Properties dictionary
@@ -679,7 +937,7 @@ class GeojsonGenerator:
             "hash": hash_key,
             "title": object_name,
             "Name": object_name,
-            "description": "description <b>test</b>",
+            "description": description,
             "type_id": type_id,
             "type_name": type_name,
             "parent_hash_a": first_frame.paternal_hash_a,
@@ -712,7 +970,26 @@ class GeojsonGenerator:
         if type_id == TYPE_PATH and len(lonlat_coords) > 1:
             properties.update(PATH_STYLE)
             return {"type": "LineString", "coordinates": lonlat_coords}
-        return None  # Point (ignore)
+        if type_id == TYPE_CORRIDOR_LINE and len(lonlat_coords) > 1:
+            properties.update(CORRIDOR_LINE_STYLE)
+            return {"type": "LineString", "coordinates": lonlat_coords}
+        if type_id == TYPE_CORRIDOR_POINT:
+            # Corridor waypoints are separate markers in the APK.
+            # Emit a MultiPoint so each waypoint renders at its own location.
+            if not lonlat_coords:
+                return None
+            properties.update(CORRIDOR_POINT_STYLE)
+            return {"type": "MultiPoint", "coordinates": lonlat_coords}
+        if type_id == TYPE_VIRTUAL_WALL and len(lonlat_coords) > 1:
+            properties.update(VIRTUAL_WALL_STYLE)
+            return {"type": "LineString", "coordinates": lonlat_coords}
+        if type_id == TYPE_VISUAL_SAFETY_ZONE:
+            properties.update(VISUAL_SAFETY_ZONE_STYLE)
+            return {"type": "Polygon", "coordinates": [lonlat_coords]}
+        if type_id == TYPE_VISUAL_OBSTACLE_ZONE:
+            properties.update(VISUAL_OBSTACLE_ZONE_STYLE)
+            return {"type": "Polygon", "coordinates": [lonlat_coords]}
+        return None  # Unknown type — drop.
 
     @staticmethod
     def _save_geojson(geoJSON: GeoJSONCollection) -> None:
