@@ -242,3 +242,62 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
     assert area_hash in saga.result.area
     assert unknown_hash in saga.result.visual_obstacle_zone
     assert saga._command_builder.synchronize_hash_data.call_count == 2  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# test 4 — virtual wall (21) + corridor line (19) + corridor point (20) are stored
+# ---------------------------------------------------------------------------
+
+
+async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
+    """Regression test for types 19, 20, 21.
+
+    Before these types were added to ``PathType`` / ``HashList``,
+    ``HashList.update`` returned False for them so each frame was dropped and
+    the saga looped re-requesting the same hash.  After the fix each type
+    lands in its dedicated dict and the saga completes.
+    """
+    broker = DeviceMessageBroker()
+    sends: list[bytes] = []
+
+    async def send_command(cmd: bytes) -> None:
+        sends.append(cmd)
+
+    _map = HashList()
+    saga = MapFetchSaga(
+        device_id="dev-4",
+        device_name="Luba-Test",
+        is_luba1=True,
+        command_builder=_make_command_builder(),
+        send_command=send_command,
+        get_map=lambda: _map,
+    )
+
+    corridor_line_hash = 3000000000000000001
+    corridor_point_hash = 3000000000000000002
+    virtual_wall_hash = 3000000000000000003
+
+    await asyncio.wait_for(
+        _run_saga_with_messages(
+            broker,
+            saga,
+            messages=[
+                _hash_list_msg([corridor_line_hash, corridor_point_hash, virtual_wall_hash]),
+                _comm_data_msg(corridor_line_hash, type_code=19),   # CORRIDOR_LINE
+                _comm_data_msg(corridor_point_hash, type_code=20),  # CORRIDOR_POINT
+                _comm_data_msg(virtual_wall_hash, type_code=21),    # VIRTUAL_WALL
+            ],
+            map_update=_map,
+        ),
+        timeout=5.0,
+    )
+
+    assert saga.result is not None
+    assert corridor_line_hash in saga.result.corridor_line
+    assert corridor_point_hash in saga.result.corridor_point
+    assert virtual_wall_hash in saga.result.virtual_wall
+    # Each type must be routed to exactly its own dict — not to a sibling.
+    assert corridor_line_hash not in saga.result.virtual_wall
+    assert virtual_wall_hash not in saga.result.corridor_line
+    # Saga should have asked for each hash exactly once.
+    assert saga._command_builder.synchronize_hash_data.call_count == 3  # noqa: SLF001
