@@ -14,62 +14,44 @@ jobs:
       contents: write  # Required for creating releases
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
-    - name: Load cached Poetry installation
-      uses: actions/cache@v3
-      with:
-        path: ~/.local
-        key: poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
 
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: latest
-        virtualenvs-create: true
-        virtualenvs-in-project: true
+      - name: Install dependencies
+        run: uv sync --frozen
 
-    - name: Load cached dependencies
-      uses: actions/cache@v3
-      with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Check package version matches tag
+        run: |
+          PACKAGE_VERSION=$(uv run python -c "import importlib.metadata; print(importlib.metadata.version('pymammotion'))")
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Package version ($PACKAGE_VERSION) does not match tag version ($TAG_VERSION)"
+            exit 1
+          fi
 
-    - name: Install dependencies
-      run: poetry install
+      - name: Build package
+        run: uv build
 
-    - name: Check package version matches tag
-      run: |
-        # Extract version from pyproject.toml
-        PACKAGE_VERSION=$(poetry version -s)
-        # Remove 'v' prefix from tag
-        TAG_VERSION=${GITHUB_REF#refs/tags/v}
-        
-        if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
-          echo "Package version ($PACKAGE_VERSION) does not match tag version ($TAG_VERSION)"
-          exit 1
-        fi
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+          print-hash: true
 
-    - name: Build package
-      run: poetry build
-
-    # Add OIDC-based PyPI publishing
-    - name: Publish package distributions to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        verbose: true
-        print-hash: true
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: dist/*
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
