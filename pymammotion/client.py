@@ -384,7 +384,7 @@ class MammotionClient:
     # Report-data watchdog: refire continuous sub on 20 s of silence
     # ------------------------------------------------------------------
 
-    def _install_report_data_watchdog(self, device_name: str) -> None:
+    def _install_report_data_watchdog(self, device_name: str) -> None:  # noqa: C901
         """Install a watchdog that refires the continuous sub after 20 s of silence.
 
         Subscribes to unsolicited ``toapp_report_data`` messages; each arrival
@@ -410,6 +410,12 @@ class MammotionClient:
                 dev = handle.snapshot.raw.report_data.dev
                 return int(dev.battery_val) >= 100 and int(dev.charge_state) != 0
             except (AttributeError, TypeError, ValueError):
+                return False
+
+        def _in_no_request_mode() -> bool:
+            try:
+                return handle.snapshot.raw.report_data.dev.sys_status in NO_REQUEST_MODES
+            except (AttributeError, TypeError):
                 return False
 
         def _current_silence_window() -> float:
@@ -451,18 +457,13 @@ class MammotionClient:
                 )
                 _arm()
                 return
-            try:
-                sys_status = handle.snapshot.raw.report_data.dev.sys_status
-                if sys_status in NO_REQUEST_MODES:
-                    _logger.debug(
-                        "report_data watchdog [%s]: skipping refire — device in no-request mode %s",
-                        device_name,
-                        sys_status,
-                    )
-                    _arm()
-                    return
-            except (AttributeError, TypeError):
-                pass
+            if _in_no_request_mode():
+                _logger.debug(
+                    "report_data watchdog [%s]: skipping refire — device in no-request mode",
+                    device_name,
+                )
+                _arm()
+                return
             _logger.debug(
                 "report_data watchdog [%s]: %ds silence — refiring continuous subscription",
                 device_name,
@@ -480,6 +481,8 @@ class MammotionClient:
                 state["rate_limited"] = True
             except Exception:  # noqa: BLE001
                 _logger.warning("report_data watchdog [%s]: refire failed", device_name, exc_info=True)
+            if window == _REPORT_DATA_SILENCE_SECONDS and not state["rate_limited"]:
+                await handle.restart_keep_alive()
             _arm()
 
         def _arm() -> None:

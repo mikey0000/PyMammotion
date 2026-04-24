@@ -19,6 +19,8 @@ from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.proto import LubaMsg
 from pymammotion.state.device_state import DeviceAvailability, DeviceSnapshot, DeviceStateMachine
 from pymammotion.transport.base import (
+    CommandTimeoutError,
+    ConcurrentRequestError,
     EventBus,
     NoTransportAvailableError,
     Subscription,
@@ -28,6 +30,7 @@ from pymammotion.transport.base import (
     TransportType,
 )
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES
+from pymammotion.utility.device_type import DeviceType
 
 _T = TypeVar("_T")
 
@@ -189,6 +192,9 @@ class DeviceHandle:
         #: ``_keep_alive_loop`` to skip heartbeats when the transport has seen
         #: recent activity (set via ``_send_marked``).
         self._last_send_monotonic: dict[TransportType, float] = {}
+        #: True when the device name identifies an RTK base station — keep-alive
+        #: (``send_todev_ble_sync``) is suppressed for these devices entirely.
+        self._is_rtk: bool = DeviceType.is_rtk(device_name)
 
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
@@ -547,10 +553,28 @@ class DeviceHandle:
         return self._event_bus.subscribe(handler)
 
     async def start(self) -> None:
-        """Start the command queue processor and the 20 s keep-alive loop."""
+        """Start the command queue processor and the keep-alive loop.
+
+        RTK base stations do not receive ``send_todev_ble_sync`` heartbeats so
+        the keep-alive task is intentionally skipped for them.
+        """
         self._stopping = False
         self.queue.start()
+        if not self._is_rtk and (self._keep_alive_task is None or self._keep_alive_task.done()):
+            self._keep_alive_task = asyncio.get_running_loop().create_task(self._keep_alive_loop())
+
+    async def restart_keep_alive(self) -> None:
+        """Restart the keep-alive loop if it has exited or was never started.
+
+        Called by the report-data watchdog in MammotionClient when it fires on
+        a 60 s window, giving the keep-alive loop another chance to reach the
+        device after a toapp_wifi_iot_status timeout caused it to stop.
+        No-op for RTK base stations.
+        """
+        if self._is_rtk or self._stopping:
+            return
         if self._keep_alive_task is None or self._keep_alive_task.done():
+            _logger.debug("restart_keep_alive [%s]: restarting keep-alive loop", self.device_name)
             self._keep_alive_task = asyncio.get_running_loop().create_task(self._keep_alive_loop())
 
     async def stop(self) -> None:
@@ -640,30 +664,49 @@ class DeviceHandle:
             if time.monotonic() - last_send < self.keep_alive_interval():
                 continue
 
-            sync_type = (
-                _KEEP_ALIVE_SYNC_TYPE_BLE
-                if transport.transport_type == TransportType.BLE
-                else _KEEP_ALIVE_SYNC_TYPE_MQTT
-            )
+            is_ble = transport.transport_type == TransportType.BLE
+            sync_type = _KEEP_ALIVE_SYNC_TYPE_BLE if is_ble else _KEEP_ALIVE_SYNC_TYPE_MQTT
+            cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
             try:
-                cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
-                await self._send_marked(transport, cmd_bytes)
+                if is_ble:
+                    await self._send_marked(transport, cmd_bytes)
+                else:
+                    # On MQTT, wait for toapp_report_data to confirm the device
+                    # received the heartbeat.  No response means the cloud path is
+                    # unresponsive — exit the loop; restart_keep_alive() will be
+                    # called by the report-data watchdog when it fires on a 60 s window.
+                    await self.broker.send_and_wait(
+                        send_fn=lambda t=transport, c=cmd_bytes: self._send_marked(t, c),
+                        expected_field="toapp_report_data",
+                    )
+            except CommandTimeoutError:
+                _logger.warning(
+                    "keep_alive [%s]: no toapp_report_data response — stopping keep-alive loop",
+                    self.device_name,
+                )
+                break
+            except ConcurrentRequestError:
+                # Another command is already waiting for toapp_report_data; skip this cycle.
+                _logger.debug("keep_alive [%s]: concurrent request — skipping heartbeat", self.device_name)
             except DeviceOfflineException:
                 # Cloud rejected the send as "device offline" (code 6205).
                 # Flip the availability flag so subsequent active_transport()
                 # calls skip MQTT until a message arrives (on_raw_message
-                # clears the flag automatically).
-                if transport.transport_type != TransportType.BLE:
+                # clears the flag automatically).  Exit the loop — the
+                # report-data watchdog will call restart_keep_alive() when
+                # the device comes back.
+                if not is_ble:
                     self.update_availability(
                         transport.transport_type,
                         self._availability.mqtt,
                         mqtt_reported_offline=True,
                     )
-                _logger.debug(
-                    "keep_alive [%s]: %s reports device offline — marking mqtt_reported_offline",
+                _logger.warning(
+                    "keep_alive [%s]: %s reports device offline — stopping keep-alive loop",
                     self.device_name,
                     transport.transport_type.value,
                 )
+                break
             except Exception:  # noqa: BLE001
                 _logger.debug(
                     "keep_alive [%s]: send via %s failed",
