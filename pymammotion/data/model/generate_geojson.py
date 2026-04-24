@@ -120,12 +120,77 @@ BORDER_PASS_STYLE = {
     "lineJoin": "round",
 }
 
+# PathType 19 — MN231 corridor line between zones.
+# APK: MapColorTag.Map_Color_Corridor_231 = #145FF2, lineWidth 14 at max zoom.
+CORRIDOR_LINE_STYLE = {
+    "color": "#145FF2",
+    "weight": 5,
+    "opacity": 0.9,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# PathType 20 — MN231 corridor waypoints. APK renders these as circular markers.
+CORRIDOR_POINT_STYLE = {
+    "color": "#145FF2",
+    "fill": "#145FF2",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.8,
+    "radius": 5,
+}
+
+# PathType 21 — user-drawn virtual fence / keep-out line.
+# APK uses an image line-pattern (icon_virtual_machine_line) which doesn't
+# translate cleanly to GeoJSON; render as a red dashed line to signal "keep out".
+VIRTUAL_WALL_STYLE = {
+    "color": "#FF4D00",
+    "weight": 3,
+    "opacity": 0.95,
+    "dashArray": "8, 6",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# PathType 25 — vision-detected safety zone (Luba 2 Vision / Pro).
+# APK: map_no_stop_zone #007aff with reduced fill alpha — safety buffer around obstacles.
+VISUAL_SAFETY_ZONE_STYLE = {
+    "color": "#007AFF",
+    "fill": "#007AFF",
+    "weight": 2,
+    "opacity": 0.9,
+    "fillOpacity": 0.3,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
+# PathType 26 — vision-detected obstacle zone (Luba 2 Vision / Pro).
+# Colour #CC7700 comes from the Android app's Map_Color_Fill_CC7700 tag
+# (vision-picked obstacles rendered in orange).
+VISUAL_OBSTACLE_ZONE_STYLE = {
+    "color": "#CC7700",
+    "fill": "#CC7700",
+    "weight": 2,
+    "opacity": 0.9,
+    "fillOpacity": 0.4,
+    "dashArray": "",
+    "lineCap": "round",
+    "lineJoin": "round",
+}
+
 geojson_metadata = {"name": "Lawn Areas", "description": "Generated from Mammotion diagnostics data"}
 
 # Map type IDs — these match PathType enum values from NavGetCommData.type
 TYPE_MOWING_ZONE: int = 0
 TYPE_OBSTACLE: int = 1
 TYPE_PATH: int = 2
+TYPE_CORRIDOR_LINE: int = 19
+TYPE_CORRIDOR_POINT: int = 20
+TYPE_VIRTUAL_WALL: int = 21
+TYPE_VISUAL_SAFETY_ZONE: int = 25
+TYPE_VISUAL_OBSTACLE_ZONE: int = 26
 
 # Coordinate conversion constants
 METERS_PER_DEGREE: int = 111320
@@ -449,12 +514,21 @@ class GeojsonGenerator:
         """
         total_frames = 0
 
-        # Map type names to their corresponding dictionaries in HashList
+        # Map type names to their corresponding dictionaries in HashList.
+        # Keys here are informational — the actual styling / geometry is
+        # selected in _create_feature_geometry via the per-frame ``type`` field
+        # (PathType).  Adding a dict here enables dispatch; omitting it silently
+        # drops the type from the GeoJSON output.
         type_mapping: dict[str, dict[int, FrameList]] = {
             "area": hash_list.area,
             "path": hash_list.path,
             "obstacle": hash_list.obstacle,
             "dump": hash_list.dump,
+            "corridor_line": hash_list.corridor_line,
+            "corridor_point": hash_list.corridor_point,
+            "virtual_wall": hash_list.virtual_wall,
+            "visual_safety_zone": hash_list.visual_safety_zone,
+            "visual_obstacle_zone": hash_list.visual_obstacle_zone,
         }
 
         for type_name, map_objects in type_mapping.items():
@@ -712,7 +786,26 @@ class GeojsonGenerator:
         if type_id == TYPE_PATH and len(lonlat_coords) > 1:
             properties.update(PATH_STYLE)
             return {"type": "LineString", "coordinates": lonlat_coords}
-        return None  # Point (ignore)
+        if type_id == TYPE_CORRIDOR_LINE and len(lonlat_coords) > 1:
+            properties.update(CORRIDOR_LINE_STYLE)
+            return {"type": "LineString", "coordinates": lonlat_coords}
+        if type_id == TYPE_CORRIDOR_POINT:
+            # Corridor waypoints — each coord is a separate marker in the APK.
+            # Emit a MultiPoint so every waypoint is rendered at its own location.
+            if not lonlat_coords:
+                return None
+            properties.update(CORRIDOR_POINT_STYLE)
+            return {"type": "MultiPoint", "coordinates": lonlat_coords}
+        if type_id == TYPE_VIRTUAL_WALL and len(lonlat_coords) > 1:
+            properties.update(VIRTUAL_WALL_STYLE)
+            return {"type": "LineString", "coordinates": lonlat_coords}
+        if type_id == TYPE_VISUAL_SAFETY_ZONE:
+            properties.update(VISUAL_SAFETY_ZONE_STYLE)
+            return {"type": "Polygon", "coordinates": [lonlat_coords]}
+        if type_id == TYPE_VISUAL_OBSTACLE_ZONE:
+            properties.update(VISUAL_OBSTACLE_ZONE_STYLE)
+            return {"type": "Polygon", "coordinates": [lonlat_coords]}
+        return None  # Unknown type — drop.
 
     @staticmethod
     def _save_geojson(geoJSON: GeoJSONCollection) -> None:

@@ -182,6 +182,153 @@ def test_incomplete_area_generates_no_area_features() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Corridor / virtual wall / visual zone GeoJSON — each PathType gets its own
+# feature with geometry and style matching the APK's layer-per-type approach.
+# ---------------------------------------------------------------------------
+
+
+def _make_frame(
+    type_code: int,
+    hash_id: int,
+    coords: list[tuple[float, float]],
+) -> NavGetCommData:
+    """Build a single-frame NavGetCommData with the given type and coord list."""
+    from pymammotion.data.model.hash_list import NavNameTime
+
+    return NavGetCommData(
+        pver=1,
+        sub_cmd=0,
+        result=0,
+        action=0,
+        type=type_code,
+        hash=hash_id,
+        paternal_hash_a=0,
+        paternal_hash_b=0,
+        total_frame=1,
+        current_frame=1,
+        data_hash=hash_id,
+        data_len=len(coords) * 16,
+        data_couple=[CommDataCouple(x=x, y=y) for x, y in coords],
+        reserved="",
+        name_time=NavNameTime(name="", create_time=0, modify_time=0),
+    )
+
+
+def _install_frame(target: dict[int, FrameList], frame: NavGetCommData) -> None:
+    target[frame.hash] = FrameList(total_frame=frame.total_frame, sub_cmd=0, data=[frame])
+
+
+def _hash_list_with_extra_types() -> tuple[HashList, dict[str, int]]:
+    """Return a HashList with one frame per new PathType and the hash IDs used."""
+    hash_list = HashList()
+    hashes = {
+        "corridor_line": 1_900_000_000_000_000_001,
+        "corridor_point": 2_000_000_000_000_000_001,
+        "virtual_wall": 2_100_000_000_000_000_001,
+        "visual_safety_zone": 2_500_000_000_000_000_001,
+        "visual_obstacle_zone": 2_600_000_000_000_000_001,
+    }
+    _install_frame(
+        hash_list.corridor_line,
+        _make_frame(19, hashes["corridor_line"], [(0.0, 0.0), (5.0, 0.0), (10.0, 0.0)]),
+    )
+    _install_frame(
+        hash_list.corridor_point,
+        _make_frame(20, hashes["corridor_point"], [(1.0, 1.0), (2.0, 2.0)]),
+    )
+    _install_frame(
+        hash_list.virtual_wall,
+        _make_frame(21, hashes["virtual_wall"], [(0.0, 3.0), (0.0, 6.0), (3.0, 6.0)]),
+    )
+    _install_frame(
+        hash_list.visual_safety_zone,
+        _make_frame(
+            25,
+            hashes["visual_safety_zone"],
+            [(4.0, 4.0), (6.0, 4.0), (6.0, 6.0), (4.0, 6.0), (4.0, 4.0)],
+        ),
+    )
+    _install_frame(
+        hash_list.visual_obstacle_zone,
+        _make_frame(
+            26,
+            hashes["visual_obstacle_zone"],
+            [(8.0, 8.0), (10.0, 8.0), (10.0, 10.0), (8.0, 10.0), (8.0, 8.0)],
+        ),
+    )
+    return hash_list, hashes
+
+
+def test_corridor_wall_and_visual_zones_emit_geojson_features() -> None:
+    """Each of the five new PathTypes (19/20/21/25/26) produces one styled feature.
+
+    Guards the two gaps the previous PR left open:
+      1. The generator's ``_process_map_objects.type_mapping`` silently dropped
+         these dicts.
+      2. ``_create_feature_geometry`` returned ``None`` for any type_id other
+         than 0/1/2, so even if dispatch worked the feature was discarded.
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    features_by_type = {f["properties"].get("type_name"): f for f in result["features"]}
+
+    expected_geometry = {
+        "corridor_line": "LineString",
+        "corridor_point": "MultiPoint",
+        "virtual_wall": "LineString",
+        "visual_safety_zone": "Polygon",
+        "visual_obstacle_zone": "Polygon",
+    }
+    for type_name, geom_type in expected_geometry.items():
+        assert type_name in features_by_type, f"Expected a {type_name} feature in generator output"
+        assert features_by_type[type_name]["geometry"]["type"] == geom_type
+
+
+def test_corridor_wall_and_visual_zone_styles_are_distinct() -> None:
+    """Each new type gets its own style — colors must not collide with existing types."""
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _hashes = _hash_list_with_extra_types()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    colors = {
+        f["properties"]["type_name"]: f["properties"].get("color")
+        for f in result["features"]
+        if f["properties"].get("type_name")
+        in {
+            "corridor_line",
+            "corridor_point",
+            "virtual_wall",
+            "visual_safety_zone",
+            "visual_obstacle_zone",
+        }
+    }
+    # Color values lifted from the Mammotion Android app's MapColorTag / render code.
+    assert colors["corridor_line"] == "#145FF2"
+    assert colors["corridor_point"] == "#145FF2"
+    assert colors["virtual_wall"] == "#FF4D00"
+    assert colors["visual_safety_zone"] == "#007AFF"
+    assert colors["visual_obstacle_zone"] == "#CC7700"
+
+
+# ---------------------------------------------------------------------------
 # Yuka device — mow path generation from real device data
 # ---------------------------------------------------------------------------
 
