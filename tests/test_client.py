@@ -746,6 +746,47 @@ async def test_watchdog_window_uses_short_after_user_command() -> None:
     assert elapsed_expired > _USER_COMMAND_ACTIVE_SECONDS
 
 
+async def test_request_iot_sync_continuous_does_not_stamp_user_command_ts() -> None:
+    """request_iot_sync_continuous (watchdog path) must NOT update _last_user_command_ts.
+
+    The watchdog calls this internally; if it stamped the timestamp it would
+    lock the watchdog into the 60 s window forever, preventing the 30-minute
+    full-battery-docked window from ever being reached.
+    """
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    handle = make_handle("dev1", "Luba-NoStamp")
+    await handle.add_transport(mqtt)
+    await client._device_registry.register(handle)
+
+    assert "Luba-NoStamp" not in client._last_user_command_ts
+
+    await client.request_iot_sync_continuous("Luba-NoStamp")
+
+    assert "Luba-NoStamp" not in client._last_user_command_ts
+
+
+async def test_send_command_with_args_record_cmd_false_does_not_stamp_ts() -> None:
+    """send_command_with_args with _record_cmd=False must not touch _last_user_command_ts."""
+    import time
+
+    client = MammotionClient()
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    handle = make_handle("dev1", "Luba-NR")
+    await handle.add_transport(mqtt)
+    await client._device_registry.register(handle)
+
+    # Pre-stamp a known time so we can verify it is not overwritten.
+    sentinel = time.monotonic() - 9999.0
+    client._last_user_command_ts["Luba-NR"] = sentinel
+
+    await client.send_command_with_args("Luba-NR", "start_job", _record_cmd=False)
+
+    assert client._last_user_command_ts["Luba-NR"] == sentinel
+
+
 async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> None:
     """When prefer_ble=True and BLE is registered (disconnected), send_raw reconnects and sends via BLE.
 

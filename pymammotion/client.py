@@ -362,6 +362,7 @@ class MammotionClient:
         await self.send_command_with_args(
             device_name,
             "request_iot_sys",
+            _record_cmd=False,
             rpt_act=RptAct.RPT_STOP if stop else RptAct.RPT_START,
             rpt_info_type=_CONTINUOUS_STREAM_CHANNELS,
             timeout=10000,
@@ -375,6 +376,7 @@ class MammotionClient:
         await self.send_command_with_args(
             device_name,
             "request_iot_sys",
+            _record_cmd=False,
             rpt_act=RptAct.RPT_STOP,
             rpt_info_type=_CONTINUOUS_STREAM_CHANNELS,
             count=1,
@@ -1946,6 +1948,7 @@ class MammotionClient:
         key: str,
         *,
         prefer_ble: bool = False,
+        _record_cmd: bool = True,
         **kwargs: Any,
     ) -> None:
         """Send a named command to the device via the command queue.
@@ -1955,11 +1958,14 @@ class MammotionClient:
         queue so it is properly ordered with respect to running sagas.
 
         Args:
-            name:       Registered device name.
-            key:        Method name on :class:`MammotionCommand`.
-            prefer_ble: When True, prefer BLE over MQTT for this call only
-                        (useful for movement commands that need low latency).
-                        Does not mutate the handle's transport preference.
+            name:        Registered device name.
+            key:         Method name on :class:`MammotionCommand`.
+            prefer_ble:  When True, prefer BLE over MQTT for this call only
+                         (useful for movement commands that need low latency).
+                         Does not mutate the handle's transport preference.
+            _record_cmd: Internal flag — set False for watchdog-initiated sends
+                         so they do not stamp _last_user_command_ts and
+                         inadvertently lock the watchdog into the 60 s window.
 
         Raises:
             KeyError:       if *name* is not a registered device.
@@ -1970,7 +1976,8 @@ class MammotionClient:
         if handle is None:
             msg = f"Device '{name}' not registered"
             raise KeyError(msg)
-        self._record_user_command(name)
+        if _record_cmd:
+            self._record_user_command(name)
         commands = handle.commands
         command_bytes: bytes = getattr(commands, key)(**kwargs)
         _logger.debug(
