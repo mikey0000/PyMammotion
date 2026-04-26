@@ -283,10 +283,10 @@ class MessageSystem(AbstractMessage, ABC):
         self,
         rpt_act: RptAct,
         rpt_info_type: list[RptInfoType | str] | None,
-        timeout: int,
-        period: int,
-        no_change_period: int,
-        count: int,
+        timeout: int = 10000,
+        period: int = 1000,
+        no_change_period: int = 1000,
+        count: int = 1,
     ) -> bytes:
         """Configure the device IoT reporting subscription with the given action, info types, and timing parameters."""
         build = MctlSys(
