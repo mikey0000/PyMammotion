@@ -1892,36 +1892,61 @@ class MammotionClient:
         await handle.add_transport(transport)
 
     async def get_stream_subscription(self, device_name: str, iot_id: str) -> Any:
-        """Return a stream subscription response for the named device."""
+        """Return a stream subscription response for the named device.
+
+        For old-firmware devices (those whose device state lacks ``fpv_info``,
+        i.e. ``getNewversionfpv() == false`` in the APK), also sends
+        ``device_agora_join_channel_with_position(1)`` to the device to start
+        the video stream — mirroring the APK's ``getVideoResp`` logic.
+        New-firmware devices start streaming without a device-side command.
+        """
         from pymammotion.utility.device_type import DeviceType
 
         http = self.mammotion_http
         if http is None:
             return None
         is_yuka = DeviceType.is_yuka(device_name)
-        return await http.get_stream_subscription(iot_id, is_yuka)
+        subscription = await http.get_stream_subscription(iot_id, is_yuka)
+
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is not None:
+            try:
+                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None
+            except AttributeError:
+                new_fpv = False
+            if not new_fpv:
+                await self.send_command_and_wait(
+                    device_name, "device_agora_join_channel_with_position", "set_video_ack", enter_state=1
+                )
+
+        return subscription
 
     async def refresh_stream_subscription(self, device_name: str, iot_id: str) -> Any:
-        """Renew the Agora stream token and cycle the device's channel membership.
+        """Renew the Agora stream token and rejoin the device's channel.
 
-        Fetches a fresh stream subscription token, sends a leave-channel command
-        to the device, then immediately sends a rejoin-channel command so the
-        device streams to the new Agora session.  Returns the new subscription
-        response so the caller can reinitialise the Agora engine.
-
-        Handles STUN-timeout and ``on_p2p_lost`` events where the underlying
-        peer-to-peer connection has silently dropped and the stream token must
-        be refreshed before the Agora engine can reconnect.
+        Fetches a fresh stream subscription token then sends a join-channel
+        command to the device so it streams to the new Agora session.  Mirrors
+        the APK's refresh path (STUN-timeout, ``on_p2p_lost``) which re-runs
+        the same flow as the initial join without a preceding leave command.
         """
-        subscription = await self.get_stream_subscription(device_name, iot_id)
+        from pymammotion.utility.device_type import DeviceType
 
-        if self._device_registry.get_by_name(device_name) is not None:
-            await self.send_command_and_wait(
-                device_name, "device_agora_join_channel_with_position", "set_video_ack", enter_state=0
-            )
-            await self.send_command_and_wait(
-                device_name, "device_agora_join_channel_with_position", "set_video_ack", enter_state=1
-            )
+        http = self.mammotion_http
+        if http is None:
+            return None
+        is_yuka = DeviceType.is_yuka(device_name)
+        subscription = await http.get_stream_subscription(iot_id, is_yuka)
+
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is not None:
+            try:
+                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None
+            except AttributeError:
+                new_fpv = False
+            if not new_fpv:
+                await self.send_command_and_wait(
+                    device_name, "device_agora_join_channel_with_position", "set_video_ack", enter_state=1
+                )
 
         return subscription
 

@@ -41,6 +41,12 @@ _KEEP_ALIVE_INTERVAL: float = 20.0
 #: the active transport is MQTT — reduces cloud-path chatter while docked.
 #: BLE always uses the short interval regardless of sys_status.
 _KEEP_ALIVE_IDLE_INTERVAL: float = 600.0  # 10 minutes
+#: After this many seconds since the last user-initiated command (not a
+#: heartbeat), switch to the long-idle interval below.
+_KEEP_ALIVE_LONG_IDLE_THRESHOLD: float = 1800.0  # 30 minutes
+#: Keep-alive interval once the device has been idle with no user commands for
+#: ``_KEEP_ALIVE_LONG_IDLE_THRESHOLD`` seconds.
+_KEEP_ALIVE_LONG_IDLE_INTERVAL: float = 1800.0  # 30 minutes
 #: ``sync_type`` for BLE heartbeats (matches APK ``sendBlueToothDeviceSync(2, ...)``).
 _KEEP_ALIVE_SYNC_TYPE_BLE: int = 2
 #: ``sync_type`` for MQTT/IoT heartbeats.
@@ -192,6 +198,11 @@ class DeviceHandle:
         #: ``_keep_alive_loop`` to skip heartbeats when the transport has seen
         #: recent activity (set via ``_send_marked``).
         self._last_send_monotonic: dict[TransportType, float] = {}
+        #: monotonic timestamp of the last user-initiated command (updated in
+        #: ``_do_send``; heartbeats do NOT update this).  Used by
+        #: ``keep_alive_interval`` to switch to the long-idle rate after
+        #: ``_KEEP_ALIVE_LONG_IDLE_THRESHOLD`` seconds of inactivity.
+        self._last_user_command_monotonic: float = time.monotonic()
         #: True when the device name identifies an RTK base station — keep-alive
         #: (``send_todev_ble_sync``) is suppressed for these devices entirely.
         self._is_rtk: bool = DeviceType.is_rtk(device_name)
@@ -370,6 +381,7 @@ class DeviceHandle:
             return
 
         async def _do_send(cmd: bytes, field: str) -> None:
+            self._last_user_command_monotonic = time.monotonic()
             _logger.debug(
                 "_do_send '%s': field=%s transports=%s",
                 self.device_name,
@@ -611,6 +623,8 @@ class DeviceHandle:
         sys_status = getattr(getattr(report_data, "dev", None), "sys_status", 0) if report_data else 0
         if sys_status in MOWING_ACTIVE_MODES:
             return _KEEP_ALIVE_INTERVAL
+        if time.monotonic() - self._last_user_command_monotonic > _KEEP_ALIVE_LONG_IDLE_THRESHOLD:
+            return _KEEP_ALIVE_LONG_IDLE_INTERVAL
         return _KEEP_ALIVE_IDLE_INTERVAL
 
     async def _keep_alive_loop(self) -> None:

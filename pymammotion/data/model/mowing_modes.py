@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from enum import IntEnum
+
+from pymammotion.utility.device_type import DeviceType
 
 
 class CuttingMode(IntEnum):
@@ -60,13 +64,40 @@ class TurningMode(IntEnum):
 
 
 class DetectionStrategy(IntEnum):
-    """Matches up with ultra_wave."""
+    """Obstacle detection mode (ultra_wave / detect_mode protocol field).
+
+    Luba 1 uses an old-style UI with three options:
+      0  direct_touch  "Direct touch"
+      1  slow_touch    "Slow touch"
+      2  less_touch    "Less touch"
+
+    Original Yuka (LUBA_YUKA) uses the old-style UI with four options:
+      0  direct_touch  "Direct touch"
+      1  slow_touch    "Slow touch"
+      2  less_touch    "Less touch"
+      10 no_touch      "No touch"
+
+    All other devices (Luba 2+, all Yuka mini/pro/MV variants) use a new-style UI:
+      0   direct_touch  "Off"       — firmware also accepts 1; APK sends 1 but device treats both identically
+      10  no_touch      "Standard"  — proactive obstacle avoidance
+      11  sensitive     "Sensitive" — avoids obstacles and non-grassy areas
+    """
 
     direct_touch = 0
     slow_touch = 1
     less_touch = 2
-    no_touch = 10  # luba 2 yuka only or possibly value of 10
-    sensitive = 11  # x series
+    no_touch = 10
+    sensitive = 11
+
+    @classmethod
+    def for_device(cls, device_name: str) -> list[DetectionStrategy]:
+        """Return the detection strategies supported by the given device."""
+        dt = DeviceType.value_of_str(device_name)
+        if dt == DeviceType.LUBA:
+            return [cls.direct_touch, cls.slow_touch, cls.less_touch]
+        if dt == DeviceType.LUBA_YUKA:
+            return [cls.direct_touch, cls.slow_touch, cls.less_touch, cls.no_touch]
+        return [cls.direct_touch, cls.no_touch, cls.sensitive]
 
 
 class PathAngleSetting(IntEnum):
