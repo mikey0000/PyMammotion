@@ -579,6 +579,7 @@ async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback
 # ---------------------------------------------------------------------------
 
 
+
 async def test_set_scheduled_updates_false_disconnects_and_stops_watchdog() -> None:
     """set_scheduled_updates(enabled=False) must disconnect all transports and cancel the watchdog."""
     client = MammotionClient()
@@ -816,3 +817,287 @@ async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> Non
     ble.connect.assert_awaited_once()
     ble.send.assert_awaited_once_with(fake_bytes, iot_id="")
     mqtt.send.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# _current_silence_window() — watchdog sleep-duration capture tests
+# ---------------------------------------------------------------------------
+
+
+from pymammotion.aliyun.exceptions import TooManyRequestsException  # noqa: E402
+from pymammotion.client import (  # noqa: E402
+    _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS,
+    _REPORT_DATA_IDLE_SILENCE_SECONDS,
+    _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS,
+    _REPORT_DATA_SILENCE_SECONDS,
+)
+
+
+async def _setup_watchdog_client(
+    device_name: str,
+    transport_type: TransportType | None,
+    *,
+    battery_val: int = 75,
+    charge_state: int = 0,
+) -> tuple[MammotionClient, DeviceHandle]:
+    """Build and register a client+handle ready for watchdog window tests."""
+    client = MammotionClient()
+    handle = make_handle("dev1", device_name)
+    handle.snapshot.raw.report_data.dev.battery_val = battery_val
+    handle.snapshot.raw.report_data.dev.charge_state = charge_state
+    handle.snapshot.raw.report_data.dev.sys_status = 0  # not in NO_REQUEST_MODES
+    if transport_type is not None:
+        transport = _make_connected_transport(transport_type)
+        await handle.add_transport(transport)
+    await client._device_registry.register(handle)
+    return client, handle
+
+
+async def _collect_watchdog_sleep_durations(
+    client: MammotionClient,
+    device_name: str,
+    *,
+    num_cycles: int = 1,
+    request_side_effects: list[Exception | None] | None = None,
+) -> list[float]:
+    """Install the watchdog and return the first ``num_cycles`` sleep durations.
+
+    ``request_side_effects[i]`` is the pre-instantiated exception that
+    ``request_iot_sync_continuous`` raises for cycle *i* (``None`` = success).
+    The last ``fake_sleep`` call raises ``CancelledError`` to stop the loop.
+    ``done.wait()`` is used for synchronisation so the helper never calls
+    the real ``asyncio.sleep`` while the patch is active.
+    """
+    sleep_durations: list[float] = []
+    done = asyncio.Event()
+    request_effects: list[Exception | None] = list(request_side_effects or [None] * num_cycles)
+    call_count = 0
+    request_idx = 0
+
+    async def fake_sleep(d: float) -> None:
+        nonlocal call_count
+        sleep_durations.append(d)
+        call_count += 1
+        if call_count >= num_cycles:
+            done.set()
+            raise asyncio.CancelledError
+
+    async def fake_request(_dn: str) -> None:
+        nonlocal request_idx
+        exc = request_effects[request_idx] if request_idx < len(request_effects) else None
+        request_idx += 1
+        if exc is not None:
+            raise exc
+
+    handle = client._device_registry.get_by_name(device_name)
+    assert handle is not None
+    handle.restart_keep_alive = AsyncMock()  # type: ignore[method-assign]
+
+    with (
+        patch("asyncio.sleep", AsyncMock(side_effect=fake_sleep)),
+        patch.object(client, "request_iot_sync_continuous", AsyncMock(side_effect=fake_request)),
+    ):
+        client._install_report_data_watchdog(device_name)
+        await done.wait()
+
+    return sleep_durations
+
+
+async def test_watchdog_window_ble_uses_short_window() -> None:
+    """BLE transport always selects the short watchdog window."""
+    client, _ = await _setup_watchdog_client("Luba-WD-BLE", TransportType.BLE)
+    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-BLE")
+    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
+
+
+async def test_watchdog_window_no_transport_uses_short_window() -> None:
+    """When no transport is available, watchdog falls back to the short window."""
+    client, _ = await _setup_watchdog_client("Luba-WD-NT", transport_type=None)
+    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-NT")
+    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
+
+
+async def test_watchdog_window_mqtt_idle_uses_idle_window() -> None:
+    """MQTT with no recent command and not fully docked uses the 10-minute idle window."""
+    client, _ = await _setup_watchdog_client(
+        "Luba-WD-Idle", TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0
+    )
+    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-Idle")
+    assert durations[0] == _REPORT_DATA_IDLE_SILENCE_SECONDS
+
+
+async def test_watchdog_window_mqtt_full_battery_docked_uses_long_window() -> None:
+    """Full battery + docked on MQTT selects the 30-minute silence window."""
+    client, _ = await _setup_watchdog_client(
+        "Luba-WD-Dock", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
+    )
+    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-Dock")
+    assert durations[0] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+
+
+async def test_watchdog_window_mqtt_recent_command_uses_short_window() -> None:
+    """A recent user command on MQTT overrides the idle window with the short window."""
+    import time as _time
+
+    client, _ = await _setup_watchdog_client("Luba-WD-Cmd", TransportType.CLOUD_ALIYUN)
+    client._last_user_command_ts["Luba-WD-Cmd"] = _time.monotonic()
+    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-Cmd")
+    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
+
+
+async def test_watchdog_window_rate_limited_idle_applies_rate_limit_floor() -> None:
+    """Rate-limited on MQTT (idle 10-min natural) uses max(15 min, 10 min) = 15-min backoff."""
+    client, _ = await _setup_watchdog_client(
+        "Luba-WD-RLIdle", TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0
+    )
+    # Cycle 1: idle window fires → TooManyRequestsException → rate_limited=True → re-arm
+    # Cycle 2: max(900, 600) = 900 s
+    durations = await _collect_watchdog_sleep_durations(
+        client,
+        "Luba-WD-RLIdle",
+        num_cycles=2,
+        request_side_effects=[TooManyRequestsException("rl", "iot-id"), None],
+    )
+    assert durations[0] == _REPORT_DATA_IDLE_SILENCE_SECONDS
+    assert durations[1] == _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS
+
+
+async def test_watchdog_window_rate_limited_docked_respects_natural_window() -> None:
+    """Rate-limited while fully docked uses max(15 min, 30 min) = 30 min — never more aggressive than natural."""
+    client, _ = await _setup_watchdog_client(
+        "Luba-WD-RLDock", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
+    )
+    # Cycle 1: docked window (1800 s) → TooManyRequestsException → rate_limited=True → re-arm
+    # Cycle 2: max(900, 1800) = 1800 s
+    durations = await _collect_watchdog_sleep_durations(
+        client,
+        "Luba-WD-RLDock",
+        num_cycles=2,
+        request_side_effects=[TooManyRequestsException("rl", "iot-id"), None],
+    )
+    assert durations[0] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+    assert durations[1] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+
+
+async def test_watchdog_window_recent_command_bypasses_rate_limit() -> None:
+    """A user command stamped after rate-limiting restores the short window immediately."""
+    import time as _time
+
+    client, _ = await _setup_watchdog_client("Luba-WD-CmdRL", TransportType.CLOUD_ALIYUN)
+
+    sleep_durations: list[float] = []
+    done = asyncio.Event()
+    call_count = 0
+    rl_raised = False
+
+    async def fake_sleep(d: float) -> None:
+        nonlocal call_count
+        sleep_durations.append(d)
+        call_count += 1
+        if call_count >= 2:
+            done.set()
+            raise asyncio.CancelledError
+
+    async def fake_request(_dn: str) -> None:
+        nonlocal rl_raised
+        if not rl_raised:
+            rl_raised = True
+            # Stamp a recent command before the next window recalculation.
+            client._last_user_command_ts["Luba-WD-CmdRL"] = _time.monotonic()
+            raise TooManyRequestsException()
+
+    handle = client._device_registry.get_by_name("Luba-WD-CmdRL")
+    assert handle is not None
+    handle.restart_keep_alive = AsyncMock()  # type: ignore[method-assign]
+
+    with (
+        patch("asyncio.sleep", AsyncMock(side_effect=fake_sleep)),
+        patch.object(client, "request_iot_sync_continuous", AsyncMock(side_effect=fake_request)),
+    ):
+        client._install_report_data_watchdog("Luba-WD-CmdRL")
+        await done.wait()
+
+    # Cycle 1: idle window (no command yet)
+    # Cycle 2: rate_limited=True but recent command → short window (recent-cmd check comes first)
+    assert sleep_durations[0] == _REPORT_DATA_IDLE_SILENCE_SECONDS
+    assert sleep_durations[1] == _REPORT_DATA_SILENCE_SECONDS
+
+
+async def test_watchdog_window_ble_bypasses_rate_limit() -> None:
+    """BLE transport always uses the short window regardless of rate-limit state."""
+    client, _ = await _setup_watchdog_client("Luba-WD-BLERL", TransportType.BLE)
+    # Cycle 1: BLE short window → TooManyRequestsException → rate_limited=True → re-arm
+    # Cycle 2: BLE check still comes first → short window
+    durations = await _collect_watchdog_sleep_durations(
+        client,
+        "Luba-WD-BLERL",
+        num_cycles=2,
+        request_side_effects=[TooManyRequestsException("rl", "iot-id"), None],
+    )
+    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
+    assert durations[1] == _REPORT_DATA_SILENCE_SECONDS
+
+
+async def test_watchdog_window_rate_limit_clears_to_docked_window() -> None:
+    """After a rate-limit backoff succeeds, the docked window is restored for the next cycle."""
+    client, _ = await _setup_watchdog_client(
+        "Luba-WD-Restore", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
+    )
+    # Cycle 1: docked (1800 s) → rate limited → rate_limited=True
+    # Cycle 2: max(900, 1800) = 1800 s → success → rate_limited=False
+    # Cycle 3: back to natural docked (1800 s)
+    durations = await _collect_watchdog_sleep_durations(
+        client,
+        "Luba-WD-Restore",
+        num_cycles=3,
+        request_side_effects=[TooManyRequestsException, None, None],
+    )
+    assert durations[0] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+    assert durations[1] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+    assert durations[2] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+
+from pymammotion.client import _USER_COMMAND_ACTIVE_SECONDS  # noqa: E402
+
+
+async def test_watchdog_window_reverts_to_docked_after_command_expires() -> None:
+    """Once _USER_COMMAND_ACTIVE_SECONDS elapses the window switches from short back to docked.
+
+    We control time.monotonic so the command appears fresh on cycle 1 and expired on cycle 2.
+    """
+    client, _ = await _setup_watchdog_client(
+        "Luba-WD-Expire", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
+    )
+
+    t_start = 1000.0  # arbitrary base
+    client._last_user_command_ts["Luba-WD-Expire"] = t_start
+
+    sleep_durations: list[float] = []
+    done = asyncio.Event()
+    cycle = 0
+
+    def fake_monotonic() -> float:
+        # Cycle 0 window check: command is fresh.  Cycle 1+ window check: command expired.
+        return t_start + (1 if cycle == 0 else _USER_COMMAND_ACTIVE_SECONDS + 10)
+
+    async def fake_sleep(d: float) -> None:
+        nonlocal cycle
+        sleep_durations.append(d)
+        cycle += 1
+        if cycle >= 2:
+            done.set()
+            raise asyncio.CancelledError
+
+    handle = client._device_registry.get_by_name("Luba-WD-Expire")
+    assert handle is not None
+    handle.restart_keep_alive = AsyncMock()  # type: ignore[method-assign]
+
+    with (
+        patch("asyncio.sleep", AsyncMock(side_effect=fake_sleep)),
+        patch.object(client, "request_iot_sync_continuous", AsyncMock()),
+        patch("pymammotion.client.time.monotonic", side_effect=fake_monotonic),
+    ):
+        client._install_report_data_watchdog("Luba-WD-Expire")
+        await done.wait()
+
+    assert sleep_durations[0] == _REPORT_DATA_SILENCE_SECONDS
+    assert sleep_durations[1] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
