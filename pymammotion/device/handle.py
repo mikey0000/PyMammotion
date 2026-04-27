@@ -36,14 +36,14 @@ _T = TypeVar("_T")
 
 #: Keep-alive interval when the mower is actively working / returning, or when
 #: sending over BLE — matches the APK's 20 s ``todev_ble_sync`` heartbeat.
-_KEEP_ALIVE_INTERVAL: float = 20.0
+_KEEP_ALIVE_INTERVAL: float = 180.0 # 2 minutes
 #: Extended keep-alive interval used when the device is docked/paused/idle AND
 #: the active transport is MQTT — reduces cloud-path chatter while docked.
 #: BLE always uses the short interval regardless of sys_status.
 _KEEP_ALIVE_IDLE_INTERVAL: float = 600.0  # 10 minutes
 #: After this many seconds since the last user-initiated command (not a
 #: heartbeat), switch to the long-idle interval below.
-_KEEP_ALIVE_LONG_IDLE_THRESHOLD: float = 1800.0  # 30 minutes
+_KEEP_ALIVE_LONG_IDLE_THRESHOLD: float = 900.0  # 15 minutes
 #: Keep-alive interval once the device has been idle with no user commands for
 #: ``_KEEP_ALIVE_LONG_IDLE_THRESHOLD`` seconds.
 _KEEP_ALIVE_LONG_IDLE_INTERVAL: float = 1800.0  # 30 minutes

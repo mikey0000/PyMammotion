@@ -105,7 +105,7 @@ _ONE_SHOT_CHANNELS: list[RptInfoType] = [
 #: Watchdog window when the mower is actively mowing / returning, or when the
 #: active transport is BLE.  If no ``toapp_report_data`` arrives within this
 #: many seconds, refire the continuous subscription (unless a saga is active).
-_REPORT_DATA_SILENCE_SECONDS: float = 60.0
+_REPORT_DATA_SILENCE_SECONDS: float = 180.0
 #: Default watchdog window for MQTT when no quicker trigger applies
 #: (mowing, returning, paused, regular docked).
 _REPORT_DATA_IDLE_SILENCE_SECONDS: float = 600.0  # 10 minutes
@@ -114,7 +114,7 @@ _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS: float = 1800.0  # 30 minutes
 #: Backoff window applied after a ``TooManyRequestsException`` from the cloud.
 _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS: float = 900.0  # 15 minutes
 #: How long after the last user-initiated command to keep the short watchdog window active.
-_USER_COMMAND_ACTIVE_SECONDS: float = 1800.0  # 30 minutes
+_USER_COMMAND_ACTIVE_SECONDS: float = 900.0  # 15 minutes
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -424,15 +424,14 @@ class MammotionClient:
             """Pick the silence window based on active transport + device state.
 
             Priority order:
-              1. Rate-limited → 15 min backoff (all transports).
-              2. BLE transport → 60 s (always).
+              1. BLE transport → short window (always; direct connection, not cloud-rate-limited).
               [MQTT only from here]
-              3. Recent user command (within 30 min) → 60 s.
+              2. Recent user command (within 30 min) → short window (clears rate-limit too).
+              3. Rate-limited → max(15 min backoff, natural window) so the backoff never
+                 makes requests *more* frequently than the natural docked/idle cadence.
               4. Full battery + docked → 30 min.
               5. Default (mowing, returning, paused, regular docked) → 10 min.
             """
-            if state["rate_limited"]:
-                return _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS
             try:
                 transport = handle.active_transport()
             except NoTransportAvailableError:
@@ -442,9 +441,10 @@ class MammotionClient:
             last_cmd = self._last_user_command_ts.get(device_name, 0.0)
             if time.monotonic() - last_cmd < _USER_COMMAND_ACTIVE_SECONDS:
                 return _REPORT_DATA_SILENCE_SECONDS
-            if _is_full_battery_docked():
-                return _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
-            return _REPORT_DATA_IDLE_SILENCE_SECONDS
+            natural = _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS if _is_full_battery_docked() else _REPORT_DATA_IDLE_SILENCE_SECONDS
+            if state["rate_limited"]:
+                return max(_REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS, natural)
+            return natural
 
         async def _on_timeout() -> None:
             window = _current_silence_window()
