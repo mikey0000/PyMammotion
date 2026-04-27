@@ -197,9 +197,6 @@ class Transport(ABC):
     # Maximum window kept in memory (1 hour); older entries are pruned on record_error().
     _ERROR_RETENTION_SECONDS: float = 3600.0
 
-    #: Set by the broker layer to receive raw incoming messages.
-    on_message: Callable[[bytes], Awaitable[None]] | None = None
-
     #: Called on auth failure; returns True if credentials were refreshed (retry).
     on_auth_failure: Callable[[], Awaitable[bool]] | None = None
 
@@ -216,6 +213,30 @@ class Transport(ABC):
         """Initialise the availability listener list and error window."""
         self._availability_listeners: list[Callable[[TransportAvailability], Awaitable[None]]] = []
         self._error_timestamps: collections.deque[float] = collections.deque()
+        self._last_received_monotonic: float = 0.0
+        self._on_message: Callable[[bytes], Awaitable[None]] | None = None
+
+    @property
+    def on_message(self) -> Callable[[bytes], Awaitable[None]] | None:
+        """Callback invoked with raw bytes when the transport receives a message."""
+        return self._on_message
+
+    @on_message.setter
+    def on_message(self, fn: Callable[[bytes], Awaitable[None]] | None) -> None:
+        if fn is None:
+            self._on_message = None
+            return
+
+        async def _wrapped(data: bytes) -> None:
+            self._last_received_monotonic = time.monotonic()
+            await fn(data)
+
+        self._on_message = _wrapped
+
+    @property
+    def last_received_monotonic(self) -> float:
+        """Monotonic timestamp of the last inbound message (0.0 if none yet)."""
+        return self._last_received_monotonic
 
     def record_error(self) -> None:
         """Record an error occurrence at the current time.

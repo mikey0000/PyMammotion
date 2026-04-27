@@ -1,9 +1,7 @@
 """App key and secret as taken from the mammotion android app."""
 
-# APP_KEY = "34231230"
-# APP_SECRET = "1ba85698bb10e19c6437413b61ba3445"
-APP_KEY = "33763868"
-APP_SECRET = "9e5941f996939d82157687c06a8e9d74"
+APP_KEY = "34231230"
+APP_SECRET = "1ba85698bb10e19c6437413b61ba3445"
 APP_VERSION = "2.3.2.13"
 ALIYUN_DOMAIN = "api.link.aliyun.com"
 MAMMOTION_DOMAIN = "https://id.mammotion.com"

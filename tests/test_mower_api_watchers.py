@@ -38,8 +38,6 @@ def _make_client_with_handle(
     """
     client = MammotionClient.__new__(MammotionClient)
     client._watcher_subscriptions = {}
-    client._watchdog_cleanups = {}
-    client._last_user_command_ts = {}
 
     handle = MagicMock()
     handle.device_name = device_name
@@ -241,40 +239,45 @@ async def test_sys_status_charging_stops_rapid_stream() -> None:
 # ---------------------------------------------------------------------------
 # Saga subscription hooks (stop continuous during saga, restart after)
 # ---------------------------------------------------------------------------
+# The saga hooks are now wired in DeviceHandle.__init__, not by
+# setup_device_watchers.  Tests here verify handle-level hook behaviour.
 
 
-async def test_saga_hooks_installed_on_setup() -> None:
-    """setup_device_watchers must wire DeviceCommandQueue.on_saga_start / on_saga_end."""
-    client, handle, _handlers = _make_client_with_handle()
+async def test_saga_hooks_installed_on_handle_init() -> None:
+    """DeviceHandle.__init__ must wire queue.on_saga_start / on_saga_end."""
+    from pymammotion.device.handle import DeviceHandle
 
+    initial = MagicMock()
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-SH", initial_device=initial)
     assert handle.queue.on_saga_start is not None
     assert handle.queue.on_saga_end is not None
 
 
-async def test_on_saga_start_stops_continuous_stream() -> None:
-    """The on_saga_start hook fires request_iot_sync_continuous_stop."""
-    from pymammotion.proto import RptAct
+async def test_on_saga_start_calls_stop_continuous_subscription() -> None:
+    """The on_saga_start hook calls _stop_continuous_subscription on the handle."""
+    from unittest.mock import patch
 
-    client, handle, _handlers = _make_client_with_handle()
+    from pymammotion.device.handle import DeviceHandle
 
-    await handle.queue.on_saga_start()
+    initial = MagicMock()
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-SH2", initial_device=initial)
 
-    client.send_command_with_args.assert_awaited_once()
-    call = client.send_command_with_args.await_args
-    assert call.args == ("Luba-Test", "request_iot_sys")
-    assert call.kwargs["rpt_act"] == RptAct.RPT_STOP
-    assert call.kwargs["count"] == 1
+    with patch.object(handle, "_stop_continuous_subscription", new_callable=AsyncMock) as mock_stop:
+        await handle.queue.on_saga_start()
+
+    mock_stop.assert_awaited_once()
 
 
-async def test_on_saga_end_restarts_continuous_stream() -> None:
-    """The on_saga_end hook fires request_iot_sync_continuous (START, count=0)."""
-    from pymammotion.proto import RptAct
+async def test_on_saga_end_calls_refire_continuous_subscription() -> None:
+    """The on_saga_end hook calls _refire_continuous_subscription on the handle."""
+    from unittest.mock import patch
 
-    client, handle, _handlers = _make_client_with_handle()
+    from pymammotion.device.handle import DeviceHandle
 
-    await handle.queue.on_saga_end()
+    initial = MagicMock()
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-SH3", initial_device=initial)
 
-    call = client.send_command_with_args.await_args
-    assert call.kwargs["rpt_act"] == RptAct.RPT_START
-    assert call.kwargs["count"] == 0
-    assert call.kwargs["period"] == 1000
+    with patch.object(handle, "_refire_continuous_subscription", new_callable=AsyncMock) as mock_refire:
+        await handle.queue.on_saga_end()
+
+    mock_refire.assert_awaited_once()

@@ -502,7 +502,7 @@ async def _main() -> None:
     password = os.environ.get("PASSWORD") or input(f"Mammotion password [{'*' * len(saved_password) if saved_password else ''}]: ").strip() or saved_password
     _save_credentials(email, password)
 
-    mammotion = MammotionClient()
+    mammotion = MammotionClient("0.5.27")
     main_loop = asyncio.get_running_loop()
     dev = DevConsole(mammotion, main_loop)
 

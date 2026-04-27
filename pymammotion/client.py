@@ -29,14 +29,10 @@ import asyncio
 import dataclasses
 import json
 import logging
-import time
 from typing import TYPE_CHECKING, Any, cast
-
-import betterproto2
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.aliyun.exceptions import TooManyRequestsException
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
 from pymammotion.data.model import GenerateRouteInformation
@@ -61,7 +57,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
-from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES
 from pymammotion.utility.device_type import DeviceType
 
 # Rapid report-stream subscription — see docs/report_channels.md for the full
@@ -102,20 +98,6 @@ _ONE_SHOT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_CUTTER_INFO,
     RptInfoType.RIT_RTK,
 ]
-#: Watchdog window when the mower is actively mowing / returning, or when the
-#: active transport is BLE.  If no ``toapp_report_data`` arrives within this
-#: many seconds, refire the continuous subscription (unless a saga is active).
-_REPORT_DATA_SILENCE_SECONDS: float = 180.0
-#: Default watchdog window for MQTT when no quicker trigger applies
-#: (mowing, returning, paused, regular docked).
-_REPORT_DATA_IDLE_SILENCE_SECONDS: float = 600.0  # 10 minutes
-#: Watchdog window when the battery is at 100 % and the mower is on the dock.
-_REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS: float = 1800.0  # 30 minutes
-#: Backoff window applied after a ``TooManyRequestsException`` from the cloud.
-_REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS: float = 900.0  # 15 minutes
-#: How long after the last user-initiated command to keep the short watchdog window active.
-_USER_COMMAND_ACTIVE_SECONDS: float = 900.0  # 15 minutes
-
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -151,11 +133,6 @@ class MammotionClient:
         self._iot_id_to_device_id: dict[str, str] = {}
         # RAII subscriptions for state-change watchers (keyed by device_name)
         self._watcher_subscriptions: dict[str, list[Subscription]] = {}
-        #: Per-device cleanup callbacks (cancels watchdog task + broker subscription).
-        self._watchdog_cleanups: dict[str, Callable[[], None]] = {}
-        #: Monotonic timestamp of the last user-initiated command per device.
-        #: Used to keep the watchdog on a short window for 30 min after activity.
-        self._last_user_command_ts: dict[str, float] = {}
         self._ha_version: str | None = ha_version
 
     # ------------------------------------------------------------------
@@ -329,8 +306,6 @@ class MammotionClient:
             sys_status_sub,
             bol_hash_sub,
         ]
-        self._install_report_data_watchdog(device_name)
-        self._install_saga_subscription_hooks(device_name)
         return sub
 
     # ------------------------------------------------------------------
@@ -382,176 +357,6 @@ class MammotionClient:
             count=1,
         )
 
-    # ------------------------------------------------------------------
-    # Report-data watchdog: refire continuous sub on 20 s of silence
-    # ------------------------------------------------------------------
-
-    def _install_report_data_watchdog(self, device_name: str) -> None:  # noqa: C901
-        """Install a watchdog that refires the continuous sub after 20 s of silence.
-
-        Subscribes to unsolicited ``toapp_report_data`` messages; each arrival
-        resets the timer.  If no data arrives within ``_REPORT_DATA_SILENCE_SECONDS``
-        the continuous subscription is resent — unless a saga is active, in
-        which case we defer but keep the timer alive so detection resumes
-        automatically once the saga finishes.
-
-        Stores a cleanup callback in ``self._watchdog_cleanups[device_name]``
-        so ``teardown_device_watchers`` can cancel both the asyncio task and
-        the broker subscription.  Also exposes ``_arm()`` on the state dict
-        so the saga-end hook can prime a fresh window after restarting the
-        subscription.
-        """
-        handle = self._device_registry.get_by_name(device_name)
-        if handle is None:
-            return
-
-        state: dict[str, Any] = {"task": None, "arm": None, "rate_limited": False}
-
-        def _is_full_battery_docked() -> bool:
-            try:
-                dev = handle.snapshot.raw.report_data.dev
-                return int(dev.battery_val) >= 100 and int(dev.charge_state) != 0
-            except (AttributeError, TypeError, ValueError):
-                return False
-
-        def _in_no_request_mode() -> bool:
-            try:
-                return handle.snapshot.raw.report_data.dev.sys_status in NO_REQUEST_MODES
-            except (AttributeError, TypeError):
-                return False
-
-        def _current_silence_window() -> float:
-            """Pick the silence window based on active transport + device state.
-
-            Priority order:
-              1. BLE transport → short window (always; direct connection, not cloud-rate-limited).
-              [MQTT only from here]
-              2. Recent user command (within 30 min) → short window (clears rate-limit too).
-              3. Rate-limited → max(15 min backoff, natural window) so the backoff never
-                 makes requests *more* frequently than the natural docked/idle cadence.
-              4. Full battery + docked → 30 min.
-              5. Default (mowing, returning, paused, regular docked) → 10 min.
-            """
-            try:
-                transport = handle.active_transport()
-            except NoTransportAvailableError:
-                return _REPORT_DATA_SILENCE_SECONDS
-            if transport.transport_type == TransportType.BLE:
-                return _REPORT_DATA_SILENCE_SECONDS
-            last_cmd = self._last_user_command_ts.get(device_name, 0.0)
-            if time.monotonic() - last_cmd < _USER_COMMAND_ACTIVE_SECONDS:
-                return _REPORT_DATA_SILENCE_SECONDS
-            natural = _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS if _is_full_battery_docked() else _REPORT_DATA_IDLE_SILENCE_SECONDS
-            if state["rate_limited"]:
-                return max(_REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS, natural)
-            return natural
-
-        async def _on_timeout() -> None:
-            window = _current_silence_window()
-            try:
-                await asyncio.sleep(window)
-            except asyncio.CancelledError:
-                return
-            if handle.queue.is_saga_active:
-                _logger.debug(
-                    "report_data watchdog [%s]: silence but saga active — deferring",
-                    device_name,
-                )
-                _arm()
-                return
-            if _in_no_request_mode():
-                _logger.debug(
-                    "report_data watchdog [%s]: skipping refire — device in no-request mode",
-                    device_name,
-                )
-                _arm()
-                return
-            _logger.debug(
-                "report_data watchdog [%s]: %ds silence — refiring continuous subscription",
-                device_name,
-                int(window),
-            )
-            try:
-                await self.request_iot_sync_continuous(device_name)
-                state["rate_limited"] = False
-            except TooManyRequestsException:
-                _logger.warning(
-                    "report_data watchdog [%s]: rate limited — backing off %.0fs",
-                    device_name,
-                    _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS,
-                )
-                state["rate_limited"] = True
-            except Exception:  # noqa: BLE001
-                _logger.warning("report_data watchdog [%s]: refire failed", device_name, exc_info=True)
-            if window == _REPORT_DATA_SILENCE_SECONDS and not state["rate_limited"]:
-                await handle.restart_keep_alive()
-            _arm()
-
-        def _arm() -> None:
-            existing = state["task"]
-            if existing is not None and not existing.done():
-                existing.cancel()
-            state["task"] = asyncio.create_task(_on_timeout())
-
-        async def _on_report_data(msg: Any) -> None:
-            sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-            if sub_name != "sys":
-                return
-            inner_name, _ = betterproto2.which_one_of(sub_val, "SubSysMsg")
-            if inner_name == "toapp_report_data":
-                _arm()
-
-        async def _on_sys_status_changed(_sys_status: int) -> None:
-            # Re-arm immediately so _current_silence_window() recalculates for the new state.
-            _arm()
-
-        broker_sub = handle.broker.subscribe_unsolicited(_on_report_data)
-        sys_status_sub = handle.watch_field(
-            lambda s: s.raw.report_data.dev.sys_status,
-            _on_sys_status_changed,
-        )
-        state["arm"] = _arm
-        _arm()  # prime the first window
-
-        def _cleanup() -> None:
-            task = state["task"]
-            if task is not None and not task.done():
-                task.cancel()
-            state["task"] = None
-            broker_sub.cancel()
-            sys_status_sub.cancel()
-
-        # Attach `arm` on the cleanup callable so saga-end can re-arm the timer
-        # without needing a second lookup dict.
-        _cleanup._arm = _arm  # type: ignore[attr-defined]
-        self._watchdog_cleanups[device_name] = _cleanup
-
-    def _install_saga_subscription_hooks(self, device_name: str) -> None:
-        """Wire up DeviceCommandQueue so sagas pause/resume the continuous stream."""
-        handle = self._device_registry.get_by_name(device_name)
-        if handle is None:
-            return
-
-        async def _on_saga_start() -> None:
-            try:
-                await self.request_iot_sync_continuous_stop(device_name)
-            except Exception:  # noqa: BLE001
-                _logger.debug("saga_start stop-stream failed [%s]", device_name, exc_info=True)
-
-        async def _on_saga_end() -> None:
-            try:
-                await self.request_iot_sync_continuous(device_name)
-            except Exception:  # noqa: BLE001
-                _logger.debug("saga_end start-stream failed [%s]", device_name, exc_info=True)
-            # Re-arm the watchdog so the fresh subscription is monitored again.
-            cleanup = self._watchdog_cleanups.get(device_name)
-            arm = getattr(cleanup, "_arm", None) if cleanup is not None else None
-            if arm is not None:
-                arm()
-
-        handle.queue.on_saga_start = _on_saga_start
-        handle.queue.on_saga_end = _on_saga_end
-
     def subscribe_device_status(
         self,
         device_name: str,
@@ -580,17 +385,9 @@ class MammotionClient:
         return handle.subscribe_device_event(handler) if handle is not None else None
 
     def teardown_device_watchers(self, device_name: str) -> None:
-        """Cancel state-change subscriptions and the report-data watchdog for *device_name*."""
+        """Cancel state-change subscriptions for *device_name*."""
         for sub in self._watcher_subscriptions.pop(device_name, []):
             sub.cancel()
-        cleanup = self._watchdog_cleanups.pop(device_name, None)
-        if cleanup is not None:
-            cleanup()
-        # Drop the saga hooks so callbacks don't fire after teardown.
-        handle = self._device_registry.get_by_name(device_name)
-        if handle is not None:
-            handle.queue.on_saga_start = None
-            handle.queue.on_saga_end = None
 
     def setup_all_mower_watchers(self) -> None:
         """Set up state-change watchers for all registered mower devices.
@@ -1741,15 +1538,15 @@ class MammotionClient:
     # ------------------------------------------------------------------
 
     async def set_scheduled_updates(self, device_name: str, *, enabled: bool) -> None:
-        """Connect or disconnect all transports and manage the watchdog for *device_name*.
+        """Connect or disconnect all transports for *device_name*.
 
         Called by HA when the user toggles the 'schedule updates' switch.
 
-        When *enabled* is True, all registered transports are reconnected and
-        the report-data watchdog is re-installed (it was torn down on disable).
-        When *enabled* is False, the watchdog is stopped first so no refire
-        attempts fire while the transports are coming down, then all transports
-        are disconnected.
+        When *enabled* is True, all registered transports are reconnected.
+        The activity loop restarts automatically via ``update_availability``
+        once the transport reports CONNECTED.
+        When *enabled* is False, all transports are disconnected, which exits
+        the activity loop automatically.
         """
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
@@ -1757,12 +1554,7 @@ class MammotionClient:
         if enabled:
             for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION, TransportType.BLE):
                 await handle.connect_transport(t_type)
-            if device_name not in self._watchdog_cleanups:
-                self._install_report_data_watchdog(device_name)
         else:
-            cleanup = self._watchdog_cleanups.pop(device_name, None)
-            if cleanup is not None:
-                cleanup()
             for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION, TransportType.BLE):
                 await handle.disconnect_transport(t_type)
 
@@ -1954,19 +1746,6 @@ class MammotionClient:
     # Commands
     # ------------------------------------------------------------------
 
-    def _record_user_command(self, device_name: str) -> None:
-        """Stamp the user-command timestamp and immediately re-arm the watchdog.
-
-        Called by send_command_with_args and send_command_and_wait so that a
-        user action on a 10-min idle window snaps the watchdog back to 60 s
-        without waiting for the current sleep to expire.
-        """
-        self._last_user_command_ts[device_name] = time.monotonic()
-        cleanup = self._watchdog_cleanups.get(device_name)
-        arm = getattr(cleanup, "_arm", None)
-        if arm is not None:
-            arm()
-
     async def send_command_with_args(
         self,
         name: str,
@@ -2002,7 +1781,7 @@ class MammotionClient:
             msg = f"Device '{name}' not registered"
             raise KeyError(msg)
         if _record_cmd:
-            self._record_user_command(name)
+            handle.record_user_command()
         commands = handle.commands
         command_bytes: bytes = getattr(commands, key)(**kwargs)
         _logger.debug(
@@ -2085,7 +1864,7 @@ class MammotionClient:
         if handle is None:
             msg = f"Device '{name}' not registered"
             raise KeyError(msg)
-        self._record_user_command(name)
+        handle.record_user_command()
         commands = handle.commands
         command_bytes: bytes = getattr(commands, key)(**kwargs)
         _session = self._get_session_for_device(name)

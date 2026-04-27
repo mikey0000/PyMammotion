@@ -440,6 +440,7 @@ def _make_connected_transport(transport_type: TransportType) -> MagicMock:
     t.disconnect = AsyncMock()
     t.on_message = None
     t.add_availability_listener = MagicMock()
+    t.last_received_monotonic = 0.0
     return t
 
 
@@ -575,217 +576,127 @@ async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback
 
 
 # ---------------------------------------------------------------------------
-# set_scheduled_updates: transport + watchdog lifecycle
+# set_scheduled_updates: transport lifecycle
 # ---------------------------------------------------------------------------
 
 
-
-async def test_set_scheduled_updates_false_disconnects_and_stops_watchdog() -> None:
-    """set_scheduled_updates(enabled=False) must disconnect all transports and cancel the watchdog."""
+async def test_set_scheduled_updates_false_disconnects_all_transports() -> None:
+    """set_scheduled_updates(enabled=False) must disconnect all transport types."""
     client = MammotionClient()
     handle = make_handle("dev1", "Luba-Sched")
     handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
     handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
     await client._device_registry.register(handle)
 
-    # Simulate a running watchdog (pre-installed cleanup callable).
-    mock_cleanup = MagicMock()
-    mock_cleanup._arm = MagicMock()  # noqa: SLF001
-    client._watchdog_cleanups["Luba-Sched"] = mock_cleanup
-
     await client.set_scheduled_updates("Luba-Sched", enabled=False)
 
-    # Watchdog cleanup must be called and the entry removed.
-    mock_cleanup.assert_called_once()
-    assert "Luba-Sched" not in client._watchdog_cleanups
-
-    # All three transport types must be disconnected.
     disconnected = [call.args[0] for call in handle.disconnect_transport.await_args_list]
     assert TransportType.CLOUD_ALIYUN in disconnected
     assert TransportType.CLOUD_MAMMOTION in disconnected
     assert TransportType.BLE in disconnected
-
     handle.connect_transport.assert_not_awaited()
 
 
-async def test_set_scheduled_updates_true_connects_and_reinstalls_watchdog() -> None:
-    """set_scheduled_updates(enabled=True) must reconnect transports and reinstall the watchdog."""
+async def test_set_scheduled_updates_true_connects_all_transports() -> None:
+    """set_scheduled_updates(enabled=True) must reconnect all transport types."""
     client = MammotionClient()
     handle = make_handle("dev1", "Luba-Sched2")
     handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
     handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
     await client._device_registry.register(handle)
 
-    # No watchdog present (as it would be after a disable).
-    assert "Luba-Sched2" not in client._watchdog_cleanups
+    await client.set_scheduled_updates("Luba-Sched2", enabled=True)
 
-    with patch.object(client, "_install_report_data_watchdog") as mock_install:
-        await client.set_scheduled_updates("Luba-Sched2", enabled=True)
-
-    # All three transport types must be connected.
     connected = [call.args[0] for call in handle.connect_transport.await_args_list]
     assert TransportType.CLOUD_ALIYUN in connected
     assert TransportType.CLOUD_MAMMOTION in connected
     assert TransportType.BLE in connected
-
     handle.disconnect_transport.assert_not_awaited()
-
-    # Watchdog must be reinstalled since it was absent.
-    mock_install.assert_called_once_with("Luba-Sched2")
-
-
-async def test_set_scheduled_updates_true_skips_watchdog_if_already_installed() -> None:
-    """set_scheduled_updates(enabled=True) must not double-install the watchdog."""
-    client = MammotionClient()
-    handle = make_handle("dev1", "Luba-Sched3")
-    handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
-    handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
-    await client._device_registry.register(handle)
-
-    # Watchdog already present.
-    existing_cleanup = MagicMock()
-    client._watchdog_cleanups["Luba-Sched3"] = existing_cleanup
-
-    with patch.object(client, "_install_report_data_watchdog") as mock_install:
-        await client.set_scheduled_updates("Luba-Sched3", enabled=True)
-
-    mock_install.assert_not_called()
-    # Existing cleanup must not have been touched.
-    existing_cleanup.assert_not_called()
 
 
 async def test_set_scheduled_updates_noop_for_unknown_device() -> None:
     """set_scheduled_updates must silently do nothing for an unregistered device name."""
     client = MammotionClient()
-    # Must not raise even when the device is not registered.
     await client.set_scheduled_updates("ghost-device", enabled=False)
     await client.set_scheduled_updates("ghost-device", enabled=True)
 
 
 # ---------------------------------------------------------------------------
-# User-command active window: send_command_* stamps _last_user_command_ts
+# User-command stamping: send_command_* stamps handle._last_user_command_monotonic
 # ---------------------------------------------------------------------------
 
 
-async def test_send_command_with_args_stamps_last_user_command_ts() -> None:
-    """send_command_with_args must update _last_user_command_ts for the device."""
+async def test_send_command_with_args_stamps_user_command_on_handle() -> None:
+    """send_command_with_args must call handle.record_user_command() (updates _last_user_command_monotonic)."""
     import time
 
     client = MammotionClient()
-
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-TS")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    assert "Luba-TS" not in client._last_user_command_ts
+    # Force an old timestamp so we can verify it changes.
+    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
 
     before = time.monotonic()
     await client.send_command_with_args("Luba-TS", "start_job")
     after = time.monotonic()
 
-    assert "Luba-TS" in client._last_user_command_ts
-    assert before <= client._last_user_command_ts["Luba-TS"] <= after
+    assert before <= handle._last_user_command_monotonic <= after  # noqa: SLF001
 
 
-async def test_send_command_and_wait_stamps_last_user_command_ts() -> None:
-    """send_command_and_wait must update _last_user_command_ts for the device."""
+async def test_send_command_and_wait_stamps_user_command_on_handle() -> None:
+    """send_command_and_wait must call handle.record_user_command() before waiting for response."""
     import time
 
     client = MammotionClient()
-
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-TS2")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    assert "Luba-TS2" not in client._last_user_command_ts
+    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
 
-    # send_command_and_wait will time out waiting for a response — that's fine,
-    # we only care that the timestamp is stamped before the await.
     with pytest.raises(Exception):  # noqa: BLE001
         await client.send_command_and_wait("Luba-TS2", "start_job", "some_field", send_timeout=0.01)
 
-    assert "Luba-TS2" in client._last_user_command_ts
-    ts = client._last_user_command_ts["Luba-TS2"]
-    assert time.monotonic() - ts < 5.0  # stamped very recently
+    assert time.monotonic() - handle._last_user_command_monotonic < 5.0  # noqa: SLF001
 
 
-async def test_watchdog_window_uses_short_after_user_command() -> None:
-    """When a user command was sent within 30 min on MQTT, watchdog uses the short window.
+async def test_request_iot_sync_continuous_does_not_stamp_user_command() -> None:
+    """request_iot_sync_continuous must NOT call record_user_command.
 
-    Verified by checking that send_command_with_args sets _last_user_command_ts,
-    which _current_silence_window() then reads to return _REPORT_DATA_SILENCE_SECONDS.
-    """
-    import time as _time
-
-    from pymammotion.client import _REPORT_DATA_SILENCE_SECONDS, _USER_COMMAND_ACTIVE_SECONDS
-
-    client = MammotionClient()
-
-    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
-    handle = make_handle("dev1", "Luba-Win")
-    handle.snapshot.raw.report_data.dev.battery_val = 50
-    handle.snapshot.raw.report_data.dev.charge_state = 0
-    handle.snapshot.raw.report_data.dev.sys_status = 0
-    await handle.add_transport(mqtt)
-    await client._device_registry.register(handle)
-
-    # No command yet — timestamp absent, should NOT be in the short window.
-    assert "Luba-Win" not in client._last_user_command_ts
-
-    # Stamp a recent command.
-    client._last_user_command_ts["Luba-Win"] = _time.monotonic()
-
-    # Stamp is recent → still within the 30-min window.
-    elapsed = _time.monotonic() - client._last_user_command_ts["Luba-Win"]
-    assert elapsed < _USER_COMMAND_ACTIVE_SECONDS
-
-    # Stamp an expired command (31 minutes ago) → window should revert.
-    client._last_user_command_ts["Luba-Win"] = _time.monotonic() - (_USER_COMMAND_ACTIVE_SECONDS + 60)
-    elapsed_expired = _time.monotonic() - client._last_user_command_ts["Luba-Win"]
-    assert elapsed_expired > _USER_COMMAND_ACTIVE_SECONDS
-
-
-async def test_request_iot_sync_continuous_does_not_stamp_user_command_ts() -> None:
-    """request_iot_sync_continuous (watchdog path) must NOT update _last_user_command_ts.
-
-    The watchdog calls this internally; if it stamped the timestamp it would
-    lock the watchdog into the 60 s window forever, preventing the 30-minute
-    full-battery-docked window from ever being reached.
+    If it did, internal refires would lock the activity window into the short
+    interval forever, preventing the docked long window from ever kicking in.
     """
     client = MammotionClient()
-
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-NoStamp")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    assert "Luba-NoStamp" not in client._last_user_command_ts
+    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
 
     await client.request_iot_sync_continuous("Luba-NoStamp")
 
-    assert "Luba-NoStamp" not in client._last_user_command_ts
+    assert handle._last_user_command_monotonic == 0.0  # noqa: SLF001
 
 
-async def test_send_command_with_args_record_cmd_false_does_not_stamp_ts() -> None:
-    """send_command_with_args with _record_cmd=False must not touch _last_user_command_ts."""
-    import time
-
+async def test_send_command_with_args_record_cmd_false_does_not_stamp() -> None:
+    """send_command_with_args with _record_cmd=False must not update the user-command timestamp."""
     client = MammotionClient()
-
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-NR")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    # Pre-stamp a known time so we can verify it is not overwritten.
-    sentinel = time.monotonic() - 9999.0
-    client._last_user_command_ts["Luba-NR"] = sentinel
+    sentinel = 0.0
+    handle._last_user_command_monotonic = sentinel  # noqa: SLF001
 
     await client.send_command_with_args("Luba-NR", "start_job", _record_cmd=False)
 
-    assert client._last_user_command_ts["Luba-NR"] == sentinel
+    assert handle._last_user_command_monotonic == sentinel  # noqa: SLF001
 
 
 async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> None:
@@ -820,284 +731,253 @@ async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> Non
 
 
 # ---------------------------------------------------------------------------
-# _current_silence_window() — watchdog sleep-duration capture tests
+# handle._activity_window() — silence-window selection tests
 # ---------------------------------------------------------------------------
 
+import time as _time  # noqa: E402
 
-from pymammotion.aliyun.exceptions import TooManyRequestsException  # noqa: E402
-from pymammotion.client import (  # noqa: E402
-    _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS,
-    _REPORT_DATA_IDLE_SILENCE_SECONDS,
-    _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS,
-    _REPORT_DATA_SILENCE_SECONDS,
+from pymammotion.device.handle import (  # noqa: E402
+    _KEEP_ALIVE_IDLE_INTERVAL,
+    _KEEP_ALIVE_INTERVAL,
+    _KEEP_ALIVE_LONG_IDLE_INTERVAL,
+    _KEEP_ALIVE_MOWING_INTERVAL,
+    _KEEP_ALIVE_USER_CMD_WINDOW,
+    _RATE_LIMITED_BACKOFF,
 )
 
 
-async def _setup_watchdog_client(
-    device_name: str,
+def _make_handle_for_window(
     transport_type: TransportType | None,
     *,
     battery_val: int = 75,
     charge_state: int = 0,
-) -> tuple[MammotionClient, DeviceHandle]:
-    """Build and register a client+handle ready for watchdog window tests."""
-    client = MammotionClient()
-    handle = make_handle("dev1", device_name)
+) -> DeviceHandle:
+    """Build a handle with a known device state for _activity_window tests."""
+    handle = make_handle("dev1", "Luba-AW")
     handle.snapshot.raw.report_data.dev.battery_val = battery_val
     handle.snapshot.raw.report_data.dev.charge_state = charge_state
-    handle.snapshot.raw.report_data.dev.sys_status = 0  # not in NO_REQUEST_MODES
+    handle.snapshot.raw.report_data.dev.sys_status = 0
     if transport_type is not None:
-        transport = _make_connected_transport(transport_type)
-        await handle.add_transport(transport)
-    await client._device_registry.register(handle)
-    return client, handle
+        t = _make_connected_transport(transport_type)
+        handle._transports[transport_type] = t  # noqa: SLF001
+    # Expire the recent-command threshold so the user-command branch doesn't fire.
+    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
+    return handle
 
 
-async def _collect_watchdog_sleep_durations(
-    client: MammotionClient,
-    device_name: str,
-    *,
-    num_cycles: int = 1,
-    request_side_effects: list[Exception | None] | None = None,
-) -> list[float]:
-    """Install the watchdog and return the first ``num_cycles`` sleep durations.
-
-    ``request_side_effects[i]`` is the pre-instantiated exception that
-    ``request_iot_sync_continuous`` raises for cycle *i* (``None`` = success).
-    The last ``fake_sleep`` call raises ``CancelledError`` to stop the loop.
-    ``done.wait()`` is used for synchronisation so the helper never calls
-    the real ``asyncio.sleep`` while the patch is active.
-    """
-    sleep_durations: list[float] = []
-    done = asyncio.Event()
-    request_effects: list[Exception | None] = list(request_side_effects or [None] * num_cycles)
-    call_count = 0
-    request_idx = 0
-
-    async def fake_sleep(d: float) -> None:
-        nonlocal call_count
-        sleep_durations.append(d)
-        call_count += 1
-        if call_count >= num_cycles:
-            done.set()
-            raise asyncio.CancelledError
-
-    async def fake_request(_dn: str) -> None:
-        nonlocal request_idx
-        exc = request_effects[request_idx] if request_idx < len(request_effects) else None
-        request_idx += 1
-        if exc is not None:
-            raise exc
-
-    handle = client._device_registry.get_by_name(device_name)
-    assert handle is not None
-    handle.restart_keep_alive = AsyncMock()  # type: ignore[method-assign]
-
-    with (
-        patch("asyncio.sleep", AsyncMock(side_effect=fake_sleep)),
-        patch.object(client, "request_iot_sync_continuous", AsyncMock(side_effect=fake_request)),
-    ):
-        client._install_report_data_watchdog(device_name)
-        await done.wait()
-
-    return sleep_durations
+async def test_activity_window_ble_uses_short_window() -> None:
+    """BLE transport always returns the short keep-alive window."""
+    handle = _make_handle_for_window(TransportType.BLE)
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
 
 
-async def test_watchdog_window_ble_uses_short_window() -> None:
-    """BLE transport always selects the short watchdog window."""
-    client, _ = await _setup_watchdog_client("Luba-WD-BLE", TransportType.BLE)
-    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-BLE")
-    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
+async def test_activity_window_no_transport_uses_short_window() -> None:
+    """No connected transport → fall back to short window."""
+    handle = _make_handle_for_window(transport_type=None)
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
 
 
-async def test_watchdog_window_no_transport_uses_short_window() -> None:
-    """When no transport is available, watchdog falls back to the short window."""
-    client, _ = await _setup_watchdog_client("Luba-WD-NT", transport_type=None)
-    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-NT")
-    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
+async def test_activity_window_mowing_uses_mowing_interval() -> None:
+    """Mowing/returning on MQTT (no recent command) uses the 5-minute mowing window."""
+    from pymammotion.utility.constant import WorkMode
+
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
+    assert handle._activity_window() == _KEEP_ALIVE_MOWING_INTERVAL  # noqa: SLF001
 
 
-async def test_watchdog_window_mqtt_idle_uses_idle_window() -> None:
+async def test_activity_window_recent_command_overrides_mowing_to_short() -> None:
+    """A recent user command overrides even the mowing window with the short 180 s window."""
+    from pymammotion.utility.constant import WorkMode
+
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
+    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
+
+
+async def test_activity_window_mqtt_idle_uses_idle_window() -> None:
     """MQTT with no recent command and not fully docked uses the 10-minute idle window."""
-    client, _ = await _setup_watchdog_client(
-        "Luba-WD-Idle", TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0
-    )
-    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-Idle")
-    assert durations[0] == _REPORT_DATA_IDLE_SILENCE_SECONDS
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0)
+    assert handle._activity_window() == _KEEP_ALIVE_IDLE_INTERVAL  # noqa: SLF001
 
 
-async def test_watchdog_window_mqtt_full_battery_docked_uses_long_window() -> None:
-    """Full battery + docked on MQTT selects the 30-minute silence window."""
-    client, _ = await _setup_watchdog_client(
-        "Luba-WD-Dock", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
-    )
-    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-Dock")
-    assert durations[0] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+async def test_activity_window_mqtt_full_battery_docked_uses_long_window() -> None:
+    """Full battery + docked on MQTT selects the 30-minute window."""
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
+    assert handle._activity_window() == _KEEP_ALIVE_LONG_IDLE_INTERVAL  # noqa: SLF001
 
 
-async def test_watchdog_window_mqtt_recent_command_uses_short_window() -> None:
-    """A recent user command on MQTT overrides the idle window with the short window."""
-    import time as _time
-
-    client, _ = await _setup_watchdog_client("Luba-WD-Cmd", TransportType.CLOUD_ALIYUN)
-    client._last_user_command_ts["Luba-WD-Cmd"] = _time.monotonic()
-    durations = await _collect_watchdog_sleep_durations(client, "Luba-WD-Cmd")
-    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
+async def test_activity_window_recent_command_uses_short_window() -> None:
+    """A recent user command overrides the idle window with the short window."""
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
 
 
-async def test_watchdog_window_rate_limited_idle_applies_rate_limit_floor() -> None:
-    """Rate-limited on MQTT (idle 10-min natural) uses max(15 min, 10 min) = 15-min backoff."""
-    client, _ = await _setup_watchdog_client(
-        "Luba-WD-RLIdle", TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0
-    )
-    # Cycle 1: idle window fires → TooManyRequestsException → rate_limited=True → re-arm
-    # Cycle 2: max(900, 600) = 900 s
-    durations = await _collect_watchdog_sleep_durations(
-        client,
-        "Luba-WD-RLIdle",
-        num_cycles=2,
-        request_side_effects=[TooManyRequestsException("rl", "iot-id"), None],
-    )
-    assert durations[0] == _REPORT_DATA_IDLE_SILENCE_SECONDS
-    assert durations[1] == _REPORT_DATA_RATE_LIMITED_SILENCE_SECONDS
+async def test_activity_window_rate_limited_idle_applies_backoff() -> None:
+    """Rate-limited on MQTT always returns the flat 15-min backoff."""
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0)
+    handle._rate_limited = True  # noqa: SLF001
+    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
-async def test_watchdog_window_rate_limited_docked_respects_natural_window() -> None:
-    """Rate-limited while fully docked uses max(15 min, 30 min) = 30 min — never more aggressive than natural."""
-    client, _ = await _setup_watchdog_client(
-        "Luba-WD-RLDock", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
-    )
-    # Cycle 1: docked window (1800 s) → TooManyRequestsException → rate_limited=True → re-arm
-    # Cycle 2: max(900, 1800) = 1800 s
-    durations = await _collect_watchdog_sleep_durations(
-        client,
-        "Luba-WD-RLDock",
-        num_cycles=2,
-        request_side_effects=[TooManyRequestsException("rl", "iot-id"), None],
-    )
-    assert durations[0] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
-    assert durations[1] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+async def test_activity_window_rate_limited_docked_uses_backoff_not_natural() -> None:
+    """Rate-limited while fully docked: backoff (15 min) wins, not the natural 30-min docked window."""
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
+    handle._rate_limited = True  # noqa: SLF001
+    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
-async def test_watchdog_window_recent_command_bypasses_rate_limit() -> None:
-    """A user command stamped after rate-limiting restores the short window immediately."""
-    import time as _time
-
-    client, _ = await _setup_watchdog_client("Luba-WD-CmdRL", TransportType.CLOUD_ALIYUN)
-
-    sleep_durations: list[float] = []
-    done = asyncio.Event()
-    call_count = 0
-    rl_raised = False
-
-    async def fake_sleep(d: float) -> None:
-        nonlocal call_count
-        sleep_durations.append(d)
-        call_count += 1
-        if call_count >= 2:
-            done.set()
-            raise asyncio.CancelledError
-
-    async def fake_request(_dn: str) -> None:
-        nonlocal rl_raised
-        if not rl_raised:
-            rl_raised = True
-            # Stamp a recent command before the next window recalculation.
-            client._last_user_command_ts["Luba-WD-CmdRL"] = _time.monotonic()
-            raise TooManyRequestsException()
-
-    handle = client._device_registry.get_by_name("Luba-WD-CmdRL")
-    assert handle is not None
-    handle.restart_keep_alive = AsyncMock()  # type: ignore[method-assign]
-
-    with (
-        patch("asyncio.sleep", AsyncMock(side_effect=fake_sleep)),
-        patch.object(client, "request_iot_sync_continuous", AsyncMock(side_effect=fake_request)),
-    ):
-        client._install_report_data_watchdog("Luba-WD-CmdRL")
-        await done.wait()
-
-    # Cycle 1: idle window (no command yet)
-    # Cycle 2: rate_limited=True but recent command → short window (recent-cmd check comes first)
-    assert sleep_durations[0] == _REPORT_DATA_IDLE_SILENCE_SECONDS
-    assert sleep_durations[1] == _REPORT_DATA_SILENCE_SECONDS
+async def test_activity_window_rate_limited_overrides_recent_command() -> None:
+    """Rate-limit overrides recent user command — no point retrying aggressively when cloud is throttling."""
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    handle._rate_limited = True  # noqa: SLF001
+    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
+    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
-async def test_watchdog_window_ble_bypasses_rate_limit() -> None:
-    """BLE transport always uses the short window regardless of rate-limit state."""
-    client, _ = await _setup_watchdog_client("Luba-WD-BLERL", TransportType.BLE)
-    # Cycle 1: BLE short window → TooManyRequestsException → rate_limited=True → re-arm
-    # Cycle 2: BLE check still comes first → short window
-    durations = await _collect_watchdog_sleep_durations(
-        client,
-        "Luba-WD-BLERL",
-        num_cycles=2,
-        request_side_effects=[TooManyRequestsException("rl", "iot-id"), None],
-    )
-    assert durations[0] == _REPORT_DATA_SILENCE_SECONDS
-    assert durations[1] == _REPORT_DATA_SILENCE_SECONDS
+async def test_activity_window_rate_limited_mowing_uses_backoff() -> None:
+    """Rate-limited while mowing: backoff (15 min) wins over the 5-min mowing interval."""
+    from pymammotion.utility.constant import WorkMode
+
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
+    handle._rate_limited = True  # noqa: SLF001
+    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
-async def test_watchdog_window_rate_limit_clears_to_docked_window() -> None:
-    """After a rate-limit backoff succeeds, the docked window is restored for the next cycle."""
-    client, _ = await _setup_watchdog_client(
-        "Luba-WD-Restore", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
-    )
-    # Cycle 1: docked (1800 s) → rate limited → rate_limited=True
-    # Cycle 2: max(900, 1800) = 1800 s → success → rate_limited=False
-    # Cycle 3: back to natural docked (1800 s)
-    durations = await _collect_watchdog_sleep_durations(
-        client,
-        "Luba-WD-Restore",
-        num_cycles=3,
-        request_side_effects=[TooManyRequestsException, None, None],
-    )
-    assert durations[0] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
-    assert durations[1] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
-    assert durations[2] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
-
-from pymammotion.client import _USER_COMMAND_ACTIVE_SECONDS  # noqa: E402
+async def test_activity_window_ble_bypasses_rate_limit() -> None:
+    """BLE transport returns short window regardless of rate-limit state."""
+    handle = _make_handle_for_window(TransportType.BLE)
+    handle._rate_limited = True  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
 
 
-async def test_watchdog_window_reverts_to_docked_after_command_expires() -> None:
-    """Once _USER_COMMAND_ACTIVE_SECONDS elapses the window switches from short back to docked.
+async def test_activity_window_rate_limit_clears_to_docked_window() -> None:
+    """Once rate_limited is cleared, the natural docked window is restored."""
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
+    handle._rate_limited = True  # noqa: SLF001
+    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
+    handle._rate_limited = False  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_LONG_IDLE_INTERVAL  # noqa: SLF001
 
-    We control time.monotonic so the command appears fresh on cycle 1 and expired on cycle 2.
-    """
-    client, _ = await _setup_watchdog_client(
-        "Luba-WD-Expire", TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1
-    )
 
-    t_start = 1000.0  # arbitrary base
-    client._last_user_command_ts["Luba-WD-Expire"] = t_start
+async def test_activity_window_command_expiry_reverts_to_docked() -> None:
+    """After _KEEP_ALIVE_USER_CMD_WINDOW elapses the window reverts from short to docked."""
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
 
-    sleep_durations: list[float] = []
-    done = asyncio.Event()
-    cycle = 0
+    # Fresh command → short window.
+    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
 
-    def fake_monotonic() -> float:
-        # Cycle 0 window check: command is fresh.  Cycle 1+ window check: command expired.
-        return t_start + (1 if cycle == 0 else _USER_COMMAND_ACTIVE_SECONDS + 10)
+    # Expired command → long docked window.
+    handle._last_user_command_monotonic = _time.monotonic() - (_KEEP_ALIVE_USER_CMD_WINDOW + 1)  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_LONG_IDLE_INTERVAL  # noqa: SLF001
 
-    async def fake_sleep(d: float) -> None:
-        nonlocal cycle
-        sleep_durations.append(d)
-        cycle += 1
-        if cycle >= 2:
-            done.set()
-            raise asyncio.CancelledError
 
-    handle = client._device_registry.get_by_name("Luba-WD-Expire")
-    assert handle is not None
-    handle.restart_keep_alive = AsyncMock()  # type: ignore[method-assign]
+async def test_activity_window_command_expiry_reverts_to_mowing_interval() -> None:
+    """After _KEEP_ALIVE_USER_CMD_WINDOW elapses while mowing, window reverts to 5-minute mowing interval."""
+    from pymammotion.utility.constant import WorkMode
+
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
+
+    # Fresh command → short window (overrides mowing).
+    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
+
+    # Expired command + mowing → mowing interval (not idle, not docked).
+    handle._last_user_command_monotonic = _time.monotonic() - (_KEEP_ALIVE_USER_CMD_WINDOW + 1)  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_MOWING_INTERVAL  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# Offline / loop-exit behaviour
+# ---------------------------------------------------------------------------
+
+
+async def test_activity_window_mqtt_reported_offline_uses_short_window() -> None:
+    """mqtt_reported_offline=True makes active_transport() raise → falls back to short window."""
+    from pymammotion.transport.base import TransportAvailability
+
+    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    # Mark MQTT as cloud-reported-offline (no BLE registered).
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED, mqtt_reported_offline=True)
+    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
+
+
+async def test_activity_loop_exits_on_command_timeout() -> None:
+    """_activity_loop must exit cleanly when the heartbeat gets no response."""
+    from pymammotion.transport.base import CommandTimeoutError
+
+    handle = make_handle("dev1", "Luba-CT")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
 
     with (
-        patch("asyncio.sleep", AsyncMock(side_effect=fake_sleep)),
-        patch.object(client, "request_iot_sync_continuous", AsyncMock()),
-        patch("pymammotion.client.time.monotonic", side_effect=fake_monotonic),
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(return_value=False)),
+        patch.object(handle, "_activity_window", return_value=0.0),
+        patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=CommandTimeoutError("toapp_report_data", 1))),
     ):
-        client._install_report_data_watchdog("Luba-WD-Expire")
-        await done.wait()
+        task = asyncio.create_task(handle._activity_loop())
+        await asyncio.wait_for(task, timeout=2.0)
 
-    assert sleep_durations[0] == _REPORT_DATA_SILENCE_SECONDS
-    assert sleep_durations[1] == _REPORT_DATA_FULL_DOCKED_SILENCE_SECONDS
+    assert task.done() and not task.cancelled()
+
+
+async def test_activity_loop_exits_on_device_offline_exception() -> None:
+    """_activity_loop must exit when the cloud reports the device offline."""
+    from pymammotion.aliyun.exceptions import DeviceOfflineException
+
+    handle = make_handle("dev1", "Luba-DOf")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
+
+    with (
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(return_value=False)),
+        patch.object(handle, "_activity_window", return_value=0.0),
+        patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=DeviceOfflineException("msg", "iot-id"))),
+    ):
+        task = asyncio.create_task(handle._activity_loop())
+        await asyncio.wait_for(task, timeout=2.0)
+
+    assert task.done() and not task.cancelled()
+
+
+async def test_update_availability_restarts_loop_on_reconnect() -> None:
+    """update_availability must restart the activity loop when transitioning to CONNECTED."""
+    from pymammotion.transport.base import TransportAvailability
+
+    handle = make_handle("dev1", "Luba-Rec")
+    handle.restart_keep_alive = AsyncMock()  # type: ignore[method-assign]
+
+    # Start from disconnected.
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.DISCONNECTED)
+    from pymammotion.state.device_state import DeviceConnectionState
+    assert handle.availability.connection_state != DeviceConnectionState.CONNECTED
+
+    # Transition to connected → loop should restart.
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED)
+    await asyncio.sleep(0)  # let the created task execute
+
+    handle.restart_keep_alive.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# send_raw sets _rate_limited on TooManyRequestsException
+# ---------------------------------------------------------------------------
+
+
+async def test_send_raw_sets_rate_limited_on_too_many_requests() -> None:
+    """send_raw must set _rate_limited=True when the transport raises TooManyRequestsException."""
+    from pymammotion.aliyun.exceptions import TooManyRequestsException
+
+    handle = make_handle("dev1", "Luba-RL")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    mqtt.send = AsyncMock(side_effect=TooManyRequestsException("rate limited", "iot-id"))
+    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+
+    assert handle._rate_limited is False  # noqa: SLF001
+    await handle.send_raw(b"\x00")
+    assert handle._rate_limited is True  # noqa: SLF001

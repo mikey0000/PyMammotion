@@ -145,7 +145,7 @@ class MammotionHTTP:
         self._login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
         #  app_version =f"Home Assistant,{ha_version}" if ha_version else f"ALIYUN DEMO,{APP_VERSION}"
-        app_version = f"ALIYUN DEMO,{ha_version}"
+        app_version = f"ALIYUN DEMO,{APP_VERSION}"  # f"HA,{ha_version}"
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": app_version}
         self.encryption_utils = EncryptionUtils()
 
