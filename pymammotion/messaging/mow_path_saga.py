@@ -12,7 +12,7 @@ import betterproto2
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.hash_list import HashList, MowPath
 from pymammotion.messaging.saga import Saga
-from pymammotion.transport.base import CommandTimeoutError
+from pymammotion.transport.base import CommandTimeoutError, SagaFailedError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -169,8 +169,11 @@ class MowPathSaga(Saga):
                     self._route_val.path_hash,
                 )
             else:
-                # running task mode: query the currently running job's route info (sub_cmd=2)
-                return
+                # skip_planning=True: a running job's route info should already be cached.
+                # If it isn't, the saga cannot fetch cover paths — fail loudly instead of
+                # returning silently (which left the caller with empty MowPath data).
+                _logger.warning("MowPathSaga: skip_planning=True but no _route_val available — failing saga")
+                raise SagaFailedError(self.name, self.max_attempts)
         else:
             _logger.debug("MowPathSaga: reusing cached route info — skipping step 2")
 

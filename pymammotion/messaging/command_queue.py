@@ -130,22 +130,33 @@ class DeviceCommandQueue:
 
         async def _run() -> None:
             self._exclusive_active.clear()
-            if self.on_saga_start is not None:
-                try:
-                    await self.on_saga_start()
-                except Exception:
-                    _logger.exception("on_saga_start callback failed for saga '%s'", saga.name)
+            saga_exception: BaseException | None = None
             try:
+                if self.on_saga_start is not None:
+                    try:
+                        await self.on_saga_start()
+                    except Exception:
+                        _logger.exception("on_saga_start callback failed for saga '%s'", saga.name)
                 saga.device_name = self._device_name
-                await saga.execute(broker)
+                try:
+                    await saga.execute(broker)
+                except asyncio.CancelledError:
+                    saga_exception = asyncio.CancelledError()
+                    raise
+                except Exception as exc:
+                    saga_exception = exc
+                    _logger.exception("Saga '%s' raised an unhandled exception", saga.name)
+                    raise
             finally:
+                # Always release the exclusive lock and clear the work-task pointer,
+                # even on cancellation or unhandled exception — otherwise the queue deadlocks.
                 self._exclusive_active.set()
                 if self.on_saga_end is not None:
                     try:
                         await self.on_saga_end()
                     except Exception:
                         _logger.exception("on_saga_end callback failed for saga '%s'", saga.name)
-            if on_complete is not None:
+            if saga_exception is None and on_complete is not None:
                 try:
                     await on_complete()
                 except Exception:
@@ -200,7 +211,11 @@ class DeviceCommandQueue:
                     finally:
                         self._current_work_task = None
             except asyncio.CancelledError:
-                break
+                # Cancelling the work-item task should NOT kill the processor —
+                # only an explicit stop() (which sets _running=False) should do that.
+                if not self._running:
+                    break
+                continue
             except Exception as exc:
                 from pymammotion.aliyun.exceptions import DeviceOfflineException
                 from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError

@@ -214,7 +214,13 @@ class DeviceHandle:
         #: for ``_KEEP_ALIVE_LONG_IDLE_THRESHOLD`` seconds after any user action.
         self._last_user_command_monotonic: float = time.monotonic()
         #: True when the cloud returned TooManyRequests; clears on next success.
+        #: All writes go through ``_set_rate_limited`` which serialises transitions
+        #: via ``_rate_limit_lock`` so a success completing concurrently with a 429
+        #: cannot leave the flag in the wrong state. Reads (in ``_activity_window``)
+        #: are intentionally lock-free — the lock orders writes so no transition
+        #: is lost; a stale read on the next loop iteration self-corrects.
         self._rate_limited: bool = False
+        self._rate_limit_lock: asyncio.Lock = asyncio.Lock()
         #: Set by ``record_user_command`` to interrupt a long sleep and re-arm
         #: the activity loop immediately with the short window.
         self._rearm_event: asyncio.Event = asyncio.Event()
@@ -683,6 +689,17 @@ class DeviceHandle:
             return _KEEP_ALIVE_LONG_IDLE_INTERVAL
         return _KEEP_ALIVE_IDLE_INTERVAL
 
+    async def _set_rate_limited(self, *, value: bool) -> None:
+        """Set ``_rate_limited`` under ``_rate_limit_lock`` so transitions are serialised.
+
+        All transitions (set on 429, clear on success) flow through this helper so
+        a concurrent success and 429 from different async paths cannot interleave
+        their writes. The lock is held for a single boolean assignment, so
+        contention is negligible.
+        """
+        async with self._rate_limit_lock:
+            self._rate_limited = value
+
     async def _sleep_or_rearm(self, seconds: float) -> bool:
         """Sleep for *seconds*, returning ``True`` early if ``_rearm_event`` fires."""
         self._rearm_event.clear()
@@ -794,22 +811,20 @@ class DeviceHandle:
                         send_fn=lambda t=transport, c=cmd_bytes: self._send_marked(t, c),
                         expected_field="toapp_report_data",
                     )
-                self._rate_limited = False
-                if not is_ble:
-                    await self._refire_continuous_subscription()
+                await self._set_rate_limited(value=False)
             except TooManyRequestsException:
                 _logger.warning(
                     "activity_loop [%s]: rate limited — backing off %.0fs",
                     self.device_name,
                     _RATE_LIMITED_BACKOFF,
                 )
-                self._rate_limited = True
+                await self._set_rate_limited(value=True)
             except CommandTimeoutError:
-                _logger.warning(
-                    "activity_loop [%s]: no toapp_report_data response — device unreachable",
+                _logger.debug(
+                    "activity_loop [%s]: no toapp_report_data response",
                     self.device_name,
                 )
-                break
+                await self._refire_continuous_subscription()
             except ConcurrentRequestError:
                 _logger.debug("activity_loop [%s]: concurrent request — skipping heartbeat", self.device_name)
             except DeviceOfflineException:
@@ -892,7 +907,7 @@ class DeviceHandle:
             await self._send_marked(transport, payload)
         except TooManyRequestsException:
             _logger.warning("Device '%s' rate limited", self.device_name)
-            self._rate_limited = True
+            await self._set_rate_limited(value=True)
         except DeviceOfflineException:
             self.update_availability(
                 transport.transport_type,

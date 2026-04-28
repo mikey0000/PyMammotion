@@ -344,9 +344,7 @@ class HashList(DataClassORJSONMixin):
         self.visual_obstacle_zone = {
             hash_id: frames for hash_id, frames in self.visual_obstacle_zone.items() if hash_id in hashlist
         }
-        self.corridor_line = {
-            hash_id: frames for hash_id, frames in self.corridor_line.items() if hash_id in hashlist
-        }
+        self.corridor_line = {hash_id: frames for hash_id, frames in self.corridor_line.items() if hash_id in hashlist}
         self.corridor_point = {
             hash_id: frames for hash_id, frames in self.corridor_point.items() if hash_id in hashlist
         }
@@ -359,11 +357,10 @@ class HashList(DataClassORJSONMixin):
                     self.plan.pop(hash_id)
                     break
 
-        self.area_name = [
-            area_item
-            for area_item in self.area_name
-            if area_item.hash in self.area.keys() or area_item.hash in hashlist
-        ]
+        # area_name is preserved here: orphans (whose hash is no longer in
+        # self.area) are harmless because consumers key lookups by hash, and
+        # dropping them racily empties the list mid-fetch.  toapp_all_hash_name
+        # responses replace area_name wholesale in the saga / state reducer.
 
     @property
     def area_names_stale(self) -> bool:

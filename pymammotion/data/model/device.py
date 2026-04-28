@@ -187,6 +187,8 @@ class MowerDevice(Device):
             and toapp_report_data.work.ub_path_hash == 0
         ):
             self.work.zone_hashs = []
+            self.events.work_tasks_event.hash_area_map = {}
+            self.events.work_tasks_event.ids = []
             self.map.invalidate_breakpoint_line(0)
 
         if toapp_report_data.work:

@@ -161,12 +161,15 @@ class DeviceMessageBroker:
                 _logger.debug("on_message: could not extract field name, treating as unsolicited")
 
         if field_name:
+            # Hold the lock across the lookup AND the set_result: otherwise a
+            # late response can race the timeout cleanup in send_and_wait()'s
+            # finally block, calling set_result on an orphaned future and
+            # losing the response.
             async with self._lock:
                 pending = self._pending.get(field_name)
-
-            if pending is not None and not pending.future.done():
-                pending.future.set_result(message)
-                return  # solicited — do NOT emit to event bus
+                if pending is not None and not pending.future.done():
+                    pending.future.set_result(message)
+                    return  # solicited — do NOT emit to event bus
 
         await self._event_bus.emit(message)
 

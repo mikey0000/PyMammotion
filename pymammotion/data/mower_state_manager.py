@@ -252,8 +252,14 @@ class MowerStateManager:
 
             case "toapp_all_hash_name":
                 hash_names: AppGetAllAreaHashName = nav_msg[1]
-                converted_list = [AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames]
-                self._device.map.area_name = converted_list
+                # Guard: empty payload from the device must NOT clobber names
+                # we already have — replacement only happens when the device
+                # returns a non-empty list (per user decision: fresh data
+                # wholesale-replaces, but an empty response is a no-op).
+                if hash_names.hashnames:
+                    self._device.map.area_name = [
+                        AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames
+                    ]
 
             case "bidire_reqconver_path":
                 work_settings: NavReqCoverPath = nav_msg[1]

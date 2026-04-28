@@ -204,7 +204,8 @@ class MQTTTransport(Transport):
             raise TransportError("MQTTTransport.send: DNS lookup timed out") from None
         except UnauthorizedException:
             _logger.warning("MQTTTransport.send: HTTP access token expired — force-refreshing invoke token")
-            assert self._token_manager is not None, "MQTTTransport requires a TokenManager"
+            if self._token_manager is None:
+                raise TransportError("Token manager not configured for MQTT transport") from None
             await self._token_manager.force_refresh_invoke_token()
             try:
                 res = await self._http.mqtt_invoke(content, "", iot_id)

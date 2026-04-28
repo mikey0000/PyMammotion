@@ -443,8 +443,8 @@ class MammotionClient:
         try:
             try:
                 await session.mammotion_http.logout()
-            except:
-                pass
+            except Exception as logout_exc:  # noqa: BLE001 - best-effort logout before re-login
+                _logger.debug("Logout before re-login failed (continuing): %s", logout_exc)
             login_resp = await session.mammotion_http.login_v2(session.email, session.password)
             if login_resp.code != 0:
                 raise LoginFailedError(session.email, login_resp.msg)

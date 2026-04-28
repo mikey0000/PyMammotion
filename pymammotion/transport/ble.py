@@ -67,6 +67,9 @@ class BLETransport(Transport):
         self._availability: TransportAvailability = TransportAvailability.DISCONNECTED
         self._disconnect_on_idle: bool = True
         self._idle_disconnect_timer: asyncio.TimerHandle | None = None
+        # Captured at connect() so disconnect callbacks (which may run on a non-asyncio
+        # thread inside bleak's backend) can schedule async work safely.
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._operation_lock: asyncio.Lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
@@ -117,6 +120,10 @@ class BLETransport(Transport):
         if self.is_connected:
             _logger.debug("BLETransport.connect() called while already connected — ignoring")
             return
+
+        # Capture the loop NOW so _handle_disconnect can dispatch back into it
+        # even if bleak invokes the callback from a different thread.
+        self._loop = asyncio.get_running_loop()
 
         await self._notify_availability(TransportAvailability.CONNECTING)
         _logger.debug("BLETransport connecting to %s", self._config.device_id)
@@ -191,18 +198,29 @@ class BLETransport(Transport):
         await self._fire_availability_listeners(state)
 
     def _handle_disconnect(self, _client: Any) -> None:
-        """Handle unexpected disconnect reported by bleak."""
+        """Handle unexpected disconnect reported by bleak.
+
+        bleak may invoke this callback from a non-asyncio thread depending on the
+        backend, so we cannot use asyncio.get_running_loop() here. Use the loop
+        captured at connect() time and dispatch via call_soon_threadsafe().
+        """
         _logger.warning("BLETransport: device %s disconnected", self._config.device_id)
         self._message = None
         self._availability = TransportAvailability.DISCONNECTED
-        if self._availability_listeners:
-            import asyncio as _asyncio
-
-            try:
-                loop = _asyncio.get_running_loop()
-                _task = loop.create_task(self._fire_availability_listeners(TransportAvailability.DISCONNECTED))
-            except RuntimeError:
-                pass
+        if not self._availability_listeners:
+            return
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            _logger.debug(
+                "BLETransport[%s]: no captured loop, dropping disconnect notification",
+                self._config.device_id,
+            )
+            return
+        loop.call_soon_threadsafe(
+            lambda: asyncio.create_task(  # - fire-and-forget dispatch
+                self._fire_availability_listeners(TransportAvailability.DISCONNECTED)
+            )
+        )
 
     async def _notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         """Parse incoming BLE notifications through the BluFi codec and forward complete frames."""
