@@ -907,23 +907,35 @@ async def test_activity_window_mqtt_reported_offline_uses_short_window() -> None
     assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
 
 
-async def test_activity_loop_exits_on_command_timeout() -> None:
-    """_activity_loop must exit cleanly when the heartbeat gets no response."""
+async def test_activity_loop_refires_subscription_on_command_timeout() -> None:
+    """A heartbeat timeout means the cloud-side report subscription has lapsed.
+
+    The loop must re-fire ``request_iot_sys RPT_START`` to revive the stream;
+    breaking out would leave the cloud subscription dead until the device
+    reconnects.
+    """
     from pymammotion.transport.base import CommandTimeoutError
 
     handle = make_handle("dev1", "Luba-CT")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     await handle.add_transport(mqtt)
 
+    refire_mock = AsyncMock()
+
+    async def fake_send_and_wait(**_: object) -> None:
+        # Stop the loop on the next iteration so the test terminates.
+        handle._stopping = True  # noqa: SLF001
+        raise CommandTimeoutError("toapp_report_data", 1)
+
     with (
         patch.object(handle, "_sleep_or_rearm", AsyncMock(return_value=False)),
         patch.object(handle, "_activity_window", return_value=0.0),
-        patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=CommandTimeoutError("toapp_report_data", 1))),
+        patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=fake_send_and_wait)),
+        patch.object(handle, "_refire_continuous_subscription", refire_mock),
     ):
-        task = asyncio.create_task(handle._activity_loop())
-        await asyncio.wait_for(task, timeout=2.0)
+        await asyncio.wait_for(handle._activity_loop(), timeout=2.0)
 
-    assert task.done() and not task.cancelled()
+    refire_mock.assert_awaited_once()
 
 
 async def test_activity_loop_exits_on_device_offline_exception() -> None:

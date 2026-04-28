@@ -5,6 +5,7 @@ import logging
 import queue
 import sys
 import time
+from typing import Any
 
 from bleak import BleakClient
 
@@ -301,7 +302,7 @@ class BleMessage:
         self.client = client
         self.mSendSequence = AtomicInteger(-1)
         self.mReadSequence = AtomicInteger(-1)
-        self.mAck = queue.Queue()
+        self.mAck: queue.Queue[int] = queue.Queue()
         self.notification = BlufiNotifyData()
 
     async def get_task(self) -> None:
@@ -316,11 +317,11 @@ class BleMessage:
 
     def get_json_string(self, cmd: int, hash_map: dict[str, int]) -> str:
         """Build a JSON command string with the given command code and parameter map."""
-        jSONObject = {}
+        jSONObject: dict[str, Any] = {}
         try:
             jSONObject["cmd"] = cmd
             jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
-            jSONObject2 = {}
+            jSONObject2: dict[str, int] = {}
             for key, value in hash_map.items():
                 jSONObject2[key] = value
             jSONObject["params"] = jSONObject2
@@ -441,11 +442,11 @@ class BleMessage:
             _LOGGER.debug(e)
             return -100
 
-    async def parseBlufiNotifyData(self, return_bytes: bool = False):
+    async def parseBlufiNotifyData(self, return_bytes: bool = False) -> bytes | None:
         """Parse the accumulated BluFi notification data and dispatch to the appropriate handler."""
         pkgType = self.notification.getPkgType()
         subType = self.notification.getSubType()
-        dataBytes = self.notification.getDataArray()
+        dataBytes: bytes = self.notification.getDataArray()
         if pkgType == 0:
             # never seem to get these..
             self._parseCtrlData(subType, dataBytes)
@@ -453,12 +454,13 @@ class BleMessage:
             if return_bytes:
                 return dataBytes
             return await self._parseDataData(subType, dataBytes)
+        return None
 
     def _parseCtrlData(self, subType: int, data: bytes) -> None:
         pass
         # self._parseAck(data)
 
-    async def _parseDataData(self, subType: int, data: bytes):
+    async def _parseDataData(self, subType: int, data: bytes) -> bytes | None:
         #     if (subType == 0) {
         #         this.mSecurityCallback.onReceiveDevicePublicKey(data);
         #         return;
@@ -481,6 +483,7 @@ class BleMessage:
             case 19:
                 #             # com/agilexrobotics/utils/EspBleUtil$BlufiCallbackMain.smali
                 return data
+        return None
 
     # private void parseCtrlData(int i, byte[] bArr) {
     #     if (i == 0) {
@@ -502,17 +505,17 @@ class BleMessage:
         except Exception:
             return ""
 
-    def current_milli_time(self):
+    def current_milli_time(self) -> int:
         """Return the current time in milliseconds since the Unix epoch."""
         return round(time.time() * 1000)
 
-    def _getPackageType(self, typeValue: int):
+    def _getPackageType(self, typeValue: int) -> int:
         return typeValue & 3
 
-    def _getSubType(self, typeValue: int):
+    def _getSubType(self, typeValue: int) -> int:
         return (typeValue & 252) >> 2
 
-    def getTypeValue(self, type: int, subtype: int):
+    def getTypeValue(self, type: int, subtype: int) -> int:
         """Encode a BluFi packet type byte from the package type and subtype values."""
         return (subtype << 2) | type
 
@@ -527,27 +530,24 @@ class BleMessage:
 
     def generate_send_sequence(self) -> int:
         """Increment and return the next send sequence number, wrapping at 255."""
-        return self.mSendSequence.increment_and_get() & 255
+        return int(self.mSendSequence.increment_and_get() & 255)
 
     async def post_custom_data_bytes(self, data: bytes) -> None:
-        """Send raw protobuf bytes to the device as a custom data BLE packet."""
-        if data is None:
-            return
+        """Send raw protobuf bytes to the device as a custom data BLE packet.
+
+        Propagates any write error from the underlying ``post`` call.  Callers
+        (notably :class:`BLETransport`) need this signal to mark the transport
+        as DISCONNECTED and route subsequent traffic via the fallback
+        transport.  Previously this method silently swallowed exceptions and
+        called ``client.disconnect()``, leaving callers convinced the write
+        had succeeded while the link was actually torn down.
+        """
         type_val = self.getTypeValue(1, 19)
-        try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
-            # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
-            # onPostCustomDataResult(status, data)
-            # _LOGGER.debug(suc)
-        except Exception as err:
-            await self.client.disconnect()
-            _LOGGER.debug(err)
+        await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
 
     async def post_custom_data(self, data_str: str) -> None:
         """Encode a JSON command string and send it to the device as a custom data BLE packet."""
         data = data_str.encode()
-        if data == None:
-            return
         type_val = self.getTypeValue(1, 19)
         try:
             suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
@@ -566,7 +566,7 @@ class BleMessage:
         checksum: bool,
         require_ack: bool,
         type_of: int,
-        data: bytes,
+        data: bytes | None,
     ) -> bool:
         """Dispatch a BLE packet, routing to the data or no-data post path as appropriate."""
         if data is None:
@@ -618,6 +618,8 @@ class BleMessage:
                 return False
 
             return True
+
+        return True
 
     def getPostBytes(
         self,

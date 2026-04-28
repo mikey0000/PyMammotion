@@ -38,15 +38,15 @@ _T = TypeVar("_T")
 _KEEP_ALIVE_INTERVAL: float = 180.0  # 3 minutes
 #: Keep-alive interval while the mower is actively mowing or returning to dock.
 #: Used once the recent-command window has expired.
-_KEEP_ALIVE_MOWING_INTERVAL: float = 300.0  # 5 minutes
+_KEEP_ALIVE_MOWING_INTERVAL: float = 600.0  # 10 minutes
 #: Extended keep-alive interval for MQTT when the device is docked/paused/idle.
 _KEEP_ALIVE_IDLE_INTERVAL: float = 600.0  # 10 minutes
-#: How long after the last user-initiated command to hold the short (180 s) window.
+#: How long after the last user-initiated command to hold the short (10 minute) window.
 _KEEP_ALIVE_USER_CMD_WINDOW: float = 600.0  # 10 minutes
 #: Keep-alive interval when the battery is at 100 % and the mower is on the dock.
 _KEEP_ALIVE_LONG_IDLE_INTERVAL: float = 1800.0  # 30 minutes
 #: Backoff applied after a TooManyRequestsException — never request more aggressively than this.
-_RATE_LIMITED_BACKOFF: float = 900.0  # 15 minutes
+_RATE_LIMITED_BACKOFF: float = 3600.0  # 1 hour
 #: Channels sent in the continuous report subscription (RPT_START / RPT_STOP).
 _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
@@ -820,8 +820,11 @@ class DeviceHandle:
                 )
                 await self._set_rate_limited(value=True)
             except CommandTimeoutError:
+                # Cloud-side report subscription has lapsed — re-fire RPT_START
+                # so toapp_report_data resumes flowing. This is the ONLY hook
+                # we have to revive the subscription; never break on this.
                 _logger.debug(
-                    "activity_loop [%s]: no toapp_report_data response",
+                    "activity_loop [%s]: no toapp_report_data response — refiring continuous subscription",
                     self.device_name,
                 )
                 await self._refire_continuous_subscription()
@@ -859,6 +862,25 @@ class DeviceHandle:
     def has_transport(self, transport_type: TransportType) -> bool:
         """Check if a transport of the given type is registered."""
         return transport_type in self._transports
+
+    def get_transport(self, transport_type: TransportType) -> Transport | None:
+        """Return the registered transport of the given type, or None."""
+        return self._transports.get(transport_type)
+
+    @property
+    def is_stopping(self) -> bool:
+        """True once stop() has been called; new emits should be suppressed."""
+        return self._stopping
+
+    async def emit_state_changed(self, snapshot: DeviceSnapshot) -> None:
+        """Emit *snapshot* on the state-changed bus unless the handle is stopping.
+
+        Public hook for callers that build snapshots externally (e.g.
+        MammotionClient applying RTK properties) and want the same
+        suppress-on-stop semantics the internal reducer uses.
+        """
+        if not self._stopping:
+            await self._state_changed_bus.emit(snapshot)
 
     def is_transport_connected(self, transport_type: TransportType) -> bool:
         """Check if a specific transport is connected."""

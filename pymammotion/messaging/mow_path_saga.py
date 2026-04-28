@@ -99,14 +99,9 @@ class MowPathSaga(Saga):
         hash_ack_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect_hash_ack(msg: Any) -> None:
-            try:
-                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if sub_name == "nav":
-                    leaf_name, leaf_val = betterproto2.which_one_of(sub_val, "SubNavMsg")
-                    if leaf_name == "toapp_gethash_ack" and leaf_val.sub_cmd == 3:
-                        hash_ack_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001, S110
-                pass
+            frame = self.extract_nav_frame(msg, "toapp_gethash_ack")
+            if frame is not None and frame[1].sub_cmd == 3:
+                hash_ack_queue.put_nowait(msg)
 
         _current_frame = 1
         _total_frame = 0
@@ -210,14 +205,8 @@ class MowPathSaga(Saga):
         path_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect_path(msg: Any) -> None:
-            try:
-                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if sub_name == "nav":
-                    leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
-                    if leaf_name == "cover_path_upload":
-                        path_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001, S110
-                pass
+            if self.extract_nav_frame(msg, "cover_path_upload") is not None:
+                path_queue.put_nowait(msg)
 
         current_run_tx_ids: set[int] = set()
 

@@ -57,6 +57,6 @@ class BlufiNotifyData:
         self.mDataOS.write(bArr[i:])
 
     #  JADX INFO: Access modifiers changed from: package-private
-    def getDataArray(self):
+    def getDataArray(self) -> bytes:
         """Generated source for method getDataArray"""
         return self.mDataOS.getvalue()

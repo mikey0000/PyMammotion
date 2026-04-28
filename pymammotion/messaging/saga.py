@@ -5,7 +5,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import betterproto2
 
 from pymammotion.transport.base import CommandTimeoutError, SagaFailedError, SagaInterruptedError
 
@@ -42,6 +44,31 @@ class Saga(ABC):
     total_timeout: float = 300.0  # 5-minute hard limit across all attempts
     device_name: str = ""
     _reset_attempt_counter: bool = False
+
+    @staticmethod
+    def extract_nav_frame(
+        msg: Any,
+        expected: str | tuple[str, ...] | frozenset[str],
+    ) -> tuple[str, Any] | None:
+        """Return ``(frame_name, frame_value)`` if *msg* is a nav LubaSubMsg whose
+        SubNavMsg frame is in *expected* — else ``None``.
+
+        Sagas use this in unsolicited-message collectors to ignore everything
+        that isn't the field they're waiting for.  Returns ``None`` on any
+        unpacking failure (malformed frame, missing oneof) so callers don't
+        need a try/except.
+        """
+        try:
+            sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
+            if sub_name != "nav":
+                return None
+            frame_name, frame_val = betterproto2.which_one_of(sub_val, "SubNavMsg")
+        except Exception:  # noqa: BLE001 — protobuf malformed frames are noise, not failures
+            return None
+        expected_set = (expected,) if isinstance(expected, str) else expected
+        if frame_name in expected_set:
+            return frame_name, frame_val
+        return None
 
     @abstractmethod
     async def _run(self, broker: DeviceMessageBroker) -> None:

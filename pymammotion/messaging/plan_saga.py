@@ -54,14 +54,8 @@ class PlanFetchSaga(Saga):
         plan_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect_plan(msg: Any) -> None:
-            try:
-                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if sub_name == "nav":
-                    leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
-                    if leaf_name == "todev_planjob_set":
-                        plan_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001
-                pass
+            if self.extract_nav_frame(msg, "todev_planjob_set") is not None:
+                plan_queue.put_nowait(msg)
 
         with broker.subscribe_unsolicited(_collect_plan):
             # Request first plan (index 0)

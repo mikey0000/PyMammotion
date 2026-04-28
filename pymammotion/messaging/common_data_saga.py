@@ -89,14 +89,9 @@ class CommonDataSaga(Saga):
         frame_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect(msg: Any) -> None:
-            try:
-                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if sub_name == "nav":
-                    leaf_name, leaf_val = betterproto2.which_one_of(sub_val, "SubNavMsg")
-                    if leaf_name == "toapp_get_commondata_ack" and leaf_val.type == self._type:
-                        frame_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001
-                pass
+            frame = self.extract_nav_frame(msg, "toapp_get_commondata_ack")
+            if frame is not None and frame[1].type == self._type:
+                frame_queue.put_nowait(msg)
 
         with broker.subscribe_unsolicited(_collect):
             cmd = self._command_builder.get_common_data(action=self._action, type=self._type, hash_num=self._hash_num)

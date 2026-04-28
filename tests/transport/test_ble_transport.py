@@ -95,7 +95,7 @@ async def test_connect_succeeds_with_ble_device(config: BLETransportConfig) -> N
 
     with (
         patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
-        patch("pymammotion.bluetooth.ble_message.BleMessage", return_value=fake_msg),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
     ):
         await transport.connect()
 
@@ -119,7 +119,7 @@ async def test_disconnect_resets_is_connected(config: BLETransportConfig) -> Non
 
     with (
         patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
-        patch("pymammotion.bluetooth.ble_message.BleMessage", return_value=fake_msg),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
     ):
         await transport.connect()
         assert transport.is_connected is True
@@ -128,8 +128,8 @@ async def test_disconnect_resets_is_connected(config: BLETransportConfig) -> Non
 
     assert transport.is_connected is False
     assert transport._message is None  # noqa: SLF001
-    # sync sent on connect (1) + sync sent on disconnect (2)
-    assert fake_msg.post_custom_data_bytes.await_count == 2
+    # sync sent on connect only
+    assert fake_msg.post_custom_data_bytes.await_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ async def test_send_uses_ble_message(config: BLETransportConfig) -> None:
 
     with (
         patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
-        patch("pymammotion.bluetooth.ble_message.BleMessage", return_value=fake_msg),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
     ):
         await transport.connect()
         fake_msg.post_custom_data_bytes.reset_mock()
@@ -156,6 +156,91 @@ async def test_send_uses_ble_message(config: BLETransportConfig) -> None:
     fake_msg.post_custom_data_bytes.assert_awaited_once_with(b"\xDE\xAD\xBE\xEF")
     # write_gatt_char must NOT be called directly — BleMessage handles it
     fake_client.write_gatt_char.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# H4: send() must surface BleakError as TransportError AND mark availability
+# ---------------------------------------------------------------------------
+
+
+async def test_send_propagates_bleak_error_and_marks_disconnected(config: BLETransportConfig) -> None:
+    """A BleakError raised by post_custom_data_bytes must:
+
+    1. Bubble up as a TransportError to the caller (not get swallowed).
+    2. Flip the transport's availability to DISCONNECTED.
+    3. Fire registered availability listeners with DISCONNECTED.
+    """
+    from bleak.exc import BleakError
+
+    from pymammotion.transport.base import TransportError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+
+    fake_client = _make_fake_client()
+    fake_msg = _make_fake_ble_message()
+
+    listener_states: list[TransportAvailability] = []
+
+    async def _listener(state: TransportAvailability) -> None:
+        listener_states.append(state)
+
+    transport.add_availability_listener(_listener)
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
+    ):
+        await transport.connect()
+        fake_msg.post_custom_data_bytes.reset_mock()
+        listener_states.clear()  # discard CONNECTING/CONNECTED from connect()
+        fake_msg.post_custom_data_bytes.side_effect = BleakError("MTU too small")
+
+        with pytest.raises(TransportError, match="MTU too small"):
+            await transport.send(b"\xDE\xAD\xBE\xEF")
+
+    assert transport.availability is TransportAvailability.DISCONNECTED
+    assert TransportAvailability.DISCONNECTED in listener_states
+
+
+async def test_send_raises_when_client_disconnected_during_write(config: BLETransportConfig) -> None:
+    """If the client is torn down mid-write (no exception raised), send() must
+    still raise TransportError and mark the transport DISCONNECTED.
+    """
+    from pymammotion.transport.base import TransportError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+
+    fake_client = _make_fake_client()
+    fake_msg = _make_fake_ble_message()
+
+    async def _silent_disconnect(_: bytes) -> None:
+        # Simulate a write that returns normally but tears down the client
+        # underneath (e.g. concurrent disconnect callback).
+        fake_client.is_connected = False
+
+    fake_msg.post_custom_data_bytes.side_effect = _silent_disconnect
+
+    listener_states: list[TransportAvailability] = []
+
+    async def _listener(state: TransportAvailability) -> None:
+        listener_states.append(state)
+
+    transport.add_availability_listener(_listener)
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
+    ):
+        await transport.connect()
+        listener_states.clear()
+
+        with pytest.raises(TransportError, match="client disconnected during write"):
+            await transport.send(b"\xDE\xAD\xBE\xEF")
+
+    assert transport.availability is TransportAvailability.DISCONNECTED
+    assert TransportAvailability.DISCONNECTED in listener_states
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +303,7 @@ async def test_availability_transitions_on_connect_disconnect(config: BLETranspo
 
     with (
         patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
-        patch("pymammotion.bluetooth.ble_message.BleMessage", return_value=fake_msg),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
     ):
         await transport.connect()
         await transport.disconnect()

@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any
 from bleak.exc import BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
+from pymammotion.bluetooth.ble_message import BleMessage
 from pymammotion.bluetooth.const import UUID_NOTIFICATION_CHARACTERISTIC
+from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.transport.base import (
     BLEUnavailableError,
     NoBLEAddressKnownError,
@@ -25,8 +27,6 @@ if TYPE_CHECKING:
 
     from bleak import BLEDevice
     from bleak.backends.characteristic import BleakGATTCharacteristic
-
-    from pymammotion.bluetooth.ble_message import BleMessage
 
 _logger = logging.getLogger(__name__)
 
@@ -141,8 +141,6 @@ class BLETransport(Transport):
             await self._notify_availability(TransportAvailability.DISCONNECTED)
             raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
 
-        from pymammotion.bluetooth.ble_message import BleMessage
-
         self._message = BleMessage(self._client)
 
         await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
@@ -160,7 +158,6 @@ class BLETransport(Transport):
         """Gracefully disconnect the BLE client."""
         self._cancel_idle_disconnect_timer()
         if self._client is not None and self._client.is_connected:
-            await self._ble_sync()
             await self._client.disconnect()
         self._client = None
         self._message = None
@@ -169,7 +166,9 @@ class BLETransport(Transport):
     async def send(self, payload: bytes, iot_id: str = "") -> None:  # noqa: ARG002
         """Frame and write payload via the BleMessage codec.
 
-        Raises TransportError if not connected.
+        Raises TransportError on any write failure, after marking the
+        transport as DISCONNECTED so the registry routes future traffic to
+        the fallback transport.
         """
         if self._client is None or self._message is None:
             msg = "BLETransport has no client; cannot send payload"
@@ -180,11 +179,13 @@ class BLETransport(Transport):
         try:
             async with self._operation_lock:
                 await self._message.post_custom_data_bytes(payload)
-        except BleakError as exc:
+        except (TimeoutError, BleakError, OSError) as exc:
             await self._notify_availability(TransportAvailability.DISCONNECTED)
             raise TransportError(f"BLE send failed for {self._config.device_id!r}: {exc}") from exc
-        # post_custom_data_bytes swallows exceptions but calls disconnect() on failure
+        # Defensive guard: even with no exception, the bleak client may have
+        # been torn down mid-write by a concurrent disconnect callback.
         if not self._client.is_connected:
+            await self._notify_availability(TransportAvailability.DISCONNECTED)
             raise TransportError(f"BLE send failed for {self._config.device_id!r}: client disconnected during write")
         self._reset_idle_disconnect_timer()
 
@@ -301,7 +302,6 @@ class BLETransport(Transport):
         """
         if self._client is None or not self._client.is_connected or self._message is None:
             return
-        from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 
         command_bytes = MammotionCommand(self._config.device_id, 0).send_todev_ble_sync(2)
         await self._message.post_custom_data_bytes(command_bytes)

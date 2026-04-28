@@ -92,7 +92,7 @@ class MapFetchSaga(Saga):
         # Result — set on success, None until then
         self.result: HashList | None = None
 
-    async def _run(self, broker: DeviceMessageBroker) -> None:  # noqa: C901
+    async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute all saga steps.  Uses device.map (via get_map) as the source of truth."""
         self.result = None
         self._reset_attempt_counter = False
@@ -155,14 +155,8 @@ class MapFetchSaga(Saga):
         hash_frame_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect_hash_frame(msg: Any) -> None:
-            try:
-                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if sub_name == "nav":
-                    leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
-                    if leaf_name == "toapp_gethash_ack":
-                        hash_frame_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001, S110
-                pass
+            if self.extract_nav_frame(msg, "toapp_gethash_ack") is not None:
+                hash_frame_queue.put_nowait(msg)
 
         with broker.subscribe_unsolicited(_collect_hash_frame):
             partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
@@ -225,14 +219,8 @@ class MapFetchSaga(Saga):
         comm_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect_comm_data(msg: Any) -> None:
-            try:
-                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if sub_name == "nav":
-                    leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
-                    if leaf_name in ("toapp_get_commondata_ack", "toapp_svg_msg"):
-                        comm_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001, S110
-                pass
+            if self.extract_nav_frame(msg, ("toapp_get_commondata_ack", "toapp_svg_msg")) is not None:
+                comm_queue.put_nowait(msg)
 
         with broker.subscribe_unsolicited(_collect_comm_data):
             _no_progress_limit = 10

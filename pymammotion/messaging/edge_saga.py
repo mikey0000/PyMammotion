@@ -68,14 +68,8 @@ class EdgeMappingSaga(Saga):
         frame_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect_frame(msg: Any) -> None:
-            try:
-                sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if sub_name == "nav":
-                    leaf_name, _ = betterproto2.which_one_of(sub_val, "SubNavMsg")
-                    if leaf_name == "toapp_edge_points":
-                        frame_queue.put_nowait(msg)
-            except Exception:  # noqa: BLE001, S110
-                pass
+            if self.extract_nav_frame(msg, "toapp_edge_points") is not None:
+                frame_queue.put_nowait(msg)
 
         with broker.subscribe_unsolicited(_collect_frame):
             if not self._skip_start:

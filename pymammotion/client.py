@@ -556,8 +556,7 @@ class MammotionClient:
                     if isinstance(current, RTKBaseStationDevice):
                         updated = dataclasses.replace(current, lora_version=rtk.lora)
                         snapshot, _ = handle.state_machine.apply(updated, handle.availability)
-                        if not handle._stopping:  # noqa: SLF001
-                            await handle._state_changed_bus.emit(snapshot)  # noqa: SLF001
+                        await handle.emit_state_changed(snapshot)
                     break
         except Exception:  # noqa: BLE001
             _logger.warning("fetch_rtk_lora_info: failed to fetch RTK devices for %s", device_name, exc_info=True)
@@ -610,8 +609,7 @@ class MammotionClient:
                 updated = dataclasses.replace(updated, device_version=device_version.value)
             if updated is not current:
                 snapshot, _ = handle.state_machine.apply(updated, handle.availability)
-                if not handle._stopping:  # noqa: SLF001
-                    await handle._state_changed_bus.emit(snapshot)  # noqa: SLF001
+                await handle.emit_state_changed(snapshot)
         except Exception:  # noqa: BLE001
             _logger.warning("fetch_rtk_properties: failed for %s", device_name, exc_info=True)
 
@@ -661,7 +659,7 @@ class MammotionClient:
         if handle is not None:
             from pymammotion.transport.ble import BLETransport as _BLETransport
 
-            ble = handle._transports.get(TransportType.BLE)  # noqa: SLF001
+            ble = handle.get_transport(TransportType.BLE)
             if isinstance(ble, _BLETransport):
                 ble.set_ble_device(ble_device)
 
@@ -1562,17 +1560,19 @@ class MammotionClient:
     # BLE connection
     # ------------------------------------------------------------------
 
-    async def connect_ble(self, device_id: str) -> None:
+    async def connect_ble(self, device_name: str) -> None:
         """Connect the BLE transport for a registered device.
 
         Works for both BLE-only devices and hybrid devices that have a BLE
-        transport attached.  Is a no-op if the transport is already connected.
+        transport attached.  No-op when the device is unknown or the transport
+        is already connected — matches the rest of the public API which
+        warns/returns rather than raises on unknown devices.
         """
-        handle = self._device_registry.get(device_id)
+        handle = self._device_registry.get_by_name(device_name)
         if handle is None:
-            msg = f"Device '{device_id}' not registered"
-            raise KeyError(msg)
-        transport = handle._transports.get(TransportType.BLE)  # noqa: SLF001
+            _logger.warning("connect_ble: device %r not registered", device_name)
+            return
+        transport = handle.get_transport(TransportType.BLE)
         if transport is not None and not transport.is_connected:
             await transport.connect()
 
