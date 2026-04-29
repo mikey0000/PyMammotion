@@ -22,6 +22,7 @@ from mashumaro import MissingField
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.exceptions import (
     AuthRefreshException,
+    CloudSetupError,
     DeviceOfflineException,
     FailedRequestException,
     GatewayTimeoutException,
@@ -47,7 +48,7 @@ from pymammotion.http.model.http import (
     Response,
 )
 from pymammotion.http.model.response_factory import response_factory
-from pymammotion.transport.base import ReLoginRequiredError, SessionExpiredError, TransportType
+from pymammotion.transport.base import SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 logger = getLogger(__name__)
@@ -202,7 +203,7 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in getting regions: " + response_body_dict)
+            raise CloudSetupError(f"Error in getting regions: {response_body_dict}")
 
         self._region_response = RegionResponse.from_dict(response_body_dict)
         logger.debug("Endpoint: %s", self._region_response.data.mqttEndpoint)
@@ -255,7 +256,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in getting mqtt credentials: " + response_body_dict["msg"])
+            raise CloudSetupError(
+                f"Error in getting mqtt credentials: {response_body_dict.get('msg', response_body_dict)}"
+            )
 
         self._aep_response = AepResponse.from_dict(response_body_dict)
 
@@ -455,10 +458,10 @@ class CloudIOTGateway:
         session_by_auth = SessionByAuthCodeResponse.from_dict(response_body_dict)
 
         if int(session_by_auth.code) != 200:
-            raise Exception("Error in creating session: " + response_body_str)
+            raise CloudSetupError(f"Error in creating session: {response_body_str}")
 
         if session_by_auth.data.identityId is None:
-            raise Exception("Error in creating session: " + response_body_str)
+            raise CloudSetupError(f"Error in creating session (missing identityId): {response_body_str}")
 
         self._session_by_authcode_response = session_by_auth
         self._iot_token_issued_at = int(time.time())
@@ -575,7 +578,7 @@ class CloudIOTGateway:
             or session_data.iotTokenExpire is None
             or session_data.refreshToken is None
         ):
-            raise Exception("Error check or refresh token: Parameters not correct")
+            raise CloudSetupError("Error refreshing token: response is missing required session fields")
 
         self._session_by_authcode_response = session
         self._iot_token_issued_at = int(time.time())
@@ -617,7 +620,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in creating session: " + response_body_dict["message"])
+            raise CloudSetupError(
+                f"Error listing devices by account: {response_body_dict.get('message', response_body_dict)}"
+            )
 
         self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
         return self._devices_by_account_response
@@ -657,7 +662,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in getting shared device list: " + response_body_dict["msg"])
+            raise CloudSetupError(
+                f"Error getting shared device list: {response_body_dict.get('msg', response_body_dict)}"
+            )
 
         self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
         return self._devices_by_account_response
@@ -697,7 +704,7 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in accepting share: " + response_body_dict["msg"])
+            raise CloudSetupError(f"Error accepting share: {response_body_dict.get('msg', response_body_dict)}")
 
         return True
 
@@ -739,7 +746,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code")) != 200:
-            raise Exception("Error in getting shared notice list: " + response_body_dict["msg"])
+            raise CloudSetupError(
+                f"Error getting shared notice list: {response_body_dict.get('msg', response_body_dict)}"
+            )
 
         return ShareNoticeListResponse.from_dict(response_body_dict)
 
@@ -772,7 +781,7 @@ class CloudIOTGateway:
 
         """
         if command is None:
-            raise Exception("Command is missing / None")
+            raise ValueError("Command is missing / None")
 
         # Circuit-breaker gate: reject immediately while rate-limited.
         if time.monotonic() < self._rate_limited_until:
@@ -908,8 +917,8 @@ class CloudIOTGateway:
 
         if int(response_body_dict.get("code")) != 200:
             if msg := response_body_dict.get("msg"):
-                raise ReLoginRequiredError("Error in getting properties: " + msg)
-            raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
+                raise FailedRequestException("Error in getting properties: " + msg)
+            raise FailedRequestException(f"Error in getting properties: {response_body_dict}")
 
         return ThingPropertiesResponse.from_dict(response_body_dict)
 
@@ -951,8 +960,8 @@ class CloudIOTGateway:
 
         if int(response_body_dict.get("code")) != 200:
             if msg := response_body_dict.get("msg"):
-                raise ReLoginRequiredError("Error in getting properties: " + msg)
-            raise ReLoginRequiredError("Error in getting properties: " + response_body_dict)
+                raise FailedRequestException("Error in getting properties: " + msg)
+            raise FailedRequestException(f"Error in getting properties: {response_body_dict}")
         logger.debug(response_body_dict)
         return ThingPropertiesResponse.from_dict(response_body_dict)
 

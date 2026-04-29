@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.7.82"
+version = "0.7.83"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
     { name = "jLynx" },
 ]
-requires-python = ">=3.12,<4.0"
+requires-python = ">=3.14,<4.0"
 readme = "README.md"
 license = "GPL-3.0"
 dependencies = [
@@ -34,6 +34,7 @@ dependencies = [
     "aiomqtt>=2.5.1",
     "bluetooth-adapters>=2.0.0",
     "pyrsistent>=0.20.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [dependency-groups]
@@ -73,7 +74,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.7.82"
+current_version = "0.7.83"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -90,7 +91,7 @@ push            = false
 pymammotion = ["py.typed"]
 
 [tool.pylint]
-py-version = "3.12"
+py-version = "3.14"
 ignore = [
     "tests",
     "scripts",
@@ -476,7 +477,7 @@ max-complexity = 25
 # free to run mypy on Windows, Linux, or macOS and get consistent
 # results.
 platform = "linux"
-python_version = "3.12"
+python_version = "3.14"
 exclude = ['pymammotion/proto', 'tests', 'examples', "scripts"]
 
 # parity with previous mypy.ini

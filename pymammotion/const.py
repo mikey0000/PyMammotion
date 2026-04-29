@@ -1,7 +1,19 @@
-"""App key and secret as taken from the mammotion android app."""
+"""App key and secret."""
 
-APP_KEY = "34231230"
-APP_SECRET = "1ba85698bb10e19c6437413b61ba3445"
+import os
+
+# --- credentials: injected at build time via scripts/update_credentials.py — do not edit ---
+APP_KEY: str = ""
+APP_SECRET: str = ""
+# --- end credentials ---
+
+if not APP_KEY:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    APP_KEY = os.environ.get("ALIYUN_APP_KEY", "")
+    APP_SECRET = os.environ.get("ALIYUN_APP_SECRET", "")
+
 APP_VERSION = "2.3.2.13"
 ALIYUN_DOMAIN = "api.link.aliyun.com"
 MAMMOTION_DOMAIN = "https://id.mammotion.com"

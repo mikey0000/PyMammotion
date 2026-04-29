@@ -27,6 +27,7 @@ from pymammotion.transport.base import (
     Transport,
     TransportAvailability,
     TransportError,
+    TransportRateLimitedError,
     TransportType,
 )
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
@@ -40,13 +41,13 @@ _KEEP_ALIVE_INTERVAL: float = 180.0  # 3 minutes
 #: Used once the recent-command window has expired.
 _KEEP_ALIVE_MOWING_INTERVAL: float = 600.0  # 10 minutes
 #: Extended keep-alive interval for MQTT when the device is docked/paused/idle.
-_KEEP_ALIVE_IDLE_INTERVAL: float = 600.0  # 10 minutes
+_KEEP_ALIVE_IDLE_INTERVAL: float = 900.0  # 15 minutes
 #: How long after the last user-initiated command to hold the short (10 minute) window.
 _KEEP_ALIVE_USER_CMD_WINDOW: float = 600.0  # 10 minutes
 #: Keep-alive interval when the battery is at 100 % and the mower is on the dock.
 _KEEP_ALIVE_LONG_IDLE_INTERVAL: float = 1800.0  # 30 minutes
-#: Backoff applied after a TooManyRequestsException — never request more aggressively than this.
-_RATE_LIMITED_BACKOFF: float = 3600.0  # 1 hour
+#: Activity-loop backoff window while the active transport is rate-limited.
+_RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
 #: Channels sent in the continuous report subscription (RPT_START / RPT_STOP).
 _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
@@ -213,14 +214,6 @@ class DeviceHandle:
         #: this).  Used by ``_activity_window`` to snap back to the short window
         #: for ``_KEEP_ALIVE_LONG_IDLE_THRESHOLD`` seconds after any user action.
         self._last_user_command_monotonic: float = time.monotonic()
-        #: True when the cloud returned TooManyRequests; clears on next success.
-        #: All writes go through ``_set_rate_limited`` which serialises transitions
-        #: via ``_rate_limit_lock`` so a success completing concurrently with a 429
-        #: cannot leave the flag in the wrong state. Reads (in ``_activity_window``)
-        #: are intentionally lock-free — the lock orders writes so no transition
-        #: is lost; a stale read on the next loop iteration self-corrects.
-        self._rate_limited: bool = False
-        self._rate_limit_lock: asyncio.Lock = asyncio.Lock()
         #: Set by ``record_user_command`` to interrupt a long sleep and re-arm
         #: the activity loop immediately with the short window.
         self._rearm_event: asyncio.Event = asyncio.Event()
@@ -287,7 +280,16 @@ class DeviceHandle:
         keep-alive heartbeat should debounce against.  The recorded timestamp
         is read by :meth:`_keep_alive_loop` to skip heartbeat sends when the
         transport has seen activity within the keep-alive window.
+
+        Raises TransportRateLimitedError immediately if the transport is currently
+        rate-limited — without touching the network — so all callers (commands,
+        sagas, heartbeats) are blocked uniformly while the 12-hour ban is active.
+        BLE transports are never rate-limited and are always allowed through.
         """
+        if transport.is_rate_limited:
+            raise TransportRateLimitedError(
+                f"Transport {transport.transport_type.value} is rate-limited — send blocked"
+            )
         self._last_send_monotonic[transport.transport_type] = time.monotonic()
         await transport.send(payload, iot_id=self.iot_id)
 
@@ -664,9 +666,9 @@ class DeviceHandle:
 
         Priority (highest first):
           1. BLE / no transport        → 180 s (direct connection, not cloud-rate-limited).
-          2. Rate-limited              → 15 min backoff (overrides everything on cloud).
-          3. Recent user command       → 180 s for 10 min after last command.
-          4. Mowing / returning        → 300 s (5 min; no recent command).
+          2. Rate-limited              → 1 hour backoff (overrides everything on cloud).
+          3. Recent user command       → 3 minutes for 10 min after last command.
+          4. Mowing / returning        → 600 s (10 min; no recent command).
           5. Full battery + docked     → 30 min.
           6. Default (idle/paused)     → 10 min.
         """
@@ -676,7 +678,7 @@ class DeviceHandle:
             return _KEEP_ALIVE_INTERVAL
         if transport.transport_type == TransportType.BLE:
             return _KEEP_ALIVE_INTERVAL
-        if self._rate_limited:
+        if transport.is_rate_limited:
             return _RATE_LIMITED_BACKOFF
         if time.monotonic() - self._last_user_command_monotonic < _KEEP_ALIVE_USER_CMD_WINDOW:
             return _KEEP_ALIVE_INTERVAL
@@ -688,17 +690,6 @@ class DeviceHandle:
         if self._is_full_battery_docked():
             return _KEEP_ALIVE_LONG_IDLE_INTERVAL
         return _KEEP_ALIVE_IDLE_INTERVAL
-
-    async def _set_rate_limited(self, *, value: bool) -> None:
-        """Set ``_rate_limited`` under ``_rate_limit_lock`` so transitions are serialised.
-
-        All transitions (set on 429, clear on success) flow through this helper so
-        a concurrent success and 429 from different async paths cannot interleave
-        their writes. The lock is held for a single boolean assignment, so
-        contention is negligible.
-        """
-        async with self._rate_limit_lock:
-            self._rate_limited = value
 
     async def _sleep_or_rearm(self, seconds: float) -> bool:
         """Sleep for *seconds*, returning ``True`` early if ``_rearm_event`` fires."""
@@ -803,22 +794,27 @@ class DeviceHandle:
             is_ble = transport.transport_type == TransportType.BLE
             sync_type = _KEEP_ALIVE_SYNC_TYPE_BLE if is_ble else _KEEP_ALIVE_SYNC_TYPE_MQTT
             cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
+
+            async def _heartbeat_send(_t: Transport = transport, _c: bytes = cmd_bytes) -> None:
+                await self._send_marked(_t, _c)
+
             try:
                 if is_ble:
                     await self._send_marked(transport, cmd_bytes)
                 else:
                     await self.broker.send_and_wait(
-                        send_fn=lambda t=transport, c=cmd_bytes: self._send_marked(t, c),
+                        send_fn=_heartbeat_send,
                         expected_field="toapp_report_data",
                     )
-                await self._set_rate_limited(value=False)
+            except TransportRateLimitedError:
+                _logger.debug("activity_loop [%s]: transport rate-limited — deferring heartbeat", self.device_name)
             except TooManyRequestsException:
                 _logger.warning(
-                    "activity_loop [%s]: rate limited — backing off %.0fs",
+                    "activity_loop [%s]: rate limited by cloud — blocking MQTT sends for %.0fh",
                     self.device_name,
-                    _RATE_LIMITED_BACKOFF,
+                    _RATE_LIMITED_BACKOFF / 3600,
                 )
-                await self._set_rate_limited(value=True)
+                transport.set_rate_limited()
             except CommandTimeoutError:
                 # Cloud-side report subscription has lapsed — re-fire RPT_START
                 # so toapp_report_data resumes flowing. This is the ONLY hook
@@ -927,9 +923,11 @@ class DeviceHandle:
         _logger.debug("send_raw '%s': sending via %s", self.device_name, transport.transport_type.value)
         try:
             await self._send_marked(transport, payload)
+        except TransportRateLimitedError:
+            _logger.debug("send_raw '%s': transport rate-limited — send blocked", self.device_name)
         except TooManyRequestsException:
-            _logger.warning("Device '%s' rate limited", self.device_name)
-            await self._set_rate_limited(value=True)
+            _logger.warning("send_raw '%s': rate limited by cloud — blocking MQTT sends for 12h", self.device_name)
+            transport.set_rate_limited()
         except DeviceOfflineException:
             self.update_availability(
                 transport.transport_type,

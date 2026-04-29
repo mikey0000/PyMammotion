@@ -36,3 +36,36 @@ jobs:
           uv run ruff format --check pymammotion/
       - name: Run tests
         run: uv run pytest tests/
+
+  proto-codegen:
+    # Verify that the checked-in pymammotion/proto/*.py files still match what
+    # would be generated from the *.proto sources.  Catches drift when someone
+    # edits a .proto without re-running codegen, which would silently break
+    # sagas via renamed protobuf oneof fields.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Regenerate proto code
+        run: uv run protoc -I=. --python_out=. --python_betterproto2_out=pymammotion/proto ./pymammotion/proto/*.proto
+      - name: Fail if generated code drifted from sources
+        run: |
+          if ! git diff --exit-code -- pymammotion/proto; then
+            echo "::error::Generated proto code is out of sync with .proto sources."
+            echo "Run: uv run protoc -I=. --python_out=. --python_betterproto2_out=pymammotion/proto ./pymammotion/proto/*.proto"
+            echo "Then commit the result."
+            exit 1
+          fi

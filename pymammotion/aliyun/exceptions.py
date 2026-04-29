@@ -39,6 +39,14 @@ class TooManyRequestsException(Exception):
         self.iot_id = iot_id
 
 
+class CloudSetupError(Exception):
+    """Raised when the Aliyun cloud gateway setup sequence fails (region, AEP, session).
+
+    Indicates a recoverable connectivity or API error, not a logic bug — callers
+    should surface this as a "cannot connect" condition rather than crashing.
+    """
+
+
 class LoginException(Exception):
     """Raise exception when library cannot log in."""
 

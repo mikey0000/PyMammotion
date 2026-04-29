@@ -18,6 +18,7 @@ from pymammotion.transport.base import (
     Transport,
     TransportAvailability,
     TransportError,
+    TransportRateLimitedError,
     TransportType,
 )
 
@@ -38,5 +39,6 @@ __all__ = [
     "Transport",
     "TransportAvailability",
     "TransportError",
+    "TransportRateLimitedError",
     "TransportType",
 ]

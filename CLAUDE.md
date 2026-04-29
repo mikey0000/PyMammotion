@@ -32,7 +32,8 @@ uv run pre-commit run --all-files
 uv run python tests/login_test.py
 
 # Regenerate protobuf Python code from .proto files
-uv run protoc -I=. --python_out=. --python_betterproto_out=. ./pymammotion/proto/*.proto
+# (CI verifies this output matches the checked-in *_pb2.py / __init__.py — see .github/workflows/on-push.yml)
+uv run protoc -I=. --python_out=. --python_betterproto2_out=pymammotion/proto ./pymammotion/proto/*.proto
 
 # Version bump (patch/minor/major)
 ./bin/bumpver update --patch

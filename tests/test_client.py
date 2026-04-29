@@ -436,6 +436,7 @@ def _make_connected_transport(transport_type: TransportType) -> MagicMock:
     t = MagicMock()
     t.transport_type = transport_type
     t.is_connected = True
+    t.is_rate_limited = False
     t.send = AsyncMock()
     t.disconnect = AsyncMock()
     t.on_message = None
@@ -816,50 +817,52 @@ async def test_activity_window_recent_command_uses_short_window() -> None:
 
 
 async def test_activity_window_rate_limited_idle_applies_backoff() -> None:
-    """Rate-limited on MQTT always returns the flat 15-min backoff."""
+    """Rate-limited on MQTT always returns the 12-hour backoff."""
     handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0)
-    handle._rate_limited = True  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
     assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
 async def test_activity_window_rate_limited_docked_uses_backoff_not_natural() -> None:
-    """Rate-limited while fully docked: backoff (15 min) wins, not the natural 30-min docked window."""
+    """Rate-limited while fully docked: 12-hour backoff wins, not the natural 30-min docked window."""
     handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
-    handle._rate_limited = True  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
     assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
 async def test_activity_window_rate_limited_overrides_recent_command() -> None:
     """Rate-limit overrides recent user command — no point retrying aggressively when cloud is throttling."""
     handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
-    handle._rate_limited = True  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
     handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
     assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
 async def test_activity_window_rate_limited_mowing_uses_backoff() -> None:
-    """Rate-limited while mowing: backoff (15 min) wins over the 5-min mowing interval."""
+    """Rate-limited while mowing: 12-hour backoff wins over the mowing interval."""
     from pymammotion.utility.constant import WorkMode
 
     handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
-    handle._rate_limited = True  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
     assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
 async def test_activity_window_ble_bypasses_rate_limit() -> None:
-    """BLE transport returns short window regardless of rate-limit state."""
+    """BLE transport returns short window regardless of rate-limit state (BLE is never rate-limited)."""
     handle = _make_handle_for_window(TransportType.BLE)
-    handle._rate_limited = True  # noqa: SLF001
+    # Even if someone set is_rate_limited on the BLE mock, the BLE branch returns early.
+    handle._transports[TransportType.BLE].is_rate_limited = True  # noqa: SLF001
     assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
 
 
 async def test_activity_window_rate_limit_clears_to_docked_window() -> None:
-    """Once rate_limited is cleared, the natural docked window is restored."""
+    """Once the transport's rate-limit expires, the natural docked window is restored."""
     handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
-    handle._rate_limited = True  # noqa: SLF001
+    transport = handle._transports[TransportType.CLOUD_ALIYUN]  # noqa: SLF001
+    transport.is_rate_limited = True
     assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
-    handle._rate_limited = False  # noqa: SLF001
+    transport.is_rate_limited = False
     assert handle._activity_window() == _KEEP_ALIVE_LONG_IDLE_INTERVAL  # noqa: SLF001
 
 
@@ -982,7 +985,7 @@ async def test_update_availability_restarts_loop_on_reconnect() -> None:
 
 
 async def test_send_raw_sets_rate_limited_on_too_many_requests() -> None:
-    """send_raw must set _rate_limited=True when the transport raises TooManyRequestsException."""
+    """send_raw must call transport.set_rate_limited() when the transport raises TooManyRequestsException."""
     from pymammotion.aliyun.exceptions import TooManyRequestsException
 
     handle = make_handle("dev1", "Luba-RL")
@@ -990,6 +993,5 @@ async def test_send_raw_sets_rate_limited_on_too_many_requests() -> None:
     mqtt.send = AsyncMock(side_effect=TooManyRequestsException("rate limited", "iot-id"))
     handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
 
-    assert handle._rate_limited is False  # noqa: SLF001
     await handle.send_raw(b"\x00")
-    assert handle._rate_limited is True  # noqa: SLF001
+    mqtt.set_rate_limited.assert_called_once()

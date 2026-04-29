@@ -38,6 +38,7 @@ def _make_transport(transport_type: TransportType, *, connected: bool = True) ->
     transport = MagicMock()
     transport.transport_type = transport_type
     transport.is_connected = connected
+    transport.is_rate_limited = False
     transport.send = AsyncMock()
     transport.disconnect = AsyncMock()
     transport.on_message = None

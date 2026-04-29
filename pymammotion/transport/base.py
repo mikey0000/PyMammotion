@@ -25,6 +25,10 @@ class TransportError(Exception):
     """Base exception for all transport failures."""
 
 
+class TransportRateLimitedError(TransportError):
+    """Send blocked because this transport is currently rate-limited by the cloud."""
+
+
 class AuthError(TransportError):
     """Authentication refused by the remote endpoint (e.g. MQTT rc=4/5)."""
 
@@ -209,12 +213,17 @@ class Transport(ABC):
     #: Called when a thing.properties message arrives (iot_id, properties).
     on_device_properties: Callable[[str, ThingPropertiesMessage], Awaitable[None]] | None = None
 
+    #: Duration of the rate-limit ban in seconds (12 hours).
+    _RATE_LIMIT_DURATION: float = 43200.0
+
     def __init__(self) -> None:
         """Initialise the availability listener list and error window."""
         self._availability_listeners: list[Callable[[TransportAvailability], Awaitable[None]]] = []
         self._error_timestamps: collections.deque[float] = collections.deque()
         self._last_received_monotonic: float = 0.0
         self._on_message: Callable[[bytes], Awaitable[None]] | None = None
+        #: Monotonic timestamp after which the rate-limit ban expires (0 = not banned).
+        self._rate_limited_until: float = 0.0
 
     @property
     def on_message(self) -> Callable[[bytes], Awaitable[None]] | None:
@@ -287,6 +296,15 @@ class Transport(ABC):
                 await listener(state)
             except Exception:
                 _logger.exception("availability listener raised an unhandled exception")
+
+    @property
+    def is_rate_limited(self) -> bool:
+        """True when the cloud has rate-limited this transport and the ban has not yet expired."""
+        return time.monotonic() < self._rate_limited_until
+
+    def set_rate_limited(self) -> None:
+        """Record a rate-limit event; blocks sends on this transport for _RATE_LIMIT_DURATION seconds."""
+        self._rate_limited_until = time.monotonic() + self._RATE_LIMIT_DURATION
 
     @abstractmethod
     async def connect(self) -> None:

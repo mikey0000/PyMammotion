@@ -39,6 +39,9 @@ jobs:
             exit 1
           fi
 
+      - name: Inject Aliyun credentials
+        run: uv run python scripts/update_credentials.py --app-key "${{ secrets.ALIYUN_APP_KEY }}" --app-secret "${{ secrets.ALIYUN_APP_SECRET }}"
+
       - name: Build package
         run: uv build
 

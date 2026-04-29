@@ -1,8 +1,9 @@
 """Regression tests for C2: saga crash / cancellation must release the exclusive lock.
 
-If `saga.execute(broker)` raises an unhandled exception, OR the saga task is
-cancelled before the `finally` runs, ``_exclusive_active`` must still be set
-again so subsequent commands can run on the same device queue.
+If `saga.execute(broker)` raises an unhandled exception the ``_exclusive_active``
+must still be set again so subsequent commands can run on the same device queue.
+Cancellation is tested via ``stop()`` + ``start()`` — there is no separate work-item
+sub-task in the current design (work runs directly in the processor task).
 """
 
 from __future__ import annotations
@@ -58,7 +59,6 @@ async def test_saga_exception_releases_exclusive_lock() -> None:
 
         # Lock must be released even though the saga raised.
         assert q.is_saga_active is False, "exclusive lock not released after saga crash"
-        assert q._current_work_task is None, "_current_work_task not cleared after saga crash"
 
         # A subsequent NORMAL command must execute (proves queue is not stuck).
         await q.enqueue(follow_up, priority=Priority.NORMAL)
@@ -68,49 +68,50 @@ async def test_saga_exception_releases_exclusive_lock() -> None:
         await q.stop()
 
 
-async def test_saga_cancellation_releases_exclusive_lock() -> None:
-    """If the saga work-task is cancelled mid-flight, the lock must still release."""
+async def test_saga_stop_releases_exclusive_lock() -> None:
+    """stop() while a saga is running must release the exclusive lock.
+
+    Work runs directly in the processor task, so stop() cancels the processor,
+    which propagates CancelledError through the saga's finally block and releases
+    the lock. A fresh start() + enqueue must then succeed.
+    """
     q = DeviceCommandQueue(device_name="dev-cancel")
     broker = DeviceMessageBroker()
     q.start()
+
+    slow = _SlowSaga()
+    await q.enqueue_saga(slow, broker)
+
+    # Wait until the saga has actually started running before stopping.
+    await asyncio.wait_for(slow.started.wait(), timeout=2.0)
+    assert q.is_saga_active is True
+
+    # Stop the queue — cancels the processor task, which propagates through the saga.
+    await q.stop()
+
+    # Lock must be released after stop.
+    assert q.is_saga_active is False, "exclusive lock not released after stop"
+
+    # Restart and verify follow-up commands actually run.
+    ran: list[int] = []
+
+    async def follow_up() -> None:
+        ran.append(1)
+
+    q.start()
     try:
-        slow = _SlowSaga()
-        await q.enqueue_saga(slow, broker)
-
-        # Wait until the saga has actually started running before cancelling.
-        await asyncio.wait_for(slow.started.wait(), timeout=2.0)
-        assert q.is_saga_active is True
-
-        # Cancel the in-flight work task — simulates a transport teardown
-        # racing the saga's `finally` block.
-        current = q._current_work_task
-        assert current is not None
-        current.cancel()
-
-        # Wait until cancellation has propagated.
-        await asyncio.sleep(0.2)
-
-        assert q.is_saga_active is False, "exclusive lock not released after cancellation"
-        assert q._current_work_task is None, "_current_work_task not cleared after cancellation"
-
-        # Verify follow-up commands actually run.
-        ran: list[int] = []
-
-        async def follow_up() -> None:
-            ran.append(1)
-
         await q.enqueue(follow_up, priority=Priority.NORMAL)
         await asyncio.sleep(0.2)
-        assert ran == [1], "follow-up command did not run — queue is deadlocked"
+        assert ran == [1], "follow-up command did not run after restart"
     finally:
         await q.stop()
 
 
 async def test_on_saga_start_cancellation_releases_exclusive_lock() -> None:
-    """If on_saga_start is cancelled (CancelledError), the lock must still release.
+    """If on_saga_start raises CancelledError, the lock must still release.
 
-    on_saga_start is awaited *after* `_exclusive_active.clear()` but *outside*
-    the try/finally that re-sets it. CancelledError in that window would
+    on_saga_start is awaited *after* `_exclusive_active.clear()` but *inside*
+    the try/finally that re-sets it.  CancelledError in that window must not
     deadlock the queue.
     """
     q = DeviceCommandQueue(device_name="dev-cb-cancel")
@@ -132,6 +133,5 @@ async def test_on_saga_start_cancellation_releases_exclusive_lock() -> None:
         await asyncio.sleep(0.2)
 
         assert q.is_saga_active is False, "exclusive lock not released after on_saga_start cancel"
-        assert q._current_work_task is None
     finally:
         await q.stop()

@@ -13,9 +13,10 @@ from pymammotion.transport import AuthError
 from pymammotion.transport.base import ReLoginRequiredError, TransportType
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
     from pymammotion.http.http import MammotionHTTP
-    from collections.abc import Callable
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,9 @@ class TokenManager:
     is impossible (refresh token itself expired or 401 on refresh).
     """
 
+    _ALIYUN_FAILURE_WINDOW: float = 120.0  # seconds
+    _ALIYUN_FAILURE_LIMIT: int = 2
+
     def __init__(
         self,
         account_id: str,
@@ -105,6 +109,9 @@ class TokenManager:
         # Called with the fresh iotToken whenever _aliyun_creds is updated, so the
         # AliyunMQTTTransport's bind token stays current without waiting for a bind failure.
         self.on_aliyun_token_refreshed: Callable[[str], None] | None = None
+        # Monotonic timestamps of recent 2401 "refreshToken invalid" failures.
+        # Three failures within _ALIYUN_FAILURE_WINDOW seconds → ReLoginRequiredError.
+        self._aliyun_refresh_failures: list[float] = []
 
     async def initialize(
         self,
@@ -275,7 +282,22 @@ class TokenManager:
         try:
             try:
                 await self._cloud_gateway.check_or_refresh_session()
+                # Successful session check — clear any accumulated failure timestamps.
+                self._aliyun_refresh_failures.clear()
             except SessionExpiredError:
+                # 2401 "refreshToken invalid" — track failures within a rolling window.
+                now = time.monotonic()
+                self._aliyun_refresh_failures = [
+                    t for t in self._aliyun_refresh_failures if now - t < self._ALIYUN_FAILURE_WINDOW
+                ]
+                self._aliyun_refresh_failures.append(now)
+                if len(self._aliyun_refresh_failures) >= self._ALIYUN_FAILURE_LIMIT:
+                    self._aliyun_refresh_failures.clear()
+                    raise ReLoginRequiredError(
+                        self._account_id,
+                        f"Aliyun refreshToken rejected {self._ALIYUN_FAILURE_LIMIT} times "
+                        f"within {self._ALIYUN_FAILURE_WINDOW:.0f}s — re-authentication required",
+                    )
                 # refreshToken was rejected (2401) — re-run the full IoT login sequence.
                 # Do NOT return here: fall through so _aliyun_creds is updated from the
                 # newly established session.  Returning early was the bug that handed the

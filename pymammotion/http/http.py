@@ -144,8 +144,8 @@ class MammotionHTTP:
         self._response: Response | None = None
         self._login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
-        #  app_version =f"Home Assistant,{ha_version}" if ha_version else f"ALIYUN DEMO,{APP_VERSION}"
-        app_version = f"ALIYUN DEMO,{APP_VERSION}"  # f"HA,{ha_version}"
+        app_version = f"HA,{APP_VERSION}" if ha_version else f"ALIYUN DEMO,{APP_VERSION}"
+        # app_version = f"ALIYUN DEMO,{APP_VERSION}"  # f"HA,{ha_version}"
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": app_version}
         self.encryption_utils = EncryptionUtils()
 
@@ -424,7 +424,7 @@ class MammotionHTTP:
                 json={"deviceIds": iot_ids},
                 headers={
                     **self._headers,
-                    "App-Version": f"ALIYUN DEMO,{APP_VERSION}",
+                    "App-Version": f"HA,{APP_VERSION}",
                     "Authorization": f"Bearer {self._require_login_info.access_token}",
                     "Content-Type": "application/json",
                     "Client-Id": self.client_id,

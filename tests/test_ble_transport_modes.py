@@ -24,6 +24,7 @@ def _make_transport(transport_type: TransportType, *, connected: bool = True) ->
     t = MagicMock()
     t.transport_type = transport_type
     t.is_connected = connected
+    t.is_rate_limited = False
     t.send = AsyncMock()
     t.connect = AsyncMock()
     t.disconnect = AsyncMock()
