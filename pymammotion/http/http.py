@@ -144,7 +144,7 @@ class MammotionHTTP:
         self._response: Response | None = None
         self._login_info: LoginResponseData | None = None
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
-        app_version = f"HA,{APP_VERSION}" if ha_version else f"ALIYUN DEMO,{APP_VERSION}"
+        app_version = f"HA,2.{ha_version}" if ha_version else f"ALIYUN DEMO,{APP_VERSION}"
         # app_version = f"ALIYUN DEMO,{APP_VERSION}"  # f"HA,{ha_version}"
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": app_version}
         self.encryption_utils = EncryptionUtils()
@@ -625,9 +625,10 @@ class MammotionHTTP:
 
     async def refresh_login(self) -> Response[LoginResponseData]:
         """Attempt a token refresh, falling back to a full re-login if the token has already expired."""
-        res = await self.refresh_token_v2()
-        if res.code == 0:
-            return res
+        if self._login_info is not None:
+            res = await self.refresh_token_v2()
+            if res.code == 0:
+                return res
         return await self.login_v2(self.account, self._password)
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:

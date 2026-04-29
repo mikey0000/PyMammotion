@@ -370,7 +370,11 @@ async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
     mock_transport = MagicMock()
     mock_transport.connect = AsyncMock()
 
-    with patch.object(client, "_setup_mammotion_transport", return_value=mock_transport):
+    with (
+        patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
+        patch("pymammotion.http.http.MammotionHTTP.login_v2", new_callable=AsyncMock) as mock_login,
+    ):
+        mock_login.return_value = MagicMock(code=0, data=MagicMock())
         await client._restore_mammotion_mqtt(
             "user@test.com", "pass", cached_data, None, acct_session, check_for_new_devices=False
         )

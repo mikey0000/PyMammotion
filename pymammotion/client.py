@@ -1217,6 +1217,14 @@ class MammotionClient:
             )
             acct_session.user_account = self._extract_user_account(mammotion_http)
 
+        if mammotion_http.login_info is None:
+            # No cached login data (missing mammotion_data or malformed) — do a fresh login so
+            # decorated HTTP methods don't crash when they try to refresh a non-existent token.
+            login_resp = await mammotion_http.login_v2(account, password)
+            if login_resp.code != 0:
+                raise LoginFailedError(account, login_resp.msg or "login failed during Mammotion MQTT restore")
+            acct_session.user_account = self._extract_user_account(mammotion_http)
+
         mqtt_raw = cached_data["mammotion_mqtt"]
 
         records_raw = cached_data["mammotion_device_records"]
