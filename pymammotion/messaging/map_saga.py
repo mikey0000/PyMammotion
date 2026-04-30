@@ -6,8 +6,6 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-import betterproto2
-
 from pymammotion.data.model.hash_list import AreaHashNameList, HashList
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.messaging.saga import Saga
@@ -109,7 +107,8 @@ class MapFetchSaga(Saga):
                 expected_field="toapp_all_hash_name",
                 send_timeout=self.step_timeout,
             )
-            area_hash_name_msg = getattr(response.nav, "toapp_all_hash_name", None)
+            _area_frame = self.extract_nav_frame(response, "toapp_all_hash_name")
+            area_hash_name_msg = _area_frame[1] if _area_frame is not None else None
             if (
                 area_hash_name_msg is not None
                 and hasattr(area_hash_name_msg, "hashnames")
@@ -187,9 +186,10 @@ class MapFetchSaga(Saga):
                     except TimeoutError:
                         raise CommandTimeoutError("toapp_gethash_ack", 1) from None
 
-                    hash_ack = getattr(response.nav, "toapp_gethash_ack", None)
-                    if hash_ack is None:
+                    _hash_frame = self.extract_nav_frame(response, "toapp_gethash_ack")
+                    if _hash_frame is None:
                         raise CommandTimeoutError("toapp_gethash_ack", 1)
+                    hash_ack = _hash_frame[1]
 
                     # Ack this frame (device interprets as "send me the next one").
                     ack_cmd = self._command_builder.get_hash_response(
@@ -246,7 +246,10 @@ class MapFetchSaga(Saga):
                     raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
 
                 # State reducer has already applied this frame to device.map.
-                leaf_name, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
+                _comm_frame = self.extract_nav_frame(response, ("toapp_get_commondata_ack", "toapp_svg_msg"))
+                if _comm_frame is None:
+                    continue
+                leaf_name, leaf_val = _comm_frame
 
                 current_map = self._get_map()
                 missing_frames = current_map.missing_frame(leaf_val)

@@ -365,6 +365,8 @@ async def test_map_saga_refetches_area_names_on_each_run() -> None:
     def _which_hash(obj: Any, group: str) -> tuple[str, Any]:
         if group == "LubaSubMsg":
             return ("nav", obj.nav)
+        if isinstance(getattr(getattr(obj, "toapp_all_hash_name", None), "hashnames", None), list):
+            return ("toapp_all_hash_name", obj.toapp_all_hash_name)
         return ("toapp_gethash_ack", obj.toapp_gethash_ack)
 
     with patch("betterproto2.which_one_of", side_effect=_which_hash):

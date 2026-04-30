@@ -116,7 +116,9 @@ def _which_one_of_for_hash(obj: Any, group: str) -> tuple[str, Any]:
     """Fake betterproto2.which_one_of that routes hash-frame messages correctly."""
     if group == "LubaSubMsg":
         return ("nav", obj.nav)
-    # "SubNavMsg"
+    # "SubNavMsg" — detect area-name responses by hashnames being a real list.
+    if isinstance(getattr(getattr(obj, "toapp_all_hash_name", None), "hashnames", None), list):
+        return ("toapp_all_hash_name", obj.toapp_all_hash_name)
     return ("toapp_gethash_ack", obj.toapp_gethash_ack)
 
 
