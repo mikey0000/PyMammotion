@@ -231,17 +231,8 @@ class AliyunMQTTTransport(Transport):
         self._availability = TransportAvailability.DISCONNECTED
         self._client = None
 
-    async def send(self, payload: bytes, iot_id: str = "") -> None:
-        """Send *payload* to the device via the Aliyun HTTP invoke API.
-
-        Args:
-            payload: Raw protobuf bytes to send.
-            iot_id: Aliyun IoT device identifier for the target device.
-
-        Raises:
-            TransportError: If iot_id is empty.
-
-        """
+    async def _invoke(self, payload: bytes, iot_id: str) -> None:
+        """Send *payload* via the Aliyun cloud command API (shared by send/send_heartbeat)."""
         if not iot_id:
             msg = "AliyunMQTTTransport.send() requires a non-empty iot_id"
             raise TransportError(msg)
@@ -253,6 +244,15 @@ class AliyunMQTTTransport(Transport):
         except Exception:
             self.record_error()
             raise
+
+    async def send(self, payload: bytes, iot_id: str = "") -> None:
+        """Send *payload* to the device and count it against the 24-hour quota."""
+        await self._invoke(payload, iot_id)
+        self.record_send()
+
+    async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
+        """Send a keepalive heartbeat without counting it against the 24-hour quota."""
+        await self._invoke(payload, iot_id)
 
     # ------------------------------------------------------------------
     # Credential helpers

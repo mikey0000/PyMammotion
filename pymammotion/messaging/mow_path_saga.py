@@ -116,12 +116,12 @@ class MowPathSaga(Saga):
                 except TimeoutError:
                     if _total_frame == 0:
                         _logger.warning(
-                            "MowPathSaga [%s]: no response to line hash list request (sub_cmd=3)",
+                            "collecting mow path [%s]: no response to line hash list request (sub_cmd=3)",
                             self._device_name,
                         )
                     else:
                         _logger.warning(
-                            "MowPathSaga [%s]: line hash list interrupted at frame %d/%d",
+                            "collecting mow path [%s]: line hash list interrupted at frame %d/%d",
                             self._device_name,
                             _current_frame,
                             _total_frame,

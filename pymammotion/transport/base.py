@@ -215,6 +215,10 @@ class Transport(ABC):
 
     #: Duration of the rate-limit ban in seconds (12 hours).
     _RATE_LIMIT_DURATION: float = 43200.0
+    #: Rolling window for the outbound send counter (24 hours).
+    _SEND_WINDOW: float = 86400.0
+    #: Maximum sends allowed within _SEND_WINDOW before self-imposing rate limiting.
+    _SEND_LIMIT: int = 300
 
     def __init__(self) -> None:
         """Initialise the availability listener list and error window."""
@@ -224,6 +228,8 @@ class Transport(ABC):
         self._on_message: Callable[[bytes], Awaitable[None]] | None = None
         #: Monotonic timestamp after which the rate-limit ban expires (0 = not banned).
         self._rate_limited_until: float = 0.0
+        #: Rolling log of outbound send timestamps for the 24-hour send budget.
+        self._send_timestamps: collections.deque[float] = collections.deque()
 
     @property
     def on_message(self) -> Callable[[bytes], Awaitable[None]] | None:
@@ -306,6 +312,38 @@ class Transport(ABC):
         """Record a rate-limit event; blocks sends on this transport for _RATE_LIMIT_DURATION seconds."""
         self._rate_limited_until = time.monotonic() + self._RATE_LIMIT_DURATION
 
+    def record_send(self) -> None:
+        """Record one outbound send and self-impose rate limiting if the 24-hour budget is exhausted.
+
+        Call this from MQTT transport send() implementations only — BLE has no cloud quota.
+        When the rolling count hits _SEND_LIMIT within _SEND_WINDOW seconds, set_rate_limited()
+        is called automatically so the next send attempt is blocked immediately.
+        """
+        now = time.monotonic()
+        self._send_timestamps.append(now)
+        cutoff = now - self._SEND_WINDOW
+        while self._send_timestamps and self._send_timestamps[0] < cutoff:
+            self._send_timestamps.popleft()
+        if len(self._send_timestamps) >= self._SEND_LIMIT:
+            _logger.warning(
+                "%s: %d sends in %.0f h — self-imposing rate limit",
+                type(self).__name__,
+                len(self._send_timestamps),
+                self._SEND_WINDOW / 3600,
+            )
+            self.set_rate_limited()
+
+    def sends_in_window(self) -> int:
+        """Return the number of sends recorded in the current 24-hour rolling window."""
+        cutoff = time.monotonic() - self._SEND_WINDOW
+        count = 0
+        for ts in reversed(self._send_timestamps):
+            if ts >= cutoff:
+                count += 1
+            else:
+                break
+        return count
+
     @abstractmethod
     async def connect(self) -> None:
         """Establish the connection. Raises TransportError or AuthError on failure."""
@@ -317,6 +355,15 @@ class Transport(ABC):
     @abstractmethod
     async def send(self, payload: bytes, iot_id: str = "") -> None:
         """Send a raw payload. Raises TransportError if not connected."""
+
+    async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
+        """Send a keepalive heartbeat payload without counting it against the send quota.
+
+        The default delegates to ``send()``.  MQTT transports override this to
+        skip ``record_send()`` so periodic ble_sync pings don't burn the 300-sends/24 h
+        budget.  BLETransport overrides it to skip resetting the idle-disconnect timer.
+        """
+        await self.send(payload, iot_id=iot_id)
 
     @property
     @abstractmethod

@@ -742,6 +742,7 @@ async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> Non
 import time as _time  # noqa: E402
 
 from pymammotion.device.handle import (  # noqa: E402
+    _KEEP_ALIVE_BLE_INTERVAL,
     _KEEP_ALIVE_IDLE_INTERVAL,
     _KEEP_ALIVE_INTERVAL,
     _KEEP_ALIVE_LONG_IDLE_INTERVAL,
@@ -771,9 +772,9 @@ def _make_handle_for_window(
 
 
 async def test_activity_window_ble_uses_short_window() -> None:
-    """BLE transport always returns the short keep-alive window."""
+    """BLE transport always returns the BLE keep-alive window (20 s)."""
     handle = _make_handle_for_window(TransportType.BLE)
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_BLE_INTERVAL  # noqa: SLF001
 
 
 async def test_activity_window_no_transport_uses_short_window() -> None:
@@ -853,11 +854,11 @@ async def test_activity_window_rate_limited_mowing_uses_backoff() -> None:
 
 
 async def test_activity_window_ble_bypasses_rate_limit() -> None:
-    """BLE transport returns short window regardless of rate-limit state (BLE is never rate-limited)."""
+    """BLE transport returns the BLE window regardless of rate-limit state (BLE is never rate-limited)."""
     handle = _make_handle_for_window(TransportType.BLE)
     # Even if someone set is_rate_limited on the BLE mock, the BLE branch returns early.
     handle._transports[TransportType.BLE].is_rate_limited = True  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
+    assert handle._activity_window() == _KEEP_ALIVE_BLE_INTERVAL  # noqa: SLF001
 
 
 async def test_activity_window_rate_limit_clears_to_docked_window() -> None:

@@ -57,7 +57,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
-from pymammotion.utility.constant import MOWING_ACTIVE_MODES
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES, WorkMode
 from pymammotion.utility.device_type import DeviceType
 
 # Rapid report-stream subscription — see docs/report_channels.md for the full
@@ -213,7 +213,7 @@ class MammotionClient:
 
         async def _on_mow_progress_changed(_pos: tuple[int, int]) -> None:
             device = cast(MowerDevice, handle.snapshot.raw)
-            if device.map.current_mow_path:
+            if device.map.current_mow_path and device.report_data.dev.sys_status == WorkMode.MODE_WORKING:
                 work = device.report_data.work
                 device.map.apply_mow_progress_geojson(
                     device.location.RTK,
@@ -222,8 +222,6 @@ class MammotionClient:
                     work.path_pos_x,
                     work.path_pos_y,
                 )
-            else:
-                await _on_path_hashes_changed((0, 0))
 
         async def _on_sys_status_changed(sys_status: int) -> None:
             try:
@@ -632,7 +630,7 @@ class MammotionClient:
     # BLE
     # ------------------------------------------------------------------
 
-    async def add_ble_device(self, device_id: str, ble_device: object) -> None:
+    async def add_ble_device(self, device_id: str, ble_device: BLEDevice) -> None:
         """Register an externally-discovered BLE device (hybrid MQTT+BLE mode).
 
         If the device handle is already registered (cloud login happened first),
@@ -646,9 +644,9 @@ class MammotionClient:
             transport = BLETransport(BLETransportConfig(device_id=device_id))
             transport.set_ble_device(ble_device)
             await handle.add_transport(transport)
-            _logger.info("BLE transport added to existing handle for device %s", device_id)
+            _logger.debug("BLE transport added to existing handle for device %s", device_id)
 
-    async def update_ble_device(self, device_id: str, ble_device: object) -> None:
+    async def update_ble_device(self, device_id: str, ble_device: BLEDevice) -> None:
         """Update the BLE advertisement for a known device.
 
         Also updates the live BLETransport (if already wired to the handle) so
@@ -1685,6 +1683,11 @@ class MammotionClient:
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("add_ble_to_device: device '%s' not registered", device_name)
+            return
+        if handle.has_transport(TransportType.BLE) and (bleTransport := handle.get_transport(TransportType.BLE)):
+            _logger.debug("add_ble_to_device: device '%s' already has BLE transport", device_name)
+            cast(BLETransport, bleTransport).set_ble_device(ble_device)
+            cast(BLETransport, bleTransport).set_disconnect_strategy(disconnect=disconnect_on_idle)
             return
         transport = BLETransport(BLETransportConfig(device_id=device_name))
         transport.set_ble_device(ble_device)

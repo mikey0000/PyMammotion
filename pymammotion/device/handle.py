@@ -36,6 +36,7 @@ from pymammotion.utility.device_type import DeviceType
 _T = TypeVar("_T")
 
 #: Keep-alive interval for BLE and for the recent-user-command window (180 s).
+_KEEP_ALIVE_BLE_INTERVAL: float = 20.0
 _KEEP_ALIVE_INTERVAL: float = 180.0  # 3 minutes
 #: Keep-alive interval while the mower is actively mowing or returning to dock.
 #: Used once the recent-command window has expired.
@@ -270,8 +271,26 @@ class DeviceHandle:
 
         async def _handler(state: TransportAvailability) -> None:
             self.update_availability(transport_type, state)
+            if transport_type == TransportType.BLE and state == TransportAvailability.CONNECTED:
+                asyncio.get_event_loop().create_task(self._on_ble_connected())
 
         return _handler
+
+    async def _on_ble_connected(self) -> None:
+        """Called when the BLE transport transitions to CONNECTED.
+
+        Rearms the activity loop immediately (so the 20 s window starts from
+        now rather than from whatever the loop was sleeping through), and
+        fires a one-shot ``get_report_cfg(count=1)`` to fetch fresh device
+        state without waiting for the next coordinator poll.
+        """
+        _logger.debug("_on_ble_connected [%s]: rearming activity loop and requesting report", self.device_name)
+        self._rearm_event.set()
+        try:
+            cmd = self.commands.get_report_cfg(count=1)
+            await self.send_raw(cmd, prefer_ble=True)
+        except Exception:
+            _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
 
     async def _send_marked(self, transport: Transport, payload: bytes) -> None:
         """Send *payload* on *transport* and record the send time.
@@ -286,7 +305,7 @@ class DeviceHandle:
         sagas, heartbeats) are blocked uniformly while the 12-hour ban is active.
         BLE transports are never rate-limited and are always allowed through.
         """
-        if transport.is_rate_limited:
+        if transport.transport_type != TransportType.BLE and transport.is_rate_limited:
             raise TransportRateLimitedError(
                 f"Transport {transport.transport_type.value} is rate-limited — send blocked"
             )
@@ -665,7 +684,7 @@ class DeviceHandle:
         """Return the silence window for the current transport / device state.
 
         Priority (highest first):
-          1. BLE / no transport        → 180 s (direct connection, not cloud-rate-limited).
+          1. BLE / no transport        → 20 s (device drops connection after ~20 s of silence).
           2. Rate-limited              → 1 hour backoff (overrides everything on cloud).
           3. Recent user command       → 3 minutes for 10 min after last command.
           4. Mowing / returning        → 600 s (10 min; no recent command).
@@ -677,7 +696,7 @@ class DeviceHandle:
         except NoTransportAvailableError:
             return _KEEP_ALIVE_INTERVAL
         if transport.transport_type == TransportType.BLE:
-            return _KEEP_ALIVE_INTERVAL
+            return _KEEP_ALIVE_BLE_INTERVAL
         if transport.is_rate_limited:
             return _RATE_LIMITED_BACKOFF
         if time.monotonic() - self._last_user_command_monotonic < _KEEP_ALIVE_USER_CMD_WINDOW:
@@ -796,14 +815,19 @@ class DeviceHandle:
             cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
 
             async def _heartbeat_send(_t: Transport = transport, _c: bytes = cmd_bytes) -> None:
-                await self._send_marked(_t, _c)
+                if _t.transport_type != TransportType.BLE and _t.is_rate_limited:
+                    raise TransportRateLimitedError(
+                        f"Transport {_t.transport_type.value} is rate-limited — heartbeat blocked"
+                    )
+                self._last_send_monotonic[_t.transport_type] = time.monotonic()
+                await _t.send_heartbeat(_c, iot_id=self.iot_id)
 
             try:
                 if is_ble:
-                    await self._send_marked(transport, cmd_bytes)
+                    await _heartbeat_send()
                 else:
                     await self.broker.send_and_wait(
-                        send_fn=_heartbeat_send,
+                        send_fn=lambda: _heartbeat_send(),
                         expected_field="toapp_report_data",
                     )
             except TransportRateLimitedError:

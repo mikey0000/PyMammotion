@@ -163,13 +163,8 @@ class BLETransport(Transport):
         self._message = None
         await self._notify_availability(TransportAvailability.DISCONNECTED)
 
-    async def send(self, payload: bytes, iot_id: str = "") -> None:  # noqa: ARG002
-        """Frame and write payload via the BleMessage codec.
-
-        Raises TransportError on any write failure, after marking the
-        transport as DISCONNECTED so the registry routes future traffic to
-        the fallback transport.
-        """
+    async def _write_payload(self, payload: bytes) -> None:
+        """Write *payload* over GATT. Raises TransportError on failure."""
         if self._client is None or self._message is None:
             msg = "BLETransport has no client; cannot send payload"
             raise TransportError(msg)
@@ -182,12 +177,28 @@ class BLETransport(Transport):
         except (TimeoutError, BleakError, OSError) as exc:
             await self._notify_availability(TransportAvailability.DISCONNECTED)
             raise TransportError(f"BLE send failed for {self._config.device_id!r}: {exc}") from exc
-        # Defensive guard: even with no exception, the bleak client may have
-        # been torn down mid-write by a concurrent disconnect callback.
         if not self._client.is_connected:
             await self._notify_availability(TransportAvailability.DISCONNECTED)
             raise TransportError(f"BLE send failed for {self._config.device_id!r}: client disconnected during write")
+
+    async def send(self, payload: bytes, iot_id: str = "") -> None:  # noqa: ARG002
+        """Frame and write payload via the BleMessage codec, then reset the idle-disconnect timer.
+
+        Use this for real user commands.  For keepalive heartbeats use
+        ``send_heartbeat()`` so the idle-disconnect timer is not disturbed.
+        """
+        await self._write_payload(payload)
         self._reset_idle_disconnect_timer()
+
+    async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:  # noqa: ARG002
+        """Write a keepalive heartbeat without resetting the idle-disconnect timer.
+
+        When ``stay_connected_bluetooth=False`` the idle-disconnect timer must
+        only be reset by genuine user commands, not by periodic ble_sync pings.
+        Calling ``send()`` for heartbeats would perpetually postpone the timer
+        and prevent the idle-disconnect from ever firing.
+        """
+        await self._write_payload(payload)
 
     # ------------------------------------------------------------------
     # Internal handlers

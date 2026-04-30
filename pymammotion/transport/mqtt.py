@@ -35,6 +35,7 @@ _logger = logging.getLogger(__name__)
 
 _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 120
+_BAD_CREDENTIALS_MAX = 3
 
 
 @dataclass(frozen=True)
@@ -179,18 +180,8 @@ class MQTTTransport(Transport):
         if self._availability is not TransportAvailability.DISCONNECTED:
             await self._notify_availability(TransportAvailability.DISCONNECTED)
 
-    async def send(self, payload: bytes, iot_id: str = "") -> None:
-        """Send *payload* to the device via the Mammotion HTTP invoke API.
-
-        Args:
-            payload: Raw protobuf bytes to send.
-            iot_id: Mammotion IoT device identifier for the target device.
-
-        Raises:
-            TransportError: If iot_id is empty or the invoke call fails.
-            AuthError: If the access token is expired (HTTP 401 or code 460).
-
-        """
+    async def _invoke(self, payload: bytes, iot_id: str) -> None:
+        """Invoke the Mammotion HTTP endpoint (shared by send/send_heartbeat)."""
         from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
         from pymammotion.http.model.http import UnauthorizedException
 
@@ -226,6 +217,15 @@ class MQTTTransport(Transport):
         if res.code not in (0, 200):
             msg = f"mqtt_invoke failed: code={res.code} msg={res.msg} iot_id={iot_id}"
             raise TransportError(msg)
+
+    async def send(self, payload: bytes, iot_id: str = "") -> None:
+        """Send *payload* to the device and count it against the 24-hour quota."""
+        await self._invoke(payload, iot_id)
+        self.record_send()
+
+    async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
+        """Send a keepalive heartbeat without counting it against the 24-hour quota."""
+        await self._invoke(payload, iot_id)
 
     # ------------------------------------------------------------------
     # Internal
@@ -271,7 +271,6 @@ class MQTTTransport(Transport):
         """Run the main connection loop, reconnecting with exponential backoff."""
         backoff = _MQTT_RECONNECT_MIN_SEC
         _bad_credentials_attempts = 0
-        _BAD_CREDENTIALS_MAX = 3
 
         while not self._stop_event.is_set():
             await self._notify_availability(TransportAvailability.CONNECTING)
