@@ -220,6 +220,7 @@ class MQTTTransport(Transport):
 
     async def send(self, payload: bytes, iot_id: str = "") -> None:
         """Send *payload* to the device and count it against the 24-hour quota."""
+        _logger.debug("Sending Mammotion MQTT payload: %s, %s iot_id", payload, iot_id)
         await self._invoke(payload, iot_id)
         self.record_send()
 

@@ -312,6 +312,7 @@ class HashList(DataClassORJSONMixin):
     area_name: list[AreaHashNameList] = field(default_factory=list)
     current_mow_path: dict[int, dict[int, MowPath]] = field(default_factory=dict)
     generated_geojson: dict[str, Any] = field(default_factory=dict)
+    geojson_yaw: float = 0.0  # RTK yaw (radians) used when generated_geojson was last built
     generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
     last_ub_path_hash: int = 0
     plans_stale: bool = False
@@ -770,6 +771,18 @@ class HashList(DataClassORJSONMixin):
         self.line = {h: frames for h, frames in self.line.items() if h == ub_path_hash}
         return ub_path_hash not in self.line
 
+    def geojson_needs_regeneration(self, rtk: LocationPoint, yaw_threshold: float = 0.01) -> bool:
+        """Return True if the stored GeoJSON was built with a different RTK yaw.
+
+        A difference larger than *yaw_threshold* radians (~0.6°) means the
+        coordinate rotation used at generation time no longer matches the
+        current RTK heading, so the GeoJSON should be regenerated.
+        Callers should also regenerate when ``generated_geojson`` is empty.
+        """
+        if not self.generated_geojson:
+            return True
+        return abs(rtk.yaw - self.geojson_yaw) > yaw_threshold
+
     def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
         """Rebuild ``generated_geojson`` from the cached frames."""
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
@@ -785,7 +798,9 @@ class HashList(DataClassORJSONMixin):
             Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
             Point(dock_location.latitude, dock_location.longitude),
             int(dock_rotation),
+            yaw=rtk.yaw,
         )
+        self.geojson_yaw = rtk.yaw
 
     def generate_mowing_geojson(self, rtk: LocationPoint) -> Any:
         """Rebuild ``generated_mow_path_geojson`` from the cached mow-path frames."""
@@ -797,6 +812,7 @@ class HashList(DataClassORJSONMixin):
         self.generated_mow_path_geojson = GeojsonGenerator.generate_mow_path_geojson(
             self,
             Point(rtk_real_loc.latitude, rtk_real_loc.longitude),
+            yaw=rtk.yaw,
         )
 
         return self.generated_mow_path_geojson
@@ -832,6 +848,7 @@ class HashList(DataClassORJSONMixin):
             Point(rtk_ll.latitude, rtk_ll.longitude),
             ub_path_hash=ub_path_hash,
             path_pos=path_pos,
+            yaw=rtk.yaw,
         )
 
     def apply_dynamics_line_geojson(self, rtk: LocationPoint) -> None:
@@ -849,4 +866,5 @@ class HashList(DataClassORJSONMixin):
         self.generated_dynamics_line_geojson = GeojsonGenerator.generate_dynamics_line_geojson(
             self.dynamics_line,
             Point(rtk_ll.latitude, rtk_ll.longitude),
+            yaw=rtk.yaw,
         )

@@ -1430,7 +1430,7 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.7.85"
+version = "0.7.86"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1469,6 +1469,7 @@ dev = [
     { name = "pip" },
     { name = "pre-commit" },
     { name = "pylint" },
+    { name = "pymap3d" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
     { name = "twine" },
@@ -1518,6 +1519,7 @@ dev = [
     { name = "pip", specifier = ">=26.1" },
     { name = "pre-commit", specifier = ">=4.3.0,<5" },
     { name = "pylint", specifier = ">=4.0.2,<5" },
+    { name = "pymap3d", specifier = ">=3.2.0" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "ruff", specifier = ">=0.9.3,<0.10" },
     { name = "twine", specifier = ">=5.0.0,<6" },
@@ -1527,6 +1529,15 @@ dev = [
 extras = [
     { name = "nest-asyncio", specifier = ">=1.6.0,<2" },
     { name = "pyjoystick", specifier = ">=1.2.4,<2" },
+]
+
+[[package]]
+name = "pymap3d"
+version = "3.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/5c/6de7682c8d0d618acfd939425803ce74f02487eea7124f807c79997facc4/pymap3d-3.2.0.tar.gz", hash = "sha256:355e87c559ac681cba34a7fef5bcec3ad791f95336a0fdaf15e0335f48a309a2", size = 50818, upload-time = "2025-07-08T06:20:27.389Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/ce/3714d0d67a83577017b1e7c40193bc1cf768a1de39c4adff750b7d3c1539/pymap3d-3.2.0-py3-none-any.whl", hash = "sha256:fccd44f2f6021a95adec19771c603b8dac104eab120d863c463d76b9bc298669", size = 64845, upload-time = "2025-07-08T06:20:25.603Z" },
 ]
 
 [[package]]

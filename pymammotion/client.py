@@ -516,6 +516,41 @@ class MammotionClient:
             return None
         return handle.snapshot.raw
 
+    def regenerate_stale_geojson(self, device_name: str | None = None) -> None:
+        """Regenerate GeoJSON for any device whose stored map was built with a different RTK yaw.
+
+        Call this after restoring device state (e.g. after ``handle.restore_device()``
+        in the HA coordinator) so that maps generated without the RTK heading correction
+        are immediately fixed without waiting for the next full map sync.
+
+        Args:
+            device_name: Regenerate only this device.  When ``None`` (default),
+                         checks every registered mower device.
+
+        """
+        from pymammotion.data.model.device import MowingDevice
+
+        handles = (
+            [self._device_registry.get_by_name(device_name)] if device_name else list(self._device_registry.all_devices)
+        )
+        for handle in handles:
+            if handle is None:
+                continue
+            device = handle.snapshot.raw
+            if not isinstance(device, MowingDevice):
+                continue
+            if not device.map.area:
+                continue
+            rtk = device.location.RTK
+            if device.map.geojson_needs_regeneration(rtk):
+                _logger.info(
+                    "regenerate_stale_geojson [%s]: regenerating (stored_yaw=%.3f current_yaw=%.3f)",
+                    handle.device_name,
+                    device.map.geojson_yaw,
+                    rtk.yaw,
+                )
+                device.map.generate_geojson(rtk, device.location.dock)
+
     def mower(self, name: str) -> DeviceHandle | None:
         """Return the DeviceHandle for the named device, or None."""
         return self._device_registry.get_by_name(name)
@@ -820,7 +855,14 @@ class MammotionClient:
             for device in cloud_client.devices_by_account_response.data.data:
                 if device.device_name:
                     iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                    await self._register_aliyun_device(device.device_name, iot_id, al_transport, ua, device.product_key)
+                    await self._register_aliyun_device(
+                        device.device_name,
+                        iot_id,
+                        al_transport,
+                        ua,
+                        device.product_key,
+                        token_manager=acct_session.token_manager,
+                    )
                     acct_session.device_ids.add(device.device_name)
             await al_transport.connect()
 
@@ -839,7 +881,9 @@ class MammotionClient:
                 for record in mammotion_records:
                     if record.device_name:
                         iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                        await self._register_mammotion_device(record, transport, ua, iot_id_override)
+                        await self._register_mammotion_device(
+                            record, transport, ua, iot_id_override, token_manager=acct_session.token_manager
+                        )
                         acct_session.device_ids.add(record.device_name)
                 await transport.connect()
 
@@ -1056,6 +1100,7 @@ class MammotionClient:
         transport: AliyunMQTTTransport,
         user_account: int = 0,
         product_key: str = "",
+        token_manager: TokenManager | None = None,
     ) -> None:
         """Register a single Aliyun device in the device registry."""
         from pymammotion.data.model.device import create_device
@@ -1071,6 +1116,8 @@ class MammotionClient:
         )
         await self._device_registry.register(handle)
         await handle.start()
+        if token_manager is not None:
+            token_manager.subscribe_handle(handle)
         self._iot_id_to_device_id[iot_id] = device_name
         _logger.info("Aliyun device registered: %s (iot_id=%s)", device_name, iot_id)
 
@@ -1080,6 +1127,7 @@ class MammotionClient:
         transport: MQTTTransport,
         user_account: int = 0,
         iot_id_override: str = "",
+        token_manager: TokenManager | None = None,
     ) -> None:
         """Add MQTT topics and register a single Mammotion device in the device registry.
 
@@ -1116,6 +1164,8 @@ class MammotionClient:
         )
         await self._device_registry.register(handle)
         await handle.start()
+        if token_manager is not None:
+            token_manager.subscribe_handle(handle)
         self._iot_id_to_device_id[iot_id] = record.device_name
         _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, iot_id)
 
@@ -1158,7 +1208,14 @@ class MammotionClient:
             for device in cloud_client.devices_by_account_response.data.data:
                 if device.device_name:
                     iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                    await self._register_aliyun_device(device.device_name, iot_id, transport, ua, device.product_key)
+                    await self._register_aliyun_device(
+                        device.device_name,
+                        iot_id,
+                        transport,
+                        ua,
+                        device.product_key,
+                        token_manager=acct_session.token_manager,
+                    )
                     known_ids.add(device.device_name)
 
         if check_for_new_devices:
@@ -1169,7 +1226,12 @@ class MammotionClient:
                         if device.device_name and device.device_name not in known_ids:
                             iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
                             await self._register_aliyun_device(
-                                device.device_name, iot_id, transport, ua, device.product_key
+                                device.device_name,
+                                iot_id,
+                                transport,
+                                ua,
+                                device.product_key,
+                                token_manager=acct_session.token_manager,
                             )
                             known_ids.add(device.device_name)
             except Exception:  # noqa: BLE001
@@ -1257,7 +1319,9 @@ class MammotionClient:
             for record in cached_records.records:
                 if record.device_name:
                     iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                    await self._register_mammotion_device(record, transport, ua, iot_id_override)
+                    await self._register_mammotion_device(
+                        record, transport, ua, iot_id_override, token_manager=acct_session.token_manager
+                    )
                     known_ids.add(record.device_name)
 
             await transport.connect()
@@ -1268,7 +1332,9 @@ class MammotionClient:
                     for record in (page_resp.data.records if page_resp.data else []) or []:
                         if record.device_name and record.device_name not in known_ids:
                             iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                            await self._register_mammotion_device(record, transport, ua, iot_id_override)
+                            await self._register_mammotion_device(
+                                record, transport, ua, iot_id_override, token_manager=acct_session.token_manager
+                            )
                             known_ids.add(record.device_name)
                 except Exception:  # noqa: BLE001
                     _logger.warning("restore_credentials: new-device discovery failed (Mammotion)", exc_info=True)

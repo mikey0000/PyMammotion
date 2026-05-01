@@ -181,16 +181,17 @@ class BLETransport(Transport):
             await self._notify_availability(TransportAvailability.DISCONNECTED)
             raise TransportError(f"BLE send failed for {self._config.device_id!r}: client disconnected during write")
 
-    async def send(self, payload: bytes, iot_id: str = "") -> None:  # noqa: ARG002
+    async def send(self, payload: bytes, iot_id: str = "") -> None:
         """Frame and write payload via the BleMessage codec, then reset the idle-disconnect timer.
 
         Use this for real user commands.  For keepalive heartbeats use
         ``send_heartbeat()`` so the idle-disconnect timer is not disturbed.
         """
+        _logger.debug("Sending BLE payload: %s, %s iot_id", payload, iot_id)
         await self._write_payload(payload)
         self._reset_idle_disconnect_timer()
 
-    async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:  # noqa: ARG002
+    async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
         """Write a keepalive heartbeat without resetting the idle-disconnect timer.
 
         When ``stay_connected_bluetooth=False`` the idle-disconnect timer must
@@ -198,6 +199,7 @@ class BLETransport(Transport):
         Calling ``send()`` for heartbeats would perpetually postpone the timer
         and prevent the idle-disconnect from ever firing.
         """
+        _logger.debug("Sending BLE heartbeat %s iot_id", iot_id)
         await self._write_payload(payload)
 
     # ------------------------------------------------------------------

@@ -11,10 +11,12 @@ class LocationPoint(DataClassORJSONMixin):
 
     latitude: float = 0.0
     longitude: float = 0.0
+    yaw: float = 0.0  # RTK heading in radians — used to rotate device-local ENU to geographic ENU
 
-    def __init__(self, latitude: float = 0.0, longitude: float = 0.0) -> None:
+    def __init__(self, latitude: float = 0.0, longitude: float = 0.0, yaw: float = 0.0) -> None:
         self.latitude = latitude
         self.longitude = longitude
+        self.yaw = yaw
 
 
 @dataclass

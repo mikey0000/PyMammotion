@@ -381,6 +381,10 @@ class MowerStateReducer(StateReducer):
         match sys_msg[0]:
             case "system_update_buf":
                 device.buffer(sys_msg[1])
+                # If the RTK yaw just arrived or changed, regenerate any GeoJSON
+                # that was built without (or with a different) yaw correction.
+                if device.map.area and device.map.geojson_needs_regeneration(device.location.RTK):
+                    device.map.generate_geojson(device.location.RTK, device.location.dock)
             case "toapp_report_data":
                 device.update_report_data(sys_msg[1])
             case "mow_to_app_info":

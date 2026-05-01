@@ -941,7 +941,7 @@ async def test_activity_loop_refires_subscription_on_command_timeout() -> None:
         patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=fake_send_and_wait)),
         patch.object(handle, "_refire_continuous_subscription", refire_mock),
     ):
-        await asyncio.wait_for(handle._activity_loop(), timeout=2.0)
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
 
     refire_mock.assert_awaited_once()
 
@@ -959,7 +959,7 @@ async def test_activity_loop_exits_on_device_offline_exception() -> None:
         patch.object(handle, "_activity_window", return_value=0.0),
         patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=DeviceOfflineException("msg", "iot-id"))),
     ):
-        task = asyncio.create_task(handle._activity_loop())
+        task = asyncio.create_task(handle._mqtt_activity_loop())
         await asyncio.wait_for(task, timeout=2.0)
 
     assert task.done() and not task.cancelled()

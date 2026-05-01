@@ -19,6 +19,7 @@ from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.proto import LubaMsg, RptAct, RptInfoType
 from pymammotion.state.device_state import DeviceAvailability, DeviceConnectionState, DeviceSnapshot, DeviceStateMachine
 from pymammotion.transport.base import (
+    AuthError,
     CommandTimeoutError,
     ConcurrentRequestError,
     EventBus,
@@ -49,6 +50,8 @@ _KEEP_ALIVE_USER_CMD_WINDOW: float = 600.0  # 10 minutes
 _KEEP_ALIVE_LONG_IDLE_INTERVAL: float = 1800.0  # 30 minutes
 #: Activity-loop backoff window while the active transport is rate-limited.
 _RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
+#: Max consecutive BLE heartbeat failures before the loop gives up on BLE and falls back to MQTT.
+_BLE_HEARTBEAT_FAIL_LIMIT: int = 30
 #: Channels sent in the continuous report subscription (RPT_START / RPT_STOP).
 _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
@@ -221,6 +224,12 @@ class DeviceHandle:
         #: True when the device name identifies an RTK base station — keep-alive
         #: (``send_todev_ble_sync``) is suppressed for these devices entirely.
         self._is_rtk: bool = DeviceType.is_rtk(device_name)
+        #: Consecutive BLE heartbeat failures in _ble_activity_loop.  Reset on
+        #: successful BLE connection.  Once it reaches _BLE_HEARTBEAT_FAIL_LIMIT
+        #: the BLE loop exits and BLE is marked disconnected.
+        self._ble_heartbeat_failures: int = 0
+        #: Task running the BLE-specific 20 s heartbeat loop (separate from MQTT loop).
+        self._ble_keep_alive_task: asyncio.Task[None] | None = None
 
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
@@ -271,8 +280,13 @@ class DeviceHandle:
 
         async def _handler(state: TransportAvailability) -> None:
             self.update_availability(transport_type, state)
-            if transport_type == TransportType.BLE and state == TransportAvailability.CONNECTED:
-                asyncio.get_event_loop().create_task(self._on_ble_connected())
+            if transport_type == TransportType.BLE:
+                if state == TransportAvailability.CONNECTED:
+                    asyncio.get_running_loop().create_task(self._on_ble_connected())
+                else:
+                    # Wake the MQTT loop immediately so it resumes heartbeating
+                    # rather than sleeping out the rest of its 180 s idle period.
+                    self._rearm_event.set()
 
         return _handler
 
@@ -284,10 +298,12 @@ class DeviceHandle:
         fires a one-shot ``get_report_cfg(count=1)`` to fetch fresh device
         state without waiting for the next coordinator poll.
         """
-        _logger.debug("_on_ble_connected [%s]: rearming activity loop and requesting report", self.device_name)
-        self._rearm_event.set()
+        _logger.debug("_on_ble_connected [%s]: starting BLE loop and requesting report", self.device_name)
+        self._ble_heartbeat_failures = 0
+        self._rearm_event.set()  # wake MQTT loop early so it sees BLE is now connected
+        self._start_ble_loop()
         try:
-            cmd = self.commands.get_report_cfg(count=1)
+            cmd = self.commands.get_report_cfg()
             await self.send_raw(cmd, prefer_ble=True)
         except Exception:
             _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
@@ -324,6 +340,8 @@ class DeviceHandle:
             await existing.disconnect()
         _logger.debug("add_transport '%s': registered %s", self.device_name, transport.transport_type.value)
         self._wire_transport(transport)
+        if transport.transport_type == TransportType.BLE and transport.is_connected:
+            self._start_ble_loop()
 
     async def remove_transport(self, transport_type: TransportType) -> None:
         """Disconnect and remove a transport by type."""
@@ -475,16 +493,10 @@ class DeviceHandle:
                 "_do_send '%s': sending field=%s via %s", self.device_name, field, transport.transport_type.value
             )
             try:
-                if not transport.is_connected and transport.transport_type in (
-                    TransportType.CLOUD_ALIYUN,
-                    TransportType.CLOUD_MAMMOTION,
-                ):
-                    await self._send_marked(transport, cmd)
-                else:
-                    await self.broker.send_and_wait(
-                        send_fn=lambda: self._send_marked(transport, cmd),
-                        expected_field=field,
-                    )
+                await self.broker.send_and_wait(
+                    send_fn=lambda: self._send_marked(transport, cmd),
+                    expected_field=field,
+                )
             except DeviceOfflineException:
                 self.update_availability(
                     transport.transport_type,
@@ -551,9 +563,9 @@ class DeviceHandle:
         new_state = self._availability.connection_state
         if old_state != new_state and not self._stopping:
             snapshot, _ = self.state_machine.apply(self.state_machine.current.raw, self._availability)
-            asyncio.get_event_loop().create_task(self._state_changed_bus.emit(snapshot))
+            asyncio.get_running_loop().create_task(self._state_changed_bus.emit(snapshot))
             if old_state != DeviceConnectionState.CONNECTED and new_state == DeviceConnectionState.CONNECTED:
-                asyncio.get_event_loop().create_task(self.restart_keep_alive())
+                asyncio.get_running_loop().create_task(self.restart_keep_alive())
 
     @property
     def availability(self) -> DeviceAvailability:
@@ -623,32 +635,42 @@ class DeviceHandle:
         return self._event_bus.subscribe(handler)
 
     async def start(self) -> None:
-        """Start the command queue processor and the activity loop.
+        """Start the command queue processor and the MQTT activity loop.
 
-        RTK base stations do not receive ``send_todev_ble_sync`` heartbeats so
-        the activity task is intentionally skipped for them.
+        RTK base stations skip the activity task entirely.  The BLE loop is
+        started separately by ``add_transport`` / ``_on_ble_connected``.
         """
         self._stopping = False
         self.queue.start()
         if not self._is_rtk and (self._keep_alive_task is None or self._keep_alive_task.done()):
-            self._keep_alive_task = asyncio.get_running_loop().create_task(self._activity_loop())
+            self._keep_alive_task = asyncio.get_running_loop().create_task(self._mqtt_activity_loop())
+
+    def _start_ble_loop(self) -> None:
+        """Start (or restart) the BLE heartbeat task if not already running."""
+        if self._is_rtk or self._stopping:
+            return
+        if self._ble_keep_alive_task is None or self._ble_keep_alive_task.done():
+            _logger.debug("start_ble_loop [%s]: starting BLE activity loop", self.device_name)
+            self._ble_keep_alive_task = asyncio.get_running_loop().create_task(self._ble_activity_loop())
 
     async def restart_keep_alive(self) -> None:
-        """Restart the activity loop if it has exited or was never started."""
+        """Restart the MQTT activity loop if it has exited or was never started."""
         if self._is_rtk or self._stopping:
             return
         if self._keep_alive_task is None or self._keep_alive_task.done():
-            _logger.debug("restart_keep_alive [%s]: restarting activity loop", self.device_name)
-            self._keep_alive_task = asyncio.get_running_loop().create_task(self._activity_loop())
+            _logger.debug("restart_keep_alive [%s]: restarting MQTT activity loop", self.device_name)
+            self._keep_alive_task = asyncio.get_running_loop().create_task(self._mqtt_activity_loop())
 
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
         self._stopping = True
-        if self._keep_alive_task is not None and not self._keep_alive_task.done():
-            self._keep_alive_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._keep_alive_task
+        for task in (self._keep_alive_task, self._ble_keep_alive_task):
+            if task is not None and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
         self._keep_alive_task = None
+        self._ble_keep_alive_task = None
         await self.queue.stop()
         await self.broker.close()
         await self._state_changed_bus.stop()
@@ -680,24 +702,20 @@ class DeviceHandle:
         except (AttributeError, TypeError):
             return False
 
-    def _activity_window(self) -> float:
-        """Return the silence window for the current transport / device state.
+    def _mqtt_activity_window(self, mqtt: Transport) -> float:
+        """Return the MQTT silence window for the current device state.
+
+        Used exclusively by ``_mqtt_activity_loop``; BLE timing is handled by
+        ``_ble_activity_loop`` independently.
 
         Priority (highest first):
-          1. BLE / no transport        → 20 s (device drops connection after ~20 s of silence).
-          2. Rate-limited              → 1 hour backoff (overrides everything on cloud).
-          3. Recent user command       → 3 minutes for 10 min after last command.
-          4. Mowing / returning        → 600 s (10 min; no recent command).
-          5. Full battery + docked     → 30 min.
-          6. Default (idle/paused)     → 10 min.
+          1. Rate-limited              → 12 h backoff.
+          2. Recent user command       → 3 min for 10 min after last command.
+          3. Mowing / returning        → 10 min.
+          4. Full battery + docked     → 30 min.
+          5. Default (idle/paused)     → 15 min.
         """
-        try:
-            transport = self.active_transport()
-        except NoTransportAvailableError:
-            return _KEEP_ALIVE_INTERVAL
-        if transport.transport_type == TransportType.BLE:
-            return _KEEP_ALIVE_BLE_INTERVAL
-        if transport.is_rate_limited:
+        if mqtt.is_rate_limited:
             return _RATE_LIMITED_BACKOFF
         if time.monotonic() - self._last_user_command_monotonic < _KEEP_ALIVE_USER_CMD_WINDOW:
             return _KEEP_ALIVE_INTERVAL
@@ -709,6 +727,20 @@ class DeviceHandle:
         if self._is_full_battery_docked():
             return _KEEP_ALIVE_LONG_IDLE_INTERVAL
         return _KEEP_ALIVE_IDLE_INTERVAL
+
+    def _activity_window(self) -> float:
+        """Return the silence window for the current active transport.
+
+        Retained for backwards-compatibility with tests; the loops now call
+        ``_mqtt_activity_window`` directly.
+        """
+        try:
+            transport = self.active_transport()
+        except NoTransportAvailableError:
+            return _KEEP_ALIVE_INTERVAL
+        if transport.transport_type == TransportType.BLE:
+            return _KEEP_ALIVE_BLE_INTERVAL
+        return self._mqtt_activity_window(transport)
 
     async def _sleep_or_rearm(self, seconds: float) -> bool:
         """Sleep for *seconds*, returning ``True`` early if ``_rearm_event`` fires."""
@@ -751,123 +783,228 @@ class DeviceHandle:
         )
         await self.send_raw(cmd_bytes)
 
-    async def _activity_loop(self) -> None:
-        """Unified keep-alive and report-subscription loop.
+    async def _ble_activity_loop(self) -> None:
+        """BLE-specific heartbeat loop — runs independently of the MQTT loop.
 
-        Replaces both the old ``_keep_alive_loop`` and the external
-        ``MammotionClient`` report-data watchdog.  Fires when *both* inbound
-        and outbound traffic have been idle for ``_activity_window()`` seconds:
-
-        * Inbound silence is tracked via ``transport.last_received_monotonic``
-          (set transparently by the ``on_message`` property wrapper).
-        * Outbound silence is tracked via ``_last_send_monotonic``.
-
-        On fire:
-        * Sends ``send_todev_ble_sync`` heartbeat (all transports).
-        * On MQTT: also refires ``request_iot_sys RPT_START`` to keep the
-          cloud subscription live (skipped during sagas and when rate-limited).
-        * Rate-limited → backoff window = max(15 min, natural window).
-        * Device offline / no response → exits; ``update_availability`` restarts
-          the loop automatically when the transport reconnects.
-        * ``record_user_command()`` interrupts a long sleep immediately so the
-          short window kicks in without waiting for the current timer to expire.
+        Fires every ``_KEEP_ALIVE_BLE_INTERVAL`` seconds of BLE inactivity and
+        sends a ``todev_ble_sync(2)`` packet to keep the GATT connection alive.
+        Exits (without cancelling the MQTT loop) when:
+          * The BLE transport is removed from the handle.
+          * Consecutive failures reach ``_BLE_HEARTBEAT_FAIL_LIMIT``.
+          * The handle is stopping.
+        ``_on_ble_connected`` restarts this loop on reconnect.
         """
         while not self._stopping:
+            ble = self._transports.get(TransportType.BLE)
+            if ble is None:
+                break  # transport removed — exit cleanly
+
+            if not ble.is_connected:
+                # BLE disconnected — exit and let _on_ble_connected restart this loop.
+                break
+
+            if self._ble_heartbeat_failures >= _BLE_HEARTBEAT_FAIL_LIMIT:
+                _logger.warning(
+                    "ble_loop [%s]: %d consecutive failures — exiting BLE loop",
+                    self.device_name,
+                    self._ble_heartbeat_failures,
+                )
+                break
+
+            # Sleep until the 20 s window expires.
+            last_send = self._last_send_monotonic.get(TransportType.BLE, 0.0)
+            last_recv = ble.last_received_monotonic
+            elapsed = time.monotonic() - max(last_send, last_recv)
+            wait = _KEEP_ALIVE_BLE_INTERVAL - elapsed
+            if wait > 0:
+                try:
+                    await asyncio.sleep(wait)
+                except asyncio.CancelledError:
+                    break
+
+            # Re-check after sleep.
+            ble = self._transports.get(TransportType.BLE)
+            if ble is None or self._stopping:
+                break
+            if not ble.is_connected:
+                continue
+            elapsed = time.monotonic() - max(
+                self._last_send_monotonic.get(TransportType.BLE, 0.0),
+                ble.last_received_monotonic,
+            )
+            if elapsed < _KEEP_ALIVE_BLE_INTERVAL:
+                continue  # activity occurred during sleep — wait again
+
+            if self.queue.is_saga_active or self._in_no_request_mode():
+                continue
+
+            cmd_bytes = self.commands.send_todev_ble_sync(sync_type=_KEEP_ALIVE_SYNC_TYPE_BLE)
             try:
-                transport = self.active_transport()
-            except NoTransportAvailableError:
+                self._last_send_monotonic[TransportType.BLE] = time.monotonic()
+                await ble.send_heartbeat(cmd_bytes, iot_id=self.iot_id)
+                self._ble_heartbeat_failures = 0
+            except TransportError:
+                self._ble_heartbeat_failures += 1
+                _logger.debug(
+                    "ble_loop [%s]: send failed (attempt %d/%d) — marking disconnected",
+                    self.device_name,
+                    self._ble_heartbeat_failures,
+                    _BLE_HEARTBEAT_FAIL_LIMIT,
+                )
+                self.update_availability(TransportType.BLE, TransportAvailability.DISCONNECTED)
+            except Exception:  # noqa: BLE001
+                self._ble_heartbeat_failures += 1
+                _logger.debug("ble_loop [%s]: unexpected error in heartbeat", self.device_name, exc_info=True)
+                self.update_availability(TransportType.BLE, TransportAvailability.DISCONNECTED)
+
+    async def _mqtt_activity_loop(self) -> None:
+        """MQTT keep-alive and report-subscription loop.
+
+        Fires when MQTT inbound+outbound traffic has been idle for
+        ``_mqtt_activity_window()`` seconds.  Yields gracefully while BLE is
+        connected (BLE handles the device comms; MQTT only needs its TCP-level
+        keepalive from the broker, not an application-level heartbeat).
+
+        On fire:
+        * For long idle (> 10 min): sends ``report_cfg(count=1)`` — one call
+          serves as both the keepalive and a fresh data refresh.
+        * Otherwise: sends ``ble_sync(3)`` + waits for ``toapp_report_data``
+          to confirm the cloud report subscription is still live.
+        * ``record_user_command()`` interrupts any in-progress sleep so the
+          short window activates immediately.
+        """
+        while not self._stopping:
+            # Resolve the active MQTT transport (Aliyun or Mammotion direct).
+            mqtt: Transport | None = None
+            for tt in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                t = self._transports.get(tt)
+                if t is not None:
+                    mqtt = t
+                    break
+
+            if mqtt is None:
+                # No MQTT transport registered — wait and re-check.
                 if await self._sleep_or_rearm(_KEEP_ALIVE_INTERVAL):
                     continue
                 continue
 
-            window = self._activity_window()
-            last_send = self._last_send_monotonic.get(transport.transport_type, 0.0)
-            last_recv = transport.last_received_monotonic
-            last_activity = max(last_send, last_recv)
-            wait = window - (time.monotonic() - last_activity)
-            if wait <= 0:
-                wait = window
-
-            if await self._sleep_or_rearm(wait):
+            # While BLE is actively connected, MQTT doesn't need an application
+            # heartbeat — the MQTT broker TCP keepalive keeps the channel alive.
+            if self._availability.ble == TransportAvailability.CONNECTED:
+                if await self._sleep_or_rearm(_KEEP_ALIVE_INTERVAL):
+                    continue
                 continue
 
-            # Re-check post-sleep: transport or activity may have changed.
-            try:
-                transport = self.active_transport()
-            except NoTransportAvailableError:
+            window = self._mqtt_activity_window(mqtt)
+            last_send = self._last_send_monotonic.get(mqtt.transport_type, 0.0)
+            last_recv = mqtt.last_received_monotonic
+            wait = window - (time.monotonic() - max(last_send, last_recv))
+            if wait > 0 and await self._sleep_or_rearm(wait):
                 continue
 
-            last_send = self._last_send_monotonic.get(transport.transport_type, 0.0)
-            last_recv = transport.last_received_monotonic
-            if time.monotonic() - max(last_send, last_recv) < self._activity_window():
+            # Re-resolve after sleep — transport or availability may have changed.
+            mqtt2: Transport | None = None
+            for tt in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                t = self._transports.get(tt)
+                if t is not None:
+                    mqtt2 = t
+                    break
+            if mqtt2 is None:
+                continue
+            mqtt = mqtt2
+
+            if self._availability.ble == TransportAvailability.CONNECTED:
+                continue
+
+            last_send = self._last_send_monotonic.get(mqtt.transport_type, 0.0)
+            last_recv = mqtt.last_received_monotonic
+            window = self._mqtt_activity_window(mqtt)
+            if time.monotonic() - max(last_send, last_recv) < window:
                 continue
 
             if self.queue.is_saga_active:
-                _logger.debug("activity_loop [%s]: saga active — deferring", self.device_name)
+                _logger.debug("mqtt_loop [%s]: saga active — deferring", self.device_name)
                 continue
 
             if self._in_no_request_mode():
-                _logger.debug("activity_loop [%s]: no-request mode — deferring", self.device_name)
+                _logger.debug("mqtt_loop [%s]: no-request mode — deferring", self.device_name)
                 continue
 
-            is_ble = transport.transport_type == TransportType.BLE
-            sync_type = _KEEP_ALIVE_SYNC_TYPE_BLE if is_ble else _KEEP_ALIVE_SYNC_TYPE_MQTT
-            cmd_bytes = self.commands.send_todev_ble_sync(sync_type=sync_type)
+            # Long idle → report_cfg(count=1) fires a one-shot data refresh as the
+            # heartbeat; the device pushes state via the normal unsolicited path so
+            # we don't wait for a specific response field (avoids spurious timeouts).
+            # Short window → ble_sync(3) + wait for toapp_report_data to confirm the
+            # cloud report subscription is still live.
+            # window was captured above — reuse it to avoid TOCTOU on device state.
+            use_report_cfg = window > _KEEP_ALIVE_MOWING_INTERVAL
 
-            async def _heartbeat_send(_t: Transport = transport, _c: bytes = cmd_bytes) -> None:
-                if _t.transport_type != TransportType.BLE and _t.is_rate_limited:
-                    raise TransportRateLimitedError(
-                        f"Transport {_t.transport_type.value} is rate-limited — heartbeat blocked"
-                    )
+            if use_report_cfg:
+                cmd_bytes = self.commands.get_report_cfg(count=1)
+            else:
+                cmd_bytes = self.commands.send_todev_ble_sync(sync_type=_KEEP_ALIVE_SYNC_TYPE_MQTT)
+
+            if mqtt.is_rate_limited:
+                _logger.debug("mqtt_loop [%s]: transport rate-limited — deferring heartbeat", self.device_name)
+                continue
+
+            self._last_send_monotonic[mqtt.transport_type] = time.monotonic()
+
+            async def _heartbeat_send(_t: Transport = mqtt, _c: bytes = cmd_bytes) -> None:
                 self._last_send_monotonic[_t.transport_type] = time.monotonic()
                 await _t.send_heartbeat(_c, iot_id=self.iot_id)
 
             try:
-                if is_ble:
-                    await _heartbeat_send()
+                if use_report_cfg:
+                    await mqtt.send_heartbeat(cmd_bytes, iot_id=self.iot_id)
                 else:
                     await self.broker.send_and_wait(
                         send_fn=lambda: _heartbeat_send(),
                         expected_field="toapp_report_data",
                     )
             except TransportRateLimitedError:
-                _logger.debug("activity_loop [%s]: transport rate-limited — deferring heartbeat", self.device_name)
+                _logger.debug("mqtt_loop [%s]: transport rate-limited — deferring heartbeat", self.device_name)
             except TooManyRequestsException:
                 _logger.warning(
-                    "activity_loop [%s]: rate limited by cloud — blocking MQTT sends for %.0fh",
+                    "mqtt_loop [%s]: rate limited by cloud — blocking MQTT sends for %.0fh",
                     self.device_name,
                     _RATE_LIMITED_BACKOFF / 3600,
                 )
-                transport.set_rate_limited()
+                mqtt.set_rate_limited()
             except CommandTimeoutError:
-                # Cloud-side report subscription has lapsed — re-fire RPT_START
-                # so toapp_report_data resumes flowing. This is the ONLY hook
-                # we have to revive the subscription; never break on this.
                 _logger.debug(
-                    "activity_loop [%s]: no toapp_report_data response — refiring continuous subscription",
+                    "mqtt_loop [%s]: no toapp_report_data response — refiring continuous subscription",
                     self.device_name,
                 )
                 await self._refire_continuous_subscription()
             except ConcurrentRequestError:
-                _logger.debug("activity_loop [%s]: concurrent request — skipping heartbeat", self.device_name)
+                _logger.debug("mqtt_loop [%s]: concurrent request — skipping heartbeat", self.device_name)
             except DeviceOfflineException:
-                if not is_ble:
-                    self.update_availability(
-                        transport.transport_type,
-                        self._availability.mqtt,
-                        mqtt_reported_offline=True,
-                    )
-                    _logger.warning(
-                        "activity_loop [%s]: %s reports device offline — stopping loop",
-                        self.device_name,
-                        transport.transport_type.value,
-                    )
-                    break
-            except Exception:  # noqa: BLE001
-                _logger.debug(
-                    "activity_loop [%s]: send via %s failed",
+                self.update_availability(
+                    mqtt.transport_type,
+                    self._availability.mqtt,
+                    mqtt_reported_offline=True,
+                )
+                _logger.warning(
+                    "mqtt_loop [%s]: %s reports device offline — stopping loop",
                     self.device_name,
-                    transport.transport_type.value,
+                    mqtt.transport_type.value,
+                )
+                break
+            except AuthError as exc:
+                # SessionExpiredError (29003, 460) and other auth failures from the
+                # Aliyun gateway — propagate to the error bus so the client's
+                # credential-refresh handler can call check_or_refresh_session().
+                _logger.debug(
+                    "mqtt_loop [%s]: auth error on heartbeat — signalling credential refresh: %s",
+                    self.device_name,
+                    exc,
+                )
+                await self._error_bus.emit(exc)
+            except (TransportError, Exception):
+                _logger.debug(
+                    "mqtt_loop [%s]: send via %s failed",
+                    self.device_name,
+                    mqtt.transport_type.value,
                     exc_info=True,
                 )
 

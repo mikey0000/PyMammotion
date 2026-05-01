@@ -375,6 +375,7 @@ class MowerStateManager:
             Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
             Point(dock_location.latitude, dock_location.longitude),
             int(dock_rotation),
+            yaw=rtk.yaw,
         )
 
         return self._device.map.generated_geojson

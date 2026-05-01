@@ -474,6 +474,21 @@ class DevConsole:
             self.dump(handle.device_name)
             print(f"Written → {self._state_path(handle.device_name)}")
 
+    def debug(self, on: bool = True) -> None:
+        """Toggle DEBUG logging on the terminal (file always logs DEBUG).
+
+        Example:
+            debug()        # enable DEBUG on terminal
+            debug(False)   # revert to INFO on terminal
+
+        """
+        level = logging.DEBUG if on else logging.INFO
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, RichHandler):
+                handler.setLevel(level)
+        state = "ON" if on else "OFF"
+        _LOGGER.info("Terminal debug logging: [bold]%s[/bold]", state)
+
     def status(self) -> None:
         """Print a summary of connected devices and transport health."""
         print(f"\n{'Device':<30}  {'MQTT':>6}  State file")
@@ -517,14 +532,6 @@ async def _main() -> None:
     dev.log_mqtt_credentials()
     dev.dump_all()
 
-    # Fetch supplemental HTTP data for any RTK base stations
-    from pymammotion.utility.device_type import DeviceType
-
-    for handle in mammotion.device_registry.all_devices:
-        if DeviceType.is_rtk(handle.device_name):
-            _LOGGER.info("Fetching RTK LoRa info for [bold]%s[/bold] …", handle.device_name)
-            await mammotion.fetch_rtk_lora_info(handle.device_name)
-
     device_names = [h.device_name for h in mammotion.device_registry.all_devices]
     _LOGGER.info(
         "Connected. Devices: [bold]%s[/bold]",
@@ -544,6 +551,7 @@ async def _main() -> None:
         "dump_all": dev.dump_all,
         "status": dev.status,
         "creds": dev.log_mqtt_credentials,
+        "debug": dev.debug,
         "console": dev,
         "loop": main_loop,
         "asyncio": asyncio,
@@ -560,6 +568,7 @@ async def _main() -> None:
         "  [cyan]dump_all()[/cyan]                                         — write state JSON for all devices\n"
         "  [cyan]status()[/cyan]                                           — show connection status\n"
         "  [cyan]creds()[/cyan]                                            — print all MQTT credentials\n"
+        "  [cyan]debug(on=True)[/cyan]                                     — toggle DEBUG logging on terminal\n"
         f"  [cyan]loop[/cyan]                                               — main asyncio event loop\n"
         f"\n  Output → [dim]{OUTPUT_DIR}[/dim]\n"
     )

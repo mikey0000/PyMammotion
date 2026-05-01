@@ -282,7 +282,7 @@ class MessageSystem(AbstractMessage, ABC):
     def request_iot_sys(
         self,
         rpt_act: RptAct,
-        rpt_info_type: list[RptInfoType | str] | None,
+        rpt_info_type: list[RptInfoType],
         timeout: int = 10000,
         period: int = 1000,
         no_change_period: int = 1000,
@@ -417,6 +417,7 @@ class MessageSystem(AbstractMessage, ABC):
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
         mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION_INFO)
+        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_FW_INFO)
 
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,

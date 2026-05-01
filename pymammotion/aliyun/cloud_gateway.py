@@ -849,11 +849,19 @@ class CloudIOTGateway:
             if response_body_dict.get("code") == 6205:
                 logger.debug("Device offline (6205): %s", iot_id)
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
-            logger.error(
-                "Error in sending cloud command: %s - %s",
-                str(response_body_dict.get("code")),
-                str(response_body_dict.get("message")),
-            )
+            # 29003 and 460 are expected auth-expiry codes handled by the caller — log at debug.
+            # Everything else is unexpected and logged at warning.
+            if response_body_dict.get("code") in (29003, 460):
+                logger.debug(
+                    "Cloud command auth error %s — session refresh required",
+                    response_body_dict.get("code"),
+                )
+            else:
+                logger.warning(
+                    "Error in sending cloud command: %s - %s",
+                    str(response_body_dict.get("code")),
+                    str(response_body_dict.get("message")),
+                )
             if response_body_dict.get("code") == 22000:
                 logger.error(response.body)
                 raise FailedRequestException(iot_id)

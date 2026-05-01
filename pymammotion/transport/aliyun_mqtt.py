@@ -247,11 +247,13 @@ class AliyunMQTTTransport(Transport):
 
     async def send(self, payload: bytes, iot_id: str = "") -> None:
         """Send *payload* to the device and count it against the 24-hour quota."""
+        _logger.debug("Sending Aliyun MQTT payload: %s, %s", payload, iot_id)
         await self._invoke(payload, iot_id)
         self.record_send()
 
     async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
         """Send a keepalive heartbeat without counting it against the 24-hour quota."""
+        _logger.debug("Sending Aliyun MQTT heartbeat %s", iot_id)
         await self._invoke(payload, iot_id)
 
     # ------------------------------------------------------------------

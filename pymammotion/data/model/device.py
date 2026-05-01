@@ -96,6 +96,10 @@ class MowerDevice(Device):
                 if buffer_list.update_buf_data[5] != 0:
                     self.location.RTK.latitude = parse_double(buffer_list.update_buf_data[5], 8.0)
                     self.location.RTK.longitude = parse_double(buffer_list.update_buf_data[6], 8.0)
+                    # Index 13 = RTK base station heading (radians) — used to rotate device-local
+                    # ENU coordinates to geographic ENU for correct map placement.
+                    if len(buffer_list.update_buf_data) > 13:
+                        self.location.RTK.yaw = parse_double(buffer_list.update_buf_data[13], 8.0)
                 if buffer_list.update_buf_data[7] != 0:
                     # latitude Y longitude X
                     self.location.dock.longitude = parse_double(buffer_list.update_buf_data[7], 4.0)
@@ -172,9 +176,12 @@ class MowerDevice(Device):
             if index == 0:
                 self.location.position_type = location.pos_type
                 self.location.orientation = int(location.real_toward / 10000)
-                self.location.device = coordinate_converter.enu_to_lla(
-                    parse_double(location.real_pos_y, 4.0), parse_double(location.real_pos_x, 4.0)
-                )
+                x_dev = parse_double(location.real_pos_x, 4.0)
+                y_dev = parse_double(location.real_pos_y, 4.0)
+                yaw = self.location.RTK.yaw
+                east_geo = math.cos(yaw) * x_dev - math.sin(yaw) * y_dev
+                north_geo = math.sin(yaw) * x_dev + math.cos(yaw) * y_dev
+                self.location.device = coordinate_converter.enu_to_lla(north_geo, east_geo)
                 self.map.invalidate_maps(location.bol_hash)
                 self.location.work_zone = location.zone_hash
 
@@ -203,9 +210,12 @@ class MowerDevice(Device):
         self.mowing_state = RapidState().from_raw(tard_state.tard_state_data)
         self.location.position_type = self.mowing_state.pos_type
         self.location.orientation = int(self.mowing_state.toward)
-        self.location.device = coordinate_converter.enu_to_lla(
-            parse_double(self.mowing_state.pos_y, 4.0), parse_double(self.mowing_state.pos_x, 4.0)
-        )
+        x_dev = parse_double(self.mowing_state.pos_x, 4.0)
+        y_dev = parse_double(self.mowing_state.pos_y, 4.0)
+        yaw = self.location.RTK.yaw
+        east_geo = math.cos(yaw) * x_dev - math.sin(yaw) * y_dev
+        north_geo = math.sin(yaw) * x_dev + math.cos(yaw) * y_dev
+        self.location.device = coordinate_converter.enu_to_lla(north_geo, east_geo)
         self.location.work_zone = self.mowing_state.zone_hash
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:

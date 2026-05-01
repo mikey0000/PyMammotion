@@ -16,7 +16,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+    from pymammotion.device.handle import DeviceHandle
     from pymammotion.http.http import MammotionHTTP
+    from pymammotion.transport.base import Subscription
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,9 @@ class TokenManager:
         # Monotonic timestamps of recent 2401 "refreshToken invalid" failures.
         # Three failures within _ALIYUN_FAILURE_WINDOW seconds → ReLoginRequiredError.
         self._aliyun_refresh_failures: list[float] = []
+        # RAII subscriptions to device handle error buses — kept alive here so they
+        # are never garbage-collected while this token manager is active.
+        self._handle_subscriptions: list[Subscription] = []
 
     async def initialize(
         self,
@@ -119,12 +124,12 @@ class TokenManager:
         aliyun_creds: AliyunCredentials | None,
         mqtt_creds: MQTTCredentials | None,
     ) -> None:
-        """Store initial credentials obtained during the login flow.
+        """Seed credentials from an existing login — used in tests and cache-restore paths.
 
         Args:
-            http_creds: Initial HTTP OAuth credentials, or *None* if unavailable.
-            aliyun_creds: Initial Aliyun IoT credentials, or *None* if unavailable.
-            mqtt_creds: Initial MQTT credentials, or *None* if unavailable.
+            http_creds: HTTP OAuth credentials, or *None* to force a refresh on first use.
+            aliyun_creds: Aliyun IoT credentials, or *None* to force a refresh on first use.
+            mqtt_creds: MQTT credentials, or *None* to force a refresh on first use.
 
         """
         self._http_creds = http_creds
@@ -236,6 +241,25 @@ class TokenManager:
         """
         async with self._lock:
             await self.refresh_mqtt_creds()
+
+    def subscribe_handle(self, handle: DeviceHandle) -> None:
+        """Subscribe to auth errors from *handle* and refresh credentials automatically.
+
+        The subscription is stored internally and lives as long as this
+        TokenManager instance — no external lifetime management needed.
+        """
+        from pymammotion.transport.base import SessionExpiredError
+
+        async def _on_error(exc: Exception) -> None:
+            try:
+                if isinstance(exc, SessionExpiredError) and exc.transport_type == TransportType.CLOUD_MAMMOTION:
+                    await self.refresh_mqtt_credentials()
+                else:
+                    await self.refresh_aliyun_credentials()
+            except Exception:
+                pass  # refresh methods log internally; swallow here to avoid crashing the error bus
+
+        self._handle_subscriptions.append(handle.subscribe_errors(_on_error))
 
     # ------------------------------------------------------------------
     # Private helpers — callers are responsible for holding self._lock.

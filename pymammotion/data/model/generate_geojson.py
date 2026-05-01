@@ -276,7 +276,7 @@ class GeojsonGenerator:
 
     @staticmethod
     def generate_geojson(
-        hash_list: HashList, rtk_location: Point, dock_location: Point, dock_rotation: int
+        hash_list: HashList, rtk_location: Point, dock_location: Point, dock_rotation: int, yaw: float = 0.0
     ) -> GeoJSONCollection:
         """Generate GeoJSON from hash list data.
 
@@ -293,21 +293,23 @@ class GeojsonGenerator:
 
         geo_json: GeoJSONCollection = {"type": "FeatureCollection", "name": "Lawn Areas", "features": []}
         GeojsonGenerator._add_rtk_and_dock(rtk_location, dock_location, dock_rotation, geo_json)
-        total_frames = GeojsonGenerator._process_map_objects(hash_list, rtk_location, area_names, geo_json)
+        total_frames = GeojsonGenerator._process_map_objects(hash_list, rtk_location, area_names, geo_json, yaw=yaw)
 
         # _save_geojson(geo_json)
         return geo_json
 
     @staticmethod
-    def generate_mow_path_geojson(hash_list: HashList, rtk_location: Point) -> GeoJSONCollection:
+    def generate_mow_path_geojson(hash_list: HashList, rtk_location: Point, yaw: float = 0.0) -> GeoJSONCollection:
         """Generate GeoJSON from hash list data."""
         geo_json: GeoJSONCollection = {"type": "FeatureCollection", "name": "Mowing Lawn Areas", "features": []}
 
-        total_frames = GeojsonGenerator._process_mow_map_objects(hash_list, rtk_location, geo_json)
+        total_frames = GeojsonGenerator._process_mow_map_objects(hash_list, rtk_location, geo_json, yaw=yaw)
         return geo_json
 
     @staticmethod
-    def generate_dynamics_line_geojson(dynamics_line: list[CommDataCouple], rtk_location: Point) -> GeoJSONCollection:
+    def generate_dynamics_line_geojson(
+        dynamics_line: list[CommDataCouple], rtk_location: Point, yaw: float = 0.0
+    ) -> GeoJSONCollection:
         """Generate a GeoJSON FeatureCollection from the live mow-progress path.
 
         Converts the raw ``list[CommDataCouple]`` (device-local x/y metres) to
@@ -340,7 +342,7 @@ class GeojsonGenerator:
         # Convert local x/y → lon/lat.  Unlike polygon boundaries the dynamics
         # line must NOT be reversed — point order encodes time (start → current).
         lonlat_coords: CoordinateList = [
-            list(GeojsonGenerator.lon_lat_delta(rtk_location, pt.x, pt.y)) for pt in dynamics_line
+            list(GeojsonGenerator.lon_lat_delta(rtk_location, pt.x, pt.y, yaw)) for pt in dynamics_line
         ]
         length, _ = GeojsonGenerator.map_object_stats(dynamics_line)
 
@@ -367,6 +369,7 @@ class GeojsonGenerator:
         rtk_location: Point,
         ub_path_hash: int = 0,
         path_pos: tuple[float, float] | None = None,
+        yaw: float = 0.0,
     ) -> GeoJSONCollection:
         """Generate a GeoJSON FeatureCollection showing the remaining mow path portion.
 
@@ -479,7 +482,7 @@ class GeojsonGenerator:
             if len(remaining) < 2:
                 continue
 
-            lonlat_coords: CoordinateList = GeojsonGenerator._convert_to_lonlat_coords(remaining, rtk_location)
+            lonlat_coords: CoordinateList = GeojsonGenerator._convert_to_lonlat_coords(remaining, rtk_location, yaw=yaw)
             length, _ = GeojsonGenerator.map_object_stats(remaining)
 
             geo_json["features"].append(
@@ -551,7 +554,11 @@ class GeojsonGenerator:
 
     @staticmethod
     def _process_map_objects(
-        hash_list: HashList, rtk_location: Point, area_names: dict[int, str], geo_json: GeoJSONCollection
+        hash_list: HashList,
+        rtk_location: Point,
+        area_names: dict[int, str],
+        geo_json: GeoJSONCollection,
+        yaw: float = 0.0,
     ) -> int:
         """Process all map objects and add them to GeoJSON.
 
@@ -598,7 +605,7 @@ class GeojsonGenerator:
                 local_coords = GeojsonGenerator._collect_frame_coordinates(frame_list)
                 total_frames += len(frame_list.data)
 
-                lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location)
+                lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location, yaw=yaw)
                 length, area = GeojsonGenerator.map_object_stats(local_coords)
 
                 feature = GeojsonGenerator._create_feature(
@@ -617,7 +624,9 @@ class GeojsonGenerator:
         return total_frames
 
     @staticmethod
-    def _process_mow_map_objects(hash_list: HashList, rtk_location: Point, geo_json: GeoJSONCollection) -> int:
+    def _process_mow_map_objects(
+        hash_list: HashList, rtk_location: Point, geo_json: GeoJSONCollection, yaw: float = 0.0
+    ) -> int:
         """Process all mow path objects and add them to GeoJSON.
 
         Each transaction_id in current_mow_path represents a separate mowing path
@@ -657,7 +666,7 @@ class GeojsonGenerator:
                     coords_by_path_type.setdefault(packet.path_type, []).extend(packet.data_couple)
 
             for path_type, local_coords in coords_by_path_type.items():
-                lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location)
+                lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location, yaw=yaw)
                 length, area = GeojsonGenerator.map_object_stats(local_coords)
 
                 feature = GeojsonGenerator._create_mow_path_feature(
@@ -715,20 +724,26 @@ class GeojsonGenerator:
 
     @staticmethod
     def _convert_to_lonlat_coords(
-        local_coords: list[CommDataCouple], rtk_location: Point, x_offset: int = 0, y_offset: int = 0
+        local_coords: list[CommDataCouple],
+        rtk_location: Point,
+        x_offset: int = 0,
+        y_offset: int = 0,
+        yaw: float = 0.0,
     ) -> CoordinateList:
         """Convert local x,y coordinates to lon,lat coordinates.
 
         Args:
             local_coords: List of coordinate dictionaries with 'x' and 'y' keys
             rtk_location: Tuple of (longitude, latitude) for rtk position
+            yaw: RTK heading in radians (rotates device frame to geographic ENU).
 
         Returns:
             List of [longitude, latitude] coordinate pairs
 
         """
         lonlat_coords: CoordinateList = [
-            list(GeojsonGenerator.lon_lat_delta(rtk_location, xy.x + x_offset, xy.y + y_offset)) for xy in local_coords
+            list(GeojsonGenerator.lon_lat_delta(rtk_location, xy.x + x_offset, xy.y + y_offset, yaw))
+            for xy in local_coords
         ]
         lonlat_coords.reverse()  # GeoJSON polygons go clockwise
         return lonlat_coords
@@ -1003,21 +1018,30 @@ class GeojsonGenerator:
             json.dump(geoJSON, json_file, indent=2)
 
     @staticmethod
-    def lon_lat_delta(rtk: Point, x: float, y: float) -> Coordinate:
-        """Add delta (in meters) to lon/lat, return new lon/lat.
+    def lon_lat_delta(rtk: Point, x: float, y: float, yaw: float = 0.0) -> Coordinate:
+        """Convert device-local ENU offset (metres) to lon/lat.
+
+        Device coordinates are in the RTK's local frame, which is rotated by
+        *yaw* radians from geographic ENU.  Applying the yaw rotation first
+        converts them to geographic East/North before the flat-earth projection.
 
         Args:
-            lon: Longitude in degrees
-            lat: Latitude in degrees
-            x: X offset in meters
-            y: Y offset in meters
+            rtk: Shapely Point(latitude_deg, longitude_deg) for the RTK origin.
+            x: X offset in metres (device local frame).
+            y: Y offset in metres (device local frame).
+            yaw: RTK heading in radians (from buffer index 13).  0 = device X
+                 aligns with geographic East.
 
         Returns:
-            Tuple of (new_longitude, new_latitude)
+            Tuple of (new_longitude, new_latitude).
 
         """
-        new_lon = rtk.y + (x / (METERS_PER_DEGREE * math.cos(math.radians(rtk.x))))
-        new_lat = rtk.x + (y / METERS_PER_DEGREE)
+        # Rotate device-local (x, y) to geographic (East, North) using the RTK yaw.
+        # Matches APK GeoTransformUtil.ENUToLLA yaw rotation (lines 60-61).
+        east = math.cos(yaw) * x - math.sin(yaw) * y
+        north = math.sin(yaw) * x + math.cos(yaw) * y
+        new_lon = rtk.y + (east / (METERS_PER_DEGREE * math.cos(math.radians(rtk.x))))
+        new_lat = rtk.x + (north / METERS_PER_DEGREE)
         return new_lon, new_lat
 
     @staticmethod
