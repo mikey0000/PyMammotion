@@ -26,8 +26,8 @@ _BLANK_BLOCK = """\
 # --- credentials: injected at build time via scripts/update_credentials.py — do not edit ---
 APP_KEY: str = ""
 APP_SECRET: str = ""
-MAMMOTION_OUATH2_CLIENT_ID: str = ""
-MAMMOTION_OUATH2_CLIENT_SECRET: str = ""
+MAMMOTION_OAUTH2_CLIENT_ID: str = ""
+MAMMOTION_OAUTH2_CLIENT_SECRET: str = ""
 # --- end credentials ---"""
 
 _ENCODED_BLOCK = """\
@@ -38,8 +38,8 @@ def _r(d: tuple[int, ...]) -> str:
 
 APP_KEY = _r({key!r})
 APP_SECRET = _r({secret!r})
-MAMMOTION_OUATH2_CLIENT_ID = _r({oauth2_client_id!r})
-MAMMOTION_OUATH2_CLIENT_SECRET = _r({oauth2_client_secret!r})
+MAMMOTION_OAUTH2_CLIENT_ID = _r({oauth2_client_id!r})
+MAMMOTION_OAUTH2_CLIENT_SECRET = _r({oauth2_client_secret!r})
 # --- end credentials ---"""
 
 

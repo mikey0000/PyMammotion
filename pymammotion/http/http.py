@@ -684,7 +684,7 @@ class MammotionHTTP:
         oauth_signature = create_oauth_signature(
             login_req=refresh_request,
             client_id=MAMMOTION_OAUTH2_CLIENT_ID,
-            client_secret=MAMMOTION_OUATH2_CLIENT_SECRET,
+            client_secret=MAMMOTION_OAUTH2_CLIENT_SECRET,
             token_endpoint="/oauth2/token",
         )
 
@@ -732,7 +732,7 @@ class MammotionHTTP:
         oauth_signature = create_oauth_signature(
             login_req=login_request,
             client_id=MAMMOTION_OAUTH2_CLIENT_ID,
-            client_secret=MAMMOTION_OUATH2_CLIENT_SECRET,
+            client_secret=MAMMOTION_OAUTH2_CLIENT_SECRET,
             token_endpoint="/oauth2/token",
         )
 
