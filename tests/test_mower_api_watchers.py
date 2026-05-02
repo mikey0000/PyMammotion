@@ -253,31 +253,34 @@ async def test_saga_hooks_installed_on_handle_init() -> None:
     assert handle.queue.on_saga_end is not None
 
 
-async def test_on_saga_start_calls_stop_continuous_subscription() -> None:
-    """The on_saga_start hook calls _stop_continuous_subscription on the handle."""
-    from unittest.mock import patch
+async def test_on_saga_start_is_noop() -> None:
+    """The on_saga_start hook is a no-op in the new poll-based design.
 
+    Poll items use skip_if_saga_active=True so no explicit subscription stop is needed.
+    """
     from pymammotion.device.handle import DeviceHandle
 
     initial = MagicMock()
     handle = DeviceHandle(device_id="dev1", device_name="Luba-SH2", initial_device=initial)
 
-    with patch.object(handle, "_stop_continuous_subscription", new_callable=AsyncMock) as mock_stop:
-        await handle.queue.on_saga_start()
-
-    mock_stop.assert_awaited_once()
+    # Should complete without error and without touching any transport or subscription state.
+    await handle.queue.on_saga_start()
 
 
-async def test_on_saga_end_calls_refire_continuous_subscription() -> None:
-    """The on_saga_end hook calls _refire_continuous_subscription on the handle."""
-    from unittest.mock import patch
+async def test_on_saga_end_sets_rearm_event() -> None:
+    """The on_saga_end hook sets _rearm_event to wake the poll loop immediately.
 
+    This lets the loop re-evaluate and send a poll right after the saga finishes
+    instead of waiting out the remainder of the poll interval.
+    """
     from pymammotion.device.handle import DeviceHandle
 
     initial = MagicMock()
     handle = DeviceHandle(device_id="dev1", device_name="Luba-SH3", initial_device=initial)
 
-    with patch.object(handle, "_refire_continuous_subscription", new_callable=AsyncMock) as mock_refire:
-        await handle.queue.on_saga_end()
+    handle._rearm_event.clear()  # noqa: SLF001
+    assert not handle._rearm_event.is_set()  # noqa: SLF001
 
-    mock_refire.assert_awaited_once()
+    await handle.queue.on_saga_end()
+
+    assert handle._rearm_event.is_set()  # noqa: SLF001

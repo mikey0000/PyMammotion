@@ -495,6 +495,7 @@ async def test_send_command_with_args_prefer_ble_uses_ble_transport() -> None:
 
     ble.send.assert_awaited_once_with(fake_bytes, iot_id="")
     mqtt.send.assert_not_awaited()
+    await handle.stop()
 
 
 async def test_send_command_with_args_uses_connected_ble_over_mqtt() -> None:
@@ -519,6 +520,7 @@ async def test_send_command_with_args_uses_connected_ble_over_mqtt() -> None:
 
     ble.send.assert_awaited_once_with(fake_bytes, iot_id="")
     mqtt.send.assert_not_awaited()
+    await handle.stop()
 
 
 async def test_send_command_with_args_uses_mqtt_when_ble_disconnected() -> None:
@@ -669,21 +671,19 @@ async def test_send_command_and_wait_stamps_user_command_on_handle() -> None:
     assert time.monotonic() - handle._last_user_command_monotonic < 5.0  # noqa: SLF001
 
 
-async def test_request_iot_sync_continuous_does_not_stamp_user_command() -> None:
-    """request_iot_sync_continuous must NOT call record_user_command.
+async def test_internal_subscription_does_not_stamp_user_command() -> None:
+    """Internal subscription sends must NOT update _last_user_command_monotonic.
 
-    If it did, internal refires would lock the activity window into the short
-    interval forever, preventing the docked long window from ever kicking in.
+    If _send_one_shot_report stamped the timestamp, the poll loop would
+    never enter long-idle mode.
     """
-    client = MammotionClient()
-    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-NoStamp")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     await handle.add_transport(mqtt)
-    await client._device_registry.register(handle)
 
     handle._last_user_command_monotonic = 0.0  # noqa: SLF001
 
-    await client.request_iot_sync_continuous("Luba-NoStamp")
+    await handle._send_one_shot_report()  # noqa: SLF001
 
     assert handle._last_user_command_monotonic == 0.0  # noqa: SLF001
 
@@ -736,168 +736,54 @@ async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> Non
 
 
 # ---------------------------------------------------------------------------
-# handle._activity_window() — silence-window selection tests
+# handle._poll_interval() — poll interval selection tests
 # ---------------------------------------------------------------------------
-
-import time as _time  # noqa: E402
 
 from pymammotion.device.handle import (  # noqa: E402
     _KEEP_ALIVE_BLE_INTERVAL,
-    _KEEP_ALIVE_IDLE_INTERVAL,
-    _KEEP_ALIVE_INTERVAL,
-    _KEEP_ALIVE_LONG_IDLE_INTERVAL,
-    _KEEP_ALIVE_MOWING_INTERVAL,
-    _KEEP_ALIVE_USER_CMD_WINDOW,
+    _POLL_INTERVAL_IDLE,
+    _POLL_INTERVAL_MOWING,
     _RATE_LIMITED_BACKOFF,
 )
 
 
-def _make_handle_for_window(
-    transport_type: TransportType | None,
-    *,
-    battery_val: int = 75,
-    charge_state: int = 0,
-) -> DeviceHandle:
-    """Build a handle with a known device state for _activity_window tests."""
-    handle = make_handle("dev1", "Luba-AW")
-    handle.snapshot.raw.report_data.dev.battery_val = battery_val
-    handle.snapshot.raw.report_data.dev.charge_state = charge_state
+def _make_handle_for_poll(transport_type: TransportType | None) -> DeviceHandle:
+    handle = make_handle("dev1", "Luba-Poll")
     handle.snapshot.raw.report_data.dev.sys_status = 0
     if transport_type is not None:
         t = _make_connected_transport(transport_type)
         handle._transports[transport_type] = t  # noqa: SLF001
-    # Expire the recent-command threshold so the user-command branch doesn't fire.
-    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
     return handle
 
 
-async def test_activity_window_ble_uses_short_window() -> None:
-    """BLE transport always returns the BLE keep-alive window (20 s)."""
-    handle = _make_handle_for_window(TransportType.BLE)
-    assert handle._activity_window() == _KEEP_ALIVE_BLE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_window_no_transport_uses_short_window() -> None:
-    """No connected transport → fall back to short window."""
-    handle = _make_handle_for_window(transport_type=None)
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_window_mowing_uses_mowing_interval() -> None:
-    """Mowing/returning on MQTT (no recent command) uses the 5-minute mowing window."""
+async def test_poll_interval_mowing_returns_fifteen_minutes() -> None:
     from pymammotion.utility.constant import WorkMode
 
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
+    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
-    assert handle._activity_window() == _KEEP_ALIVE_MOWING_INTERVAL  # noqa: SLF001
+    assert handle._poll_interval() == _POLL_INTERVAL_MOWING  # noqa: SLF001
 
 
-async def test_activity_window_recent_command_overrides_mowing_to_short() -> None:
-    """A recent user command overrides even the mowing window with the short 180 s window."""
+async def test_poll_interval_returning_returns_fifteen_minutes() -> None:
     from pymammotion.utility.constant import WorkMode
 
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
-    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
-    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
+    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_RETURNING.value
+    assert handle._poll_interval() == _POLL_INTERVAL_MOWING  # noqa: SLF001
 
 
-async def test_activity_window_mqtt_idle_uses_idle_window() -> None:
-    """MQTT with no recent command and not fully docked uses the 10-minute idle window."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0)
-    assert handle._activity_window() == _KEEP_ALIVE_IDLE_INTERVAL  # noqa: SLF001
+async def test_poll_interval_idle_returns_thirty_minutes() -> None:
+    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = 0  # idle
+    assert handle._poll_interval() == _POLL_INTERVAL_IDLE  # noqa: SLF001
 
 
-async def test_activity_window_mqtt_full_battery_docked_uses_long_window() -> None:
-    """Full battery + docked on MQTT selects the 30-minute window."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
-    assert handle._activity_window() == _KEEP_ALIVE_LONG_IDLE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_window_recent_command_uses_short_window() -> None:
-    """A recent user command overrides the idle window with the short window."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
-    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_window_rate_limited_idle_applies_backoff() -> None:
-    """Rate-limited on MQTT always returns the 12-hour backoff."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=75, charge_state=0)
-    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
-    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
-
-
-async def test_activity_window_rate_limited_docked_uses_backoff_not_natural() -> None:
-    """Rate-limited while fully docked: 12-hour backoff wins, not the natural 30-min docked window."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
-    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
-    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
-
-
-async def test_activity_window_rate_limited_overrides_recent_command() -> None:
-    """Rate-limit overrides recent user command — no point retrying aggressively when cloud is throttling."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
-    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
-    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
-    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
-
-
-async def test_activity_window_rate_limited_mowing_uses_backoff() -> None:
-    """Rate-limited while mowing: 12-hour backoff wins over the mowing interval."""
-    from pymammotion.utility.constant import WorkMode
-
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
-    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
-    handle._transports[TransportType.CLOUD_ALIYUN].is_rate_limited = True  # noqa: SLF001
-    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
-
-
-async def test_activity_window_ble_bypasses_rate_limit() -> None:
-    """BLE transport returns the BLE window regardless of rate-limit state (BLE is never rate-limited)."""
-    handle = _make_handle_for_window(TransportType.BLE)
-    # Even if someone set is_rate_limited on the BLE mock, the BLE branch returns early.
-    handle._transports[TransportType.BLE].is_rate_limited = True  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_BLE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_window_rate_limit_clears_to_docked_window() -> None:
-    """Once the transport's rate-limit expires, the natural docked window is restored."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
-    transport = handle._transports[TransportType.CLOUD_ALIYUN]  # noqa: SLF001
-    transport.is_rate_limited = True
-    assert handle._activity_window() == _RATE_LIMITED_BACKOFF  # noqa: SLF001
-    transport.is_rate_limited = False
-    assert handle._activity_window() == _KEEP_ALIVE_LONG_IDLE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_window_command_expiry_reverts_to_docked() -> None:
-    """After _KEEP_ALIVE_USER_CMD_WINDOW elapses the window reverts from short to docked."""
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN, battery_val=100, charge_state=1)
-
-    # Fresh command → short window.
-    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
-
-    # Expired command → long docked window.
-    handle._last_user_command_monotonic = _time.monotonic() - (_KEEP_ALIVE_USER_CMD_WINDOW + 1)  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_LONG_IDLE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_window_command_expiry_reverts_to_mowing_interval() -> None:
-    """After _KEEP_ALIVE_USER_CMD_WINDOW elapses while mowing, window reverts to 5-minute mowing interval."""
-    from pymammotion.utility.constant import WorkMode
-
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
-    handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
-
-    # Fresh command → short window (overrides mowing).
-    handle._last_user_command_monotonic = _time.monotonic()  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
-
-    # Expired command + mowing → mowing interval (not idle, not docked).
-    handle._last_user_command_monotonic = _time.monotonic() - (_KEEP_ALIVE_USER_CMD_WINDOW + 1)  # noqa: SLF001
-    assert handle._activity_window() == _KEEP_ALIVE_MOWING_INTERVAL  # noqa: SLF001
+async def test_poll_interval_docked_returns_thirty_minutes() -> None:
+    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = 0
+    handle.snapshot.raw.report_data.dev.battery_val = 100
+    handle.snapshot.raw.report_data.dev.charge_state = 1
+    assert handle._poll_interval() == _POLL_INTERVAL_IDLE  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
@@ -905,64 +791,104 @@ async def test_activity_window_command_expiry_reverts_to_mowing_interval() -> No
 # ---------------------------------------------------------------------------
 
 
-async def test_activity_window_mqtt_reported_offline_uses_short_window() -> None:
-    """mqtt_reported_offline=True makes active_transport() raise → falls back to short window."""
-    from pymammotion.transport.base import TransportAvailability
-
-    handle = _make_handle_for_window(TransportType.CLOUD_ALIYUN)
-    # Mark MQTT as cloud-reported-offline (no BLE registered).
-    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED, mqtt_reported_offline=True)
-    assert handle._activity_window() == _KEEP_ALIVE_INTERVAL  # noqa: SLF001
-
-
-async def test_activity_loop_refires_subscription_on_command_timeout() -> None:
-    """A heartbeat timeout means the cloud-side report subscription has lapsed.
-
-    The loop must re-fire ``request_iot_sys RPT_START`` to revive the stream;
-    breaking out would leave the cloud subscription dead until the device
-    reconnects.
-    """
-    from pymammotion.transport.base import CommandTimeoutError
-
-    handle = make_handle("dev1", "Luba-CT")
+async def test_poll_loop_sends_after_silence() -> None:
+    """After the interval elapses without incoming data, the loop sends a one-shot poll."""
+    handle = make_handle("dev1", "Luba-Poll")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     await handle.add_transport(mqtt)
 
-    refire_mock = AsyncMock()
+    one_shot_mock = AsyncMock()
 
-    async def fake_send_and_wait(**_: object) -> None:
-        # Stop the loop on the next iteration so the test terminates.
+    async def _send_and_stop() -> None:
         handle._stopping = True  # noqa: SLF001
-        raise CommandTimeoutError("toapp_report_data", 1)
+        await one_shot_mock()
 
     with (
         patch.object(handle, "_sleep_or_rearm", AsyncMock(return_value=False)),
-        patch.object(handle, "_activity_window", return_value=0.0),
-        patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=fake_send_and_wait)),
-        patch.object(handle, "_refire_continuous_subscription", refire_mock),
+        patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
         await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
 
-    refire_mock.assert_awaited_once()
+    one_shot_mock.assert_awaited_once()
 
 
-async def test_activity_loop_exits_on_device_offline_exception() -> None:
-    """_activity_loop must exit when the cloud reports the device offline."""
-    from pymammotion.aliyun.exceptions import DeviceOfflineException
-
-    handle = make_handle("dev1", "Luba-DOf")
+async def test_poll_loop_rate_limited_no_ble_backs_off() -> None:
+    """When MQTT is rate-limited and no BLE is connected, the loop backs off."""
+    handle = make_handle("dev1", "Luba-RL3")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    mqtt.is_rate_limited = True
     await handle.add_transport(mqtt)
+
+    sleep_seconds: list[float] = []
+
+    async def _record_sleep(s: float) -> bool:
+        sleep_seconds.append(s)
+        handle._stopping = True  # noqa: SLF001
+        return False
+
+    one_shot_mock = AsyncMock()
+
+    with (
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_record_sleep)),
+        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+    ):
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
+
+    one_shot_mock.assert_not_awaited()
+    assert any(s >= _RATE_LIMITED_BACKOFF for s in sleep_seconds)
+
+
+async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
+    """MQTT rate-limited but BLE is connected — poll still goes out (via BLE)."""
+    handle = make_handle("dev1", "Luba-RLBLE")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    mqtt.is_rate_limited = True
+    ble = _make_connected_transport(TransportType.BLE)
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    one_shot_mock = AsyncMock()
+
+    async def _send_and_stop() -> None:
+        handle._stopping = True  # noqa: SLF001
+        await one_shot_mock()
 
     with (
         patch.object(handle, "_sleep_or_rearm", AsyncMock(return_value=False)),
-        patch.object(handle, "_activity_window", return_value=0.0),
-        patch.object(handle.broker, "send_and_wait", AsyncMock(side_effect=DeviceOfflineException("msg", "iot-id"))),
+        patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
-        task = asyncio.create_task(handle._mqtt_activity_loop())
-        await asyncio.wait_for(task, timeout=2.0)
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
+        await handle.stop()
 
-    assert task.done() and not task.cancelled()
+    one_shot_mock.assert_awaited_once()
+
+
+async def test_poll_loop_skips_during_saga() -> None:
+    """While a saga is active the loop defers the poll."""
+    handle = make_handle("dev1", "Luba-Saga")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
+
+    one_shot_mock = AsyncMock()
+    sleep_count = 0
+
+    async def _counting_sleep(s: float) -> bool:
+        nonlocal sleep_count
+        sleep_count += 1
+        handle._stopping = True  # noqa: SLF001
+        return False
+
+    from pymammotion.messaging.command_queue import DeviceCommandQueue
+
+    with (
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
+        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+        patch.object(type(handle.queue), "is_saga_active", new_callable=lambda: property(lambda _: True)),
+    ):
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
+
+    one_shot_mock.assert_not_awaited()
+    assert sleep_count >= 1
 
 
 async def test_update_availability_restarts_loop_on_reconnect() -> None:
@@ -1000,3 +926,84 @@ async def test_send_raw_sets_rate_limited_on_too_many_requests() -> None:
 
     await handle.send_raw(b"\x00")
     mqtt.set_rate_limited.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# BLE-connect failure → MQTT fallback (regression: ESPHome proxy out of slots)
+# ---------------------------------------------------------------------------
+
+
+async def test_send_raw_ble_connect_failure_falls_back_to_mqtt() -> None:
+    """When BLE.connect() raises BLEUnavailableError but MQTT is registered,
+    send_raw must route the payload through MQTT instead of dropping it.
+
+    Reproduces the production symptom (HA log 2026-05-02): ESPHome BLE proxy
+    out of connection slots → ``BLEUnavailableError`` → request silently lost.
+    """
+    from pymammotion.transport.base import BLEUnavailableError
+
+    handle = make_handle("dev1", "Luba-FB-MQTT")
+    handle._prefer_ble = True  # noqa: SLF001 — force BLE-first path
+
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.connect = AsyncMock(side_effect=BLEUnavailableError("proxy out of slots"))
+
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+
+    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+
+    await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
+
+    # Must have attempted BLE reconnect (and failed), then sent via MQTT.
+    ble.connect.assert_awaited_once()
+    mqtt.send.assert_awaited_once_with(b"\xAB\xCD", iot_id="")
+    ble.send.assert_not_awaited()
+
+
+async def test_send_raw_ble_connect_failure_no_mqtt_propagates() -> None:
+    """When BLE.connect() fails AND no MQTT is registered, send_raw must raise."""
+    import pytest
+
+    from pymammotion.transport.base import BLEUnavailableError
+
+    handle = make_handle("dev1", "Luba-NoMQTT")
+    handle._prefer_ble = True  # noqa: SLF001
+
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.connect = AsyncMock(side_effect=BLEUnavailableError("proxy out of slots"))
+    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
+
+    with pytest.raises(BLEUnavailableError):
+        await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
+
+
+async def test_send_raw_ble_connect_failure_mqtt_offline_propagates() -> None:
+    """When BLE.connect() fails AND MQTT is reported offline, send_raw must raise."""
+    import pytest
+
+    from pymammotion.state.device_state import DeviceAvailability
+    from pymammotion.transport.base import BLEUnavailableError
+
+    handle = make_handle("dev1", "Luba-MQTTOff")
+    handle._prefer_ble = True  # noqa: SLF001
+    # Mark MQTT as cloud-reported-offline so it's registered but unusable.
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.connect = AsyncMock(side_effect=BLEUnavailableError("proxy out of slots"))
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+
+    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+
+    with pytest.raises(BLEUnavailableError):
+        await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
+    mqtt.send.assert_not_awaited()

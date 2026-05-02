@@ -2,6 +2,11 @@
 
 Usage:
     EMAIL=your@email.com PASSWORD=yourpass uv run python examples/dev_console.py
+    EMAIL=your@email.com PASSWORD=yourpass uv run python examples/dev_console.py --listen
+
+Flags:
+    -l / --listen   Connect and receive messages without sending any outbound polls.
+                    Useful for passive observation or debugging device-initiated traffic.
 
 Output files (written to examples/dev_output/):
     state_{device_name}.json        Full device state (mower or RTK), updated on every
@@ -15,12 +20,14 @@ Available in the IPython REPL:
     send_and_wait(name, cmd, field) Send and block until the response arrives
     fetch_rtk(name)                 Fetch LoRa version for an RTK base station
     dump(name)                      Force-write state_{name}.json right now
+    listen(on=True)                 Stop/resume MQTT polling on all devices
     console                         DevConsole instance
     loop                            The main asyncio event loop
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -489,6 +496,24 @@ class DevConsole:
         state = "ON" if on else "OFF"
         _LOGGER.info("Terminal debug logging: [bold]%s[/bold]", state)
 
+    def listen(self, on: bool = True) -> None:
+        """Toggle listen-only mode — stop or resume the MQTT poll loop on all devices.
+
+        In listen-only mode the handle still receives and processes every incoming
+        message; it just never sends outbound polls.  Useful for passive observation.
+
+        Example:
+            listen()        # disable polling (listen only)
+            listen(False)   # re-enable polling
+        """
+        for handle in self.mammotion.device_registry.all_devices:
+            if on:
+                asyncio.run_coroutine_threadsafe(handle.stop_polling(), self.loop).result(timeout=5)
+            else:
+                asyncio.run_coroutine_threadsafe(handle.start(), self.loop).result(timeout=5)
+        state = "ON (polling stopped)" if on else "OFF (polling resumed)"
+        _LOGGER.info("Listen-only mode: [bold]%s[/bold]", state)
+
     def status(self) -> None:
         """Print a summary of connected devices and transport health."""
         print(f"\n{'Device':<30}  {'MQTT':>6}  State file")
@@ -509,7 +534,7 @@ class DevConsole:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-async def _main() -> None:
+async def _main(args: argparse.Namespace) -> None:
     _setup_logging()
 
     saved_email, saved_password = _load_credentials()
@@ -529,6 +554,12 @@ async def _main() -> None:
 
     dev.hook_all_devices()
     dev.hook_all_rtk_devices()
+
+    if args.listen:
+        for handle in mammotion.device_registry.all_devices:
+            await handle.stop_polling()
+        _LOGGER.info("[bold yellow]Listen-only mode[/bold yellow] — MQTT polling disabled on all devices")
+
     dev.log_mqtt_credentials()
     dev.dump_all()
 
@@ -552,14 +583,17 @@ async def _main() -> None:
         "status": dev.status,
         "creds": dev.log_mqtt_credentials,
         "debug": dev.debug,
+        "listen": dev.listen,
         "console": dev,
         "loop": main_loop,
         "asyncio": asyncio,
     }
 
+    listen_note = "  [bold yellow]⚡ Listen-only mode — polling disabled[/bold yellow]\n\n" if args.listen else ""
     _rich_console.print(
         "\n[bold green][PyMammotion dev console][/bold green]\n"
         f"  [cyan]devices[/cyan]  = {device_names}\n\n"
+        f"{listen_note}"
         "  [cyan]send(name, cmd, **kwargs)[/cyan]                          — queue a command (blocking)\n"
         "  [cyan]send_and_wait(name, cmd, expected_field, **kwargs)[/cyan]  — send and block for response\n"
         "  [cyan]sync_map(name)[/cyan]                                     — run a full MapFetchSaga (blocking)\n"
@@ -569,6 +603,7 @@ async def _main() -> None:
         "  [cyan]status()[/cyan]                                           — show connection status\n"
         "  [cyan]creds()[/cyan]                                            — print all MQTT credentials\n"
         "  [cyan]debug(on=True)[/cyan]                                     — toggle DEBUG logging on terminal\n"
+        "  [cyan]listen(on=True)[/cyan]                                    — stop/resume MQTT polling on all devices\n"
         f"  [cyan]loop[/cyan]                                               — main asyncio event loop\n"
         f"\n  Output → [dim]{OUTPUT_DIR}[/dim]\n"
     )
@@ -584,7 +619,14 @@ async def _main() -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="PyMammotion interactive dev console")
+    parser.add_argument(
+        "-l", "--listen",
+        action="store_true",
+        help="listen-only mode: connect and receive messages without sending any polls",
+    )
+    _args = parser.parse_args()
     try:
-        asyncio.run(_main())
+        asyncio.run(_main(_args))
     except KeyboardInterrupt:
         pass

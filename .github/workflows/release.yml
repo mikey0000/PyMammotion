@@ -39,8 +39,13 @@ jobs:
             exit 1
           fi
 
-      - name: Inject Aliyun credentials
-        run: uv run python scripts/update_credentials.py --app-key "${{ secrets.ALIYUN_APP_KEY }}" --app-secret "${{ secrets.ALIYUN_APP_SECRET }}"
+      - name: Inject credentials
+        run: |
+          uv run python scripts/update_credentials.py \
+            --app-key "${{ secrets.ALIYUN_APP_KEY }}" \
+            --app-secret "${{ secrets.ALIYUN_APP_SECRET }}" \
+            --oauth2-client-id "${{ secrets.MAMMOTION_OAUTH2_CLIENT_ID }}" \
+            --oauth2-client-secret "${{ secrets.MAMMOTION_OAUTH2_CLIENT_SECRET }}"
 
       - name: Build package
         run: uv build

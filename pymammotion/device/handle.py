@@ -20,6 +20,7 @@ from pymammotion.proto import LubaMsg, RptAct, RptInfoType
 from pymammotion.state.device_state import DeviceAvailability, DeviceConnectionState, DeviceSnapshot, DeviceStateMachine
 from pymammotion.transport.base import (
     AuthError,
+    BLEUnavailableError,
     CommandTimeoutError,
     ConcurrentRequestError,
     EventBus,
@@ -36,24 +37,18 @@ from pymammotion.utility.device_type import DeviceType
 
 _T = TypeVar("_T")
 
-#: Keep-alive interval for BLE and for the recent-user-command window (180 s).
+#: Keep-alive interval for BLE heartbeats.
 _KEEP_ALIVE_BLE_INTERVAL: float = 20.0
-_KEEP_ALIVE_INTERVAL: float = 180.0  # 3 minutes
-#: Keep-alive interval while the mower is actively mowing or returning to dock.
-#: Used once the recent-command window has expired.
-_KEEP_ALIVE_MOWING_INTERVAL: float = 600.0  # 10 minutes
-#: Extended keep-alive interval for MQTT when the device is docked/paused/idle.
-_KEEP_ALIVE_IDLE_INTERVAL: float = 900.0  # 15 minutes
-#: How long after the last user-initiated command to hold the short (10 minute) window.
-_KEEP_ALIVE_USER_CMD_WINDOW: float = 600.0  # 10 minutes
-#: Keep-alive interval when the battery is at 100 % and the mower is on the dock.
-_KEEP_ALIVE_LONG_IDLE_INTERVAL: float = 1800.0  # 30 minutes
-#: Activity-loop backoff window while the active transport is rate-limited.
+#: One-shot poll interval while mowing or returning to dock.
+_POLL_INTERVAL_MOWING: float = 900.0   # 15 minutes
+#: One-shot poll interval when idle, docked, or paused.
+_POLL_INTERVAL_IDLE: float = 1800.0   # 30 minutes
+#: Activity-loop backoff when MQTT is rate-limited and no BLE is available.
 _RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
 #: Max consecutive BLE heartbeat failures before the loop gives up on BLE and falls back to MQTT.
 _BLE_HEARTBEAT_FAIL_LIMIT: int = 30
-#: Channels sent in the continuous report subscription (RPT_START / RPT_STOP).
-_CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
+#: Channels sent in one-shot (count=1) polls.
+_REPORT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
     RptInfoType.RIT_DEV_LOCAL,
     RptInfoType.RIT_WORK,
@@ -64,8 +59,6 @@ _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
 ]
 #: ``sync_type`` for BLE heartbeats (matches APK ``sendBlueToothDeviceSync(2, ...)``).
 _KEEP_ALIVE_SYNC_TYPE_BLE: int = 2
-#: ``sync_type`` for MQTT/IoT heartbeats.
-_KEEP_ALIVE_SYNC_TYPE_MQTT: int = 3
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -206,6 +199,7 @@ class DeviceHandle:
         # hot path doesn't pay an isinstance check.
         self._reducer: StateReducer = get_state_reducer(device_name)
         self._error_bus: EventBus[Exception] = EventBus()
+        self._map_updated_bus: EventBus[None] = EventBus()
         self._readiness_checker: ReadinessChecker | None = readiness_checker
         self._stopping: bool = False
         self._keep_alive_task: asyncio.Task[None] | None = None
@@ -215,8 +209,7 @@ class DeviceHandle:
         self._last_send_monotonic: dict[TransportType, float] = {}
         #: monotonic timestamp of the last user-initiated command (updated via
         #: ``record_user_command``; heartbeats and internal sends do NOT update
-        #: this).  Used by ``_activity_window`` to snap back to the short window
-        #: for ``_KEEP_ALIVE_LONG_IDLE_THRESHOLD`` seconds after any user action.
+        #: this).  Used to wake the poll loop early via ``_rearm_event``.
         self._last_user_command_monotonic: float = time.monotonic()
         #: Set by ``record_user_command`` to interrupt a long sleep and re-arm
         #: the activity loop immediately with the short window.
@@ -234,16 +227,12 @@ class DeviceHandle:
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
 
-        # Saga hooks: pause the continuous report stream during exclusive sagas
-        # so incoming data doesn't collide with saga message handling.
+        # Saga hooks: poll items use skip_if_saga_active=True; no explicit stop needed.
         async def _on_saga_start() -> None:
-            with contextlib.suppress(Exception):
-                await self._stop_continuous_subscription()
+            pass  # poll items use skip_if_saga_active=True; no explicit stop needed
 
         async def _on_saga_end() -> None:
-            with contextlib.suppress(Exception):
-                await self._refire_continuous_subscription()
-            self._rearm_event.set()
+            self._rearm_event.set()  # wake poll loop to re-evaluate after saga
 
         self.queue.on_saga_start = _on_saga_start
         self.queue.on_saga_end = _on_saga_end
@@ -388,6 +377,10 @@ class DeviceHandle:
 
         # 5. Route to broker for request/response correlation
         await self.broker.on_message(luba_msg)
+
+        # 6. Emit map_updated when the device sends a fresh area-name list.
+        if luba_msg.nav is not None and luba_msg.nav.toapp_all_hash_name is not None:
+            await self._map_updated_bus.emit(None)
 
     async def on_status_message(self, msg: ThingStatusMessage) -> None:
         """Store status_properties on the device model from a thing/status message."""
@@ -634,6 +627,21 @@ class DeviceHandle:
         """Subscribe to non-protobuf thing/events messages. Returns RAII Subscription handle."""
         return self._event_bus.subscribe(handler)
 
+    def subscribe_map_updated(
+        self,
+        handler: Callable[[], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to map-updated events.
+
+        Fires when ``toapp_all_hash_name`` is received from the device or when
+        a ``MapFetchSaga`` completes successfully.  Use this to rebuild map-derived
+        UI (e.g. area switches) without reacting to every telemetry tick.
+        """
+        async def _wrap(_: None) -> None:
+            await handler()
+
+        return self._map_updated_bus.subscribe(_wrap)
+
     async def start(self) -> None:
         """Start the command queue processor and the MQTT activity loop.
 
@@ -661,6 +669,19 @@ class DeviceHandle:
             _logger.debug("restart_keep_alive [%s]: restarting MQTT activity loop", self.device_name)
             self._keep_alive_task = asyncio.get_running_loop().create_task(self._mqtt_activity_loop())
 
+    async def stop_polling(self) -> None:
+        """Cancel the MQTT poll loop, leaving the queue and transports running.
+
+        The handle stays fully operational for receiving messages — state updates,
+        saga results, and user-initiated sends all continue to work.  No outbound
+        polls are sent until ``start()`` is called again.
+        """
+        if self._keep_alive_task is not None and not self._keep_alive_task.done():
+            self._keep_alive_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._keep_alive_task
+        self._keep_alive_task = None
+
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
         self._stopping = True
@@ -679,12 +700,11 @@ class DeviceHandle:
         self._transports.clear()
 
     def record_user_command(self) -> None:
-        """Stamp the user-command timestamp and re-arm the activity loop for the short window.
+        """Stamp the user-command timestamp and wake the poll loop for early re-evaluation.
 
         Call this whenever a user-initiated command is dispatched so that
-        ``_activity_window`` returns ``_KEEP_ALIVE_INTERVAL`` for the next
-        ``_KEEP_ALIVE_LONG_IDLE_THRESHOLD`` seconds, and any in-progress long
-        sleep is interrupted immediately.
+        ``_rearm_event`` interrupts any in-progress sleep and the loop
+        can re-evaluate immediately.
         """
         self._last_user_command_monotonic = time.monotonic()
         self._rearm_event.set()
@@ -701,46 +721,6 @@ class DeviceHandle:
             return self.state_machine.current.raw.report_data.dev.sys_status in NO_REQUEST_MODES
         except (AttributeError, TypeError):
             return False
-
-    def _mqtt_activity_window(self, mqtt: Transport) -> float:
-        """Return the MQTT silence window for the current device state.
-
-        Used exclusively by ``_mqtt_activity_loop``; BLE timing is handled by
-        ``_ble_activity_loop`` independently.
-
-        Priority (highest first):
-          1. Rate-limited              → 12 h backoff.
-          2. Recent user command       → 3 min for 10 min after last command.
-          3. Mowing / returning        → 10 min.
-          4. Full battery + docked     → 30 min.
-          5. Default (idle/paused)     → 15 min.
-        """
-        if mqtt.is_rate_limited:
-            return _RATE_LIMITED_BACKOFF
-        if time.monotonic() - self._last_user_command_monotonic < _KEEP_ALIVE_USER_CMD_WINDOW:
-            return _KEEP_ALIVE_INTERVAL
-        raw = self.state_machine.current.raw
-        report_data = getattr(raw, "report_data", None)
-        sys_status = getattr(getattr(report_data, "dev", None), "sys_status", 0) if report_data else 0
-        if sys_status in MOWING_ACTIVE_MODES:
-            return _KEEP_ALIVE_MOWING_INTERVAL
-        if self._is_full_battery_docked():
-            return _KEEP_ALIVE_LONG_IDLE_INTERVAL
-        return _KEEP_ALIVE_IDLE_INTERVAL
-
-    def _activity_window(self) -> float:
-        """Return the silence window for the current active transport.
-
-        Retained for backwards-compatibility with tests; the loops now call
-        ``_mqtt_activity_window`` directly.
-        """
-        try:
-            transport = self.active_transport()
-        except NoTransportAvailableError:
-            return _KEEP_ALIVE_INTERVAL
-        if transport.transport_type == TransportType.BLE:
-            return _KEEP_ALIVE_BLE_INTERVAL
-        return self._mqtt_activity_window(transport)
 
     async def _sleep_or_rearm(self, seconds: float) -> bool:
         """Sleep for *seconds*, returning ``True`` early if ``_rearm_event`` fires."""
@@ -759,29 +739,37 @@ class DeviceHandle:
                 await t
         return rearm_t in done
 
-    async def _refire_continuous_subscription(self) -> None:
-        """Send ``request_iot_sys RPT_START`` to resume the continuous report stream.
+    def _poll_interval(self) -> float:
+        """Return the one-shot poll interval based on current device state.
 
-        Bypasses the user-command timestamp so the activity window is not affected.
+        Returns _POLL_INTERVAL_MOWING (15 min) when mowing or returning,
+        _POLL_INTERVAL_IDLE (30 min) otherwise.
+        """
+        try:
+            sys_status = self.state_machine.current.raw.report_data.dev.sys_status
+            if sys_status in MOWING_ACTIVE_MODES:
+                return _POLL_INTERVAL_MOWING
+        except (AttributeError, TypeError):
+            pass
+        return _POLL_INTERVAL_IDLE
+
+    async def _send_one_shot_report(self) -> None:
+        """Enqueue a one-shot ``request_iot_sys(count=1)`` data refresh.
+
+        Routes via the best available transport — BLE if connected and preferred,
+        MQTT otherwise — matching the same transport-priority rules as user commands.
         """
         cmd_bytes = self.commands.request_iot_sys(
             rpt_act=RptAct.RPT_START,
-            rpt_info_type=_CONTINUOUS_STREAM_CHANNELS,
-            timeout=10000,
-            period=1000,
-            no_change_period=4000,
-            count=0,
-        )
-        await self.send_raw(cmd_bytes)
-
-    async def _stop_continuous_subscription(self) -> None:
-        """Send ``request_iot_sys RPT_STOP`` to pause the continuous report stream."""
-        cmd_bytes = self.commands.request_iot_sys(
-            rpt_act=RptAct.RPT_STOP,
-            rpt_info_type=_CONTINUOUS_STREAM_CHANNELS,
+            rpt_info_type=_REPORT_CHANNELS,
+            timeout=10_000,
             count=1,
         )
-        await self.send_raw(cmd_bytes)
+
+        async def _send() -> None:
+            await self.send_raw(cmd_bytes)
+
+        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _ble_activity_loop(self) -> None:
         """BLE-specific heartbeat loop — runs independently of the MQTT loop.
@@ -839,174 +827,110 @@ class DeviceHandle:
                 continue
 
             cmd_bytes = self.commands.send_todev_ble_sync(sync_type=_KEEP_ALIVE_SYNC_TYPE_BLE)
-            try:
+            _ble_ref = ble
+
+            # Stamp before enqueue so the loop doesn't spin re-enqueueing while the
+            # heartbeat task is waiting in the queue (queue.put is non-blocking).
+            self._last_send_monotonic[TransportType.BLE] = time.monotonic()
+
+            async def _ble_heartbeat(_t: Transport = _ble_ref, _c: bytes = cmd_bytes) -> None:
                 self._last_send_monotonic[TransportType.BLE] = time.monotonic()
-                await ble.send_heartbeat(cmd_bytes, iot_id=self.iot_id)
-                self._ble_heartbeat_failures = 0
-            except TransportError:
-                self._ble_heartbeat_failures += 1
-                _logger.debug(
-                    "ble_loop [%s]: send failed (attempt %d/%d) — marking disconnected",
-                    self.device_name,
-                    self._ble_heartbeat_failures,
-                    _BLE_HEARTBEAT_FAIL_LIMIT,
-                )
-                self.update_availability(TransportType.BLE, TransportAvailability.DISCONNECTED)
-            except Exception:  # noqa: BLE001
-                self._ble_heartbeat_failures += 1
-                _logger.debug("ble_loop [%s]: unexpected error in heartbeat", self.device_name, exc_info=True)
-                self.update_availability(TransportType.BLE, TransportAvailability.DISCONNECTED)
+                try:
+                    await _t.send_heartbeat(_c, iot_id=self.iot_id)
+                    self._ble_heartbeat_failures = 0
+                except TransportError:
+                    self._ble_heartbeat_failures += 1
+                    _logger.debug(
+                        "ble_loop [%s]: send failed (attempt %d/%d) — marking disconnected",
+                        self.device_name,
+                        self._ble_heartbeat_failures,
+                        _BLE_HEARTBEAT_FAIL_LIMIT,
+                    )
+                    self.update_availability(TransportType.BLE, TransportAvailability.DISCONNECTED)
+                except Exception:  # noqa: BLE001
+                    self._ble_heartbeat_failures += 1
+                    _logger.debug("ble_loop [%s]: unexpected error in heartbeat", self.device_name, exc_info=True)
+                    self.update_availability(TransportType.BLE, TransportAvailability.DISCONNECTED)
+
+            await self.queue.enqueue(_ble_heartbeat, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _mqtt_activity_loop(self) -> None:
-        """MQTT keep-alive and report-subscription loop.
+        """Periodic one-shot report-poll loop.
 
-        Fires when MQTT inbound+outbound traffic has been idle for
-        ``_mqtt_activity_window()`` seconds.  Yields gracefully while BLE is
-        connected (BLE handles the device comms; MQTT only needs its TCP-level
-        keepalive from the broker, not an application-level heartbeat).
+        Sends ``request_iot_sys(count=1)`` via the best available transport
+        (BLE if connected and preferred, MQTT otherwise) once the device has
+        been silent for longer than the poll interval:
 
-        On fire:
-        * For long idle (> 10 min): sends ``report_cfg(count=1)`` — one call
-          serves as both the keepalive and a fresh data refresh.
-        * Otherwise: sends ``ble_sync(3)`` + waits for ``toapp_report_data``
-          to confirm the cloud report subscription is still live.
-        * ``record_user_command()`` interrupts any in-progress sleep so the
-          short window activates immediately.
+        * ``_POLL_INTERVAL_MOWING`` (15 min) while mowing or returning to dock.
+        * ``_POLL_INTERVAL_IDLE``   (30 min) otherwise (idle, docked, paused, …).
+
+        The timer resets on either incoming device data or a sent poll, so a
+        device that doesn't respond is polled at most once per interval.
+
+        The loop is interruptible: ``record_user_command`` sets ``_rearm_event``
+        to wake an in-progress sleep early for immediate re-evaluation.
         """
+        last_poll_sent_at: float = 0.0
+
         while not self._stopping:
-            # Resolve the active MQTT transport (Aliyun or Mammotion direct).
+            interval = self._poll_interval()
+
+            # Timer: the later of "last data received" and "last poll sent".
+            # Including last_poll_sent_at prevents spam when the device doesn't respond.
+            last_recv = max(
+                (t.last_received_monotonic for t in self._transports.values()),
+                default=0.0,
+            )
+            last_activity = max(last_recv, last_poll_sent_at)
+            wait = interval - (time.monotonic() - last_activity)
+
+            if wait > 0:
+                if await self._sleep_or_rearm(wait):
+                    continue  # rearmed by user command — re-evaluate immediately
+                # Re-check: data may have arrived during the wait.
+                last_recv = max(
+                    (t.last_received_monotonic for t in self._transports.values()),
+                    default=0.0,
+                )
+                last_activity = max(last_recv, last_poll_sent_at)
+                if time.monotonic() - last_activity < interval:
+                    continue
+
+            if not self._transports:
+                await self._sleep_or_rearm(interval)
+                continue
+
+            # Back off if MQTT is rate-limited and no BLE transport is connected.
             mqtt: Transport | None = None
             for tt in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
                 t = self._transports.get(tt)
                 if t is not None:
                     mqtt = t
                     break
-
-            if mqtt is None:
-                # No MQTT transport registered — wait and re-check.
-                if await self._sleep_or_rearm(_KEEP_ALIVE_INTERVAL):
-                    continue
-                continue
-
-            # While BLE is actively connected, MQTT doesn't need an application
-            # heartbeat — the MQTT broker TCP keepalive keeps the channel alive.
-            if self._availability.ble == TransportAvailability.CONNECTED:
-                if await self._sleep_or_rearm(_KEEP_ALIVE_INTERVAL):
-                    continue
-                continue
-
-            window = self._mqtt_activity_window(mqtt)
-            last_send = self._last_send_monotonic.get(mqtt.transport_type, 0.0)
-            last_recv = mqtt.last_received_monotonic
-            wait = window - (time.monotonic() - max(last_send, last_recv))
-            if wait > 0 and await self._sleep_or_rearm(wait):
-                continue
-
-            # Re-resolve after sleep — transport or availability may have changed.
-            mqtt2: Transport | None = None
-            for tt in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-                t = self._transports.get(tt)
-                if t is not None:
-                    mqtt2 = t
-                    break
-            if mqtt2 is None:
-                continue
-            mqtt = mqtt2
-
-            if self._availability.ble == TransportAvailability.CONNECTED:
-                continue
-
-            last_send = self._last_send_monotonic.get(mqtt.transport_type, 0.0)
-            last_recv = mqtt.last_received_monotonic
-            window = self._mqtt_activity_window(mqtt)
-            if time.monotonic() - max(last_send, last_recv) < window:
-                continue
-
-            if self.queue.is_saga_active:
-                _logger.debug("mqtt_loop [%s]: saga active — deferring", self.device_name)
-                continue
-
-            if self._in_no_request_mode():
-                _logger.debug("mqtt_loop [%s]: no-request mode — deferring", self.device_name)
-                continue
-
-            # Long idle → report_cfg(count=1) fires a one-shot data refresh as the
-            # heartbeat; the device pushes state via the normal unsolicited path so
-            # we don't wait for a specific response field (avoids spurious timeouts).
-            # Short window → ble_sync(3) + wait for toapp_report_data to confirm the
-            # cloud report subscription is still live.
-            # window was captured above — reuse it to avoid TOCTOU on device state.
-            use_report_cfg = window > _KEEP_ALIVE_MOWING_INTERVAL
-
-            if use_report_cfg:
-                cmd_bytes = self.commands.get_report_cfg(count=1)
-            else:
-                cmd_bytes = self.commands.send_todev_ble_sync(sync_type=_KEEP_ALIVE_SYNC_TYPE_MQTT)
-
-            if mqtt.is_rate_limited:
-                _logger.debug("mqtt_loop [%s]: transport rate-limited — deferring heartbeat", self.device_name)
-                continue
-
-            self._last_send_monotonic[mqtt.transport_type] = time.monotonic()
-
-            async def _heartbeat_send(_t: Transport = mqtt, _c: bytes = cmd_bytes) -> None:
-                self._last_send_monotonic[_t.transport_type] = time.monotonic()
-                await _t.send_heartbeat(_c, iot_id=self.iot_id)
-
-            try:
-                if use_report_cfg:
-                    await mqtt.send_heartbeat(cmd_bytes, iot_id=self.iot_id)
-                else:
-                    await self.broker.send_and_wait(
-                        send_fn=lambda: _heartbeat_send(),
-                        expected_field="toapp_report_data",
+            if mqtt is not None and mqtt.is_rate_limited:
+                ble = self._transports.get(TransportType.BLE)
+                if ble is None or not ble.is_connected:
+                    _logger.debug(
+                        "poll_loop [%s]: MQTT rate-limited, no BLE — backing off %.0fh",
+                        self.device_name,
+                        _RATE_LIMITED_BACKOFF / 3600,
                     )
-            except TransportRateLimitedError:
-                _logger.debug("mqtt_loop [%s]: transport rate-limited — deferring heartbeat", self.device_name)
-            except TooManyRequestsException:
-                _logger.warning(
-                    "mqtt_loop [%s]: rate limited by cloud — blocking MQTT sends for %.0fh",
-                    self.device_name,
-                    _RATE_LIMITED_BACKOFF / 3600,
-                )
-                mqtt.set_rate_limited()
-            except CommandTimeoutError:
-                _logger.debug(
-                    "mqtt_loop [%s]: no toapp_report_data response — refiring continuous subscription",
-                    self.device_name,
-                )
-                await self._refire_continuous_subscription()
-            except ConcurrentRequestError:
-                _logger.debug("mqtt_loop [%s]: concurrent request — skipping heartbeat", self.device_name)
-            except DeviceOfflineException:
-                self.update_availability(
-                    mqtt.transport_type,
-                    self._availability.mqtt,
-                    mqtt_reported_offline=True,
-                )
-                _logger.warning(
-                    "mqtt_loop [%s]: %s reports device offline — stopping loop",
-                    self.device_name,
-                    mqtt.transport_type.value,
-                )
-                break
-            except AuthError as exc:
-                # SessionExpiredError (29003, 460) and other auth failures from the
-                # Aliyun gateway — propagate to the error bus so the client's
-                # credential-refresh handler can call check_or_refresh_session().
-                _logger.debug(
-                    "mqtt_loop [%s]: auth error on heartbeat — signalling credential refresh: %s",
-                    self.device_name,
-                    exc,
-                )
-                await self._error_bus.emit(exc)
-            except (TransportError, Exception):
-                _logger.debug(
-                    "mqtt_loop [%s]: send via %s failed",
-                    self.device_name,
-                    mqtt.transport_type.value,
-                    exc_info=True,
-                )
+                    await self._sleep_or_rearm(_RATE_LIMITED_BACKOFF)
+                    continue
+
+            if self.queue.is_saga_active or self._in_no_request_mode():
+                _logger.debug("poll_loop [%s]: saga active or no-request mode — deferring", self.device_name)
+                await self._sleep_or_rearm(interval)
+                continue
+
+            _logger.debug(
+                "poll_loop [%s]: %.0fs since last activity — sending one-shot poll (interval=%.0fs)",
+                self.device_name,
+                time.monotonic() - last_activity,
+                interval,
+            )
+            last_poll_sent_at = time.monotonic()
+            await self._send_one_shot_report()
 
     # ------------------------------------------------------------------
     # Public transport API (replaces private _transports access from HA)
@@ -1023,6 +947,12 @@ class DeviceHandle:
     def get_transport(self, transport_type: TransportType) -> Transport | None:
         """Return the registered transport of the given type, or None."""
         return self._transports.get(transport_type)
+
+    def _has_usable_mqtt(self) -> bool:
+        """True when an MQTT transport is registered and the cloud hasn't reported the device offline."""
+        if self._availability.mqtt_reported_offline:
+            return False
+        return any(tt is not TransportType.BLE for tt in self._transports)
 
     @property
     def is_stopping(self) -> bool:
@@ -1070,14 +1000,31 @@ class DeviceHandle:
             ble = self._transports.get(TransportType.BLE)
             if ble is not None and not ble.is_connected:
                 _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
-                await ble.connect()
+                try:
+                    await ble.connect()
+                except BLEUnavailableError as exc:
+                    # ESPHome proxy out of connection slots, BLE adapter unavailable, etc.
+                    # If MQTT is registered and usable, route this send through it instead
+                    # of dropping the request entirely.
+                    if self._has_usable_mqtt():
+                        _logger.warning(
+                            "BLE unavailable for '%s' (%s) — falling back to MQTT for this send",
+                            self.device_name,
+                            exc,
+                        )
+                        prefer_ble = False  # force active_transport() to pick MQTT below
+                    else:
+                        raise
         try:
             transport = self.active_transport(prefer_ble=prefer_ble)
         except NoTransportAvailableError:
             ble = self._transports.get(TransportType.BLE)
             if ble is not None and not ble.is_connected:
                 _logger.debug("BLE disconnected for '%s' — reconnecting before send", self.device_name)
-                await ble.connect()
+                try:
+                    await ble.connect()
+                except BLEUnavailableError:
+                    raise  # genuinely no transport — caller has nothing to fall back to
                 transport = self.active_transport(prefer_ble=prefer_ble)
             else:
                 raise
