@@ -22,8 +22,8 @@ from pymammotion.const import (
     MAMMOTION_CLIENT_ID,
     MAMMOTION_CLIENT_SECRET,
     MAMMOTION_DOMAIN,
-    MAMMOTION_OUATH2_CLIENT_ID,
-    MAMMOTION_OUATH2_CLIENT_SECRET,
+    MAMMOTION_OAUTH2_CLIENT_ID,
+    MAMMOTION_OAUTH2_CLIENT_SECRET,
 )
 from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
@@ -676,14 +676,14 @@ class MammotionHTTP:
         """Refresh token v2."""
 
         refresh_request = {
-            "client_id": MAMMOTION_OUATH2_CLIENT_ID,
+            "client_id": MAMMOTION_OAUTH2_CLIENT_ID,
             "refresh_token": self._require_login_info.refresh_token,
             "grant_type": "refresh_token",
         }
 
         oauth_signature = create_oauth_signature(
             login_req=refresh_request,
-            client_id=MAMMOTION_OUATH2_CLIENT_ID,
+            client_id=MAMMOTION_OAUTH2_CLIENT_ID,
             client_secret=MAMMOTION_OUATH2_CLIENT_SECRET,
             token_endpoint="/oauth2/token",
         )
@@ -724,14 +724,14 @@ class MammotionHTTP:
         login_request = {
             "username": account,
             "password": base64.b64encode(password.encode("utf-8")).decode("utf-8"),
-            "client_id": MAMMOTION_OUATH2_CLIENT_ID,
+            "client_id": MAMMOTION_OAUTH2_CLIENT_ID,
             "grant_type": "password",
             "authType": "0",
         }
 
         oauth_signature = create_oauth_signature(
             login_req=login_request,
-            client_id=MAMMOTION_OUATH2_CLIENT_ID,
+            client_id=MAMMOTION_OAUTH2_CLIENT_ID,
             client_secret=MAMMOTION_OUATH2_CLIENT_SECRET,
             token_endpoint="/oauth2/token",
         )
@@ -741,7 +741,7 @@ class MammotionHTTP:
                 f"{MAMMOTION_DOMAIN}/oauth2/token",
                 headers={
                     **self._headers,
-                    "Ma-App-Key": MAMMOTION_OUATH2_CLIENT_ID,
+                    "Ma-App-Key": MAMMOTION_OAUTH2_CLIENT_ID,
                     "Ma-Signature": oauth_signature,
                     "Ma-Timestamp": str(int(time.time())),
                     "Client-Id": self.client_id,
