@@ -13,7 +13,7 @@ import random
 import time
 from typing import Any, TypeVar, cast
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, FormData
 import jwt
 
 from pymammotion.const import (
@@ -86,7 +86,11 @@ def sign_with_hmac_sha256(data: str, app_secret: str) -> str:
         raise RuntimeError(f"toSignWithHmacSha256 error: {e}") from e
 
 
-def create_oauth_signature(login_req: dict, client_id: str, client_secret: str, token_endpoint: str) -> str:
+def _ms_timestamp() -> str:
+    return str(int(time.time() * 1000))
+
+
+def create_oauth_signature(login_req: dict, client_id: str, client_secret: str, token_endpoint: str, timestamp: str | None = None) -> str:
     """Create OAuth signature for login request.
 
     Args:
@@ -103,7 +107,8 @@ def create_oauth_signature(login_req: dict, client_id: str, client_secret: str, 
     json_data = json.dumps(login_req, ensure_ascii=False, separators=(",", ":"))
 
     # Get current timestamp in milliseconds
-    timestamp = str(int(time.time() * 1000))
+    if timestamp is None:
+        timestamp = _ms_timestamp()
 
     # Construct the string to sign
     str_to_sign = f"{client_id}{timestamp}{token_endpoint}{json_data}"
@@ -723,33 +728,36 @@ class MammotionHTTP:
 
         login_request = {
             "username": account,
-            "password": base64.b64encode(password.encode("utf-8")).decode("utf-8"),
+            "password": password,
             "client_id": MAMMOTION_OAUTH2_CLIENT_ID,
             "grant_type": "password",
             "authType": "0",
         }
 
+        ts = _ms_timestamp()
         oauth_signature = create_oauth_signature(
             login_req=login_request,
             client_id=MAMMOTION_OAUTH2_CLIENT_ID,
             client_secret=MAMMOTION_OAUTH2_CLIENT_SECRET,
             token_endpoint="/oauth2/token",
+            timestamp=ts,
         )
+
+        form = FormData()
+        for k, v in login_request.items():
+            form.add_field(k, v)
 
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_DOMAIN}/oauth2/token",
                 headers={
-                    **self._headers,
                     "Ma-App-Key": MAMMOTION_OAUTH2_CLIENT_ID,
                     "Ma-Signature": oauth_signature,
-                    "Ma-Timestamp": str(int(time.time())),
+                    "Ma-Timestamp": ts,
                     "Client-Id": self.client_id,
                     "Client-Type": "1",
                 },
-                params={
-                    **login_request,
-                },
+                data=form,
             )
             if resp.status != 200:
                 return Response.from_dict({"code": resp.status, "msg": "Login failed"})
