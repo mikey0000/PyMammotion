@@ -65,6 +65,7 @@ class MowerInfo(DataClassORJSONMixin):
     collector_installation_status: bool = False
     collect_grass_enable: int = 0
     animal_protection: AnimalProtection = field(default_factory=AnimalProtection)
+    boundary_ride_distance: int = 0  # ID 10 — % of boundary to ride before mowing: 0, 25, or 50
     travel_speed: float = 0.0
     lora_config: str = ""
     audio: AudioSettings = field(default_factory=AudioSettings)

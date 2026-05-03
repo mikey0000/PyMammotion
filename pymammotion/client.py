@@ -10,17 +10,32 @@ not wanting MQTT), call ``add_ble_only_device()`` instead of going through
 login/cloud.  The resulting DeviceHandle has ``prefer_ble=True`` and only a
 BLETransport attached — no HTTP or MQTT calls are made.
 
-Example::
+Two flavours of caller-provided BLE info are supported:
+
+1. **Pre-discovered BLEDevice** — if you've already run a scan (or are using
+   Home Assistant's bluetooth integration which gives you a fresh BLEDevice)::
 
     client = MammotionClient()
     await client.add_ble_only_device(
         device_id="Luba-XXXXXX",
         device_name="Luba-XXXXXX",
-        ble_device=discovered_ble_device,   # bleak BLEDevice
         initial_device=MowingDevice(name="Luba-XXXXXX"),
+        ble_device=discovered_ble_device,   # bleak BLEDevice
     )
     await client.mower("Luba-XXXXXX").start()
-    await client.send_command_with_args("Luba-XXXXXX", "get_report_cfg")
+    handle = client.mower("Luba-XXXXXX")
+    await handle.get_transport(TransportType.BLE).connect()
+
+2. **MAC address only** — the transport runs a one-shot bleak scan when
+   ``connect()`` is called and re-scans on later reconnects::
+
+    await client.add_ble_only_device(
+        device_id="Luba-XXXXXX",
+        device_name="Luba-XXXXXX",
+        initial_device=MowingDevice(name="Luba-XXXXXX"),
+        ble_address="AA:BB:CC:DD:EE:FF",
+    )
+    # self_managed_scanning defaults to True when only an address is given.
 """
 
 from __future__ import annotations
@@ -57,21 +72,8 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
-from pymammotion.utility.constant import MOWING_ACTIVE_MODES, WorkMode
+from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.device_type import DeviceType
-
-# Rapid report-stream subscription — see docs/report_channels.md for the full
-# channel reference and rationale.
-_RAPID_STREAM_ACTIVE_STATES: frozenset[int] = MOWING_ACTIVE_MODES
-_RAPID_STREAM_CHANNELS: list[RptInfoType] = [
-    RptInfoType.RIT_CONNECT,
-    RptInfoType.RIT_WORK,
-    RptInfoType.RIT_DEV_LOCAL,
-    RptInfoType.RIT_DEV_STA,
-    RptInfoType.RIT_VIO,
-    RptInfoType.RIT_VISION_POINT,
-]
-_RAPID_STREAM_PERIOD_MS: int = 1000  # 1 Hz, matches APK requestConnectingChannels
 
 #: Channels for the continuous subscription (matches HA-Luba async_request_iot_sync_continuous).
 _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
@@ -174,14 +176,15 @@ class MammotionClient:
           is cached.
         * ``(path_pos_x, path_pos_y)`` — rebuilds ``generated_mow_progress_geojson``
           as the mower progresses along the path.
-        * ``sys_status`` — starts a 4 Hz ``report_info_cfg`` subscription on
-          transition into WORKING/RETURNING and sends ``RPT_STOP`` on any
-          other transition.
         * ``bol_hash`` (from ``report_data.locations[0].bol_hash``) — fires
           ``MapFetchSaga`` when the device reports a different map hash,
           replacing the old ``MapStalenessWatcher`` for the maps case.  Plan
           staleness is not watched — we don't yet know which field indicates
           plan changes.
+
+        Cadence/streaming for ``sys_status`` lives in
+        :class:`~pymammotion.device.handle.DeviceHandle` (BLE polling loop +
+        MQTT cadence table) — not here.
 
         Call ``teardown_device_watchers`` to cancel.  Returns the first
         registered Subscription, or None if the device isn't registered yet.
@@ -223,49 +226,6 @@ class MammotionClient:
                     work.path_pos_y,
                 )
 
-        async def _on_sys_status_changed(sys_status: int) -> None:
-            try:
-                if sys_status in _RAPID_STREAM_ACTIVE_STATES:
-                    await self.send_command_with_args(
-                        device_name,
-                        "request_iot_sys",
-                        rpt_act=RptAct.RPT_START,
-                        rpt_info_type=_RAPID_STREAM_CHANNELS,
-                        timeout=10000,
-                        period=_RAPID_STREAM_PERIOD_MS,
-                        no_change_period=4000,
-                        count=0,
-                    )
-                    _logger.debug(
-                        "Device %s sys_status=%d — started rapid report stream (%d Hz)",
-                        device_name,
-                        sys_status,
-                        1000 // _RAPID_STREAM_PERIOD_MS,
-                    )
-                else:
-                    await self.send_command_with_args(
-                        device_name,
-                        "request_iot_sys",
-                        rpt_act=RptAct.RPT_STOP,
-                        rpt_info_type=_RAPID_STREAM_CHANNELS,
-                        timeout=10000,
-                        period=_RAPID_STREAM_PERIOD_MS,
-                        no_change_period=4000,
-                        count=0,
-                    )
-                    _logger.debug(
-                        "Device %s sys_status=%d — stopped rapid report stream",
-                        device_name,
-                        sys_status,
-                    )
-            except Exception:  # noqa: BLE001
-                _logger.warning(
-                    "Failed to toggle rapid report stream for %s (sys_status=%d)",
-                    device_name,
-                    sys_status,
-                    exc_info=True,
-                )
-
         async def _on_bol_hash_changed(bol_hash: int) -> None:
             # bol_hash changes when the device's map data has been edited or
             # re-synced on the device side — trigger a re-fetch so our
@@ -290,10 +250,6 @@ class MammotionClient:
             lambda s: (s.raw.report_data.work.path_pos_x, s.raw.report_data.work.path_pos_y),
             _on_mow_progress_changed,
         )
-        sys_status_sub = handle.watch_field(
-            lambda s: s.raw.report_data.dev.sys_status,
-            _on_sys_status_changed,
-        )
         bol_hash_sub = handle.watch_field(
             lambda s: s.raw.report_data.locations[0].bol_hash if s.raw.report_data.locations else 0,
             _on_bol_hash_changed,
@@ -301,7 +257,6 @@ class MammotionClient:
         self._watcher_subscriptions[device_name] = [
             sub,
             progress_sub,
-            sys_status_sub,
             bol_hash_sub,
         ]
         return sub
@@ -681,46 +636,113 @@ class MammotionClient:
             await handle.add_transport(transport)
             _logger.debug("BLE transport added to existing handle for device %s", device_id)
 
-    async def update_ble_device(self, device_id: str, ble_device: BLEDevice) -> None:
+    async def update_ble_device(self, device_id: str, ble_device: BLEDevice) -> bool:
         """Update the BLE advertisement for a known device.
 
-        Also updates the live BLETransport (if already wired to the handle) so
-        bleak_retry_connector has the freshest advertisement on the next connect.
+        Always swaps the cached BLEDevice on the live :class:`BLETransport` (if
+        wired) so ``bleak_retry_connector`` sees the freshest advertisement on
+        the next connect — even when only the advertisement metadata changed.
+
+        Does NOT clear a connect-failure cooldown.  HA pushes advertisements
+        constantly; only an explicit :meth:`clear_ble_device` or a successful
+        connect resets the failure tracker.
+
+        Returns:
+            ``True`` if the cached BLE address actually changed (or this is the
+            first device set for this handle); ``False`` for a routine refresh
+            of the same address.  HA-side callers can short-circuit redundant
+            work (logging, downstream task creation) on False.
+
         """
         self._ble_manager.update_external_ble_client(device_id, ble_device)
         handle = self._device_registry.get(device_id)
-        if handle is not None:
-            from pymammotion.transport.ble import BLETransport as _BLETransport
+        if handle is None:
+            return False
+        ble = handle.get_transport(TransportType.BLE)
+        if not isinstance(ble, BLETransport):
+            return False
+        return ble.set_ble_device(ble_device)
 
-            ble = handle.get_transport(TransportType.BLE)
-            if isinstance(ble, _BLETransport):
-                ble.set_ble_device(ble_device)
+    async def clear_ble_device(self, device_id: str) -> None:
+        """Forget the cached BLEDevice on the device's BLETransport.
+
+        Forces the next BLE connect attempt to wait for a fresh advertisement
+        (or fail with ``NoBLEAddressKnownError`` if the transport isn't in
+        ``self_managed_scanning`` mode).  Resets the connect-failure tracker
+        and any active cooldown.
+
+        Use when the integration knows BLE is unrecoverable for now (e.g.
+        explicit user action, mower confirmed offline) and wants
+        :meth:`DeviceHandle.active_transport` to skip BLE until a fresh
+        advertisement arrives.  No-op if no BLE transport is wired.
+        """
+        handle = self._device_registry.get(device_id)
+        if handle is None:
+            return
+        ble = handle.get_transport(TransportType.BLE)
+        if isinstance(ble, BLETransport):
+            ble.clear_ble_device()
 
     async def add_ble_only_device(
         self,
         device_id: str,
         device_name: str,
-        ble_device: BLEDevice,
         initial_device: MowingDevice,
+        *,
+        ble_device: BLEDevice | None = None,
+        ble_address: str | None = None,
+        self_managed_scanning: bool | None = None,
     ) -> DeviceHandle:
         """Register a BLE-only device — no HTTP login or MQTT involved.
 
-        Creates a DeviceHandle with ``prefer_ble=True`` and a BLETransport
-        already wired up.  Call ``handle.start()`` to begin the command queue,
-        then ``transport.connect()`` to open the GATT connection.
+        Standalone (non-HA) entry point.  Provide either a pre-discovered
+        ``BLEDevice`` (e.g. from your own ``BleakScanner`` pass) or a MAC
+        ``ble_address`` and let the transport scan for it on connect.
+
+        Creates a :class:`DeviceHandle` with ``prefer_ble=True`` and a
+        :class:`BLETransport` already wired up.  Call ``handle.start()`` to
+        begin the command queue, then ``transport.connect()`` to open the
+        GATT connection.  When ``self_managed_scanning`` is True, the
+        transport runs a one-shot ``BleakScanner.find_device_by_address`` at
+        connect-time if no BLEDevice is cached.
 
         Args:
-            device_id:      Unique device identifier (e.g. ``"Luba-XXXXXX"``).
-            device_name:    Human-readable name shown in HA.
-            ble_device:     The bleak ``BLEDevice`` obtained from a BLE scan.
-            initial_device: An empty or cached ``MowingDevice`` for initial state.
+            device_id:             Unique device identifier (e.g. ``"Luba-XXXXXX"``).
+            device_name:           Human-readable name shown in HA.
+            initial_device:        Empty or cached ``MowingDevice`` for initial state.
+            ble_device:            Optional pre-discovered bleak ``BLEDevice``.
+            ble_address:           Optional MAC.  Required when ``ble_device``
+                                   is not supplied.  Stored in the transport
+                                   config for self-managed scanning.
+            self_managed_scanning: When True, the transport scans for the
+                                   device by ``ble_address`` if no BLEDevice
+                                   is cached at connect-time.  Defaults to
+                                   True when only ``ble_address`` is supplied,
+                                   False when ``ble_device`` is supplied
+                                   (HA-style — scanning owned by the caller).
+                                   Pass explicitly to override.
 
         Returns:
             The registered ``DeviceHandle``.
 
+        Raises:
+            ValueError: when neither ``ble_device`` nor ``ble_address`` is supplied.
+
         """
-        transport = BLETransport(BLETransportConfig(device_id=device_id))
-        transport.set_ble_device(ble_device)
+        if ble_device is None and ble_address is None:
+            raise ValueError("add_ble_only_device requires either ble_device or ble_address")
+        if self_managed_scanning is None:
+            self_managed_scanning = ble_device is None
+
+        transport = BLETransport(
+            BLETransportConfig(
+                device_id=device_id,
+                ble_address=ble_address,
+                self_managed_scanning=self_managed_scanning,
+            )
+        )
+        if ble_device is not None:
+            transport.set_ble_device(ble_device)
 
         handle = DeviceHandle(
             device_id=device_id,

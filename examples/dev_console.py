@@ -3,10 +3,16 @@
 Usage:
     EMAIL=your@email.com PASSWORD=yourpass uv run python examples/dev_console.py
     EMAIL=your@email.com PASSWORD=yourpass uv run python examples/dev_console.py --listen
+    uv run python examples/dev_console.py --ble-address AA:BB:CC:DD:EE:FF
 
 Flags:
-    -l / --listen   Connect and receive messages without sending any outbound polls.
-                    Useful for passive observation or debugging device-initiated traffic.
+    -l / --listen          Connect and receive messages without sending any outbound polls.
+                           Useful for passive observation or debugging device-initiated traffic.
+    --ble-address MAC      BLE-only mode: connect over Bluetooth to the mower at MAC.
+                           Skips cloud login / MQTT entirely; transport runs its own
+                           BleakScanner.find_device_by_address lookup.
+    --device-name NAME     Friendly device name to register under (BLE-only mode).
+                           Defaults to "Luba-BLE-<MAC suffix>".
 
 Output files (written to examples/dev_output/):
     state_{device_name}.json        Full device state (mower or RTK), updated on every
@@ -505,6 +511,7 @@ class DevConsole:
         Example:
             listen()        # disable polling (listen only)
             listen(False)   # re-enable polling
+
         """
         for handle in self.mammotion.device_registry.all_devices:
             if on:
@@ -534,23 +541,70 @@ class DevConsole:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+async def _bootstrap_ble_only(
+    mammotion: MammotionClient,
+    ble_address: str,
+    device_name: str | None,
+) -> None:
+    """Register a single BLE-only device by MAC and open the GATT connection.
+
+    Skips cloud login entirely.  Uses ``add_ble_only_device(ble_address=...)``
+    so the transport runs its own one-shot ``BleakScanner.find_device_by_address``
+    when ``connect()`` is called.  No HTTP, no MQTT.
+    """
+    from pymammotion.data.model.device import MowingDevice
+
+    ble_address = ble_address.upper()
+    if device_name is None:
+        device_name = f"Luba-BLE-{ble_address.replace(':', '')[-6:]}"
+
+    _LOGGER.info(
+        "[bold yellow]BLE-only mode[/bold yellow] — registering [bold]%s[/bold] at %s",
+        device_name,
+        ble_address,
+    )
+    handle = await mammotion.add_ble_only_device(
+        device_id=device_name,
+        device_name=device_name,
+        initial_device=MowingDevice(name=device_name),
+        ble_address=ble_address,
+    )
+    await handle.start()
+
+    _LOGGER.info("Scanning + connecting to BLE device %s …", ble_address)
+    transport = handle.get_transport(TransportType.BLE)
+    if transport is None:
+        msg = f"BLE transport missing on handle for {device_name}"
+        raise RuntimeError(msg)
+    await transport.connect()
+    _LOGGER.info("BLE connected.")
+
+
 async def _main(args: argparse.Namespace) -> None:
     _setup_logging()
-
-    saved_email, saved_password = _load_credentials()
-    email = os.environ.get("EMAIL") or input(f"Mammotion email [{saved_email}]: ").strip() or saved_email
-    password = os.environ.get("PASSWORD") or input(f"Mammotion password [{'*' * len(saved_password) if saved_password else ''}]: ").strip() or saved_password
-    _save_credentials(email, password)
 
     mammotion = MammotionClient("0.5.27")
     main_loop = asyncio.get_running_loop()
     dev = DevConsole(mammotion, main_loop)
 
-    _LOGGER.info("Logging in as [bold]%s[/bold] …", email)
-    await mammotion.login_and_initiate_cloud(email, password)
-    _LOGGER.info("Login complete — waiting for MQTT …")
+    if args.ble_address:
+        # BLE-only path: skip cloud login entirely, connect over Bluetooth.
+        await _bootstrap_ble_only(mammotion, args.ble_address, args.device_name)
+    else:
+        saved_email, saved_password = _load_credentials()
+        email = os.environ.get("EMAIL") or input(f"Mammotion email [{saved_email}]: ").strip() or saved_email
+        password = (
+            os.environ.get("PASSWORD")
+            or input(f"Mammotion password [{'*' * len(saved_password) if saved_password else ''}]: ").strip()
+            or saved_password
+        )
+        _save_credentials(email, password)
 
-    await asyncio.sleep(3)
+        _LOGGER.info("Logging in as [bold]%s[/bold] …", email)
+        await mammotion.login_and_initiate_cloud(email, password)
+        _LOGGER.info("Login complete — waiting for MQTT …")
+
+        await asyncio.sleep(3)
 
     dev.hook_all_devices()
     dev.hook_all_rtk_devices()
@@ -560,7 +614,10 @@ async def _main(args: argparse.Namespace) -> None:
             await handle.stop_polling()
         _LOGGER.info("[bold yellow]Listen-only mode[/bold yellow] — MQTT polling disabled on all devices")
 
-    dev.log_mqtt_credentials()
+    if not args.ble_address:
+        # log_mqtt_credentials walks AccountSession.cloud_client / mammotion_http,
+        # both of which are None in BLE-only mode.
+        dev.log_mqtt_credentials()
     dev.dump_all()
 
     device_names = [h.device_name for h in mammotion.device_registry.all_devices]
@@ -624,6 +681,18 @@ if __name__ == "__main__":
         "-l", "--listen",
         action="store_true",
         help="listen-only mode: connect and receive messages without sending any polls",
+    )
+    parser.add_argument(
+        "--ble-address",
+        metavar="MAC",
+        default=None,
+        help="BLE-only mode: connect to the mower at this MAC address. Skips cloud login / MQTT.",
+    )
+    parser.add_argument(
+        "--device-name",
+        metavar="NAME",
+        default=None,
+        help="Friendly device name (BLE-only mode).  Defaults to Luba-BLE-<MAC suffix>.",
     )
     _args = parser.parse_args()
     try:

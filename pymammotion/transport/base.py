@@ -308,6 +308,21 @@ class Transport(ABC):
         """True when the cloud has rate-limited this transport and the ban has not yet expired."""
         return time.monotonic() < self._rate_limited_until
 
+    @property
+    def is_usable(self) -> bool:
+        """True when this transport is in a state where ``connect()`` could plausibly succeed.
+
+        The default implementation always returns True — applies to MQTT transports
+        whose connectability is decided by network reachability and credentials,
+        not by transport-internal state.
+
+        :class:`~pymammotion.transport.ble.BLETransport` overrides this to gate
+        on cached ``BLEDevice`` presence and connect-failure cooldown so that
+        :meth:`pymammotion.device.handle.DeviceHandle.active_transport` can
+        skip BLE without burning a connection slot during a known-bad window.
+        """
+        return True
+
     def set_rate_limited(self) -> None:
         """Record a rate-limit event; blocks sends on this transport for _RATE_LIMIT_DURATION seconds."""
         self._rate_limited_until = time.monotonic() + self._RATE_LIMIT_DURATION

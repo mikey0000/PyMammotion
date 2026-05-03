@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
+from bleak import BleakScanner
 from bleak.exc import BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
@@ -36,10 +38,32 @@ _DISCONNECT_DELAY = 10
 
 @dataclass(frozen=True)
 class BLETransportConfig:
-    """Frozen configuration for a BLETransport instance."""
+    """Frozen configuration for a BLETransport instance.
+
+    Attributes:
+        device_id: Device-side identifier used in logging and the bleak retry loop.
+        ble_address: Optional BLE MAC.  Required when ``self_managed_scanning``
+            is True; otherwise informational.
+        self_managed_scanning: When True, ``connect()`` runs a one-shot
+            ``BleakScanner.find_device_by_address`` if no BLEDevice has been
+            pushed via :meth:`BLETransport.set_ble_device`.  Use for standalone
+            (non-HA) callers — HA-Luba leaves this False because HA owns scanning.
+        scan_timeout: Seconds to wait for a self-managed scan.
+        connect_failure_threshold: Consecutive ``BleakError`` failures from
+            ``establish_connection`` before the transport self-clears the cached
+            BLEDevice and enters a cooldown.
+        connect_cooldown_seconds: How long to refuse new connect attempts after
+            the failure threshold trips.  Advertisement pushes still update the
+            cached BLEDevice but ``is_usable`` stays False until cooldown expires.
+
+    """
 
     device_id: str
     ble_address: str | None = None
+    self_managed_scanning: bool = False
+    scan_timeout: float = 10.0
+    connect_failure_threshold: int = 3
+    connect_cooldown_seconds: float = 60.0
 
 
 class BLETransport(Transport):
@@ -71,14 +95,70 @@ class BLETransport(Transport):
         # thread inside bleak's backend) can schedule async work safely.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._operation_lock: asyncio.Lock = asyncio.Lock()
+        #: Consecutive ``BleakError`` failures from ``establish_connection``.  Reset on
+        #: successful connect or explicit ``clear_ble_device()``.  At
+        #: ``config.connect_failure_threshold`` the transport self-clears and starts a cooldown.
+        self._consecutive_failures: int = 0
+        #: ``time.monotonic()`` deadline before another connect attempt is allowed.
+        #: 0.0 when no cooldown is active.
+        self._connect_cooldown_until: float = 0.0
 
     # ------------------------------------------------------------------
     # Public device management
     # ------------------------------------------------------------------
 
-    def set_ble_device(self, device: BLEDevice) -> None:
-        """Supply (or update) the bleak BLEDevice used for the next connect()."""
+    def set_ble_device(self, device: BLEDevice) -> bool:
+        """Supply (or update) the bleak BLEDevice used for the next connect().
+
+        Always swaps the cached pointer so ``bleak_retry_connector``'s
+        ``ble_device_callback`` sees the freshest advertisement on the next attempt.
+        Does NOT reset ``_consecutive_failures`` or the cooldown — a stream of
+        advertisements doesn't prove the link can connect; only a successful
+        ``connect()`` or an explicit ``clear_ble_device()`` does.
+
+        Returns:
+            ``True`` if the cached BLE address actually changed (or this is the
+            first device set); ``False`` for a routine refresh of the same
+            address.  Callers can short-circuit redundant work on False.
+
+        """
+        previous_address: str | None = self._ble_device.address if self._ble_device is not None else None
+        new_address: str = device.address
         self._ble_device = device
+        return previous_address != new_address
+
+    def clear_ble_device(self) -> None:
+        """Forget the cached BLEDevice, reset failure tracking, and clear cooldown.
+
+        After this call ``is_usable`` returns False until ``set_ble_device()``
+        is called with a fresh advertisement.  This is the explicit "give up
+        and wait for a new advertisement" entry point — distinct from the
+        automatic ``connect()`` failure-threshold path which preserves the
+        cooldown so retries are paced.
+        """
+        self._ble_device = None
+        self._consecutive_failures = 0
+        self._connect_cooldown_until = 0.0
+
+    @property
+    def ble_address(self) -> str | None:
+        """Address of the cached BLEDevice, or None if no device is set."""
+        return self._ble_device.address if self._ble_device is not None else None
+
+    @property
+    def is_usable(self) -> bool:
+        """True when this transport has a BLEDevice and isn't in connect-cooldown.
+
+        ``DeviceHandle.active_transport()`` reads this to decide whether to
+        consider BLE for routing.  An "unusable" transport stays registered
+        (its keepalive listeners and message handler stay wired) but is
+        skipped over until it becomes usable again — either by an
+        advertisement-driven ``set_ble_device()`` plus cooldown expiry, or
+        by an explicit ``clear_ble_device()`` followed by ``set_ble_device()``.
+        """
+        if self._ble_device is None:
+            return False
+        return time.monotonic() >= self._connect_cooldown_until
 
     def set_disconnect_strategy(self, *, disconnect: bool = True) -> None:
         """Set whether the BLE connection should be dropped when the device is idle.
@@ -111,11 +191,40 @@ class BLETransport(Transport):
     async def connect(self) -> None:
         """Establish the BLE connection and start receiving notifications.
 
-        Raises NoBLEAddressKnownError if no BLEDevice has been registered.
+        Cooldown gate: if the failure threshold tripped recently, the call is
+        rejected immediately with ``BLEUnavailableError`` — no bleak round-trip,
+        no proxy slot taken.
+
+        Self-managed scanning: if ``self_managed_scanning`` is set on the config
+        and no BLEDevice has been pushed via :meth:`set_ble_device`, the
+        transport runs a one-shot ``BleakScanner.find_device_by_address`` to
+        discover the device.  HA-Luba leaves this disabled and relies on HA's
+        bluetooth integration to push BLEDevices instead.
+
+        Raises:
+            BLEUnavailableError: in cooldown, scan failure, or
+                ``establish_connection`` raised ``BleakError``.
+            NoBLEAddressKnownError: no BLEDevice cached and self-managed scan
+                disabled (or address is missing for the scan).
+
         """
+        # Cooldown gate first — refuse immediately so the caller falls back to MQTT
+        # rather than burning a connection slot on a doomed attempt.
+        remaining = self._connect_cooldown_until - time.monotonic()
+        if remaining > 0:
+            raise BLEUnavailableError(
+                f"BLE connect for {self._config.device_id!r} is in cooldown ({remaining:.0f}s remaining)"
+            )
+
         if self._ble_device is None:
-            msg = f"No BLEDevice registered for device_id={self._config.device_id!r}; call set_ble_device() first"
-            raise NoBLEAddressKnownError(msg)
+            if self._config.self_managed_scanning:
+                await self._self_managed_discover()
+            if self._ble_device is None:
+                msg = (
+                    f"No BLEDevice registered for device_id={self._config.device_id!r}; "
+                    f"call set_ble_device() first or enable self_managed_scanning in the config"
+                )
+                raise NoBLEAddressKnownError(msg)
 
         if self.is_connected:
             _logger.debug("BLETransport.connect() called while already connected — ignoring")
@@ -134,11 +243,12 @@ class BLETransport(Transport):
                 self._ble_device,
                 self._config.device_id,
                 self._handle_disconnect,
-                max_attempts=10,
+                max_attempts=2,
                 ble_device_callback=lambda: self._ble_device,  # type: ignore[arg-type,return-value]
             )
         except BleakError as exc:
             await self._notify_availability(TransportAvailability.DISCONNECTED)
+            self._record_connect_failure()
             raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
 
         self._message = BleMessage(self._client)
@@ -149,10 +259,72 @@ class BLETransport(Transport):
 
         # Clear any stale idle-disconnect timer from a previous session.
         self._cancel_idle_disconnect_timer()
+        # Successful connect resets the failure tracker.
+        self._consecutive_failures = 0
 
         # One-shot sync on connect — subsequent periodic syncs are driven by
         # DeviceHandle._keep_alive_loop (20 s).
         await self._ble_sync()
+
+    def _record_connect_failure(self) -> None:
+        """Increment the failure counter; at threshold, clear device and start cooldown.
+
+        We deliberately *clear the cached BLEDevice* on threshold trip even
+        though HA will keep pushing fresh advertisements.  The cooldown timer
+        still gates ``is_usable``, but clearing the device makes the next
+        ``connect()`` raise ``NoBLEAddressKnownError`` (or trigger a fresh
+        scan in self-managed mode) once the cooldown lapses — guaranteeing the
+        retry uses a fresh BLEDevice rather than a stale pointer that already
+        failed.
+        """
+        self._consecutive_failures += 1
+        if self._consecutive_failures < self._config.connect_failure_threshold:
+            return
+        self._connect_cooldown_until = time.monotonic() + self._config.connect_cooldown_seconds
+        _logger.info(
+            "BLETransport[%s]: %d consecutive connect failures — cooling down for %.0fs",
+            self._config.device_id,
+            self._consecutive_failures,
+            self._config.connect_cooldown_seconds,
+        )
+        # Reset counter so the next post-cooldown attempt starts a fresh tally.
+        self._consecutive_failures = 0
+        # Drop the stale BLEDevice; HA's next advertisement will repopulate.
+        self._ble_device = None
+
+    async def _self_managed_discover(self) -> None:
+        """Run a one-shot bleak scan to populate ``_ble_device`` from ``ble_address``.
+
+        Only called from ``connect()`` when ``self_managed_scanning=True``.
+        On failure, leaves ``_ble_device`` as None — caller will raise
+        ``NoBLEAddressKnownError``.
+        """
+        address = self._config.ble_address
+        if not address:
+            _logger.warning(
+                "BLETransport[%s]: self_managed_scanning=True but no ble_address in config",
+                self._config.device_id,
+            )
+            return
+        _logger.debug(
+            "BLETransport[%s]: self-managed scan for %s (timeout=%.0fs)",
+            self._config.device_id,
+            address,
+            self._config.scan_timeout,
+        )
+        try:
+            device = await BleakScanner.find_device_by_address(address, timeout=self._config.scan_timeout)
+        except (BleakError, TimeoutError) as exc:
+            _logger.debug("BLETransport[%s]: self-managed scan failed: %s", self._config.device_id, exc)
+            return
+        if device is None:
+            _logger.debug(
+                "BLETransport[%s]: self-managed scan found no device at %s",
+                self._config.device_id,
+                address,
+            )
+            return
+        self._ble_device = device
 
     async def disconnect(self) -> None:
         """Gracefully disconnect the BLE client."""
@@ -218,6 +390,9 @@ class BLETransport(Transport):
         backend, so we cannot use asyncio.get_running_loop() here. Use the loop
         captured at connect() time and dispatch via call_soon_threadsafe().
         """
+        if self._availability is TransportAvailability.DISCONNECTED:
+            return
+
         _logger.warning("BLETransport: device %s disconnected", self._config.device_id)
         self._message = None
         self._availability = TransportAvailability.DISCONNECTED

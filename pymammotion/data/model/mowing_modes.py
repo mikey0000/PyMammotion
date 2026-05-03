@@ -63,6 +63,18 @@ class TurningMode(IntEnum):
     multipoint = 1
 
 
+class BoundaryRideDistance(IntEnum):
+    """Percentage of the lawn perimeter the mower rides before starting to mow.
+
+    Luba Pro / X3 only — sent via nav_sys_param_cmd ID 10.
+    A boundary-preview pass helps verify the map before committing to a full mow.
+    """
+
+    none = 0  # no boundary ride
+    quarter = 25  # ride 25 % of perimeter
+    half = 50  # ride 50 % of perimeter
+
+
 class DetectionStrategy(IntEnum):
     """Obstacle detection mode (ultra_wave / detect_mode protocol field).
 

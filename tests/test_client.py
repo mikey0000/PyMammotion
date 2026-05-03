@@ -15,14 +15,21 @@ from pymammotion.transport.base import TransportType
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+# (BLE polling-loop autoload-suppress fixture lives in tests/conftest.py.)
 
 
 def make_mowing_device() -> MagicMock:
-    """Return a MagicMock shaped like a MowingDevice."""
+    """Return a MagicMock shaped like a MowingDevice.
+
+    Explicit ``charge_state = 0`` because ``int(MagicMock())`` returns 1, which
+    would push :meth:`DeviceHandle._device_mode` into ``DOCKED_CHARGING`` and
+    surprise tests that don't otherwise care about charge state.
+    """
     device = MagicMock()
     device.online = True
     device.enabled = True
     device.report_data.dev.battery_val = 75
+    device.report_data.dev.charge_state = 0
     device.report_data.dev.sys_status = "idle"
     device.report_data.work.knife_height = 40
     return device
@@ -441,7 +448,9 @@ def _make_connected_transport(transport_type: TransportType) -> MagicMock:
     t.transport_type = transport_type
     t.is_connected = True
     t.is_rate_limited = False
+    t.is_usable = True  # default: ready to attempt sends; tests flip to False to exercise gates
     t.send = AsyncMock()
+    t.send_heartbeat = AsyncMock()
     t.disconnect = AsyncMock()
     t.on_message = None
     t.add_availability_listener = MagicMock()
@@ -740,16 +749,19 @@ async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> Non
 # ---------------------------------------------------------------------------
 
 from pymammotion.device.handle import (  # noqa: E402
+    _BLE_POLL_INTERVAL,
     _KEEP_ALIVE_BLE_INTERVAL,
-    _POLL_INTERVAL_IDLE,
-    _POLL_INTERVAL_MOWING,
+    _MQTT_POLL_INTERVAL,
     _RATE_LIMITED_BACKOFF,
+    _DeviceMode,
 )
 
 
 def _make_handle_for_poll(transport_type: TransportType | None) -> DeviceHandle:
     handle = make_handle("dev1", "Luba-Poll")
     handle.snapshot.raw.report_data.dev.sys_status = 0
+    handle.snapshot.raw.report_data.dev.battery_val = 0
+    handle.snapshot.raw.report_data.dev.charge_state = 0
     if transport_type is not None:
         t = _make_connected_transport(transport_type)
         handle._transports[transport_type] = t  # noqa: SLF001
@@ -761,7 +773,8 @@ async def test_poll_interval_mowing_returns_fifteen_minutes() -> None:
 
     handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
-    assert handle._poll_interval() == _POLL_INTERVAL_MOWING  # noqa: SLF001
+    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]  # noqa: SLF001
+    assert handle._device_mode() is _DeviceMode.ACTIVE  # noqa: SLF001
 
 
 async def test_poll_interval_returning_returns_fifteen_minutes() -> None:
@@ -769,21 +782,41 @@ async def test_poll_interval_returning_returns_fifteen_minutes() -> None:
 
     handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_RETURNING.value
-    assert handle._poll_interval() == _POLL_INTERVAL_MOWING  # noqa: SLF001
+    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]  # noqa: SLF001
 
 
-async def test_poll_interval_idle_returns_thirty_minutes() -> None:
+async def test_poll_interval_idle_returns_fifteen_minutes() -> None:
+    """sys_status=0 with no charge → IDLE (paused/lost) → 15 min for MQTT."""
     handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
-    handle.snapshot.raw.report_data.dev.sys_status = 0  # idle
-    assert handle._poll_interval() == _POLL_INTERVAL_IDLE  # noqa: SLF001
+    handle.snapshot.raw.report_data.dev.sys_status = 0
+    assert handle._device_mode() is _DeviceMode.IDLE  # noqa: SLF001
+    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.IDLE]  # noqa: SLF001
 
 
-async def test_poll_interval_docked_returns_thirty_minutes() -> None:
+async def test_poll_interval_docked_charging_returns_thirty_minutes() -> None:
+    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle.snapshot.raw.report_data.dev.sys_status = 0
+    handle.snapshot.raw.report_data.dev.battery_val = 80
+    handle.snapshot.raw.report_data.dev.charge_state = 1
+    assert handle._device_mode() is _DeviceMode.DOCKED_CHARGING  # noqa: SLF001
+    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_CHARGING]  # noqa: SLF001
+
+
+async def test_poll_interval_docked_full_returns_sixty_minutes() -> None:
     handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 100
     handle.snapshot.raw.report_data.dev.charge_state = 1
-    assert handle._poll_interval() == _POLL_INTERVAL_IDLE  # noqa: SLF001
+    assert handle._device_mode() is _DeviceMode.DOCKED_FULL  # noqa: SLF001
+    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_FULL]  # noqa: SLF001
+
+
+async def test_ble_poll_interval_table_values() -> None:
+    """ACTIVE → continuous stream (None); other modes → numeric count=1 cadences."""
+    assert _BLE_POLL_INTERVAL[_DeviceMode.ACTIVE] is None
+    assert _BLE_POLL_INTERVAL[_DeviceMode.DOCKED_CHARGING] == 5 * 60.0
+    assert _BLE_POLL_INTERVAL[_DeviceMode.DOCKED_FULL] == 30 * 60.0
+    assert _BLE_POLL_INTERVAL[_DeviceMode.IDLE] == 15 * 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -839,13 +872,25 @@ async def test_poll_loop_rate_limited_no_ble_backs_off() -> None:
 
 
 async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
-    """MQTT rate-limited but BLE is connected — poll still goes out (via BLE)."""
+    """MQTT rate-limited but BLE is connected — MQTT poll loop still falls through to BLE.
+
+    The BLE polling loop is suppressed for this test (we patch its starter) so we
+    isolate the MQTT loop's behaviour: the rate-limit backoff path must NOT trigger
+    when a BLE transport is registered, and the loop must call _send_one_shot_report.
+    """
     handle = make_handle("dev1", "Luba-RLBLE")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
     ble = _make_connected_transport(TransportType.BLE)
-    await handle.add_transport(mqtt)
-    await handle.add_transport(ble)
+    # Suppress the auto-start of BLE keepalive + polling loops so they don't race
+    # with the MQTT loop under test (the polling loop would set _ble_stream_active
+    # and force MQTT to defer).
+    with (
+        patch.object(handle, "_start_ble_loop"),
+        patch.object(handle, "_start_ble_polling_loop"),
+    ):
+        await handle.add_transport(mqtt)
+        await handle.add_transport(ble)
 
     one_shot_mock = AsyncMock()
 
@@ -861,6 +906,33 @@ async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
         await handle.stop()
 
     one_shot_mock.assert_awaited_once()
+
+
+async def test_poll_loop_defers_while_ble_stream_active() -> None:
+    """When BLE polling loop has the continuous stream active, MQTT loop must defer."""
+    handle = make_handle("dev1", "Luba-Defer")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    with patch.object(handle, "_start_ble_polling_loop"):
+        await handle.add_transport(mqtt)
+
+    handle._ble_stream_active = True  # noqa: SLF001 — simulate stream feeding
+
+    one_shot_mock = AsyncMock()
+    sleep_calls: list[float] = []
+
+    async def _record_and_stop(seconds: float) -> bool:
+        sleep_calls.append(seconds)
+        handle._stopping = True  # noqa: SLF001
+        return False
+
+    with (
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_record_and_stop)),
+        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+    ):
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
+
+    one_shot_mock.assert_not_awaited()
+    assert sleep_calls, "MQTT loop should have entered _sleep_or_rearm"
 
 
 async def test_poll_loop_skips_during_saga() -> None:
@@ -1007,3 +1079,169 @@ async def test_send_raw_ble_connect_failure_mqtt_offline_propagates() -> None:
     with pytest.raises(BLEUnavailableError):
         await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
     mqtt.send.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# is_usable gate — active_transport / send_raw must skip BLE when not usable
+# ---------------------------------------------------------------------------
+
+
+async def test_active_transport_skips_ble_when_not_usable() -> None:
+    """Disconnected + not-usable BLE (in cooldown) must not be returned by active_transport."""
+    handle = make_handle("dev1", "Luba-Cooldown")
+
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.is_usable = False  # simulate cooldown / no cached BLEDevice
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+
+    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+
+    chosen = handle.active_transport(prefer_ble=True)
+    assert chosen is mqtt  # BLE preferred but unusable → MQTT
+
+
+async def test_send_raw_skips_ble_reconnect_when_not_usable() -> None:
+    """When BLE is registered+disconnected but unusable, send_raw must NOT call ble.connect()."""
+    handle = make_handle("dev1", "Luba-NoUsableBLE")
+    handle._prefer_ble = True  # noqa: SLF001
+
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.is_usable = False  # cooldown / no device
+    ble.connect = AsyncMock()  # would normally be invoked — assert it isn't
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+
+    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
+    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+
+    await handle.send_raw(b"\xCA\xFE", prefer_ble=True)
+
+    ble.connect.assert_not_awaited()  # <- the whole point of the gate
+    mqtt.send.assert_awaited_once_with(b"\xCA\xFE", iot_id="")
+    ble.send.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# MammotionClient.update_ble_device / clear_ble_device
+# ---------------------------------------------------------------------------
+
+
+async def test_update_ble_device_returns_true_on_first_set_false_on_same_address() -> None:
+    """update_ble_device propagates the change-detection bool from BLETransport.set_ble_device."""
+    from bleak import BLEDevice
+
+    from pymammotion.transport.ble import BLETransport, BLETransportConfig
+
+    client = MammotionClient()
+    handle = make_handle("Luba-Update", "Luba-Update")
+    await client._device_registry.register(handle)  # noqa: SLF001
+
+    # Wire a real BLETransport (not a mock) so set_ble_device returns the proper bool.
+    transport = BLETransport(BLETransportConfig(device_id="Luba-Update"))
+    await handle.add_transport(transport)
+
+    dev1 = MagicMock(spec=BLEDevice)
+    dev1.address = "AA:BB:CC:DD:EE:FF"
+    dev2 = MagicMock(spec=BLEDevice)
+    dev2.address = "AA:BB:CC:DD:EE:FF"  # same address, different instance
+    dev3 = MagicMock(spec=BLEDevice)
+    dev3.address = "11:22:33:44:55:66"  # different address
+
+    assert await client.update_ble_device("Luba-Update", dev1) is True
+    assert await client.update_ble_device("Luba-Update", dev2) is False  # same address
+    assert await client.update_ble_device("Luba-Update", dev3) is True   # different address
+
+    await handle.stop()
+
+
+async def test_clear_ble_device_resets_transport_state() -> None:
+    """MammotionClient.clear_ble_device clears the cached BLEDevice on the transport."""
+    from bleak import BLEDevice
+
+    from pymammotion.transport.ble import BLETransport, BLETransportConfig
+
+    client = MammotionClient()
+    handle = make_handle("Luba-Clear", "Luba-Clear")
+    await client._device_registry.register(handle)  # noqa: SLF001
+
+    transport = BLETransport(BLETransportConfig(device_id="Luba-Clear"))
+    dev = MagicMock(spec=BLEDevice)
+    dev.address = "AA:BB:CC:DD:EE:FF"
+    transport.set_ble_device(dev)
+    await handle.add_transport(transport)
+
+    assert transport.is_usable is True
+    await client.clear_ble_device("Luba-Clear")
+    assert transport.is_usable is False
+    assert transport.ble_address is None
+
+    await handle.stop()
+
+
+async def test_clear_ble_device_no_handle_is_noop() -> None:
+    """clear_ble_device on an unknown device id silently does nothing."""
+    client = MammotionClient()
+    await client.clear_ble_device("does-not-exist")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# add_ble_only_device — accepts ble_device or ble_address, requires one
+# ---------------------------------------------------------------------------
+
+
+async def test_add_ble_only_device_requires_ble_device_or_address() -> None:
+    """Neither ble_device nor ble_address → ValueError."""
+    from pymammotion.data.model.device import MowingDevice
+
+    client = MammotionClient()
+    with pytest.raises(ValueError, match="ble_device or ble_address"):
+        await client.add_ble_only_device(
+            device_id="x",
+            device_name="x",
+            initial_device=MowingDevice(name="x"),
+        )
+
+
+async def test_add_ble_only_device_with_address_enables_self_managed_scanning() -> None:
+    """ble_address-only call defaults self_managed_scanning=True on the transport."""
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.transport.ble import BLETransport
+
+    client = MammotionClient()
+    handle = await client.add_ble_only_device(
+        device_id="luba-ble-1",
+        device_name="luba-ble-1",
+        initial_device=MowingDevice(name="luba-ble-1"),
+        ble_address="AA:BB:CC:DD:EE:FF",
+    )
+    transport = handle.get_transport(TransportType.BLE)
+    assert isinstance(transport, BLETransport)
+    assert transport._config.self_managed_scanning is True  # noqa: SLF001
+    assert transport._config.ble_address == "AA:BB:CC:DD:EE:FF"  # noqa: SLF001
+    # No BLEDevice cached yet — connect() will trigger a scan.
+    assert transport.ble_address is None
+
+
+async def test_add_ble_only_device_with_ble_device_disables_self_managed_scanning() -> None:
+    """ble_device-only call defaults self_managed_scanning=False (caller owns scanning)."""
+    from bleak import BLEDevice
+
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.transport.ble import BLETransport
+
+    client = MammotionClient()
+    fake_device = MagicMock(spec=BLEDevice)
+    fake_device.address = "11:22:33:44:55:66"
+
+    handle = await client.add_ble_only_device(
+        device_id="luba-ble-2",
+        device_name="luba-ble-2",
+        initial_device=MowingDevice(name="luba-ble-2"),
+        ble_device=fake_device,
+    )
+    transport = handle.get_transport(TransportType.BLE)
+    assert isinstance(transport, BLETransport)
+    assert transport._config.self_managed_scanning is False  # noqa: SLF001
+    assert transport.ble_address == "11:22:33:44:55:66"

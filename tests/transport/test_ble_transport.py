@@ -311,3 +311,178 @@ async def test_availability_transitions_on_connect_disconnect(config: BLETranspo
     assert TransportAvailability.CONNECTING in states
     assert TransportAvailability.CONNECTED in states
     assert TransportAvailability.DISCONNECTED in states
+
+
+# ---------------------------------------------------------------------------
+# is_usable / change-detection / cooldown / clear_ble_device
+# ---------------------------------------------------------------------------
+
+
+def _ble_device_with_address(address: str) -> MagicMock:
+    """Return a MagicMock-spec BLEDevice with a settable .address attribute."""
+    dev = MagicMock(spec=BLEDevice)
+    dev.address = address
+    return dev
+
+
+def test_is_usable_false_when_no_device(transport: BLETransport) -> None:
+    """A transport with no cached BLEDevice is not usable."""
+    assert transport.is_usable is False
+    assert transport.ble_address is None
+
+
+def test_is_usable_true_after_set_ble_device(transport: BLETransport) -> None:
+    """Setting a BLEDevice makes the transport usable and exposes its address."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    assert transport.is_usable is True
+    assert transport.ble_address == "AA:BB:CC:DD:EE:FF"
+
+
+def test_set_ble_device_returns_true_on_first_set(transport: BLETransport) -> None:
+    """First-ever set is reported as a change."""
+    assert transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF")) is True
+
+
+def test_set_ble_device_returns_true_on_address_change(transport: BLETransport) -> None:
+    """Setting a different-address device is reported as a change."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    assert transport.set_ble_device(_ble_device_with_address("11:22:33:44:55:66")) is True
+
+
+def test_set_ble_device_returns_false_on_same_address(transport: BLETransport) -> None:
+    """Re-setting with the same address (different BLEDevice instance) reports no change."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    # Different instance, same address — caller can short-circuit downstream work.
+    assert transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF")) is False
+
+
+def test_clear_ble_device_resets_state(transport: BLETransport) -> None:
+    """clear_ble_device() drops the device, resets failures, and clears any cooldown."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    transport._consecutive_failures = 2  # noqa: SLF001
+    transport._connect_cooldown_until = 1e12  # noqa: SLF001 — far future cooldown
+    transport.clear_ble_device()
+    assert transport._ble_device is None  # noqa: SLF001
+    assert transport._consecutive_failures == 0  # noqa: SLF001
+    assert transport._connect_cooldown_until == 0.0  # noqa: SLF001
+    assert transport.is_usable is False
+
+
+async def test_connect_failure_threshold_triggers_cooldown(config: BLETransportConfig) -> None:
+    """N consecutive BleakError failures clear the BLEDevice and start a cooldown."""
+    from bleak.exc import BleakError
+
+    from pymammotion.transport.base import BLEUnavailableError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(_ble_device_with_address(config.ble_address or "AA:BB:CC:DD:EE:FF"))
+
+    with patch(
+        "pymammotion.transport.ble.establish_connection",
+        new=AsyncMock(side_effect=BleakError("connect failed")),
+    ):
+        for _ in range(config.connect_failure_threshold):
+            with pytest.raises(BLEUnavailableError):
+                await transport.connect()
+
+    # Threshold trip → BLEDevice cleared, cooldown set, transport unusable.
+    assert transport._ble_device is None  # noqa: SLF001
+    assert transport.is_usable is False
+    assert transport._connect_cooldown_until > 0.0  # noqa: SLF001
+
+
+async def test_connect_during_cooldown_raises_immediately(config: BLETransportConfig) -> None:
+    """While in cooldown, connect() refuses without invoking bleak."""
+    import time
+
+    from pymammotion.transport.base import BLEUnavailableError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    transport._connect_cooldown_until = time.monotonic() + 60.0  # noqa: SLF001
+
+    establish = AsyncMock()
+    with patch("pymammotion.transport.ble.establish_connection", new=establish):
+        with pytest.raises(BLEUnavailableError):
+            await transport.connect()
+
+    establish.assert_not_awaited()
+    assert transport.is_usable is False  # cooldown gates is_usable too
+
+
+async def test_successful_connect_resets_failure_counter(config: BLETransportConfig) -> None:
+    """After a successful connect, the failure counter is back to zero."""
+    transport = BLETransport(config)
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    transport._consecutive_failures = 2  # noqa: SLF001 — simulate prior failures
+
+    fake_client = _make_fake_client()
+    fake_msg = _make_fake_ble_message()
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
+    ):
+        await transport.connect()
+
+    assert transport._consecutive_failures == 0  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# Self-managed scanning
+# ---------------------------------------------------------------------------
+
+
+async def test_self_managed_scanning_discovers_device() -> None:
+    """When self_managed_scanning=True and no device cached, connect() runs a scan."""
+    config = BLETransportConfig(
+        device_id="self-managed",
+        ble_address="AA:BB:CC:DD:EE:FF",
+        self_managed_scanning=True,
+    )
+    transport = BLETransport(config)
+
+    discovered = _ble_device_with_address("AA:BB:CC:DD:EE:FF")
+    fake_client = _make_fake_client()
+    fake_msg = _make_fake_ble_message()
+    with (
+        patch(
+            "pymammotion.transport.ble.BleakScanner.find_device_by_address",
+            new=AsyncMock(return_value=discovered),
+        ),
+        patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
+    ):
+        await transport.connect()
+
+    assert transport._ble_device is discovered  # noqa: SLF001
+    assert transport.is_connected is True
+
+
+async def test_self_managed_scanning_off_raises_when_no_device() -> None:
+    """When self_managed_scanning=False (default) and no device cached, connect() raises."""
+    config = BLETransportConfig(device_id="ha-managed", ble_address="AA:BB:CC:DD:EE:FF")
+    transport = BLETransport(config)
+
+    scan = AsyncMock()
+    with patch("pymammotion.transport.ble.BleakScanner.find_device_by_address", new=scan):
+        with pytest.raises(NoBLEAddressKnownError):
+            await transport.connect()
+
+    scan.assert_not_awaited()  # never tried to scan in HA-managed mode
+
+
+async def test_self_managed_scanning_raises_when_scan_finds_nothing() -> None:
+    """If the scan finds no device, connect() raises NoBLEAddressKnownError."""
+    config = BLETransportConfig(
+        device_id="self-managed",
+        ble_address="AA:BB:CC:DD:EE:FF",
+        self_managed_scanning=True,
+    )
+    transport = BLETransport(config)
+
+    with patch(
+        "pymammotion.transport.ble.BleakScanner.find_device_by_address",
+        new=AsyncMock(return_value=None),
+    ):
+        with pytest.raises(NoBLEAddressKnownError):
+            await transport.connect()

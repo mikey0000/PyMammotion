@@ -53,6 +53,14 @@ class MammotionCommand(
         # 1 multipoint turn
         return self.read_write_device(6, context, 1)
 
+    def boundary_ride_distance(self, context: int) -> bytes:
+        """Set the boundary ride percentage before mowing starts (Luba Pro only).
+
+        context: 0=none, 25=25%, 50=50%
+        Sent via nav_sys_param_cmd ID 10 on Pro/X3 devices.
+        """
+        return self.read_write_device(10, context, 1)
+
     def get_error_code(self) -> bytes:
         """Request the current error code from the device."""
         return self.read_write_device(5, 2, 1)

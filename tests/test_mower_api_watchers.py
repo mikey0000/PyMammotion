@@ -175,65 +175,22 @@ async def test_watcher_skips_when_saga_already_active() -> None:
 
 
 # ---------------------------------------------------------------------------
-# sys_status watcher: starts/stops the rapid report subscription
+# sys_status watcher was removed — cadence/streaming now lives in DeviceHandle
+# (BLE polling loop + MQTT cadence table).  No client-side watcher fires
+# request_iot_sys on sys_status transitions any more.
 # ---------------------------------------------------------------------------
 
 
-async def test_sys_status_working_starts_rapid_stream() -> None:
-    """Transition into MODE_WORKING must send request_iot_sys(RPT_START)."""
-    from pymammotion.proto import RptAct
-    from pymammotion.utility.constant import WorkMode
+async def test_setup_device_watchers_does_not_register_sys_status_watcher() -> None:
+    """setup_device_watchers must not install a sys_status watcher.
 
-    client, handle, handlers = _make_client_with_handle()
-
-    # handlers[2] is the sys_status watcher (order: path_hashes, progress, sys_status)
-    await handlers[2](WorkMode.MODE_WORKING.value)
-
-    client.send_command_with_args.assert_awaited_once()
-    call = client.send_command_with_args.await_args
-    assert call.args == ("Luba-Test", "request_iot_sys")
-    assert call.kwargs["rpt_act"] == RptAct.RPT_START
-    assert call.kwargs["count"] == 0
-    assert call.kwargs["period"] == 1000
-
-
-async def test_sys_status_returning_also_starts_rapid_stream() -> None:
-    """MODE_RETURNING is treated as an active state — stream must start."""
-    from pymammotion.proto import RptAct
-    from pymammotion.utility.constant import WorkMode
-
-    client, _handle, handlers = _make_client_with_handle()
-
-    await handlers[2](WorkMode.MODE_RETURNING.value)
-
-    call = client.send_command_with_args.await_args
-    assert call.kwargs["rpt_act"] == RptAct.RPT_START
-
-
-async def test_sys_status_pause_stops_rapid_stream() -> None:
-    """Transition into MODE_PAUSE must send request_iot_sys(RPT_STOP)."""
-    from pymammotion.proto import RptAct
-    from pymammotion.utility.constant import WorkMode
-
-    client, _handle, handlers = _make_client_with_handle()
-
-    await handlers[2](WorkMode.MODE_PAUSE.value)
-
-    call = client.send_command_with_args.await_args
-    assert call.kwargs["rpt_act"] == RptAct.RPT_STOP
-
-
-async def test_sys_status_charging_stops_rapid_stream() -> None:
-    """Transition into MODE_CHARGING (docked) must send RPT_STOP."""
-    from pymammotion.proto import RptAct
-    from pymammotion.utility.constant import WorkMode
-
-    client, _handle, handlers = _make_client_with_handle()
-
-    await handlers[2](WorkMode.MODE_CHARGING.value)
-
-    call = client.send_command_with_args.await_args
-    assert call.kwargs["rpt_act"] == RptAct.RPT_STOP
+    Stream lifecycle is owned by DeviceHandle._ble_polling_loop; the client
+    used to install a watcher that toggled request_iot_sys here, but that has
+    been moved.  Three watchers should be registered: path-hashes, progress,
+    bol_hash.
+    """
+    _client, _handle, handlers = _make_client_with_handle()
+    assert len(handlers) == 3
 
 
 # ---------------------------------------------------------------------------

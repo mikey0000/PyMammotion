@@ -62,6 +62,7 @@ from pymammotion.proto import (
     NavPlanJobSet,
     NavReqCoverPath,
     NavSysParamMsg,
+    NavTaskCtrlAck,
     NavUnableTimeSet,
     ReportInfoData,
     ReportInfoT,
@@ -154,6 +155,8 @@ class MowerStateReducer(StateReducer):
                         | "toapp_edge_points"
                     ):
                         device.map = copy.deepcopy(current.map)
+                    case "todev_taskctrl_ack":
+                        device.report_data = copy.deepcopy(current.report_data)
                     case "bidire_reqconver_path":
                         pass  # handler wholesale-rebinds device.work
                     case "nav_sys_param_cmd":
@@ -334,6 +337,22 @@ class MowerStateReducer(StateReducer):
                 current_task = CurrentTaskSettings.from_dict(work_settings.to_dict(casing=betterproto2.Casing.SNAKE))
                 device.work = current_task
             case "nav_sys_param_cmd":
+                # General read/write parameter channel (nav_sys_param_msg).
+                # Routed via nav on Luba Pro/X3; via sys.bidire_comm_cmd on older devices.
+                # rw=0 → device reporting current value, rw=1 → app setting a new value.
+                #
+                # ID  Field                          context values
+                # ---  -----------------------------  ------------------------------------------
+                #  3   rain_detection                 0=disabled, 1=enabled
+                #  5   error queries (read-only)      2=error code, 3=error timestamp — not state
+                #  6   turning_mode                   0=zero-turn, 1=multipoint turn
+                #  7   traversal_mode                 0=direct to dock, 1=follow perimeter
+                #  8   (X3 adapter only, no known caller — ignore)
+                # 10   boundary_ride_distance         0=0%, 25=25%, 50=50%
+                # 11   collect_grass_enable           0=disabled, 1=enabled
+                # 12   animal_protection.mode         0/1/2 (mode enum)
+                # 13   animal_protection.status       0=disabled, 1=enabled
+                # 20   grass-catcher bin open/close   0=close, 1=open (transient action, no state)
                 settings: NavSysParamMsg = nav_msg[1]
                 match settings.id:
                     case 3:
@@ -342,6 +361,8 @@ class MowerStateReducer(StateReducer):
                         device.mower_state.turning_mode = settings.context
                     case 7:
                         device.mower_state.traversal_mode = settings.context
+                    case 10:
+                        device.mower_state.boundary_ride_distance = settings.context
                     case 11:
                         device.mower_state.collect_grass_enable = settings.context
                     case 12:
@@ -353,6 +374,9 @@ class MowerStateReducer(StateReducer):
                 device.non_work_hours.non_work_sub_cmd = nav_non_work_time.sub_cmd
                 device.non_work_hours.start_time = nav_non_work_time.unable_start_time
                 device.non_work_hours.end_time = nav_non_work_time.unable_end_time
+            case "todev_taskctrl_ack":
+                task_ctrl_ack: NavTaskCtrlAck = nav_msg[1]
+                device.report_data.dev.sys_status = task_ctrl_ack.nav_state
             case "toapp_edge_points":
                 edge_msg: NavEdgePoints = nav_msg[1]
                 device.map.upsert_edge_frame(
@@ -392,10 +416,19 @@ class MowerStateReducer(StateReducer):
             case "system_tard_state_tunnel":
                 device.run_state_update(sys_msg[1])
             case "bidire_comm_cmd":
+                # General read/write channel for non-Pro (Luba 1) devices — mirrors
+                # nav_sys_param_cmd for Pro/X3.  Same ID table applies; IDs 6/7/10/11
+                # are only sent here on devices where is_luba_pro() is False.
                 comm_cmd: SysCommCmd = sys_msg[1]
                 match comm_cmd.id:
                     case 3:
                         device.mower_state.rain_detection = bool(comm_cmd.context)
+                    case 6:
+                        device.mower_state.turning_mode = comm_cmd.context
+                    case 7:
+                        device.mower_state.traversal_mode = comm_cmd.context
+                    case 11:
+                        device.mower_state.collect_grass_enable = comm_cmd.context
                     case 12:
                         device.mower_state.animal_protection.mode = comm_cmd.context
                     case 13:
@@ -552,6 +585,8 @@ class MowerStateReducer(StateReducer):
                 device.mower_state.wifi_ssid = str(net.get("ssid", device.mower_state.wifi_ssid))
                 device.mower_state.ip_address = str(net.get("ip", device.mower_state.ip_address))
                 device.report_data.connect.wifi_rssi = int(net.get("wifi_rssi", device.report_data.connect.wifi_rssi))
+                if (bat_cycles := net.get("bat_cycles")) is not None:
+                    device.report_data.maintenance.bat_cycles = int(bat_cycles)
             except (ValueError, KeyError, TypeError):
                 _logger.debug("MowerStateReducer: failed to parse networkInfo property")
 
@@ -579,6 +614,12 @@ class MowerStateReducer(StateReducer):
             device.mower_state.internal_model = str(int_mod.value)
         if bms_hw := items.bmsHardwareVersion:
             device.mower_state.battery_hardware = str(bms_hw.value)
+        if battery_prop := items.batteryPercentage:
+            device.report_data.dev.battery_val = int(battery_prop.value)
+        if state_prop := items.deviceState:
+            device.report_data.dev.sys_status = int(state_prop.value)
+        if knife_prop := items.knifeHeight:
+            device.report_data.work.knife_height = int(knife_prop.value)
 
         if other_info := items.deviceOtherInfo:
             try:
@@ -942,7 +983,7 @@ class RTKStateReducer(StateReducer):
             try:
                 net = json.loads(net_prop.value)
                 device.wifi_rssi = int(net.get("wifi_rssi", device.wifi_rssi))
-                device.wifi_sta_mac = str(net.get("wifi_sta_mac", device.wifi_sta_mac))
+                device.wifi_mac = str(net.get("wifi_sta_mac", device.wifi_mac))
                 device.bt_mac = str(net.get("bt_mac", device.bt_mac))
             except (ValueError, KeyError, TypeError):
                 _logger.debug("RTKStateReducer: failed to parse networkInfo property")

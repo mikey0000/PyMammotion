@@ -27,8 +27,9 @@ async def test_handle_disconnect_from_non_asyncio_thread_fires_listener() -> Non
     """Invoking _handle_disconnect from a worker thread must still fire listeners."""
     transport = BLETransport(BLETransportConfig(device_id="Luba-THREAD-TEST"))
 
-    # Capture the running loop the way connect() would.
+    # Simulate the post-connect state the way connect() would leave it.
     transport._loop = asyncio.get_running_loop()
+    transport._availability = TransportAvailability.CONNECTED
 
     fired = asyncio.Event()
     received_state: list[TransportAvailability] = []
