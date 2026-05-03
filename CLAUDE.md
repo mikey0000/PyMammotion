@@ -113,6 +113,12 @@ Transport.on_message(raw bytes)
 
 **TokenManager** holds a single `asyncio.Lock` to prevent concurrent refresh races. All three getters (`get_valid_http_token`, `get_aliyun_credentials`, `get_mammotion_mqtt_credentials`) check expiry under the lock and refresh proactively. `force_refresh()` is the watchdog entry point when `AuthError` is detected.
 
+**Never send MQTT to an offline device.** When the cloud has reported a device offline (`DeviceAvailability.mqtt_reported_offline = True`, set by `DeviceOfflineException` and "offline" `thing/status` messages), no code path should fire an MQTT send to that device — not user commands, not periodic polls, not heartbeats, not sagas. The cloud will queue the message and either drop it or deliver it when the device returns, neither of which we want, and the broker side raises `DeviceOfflineException` again, so the round-trip is wasted. Gates that enforce this:
+- `DeviceHandle.active_transport()` raises `NoTransportAvailableError` when MQTT is the only registered transport and `mqtt_reported_offline` is True.
+- `DeviceHandle._mqtt_activity_loop` pre-flights `active_transport()` and skips when it raises.
+- `MammotionClient.send_command_with_args` short-circuits with a debug log when offline-and-no-BLE.
+- `mqtt_reported_offline` clears automatically as soon as any MQTT frame arrives via `on_raw_message`, so no manual reset is needed — natural device traffic re-arms sending. Any new send path you add must follow the same gate, or route via `send_raw` / `send_command_with_args` which already check it.
+
 ### Connection Paths
 
 - **Cloud/MQTT (Aliyun, pre-2025):** `MammotionHTTP` login → `CloudIOTGateway` setup → `AliyunMQTTTransport`
@@ -151,3 +157,29 @@ Key files for protocol/logic research:
 - mypy excludes `pymammotion/proto/`, `tests/`, `scripts/`, and `pymammotion/mqtt/linkkit/`
 - Strict mypy config: `disallow_untyped_defs`, `disallow_untyped_calls`, `disallow_any_generics`
 - **No local imports inside function bodies** — always use top-level imports. Exception: `TYPE_CHECKING` guards for type-hint-only imports that would cause circular imports at runtime.
+
+## Working in this codebase (rules for Claude)
+
+Before adding code, look for what's already there. The architecture is layered and most concerns already have a single home — duplicating logic in a second place is almost always wrong, even when it's "just a quick check."
+
+**Search before you write:**
+- Grep for the concept (`grep -rn "concept_name" pymammotion/`).
+- Grep for the data shape you'd be checking (`mqtt_reported_offline`, `is_usable`, `is_connected`, `_prefer_ble`, …).
+- Grep for similar patterns you'd be following (`grep -rn "active_transport\b"`, `watch_field`, `subscribe_unsolicited`, …).
+- Read the existing implementation top-to-bottom before proposing a new one.
+
+**Consolidate, don't proliferate.** If you find yourself writing the same check (offline gate, transport-usable test, mode classification, retry policy, …) in a second place, stop and look for the existing one. Examples currently in the codebase:
+- "Is anything sendable right now?" → `DeviceHandle.has_usable_transport` / `active_transport()`. Don't add another offline check.
+- "Is BLE in a usable state?" → `BLETransport.is_usable`. Don't re-derive from `_ble_device` and `_connect_cooldown_until`.
+- "What kind of state is the mower in for cadence?" → `DeviceHandle._device_mode()` + `_MQTT_POLL_INTERVAL` / `_BLE_POLL_INTERVAL` tables. Don't pattern-match `sys_status` inline.
+- "Should the queue treat this exception as expected?" → the demotion buckets in `DeviceCommandQueue._process` (`NoTransportAvailableError` / `DeviceOfflineException` are DEBUG; auth/saga/rate-limit are WARNING). Don't add a try/except in callers to swallow expected errors — let them propagate to the queue.
+
+**SOLID, applied here:**
+- **Single responsibility:** each file owns one concern. Transport selection lives on `DeviceHandle`; cooldown/scan logic lives on `BLETransport`; cadence tables live in `handle.py`. Don't smear logic across layers.
+- **Open/closed:** prefer extending tables (e.g. `_MQTT_POLL_INTERVAL[mode]`) over adding `if mode == ...` branches in send paths.
+- **Dependency direction:** `pymammotion` doesn't know HA exists. HA-Luba consumes `pymammotion` via the `MammotionClient` and `DeviceHandle` public APIs. If you find yourself reaching into `_private` attributes from HA-Luba, surface a public property instead.
+- **Substitutability:** all `Transport` implementations satisfy the same interface. New default behavior goes on the base class (`base.py`); overrides go on the concrete class.
+
+**When proposing changes, lead with the audit.** "Where does this concern live today? Can the existing site cover the new requirement?" If the answer is yes, extend the existing site. If no, explain why a new site is needed and where it sits in the architecture before writing.
+
+**When fixing bugs, fix the root, not the symptom.** If a check is missing in three places, the right fix is usually one centralized check (a property, a helper, a base-class method), not three copies. The `has_usable_transport` consolidation is the canonical example: one property replaced loose offline gates scattered across `send_command_with_args`, `_mqtt_activity_loop`, and the queue's warning bucket.

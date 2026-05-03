@@ -1245,3 +1245,268 @@ async def test_add_ble_only_device_with_ble_device_disables_self_managed_scannin
     assert isinstance(transport, BLETransport)
     assert transport._config.self_managed_scanning is False  # noqa: SLF001
     assert transport.ble_address == "11:22:33:44:55:66"
+
+
+# ---------------------------------------------------------------------------
+# MQTT loop respects offline state — never polls when no transport is usable
+# ---------------------------------------------------------------------------
+
+
+async def test_poll_loop_never_polls_when_device_reported_offline_and_no_ble() -> None:
+    """When the cloud has reported the device offline AND no BLE is registered,
+    the MQTT loop must never call _send_one_shot_report — it should only sleep.
+    """
+    from pymammotion.state.device_state import DeviceAvailability
+
+    handle = make_handle("dev1", "Luba-Offline")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
+
+    # Cloud has marked the device offline.
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+
+    one_shot_mock = AsyncMock()
+    sleep_count = 0
+    iteration_cap = 5  # bound the test in case the loop misbehaves
+
+    async def _counting_sleep(seconds: float) -> bool:
+        nonlocal sleep_count
+        sleep_count += 1
+        if sleep_count >= iteration_cap:
+            handle._stopping = True  # noqa: SLF001
+        return False
+
+    with (
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
+        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+    ):
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
+
+    # The loop must have looped — we forced 5 sleeps — and never sent a poll.
+    assert sleep_count >= iteration_cap
+    one_shot_mock.assert_not_awaited()
+
+
+async def test_poll_loop_resumes_after_mqtt_offline_clears() -> None:
+    """When mqtt_reported_offline starts True and is cleared, the next loop tick
+    proceeds to _send_one_shot_report.  Validates that the offline gate is dynamic,
+    not latched.
+    """
+    from pymammotion.state.device_state import DeviceAvailability
+
+    handle = make_handle("dev1", "Luba-Recover")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
+
+    # Start offline.
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+
+    sleep_count = 0
+
+    async def _sleep_then_recover(seconds: float) -> bool:
+        nonlocal sleep_count
+        sleep_count += 1
+        if sleep_count == 1:
+            # Simulate the cloud pushing a thing/status that clears the offline flag.
+            handle._availability = DeviceAvailability(  # noqa: SLF001
+                ble=handle._availability.ble,  # noqa: SLF001
+                mqtt=handle._availability.mqtt,  # noqa: SLF001
+                mqtt_reported_offline=False,
+            )
+        return False
+
+    one_shot_mock = AsyncMock()
+
+    async def _send_and_stop() -> None:
+        handle._stopping = True  # noqa: SLF001
+        await one_shot_mock()
+
+    with (
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_sleep_then_recover)),
+        patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
+    ):
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
+
+    one_shot_mock.assert_awaited_once()
+
+
+async def test_poll_loop_skips_when_ble_only_in_cooldown_and_no_mqtt() -> None:
+    """Symmetric case: BLE-only device, BLE transport in cooldown / unusable,
+    no MQTT registered — loop must not attempt to send.
+    """
+    handle = make_handle("dev1", "Luba-BLE-Cooldown")
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.is_usable = False  # simulating cooldown + no cached BLEDevice
+    await handle.add_transport(ble)
+
+    one_shot_mock = AsyncMock()
+    sleep_count = 0
+    iteration_cap = 4
+
+    async def _counting_sleep(seconds: float) -> bool:
+        nonlocal sleep_count
+        sleep_count += 1
+        if sleep_count >= iteration_cap:
+            handle._stopping = True  # noqa: SLF001
+        return False
+
+    with (
+        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
+        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+    ):
+        await asyncio.wait_for(handle._mqtt_activity_loop(), timeout=2.0)
+
+    one_shot_mock.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Centralized offline handling — has_usable_transport + queue log demotion
+# ---------------------------------------------------------------------------
+
+
+async def test_has_usable_transport_false_when_offline_and_no_ble() -> None:
+    """has_usable_transport mirrors active_transport: False when MQTT offline + no BLE."""
+    from pymammotion.state.device_state import DeviceAvailability
+
+    handle = make_handle("dev1", "Luba-NoTransport")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+
+    assert handle.has_usable_transport is False
+
+
+async def test_has_usable_transport_true_when_mqtt_usable() -> None:
+    """has_usable_transport is True with a registered + non-offline MQTT transport."""
+    handle = make_handle("dev1", "Luba-Online")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
+
+    assert handle.has_usable_transport is True
+
+
+async def test_has_usable_transport_true_when_ble_connected() -> None:
+    """has_usable_transport is True when BLE is actively connected (Rule 1)."""
+    handle = make_handle("dev1", "Luba-BLE-Up")
+    ble = _make_connected_transport(TransportType.BLE)
+    await handle.add_transport(ble)
+
+    assert handle.has_usable_transport is True
+
+
+async def test_has_usable_transport_false_when_ble_unusable_and_no_mqtt() -> None:
+    """has_usable_transport False when only BLE is registered and it's in cooldown."""
+    handle = make_handle("dev1", "Luba-Cooldown")
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.is_usable = False
+    await handle.add_transport(ble)
+
+    assert handle.has_usable_transport is False
+
+
+async def test_send_command_with_args_skips_immediately_when_offline() -> None:
+    """Offline + no usable transport → debug log, no enqueue retry, no hang."""
+    from pymammotion.state.device_state import DeviceAvailability
+
+    client = MammotionClient()
+    handle = make_handle("luba-x", "luba-x")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+    await client._device_registry.register(handle)
+
+    fake_bytes = b"\xCA\xFE"
+    patcher = _stub_commands(handle, fake_bytes)
+    sleep_calls: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _spy_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+        await real_sleep(0)  # don't actually delay
+
+    try:
+        with patch.object(asyncio, "sleep", new=_spy_sleep):
+            await client.send_command_with_args("luba-x", "get_report_cfg")
+            await _drain(handle)
+    finally:
+        patcher.stop()
+
+    # No retry loop ⇒ no 2.0s sleeps fired by send_command_with_args.
+    assert all(d != 2.0 for d in sleep_calls), f"unexpected retry sleep: {sleep_calls}"
+    # And no actual send went out.
+    mqtt.send.assert_not_awaited()
+
+
+async def test_queue_logs_no_transport_at_debug_not_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """A queue work item raising NoTransportAvailableError must log at DEBUG, not WARNING."""
+    import logging
+
+    from pymammotion.transport.base import NoTransportAvailableError
+
+    handle = make_handle("dev1", "Luba-Quiet")
+    handle.queue.start()
+
+    async def _raises() -> None:
+        raise NoTransportAvailableError("test: no transport")
+
+    caplog.set_level(logging.DEBUG, logger="pymammotion.messaging.command_queue")
+    await handle.queue.enqueue(_raises)
+    await handle.queue._queue.join()  # noqa: SLF001
+    await handle.queue.stop()
+
+    relevant = [r for r in caplog.records if "test: no transport" in r.getMessage()]
+    assert relevant, "expected a log record mentioning the NoTransportAvailableError"
+    assert all(r.levelno == logging.DEBUG for r in relevant), (
+        f"expected DEBUG only, got: {[(r.levelname, r.getMessage()) for r in relevant]}"
+    )
+
+
+async def test_has_usable_transport_true_when_offline_with_ble_usable_but_disconnected() -> None:
+    """MQTT offline + BLE registered with is_usable=True but not connected → True.
+
+    The BLE transport hasn't established GATT yet (e.g. just woke up from
+    cooldown, fresh BLEDevice cached) but it's eligible for a connect attempt.
+    active_transport() returns it for the caller to (re)connect, so
+    has_usable_transport must report True — otherwise send_command_with_args
+    would skip the very command that should trigger the BLE reconnect.
+    """
+    from pymammotion.state.device_state import DeviceAvailability
+
+    handle = make_handle("dev1", "Luba-Recovery")
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False     # GATT not up yet
+    ble.is_usable = True         # has cached BLEDevice, not in cooldown
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+
+    # Verify the property delegates to ble.is_usable via active_transport().
+    assert ble.is_usable is True
+    assert handle.has_usable_transport is True
+
+    # Sanity: flipping ble.is_usable=False (cooldown) flips the property too.
+    ble.is_usable = False
+    assert handle.has_usable_transport is False

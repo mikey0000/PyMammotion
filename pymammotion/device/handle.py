@@ -1068,6 +1068,21 @@ class DeviceHandle:
                 await self._sleep_or_rearm(_BLE_MODE_RECHECK_INTERVAL)
                 continue
 
+            # No usable transport (cloud reported device offline + no BLE,
+            # BLE in cooldown + no MQTT, or nothing registered).  Skip the
+            # poll attempt — ``_rearm_event`` fires on BLE state changes and
+            # ``mqtt_reported_offline`` clears on the next inbound MQTT frame,
+            # so both natural recovery signals already wake us.
+            if not self.has_usable_transport:
+                _logger.debug(
+                    "poll_loop [%s]: no usable transport (mqtt_offline=%s) — backing off %.0fs",
+                    self.device_name,
+                    self._availability.mqtt_reported_offline,
+                    interval,
+                )
+                await self._sleep_or_rearm(interval)
+                continue
+
             # Timer: the later of "last data received" and "last poll sent".
             # Including last_poll_sent_at prevents spam when the device doesn't respond.
             last_recv = max(
@@ -1319,6 +1334,37 @@ class DeviceHandle:
     def set_prefer_ble(self, *, value: bool) -> None:
         """Change the transport preference at runtime (e.g. when BLE connects/disconnects)."""
         self._prefer_ble = value
+
+    @property
+    def ble_stream_active(self) -> bool:
+        """True when the BLE polling loop is renewing a continuous count=0 report stream.
+
+        Callers (HA-Luba's coordinators, primarily) use this to decide whether
+        a one-shot count=1 poll is needed on a state-change event: if the
+        stream is already feeding fresh data, the extra poll is redundant.
+        """
+        return self._ble_stream_active
+
+    @property
+    def has_usable_transport(self) -> bool:
+        """Single source of truth: would a send right now find a usable transport?
+
+        Wraps :meth:`active_transport` in a try/except — True when the selector
+        would return a transport, False when it would raise
+        ``NoTransportAvailableError`` (cloud-reported offline + no BLE,
+        BLE-in-cooldown + no MQTT, nothing registered, …).
+
+        All send-path gates should use this rather than re-implementing the
+        check.  The MQTT poll loop pre-flights with this; ``send_command_with_args``
+        skips up-front when False to avoid enqueueing work guaranteed to fail.
+        Sagas / internal sends can call ``send_raw`` directly and rely on the
+        queue to swallow ``NoTransportAvailableError`` quietly.
+        """
+        try:
+            self.active_transport()
+        except NoTransportAvailableError:
+            return False
+        return True
 
     def active_transport(self, *, prefer_ble: bool | None = None) -> Transport:
         """Return the best transport to send on.

@@ -210,7 +210,10 @@ class MQTTTransport(Transport):
                 ) from retry_exc
         if res.code in (401, 460):
             raise AuthError(f"Access token expired (code={res.code})")
-        if res.code in (6205, 50104):
+        # 50103 / 50104 = MA_DEVICE_OFFLINE per the APK (AppConstants.java:279).
+        # APK's MAIotManager.java:232-233 groups both codes under onDeviceIotOffLine.
+        # 6205 is the legacy Aliyun "device not online" code.
+        if res.code in (6205, 50103, 50104):
             raise DeviceOfflineException(res.code, iot_id)
         if res.code == 20056:
             raise GatewayTimeoutException(res.code, iot_id)

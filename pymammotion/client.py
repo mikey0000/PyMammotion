@@ -1901,43 +1901,28 @@ class MammotionClient:
         _prefer_ble = prefer_ble
         _session = self._get_session_for_device(name)
 
-        _no_transport_max = 3
-        _no_transport_delay = 2.0
-
         async def _do_send() -> None:
-            # Gate: cloud has told us this device is offline — don't send unless BLE is available.
-            if handle.availability.mqtt_reported_offline and not handle.has_transport(TransportType.BLE):
+            # Single offline gate via the centralized property — covers
+            # mqtt_reported_offline + no BLE, BLE-in-cooldown + no MQTT, and
+            # nothing-registered.  active_transport() is the source of truth.
+            #
+            # We don't retry here: when no transport is usable the wait isn't
+            # bounded by something the queue can fix on its own — recovery
+            # depends on the cloud pushing thing/status (clears
+            # mqtt_reported_offline) or BLE coming back (rearm event).  Both
+            # naturally re-arm the poll loop, and the user can re-issue the
+            # command then.
+            if not handle.has_usable_transport:
                 _logger.debug(
-                    "send_command_with_args '%s': device offline (cloud-reported) — skipping '%s'",
+                    "send_command_with_args '%s': no usable transport — skipping '%s'",
                     name,
                     key,
                 )
                 return
-
-            for _attempt in range(1, _no_transport_max + 1):
-                try:
-                    await self._send_with_auth_retry(
-                        lambda: handle.send_raw(command_bytes, prefer_ble=_prefer_ble),
-                        _session,
-                    )
-                except NoTransportAvailableError:
-                    if _attempt >= _no_transport_max:
-                        _logger.warning(
-                            "send_command_with_args '%s': no transport after %d attempts — dropping",
-                            name,
-                            _attempt,
-                        )
-                        return
-                    _logger.debug(
-                        "send_command_with_args '%s': no transport (attempt %d/%d) — retrying in %.1fs",
-                        name,
-                        _attempt,
-                        _no_transport_max,
-                        _no_transport_delay,
-                    )
-                    await asyncio.sleep(_no_transport_delay)
-                else:
-                    return
+            await self._send_with_auth_retry(
+                lambda: handle.send_raw(command_bytes, prefer_ble=_prefer_ble),
+                _session,
+            )
 
         await handle.queue.enqueue(_do_send, priority=Priority.NORMAL)
 
