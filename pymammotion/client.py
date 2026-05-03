@@ -1451,6 +1451,14 @@ class MammotionClient:
                     device.map.root_hash_lists = saga.result.root_hash_lists
                 if device.location.RTK.latitude != 0:
                     device.map.generate_geojson(device.location.RTK, device.location.dock)
+                # Notify map_updated subscribers after a successful saga, matching
+                # ``handle.subscribe_map_updated`` 's docstring promise.  Without
+                # this emit, downstream subscribers (e.g. Mammotion-HA's area-switch
+                # builder) only fire on ``toapp_all_hash_name`` messages, which
+                # some Mammotion cloud sessions never deliver — leaving zone
+                # entities permanently missing even though the saga successfully
+                # populated ``device.map.area``.
+                await handle._map_updated_bus.emit(None)
 
             await handle.enqueue_saga(saga, on_complete=_on_map_complete)
         else:
