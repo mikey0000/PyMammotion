@@ -329,6 +329,7 @@ class AliyunMQTTTransport(Transport):
         self._stop_event.set()
         self._client = None
         await self._notify_availability(TransportAvailability.DISCONNECTED)
+        self.mark_auth_failed()
         if self.on_fatal_auth_error is not None:
             with contextlib.suppress(Exception):
                 await self.on_fatal_auth_error(exc)

@@ -1312,7 +1312,7 @@ class DeviceHandle:
                 mqtt = t
                 break
         mqtt_registered = mqtt is not None
-        mqtt_usable = mqtt_registered and not mqtt_reported_offline
+        mqtt_usable = mqtt is not None and not mqtt_reported_offline and mqtt.is_usable
 
         _logger.debug(
             "active_transport '%s': prefer_ble=%s ble_connected=%s ble_usable=%s"

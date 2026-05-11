@@ -1167,12 +1167,10 @@ class MammotionClient:
             _logger.warning("Aliyun transport fatal auth error — attempting final re-login: %s", exc)
             try:
                 await self._full_relogin(acct_session)
-                # Same safety net: explicit push in case callback path was skipped.
                 if token_manager is not None:
                     creds = await token_manager.get_aliyun_credentials()
                     transport.update_iot_token(creds.iot_token)
-                # Schedule connect() for after the current _run() task exits.
-                # Calling it directly here is a no-op because the task is still running.
+                transport.clear_auth_failed()
                 asyncio.get_running_loop().call_soon(lambda: asyncio.ensure_future(transport.connect()))
                 _logger.info("Aliyun transport reconnect scheduled after final re-login")
             except Exception as relogin_exc:
@@ -1229,6 +1227,7 @@ class MammotionClient:
                 await self._full_relogin(acct_session)
                 new_jwt = await _refresh_jwt()
                 transport.update_jwt(new_jwt)
+                transport.clear_auth_failed()
                 # Schedule connect() for after the current _run() task exits.
                 asyncio.get_running_loop().call_soon(lambda: asyncio.ensure_future(transport.connect()))
                 _logger.info("MQTT transport reconnect scheduled after full re-login")

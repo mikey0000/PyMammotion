@@ -232,6 +232,9 @@ class Transport(ABC):
         self._send_timestamps: collections.deque[float] = collections.deque()
         #: Monotonic timestamp of the most recent outbound send (0.0 = never sent).
         self._last_send_monotonic: float = 0.0
+        #: Set by mark_auth_failed() when a send fails with ReLoginRequiredError.
+        #: Cleared by clear_auth_failed() after successful credential recovery.
+        self._auth_failed: bool = False
 
     @property
     def on_message(self) -> Callable[[bytes], Awaitable[None]] | None:
@@ -317,18 +320,13 @@ class Transport(ABC):
 
     @property
     def is_usable(self) -> bool:
-        """True when this transport is in a state where ``connect()`` could plausibly succeed.
+        """True when this transport is in a state where ``send()`` could plausibly succeed.
 
-        The default implementation always returns True — applies to MQTT transports
-        whose connectability is decided by network reachability and credentials,
-        not by transport-internal state.
-
-        :class:`~pymammotion.transport.ble.BLETransport` overrides this to gate
-        on cached ``BLEDevice`` presence and connect-failure cooldown so that
-        :meth:`pymammotion.device.handle.DeviceHandle.active_transport` can
-        skip BLE without burning a connection slot during a known-bad window.
+        Returns False when an auth failure has been recorded via
+        :meth:`mark_auth_failed`.  :class:`~pymammotion.transport.ble.BLETransport`
+        overrides this to add BLEDevice-presence and cooldown gating.
         """
-        return True
+        return not self._auth_failed
 
     def set_rate_limited(self) -> None:
         """Record a rate-limit event; blocks sends on this transport for _RATE_LIMIT_DURATION seconds."""
@@ -366,6 +364,17 @@ class Transport(ABC):
             else:
                 break
         return count
+
+    def mark_auth_failed(self) -> None:
+        """Mark this transport as unusable due to an authentication failure.
+
+        ``is_usable`` returns False until ``clear_auth_failed()`` is called.
+        """
+        self._auth_failed = True
+
+    def clear_auth_failed(self) -> None:
+        """Clear the auth-failed flag after successful credential recovery."""
+        self._auth_failed = False
 
     @abstractmethod
     async def connect(self) -> None:

@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.transport import TransportError
-from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError, TransportRateLimitedError
+from pymammotion.transport.base import (
+    AuthError,
+    NoTransportAvailableError,
+    ReLoginRequiredError,
+    SagaFailedError,
+    TransportRateLimitedError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -288,6 +294,8 @@ class DeviceCommandQueue:
                 # caller-side gate needed; just don't pollute the log.
                 if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException)):
                     _logger.debug("DeviceCommandQueue[%s]: %s", self._device_name, exc)
+                elif isinstance(exc, ReLoginRequiredError):
+                    _logger.warning("DeviceCommandQueue[%s]: %s", self._device_name, exc)
                 # Real warnings — auth, saga, rate-limit, generic transport.
                 elif isinstance(
                     exc,

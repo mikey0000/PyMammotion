@@ -160,7 +160,7 @@ class BLETransport(Transport):
         """
         if self._ble_device is None:
             return False
-        return time.monotonic() >= self._connect_cooldown_until
+        return super().is_usable and time.monotonic() >= self._connect_cooldown_until
 
     # ------------------------------------------------------------------
     # Transport ABC
