@@ -483,7 +483,7 @@ class TokenManager:
             except (Exception, AuthError):
                 # Authorization code refresh also failed — fall back to a full HTTP re-login.
                 try:
-                    await self._http.refresh_login()
+                    await self.refresh_http()
                     await self._http.refresh_authorization_token()
                     creds = self._http.mqtt_credentials
                     if creds is not None:

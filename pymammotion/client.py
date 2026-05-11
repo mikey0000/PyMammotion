@@ -1214,6 +1214,8 @@ class MammotionClient:
 
         async def _refresh_jwt() -> str:
             creds = await token_manager.refresh_mqtt_creds()
+            if creds is None:
+                raise ReLoginRequiredError(token_manager.account_id, "No JWT available after credential refresh")
             return str(creds.jwt)
 
         transport = MQTTTransport(config, mammotion_http, jwt_refresher=_refresh_jwt, token_manager=token_manager)
