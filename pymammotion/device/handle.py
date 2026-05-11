@@ -284,6 +284,7 @@ class DeviceHandle:
                     # BLE arriving while MQTT is reconnecting provides a fallback send path —
                     # open the queue gate so commands can flow immediately over BLE.
                     self.queue.resume_after_reconnect()
+                    self.queue.clear_auth_backoff()
                     asyncio.get_running_loop().create_task(self._on_ble_connected())
                 else:
                     # Wake the MQTT loop immediately so it resumes heartbeating
@@ -314,6 +315,8 @@ class DeviceHandle:
                 # DISCONNECTED: don't hold commands indefinitely; let NoTransportAvailableError
                 # handle them if no other transport is available.
                 self.queue.resume_after_reconnect()
+                if state == TransportAvailability.CONNECTED:
+                    self.queue.clear_auth_backoff()
 
         return _handler
 

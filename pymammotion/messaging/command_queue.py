@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.transport import TransportError
-from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError, TransportRateLimitedError
+from pymammotion.transport.base import (
+    AuthError,
+    NoTransportAvailableError,
+    ReLoginRequiredError,
+    SagaFailedError,
+    TransportRateLimitedError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -73,6 +79,9 @@ class DeviceCommandQueue:
         self._task: asyncio.Task[None] | None = None
         self._device_name = device_name
         self._pending_dedup_keys: set[str] = set()
+        # Monotonic deadline set after a ReLoginRequiredError.  Non-EMERGENCY commands
+        # are dropped until this deadline passes, then the field is cleared automatically.
+        self._auth_backoff_until: float | None = None
         #: Called on critical errors (AuthError, SagaFailedError) so DeviceHandle can propagate them.
         self.on_critical_error: Callable[[Exception], Awaitable[None]] | None = None
         #: Fired when an exclusive saga is about to start.  Clients use this to pause the
@@ -107,6 +116,10 @@ class DeviceCommandQueue:
     def resume_after_reconnect(self) -> None:
         """Unblock command dispatch after transport reconnection completes."""
         self._transport_gate.set()
+
+    def clear_auth_backoff(self) -> None:
+        """Clear the auth-failure backoff so commands flow immediately after successful reauth."""
+        self._auth_backoff_until = None
 
     async def stop(self) -> None:
         """Stop the queue processor and release any held exclusive lock."""
@@ -226,6 +239,14 @@ class DeviceCommandQueue:
                 if item.dedup_key is not None:
                     self._pending_dedup_keys.discard(item.dedup_key)
 
+                # Auth backoff: suppress non-EMERGENCY commands after a ReLoginRequiredError
+                # until the cooldown expires.  EMERGENCY items (e-stop, return-to-dock) bypass.
+                if self._auth_backoff_until is not None and item.priority > Priority.EMERGENCY:
+                    if time.monotonic() < self._auth_backoff_until:
+                        _logger.debug("DeviceCommandQueue[%s]: auth backoff active — dropping command", self._device_name)
+                        continue
+                    self._auth_backoff_until = None
+
                 # Drop commands that have waited longer than _COMMAND_TTL without being
                 # dispatched.  Checked here — before any lock/gate waits — so stale
                 # commands don't execute after a long reconnect or saga pause.
@@ -288,6 +309,9 @@ class DeviceCommandQueue:
                 # caller-side gate needed; just don't pollute the log.
                 if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException)):
                     _logger.debug("DeviceCommandQueue[%s]: %s", self._device_name, exc)
+                elif isinstance(exc, ReLoginRequiredError):
+                    _logger.warning("DeviceCommandQueue[%s]: %s", self._device_name, exc)
+                    self._auth_backoff_until = time.monotonic() + 30.0
                 # Real warnings — auth, saga, rate-limit, generic transport.
                 elif isinstance(
                     exc,
