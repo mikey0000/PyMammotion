@@ -117,6 +117,10 @@ class TokenManager:
         # Monotonic timestamps of recent 2401 "refreshToken invalid" failures.
         # Three failures within _ALIYUN_FAILURE_WINDOW seconds → ReLoginRequiredError.
         self._aliyun_refresh_failures: list[float] = []
+        # Monotonic timestamp of the last failed force_refresh_invoke_token() call.
+        # Callers that hit the 30 s cooldown window get an immediate ReLoginRequiredError
+        # rather than hammering the auth server on every queued command.
+        self._invoke_refresh_failed_at: float | None = None
         # RAII subscriptions to device handle error buses — kept alive here so they
         # are never garbage-collected while this token manager is active.
         self._handle_subscriptions: list[Subscription] = []
@@ -434,14 +438,33 @@ class TokenManager:
         via POST /authorization/code.  Use this whenever an actual 401 has
         already been received so that a potentially server-revoked token is
         replaced regardless of what the local expiry clock says.
+
+        If a refresh attempt failed within the last 30 s, raises
+        ReLoginRequiredError immediately to prevent hammering the auth server
+        when every queued command hits the same expired-token wall.
         """
+        _invoke_refresh_cooldown = 30.0
+
         async with self._lock:
-            await self.refresh_http()  # force: uses refresh_token or full re-login
+            if self._invoke_refresh_failed_at is not None:
+                elapsed = time.monotonic() - self._invoke_refresh_failed_at
+                if elapsed < _invoke_refresh_cooldown:
+                    raise ReLoginRequiredError(
+                        self._account_id,
+                        f"invoke token refresh in cooldown ({_invoke_refresh_cooldown - elapsed:.0f}s remaining)",
+                    )
             try:
+                await self.refresh_http()  # force: uses refresh_token or full re-login
                 await self._http.fetch_authorization_token()
+                self._invoke_refresh_failed_at = None
+            except ReLoginRequiredError:
+                self._invoke_refresh_failed_at = time.monotonic()
+                raise
             except UnauthorizedException as exc:
+                self._invoke_refresh_failed_at = time.monotonic()
                 raise ReLoginRequiredError(self._account_id, str(exc)) from exc
             except Exception as exc:
+                self._invoke_refresh_failed_at = time.monotonic()
                 raise AuthError(exc)
 
     async def refresh_mqtt_creds(self) -> MQTTCredentials:
@@ -499,6 +522,9 @@ class TokenManager:
                 await self.on_credentials_updated()
             except Exception:  # noqa: BLE001
                 pass
+        if self._mqtt_creds is None:
+            msg = "MQTT credentials not set after refresh"
+            raise AuthError(msg)
         return self._mqtt_creds
 
     @property
