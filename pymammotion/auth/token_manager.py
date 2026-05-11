@@ -488,6 +488,11 @@ class TokenManager:
                     creds = self._http.mqtt_credentials
                     if creds is not None:
                         _store_mqtt_creds(creds)
+                    else:
+                        raise ReLoginRequiredError(
+                            self._account_id,
+                            "MQTT credentials unavailable after full re-login",
+                        )
                 except ReLoginRequiredError:
                     raise
                 except Exception as exc:
