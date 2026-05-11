@@ -658,10 +658,11 @@ class CloudIOTGateway:
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
-            raise CloudSetupError(
-                f"Error listing devices by account: {response_body_dict.get('message', response_body_dict)}"
-            )
+        code = response_body_dict.get("code", -1)
+        if int(code) != 200:
+            msg = response_body_dict.get("msg") or response_body_dict.get("message") or str(response_body_dict)
+            err = f"Error listing devices by account (code={code}): {msg}"
+            raise CloudSetupError(err)
 
         self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
         return self._devices_by_account_response
