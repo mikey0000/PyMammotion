@@ -1959,6 +1959,14 @@ class MammotionClient:
         is_yuka = DeviceType.is_yuka(device_name)
         subscription = await http.get_stream_subscription(iot_id, is_yuka)
 
+        if handle := self._device_registry.get_by_name(device_name):
+            try:
+                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None
+            except AttributeError:
+                new_fpv = False
+            if not new_fpv:
+                await self._send_agora_join_over_mqtt(handle)
+
         return subscription
 
     async def refresh_stream_subscription(self, device_name: str, iot_id: str) -> Any:
@@ -1977,7 +1985,24 @@ class MammotionClient:
         is_yuka = DeviceType.is_yuka(device_name)
         subscription = await http.get_stream_subscription(iot_id, is_yuka)
 
+        if handle := self._device_registry.get_by_name(device_name):
+            try:
+                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None
+            except AttributeError:
+                new_fpv = False
+            if not new_fpv:
+                await self._send_agora_join_over_mqtt(handle)
+
         return subscription
+
+    async def _send_agora_join_over_mqtt(self, handle: DeviceHandle) -> None:
+        """Fire the Agora join-channel command over MQTT only, without waiting for an ack."""
+        command_bytes = handle.commands.device_agora_join_channel_with_position(enter_state=1)
+        for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+            mqtt_transport = handle.get_transport(transport_type)
+            if mqtt_transport is not None and mqtt_transport.is_connected:
+                await handle._send_marked(mqtt_transport, command_bytes)
+                break
 
     # ------------------------------------------------------------------
     # Commands
