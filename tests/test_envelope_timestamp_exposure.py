@@ -106,3 +106,16 @@ async def test_envelope_time_with_zero_value(handle: DeviceHandle):
 
     # Should be updated to 0
     assert handle.last_mqtt_envelope_time_ms == 0
+
+
+async def test_envelope_time_from_dict_params(handle: DeviceHandle):
+    """When params is a raw dict (device_config_req_event fallback), time is still extracted."""
+    # Simulate the dict fallback path used by device_config_req_event
+    event = ThingEventMessage(
+        method="thing.events",
+        id="test-dict-event",
+        params={"time": 1714999999999, "identifier": "device_config_req_event"},
+        version="1.0",
+    )
+    await handle.on_device_event(event)
+    assert handle.last_mqtt_envelope_time_ms == 1714999999999

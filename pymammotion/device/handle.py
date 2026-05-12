@@ -473,8 +473,11 @@ class DeviceHandle:
         buffering, unlike ``LubaMsg.timestamp`` (firmware counter).
         """
         # Store the envelope timestamp if available
-        if hasattr(event.params, "time"):
-            self._last_mqtt_envelope_time_ms = getattr(event.params, "time", 0) or 0
+        params = event.params
+        if isinstance(params, dict):
+            self._last_mqtt_envelope_time_ms = params.get("time", 0) or 0
+        elif hasattr(params, "time"):
+            self._last_mqtt_envelope_time_ms = getattr(params, "time", 0) or 0
 
         if isinstance(event.params, DeviceProtobufMsgEventParams):
             try:
