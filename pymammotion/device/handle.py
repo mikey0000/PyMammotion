@@ -230,12 +230,6 @@ class DeviceHandle:
         self._last_report_at: float = 0.0
         #: Timer handle for the transient continuous-stream auto-stop.
         self._report_stream_timer: asyncio.TimerHandle | None = None
-        #: Unix ms timestamp from the Aliyun thing-event envelope `params.time`.
-        #: Reflects cloud-side generation time and survives buffering, unlike
-        #: `LubaMsg.timestamp` which carries firmware-internal counters. Zero when
-        #: no event has been processed or when the event lacks a `time` field.
-        self._last_mqtt_envelope_time_ms: int = 0
-
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
 
@@ -468,17 +462,10 @@ class DeviceHandle:
         ``thing/model/down_raw`` delivery).  All other event types are stored
         as ``device_event`` on the device model.
 
-        Stores ``params.time`` (Unix ms) on ``last_mqtt_envelope_time_ms`` when
-        present — this timestamp reflects cloud-side generation and survives
-        buffering, unlike ``LubaMsg.timestamp`` (firmware counter).
+        Staleness filtering (dropping buffered messages older than the wall
+        clock) is handled upstream in ``AliyunMQTTTransport._dispatch_aliyun_event``
+        where the raw envelope timestamp is available before deserialization.
         """
-        # Store the envelope timestamp if available
-        params = event.params
-        if isinstance(params, dict):
-            self._last_mqtt_envelope_time_ms = params.get("time", 0) or 0
-        elif hasattr(params, "time"):
-            self._last_mqtt_envelope_time_ms = getattr(params, "time", 0) or 0
-
         if isinstance(event.params, DeviceProtobufMsgEventParams):
             try:
                 raw_bytes = base64.b64decode(event.params.value.content)
@@ -891,16 +878,6 @@ class DeviceHandle:
     def last_report_at(self) -> float:
         """Monotonic timestamp of the last received LubaMsg (0.0 if none yet)."""
         return self._last_report_at
-
-    @property
-    def last_mqtt_envelope_time_ms(self) -> int:
-        """Unix ms timestamp from Aliyun thing-event envelope params.time.
-
-        Reflects cloud-side generation time and survives buffering, unlike
-        LubaMsg.timestamp which carries firmware-internal counters. Returns 0
-        when no event has been processed or when the event lacks a time field.
-        """
-        return self._last_mqtt_envelope_time_ms
 
     async def request_report_snapshot(self) -> None:
         """Fire a one-shot count=1 report — no-op while BLE continuous stream is active.

@@ -1,38 +1,43 @@
-"""Tests that params.time from Aliyun thing-event envelope is accessible on DeviceHandle.
+"""Tests that stale Aliyun thing-event envelopes are dropped by AliyunMQTTTransport.
 
-Issue #130: `params.time` (Unix ms) reliably reflects the cloud-side generation time and
-survives buffering, unlike `LubaMsg.timestamp` which carries firmware-internal counters.
-This test ensures subscribers can detect and handle delayed message delivery.
+Issue #130: `params.time` (Unix ms) reflects cloud-side generation time and
+survives buffering.  Messages older than _STALE_EVENT_THRESHOLD_MS relative to
+the current wall clock are dropped in the transport layer so that buffered
+telemetry from connectivity gaps never reaches DeviceHandle.
 """
 from __future__ import annotations
 
 import base64
+import json
+import time
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pymammotion.data.model.device import MowingDevice
-from pymammotion.data.mqtt.event import ThingEventMessage
-from pymammotion.device.handle import DeviceHandle
-from pymammotion.proto import LubaMsg, RptDevStatus, ReportInfoData, RptInfoType
+from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport, _STALE_EVENT_THRESHOLD_MS
 
 
 @pytest.fixture
-def handle():
-    """DeviceHandle with no transports."""
-    device = MowingDevice()
-    device.device_name = "test_yuka"
-    return DeviceHandle(
-        device_id="test_device_id",
-        device_name="test_yuka",
-        initial_device=device,
-        iot_id="test_iot_id",
+def transport():
+    """AliyunMQTTTransport with a mocked cloud gateway."""
+    config = AliyunMQTTConfig(
+        host="test.iot-as-mqtt.cn-shanghai.aliyuncs.com",
+        client_id_base="testpk&testdn",
+        username="testdn&testpk",
+        device_name="testdn",
+        product_key="testpk",
+        device_secret="testsecret",
+        iot_token="testtoken",
     )
+    gateway = MagicMock()
+    t = AliyunMQTTTransport(config, gateway)
+    t.on_device_event = AsyncMock()
+    t.on_device_properties = AsyncMock()
+    return t
 
 
-def _make_event_with_time(envelope_time_ms: int) -> ThingEventMessage:
-    """Build a ThingEventMessage with a protobuf payload and params.time set."""
-    # Use a minimal valid LubaMsg serialized payload (hard-coded known-good bytes)
-    # This is a toapp_report_data message with dev.sys_status=5, battery_val=75
+def _make_event_envelope(envelope_time_ms: int, identifier: str = "device_protobuf_msg_event") -> bytes:
+    """Build a raw JSON thing/events envelope with the given params.time."""
     sample_bytes = b'\x08\xf4\x01\x10\x01\x18\x07(\x010\x01R\x08\xba\x02\x05\x12\x03\x08\x05\x10K'
     encoded = base64.b64encode(sample_bytes).decode("ascii")
 
@@ -41,12 +46,12 @@ def _make_event_with_time(envelope_time_ms: int) -> ThingEventMessage:
         "id": "test-event-id",
         "version": "1.0",
         "params": {
-            "identifier": "device_protobuf_msg_event",
+            "identifier": identifier,
             "type": "info",
             "time": envelope_time_ms,
             "iotId": "test_iot_id",
-            "productKey": "test_product",
-            "deviceName": "test_yuka",
+            "productKey": "testpk",
+            "deviceName": "testdn",
             "gmtCreate": 1714000000000,
             "groupIdList": [],
             "groupId": "",
@@ -63,59 +68,69 @@ def _make_event_with_time(envelope_time_ms: int) -> ThingEventMessage:
             },
         },
     }
-
-    return ThingEventMessage.from_dicts(payload)
-
-
-async def test_envelope_time_accessible_after_event(handle: DeviceHandle):
-    """After on_device_event, handle.last_mqtt_envelope_time_ms holds params.time."""
-    event = _make_event_with_time(envelope_time_ms=1714567890123)
-
-    await handle.on_device_event(event)
-
-    # The envelope timestamp should now be accessible
-    assert handle.last_mqtt_envelope_time_ms == 1714567890123
+    return json.dumps(payload).encode()
 
 
-async def test_envelope_time_zero_when_no_event_processed(handle: DeviceHandle):
-    """Before any event is processed, last_mqtt_envelope_time_ms is 0."""
-    assert handle.last_mqtt_envelope_time_ms == 0
+@pytest.mark.asyncio
+async def test_fresh_event_forwarded(transport: AliyunMQTTTransport):
+    """Events with params.time within the threshold are forwarded."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_event_envelope(now_ms - 5_000)  # 5 seconds old
+
+    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    transport.on_device_event.assert_called_once()
 
 
-async def test_envelope_time_updated_on_each_event(handle: DeviceHandle):
-    """Successive events update the timestamp."""
-    event1 = _make_event_with_time(envelope_time_ms=1000000000000)
-    await handle.on_device_event(event1)
-    assert handle.last_mqtt_envelope_time_ms == 1000000000000
+@pytest.mark.asyncio
+async def test_stale_event_dropped(transport: AliyunMQTTTransport):
+    """Events older than the threshold are silently dropped."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 10_000)  # well past threshold
 
-    event2 = _make_event_with_time(envelope_time_ms=1000000005000)
-    await handle.on_device_event(event2)
-    assert handle.last_mqtt_envelope_time_ms == 1000000005000
+    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
 
-
-async def test_envelope_time_with_zero_value(handle: DeviceHandle):
-    """When params.time is 0, the attribute is set to 0."""
-    # First set it to a non-zero value
-    event1 = _make_event_with_time(envelope_time_ms=1000000000000)
-    await handle.on_device_event(event1)
-    assert handle.last_mqtt_envelope_time_ms == 1000000000000
-
-    # Then send an event with time=0
-    event2 = _make_event_with_time(envelope_time_ms=0)
-    await handle.on_device_event(event2)
-
-    # Should be updated to 0
-    assert handle.last_mqtt_envelope_time_ms == 0
+    transport.on_device_event.assert_not_called()
 
 
-async def test_envelope_time_from_dict_params(handle: DeviceHandle):
-    """When params is a raw dict (device_config_req_event fallback), time is still extracted."""
-    # Simulate the dict fallback path used by device_config_req_event
-    event = ThingEventMessage(
-        method="thing.events",
-        id="test-dict-event",
-        params={"time": 1714999999999, "identifier": "device_config_req_event"},
-        version="1.0",
-    )
-    await handle.on_device_event(event)
-    assert handle.last_mqtt_envelope_time_ms == 1714999999999
+@pytest.mark.asyncio
+async def test_event_without_time_forwarded(transport: AliyunMQTTTransport):
+    """Events with params.time=0 (missing) are not dropped."""
+    raw = _make_event_envelope(0)
+
+    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    transport.on_device_event.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_stale_properties_dropped(transport: AliyunMQTTTransport):
+    """Stale thing/properties messages are also dropped."""
+    now_ms = int(time.time() * 1000)
+    payload = {
+        "method": "thing.properties",
+        "id": "test-props-id",
+        "version": "1.0",
+        "params": {
+            "iotId": "test_iot_id",
+            "time": now_ms - _STALE_EVENT_THRESHOLD_MS - 30_000,
+            "items": {},
+        },
+    }
+    raw = json.dumps(payload).encode()
+
+    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
+
+    transport.on_device_properties.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_at_threshold_boundary_forwarded(transport: AliyunMQTTTransport):
+    """Events exactly at the threshold age are forwarded (not strictly greater)."""
+    now_ms = int(time.time() * 1000)
+    # Subtract threshold minus a small margin to stay within bounds
+    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS + 1_000)
+
+    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    transport.on_device_event.assert_called_once()

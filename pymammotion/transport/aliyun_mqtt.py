@@ -53,6 +53,12 @@ _MQTT_MAX_QUEUED = 40
 _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 60
 
+#: Messages with ``params.time`` older than this threshold (in milliseconds)
+#: relative to the current wall clock are considered stale and dropped.  Aliyun
+#: can buffer events during connectivity gaps; replaying minutes-old telemetry
+#: causes state-machine glitches (ghost-mowing, stale battery values).
+_STALE_EVENT_THRESHOLD_MS = 60_000
+
 
 @dataclass(frozen=True)
 class AliyunMQTTConfig:
@@ -506,6 +512,11 @@ class AliyunMQTTTransport(Transport):
         forwarded as raw bytes via on_device_message.  All other events are forwarded
         as typed objects via on_device_event (thing/events) or on_device_properties
         (thing/properties).
+
+        Stale events are dropped: if ``params.time`` (Unix ms, cloud-side generation
+        time) is more than ``_STALE_EVENT_THRESHOLD_MS`` behind the current wall
+        clock, the message is logged and discarded.  This prevents buffered messages
+        delivered after a connectivity gap from polluting device state.
         """
         # Non-protobuf: parse and forward typed event
         try:
@@ -517,6 +528,20 @@ class AliyunMQTTTransport(Transport):
         event_iot_id: str = parsed.get("params", {}).get("iotId", "")
         if not event_iot_id:
             return
+
+        # Drop stale buffered messages using the cloud-side envelope timestamp.
+        envelope_time_ms: int = parsed.get("params", {}).get("time", 0) or 0
+        if envelope_time_ms > 0:
+            now_ms = int(time.time() * 1000)
+            age_ms = now_ms - envelope_time_ms
+            if age_ms > _STALE_EVENT_THRESHOLD_MS:
+                _logger.debug(
+                    "AliyunMQTTTransport: dropping stale %s event (age=%dms, threshold=%dms)",
+                    topic.rsplit("/", 1)[-1],
+                    age_ms,
+                    _STALE_EVENT_THRESHOLD_MS,
+                )
+                return
 
         if topic.endswith("/thing/events") and self.on_device_event is not None:
             try:
