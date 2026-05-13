@@ -348,12 +348,13 @@ class Transport(ABC):
         while self._send_timestamps and self._send_timestamps[0] < cutoff:
             self._send_timestamps.popleft()
         if len(self._send_timestamps) >= self._SEND_LIMIT:
-            _logger.warning(
-                "%s: %d sends in %.0f h — self-imposing rate limit",
-                type(self).__name__,
-                len(self._send_timestamps),
-                self._SEND_WINDOW / 3600,
-            )
+            if not self.is_rate_limited:
+                _logger.warning(
+                    "%s: %d sends in %.0f h — self-imposing rate limit",
+                    type(self).__name__,
+                    len(self._send_timestamps),
+                    self._SEND_WINDOW / 3600,
+                )
             self.set_rate_limited()
 
     def sends_in_window(self) -> int:
