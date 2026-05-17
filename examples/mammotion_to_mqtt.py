@@ -16,15 +16,25 @@ Description:
 
 
     accepts commands on:
-        {base_topic}/devices/{device_id}/send
-        {base_topic}/devices/{device_id}/send_and_wait
-        {base_topic}/devices/{device_id}/sync_map
-        {base_topic}/devices/{device_id}/fetch_rtk
-        {base_topic}/devices/{device_id}/publish_all
+        {base_topic}/devices/{device_id}/send                               raw command, payload with details
+        {base_topic}/devices/{device_id}/send_and_wait                      raw command, payload with details
 
-        {base_topic}/devices/{device_id}/start_stream
-        {base_topic}/devices/{device_id}/stop_stream
-        {base_topic}/devices/{device_id}/get_stream_subscription
+        {base_topic}/devices/{device_id}/sync_map                           saga
+        {base_topic}/devices/{device_id}/sync_plan                          saga
+        {base_topic}/devices/{device_id}/sync_path                          saga
+        {base_topic}/devices/{device_id}/fetch_rtk                          http
+        {base_topic}/devices/{device_id}/publish_all                    
+
+        {base_topic}/devices/{device_id}/get_stream_subscription            http
+        {base_topic}/devices/{device_id}/start_stream                       command to device to start streaming
+        {base_topic}/devices/{device_id}/stop_stream                        command to device to stop streaming
+
+        {base_topic}/devices/{device_id}/start_report_stream                untested
+        {base_topic}/devices/{device_id}/ensure_fresh_state                 untested
+        {base_topic}/devices/{device_id}/request_report_snapshot            untested
+        {base_topic}/devices/{device_id}/request_reports                    untested
+        
+        {base_topic}/devices/global/setup_all_mower_watchers                untested
         
         {base_topic}/devices/global/get_error_info  (publishes to {base_topic}/error_info/{language_code}/{error_code})
         {base_topic}/devices/global/kill (payload must be kill)
@@ -331,15 +341,23 @@ class ExternalMQTTPublisher:
         try:
             await self.client.subscribe(f"{self.base_topic}/devices/+/send")
             await self.client.subscribe(f"{self.base_topic}/devices/+/send_and_wait")
+
             await self.client.subscribe(f"{self.base_topic}/devices/+/sync_map")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_plan")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_path")
             await self.client.subscribe(f"{self.base_topic}/devices/+/fetch_rtk")
             await self.client.subscribe(f"{self.base_topic}/devices/+/publish_all")
             
             await self.client.subscribe(f"{self.base_topic}/devices/+/get_stream_subscription")
-
             await self.client.subscribe(f"{self.base_topic}/devices/+/start_stream")
             await self.client.subscribe(f"{self.base_topic}/devices/+/stop_stream")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/start_report_stream")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/ensure_fresh_state")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/request_report_snapshot")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/request_reports")
             
+            
+            await self.client.subscribe(f"{self.base_topic}/devices/global/setup_all_mower_watchers")
             await self.client.subscribe(f"{self.base_topic}/devices/global/get_error_info")
             await self.client.subscribe(f"{self.base_topic}/devices/global/kill")
 
@@ -394,6 +412,11 @@ class ExternalMQTTPublisher:
                 await self._execute_send_and_wait(device_name, cmd_data)
             elif command == "sync_map":
                 await self._execute_sync_map(device_name, cmd_data)
+            elif command == "sync_plan":
+                await self._execute_sync_plan(device_name, cmd_data)    
+            elif command == "sync_path":
+                await self._execute_sync_path(device_name, cmd_data)
+                
             elif command == "fetch_rtk":
                 await self._execute_fetch_rtk(device_name, cmd_data)
             elif command == "publish_all":
@@ -404,7 +427,60 @@ class ExternalMQTTPublisher:
                 await self._execute_start_stream(device_name,cmd_data)    
             elif command == "stop_stream":
                 await self._execute_stop_stream(device_name,cmd_data)    
+            elif command == "request_report_snapshot":
+                """Fire a one-shot count=1 report, skipped if the BLE stream is already active.
 
+                Use after state-changing commands or on state-change watchers to get a fresh
+                snapshot without fighting an in-progress BLE continuous feed.
+                Used by HA after state-changing commands and in the sys_status watcher.
+                Safe to call at any time; skips silently if BLE is already streaming fresher data.
+                """
+                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+                if handle:
+                    await handle.request_report_snapshot()
+            elif command == "ensure_fresh_state":
+                """Fire a one-shot snapshot if the last inbound report is older than ``max_age_s`` seconds.
+
+                Intended for use at the top of user-action handlers (start/dock/pause/cancel)
+                to avoid acting on stale state after a long idle period.  Fire-and-forget:
+                the response arrives asynchronously.
+                """
+
+                await self.dev_console.mammotion.ensure_fresh_state(device_name)
+                
+            elif command == "start_report_stream":
+                """Start a transient report window lasting ``duration_ms`` ms.
+
+                If the device is actively mowing or returning (ACTIVE mode), starts a
+                continuous (count=0) stream and arms a stop timer.  In any other mode
+                (docked, idle) a single one-shot count=1 poll is issued instead — there
+                is no point holding a continuous stream for a stationary device.
+
+                For the continuous path:
+                * Repeated calls within the window reset the timer without re-sending
+                RPT_START (prevents cloud quota spam on frequent callers like a dashboard).
+                * If the BLE polling loop already holds a continuous stream the RPT_START
+                is skipped (data already flowing) but the timer is still armed.
+                * The stop callback skips RPT_STOP if BLE is still streaming so the BLE
+                polling loop is never interrupted mid-run.
+                """
+                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+                if handle:
+                    await handle.start_report_stream()
+
+            elif command == "request_reports":
+                """Enqueue a one-shot "request_iot_sys(count=count)" data refresh."""
+                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+                if handle:
+                    await handle.request_reports()
+
+                    
+            elif command == "setup_all_mower_watchers":
+                """Set up state-change watchers for all registered mower devices.
+
+                Skips RTK base stations and swimming-pool (Spino/S1/E1) devices.
+                """
+                self.dev_console.mammotion.setup_all_mower_watchers()
 
             elif command == "get_error_info":
                 await self._execute_get_error_info(cmd_data)   
@@ -781,38 +857,36 @@ class ExternalMQTTPublisher:
             payload=pars_dict,
             retain=True,
         )
+
+    
+
     async def _execute_start_stream(self, device_name: str, cmd_data:dict) -> None:
-        await self._agora_stream_command(device_name, enter_state=1)
 
-    async def _execute_stop_stream(self, device_name: str, cmd_data:dict) -> None:    
-        await self._agora_stream_command(device_name, enter_state=0)
-        
-
-    async def _agora_stream_command(self, device_name: str, enter_state: int) -> None:
-        if not self.dev_console:
-            return
-        
         handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
         if handle is None:
-            await self._send_response(device_name, "agora_stream_command", "error", error="Device not found")
+            await self._send_response(device_name, "start_stream", "error", error="Device not found")
             return
 
-
-        try:
-            print("Sending agora stream command with enter_state=%d for device %s", enter_state, device_name)
-
-            #handle.commands.device_agora_join_channel_with_position(enter_state=enter_state)
-            print("i have no idea of how to do this yet. Could you help?, i can get the stream working, but i have to open the stream in the app to get the mower to start streaming")
+        
+        await self.dev_console.mammotion._send_agora_join_over_mqtt(handle)
 
 
-            await self._send_response(device_name, "agora_stream_command", "success")
-            _LOGGER.info("✓ agora_stream_command executed: %s (enter_state=%d)", device_name, enter_state)
-        except asyncio.TimeoutError:
-            await self._send_response(device_name, "agora_stream_command", "error", error="Command timeout")
-            _LOGGER.error("✗ agora_stream_command timeout: %s", device_name)
-        except Exception as e:
-            await self._send_response(device_name, "agora_stream_command", "error", error=str(e))
-            _LOGGER.error("✗ agora_stream_command failed: %s", e)
+    async def _execute_stop_stream(self, device_name: str, cmd_data:dict) -> None:    
+        handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+        if handle is None:
+            await self._send_response(device_name, "stop_stream", "error", error="Device not found")
+            return
+        
+        """Fire the Agora join-channel command over MQTT only, without waiting for an ack."""
+        command_bytes = handle.commands.device_agora_join_channel_with_position(enter_state=0)
+        mqtt_transport = handle._transports.get(TransportType.CLOUD_ALIYUN) or handle._transports.get(  # noqa: SLF001
+            TransportType.CLOUD_MAMMOTION
+        )
+        #for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+        #    mqtt_transport = handle.get_transport(transport_type)
+        if mqtt_transport is not None and mqtt_transport.is_connected:
+            await handle._send_marked(mqtt_transport, command_bytes)
+            #break
             
 
     async def _execute_send(self, device_name: str, cmd_data: dict) -> None:
@@ -876,6 +950,22 @@ class ExternalMQTTPublisher:
                 cmd=cmd, expected_field=expected_field, error=str(e)
             )
             _LOGGER.error("✗ send_and_wait failed: %s", e)
+    async def _execute_sync_path(self, device_name: str, cmd_data: dict) -> None:
+        """Execute sync_path command."""
+        if not self.dev_console:
+            return
+
+        timeout = cmd_data.get("timeout", 120.0)
+        
+        await self._send_response(device_name, "sync_path", "sending", timeout=timeout)
+        
+        try:
+            await self.dev_console.mammotion.check_and_get_mow_path(device_name)
+            await self._send_response(device_name, "sync_path", "success", timeout=timeout)
+            _LOGGER.info("✓ sync_path enqueued: %s", device_name)
+        except Exception as e:
+            await self._send_response(device_name, "sync_path", "error", error=str(e))
+            _LOGGER.error("✗ sync_path failed: %s", e)
 
     async def _execute_sync_map(self, device_name: str, cmd_data: dict) -> None:
         """Execute sync_map command."""
@@ -887,13 +977,29 @@ class ExternalMQTTPublisher:
         await self._send_response(device_name, "sync_map", "sending", timeout=timeout)
         
         try:
+            #self.dev_console.sync_map(device_name,timeout=timeout) # use implementation in dev_console
             await self.dev_console.mammotion.start_map_sync(device_name)
             await self._send_response(device_name, "sync_map", "success", timeout=timeout)
             _LOGGER.info("✓ sync_map enqueued: %s", device_name)
         except Exception as e:
             await self._send_response(device_name, "sync_map", "error", error=str(e))
             _LOGGER.error("✗ sync_map failed: %s", e)
+    async def _execute_sync_plan(self, device_name: str, cmd_data: dict) -> None:
+        """Execute sync_plan command."""
+        if not self.dev_console:
+            return
 
+        timeout = cmd_data.get("timeout", 120.0)
+        
+        await self._send_response(device_name, "sync_plan", "sending", timeout=timeout)
+        
+        try:
+            await self.dev_console.mammotion.start_plan_sync(device_name)
+            await self._send_response(device_name, "sync_plan", "success", timeout=timeout)
+            _LOGGER.info("✓ sync_plan enqueued: %s", device_name)
+        except Exception as e:
+            await self._send_response(device_name, "sync_plan", "error", error=str(e))
+            _LOGGER.error("✗ sync_plan failed: %s", e)
     async def _execute_fetch_rtk(self, device_name: str, cmd_data: dict) -> None:  # noqa: ARG002
         """Execute fetch_rtk command."""
         if not self.dev_console:
@@ -902,6 +1008,7 @@ class ExternalMQTTPublisher:
         await self._send_response(device_name, "fetch_rtk", "sending")
         
         try:
+            #self.dev_console.fetch_rtk(device_name) # use implementation in dev_console
             await self.dev_console.mammotion.fetch_rtk_lora_info(device_name)
             await self._send_response(device_name, "fetch_rtk", "success")
             _LOGGER.info("✓ fetch_rtk executed: %s", device_name)
