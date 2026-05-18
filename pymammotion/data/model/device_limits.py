@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 class RangeLimit:
     """Minimum and maximum bounds for a single device parameter."""
 
-    min: float
-    max: float
+    min: float = 0.0
+    max: float = 0.0
 
 
 @dataclass

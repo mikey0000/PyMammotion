@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any
@@ -98,7 +100,7 @@ class NavGetCommData(DataClassORJSONMixin):
     current_frame: int = 0
     data_hash: int = 0
     data_len: int = 0
-    data_couple: list["CommDataCouple"] = field(default_factory=list)
+    data_couple: list[CommDataCouple] = field(default_factory=list)
     reserved: str = ""
     name_time: NavNameTime = field(default_factory=NavNameTime)
 
@@ -112,7 +114,7 @@ class MowPathPacket(DataClassORJSONMixin):
     path_total: int = 0
     path_cur: int = 0
     zone_hash: int = 0
-    data_couple: list["CommDataCouple"] = field(default_factory=list)
+    data_couple: list[CommDataCouple] = field(default_factory=list)
 
 
 @dataclass
@@ -166,7 +168,7 @@ class SvgMessage(DataClassORJSONMixin):
     paternal_hash_a: int = 0
     type: int = 0
     result: int = 0
-    svg_message: "SvgMessageData" = field(default_factory=SvgMessageData)
+    svg_message: SvgMessageData = field(default_factory=SvgMessageData)
 
 
 @dataclass
@@ -176,6 +178,13 @@ class FrameList(DataClassORJSONMixin):
     total_frame: int = 0
     sub_cmd: int = 0
     data: list[NavGetCommData | SvgMessage] = field(default_factory=list)
+
+    @property
+    def name(self) -> str:
+        """Return name_time.name from the first data frame, or empty string if absent."""
+        if self.data and isinstance(self.data[0], NavGetCommData):
+            return self.data[0].name_time.name
+        return ""
 
 
 @dataclass
@@ -566,7 +575,14 @@ class HashList(DataClassORJSONMixin):
         AREA frames also auto-assign an ``area_name`` ("Area N") if none exists
         for the hash yet.  DYNAMICS_LINE (type 18) is keyed by frame order and
         resets on ``current_frame == 1``.
+
+        SvgMessage frames always go to self.svg regardless of their type field —
+        the type field on SvgMessage doesn't carry PathType semantics and is
+        always 0, which would otherwise misroute them into self.area.
         """
+        if isinstance(hash_data, SvgMessage):
+            return self._add_hash_data(self.svg, hash_data)
+
         if hash_data.type == PathType.AREA and isinstance(hash_data, NavGetCommData):
             existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
             if not existing_name:

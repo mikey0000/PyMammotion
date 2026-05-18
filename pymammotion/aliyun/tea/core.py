@@ -54,9 +54,7 @@ class TeaCore:
         logger.debug(request_base + TeaCore._prepare_http_debug(request, ">"))
 
         # logger the response
-        response_base = (
-            f"\n< HTTP/1.1 {response.status_code} {status_codes._codes.get(response.status_code)[0].upper()}"
-        )
+        response_base = f"\n< HTTP/1.1 {response.status_code} {(status_codes._codes.get(response.status_code) or ("unknown",))[0].upper()}"
         logger.debug(response_base + TeaCore._prepare_http_debug(response, "<"))
 
     @staticmethod

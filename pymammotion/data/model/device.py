@@ -422,5 +422,5 @@ def _mower_device_to_json(self: "MowerDevice", **kwargs: Any) -> str:
     return _mower_device_to_jsonb(self, **kwargs).decode()
 
 
-MowerDevice.to_jsonb = _mower_device_to_jsonb
-MowerDevice.to_json = _mower_device_to_json
+MowerDevice.to_jsonb = _mower_device_to_jsonb  # type: ignore
+MowerDevice.to_json = _mower_device_to_json  # type: ignore

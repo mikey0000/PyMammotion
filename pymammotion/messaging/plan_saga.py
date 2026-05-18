@@ -68,6 +68,7 @@ class PlanFetchSaga(Saga):
                 raise CommandTimeoutError("todev_planjob_set", 1) from None
 
             _, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
+            assert leaf_val is not None
             plan = Plan.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE))
 
             total = plan.total_plan_num
@@ -90,6 +91,7 @@ class PlanFetchSaga(Saga):
                     raise CommandTimeoutError("todev_planjob_set", 1) from None
 
                 _, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
+                assert leaf_val is not None
                 plan = Plan.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE))
                 if plan.plan_id:
                     self.result[plan.plan_id] = plan

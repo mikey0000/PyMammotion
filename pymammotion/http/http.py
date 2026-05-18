@@ -198,7 +198,7 @@ class MammotionHTTP:
     @response.setter
     def response(self, response: Response) -> None:
         self._response = response
-        decoded_token = jwt.decode(response.data.access_token, options={"verify_signature": False})
+        decoded_token = jwt.decode(response.data.access_token, options={"verify_signature": False})  # type: ignore
         if isinstance(decoded_token, dict):
             self.jwt_info = JWTTokenInfo(iot=decoded_token.get("iot", ""), robot=decoded_token.get("robot", ""))
             # Initialise expires_in from the JWT exp claim so the refresh_token_decorator
@@ -663,7 +663,7 @@ class MammotionHTTP:
             res = await self.refresh_token_v2()
             if res.code == 0:
                 return res
-        return await self.login_v2(self.account, self._password)
+        return await self.login_v2(self.account, self._password)  # type: ignore
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
         """Logs in to the service using provided account and password."""
@@ -674,16 +674,16 @@ class MammotionHTTP:
                 f"{MAMMOTION_DOMAIN}/oauth/token",
                 headers={
                     **self._headers,
-                    "Encrypt-Key": self.encryption_utils.encrypt_by_public_key(),
+                    "Encrypt-Key": self.encryption_utils.encrypt_by_public_key() or "",
                     "Decrypt-Type": "3",
                     "Ec-Version": "v1",
                 },
                 params={
-                    "username": self.encryption_utils.encryption_by_aes(account),
-                    "password": self.encryption_utils.encryption_by_aes(password),
-                    "client_id": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_ID),
-                    "client_secret": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_SECRET),
-                    "grant_type": self.encryption_utils.encryption_by_aes("password"),
+                    "username": self.encryption_utils.encryption_by_aes(account) or "",
+                    "password": self.encryption_utils.encryption_by_aes(password) or "",
+                    "client_id": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_ID) or "",
+                    "client_secret": self.encryption_utils.encryption_by_aes(MAMMOTION_CLIENT_SECRET) or "",
+                    "grant_type": self.encryption_utils.encryption_by_aes("password") or "",
                 },
             )
             if resp.status != 200:
@@ -697,7 +697,7 @@ class MammotionHTTP:
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
         self._headers["Authorization"] = (
-            f"Bearer {self._require_login_info.access_token}" if login_response.data else None
+            f"Bearer {self._require_login_info.access_token}" if login_response.data else ""
         )
         self.response = login_response
         self.msg = login_response.msg
@@ -746,7 +746,7 @@ class MammotionHTTP:
         self.login_info = refresh_response.data
         self.expires_in = refresh_response.data.expires_in + time.time()
         self._headers["Authorization"] = (
-            f"Bearer {self._require_login_info.access_token}" if refresh_response.data else None
+            f"Bearer {self._require_login_info.access_token}" if refresh_response.data else ""
         )
         self.response = refresh_response
         self.msg = refresh_response.msg
@@ -802,7 +802,7 @@ class MammotionHTTP:
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
         self._headers["Authorization"] = (
-            f"Bearer {self._require_login_info.access_token}" if login_response.data else None
+            f"Bearer {self._require_login_info.access_token}" if login_response.data else ""
         )
         self.response = login_response
         self.msg = login_response.msg

@@ -252,7 +252,7 @@ class BLETransport(Transport):
                     self._config.device_id,
                     self._handle_disconnect,
                     max_attempts=1,
-                    ble_device_callback=lambda: self._ble_device,  # type: ignore[arg-type,return-value]
+                    ble_device_callback=lambda: self._ble_device,  # type: ignore
                 )
             except BleakError as exc:
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
@@ -453,7 +453,7 @@ class BLETransport(Transport):
         if self._message is None:
             return
 
-        result = self._message.parseNotification(data)
+        result = self._message.parseNotification(bytes(data))
         if result != 0:
             # result == 1  → fragment received, waiting for more
             # result == 2  → duplicate sequence, already processed

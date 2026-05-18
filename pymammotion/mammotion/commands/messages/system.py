@@ -116,10 +116,9 @@ class MessageSystem(AbstractMessage, ABC):
 
         """
         seconds = hours * 3600  # Convert hours to seconds
-        mctlsys = MctlSys()
-        build = mctlsys.blade_used_warn_time = UserSetBladeUsedWarnTime(blade_used_warn_time=seconds)
+        mctlsys = MctlSys(blade_used_warn_time=UserSetBladeUsedWarnTime(blade_used_warn_time=seconds))
         logger.debug(f"Send command - set blade replacement warning time: hours={hours}, seconds={seconds}")
-        return self.send_order_msg_sys(build)
+        return self.send_order_msg_sys(mctlsys)
 
     def get_device_product_model(self) -> bytes:
         """Request the device product type and model information."""
@@ -161,7 +160,7 @@ class MessageSystem(AbstractMessage, ABC):
     def read_and_set_rtk_paring_code(self, op: int, cgf: str | None = None) -> bytes:
         """Read or write the RTK base station LoRa pairing code configuration."""
         logger.debug(f"Send read and write base station configuration quality op:{op}, cgf:{cgf}")
-        return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf)))
+        return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf or "")))
 
     def allpowerfull_rw(self, rw_id: int, context: int, rw: int) -> bytes:
         """Send a general-purpose bidirectional read/write command to the device by ID, context, and direction."""
@@ -253,7 +252,7 @@ class MessageSystem(AbstractMessage, ABC):
                 hours=i5,
                 minutes=i6,
                 seconds=i7,
-                time_zone=i8,
+                time_zone=int(i8),
                 daylight=i9,
             )
         )
@@ -296,7 +295,7 @@ class MessageSystem(AbstractMessage, ABC):
                 count=count,
             )
         )
-        logger.debug(f"Send command==== IOT slim data Act {build.todev_report_cfg.act}")
+        logger.debug(f"Send command==== IOT slim data Act {build.todev_report_cfg.act}")  # type: ignore
         return self.send_order_msg_sys_legacy(build)
 
     def get_maintenance(self) -> bytes:
@@ -317,24 +316,22 @@ class MessageSystem(AbstractMessage, ABC):
     def get_report_cfg_stop(self, timeout: int = 10000, period: int = 1000, no_change_period: int = 1000) -> bytes:
         """Send a command to stop all active IoT status reporting subscriptions on the device."""
         # TODO use send_order_msg_sys_legacy
-        mctl_sys = MctlSys(
-            todev_report_cfg=ReportInfoCfg(
-                act=RptAct.RPT_STOP,
-                timeout=timeout,
-                period=period,
-                no_change_period=no_change_period,
-                count=1,
-            )
+        report_cfg = ReportInfoCfg(
+            act=RptAct.RPT_STOP,
+            timeout=timeout,
+            period=period,
+            no_change_period=no_change_period,
+            count=1,
         )
-
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
+        report_cfg.sub.append(RptInfoType.RIT_CONNECT)
+        report_cfg.sub.append(RptInfoType.RIT_RTK)
+        report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
+        report_cfg.sub.append(RptInfoType.RIT_WORK)
+        report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
+        report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
+        report_cfg.sub.append(RptInfoType.RIT_VIO)
+        report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
+        mctl_sys = MctlSys(todev_report_cfg=report_cfg)
 
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,
@@ -395,26 +392,24 @@ class MessageSystem(AbstractMessage, ABC):
         mowing are a separate always-on channel (not controlled by this cfg).
         """
         # TODO use send_order_msg_sys_legacy
-        mctl_sys = MctlSys(
-            todev_report_cfg=ReportInfoCfg(
-                act=RptAct.RPT_START,
-                timeout=timeout,
-                period=period,
-                no_change_period=no_change_period,
-                count=count,
-            )
+        report_cfg = ReportInfoCfg(
+            act=RptAct.RPT_START,
+            timeout=timeout,
+            period=period,
+            no_change_period=no_change_period,
+            count=count,
         )
-
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_CONNECT)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_RTK)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_WORK)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VIO)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_BASESTATION_INFO)
-        mctl_sys.todev_report_cfg.sub.append(RptInfoType.RIT_FW_INFO)
+        report_cfg.sub.append(RptInfoType.RIT_CONNECT)
+        report_cfg.sub.append(RptInfoType.RIT_RTK)
+        report_cfg.sub.append(RptInfoType.RIT_DEV_LOCAL)
+        report_cfg.sub.append(RptInfoType.RIT_WORK)
+        report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
+        report_cfg.sub.append(RptInfoType.RIT_VISION_POINT)
+        report_cfg.sub.append(RptInfoType.RIT_VIO)
+        report_cfg.sub.append(RptInfoType.RIT_VISION_STATISTIC)
+        report_cfg.sub.append(RptInfoType.RIT_BASESTATION_INFO)
+        report_cfg.sub.append(RptInfoType.RIT_FW_INFO)
+        mctl_sys = MctlSys(todev_report_cfg=report_cfg)
 
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.EMBED_SYS,

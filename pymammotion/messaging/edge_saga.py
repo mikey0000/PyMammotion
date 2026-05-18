@@ -86,6 +86,7 @@ class EdgeMappingSaga(Saga):
                     raise CommandTimeoutError(_expected_field, 1) from None
 
                 _, nav_val = betterproto2.which_one_of(frame_msg, "LubaSubMsg")
+                assert nav_val is not None
                 edge_msg = nav_val.toapp_edge_points
                 hash_key: int = edge_msg.hash
 

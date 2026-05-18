@@ -229,7 +229,7 @@ class ThingEventMessage(DataClassORJSONMixin):
         else:
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")
 
-        return cls(method=method, id=event_id, params=params_obj, version=version)
+        return cls(method=method, id=event_id, params=params_obj, version=version)  # type: ignore
 
 
 @dataclass
@@ -242,7 +242,7 @@ class MammotionProtoMsgParams(DataClassORJSONMixin, SerializableType):
     device_name: str = ""
 
     @classmethod
-    def _deserialize(cls, d: dict[str, Any]) -> "MammotionProtoMsgParams":
+    def _deserialize(cls, d: dict[str, Any]) -> "MammotionProtoMsgParams":  # type: ignore
         """Override from_dict to allow dict manipulation before conversion."""
         proto: str = d["content"]
 

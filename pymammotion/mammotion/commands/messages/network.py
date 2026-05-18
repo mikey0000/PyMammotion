@@ -58,20 +58,19 @@ class MessageNetwork(AbstractMessage, ABC):
 
     def get_device_version_main(self) -> bytes:
         """Request the main firmware version from the ESP module."""
-        net = DevNet(todev_devinfo_req=DrvDevInfoReq())
-        net.todev_devinfo_req.req_ids.append(DrvDevInfoReqId(id=1, type=6))
-
+        req = DrvDevInfoReq()
+        req.req_ids.append(DrvDevInfoReqId(id=1, type=6))
+        net = DevNet(todev_devinfo_req=req)
         return self.send_order_msg_net(net)
 
     def get_device_base_info(self) -> bytes:
         """Request base hardware and firmware info for all device sub-components (IDs 1–7)."""
-        net = DevNet(todev_devinfo_req=DrvDevInfoReq())
-
+        req = DrvDevInfoReq()
         for i in range(1, 8):
             if i == 1:
-                net.todev_devinfo_req.req_ids.append(DrvDevInfoReqId(id=i, type=6))
-            net.todev_devinfo_req.req_ids.append(DrvDevInfoReqId(id=i, type=3))
-
+                req.req_ids.append(DrvDevInfoReqId(id=i, type=6))
+            req.req_ids.append(DrvDevInfoReqId(id=i, type=3))
+        net = DevNet(todev_devinfo_req=req)
         return self.send_order_msg_net(net)
 
     def get_4g_module_info(self) -> bytes:
@@ -89,7 +88,7 @@ class MessageNetwork(AbstractMessage, ABC):
     def set_zmq_enable(self) -> bytes:
         """Enable the DDS/ZMQ vision perception data bridge on the device."""
         build = DevNet(
-            todev_set_dds2_zmq=DrvDebugDdsZmq(
+            todev_set_dds2zmq=DrvDebugDdsZmq(
                 is_enable=True,
                 rx_topic_name="perception_post_result",
                 tx_zmq_url="tcp://0.0.0.0:5555",
@@ -195,7 +194,7 @@ class MessageNetwork(AbstractMessage, ABC):
         """Enable or disable the device WiFi connection."""
         build = DevNet(
             todev_ble_sync=1,
-            todev_wifi_configuration=DrvWifiSet(config_param=4, wifi_enable=new_wifi_status),
+            todev_Wifi_Configuration=DrvWifiSet(config_param=4, wifi_enable=new_wifi_status),
         )
         logger.debug(f"szNetwork: Send command - set network (on/off status). newWifiStatus={new_wifi_status}")
         return self.send_order_msg_net(build)
@@ -204,14 +203,14 @@ class MessageNetwork(AbstractMessage, ABC):
         """Request the current WiFi connection status and details from the device."""
         build = DevNet(
             todev_ble_sync=1,
-            todev_wifi_msg_upload=DrvWifiUpload(wifi_msg_upload=1),
+            todev_WifiMsgUpload=DrvWifiUpload(wifi_msg_upload=1),
         )
         logger.debug("Send command - get Wifi connection information")
         return self.send_order_msg_net(build)
 
     def get_record_wifi_list(self) -> bytes:
         """Request the list of previously remembered WiFi networks stored on the device."""
-        build = DevNet(todev_ble_sync=1, todev_wifi_list_upload=DrvWifiList())
+        build = DevNet(todev_ble_sync=1, todev_WifiListUpload=DrvWifiList())
         logger.debug("Send command - get memorized WiFi list upload command")
         return self.send_order_msg_net(build)
 
@@ -247,7 +246,7 @@ class MessageNetwork(AbstractMessage, ABC):
         """Send a WiFi management command to disconnect, forget, directly connect, or reconnect to the given SSID."""
         build = DevNet(
             todev_ble_sync=1,
-            todev_wifi_configuration=DrvWifiSet(config_param=status, confssid=ssid),
+            todev_Wifi_Configuration=DrvWifiSet(config_param=status, confssid=ssid),
         )
         logger.debug(
             f"Send command - set network (disconnect, direct connect, forget, no operation reconnect) operation command (downlink ssid={ssid}, status={status})"

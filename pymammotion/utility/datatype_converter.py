@@ -47,7 +47,7 @@ class DatatypeConverter:
     @staticmethod
     def encode(i):
         """Return the Base64 character for the 6-bit value of i using the encode map."""
-        return DatatypeConverter.encode_map[i & 63]
+        return DatatypeConverter.init_encode_map()[i & 63]
 
     @staticmethod
     def _printBase64Binary(bArr: bytes, i: int = 0, i2: int | None = None) -> str:
