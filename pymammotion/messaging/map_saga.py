@@ -46,7 +46,10 @@ class MapFetchSaga(Saga):
 
     name = "map_fetch"
     max_attempts = 2
-    step_timeout = 1.0  # map fetch steps can be slow
+    # 5 s matches the APK's HandlerType.handlerType_12333 timeout (5000 ms).
+    # SVG tile responses can take ~4 s over MQTT, and the device may broadcast
+    # stale frames for already-complete hashes between the request and the reply.
+    step_timeout = 5.0
 
     def __init__(
         self,
@@ -248,6 +251,14 @@ class MapFetchSaga(Saga):
                 if _comm_frame is None:
                     continue
                 leaf_name, leaf_val = _comm_frame
+
+                # APK guard: ignore frames for hashes we are not currently
+                # waiting on (device replays old data while processing our
+                # request, which would reset the step_timeout without making
+                # any progress — see HashDataManager.setRegionalData line 1267).
+                frame_hash = int(leaf_val.data_hash) if leaf_name == "toapp_svg_msg" else int(leaf_val.hash)
+                if frame_hash not in missing_hashes and frame_hash != current_hash:
+                    continue
 
                 current_map = self._get_map()
                 missing_frames = current_map.missing_frame(leaf_val)

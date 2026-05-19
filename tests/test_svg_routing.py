@@ -72,6 +72,27 @@ class TestSvgMessageRouting:
         assert 42 in hl.area
         assert not hl.svg
 
+    def test_nav_get_comm_data_with_svg_type_discarded(self) -> None:
+        """NavGetCommData(type=13/SVG) must be discarded — it carries no svg_message geometry.
+
+        The device sometimes sends toapp_get_commondata_ack for SVG hashes instead of
+        toapp_svg_msg. These NavGetCommData frames have type=PathType.SVG but no geometry,
+        so storing them in self.svg would produce geometry-less entries that the geojson
+        builder ignores. The fix drops them at the update() level.
+        """
+        from pymammotion.data.model.hash_list import PathType
+
+        hl = HashList()
+        frame = NavGetCommData(
+            type=int(PathType.SVG),  # 13
+            hash=SVG_HASH,
+            total_frame=1,
+            current_frame=1,
+        )
+        result = hl.update(frame)
+        assert result is False
+        assert not hl.svg, "geometry-less NavGetCommData(type=SVG) must not be stored in svg"
+
 
 SVG_HASH = 5477816201920812051
 AREA_HASH = 42
