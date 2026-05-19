@@ -1,5 +1,7 @@
 """Module for interacting with Aliyun Cloud IoT Gateway."""
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import hashlib
@@ -423,8 +425,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
         client = Client(config)
 
@@ -481,8 +483,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
         client = Client(config)
 
@@ -633,8 +635,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -683,8 +685,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -728,8 +730,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -771,8 +773,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -860,8 +862,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -953,8 +955,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -999,8 +1001,8 @@ class CloudIOTGateway:
         config = Config(
             app_key=self._app_key,
             app_secret=self._app_secret,
-            domain=self._region_response.data.apiGatewayEndpoint,
-            protocol="https",  # type: ignore
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -1107,7 +1109,7 @@ class CloudIOTGateway:
         account: str,
         password: str,
         ha_version: str | None = None,
-    ) -> "CloudIOTGateway | None":
+    ) -> CloudIOTGateway | None:
         """Reconstruct a CloudIOTGateway from a previously serialized cache dictionary.
 
         Returns None if any required field is missing or if an error occurs during

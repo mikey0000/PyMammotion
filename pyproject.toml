@@ -488,4 +488,5 @@ exclude = [
     "tests/**",
     "scripts/**",
     "examples/**",
+    ".claude/**",
 ]

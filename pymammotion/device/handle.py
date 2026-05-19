@@ -192,6 +192,7 @@ class DeviceHandle:
         self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
         self._event_bus: EventBus[ThingEventMessage] = EventBus()
         self._prefer_ble: bool = prefer_ble
+        self._mow_path_fetch_enabled: bool = True
         # Pick a reducer matching the device kind. PoolCleanerDevice instances
         # get a PoolStateReducer (currently a stub); everything else gets the
         # full mower reducer. Decided once at construction so the per-message
@@ -1237,6 +1238,15 @@ class DeviceHandle:
     def set_prefer_ble(self, *, value: bool) -> None:
         """Change the transport preference at runtime (e.g. when BLE connects/disconnects)."""
         self._prefer_ble = value
+
+    @property
+    def mow_path_fetch_enabled(self) -> bool:
+        """True if MowPathSaga is allowed to run over MQTT."""
+        return self._mow_path_fetch_enabled
+
+    def set_mow_path_fetch_enabled(self, *, value: bool) -> None:
+        """Gate MowPathSaga fetches over MQTT. BLE fetches are never gated."""
+        self._mow_path_fetch_enabled = value
 
     @property
     def ble_stream_active(self) -> bool:

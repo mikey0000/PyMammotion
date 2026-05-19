@@ -282,15 +282,15 @@ class MammotionClient:
                 _logger.warning("Auto-trigger map sync failed for %s", device_name, exc_info=True)
 
         sub = handle.watch_field(
-            lambda s: s.raw.report_data.work.path_hash,
+            lambda s: s.raw.report_data.work.path_hash,  # type: ignore
             _on_path_hashes_changed,
         )
         progress_sub = handle.watch_field(
-            lambda s: (s.raw.report_data.work.path_pos_x, s.raw.report_data.work.path_pos_y),
+            lambda s: (s.raw.report_data.work.path_pos_x, s.raw.report_data.work.path_pos_y),  # type: ignore
             _on_mow_progress_changed,
         )
         bol_hash_sub = handle.watch_field(
-            lambda s: s.raw.report_data.locations[0].bol_hash if s.raw.report_data.locations else 0,
+            lambda s: s.raw.report_data.locations[0].bol_hash if s.raw.report_data.locations else 0,  # type: ignore
             _on_bol_hash_changed,
         )
         self._watcher_subscriptions[device_name] = [
@@ -544,7 +544,7 @@ class MammotionClient:
         handle = self._device_registry.get_by_name(name)
         if handle is None:
             return None
-        return handle.snapshot.raw
+        return handle.snapshot.raw  # type: ignore
 
     def regenerate_stale_geojson(self, device_name: str | None = None) -> None:
         """Regenerate GeoJSON for any device whose stored map was built with a different RTK yaw.
@@ -651,24 +651,24 @@ class MammotionClient:
                 return
             data = response.data
             updated = current
-            if ota_progress := data.otaProgress:
-                updated = dataclasses.replace(updated, update_check=CheckDeviceVersion.from_dict(ota_progress.value))
-            if network_info := data.networkInfo:
-                network = json.loads(network_info.value)
+            if ota_progress := data.otaProgress:  # type: ignore
+                updated = dataclasses.replace(updated, update_check=CheckDeviceVersion.from_dict(ota_progress.value))  # type: ignore
+            if network_info := data.networkInfo:  # type: ignore
+                network = json.loads(network_info.value)  # type: ignore
                 updated = dataclasses.replace(
                     updated,
                     wifi_rssi=network["wifi_rssi"],
                     wifi_mac=network["wifi_sta_mac"],
                     bt_mac=network["bt_mac"],
                 )
-            if coordinate := data.coordinate:
-                coord_val = json.loads(coordinate.value)
+            if coordinate := data.coordinate:  # type: ignore
+                coord_val = json.loads(coordinate.value)  # type: ignore
                 _logger.debug("Raw RTK coordinate payload: %s", coord_val)
                 if coord_val["lat"] != 0:
                     updated = dataclasses.replace(updated, lat=coord_val["lat"])
                 if coord_val["lon"] != 0:
                     updated = dataclasses.replace(updated, lon=coord_val["lon"])
-            if device_version := data.deviceVersion:
+            if device_version := data.deviceVersion:  # type: ignore
                 updated = dataclasses.replace(updated, device_version=device_version.value)
             if updated is not current:
                 snapshot, _ = handle.state_machine.apply(updated, handle.availability)
@@ -923,8 +923,16 @@ class MammotionClient:
 
         device_list_owned_resp = await mammotion_http.get_user_device_list()
         device_list_resp = await mammotion_http.get_user_shared_device_page()
+        if device_list_resp.data and device_list_resp.data.records:
+            pending_by_batch: dict[str, list[int]] = {}
+            for record in device_list_resp.data.records:
+                if record.is_receiver == 1 and record.status == -1:
+                    pending_by_batch.setdefault(record.batch_id, []).append(int(record.record_id))
+            for batch_id, record_ids in pending_by_batch.items():
+                await mammotion_http.confirm_share(batch_id, record_ids)
+
         device_page_resp = await mammotion_http.get_user_device_page()
-        aliyun_devices: DeviceRecords = device_list_resp.data or []
+        aliyun_devices = device_list_resp.data
         mammotion_records = (device_page_resp.data.records if device_page_resp.data else []) or []
 
         # Build an authoritative device_name→iot_id map from /device-server/v1/device/list.
@@ -955,7 +963,7 @@ class MammotionClient:
             if cloud_client.aep_response is None or cloud_client.region_response is None:
                 msg = "Aliyun setup incomplete — aep_response or region_response missing"
                 raise RuntimeError(msg)
-            if cloud_client.session_by_authcode_response.data is None:
+            if cloud_client.session_by_authcode_response.data is None:  # type: ignore
                 msg = "Aliyun setup incomplete — session_by_authcode_response.data missing"
                 raise RuntimeError(msg)
 
@@ -965,7 +973,7 @@ class MammotionClient:
             al_transport = self._setup_aliyun_transport(cloud_client, acct_session)
             acct_session.aliyun_transport = al_transport
             ua = acct_session.user_account
-            for device in cloud_client.devices_by_account_response.data.data:
+            for device in cloud_client.devices_by_account_response.data.data:  # type: ignore
                 if device.device_name:
                     iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
                     await self._register_aliyun_device(
@@ -1109,9 +1117,9 @@ class MammotionClient:
         self, cloud_client: CloudIOTGateway, acct_session: AccountSession
     ) -> AliyunMQTTTransport:
         """Build an AliyunMQTTTransport from a ready CloudIOTGateway."""
-        aep = cloud_client.aep_response.data
-        region_id = cloud_client.region_response.data.regionId
-        session_data = cloud_client.session_by_authcode_response.data
+        aep = cloud_client.aep_response.data  # type: ignore
+        region_id = cloud_client.region_response.data.regionId  # type: ignore
+        session_data = cloud_client.session_by_authcode_response.data  # type: ignore
         config = AliyunMQTTConfig(
             host=f"{aep.productKey}.iot-as-mqtt.{region_id}.aliyuncs.com",
             client_id_base=cloud_client.client_id,
@@ -1119,7 +1127,7 @@ class MammotionClient:
             device_name=aep.deviceName,
             product_key=aep.productKey,
             device_secret=aep.deviceSecret,
-            iot_token=session_data.iotToken,
+            iot_token=session_data.iotToken,  # type: ignore
         )
         transport = AliyunMQTTTransport(config, cloud_client)
         transport.on_device_message = self._route_device_message
@@ -1682,10 +1690,19 @@ class MammotionClient:
         from pymammotion.messaging.mow_path_saga import MowPathSaga
 
         if handle := self._device_registry.get_by_name(device_name):
+            # MQTT-only gate: skip when mow_path_fetch_enabled is False AND BLE
+            # isn't actively connected (so this would go over MQTT).  BLE-routed
+            # fetches always run.
+            if not handle.mow_path_fetch_enabled and not handle.is_transport_connected(TransportType.BLE):
+                _logger.debug(
+                    "start_mow_path_saga '%s': mow_path_fetch_enabled=False over MQTT — skipping",
+                    device_name,
+                )
+                return
             saga = MowPathSaga(
                 command_builder=handle.commands,
                 send_command=handle.send_raw,
-                get_map=lambda: handle.snapshot.raw.map,
+                get_map=lambda: handle.snapshot.raw.map,  # type: ignore
                 zone_hashs=zone_hashs,
                 route_info=route_info,
                 skip_planning=skip_planning,
@@ -1844,7 +1861,7 @@ class MammotionClient:
         if session is None or session.cloud_client is None:
             return []
         try:
-            return session.cloud_client.devices_by_account_response.data.data  # type: ignore[no-any-return]
+            return session.cloud_client.devices_by_account_response.data.data  # type: ignore
         except (AttributeError, TypeError):
             return []
 
@@ -1936,7 +1953,7 @@ class MammotionClient:
 
         if handle := self._device_registry.get_by_name(device_name):
             try:
-                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None
+                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None  # type: ignore
             except AttributeError:
                 new_fpv = False
             if not new_fpv:
@@ -1962,7 +1979,7 @@ class MammotionClient:
 
         if handle := self._device_registry.get_by_name(device_name):
             try:
-                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None
+                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None  # type: ignore
             except AttributeError:
                 new_fpv = False
             if not new_fpv:
@@ -2110,6 +2127,16 @@ class MammotionClient:
         handle = self._device_registry.get(device_id)
         if handle is not None:
             handle.set_prefer_ble(value=prefer_ble)
+
+    def set_mow_path_fetch_enabled(self, device_id: str, *, enabled: bool) -> None:
+        """Toggle the MQTT-side mow path fetch gate for a registered device.
+
+        When False, MowPathSaga is skipped for any send that would go over
+        MQTT.  BLE-routed fetches always run regardless.
+        """
+        handle = self._device_registry.get(device_id)
+        if handle is not None:
+            handle.set_mow_path_fetch_enabled(value=enabled)
 
     # ------------------------------------------------------------------
     # Properties

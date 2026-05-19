@@ -37,6 +37,7 @@ from pymammotion.http.model.http import (
     LoginResponseData,
     MQTTConnection,
     Response,
+    ShareRecords,
     UnauthorizedException,
 )
 from pymammotion.http.model.response_factory import response_factory
@@ -534,9 +535,8 @@ class MammotionHTTP:
         return Response(code=200, msg="success", data=[])
 
     @refresh_token_decorator
-    async def get_user_shared_device_page(self) -> Response[DeviceRecords]:
-        """Fetches device list for a user (shared) but not accepted."""
-        """Can set owned to zero or one to possibly check for not accepted mowers?"""
+    async def get_user_shared_device_page(self) -> Response[ShareRecords]:
+        """Fetches pending share invitations for the current user."""
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_API_DOMAIN}/user-server/v1/share/device/page",
@@ -550,9 +550,33 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 resp_dict = await resp.json()
-                response = response_factory(Response[DeviceRecords], resp_dict)
+                response = response_factory(Response[ShareRecords], resp_dict)
                 self.devices_shared_info = response.data if response.data else self.devices_shared_info
                 return response
+
+        return Response(code=200, msg="success")
+
+    @refresh_token_decorator
+    async def confirm_share(self, batch_id: str, record_ids: list[int], agree: int = 1) -> Response[dict]:
+        """Accept or reject share invitations for a single batch.
+
+        agree=1 accepts, agree=0 rejects.  record_ids are the integer values of
+        ShareRecord.record_id for all records in the batch.
+        """
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/user-server/v1/share/device/confirm",
+                json={"agree": agree, "batchId": batch_id, "recordIds": record_ids},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "okhttp/4.9.3",
+                },
+            )
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                resp_dict = await resp.json()
+                return response_factory(Response[dict], resp_dict)
 
         return Response(code=200, msg="success")
 

@@ -294,10 +294,7 @@ class DeviceCommandQueue:
                 # caller-side gate needed; just don't pollute the log.
                 if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException)):
                     _logger.debug("DeviceCommandQueue[%s]: %s", self._device_name, exc)
-                elif isinstance(exc, ReLoginRequiredError):
-                    _logger.warning("DeviceCommandQueue[%s]: %s", self._device_name, exc)
-                # Real warnings — auth, saga, rate-limit, generic transport.
-                elif isinstance(
+                elif isinstance(exc, ReLoginRequiredError) or isinstance(
                     exc,
                     (
                         AuthError,
