@@ -24,7 +24,7 @@ class JoystickControl:
     angular_speed: float = 0
     ignore_events = False
     _blade_height = 25
-    worker = None
+    worker: PeriodicThread | None = None
 
     def __init__(self, luba_ble: DeviceHandle) -> None:
         self._client = luba_ble
@@ -82,6 +82,7 @@ class JoystickControl:
     def run_controller(self) -> None:
         """Start the joystick event manager and the periodic movement worker thread."""
         self.mngr.start()
+        assert self.worker is not None
         self.worker.start()
 
     def handle_key_received(self, key) -> None:

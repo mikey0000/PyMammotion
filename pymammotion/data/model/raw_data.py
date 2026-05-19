@@ -9,7 +9,7 @@ from pymammotion.proto import DevNet, LubaMsg, MctlDriver, MctlNav, MctlOta, Mct
 class RawMowerData:
     """Holds the raw LubaMsg protobuf and provides typed sub-message accessors."""
 
-    raw: LubaMsg | None = field(default_factory=LubaMsg)
+    raw: LubaMsg = field(default_factory=LubaMsg)
 
     @classmethod
     def from_raw(cls, raw: dict) -> "RawMowerData":
@@ -62,8 +62,10 @@ class DevNetData(DataClassORJSONMixin):
 
     net: dict
 
-    def __init__(self, net: DevNet) -> None:
-        if isinstance(net, dict):
+    def __init__(self, net: DevNet | None) -> None:
+        if net is None:
+            self.net = {}
+        elif isinstance(net, dict):
             self.net = net
         else:
             self.net = net.to_dict()
@@ -85,8 +87,10 @@ class SysData(DataClassORJSONMixin):
 
     sys: dict
 
-    def __init__(self, sys: MctlSys) -> None:
-        if isinstance(sys, dict):
+    def __init__(self, sys: MctlSys | None) -> None:
+        if sys is None:
+            self.sys = {}
+        elif isinstance(sys, dict):
             self.sys = sys
         else:
             self.sys = sys.to_dict()
@@ -108,8 +112,10 @@ class NavData(DataClassORJSONMixin):
 
     nav: dict
 
-    def __init__(self, nav: MctlNav) -> None:
-        if isinstance(nav, dict):
+    def __init__(self, nav: MctlNav | None) -> None:
+        if nav is None:
+            self.nav = {}
+        elif isinstance(nav, dict):
             self.nav = nav
         else:
             self.nav = nav.to_dict()
@@ -131,8 +137,10 @@ class DriverData(DataClassORJSONMixin):
 
     driver: dict
 
-    def __init__(self, driver: MctlDriver) -> None:
-        if isinstance(driver, dict):
+    def __init__(self, driver: MctlDriver | None) -> None:
+        if driver is None:
+            self.driver = {}
+        elif isinstance(driver, dict):
             self.driver = driver
         else:
             self.driver = driver.to_dict()
@@ -154,8 +162,10 @@ class MulData(DataClassORJSONMixin):
 
     mul: dict
 
-    def __init__(self, mul: SocMul) -> None:
-        if isinstance(mul, dict):
+    def __init__(self, mul: SocMul | None) -> None:
+        if mul is None:
+            self.mul = {}
+        elif isinstance(mul, dict):
             self.mul = mul
         else:
             self.mul = mul.to_dict()
@@ -177,8 +187,10 @@ class OtaData(DataClassORJSONMixin):
 
     ota: dict
 
-    def __init__(self, ota: MctlOta) -> None:
-        if isinstance(ota, dict):
+    def __init__(self, ota: MctlOta | None) -> None:
+        if ota is None:
+            self.ota = {}
+        elif isinstance(ota, dict):
             self.ota = ota
         else:
             self.ota = ota.to_dict()
@@ -200,8 +212,10 @@ class PeptData(DataClassORJSONMixin):
 
     pept: dict
 
-    def __init__(self, pept: MctlPept) -> None:
-        if isinstance(pept, dict):
+    def __init__(self, pept: MctlPept | None) -> None:
+        if pept is None:
+            self.pept = {}
+        elif isinstance(pept, dict):
             self.pept = pept
         else:
             self.pept = pept.to_dict()

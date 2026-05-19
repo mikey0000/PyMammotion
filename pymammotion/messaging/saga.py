@@ -63,6 +63,7 @@ class Saga(ABC):
             sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
             if sub_name != "nav":
                 return None
+            assert sub_val is not None
             frame_name, frame_val = betterproto2.which_one_of(sub_val, "SubNavMsg")
         except Exception:  # noqa: BLE001 — protobuf malformed frames are noise, not failures
             return None

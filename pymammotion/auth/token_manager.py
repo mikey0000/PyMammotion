@@ -372,7 +372,7 @@ class TokenManager:
                 await self.connect_iot(self._cloud_gateway)
 
             session = self._cloud_gateway.session_by_authcode_response
-            session_data = session.data
+            session_data = session.data  # type: ignore
             if session_data is None:
                 raise ReLoginRequiredError(self._account_id, "Aliyun session data is None after refresh")
             issued_at = self._cloud_gateway._iot_token_issued_at  # noqa: SLF001

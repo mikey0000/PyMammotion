@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Annotated, Generic, Literal, TypeVar
 
@@ -139,6 +141,41 @@ class DeviceRecords(DataClassORJSONMixin):
     """Paginated list of device records from the user device page endpoint."""
 
     records: list[DeviceRecord] = field(default_factory=list)
+    total: int = 0
+    size: int = 0
+    current: int = 0
+    pages: int = 0
+
+
+@dataclass
+class ShareRecord(DataClassORJSONMixin):
+    """Single record from the /user-server/v1/share/device/page endpoint."""
+
+    batch_id: Annotated[str, Alias("batchId")]
+    record_id: Annotated[str, Alias("recordId")]
+    type: int
+    iot_id: Annotated[str, Alias("iotId")]
+    product_key: Annotated[str, Alias("productKey")]
+    device_name: Annotated[str, Alias("deviceName")]
+    initiator_identity_id: Annotated[str, Alias("initiatorIdentityId")]
+    initiator_account: Annotated[str, Alias("initiatorAccount")]
+    is_receiver: Annotated[int, Alias("isReceiver")]
+    status: int
+    create_time: Annotated[str, Alias("createTime")]
+    create_timestamp: Annotated[int, Alias("createTimestamp")]
+    receiver_identity_id: Annotated[str | None, Alias("receiverIdentityId")] = None
+    receiver_account: Annotated[str | None, Alias("receiverAccount")] = None
+    receiver_email: Annotated[str | None, Alias("receiverEmail")] = None
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
+
+@dataclass
+class ShareRecords(DataClassORJSONMixin):
+    """Paginated list of share records from the shared-device-page endpoint."""
+
+    records: list[ShareRecord] = field(default_factory=list)
     total: int = 0
     size: int = 0
     current: int = 0

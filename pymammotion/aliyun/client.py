@@ -19,17 +19,17 @@ from alibabacloud_tea_util.client import Client as UtilClient
 class Client:
     """test"""
 
-    _app_key = None  # type: str
-    _app_secret = None  # type: str
-    _protocol = None  # type: str
-    _user_agent = None  # type: str
-    _read_timeout = None  # type: int
-    _connect_timeout = None  # type: int
-    _http_proxy = None  # type: str
-    _https_proxy = None  # type: str
-    _no_proxy = None  # type: str
-    _max_idle_conns = None  # type: int
-    _domain = None  # type: str
+    _app_key: str | None = None
+    _app_secret: str | None = None
+    _protocol: str | None = None
+    _user_agent: str | None = None
+    _read_timeout: int | None = None
+    _connect_timeout: int | None = None
+    _http_proxy: str | None = None
+    _https_proxy: str | None = None
+    _no_proxy: str | None = None
+    _max_idle_conns: int | None = None
+    _domain: str | None = None
 
     def __init__(self, config) -> None:
         self._domain = config.domain
@@ -71,12 +71,12 @@ class Client:
         runtime.validate()
         _runtime = {
             "timeouted": "retry",
-            "readTimeout": UtilClient.default_number(runtime.read_timeout, self._read_timeout),
-            "connectTimeout": UtilClient.default_number(runtime.connect_timeout, self._connect_timeout),
-            "httpProxy": UtilClient.default_string(runtime.http_proxy, self._http_proxy),
-            "httpsProxy": UtilClient.default_string(runtime.https_proxy, self._https_proxy),
-            "noProxy": UtilClient.default_string(runtime.no_proxy, self._no_proxy),
-            "maxIdleConns": UtilClient.default_number(runtime.max_idle_conns, self._max_idle_conns),
+            "readTimeout": UtilClient.default_number(runtime.read_timeout, self._read_timeout or 0),
+            "connectTimeout": UtilClient.default_number(runtime.connect_timeout, self._connect_timeout or 0),
+            "httpProxy": UtilClient.default_string(runtime.http_proxy, self._http_proxy or ""),
+            "httpsProxy": UtilClient.default_string(runtime.https_proxy, self._https_proxy or ""),
+            "noProxy": UtilClient.default_string(runtime.no_proxy, self._no_proxy or ""),
+            "maxIdleConns": UtilClient.default_number(runtime.max_idle_conns, self._max_idle_conns or 0),
             "retry": {
                 "retryable": runtime.autoretry,
                 "maxAttempts": UtilClient.default_number(runtime.max_attempts, 3),
@@ -99,7 +99,7 @@ class Client:
             _retry_times = _retry_times + 1
             try:
                 _request = TeaRequest()
-                _request.protocol = UtilClient.default_string(self._protocol, protocol)
+                _request.protocol = UtilClient.default_string(self._protocol or "", protocol)
                 _request.method = UtilClient.default_string(method, "POST")
                 _request.pathname = pathname
                 _request.query = {"x-ca-request-id": str(uuid.uuid4())}
@@ -138,7 +138,7 @@ class Client:
                     _last_exception = e
                     continue
                 raise e
-        raise UnretryableException(_last_request, _last_exception)
+        raise UnretryableException(_last_request, _last_exception)  # type: ignore
 
     def get_user_agent(self) -> str:
         """Get user agent
@@ -146,5 +146,4 @@ class Client:
         @rtype: str
         @return: user agent
         """
-        user_agent = self._user_agent
-        return user_agent
+        return self._user_agent or ""

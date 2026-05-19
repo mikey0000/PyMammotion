@@ -42,7 +42,7 @@ class MessageMedia(AbstractMessage, ABC):
         """Set the car volume. 0 - 100"""
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(at_switch=volume)))
 
-    def set_car_voice_language(self, language_type: MulLanguage | str | None):
+    def set_car_voice_language(self, language_type: MulLanguage | None):
         """Set the car voice language for audio announcements."""
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(au_language=language_type)))
 

@@ -1571,7 +1571,7 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.7.113"
+version = "0.7.114"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1581,7 +1581,6 @@ dependencies = [
     { name = "betterproto2" },
     { name = "bleak" },
     { name = "bleak-retry-connector" },
-    { name = "bluetooth-adapters" },
     { name = "crcmod" },
     { name = "cryptography" },
     { name = "mashumaro" },
@@ -1620,6 +1619,7 @@ dev = [
 extras = [
     { name = "aioesphomeapi" },
     { name = "bleak-esphome" },
+    { name = "bluetooth-adapters" },
     { name = "nest-asyncio" },
     { name = "pyjoystick" },
 ]
@@ -1633,7 +1633,6 @@ requires-dist = [
     { name = "betterproto2", specifier = "==0.9.1" },
     { name = "bleak", specifier = ">=0.21.0" },
     { name = "bleak-retry-connector", specifier = ">=3.5.0" },
-    { name = "bluetooth-adapters", specifier = ">=2.0.0" },
     { name = "crcmod", specifier = "~=1.7" },
     { name = "cryptography", specifier = ">=43.0.1" },
     { name = "mashumaro", specifier = "~=3.13" },
@@ -1672,6 +1671,7 @@ dev = [
 extras = [
     { name = "aioesphomeapi", specifier = ">=44.23.0" },
     { name = "bleak-esphome", specifier = ">=3.7.3" },
+    { name = "bluetooth-adapters", specifier = ">=2.0.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0,<2" },
     { name = "pyjoystick", specifier = ">=1.2.4,<2" },
 ]

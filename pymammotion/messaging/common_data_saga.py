@@ -104,6 +104,7 @@ class CommonDataSaga(Saga):
                     raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
 
                 _, nav_val = betterproto2.which_one_of(msg, "LubaSubMsg")
+                assert nav_val is not None
                 ack = nav_val.toapp_get_commondata_ack
                 total_frame = ack.total_frame
                 frames[ack.current_frame] = [CommDataCouple(x=p.x, y=p.y) for p in ack.data_couple]

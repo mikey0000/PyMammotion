@@ -167,6 +167,7 @@ class MowPathSaga(Saga):
                     send_timeout=self.step_timeout,
                 )
                 _, self._route_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
+                assert self._route_val is not None
                 _logger.debug(
                     "MowPathSaga: route confirmed — sub_cmd=%d  path_hash=%d",
                     self._route_val.sub_cmd,
@@ -247,6 +248,7 @@ class MowPathSaga(Saga):
                         raise CommandTimeoutError("cover_path_upload", 1) from None
 
                     _, path_val = betterproto2.which_one_of(frame_response.nav, "SubNavMsg")
+                    assert path_val is not None
                     mow_path = MowPath.from_dict(path_val.to_dict(casing=betterproto2.Casing.SNAKE))
 
                     if mow_path.transaction_id not in current_run_tx_ids:

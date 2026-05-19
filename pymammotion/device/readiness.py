@@ -134,14 +134,14 @@ class SpinoReadinessChecker(ReadinessChecker):
     PoolCleanerDevice has its own state fields.
     """
 
-    def check(self, device: PoolCleanerDevice) -> ReadinessStatus:  # type: ignore[override]
+    def check(self, device: PoolCleanerDevice) -> ReadinessStatus:  # type: ignore
         """Check Spino readiness — minimum bar during the Phase C stub period."""
         missing: list[str] = []
         if not device.name:
             missing.append("device_name")
         return ReadinessStatus(is_ready=len(missing) == 0, missing=missing)
 
-    def commands_to_fetch_missing(self, device: PoolCleanerDevice) -> list[str]:  # type: ignore[override]
+    def commands_to_fetch_missing(self, device: PoolCleanerDevice) -> list[str]:  # type: ignore
         """No fetchable commands for the stub Spino device — return empty."""
         return []
 

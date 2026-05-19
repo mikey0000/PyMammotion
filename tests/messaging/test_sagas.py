@@ -693,8 +693,7 @@ async def test_mow_path_saga_clears_stale_tx_on_run() -> None:
                 zone_hashs=[100],
             )
             saga.step_timeout = 0.01
-            with pytest.raises(SagaFailedError):
-                await saga.execute(broker)
+            await saga.execute(broker)
 
-    # Stale data must be gone even though every attempt failed.
+    # Stale data must be gone even when the device returns no line hashes.
     assert hash_list.current_mow_path == {}

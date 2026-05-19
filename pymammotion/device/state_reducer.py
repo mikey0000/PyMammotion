@@ -117,7 +117,7 @@ class MowerStateReducer(StateReducer):
     monolithic StateReducer.
     """
 
-    def apply(self, current: MowingDevice, message: LubaMsg) -> MowingDevice:
+    def apply(self, current: MowingDevice, message: LubaMsg) -> MowingDevice:  # type: ignore
         """Apply a decoded LubaMsg to the current state, return updated state.
 
         Uses selective deep-copying: only the sub-trees that a given message type
@@ -146,7 +146,7 @@ class MowerStateReducer(StateReducer):
                 # Granular dispatch — each nav sub-message only mutates a
                 # subset of fields.  Copying map (HashList) on every nav
                 # message was a ~150 MiB/h leak (#125).
-                nav_msg_name = betterproto2.which_one_of(message.nav, "SubNavMsg")[0]
+                nav_msg_name = betterproto2.which_one_of(message.nav, "SubNavMsg")[0]  # type: ignore
                 match nav_msg_name:
                     case (
                         "toapp_gethash_ack"
@@ -182,7 +182,7 @@ class MowerStateReducer(StateReducer):
                 # Granular dispatch.  The hot path (system_tard_state_tunnel,
                 # ~4x/sec during mowing) avoids copying mowing_state because
                 # run_state_update() wholesale-rebinds it.
-                sys_msg_name = betterproto2.which_one_of(message.sys, "SubSysMsg")[0]
+                sys_msg_name = betterproto2.which_one_of(message.sys, "SubSysMsg")[0]  # type: ignore
                 match sys_msg_name:
                     case "system_tard_state_tunnel":
                         # run_state_update rebinds device.mowing_state wholesale;
@@ -224,7 +224,7 @@ class MowerStateReducer(StateReducer):
             case "driver":
                 # Granular dispatch — knife events touch only `events`,
                 # everything else only touches `mower_state`.
-                drv_msg_name = betterproto2.which_one_of(message.driver, "SubDrvMsg")[0]
+                drv_msg_name = betterproto2.which_one_of(message.driver, "SubDrvMsg")[0]  # type: ignore
                 match drv_msg_name:
                     case "toapp_knife_status_change":
                         device.events = copy.deepcopy(current.events)
@@ -237,7 +237,7 @@ class MowerStateReducer(StateReducer):
 
             case "net":
                 # Granular dispatch — most net handlers only touch one field.
-                net_msg_name = betterproto2.which_one_of(message.net, "NetSubType")[0]
+                net_msg_name = betterproto2.which_one_of(message.net, "NetSubType")[0]  # type: ignore
                 match net_msg_name:
                     case "toapp_wifi_iot_status" | "toapp_networkinfo_rsp":
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -289,28 +289,28 @@ class MowerStateReducer(StateReducer):
                 device.name,
             )
             return
-        nav_msg = betterproto2.which_one_of(message.nav, "SubNavMsg")
+        nav_msg = betterproto2.which_one_of(message.nav, "SubNavMsg")  # type: ignore
         match nav_msg[0]:
             case "toapp_gethash_ack":
-                hashlist_ack: NavGetHashListAck = nav_msg[1]
+                hashlist_ack: NavGetHashListAck = nav_msg[1]  # type: ignore
                 device.map.update_root_hash_list(
                     NavGetHashListData.from_dict(hashlist_ack.to_dict(casing=betterproto2.Casing.SNAKE))
                 )
             case "toapp_get_commondata_ack":
-                common_data: NavGetCommDataAck = nav_msg[1]
+                common_data: NavGetCommDataAck = nav_msg[1]  # type: ignore
                 device.map.update(NavGetCommData.from_dict(common_data.to_dict(casing=betterproto2.Casing.SNAKE)))
                 if len(device.map.missing_hashlist(0)) == 0:
                     device.map.generate_geojson(device.location.RTK, device.location.dock)
             case "cover_path_upload":
-                mow_path: CoverPathUploadT = nav_msg[1]
+                mow_path: CoverPathUploadT = nav_msg[1]  # type: ignore
                 device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
                 if len(device.map.find_missing_mow_path_frames()) == 0:
                     device.map.generate_mowing_geojson(device.location.RTK)
             case "todev_planjob_set":
-                planjob: NavPlanJobSet = nav_msg[1]
+                planjob: NavPlanJobSet = nav_msg[1]  # type: ignore
                 device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))
             case "all_plan_task":
-                all_tasks: NavGetAllPlanTask = nav_msg[1]
+                all_tasks: NavGetAllPlanTask = nav_msg[1]  # type: ignore
                 incoming_ids = {t.id for t in all_tasks.tasks}
                 # Remove plans that no longer exist on the device
                 for removed_id in set(device.map.plan.keys()) - incoming_ids:
@@ -319,25 +319,25 @@ class MowerStateReducer(StateReducer):
                 if incoming_ids - set(device.map.plan.keys()):
                     device.map.plans_stale = True
             case "toapp_svg_msg":
-                common_svg_data: SvgMessageAckT = nav_msg[1]
+                common_svg_data: SvgMessageAckT = nav_msg[1]  # type: ignore
                 device.map.update(SvgMessage.from_dict(common_svg_data.to_dict(casing=betterproto2.Casing.SNAKE)))
             case "toapp_all_hash_name":
-                hash_names: AppGetAllAreaHashName = nav_msg[1]
+                hash_names: AppGetAllAreaHashName = nav_msg[1]  # type: ignore
                 if hash_names.hashnames:
                     device.map.area_name = [
                         AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames
                     ]
                 elif device.map.area:
-                    # Device returned no names (user hasn't named areas) — generate
-                    # fallback labels from known area hashes so HA has something to show.
+                    # Device returned no names — prefer name_time.name from the area
+                    # frames if present, falling back to numbered labels.
                     device.map.area_name = [
-                        AreaHashNameList(name=f"area {i + 1}", hash=h)
+                        AreaHashNameList(name=device.map.area[h].name or f"area {i + 1}", hash=h)
                         for i, h in enumerate(sorted(device.map.area.keys()))
                     ]
                 # else: no areas fetched yet — leave area_name alone; HashList.update()
                 # will generate fallback names as each area chunk arrives.
             case "bidire_reqconver_path":
-                work_settings: NavReqCoverPath = nav_msg[1]
+                work_settings: NavReqCoverPath = nav_msg[1]  # type: ignore
                 current_task = CurrentTaskSettings.from_dict(work_settings.to_dict(casing=betterproto2.Casing.SNAKE))
                 device.work = current_task
             case "nav_sys_param_cmd":
@@ -357,7 +357,7 @@ class MowerStateReducer(StateReducer):
                 # 12   animal_protection.mode         0/1/2 (mode enum)
                 # 13   animal_protection.status       0=disabled, 1=enabled
                 # 20   grass-catcher bin open/close   0=close, 1=open (transient action, no state)
-                settings: NavSysParamMsg = nav_msg[1]
+                settings: NavSysParamMsg = nav_msg[1]  # type: ignore
                 match settings.id:
                     case 3:
                         device.mower_state.rain_detection = bool(settings.context)
@@ -378,15 +378,15 @@ class MowerStateReducer(StateReducer):
                     case 13:
                         device.mower_state.animal_protection.status = settings.context
             case "todev_unable_time_set":
-                nav_non_work_time: NavUnableTimeSet = nav_msg[1]
-                device.non_work_hours.non_work_sub_cmd = nav_non_work_time.sub_cmd
+                nav_non_work_time: NavUnableTimeSet = nav_msg[1]  # type: ignore
+                device.non_work_hours.non_work_sub_cmd = nav_non_work_time.sub_cmd  # type: ignore
                 device.non_work_hours.start_time = nav_non_work_time.unable_start_time
                 device.non_work_hours.end_time = nav_non_work_time.unable_end_time
             case "todev_taskctrl_ack":
-                task_ctrl_ack: NavTaskCtrlAck = nav_msg[1]
+                task_ctrl_ack: NavTaskCtrlAck = nav_msg[1]  # type: ignore
                 device.report_data.dev.sys_status = task_ctrl_ack.nav_state
             case "toapp_edge_points":
-                edge_msg: NavEdgePoints = nav_msg[1]
+                edge_msg: NavEdgePoints = nav_msg[1]  # type: ignore
                 device.map.upsert_edge_frame(
                     hash_key=edge_msg.hash,
                     action=edge_msg.action,
@@ -396,7 +396,7 @@ class MowerStateReducer(StateReducer):
                     points=[CommDataCouple(x=p.x, y=p.y) for p in edge_msg.data_couple],
                 )
             case "toapp_work_report_ack" | "toapp_work_report_upload":
-                work_report: WorkReportInfoAck = nav_msg[1]
+                work_report: WorkReportInfoAck = nav_msg[1]  # type: ignore
                 device.work_session_result.interrupt_flag = work_report.interrupt_flag
                 device.work_session_result.start_work_time = work_report.start_work_time
                 device.work_session_result.end_work_time = work_report.end_work_time
@@ -409,25 +409,25 @@ class MowerStateReducer(StateReducer):
 
     def _update_sys_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update system data fields on *device* in-place."""
-        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")  # type: ignore
         match sys_msg[0]:
             case "system_update_buf":
-                device.buffer(sys_msg[1])
+                device.buffer(sys_msg[1])  # type: ignore
                 # If the RTK yaw just arrived or changed, regenerate any GeoJSON
                 # that was built without (or with a different) yaw correction.
                 if device.map.area and device.map.geojson_needs_regeneration(device.location.RTK):
                     device.map.generate_geojson(device.location.RTK, device.location.dock)
             case "toapp_report_data":
-                device.update_report_data(sys_msg[1])
+                device.update_report_data(sys_msg[1])  # type: ignore
             case "mow_to_app_info":
-                device.mow_info(sys_msg[1])
+                device.mow_info(sys_msg[1])  # type: ignore
             case "system_tard_state_tunnel":
-                device.run_state_update(sys_msg[1])
+                device.run_state_update(sys_msg[1])  # type: ignore
             case "bidire_comm_cmd":
                 # General read/write channel for non-Pro (Luba 1) devices — mirrors
                 # nav_sys_param_cmd for Pro/X3.  Same ID table applies; IDs 6/7/10/11
                 # are only sent here on devices where is_luba_pro() is False.
-                comm_cmd: SysCommCmd = sys_msg[1]
+                comm_cmd: SysCommCmd = sys_msg[1]  # type: ignore
                 match comm_cmd.id:
                     case 3:
                         device.mower_state.rain_detection = bool(comm_cmd.context)
@@ -442,19 +442,19 @@ class MowerStateReducer(StateReducer):
                     case 13:
                         device.mower_state.animal_protection.status = comm_cmd.context
             case "todev_time_ctrl_light":
-                ctrl_light: TimeCtrlLight = sys_msg[1]
+                ctrl_light: TimeCtrlLight = sys_msg[1]  # type: ignore
                 side_led: SideLight = SideLight.from_dict(ctrl_light.to_dict(casing=betterproto2.Casing.SNAKE))
                 device.mower_state.side_led = side_led
             case "toapp_lora_cfg_rsp":
-                lora_cfg: LoraCfgRsp = sys_msg[1]
+                lora_cfg: LoraCfgRsp = sys_msg[1]  # type: ignore
                 device.mower_state.lora_config = lora_cfg.cfg
             case "device_product_type_info":
-                device_product_type: DeviceProductTypeInfoT = sys_msg[1]
+                device_product_type: DeviceProductTypeInfoT = sys_msg[1]  # type: ignore
                 if device_product_type.main_product_type != "" or device_product_type.sub_product_type != "":
                     device.mower_state.model_id = device_product_type.main_product_type
                     device.mower_state.sub_model_id = device_product_type.sub_product_type
             case "toapp_dev_fw_info":
-                device_fw_info: DeviceFwInfo = sys_msg[1]
+                device_fw_info: DeviceFwInfo = sys_msg[1]  # type: ignore
                 if device_fw_info.result != 0:
                     device.device_firmwares.device_version = device_fw_info.version
                     device.mower_state.swversion = device_fw_info.version
@@ -474,20 +474,20 @@ class MowerStateReducer(StateReducer):
                 device.name,
             )
             return
-        driver_msg = betterproto2.which_one_of(message.driver, "SubDrvMsg")
+        driver_msg = betterproto2.which_one_of(message.driver, "SubDrvMsg")  # type: ignore
         match driver_msg[0]:
             case "current_cutter_mode":
-                cutter_work_mode: AppGetCutterWorkMode = driver_msg[1]
+                cutter_work_mode: AppGetCutterWorkMode = driver_msg[1]  # type: ignore
                 device.mower_state.cutter_mode = cutter_work_mode.current_cutter_mode
                 device.mower_state.cutter_rpm = cutter_work_mode.current_cutter_rpm
             case "cutter_mode_ctrl_by_hand":
-                cutter_work_mode_set: AppSetCutterWorkMode = driver_msg[1]
+                cutter_work_mode_set: AppSetCutterWorkMode = driver_msg[1]  # type: ignore
                 device.mower_state.cutter_mode = cutter_work_mode_set.cutter_mode
             case "bidire_speed_read_set":
-                speed_msg: DrvSrSpeed = driver_msg[1]
+                speed_msg: DrvSrSpeed = driver_msg[1]  # type: ignore
                 device.mower_state.travel_speed = speed_msg.speed
             case "toapp_knife_status_change":
-                knife_report: DrvKnifeChangeReport = driver_msg[1]
+                knife_report: DrvKnifeChangeReport = driver_msg[1]  # type: ignore
                 device.events.blade_height_event.is_start = knife_report.is_start
                 device.events.blade_height_event.start_height = knife_report.start_height
                 device.events.blade_height_event.end_height = knife_report.end_height
@@ -495,22 +495,22 @@ class MowerStateReducer(StateReducer):
 
     def _update_net_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update network data fields on *device* in-place."""
-        net_msg = betterproto2.which_one_of(message.net, "NetSubType")
+        net_msg = betterproto2.which_one_of(message.net, "NetSubType")  # type: ignore
         match net_msg[0]:
             case "toapp_wifi_iot_status":
-                wifi_iot_status: WifiIotStatusReport = net_msg[1]
+                wifi_iot_status: WifiIotStatusReport = net_msg[1]  # type: ignore
                 device.mower_state.product_key = wifi_iot_status.productkey
             case "toapp_devinfo_resp":
-                toapp_devinfo_resp: DrvDevInfoResp = net_msg[1]
+                toapp_devinfo_resp: DrvDevInfoResp = net_msg[1]  # type: ignore
                 for resp in toapp_devinfo_resp.resp_ids:
                     if resp.res == DrvDevInfoResult.DRV_RESULT_SUC and resp.id == 1 and resp.type == 6:
                         device.mower_state.swversion = resp.info
                         device.device_firmwares.device_version = resp.info
             case "toapp_networkinfo_rsp":
-                get_network_info_resp: GetNetworkInfoRsp = net_msg[1]
+                get_network_info_resp: GetNetworkInfoRsp = net_msg[1]  # type: ignore
                 device.mower_state.wifi_mac = get_network_info_resp.wifi_mac
             case "toapp_upgrade_report":
-                upgrade_report: DrvUpgradeReport = net_msg[1]
+                upgrade_report: DrvUpgradeReport = net_msg[1]  # type: ignore
                 device.events.ota_progress.devname = upgrade_report.devname
                 device.events.ota_progress.otaid = upgrade_report.otaid
                 device.events.ota_progress.version = upgrade_report.version
@@ -519,7 +519,7 @@ class MowerStateReducer(StateReducer):
                 device.events.ota_progress.message = upgrade_report.message
                 device.events.ota_progress.recv_cnt = upgrade_report.recv_cnt
             case "toapp_mnet_info_rsp":
-                mnet_info_rsp: GetMnetInfoRsp = net_msg[1]
+                mnet_info_rsp: GetMnetInfoRsp = net_msg[1]  # type: ignore
                 if mnet_info_rsp.mnet is not None:
                     device.report_data.dev.mnet_info = device.report_data.dev.mnet_info.from_dict(
                         mnet_info_rsp.mnet.to_dict(casing=betterproto2.Casing.SNAKE)
@@ -527,10 +527,10 @@ class MowerStateReducer(StateReducer):
 
     def _update_base_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update base station RTK data from LubaMsg.base.to_app response."""
-        base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")
+        base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")  # type: ignore
         match base_msg[0]:
             case "to_app":
-                resp: ResponseBasestationInfoT = base_msg[1]
+                resp: ResponseBasestationInfoT = base_msg[1]  # type: ignore
                 info = device.report_data.basestation_info
                 info.sats_num = resp.sats_num
                 info.rtk_status = resp.rtk_status
@@ -550,10 +550,10 @@ class MowerStateReducer(StateReducer):
 
     def _update_mul_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update media/light data fields on *device* in-place."""
-        mul_msg = betterproto2.which_one_of(message.mul, "SubMul")
+        mul_msg = betterproto2.which_one_of(message.mul, "SubMul")  # type: ignore
         match mul_msg[0]:
             case "set_audio":
-                audio_msg: MulSetAudio = mul_msg[1]
+                audio_msg: MulSetAudio = mul_msg[1]  # type: ignore
                 if audio_msg.au_language is not None:
                     device.mower_state.audio.language = audio_msg.au_language.name
                 if audio_msg.at_switch is not None:
@@ -561,12 +561,12 @@ class MowerStateReducer(StateReducer):
                 if audio_msg.sex is not None:
                     device.mower_state.audio.sex = audio_msg.sex.value
             case "audio_cfg":
-                cfg_msg: MulAudioCfg = mul_msg[1]
+                cfg_msg: MulAudioCfg = mul_msg[1]  # type: ignore
                 device.mower_state.audio.volume = cfg_msg.au_switch
                 device.mower_state.audio.language = cfg_msg.au_language.name
                 device.mower_state.audio.sex = cfg_msg.sex.value
             case "get_lamp_rsp":
-                lamp_resp: Getlamprsp = mul_msg[1]
+                lamp_resp: Getlamprsp = mul_msg[1]  # type: ignore
                 device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
                 if lamp_resp.get_ids in (1126, 1127):
                     device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
@@ -577,7 +577,7 @@ class MowerStateReducer(StateReducer):
                     device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
                     device.mower_state.lamp_info.night_light = lamp_resp.lamp_ctrl == LampCtrlSta.power_ctrl_on
 
-    def apply_properties(self, current: MowingDevice, properties: ThingPropertiesMessage) -> MowingDevice:
+    def apply_properties(self, current: MowingDevice, properties: ThingPropertiesMessage) -> MowingDevice:  # type: ignore
         """Extract mower state from a thing/properties JSON push.
 
         Mirrors the mapping in :meth:`MowerDevice.update_device_firmwares` for
@@ -592,7 +592,7 @@ class MowerStateReducer(StateReducer):
 
         if net_prop := items.networkInfo:
             try:
-                net = json.loads(net_prop.value)
+                net = json.loads(net_prop.value)  # type: ignore
                 device.mower_state.wifi_mac = str(net.get("wifi_sta_mac", device.mower_state.wifi_mac))
                 device.mower_state.ble_mac = str(net.get("bt_mac", device.mower_state.ble_mac))
                 device.mower_state.wifi_ssid = str(net.get("ssid", device.mower_state.wifi_ssid))
@@ -605,7 +605,7 @@ class MowerStateReducer(StateReducer):
 
         if dev_ver_info := items.deviceVersionInfo:
             try:
-                blob = json.loads(dev_ver_info.value)
+                blob = json.loads(dev_ver_info.value)  # type: ignore
                 if dev_ver := blob.get("devVer"):
                     device.device_firmwares.device_version = str(dev_ver)
                 for module in blob.get("fwInfo", []):
@@ -628,15 +628,15 @@ class MowerStateReducer(StateReducer):
         if bms_hw := items.bmsHardwareVersion:
             device.mower_state.battery_hardware = str(bms_hw.value)
         if battery_prop := items.batteryPercentage:
-            device.report_data.dev.battery_val = int(battery_prop.value)
+            device.report_data.dev.battery_val = int(battery_prop.value)  # type: ignore
         if state_prop := items.deviceState:
-            device.report_data.dev.sys_status = int(state_prop.value)
+            device.report_data.dev.sys_status = int(state_prop.value)  # type: ignore
         if knife_prop := items.knifeHeight:
-            device.report_data.work.knife_height = int(knife_prop.value)
+            device.report_data.work.knife_height = int(knife_prop.value)  # type: ignore
 
         if other_info := items.deviceOtherInfo:
             try:
-                info = json.loads(other_info.value)
+                info = json.loads(other_info.value)  # type: ignore
                 if (mileage := info.get("mileage")) is not None:
                     device.report_data.dev.mileage = int(mileage)
                 if (wt_sec := info.get("wt_sec")) is not None:
@@ -663,7 +663,7 @@ class MowerStateReducer(StateReducer):
 
         if ota_prop := items.otaProgress:
             try:
-                ota = OTAProgressItems.from_dict(ota_prop.value)
+                ota = OTAProgressItems.from_dict(ota_prop.value)  # type: ignore
                 done = ota.progress == 100
                 device.update_check = dataclasses.replace(
                     device.update_check,
@@ -747,7 +747,7 @@ class PoolStateReducer(StateReducer):
     reusing mower dispatch on a device that has no ``mower_state``.
     """
 
-    def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:
+    def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:  # type: ignore
         """Apply *message* to *current* and return the updated copy."""
         device: PoolCleanerDevice = dataclasses.replace(current)
         if not device.online:
@@ -758,15 +758,15 @@ class PoolStateReducer(StateReducer):
             # Only the sys envelope carries Spino payloads we currently model.
             return device
 
-        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")  # type: ignore
         match sys_msg[0]:
             case "report_info":
                 device.pool_state = copy.deepcopy(current.pool_state)
-                self._update_report_info(device, sys_msg[1])
+                self._update_report_info(device, sys_msg[1])  # type: ignore
             case "app_downlink_cmd":
                 device.pool_state = copy.deepcopy(current.pool_state)
                 device.pool_map = copy.deepcopy(current.pool_map)
-                self._update_app_downlink_cmd(device, sys_msg[1])
+                self._update_app_downlink_cmd(device, sys_msg[1])  # type: ignore
             case _:
                 _logger.debug(
                     "PoolStateReducer: ignoring unhandled sys sub-message %r for %s",
@@ -869,7 +869,7 @@ class RTKStateReducer(StateReducer):
     (handled here).
     """
 
-    def apply(self, current: RTKBaseStationDevice, message: LubaMsg) -> RTKBaseStationDevice:
+    def apply(self, current: RTKBaseStationDevice, message: LubaMsg) -> RTKBaseStationDevice:  # type: ignore
         """Apply *message* to *current* and return the updated copy."""
         device: RTKBaseStationDevice = dataclasses.replace(current)
         if not device.online:
@@ -894,15 +894,15 @@ class RTKStateReducer(StateReducer):
 
     def _update_sys_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
         """Apply sys sub-messages from the base station's own connection."""
-        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")
+        sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")  # type: ignore
         match sys_msg[0]:
             case "toapp_report_data":
-                report: ReportInfoData = sys_msg[1]
+                report: ReportInfoData = sys_msg[1]  # type: ignore
                 if report.basestation_info is not None:
                     device.basestation_status = report.basestation_info.basestation_status
                     device.connect_status_since_poweron = report.basestation_info.connect_status_since_poweron
             case "toapp_dev_fw_info":
-                fw_info: DeviceFwInfo = sys_msg[1]
+                fw_info: DeviceFwInfo = sys_msg[1]  # type: ignore
                 if fw_info.result != 0:
                     device.device_version = fw_info.version
             case _:
@@ -914,13 +914,13 @@ class RTKStateReducer(StateReducer):
 
     def _update_net_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
         """Apply net sub-messages (connectivity info) from the base station."""
-        net_msg = betterproto2.which_one_of(message.net, "NetSubType")
+        net_msg = betterproto2.which_one_of(message.net, "NetSubType")  # type: ignore
         match net_msg[0]:
             case "toapp_wifi_iot_status":
-                wifi_iot: WifiIotStatusReport = net_msg[1]
+                wifi_iot: WifiIotStatusReport = net_msg[1]  # type: ignore
                 device.product_key = wifi_iot.productkey
             case "toapp_networkinfo_rsp":
-                net_info: GetNetworkInfoRsp = net_msg[1]
+                net_info: GetNetworkInfoRsp = net_msg[1]  # type: ignore
                 device.wifi_ssid = net_info.wifi_ssid
                 device.wifi_mac = net_info.wifi_mac
                 device.wifi_rssi = net_info.wifi_rssi
@@ -936,10 +936,10 @@ class RTKStateReducer(StateReducer):
 
     def _update_base_data(self, device: RTKBaseStationDevice, message: LubaMsg) -> None:
         """Apply base.to_app (ResponseBasestationInfoT) from the RTK device."""
-        base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")
+        base_msg = betterproto2.which_one_of(message.base, "BaseStationSubType")  # type: ignore
         match base_msg[0]:
             case "to_app":
-                resp: ResponseBasestationInfoT = base_msg[1]
+                resp: ResponseBasestationInfoT = base_msg[1]  # type: ignore
                 device.app_connect_type = resp.app_connect_type
                 device.ble_rssi = resp.ble_rssi
                 device.wifi_rssi = resp.wifi_rssi
@@ -967,7 +967,7 @@ class RTKStateReducer(StateReducer):
                     device.name,
                 )
 
-    def apply_properties(
+    def apply_properties(  # type: ignore
         self, current: RTKBaseStationDevice, properties: ThingPropertiesMessage
     ) -> RTKBaseStationDevice:
         """Extract RTK state from a thing/properties JSON push.
@@ -983,7 +983,7 @@ class RTKStateReducer(StateReducer):
 
         if coord_prop := items.coordinate:
             try:
-                coord = json.loads(coord_prop.value)
+                coord = json.loads(coord_prop.value)  # type: ignore
                 # The coordinate property is already in radians (protocol-level unit).
                 if (lat := coord.get("lat")) and lat != 0:
                     raw_lat = float(lat)
@@ -1003,7 +1003,7 @@ class RTKStateReducer(StateReducer):
 
         if net_prop := items.networkInfo:
             try:
-                net = json.loads(net_prop.value)
+                net = json.loads(net_prop.value)  # type: ignore
                 device.wifi_rssi = int(net.get("wifi_rssi", device.wifi_rssi))
                 device.wifi_mac = str(net.get("wifi_sta_mac", device.wifi_mac))
                 device.bt_mac = str(net.get("bt_mac", device.bt_mac))
@@ -1015,7 +1015,7 @@ class RTKStateReducer(StateReducer):
 
         if dev_ver_info := items.deviceVersionInfo:
             try:
-                blob = json.loads(dev_ver_info.value)
+                blob = json.loads(dev_ver_info.value)  # type: ignore
                 if dev_ver := blob.get("devVer"):
                     device.device_version = str(dev_ver)
                     device.device_firmwares.device_version = str(dev_ver)
@@ -1039,7 +1039,7 @@ class RTKStateReducer(StateReducer):
 
         if ota_prop := items.otaProgress:
             try:
-                ota = OTAProgressItems.from_dict(ota_prop.value)
+                ota = OTAProgressItems.from_dict(ota_prop.value)  # type: ignore
                 done = ota.progress == 100
                 device.update_check = dataclasses.replace(
                     device.update_check,

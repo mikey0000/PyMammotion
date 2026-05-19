@@ -1,3 +1,4 @@
+aioesphomeapi==44.23.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.5
 aiomqtt==2.5.1
@@ -9,17 +10,23 @@ alibabacloud-tea==0.4.3
 alibabacloud-tea-util==0.3.14
 astroid==4.0.4
 asttokens==3.0.1
+async-interrupt==1.2.2
 attrs==26.1.0
 autotyping==24.9.0
 betterproto2==0.9.1
 betterproto2-compiler==0.9.0
 bleak==3.0.1
+bleak-esphome==3.7.3
 bleak-retry-connector==4.6.0
 bluetooth-adapters==2.1.1
+bluetooth-auto-recovery==1.5.3
+bluetooth-data-tools==1.28.4
+btsocket==0.3.0
 bumpver==2025.1131
 certifi==2026.4.22
 cffi==2.0.0
 cfgv==3.5.0
+chacha20poly1305-reuseable==0.13.2
 charset-normalizer==3.4.7
 click==8.3.3
 colorama==0.4.6
@@ -37,8 +44,10 @@ frida-tools==14.8.1
 frozenlist==1.8.0
 grpcio==1.80.0
 grpcio-tools==1.80.0
+habluetooth==6.1.0
 identify==2.6.19
 idna==3.13
+ifaddr==0.2.0
 importlib-metadata==9.0.0
 iniconfig==2.3.0
 ipython==9.13.0
@@ -53,7 +62,7 @@ jinja2==3.1.6
 keyring==25.7.0
 lexid==2021.1006
 libcst==1.8.6
-librt==0.9.0
+lru-dict==1.4.1
 markdown-it-py==4.0.0
 markupsafe==3.0.3
 mashumaro==3.20
@@ -62,18 +71,16 @@ mccabe==0.7.0
 mdurl==0.1.2
 more-itertools==11.0.2
 multidict==6.7.1
-mypy==1.20.2
-mypy-extensions==1.1.0
 mypy-protobuf==3.7.0
 nest-asyncio==1.6.0
 nh3==0.3.5
 nodeenv==1.10.0
+noiseprotocol==0.3.1
 numpy==2.4.4
 orjson==3.11.8
 packaging==26.2
 paho-mqtt==2.1.0
 parso==0.8.6
-pathspec==1.1.1
 pexpect==4.9.0
 pip==26.1
 pkginfo==1.10.0
@@ -93,6 +100,7 @@ pyjwt==2.12.1
 pylint==4.0.5
 -e file:///home/michael/git/Luba-API
 pymap3d==3.2.0
+pyric==0.1.6.3
 pyrsistent==0.20.0
 pysdl2==0.9.17
 pytest==9.0.3
@@ -118,8 +126,10 @@ toml==0.10.2
 tomlkit==0.14.0
 traitlets==5.14.3
 twine==5.1.1
+ty==0.0.35
 types-protobuf==6.32.1.20260221
 typing-extensions==4.15.0
+tzlocal==5.3.1
 uart-devices==0.1.1
 urllib3==2.6.3
 usb-devices==0.4.5
@@ -129,4 +139,5 @@ wcwidth==0.6.0
 webrtc-models==0.3.0
 websockets==13.1
 yarl==1.23.0
+zeroconf==0.148.0
 zipp==3.23.1

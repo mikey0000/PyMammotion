@@ -411,7 +411,7 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
     mock_http = MagicMock()
     mock_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
     mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=None))
-    mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=["placeholder"]))
+    mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
     mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=None))
     mock_http.login_info = None
     mock_http.mqtt_credentials = None

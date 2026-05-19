@@ -8,7 +8,7 @@ import contextlib
 import dataclasses
 import logging
 import time
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
@@ -62,7 +62,7 @@ _REPORT_CHANNELS: list[RptInfoType] = [
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from pymammotion.data.model.device import Device
+    from pymammotion.data.model.device import Device, MowingDevice
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
@@ -192,6 +192,7 @@ class DeviceHandle:
         self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
         self._event_bus: EventBus[ThingEventMessage] = EventBus()
         self._prefer_ble: bool = prefer_ble
+        self._mow_path_fetch_enabled: bool = True
         # Pick a reducer matching the device kind. PoolCleanerDevice instances
         # get a PoolStateReducer (currently a stub); everything else gets the
         # full mower reducer. Decided once at construction so the per-message
@@ -828,7 +829,7 @@ class DeviceHandle:
         IDLE          — anything else (paused, locked, lost, …).
         """
         try:
-            dev = self.state_machine.current.raw.report_data.dev
+            dev = self.state_machine.current.raw.report_data.dev  # type: ignore
             sys_status = dev.sys_status
             if sys_status in MOWING_ACTIVE_MODES:
                 return _DeviceMode.ACTIVE
@@ -843,7 +844,7 @@ class DeviceHandle:
 
     def _in_no_request_mode(self) -> bool:
         try:
-            return self.state_machine.current.raw.report_data.dev.sys_status in NO_REQUEST_MODES
+            return self.state_machine.current.raw.report_data.dev.sys_status in NO_REQUEST_MODES  # type: ignore
         except (AttributeError, TypeError):
             return False
 
@@ -1215,7 +1216,7 @@ class DeviceHandle:
         """Check device readiness. Returns None if no checker configured."""
         if self._readiness_checker is None:
             return None
-        return self._readiness_checker.check(self.snapshot.raw)
+        return self._readiness_checker.check(cast("MowingDevice", self.snapshot.raw))
 
     @property
     def is_ready(self) -> bool:
@@ -1227,7 +1228,7 @@ class DeviceHandle:
         """Return command names needed to populate missing data."""
         if self._readiness_checker is None:
             return []
-        return self._readiness_checker.commands_to_fetch_missing(self.snapshot.raw)
+        return self._readiness_checker.commands_to_fetch_missing(cast("MowingDevice", self.snapshot.raw))
 
     @property
     def prefer_ble(self) -> bool:
@@ -1237,6 +1238,15 @@ class DeviceHandle:
     def set_prefer_ble(self, *, value: bool) -> None:
         """Change the transport preference at runtime (e.g. when BLE connects/disconnects)."""
         self._prefer_ble = value
+
+    @property
+    def mow_path_fetch_enabled(self) -> bool:
+        """True if MowPathSaga is allowed to run over MQTT."""
+        return self._mow_path_fetch_enabled
+
+    def set_mow_path_fetch_enabled(self, *, value: bool) -> None:
+        """Gate MowPathSaga fetches over MQTT. BLE fetches are never gated."""
+        self._mow_path_fetch_enabled = value
 
     @property
     def ble_stream_active(self) -> bool:

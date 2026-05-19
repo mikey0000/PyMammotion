@@ -107,7 +107,7 @@ class EncryptionUtils:
         except Exception as e:
             raise Exception(f"Encryption failed: {e!s}")
 
-    def encryption_by_aes(self, text: str) -> str:
+    def encryption_by_aes(self, text: str) -> str | None:
         """Encrypt text using AES with class-level key and IV
 
         Args:

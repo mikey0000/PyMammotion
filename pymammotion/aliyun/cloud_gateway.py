@@ -1,5 +1,7 @@
 """Module for interacting with Aliyun Cloud IoT Gateway."""
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import hashlib
@@ -159,12 +161,12 @@ class CloudIOTGateway:
 
     async def get_region(self, country_code: str) -> RegionResponse:
         """Get the region based on country code and auth code."""
-        auth_code = self.mammotion_http.login_info.authorization_code
+        auth_code = self.mammotion_http.login_info.authorization_code  # type: ignore
 
         if self._region_response is not None:
             return self._region_response
 
-        config = Config(app_key=self._app_key, app_secret=self._app_secret, domain=self.domain)
+        config = Config(app_key=self._app_key, app_secret=self._app_secret, domain=self.domain, protocol="https")
         client = Client(config)
 
         # build request
@@ -201,14 +203,13 @@ class CloudIOTGateway:
             body["data"]["pushChannelEndpoint"] = f"living-accs.{region}.aliyuncs.com"
             body["data"]["apiGatewayEndpoint"] = f"{region}.api-iot.aliyuncs.com"
 
-            RegionResponse.from_dict(body)
-            return body
+            return RegionResponse.from_dict(body)
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             raise CloudSetupError(f"Error in getting regions: {response_body_dict}")
 
         self._region_response = RegionResponse.from_dict(response_body_dict)
@@ -220,10 +221,10 @@ class CloudIOTGateway:
         """Handle AEP authentication."""
         aep_domain = self.domain
 
-        if self._region_response.data.apiGatewayEndpoint is not None:
-            aep_domain = self._region_response.data.apiGatewayEndpoint
+        if self._region_response.data.apiGatewayEndpoint is not None:  # type: ignore
+            aep_domain = self._region_response.data.apiGatewayEndpoint  # type: ignore
 
-        config = Config(app_key=self._app_key, app_secret=self._app_secret, domain=aep_domain)
+        config = Config(app_key=self._app_key, app_secret=self._app_secret, domain=aep_domain, protocol="https")
         client = Client(config)
 
         request = CommonParams(api_ver="1.0.0", language="en-US")
@@ -251,7 +252,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = await client.async_do_request("/app/aepauth/handle", "https", "POST", None, body, RuntimeOptions())
+        response = await client.async_do_request("/app/aepauth/handle", "https", "POST", {}, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -261,7 +262,7 @@ class CloudIOTGateway:
 
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             raise CloudSetupError(
                 f"Error in getting mqtt credentials: {response_body_dict.get('msg', response_body_dict)}"
             )
@@ -285,7 +286,7 @@ class CloudIOTGateway:
                 "x-ca-signaturemethod": "HmacSHA256",
                 "accept": "application/json",
                 "content-type": "application/x-www-form-urlencoded",
-                "user-agent": UtilClient.get_user_agent(None),
+                "user-agent": UtilClient.get_user_agent(""),
             }
 
             _bodyParam = {
@@ -348,8 +349,8 @@ class CloudIOTGateway:
 
     async def login_by_oauth(self, country_code: str):
         """Login by OAuth."""
-        auth_code = self.mammotion_http.login_info.authorization_code
-        region_url = self._region_response.data.oaApiGatewayEndpoint
+        auth_code = self.mammotion_http.login_info.authorization_code  # type: ignore
+        region_url = self._region_response.data.oaApiGatewayEndpoint  # type: ignore
 
         async with ClientSession() as session:
             headers = {
@@ -360,8 +361,8 @@ class CloudIOTGateway:
                 "x-ca-signaturemethod": "HmacSHA256",
                 "accept": "application/json",
                 "content-type": "application/x-www-form-urlencoded; charset=utf-8",
-                "user-agent": UtilClient.get_user_agent(None),
-                "vid": self._connect_response.data.vid,
+                "user-agent": UtilClient.get_user_agent(""),
+                "vid": self._connect_response.data.vid,  # type: ignore
             }
 
             _bodyParam = {
@@ -376,7 +377,7 @@ class CloudIOTGateway:
                     "sdkVersion": "3.4.2",
                     "utdid": self._utdid,
                     "umidToken": self._utdid,
-                    "deviceId": self._connect_response.data.data.device.data.deviceId,
+                    "deviceId": self._connect_response.data.data.device.data.deviceId,  # type: ignore
                     "USE_OA_PWD_ENCRYPT": "true",
                     "USE_H5_NC": "true",
                 },
@@ -422,7 +423,10 @@ class CloudIOTGateway:
     async def session_by_auth_code(self) -> SessionByAuthCodeResponse:
         """Create a session by auth code."""
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
         client = Client(config)
 
@@ -432,7 +436,7 @@ class CloudIOTGateway:
             id=str(uuid.uuid4()),
             params={
                 "request": {
-                    "authCode": self._login_by_oauth_response.data.data.loginSuccessResult.sid,
+                    "authCode": self._login_by_oauth_response.data.data.loginSuccessResult.sid,  # type: ignore
                     "accountType": "OA_SESSION",
                     "appKey": self._app_key,
                 }
@@ -446,7 +450,7 @@ class CloudIOTGateway:
             "/account/createSessionByAuthCode",
             "https",
             "POST",
-            None,
+            {},
             body,
             RuntimeOptions(),
         )
@@ -466,7 +470,7 @@ class CloudIOTGateway:
         if int(session_by_auth.code) != 200:
             raise CloudSetupError(f"Error in creating session: {response_body_str}")
 
-        if session_by_auth.data.identityId is None:
+        if session_by_auth.data.identityId is None:  # type: ignore
             raise CloudSetupError(f"Error in creating session (missing identityId): {response_body_str}")
 
         self._session_by_authcode_response = session_by_auth
@@ -477,7 +481,10 @@ class CloudIOTGateway:
     async def sign_out(self) -> dict:
         """Invalidate the current IoT session and return the raw response dictionary."""
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
         client = Client(config)
 
@@ -487,8 +494,8 @@ class CloudIOTGateway:
             id=str(uuid.uuid4()),
             params={
                 "request": {
-                    "refreshToken": self._session_by_authcode_response.data.refreshToken,
-                    "identityId": self._session_by_authcode_response.data.identityId,
+                    "refreshToken": self._session_by_authcode_response.data.refreshToken,  # type: ignore
+                    "identityId": self._session_by_authcode_response.data.identityId,  # type: ignore
                 }
             },
             request=request,
@@ -501,7 +508,7 @@ class CloudIOTGateway:
             "/iotx/account/invalidSession",
             "https",
             "POST",
-            None,
+            {},
             body,
             RuntimeOptions(),
         )
@@ -559,7 +566,8 @@ class CloudIOTGateway:
             config = Config(
                 app_key=self._app_key,
                 app_secret=self._app_secret,
-                domain=self._region_response.data.apiGatewayEndpoint,
+                domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+                protocol="https",
             )
             client = Client(config)
 
@@ -569,8 +577,8 @@ class CloudIOTGateway:
                 id=str(uuid.uuid4()),
                 params={
                     "request": {
-                        "refreshToken": self._session_by_authcode_response.data.refreshToken,
-                        "identityId": self._session_by_authcode_response.data.identityId,
+                        "refreshToken": self._session_by_authcode_response.data.refreshToken,  # type: ignore
+                        "identityId": self._session_by_authcode_response.data.identityId,  # type: ignore
                     }
                 },
                 request=request,
@@ -581,7 +589,7 @@ class CloudIOTGateway:
                 "/account/checkOrRefreshSession",
                 "https",
                 "POST",
-                None,
+                {},
                 body,
                 RuntimeOptions(),
             )
@@ -593,7 +601,7 @@ class CloudIOTGateway:
             response_body_str = response.body.decode("utf-8")
             response_body_dict = self.parse_json_response(response_body_str)
 
-            if int(response_body_dict.get("code")) != 200:
+            if int(response_body_dict.get("code") or 0) != 200:
                 logger.error(response_body_dict)
                 await self.sign_out()
                 raise SessionExpiredError(
@@ -625,7 +633,10 @@ class CloudIOTGateway:
     async def list_binding_by_account(self) -> ListingDevAccountResponse:
         """List bindings by account."""
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -634,7 +645,7 @@ class CloudIOTGateway:
         request = CommonParams(
             api_ver="1.0.8",
             language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
+            iot_token=self._session_by_authcode_response.data.iotToken,  # type: ignore
         )
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
@@ -645,7 +656,7 @@ class CloudIOTGateway:
 
         # send request
         response = await client.async_do_request(
-            "/uc/listBindingByAccount", "https", "POST", None, body, RuntimeOptions()
+            "/uc/listBindingByAccount", "https", "POST", {}, body, RuntimeOptions()
         )
         logger.debug(response.status_message)
         logger.debug(response.headers)
@@ -672,7 +683,10 @@ class CloudIOTGateway:
     async def list_binding_by_dev(self, iot_id: str):
         """Retrieve the list of accounts bound to the specified device IoT ID."""
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -681,7 +695,7 @@ class CloudIOTGateway:
         request = CommonParams(
             api_ver="1.0.8",
             language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
+            iot_token=self._session_by_authcode_response.data.iotToken,  # type: ignore
         )
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
@@ -691,7 +705,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = await client.async_do_request("/uc/listBindingByDev", "https", "POST", None, body, RuntimeOptions())
+        response = await client.async_do_request("/uc/listBindingByDev", "https", "POST", {}, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -703,7 +717,7 @@ class CloudIOTGateway:
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             raise CloudSetupError(
                 f"Error getting shared device list: {response_body_dict.get('msg', response_body_dict)}"
             )
@@ -714,7 +728,10 @@ class CloudIOTGateway:
     async def confirm_share(self, record_list: list[str]) -> bool:
         """Accept pending share invitations for the given list of record IDs."""
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -723,7 +740,7 @@ class CloudIOTGateway:
         request = CommonParams(
             api_ver="1.0.7",
             language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
+            iot_token=self._session_by_authcode_response.data.iotToken,  # type: ignore
         )
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
@@ -733,7 +750,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = await client.async_do_request("/uc/confirmShare", "https", "POST", None, body, RuntimeOptions())
+        response = await client.async_do_request("/uc/confirmShare", "https", "POST", {}, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -745,7 +762,7 @@ class CloudIOTGateway:
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             raise CloudSetupError(f"Error accepting share: {response_body_dict.get('msg', response_body_dict)}")
 
         return True
@@ -754,7 +771,10 @@ class CloudIOTGateway:
         """Fetch the list of share notices for the current account (status: 0=accepted, -1=pending, 3=expired)."""
         ### status 0 accepted status -1 ready to be accepted 3 expired
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -763,7 +783,7 @@ class CloudIOTGateway:
         request = CommonParams(
             api_ver="1.0.9",
             language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
+            iot_token=self._session_by_authcode_response.data.iotToken,  # type: ignore
         )
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
@@ -773,9 +793,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = await client.async_do_request(
-            "/uc/getShareNoticeList", "https", "POST", None, body, RuntimeOptions()
-        )
+        response = await client.async_do_request("/uc/getShareNoticeList", "https", "POST", {}, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -787,7 +805,7 @@ class CloudIOTGateway:
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             raise CloudSetupError(
                 f"Error getting shared notice list: {response_body_dict.get('msg', response_body_dict)}"
             )
@@ -830,11 +848,11 @@ class CloudIOTGateway:
             raise TooManyRequestsException("rate limited — retry after backoff window", iot_id)
 
         """Check if iotToken is expired"""
-        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (
+        if self._iot_token_issued_at + self._session_by_authcode_response.data.iotTokenExpire <= (  # type: ignore
             int(time.time()) + 3600
         ):
             """Token expired - Try to refresh - Check if refreshToken is not expired"""
-            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (
+            if self._iot_token_issued_at + self._session_by_authcode_response.data.refreshTokenExpire > (  # type: ignore
                 int(time.time())
             ):
                 await self.check_or_refresh_session()
@@ -842,7 +860,10 @@ class CloudIOTGateway:
                 raise AuthRefreshException("Refresh token expired. Please re-login")
 
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -850,7 +871,7 @@ class CloudIOTGateway:
         request = CommonParams(
             api_ver="1.0.5",
             language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
+            iot_token=self._session_by_authcode_response.data.iotToken,  # type: ignore
         )
 
         # TODO move to using InvokeThingServiceRequest()
@@ -871,7 +892,7 @@ class CloudIOTGateway:
         logger.debug(body)
         # send request
         runtime_options = RuntimeOptions(autoretry=True, backoff_policy="yes")
-        response = await client.async_do_request("/thing/service/invoke", "https", "POST", None, body, runtime_options)
+        response = await client.async_do_request("/thing/service/invoke", "https", "POST", {}, body, runtime_options)
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -887,7 +908,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             if response_body_dict.get("code") == 6205:
                 logger.debug("Device offline (6205): %s", iot_id)
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
@@ -919,7 +940,7 @@ class CloudIOTGateway:
 
             if response_body_dict.get("code") == 460:
                 logger.debug("iotToken expired, must re-login.")
-                raise SessionExpiredError(TransportType.CLOUD_ALIYUN, response_body_dict.get("message"))
+                raise SessionExpiredError(TransportType.CLOUD_ALIYUN, response_body_dict.get("message"))  # type: ignore
 
         if self.message_delay != 1:
             self.message_delay = 1
@@ -932,7 +953,10 @@ class CloudIOTGateway:
     async def get_device_properties(self, iot_id: str) -> ThingPropertiesResponse:
         """List bindings by account."""
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -941,7 +965,7 @@ class CloudIOTGateway:
         request = CommonParams(
             api_ver="1.0.0",
             language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
+            iot_token=self._session_by_authcode_response.data.iotToken,  # type: ignore
         )
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
@@ -953,7 +977,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = await client.async_do_request("/thing/properties/get", "https", "POST", None, body, RuntimeOptions())
+        response = await client.async_do_request("/thing/properties/get", "https", "POST", {}, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -965,7 +989,7 @@ class CloudIOTGateway:
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             if msg := response_body_dict.get("msg"):
                 raise FailedRequestException("Error in getting properties: " + msg)
             raise FailedRequestException(f"Error in getting properties: {response_body_dict}")
@@ -975,7 +999,10 @@ class CloudIOTGateway:
     async def get_device_status(self, iot_id: str) -> ThingPropertiesResponse:
         """List bindings by account."""
         config = Config(
-            app_key=self._app_key, app_secret=self._app_secret, domain=self._region_response.data.apiGatewayEndpoint
+            app_key=self._app_key,
+            app_secret=self._app_secret,
+            domain=self._region_response.data.apiGatewayEndpoint,  # type: ignore
+            protocol="https",
         )
 
         client = Client(config)
@@ -984,7 +1011,7 @@ class CloudIOTGateway:
         request = CommonParams(
             api_ver="1.0.5",
             language="en-US",
-            iot_token=self._session_by_authcode_response.data.iotToken,
+            iot_token=self._session_by_authcode_response.data.iotToken,  # type: ignore
         )
         body = IoTApiRequest(
             id=str(uuid.uuid4()),
@@ -996,7 +1023,7 @@ class CloudIOTGateway:
         )
 
         # send request
-        response = await client.async_do_request("/thing/status/get", "https", "POST", None, body, RuntimeOptions())
+        response = await client.async_do_request("/thing/status/get", "https", "POST", {}, body, RuntimeOptions())
         logger.debug(response.status_message)
         logger.debug(response.headers)
         logger.debug(response.status_code)
@@ -1008,7 +1035,7 @@ class CloudIOTGateway:
         # Load the JSON string into a dictionary
         response_body_dict = self.parse_json_response(response_body_str)
 
-        if int(response_body_dict.get("code")) != 200:
+        if int(response_body_dict.get("code") or 0) != 200:
             if msg := response_body_dict.get("msg"):
                 raise FailedRequestException("Error in getting properties: " + msg)
             raise FailedRequestException(f"Error in getting properties: {response_body_dict}")
@@ -1035,7 +1062,7 @@ class CloudIOTGateway:
         return self._aep_response
 
     @property
-    def session_by_authcode_response(self) -> SessionByAuthCodeResponse:
+    def session_by_authcode_response(self) -> SessionByAuthCodeResponse | None:
         """Return the current session-by-auth-code response containing the IoT token."""
         return self._session_by_authcode_response
 
@@ -1082,7 +1109,7 @@ class CloudIOTGateway:
         account: str,
         password: str,
         ha_version: str | None = None,
-    ) -> "CloudIOTGateway | None":
+    ) -> CloudIOTGateway | None:
         """Reconstruct a CloudIOTGateway from a previously serialized cache dictionary.
 
         Returns None if any required field is missing or if an error occurs during
