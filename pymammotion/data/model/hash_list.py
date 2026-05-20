@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
@@ -430,6 +431,50 @@ class HashList(DataClassORJSONMixin):
             return 0
         return int(MurMurHashUtil.hash_unsigned_list(hashes))
 
+    @property
+    def computed_areas(self) -> list[AreaHashNameList]:
+        """Merge area_name and area into a fully-named list.
+
+        For every hash in self.area:
+        * If area_name already has an entry with a non-empty name → keep it.
+        * If area_name has an entry but name is empty → fill from FrameList.name,
+          or auto-assign the lowest unused "Area N" number.
+        * If area_name has no entry at all → same as above but also add one.
+
+        Uses deepcopy so self.area_name is never mutated by a property access.
+        """
+        area_name_list = deepcopy(self.area_name)
+
+        for hash_id, area in self.area.items():
+            existing_area = next((a for a in area_name_list if a.hash == hash_id), None)
+            if not existing_area:
+                if area.name:
+                    area_name_list.append(AreaHashNameList(name=area.name, hash=hash_id))
+                else:
+                    used_numbers = {
+                        int(a.name.split()[-1])
+                        for a in area_name_list
+                        if a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
+                    }
+                    n = 1
+                    while n in used_numbers:
+                        n += 1
+                    area_name_list.append(AreaHashNameList(name=f"Area {n}", hash=hash_id))
+            elif not existing_area.name and area.name:
+                existing_area.name = area.name
+            elif not existing_area.name:
+                used_numbers = {
+                    int(a.name.split()[-1])
+                    for a in area_name_list
+                    if a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
+                }
+                n = 1
+                while n in used_numbers:
+                    n += 1
+                existing_area.name = f"Area {n}"
+
+        return area_name_list
+
     def missing_hashlist(self, sub_cmd: int = 0) -> list[int]:
         """Return hash IDs declared in ``root_hash_lists`` for *sub_cmd* but not yet fetched."""
         all_hash_ids = set(self.area.keys()).union(
@@ -607,17 +652,6 @@ class HashList(DataClassORJSONMixin):
             return self._add_svg_data(self.svg, hash_data)
 
         if hash_data.type == PathType.AREA:
-            existing_name = next((area for area in self.area_name if area.hash == hash_data.hash), None)
-            if not existing_name:
-                used_numbers = {
-                    int(a.name.split()[-1])
-                    for a in self.area_name
-                    if a.name.startswith("Area ") and a.name.split()[-1].isdigit()
-                }
-                n = 1
-                while n in used_numbers:
-                    n += 1
-                self.area_name.append(AreaHashNameList(name=f"Area {n}", hash=hash_data.hash))
             result = self._add_hash_data(self.area, hash_data)
             self.update_hash_lists(self.hashlist)
             return result
