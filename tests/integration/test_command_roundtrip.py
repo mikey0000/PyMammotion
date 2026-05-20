@@ -41,6 +41,7 @@ def _make_transport(transport_type: TransportType, *, connected: bool = True) ->
     transport.is_rate_limited = False
     transport.last_send_monotonic = 0.0  # 0.0 = never sent (matches Transport base default)
     transport.send = AsyncMock()
+    transport.send_heartbeat = AsyncMock()
     transport.disconnect = AsyncMock()
     transport.on_message = None
     return transport
@@ -432,10 +433,12 @@ async def test_ble_sync_sent_before_payload_after_5_minute_idle() -> None:
     # Directly call _send_marked (the path used inside send_command)
     await handle._send_marked(mqtt_transport, b"\xde\xad")
 
-    assert len(sent) == 2, f"Expected sync + payload (2 sends), got {len(sent)}: {sent}"
-    # First send is the BLE sync (send_todev_ble_sync returns non-empty bytes)
-    assert sent[0] != b"\xde\xad", "First send should be the BLE sync, not the payload"
-    assert sent[1] == b"\xde\xad", "Second send should be the actual payload"
+    # Sync goes through send_heartbeat (quota-exempt path); payload goes through send
+    mqtt_transport.send_heartbeat.assert_awaited_once()
+    sync_payload = mqtt_transport.send_heartbeat.call_args[0][0]
+    assert sync_payload != b"\xde\xad", "Heartbeat arg should be the BLE sync, not the payload"
+    assert len(sent) == 1, f"Expected only payload via send, got {len(sent)}: {sent}"
+    assert sent[0] == b"\xde\xad", "send() should carry the actual payload"
 
 
 async def test_no_ble_sync_when_recently_active() -> None:
