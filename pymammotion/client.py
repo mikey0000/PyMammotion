@@ -729,13 +729,14 @@ class MammotionClient:
             work (logging, downstream task creation) on False.
 
         """
-        self._ble_manager.update_external_ble_client(device_id, ble_device)
         handle = self._device_registry.get(device_id)
         if handle is None:
             return False
         ble = handle.get_transport(TransportType.BLE)
         if not isinstance(ble, BLETransport):
-            return False
+            await self.add_ble_device(device_id, ble_device)
+            return True
+        self._ble_manager.update_external_ble_client(device_id, ble_device)
         return ble.set_ble_device(ble_device)
 
     async def clear_ble_device(self, device_id: str) -> None:

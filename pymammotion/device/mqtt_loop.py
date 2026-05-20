@@ -34,9 +34,9 @@ _RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
 #:   MAMMOTION_POLL_DOCKED_FULL_SECS, MAMMOTION_POLL_IDLE_SECS
 _MQTT_POLL_INTERVAL: dict[_DeviceMode, float] = {
     _DeviceMode.ACTIVE: float(os.environ.get("MAMMOTION_POLL_ACTIVE_SECS", 15 * 60)),
-    _DeviceMode.DOCKED_CHARGING: float(os.environ.get("MAMMOTION_POLL_DOCKED_CHARGING_SECS", 15 * 60)),
+    _DeviceMode.DOCKED_CHARGING: float(os.environ.get("MAMMOTION_POLL_DOCKED_CHARGING_SECS", 30 * 60)),
     _DeviceMode.DOCKED_FULL: float(os.environ.get("MAMMOTION_POLL_DOCKED_FULL_SECS", 60 * 60)),
-    _DeviceMode.IDLE: float(os.environ.get("MAMMOTION_POLL_IDLE_SECS", 30 * 60)),
+    _DeviceMode.IDLE: float(os.environ.get("MAMMOTION_POLL_IDLE_SECS", 15 * 60)),
 }
 
 
