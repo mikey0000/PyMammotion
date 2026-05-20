@@ -331,11 +331,15 @@ class DeviceHandle:
         self._rearm_event.set()  # wake MQTT loop early so it sees BLE is now connected
         self._start_ble_loop()
         self._start_ble_polling_loop()
-        try:
-            cmd = self.commands.get_report_cfg()
-            await self.send_raw(cmd, prefer_ble=True)
-        except Exception:
-            _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
+        cmd = self.commands.get_report_cfg()
+
+        async def _send_report_cfg() -> None:
+            try:
+                await self.send_raw(cmd, prefer_ble=True)
+            except Exception:
+                _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
+
+        await self.queue.enqueue(_send_report_cfg, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _send_marked(self, transport: Transport, payload: bytes) -> None:
         """Send *payload* on *transport* and record the send time.
@@ -952,7 +956,10 @@ class DeviceHandle:
             count=0,
         )
 
-        await self.send_raw(cmd_bytes)
+        async def _send() -> None:
+            await self.send_raw(cmd_bytes)
+
+        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _send_report_stream_keep(self) -> None:
         """Enqueue RPT_KEEP to refresh an already-active continuous stream."""
@@ -1012,7 +1019,11 @@ class DeviceHandle:
             timeout=timeout,
             count=count,
         )
-        await self.send_raw(cmd_bytes)
+
+        async def _send() -> None:
+            await self.send_raw(cmd_bytes)
+
+        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _enqueue_ble_stream_command(self, act: RptAct, count: int) -> None:
         """Enqueue a BLE-pinned ``request_iot_sys`` config command.

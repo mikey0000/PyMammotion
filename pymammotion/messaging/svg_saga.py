@@ -32,11 +32,14 @@ class SvgSendSaga(Saga):
 
         from pymammotion.utility.svg import build_svg_for_area, chunk_svg_messages
 
-        template = build_svg_for_area(area_hash, boundary, svg_data)
-        chunks   = chunk_svg_messages(template)
-        saga     = SvgSendSaga(chunks, handle.commands, handle.send_raw)
+        msg    = build_svg_for_area(area_hash, boundary, svg_data)
+        chunks = chunk_svg_messages(msg)
+        saga   = SvgSendSaga(chunks, handle.commands, handle.send_raw)
         await handle.enqueue_saga(saga)
         device_hash = saga.result_hash  # device-assigned hash for future UPDATE/DELETE
+
+    Prefer :meth:`~pymammotion.client.MammotionClient.send_svg` for the
+    common case — it handles chunking and enqueuing in one call.
 
     Attributes:
         result_hash: Device-assigned ``data_hash`` from the final frame ACK.
@@ -94,7 +97,9 @@ class SvgSendSaga(Saga):
                     raise CommandTimeoutError(field, chunk.current_frame) from None
 
                 _, nav_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                assert nav_val is not None
+                if nav_val is None:
+                    raise ValueError(f"Unexpected message type in SVG response: {msg}")
+
                 ack = nav_val.toapp_svg_msg
 
                 _logger.debug(

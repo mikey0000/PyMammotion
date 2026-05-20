@@ -20,7 +20,7 @@ if not MAMMOTION_OAUTH2_CLIENT_ID:
     MAMMOTION_OAUTH2_CLIENT_ID = os.environ.get("MAMMOTION_OAUTH2_CLIENT_ID", "")
     MAMMOTION_OAUTH2_CLIENT_SECRET = os.environ.get("MAMMOTION_OAUTH2_CLIENT_SECRET", "")
 
-APP_VERSION = "2.3.4.22"
+APP_VERSION = os.environ.get("APP_VERSION", "2.3.4.22")
 ALIYUN_DOMAIN = "api.link.aliyun.com"
 MAMMOTION_DOMAIN = "https://id.mammotion.com"
 MAMMOTION_API_DOMAIN = "https://domestic.mammotion.com"

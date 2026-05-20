@@ -1647,6 +1647,61 @@ class MammotionClient:
         saga = PlanFetchSaga(command_builder=handle.commands, send_command=handle.send_raw)
         await handle.enqueue_saga(saga)
 
+    async def send_svg(
+        self,
+        device_name: str,
+        svg_message: Any,
+        *,
+        on_complete: Any | None = None,
+    ) -> None:
+        """Send an SVG tile to the device via :class:`~pymammotion.messaging.svg_saga.SvgSendSaga`.
+
+        Chunks *svg_message* with
+        :func:`~pymammotion.utility.svg.chunk_svg_messages` and enqueues the
+        resulting saga on the device's command queue.
+
+        After the saga finishes the device returns a hash that uniquely
+        identifies the stored tile.  Pass *on_complete* to receive it::
+
+            async def got_hash(device_hash: int | None) -> None:
+                # store device_hash for later UPDATE / DELETE calls
+                ...
+
+            await client.send_svg(device_name, msg, on_complete=got_hash)
+
+        Build *svg_message* with one of the helpers in
+        :mod:`pymammotion.utility.svg`:
+
+        - :func:`~pymammotion.utility.svg.build_svg_for_area` — **ADD** a new tile
+        - :func:`~pymammotion.utility.svg.build_svg_update` — **UPDATE** an existing tile
+        - :func:`~pymammotion.utility.svg.build_svg_delete` — **DELETE** a tile
+
+        Args:
+            device_name: Registered device name.
+            svg_message: :class:`~pymammotion.data.model.hash_list.SvgMessage`
+                         produced by one of the svg utility builders.
+            on_complete: Optional async callable ``(device_hash: int | None) -> None``
+                         invoked once the saga finishes.  *device_hash* is
+                         ``None`` if the saga did not return a hash (e.g. DELETE).
+
+        """
+        from pymammotion.messaging.svg_saga import SvgSendSaga
+        from pymammotion.utility.svg import chunk_svg_messages
+
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            _logger.warning("send_svg: device '%s' not registered", device_name)
+            return
+
+        chunks = chunk_svg_messages(svg_message)
+        saga = SvgSendSaga(chunks=chunks, command_builder=handle.commands, send_command=handle.send_raw)
+
+        async def _on_complete() -> None:
+            if on_complete is not None:
+                await on_complete(saga.result_hash)
+
+        await handle.enqueue_saga(saga, on_complete=_on_complete)
+
     async def check_and_get_mow_path(self, device_name: str) -> None:
         if handle := self._device_registry.get_by_name(device_name):
             device = cast(MowerDevice, handle.snapshot.raw)
