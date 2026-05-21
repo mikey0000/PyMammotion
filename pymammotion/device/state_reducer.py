@@ -79,8 +79,10 @@ from pymammotion.proto import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice, RTKBaseStationDevice
-    from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 
 _logger = logging.getLogger(__name__)
 
@@ -94,6 +96,16 @@ class StateReducer(ABC):
     that.
     """
 
+    def __init__(self, is_saga_active: Callable[[], bool] | None = None) -> None:
+        """Optional callable returning True when a saga is currently running.
+
+        When the callable returns True, expensive opportunistic work (e.g.
+        :meth:`HashList.generate_geojson`) is skipped — the saga's
+        ``on_complete`` hook regenerates it once at the end instead of paying
+        the cost on every frame.
+        """
+        self._is_saga_active: Callable[[], bool] = is_saga_active or (lambda: False)
+
     @abstractmethod
     def apply(self, current: Device, message: LubaMsg) -> Device:
         """Apply *message* to *current* and return the updated device copy."""
@@ -105,6 +117,14 @@ class StateReducer(ABC):
         state from JSON thing/properties (e.g. :class:`RTKStateReducer`) override
         this method. Mower state is driven entirely by LubaMsg protobuf so the
         default suffices there.
+        """
+        return current
+
+    def apply_mammotion_properties(self, current: Device, properties: MammotionPropertiesMessage) -> Device:
+        """Apply a Mammotion MQTT flat property push to *current* and return the updated copy.
+
+        The default is a no-op; :class:`MowerStateReducer` overrides this to
+        extract battery, device state, firmware versions, network info, etc.
         """
         return current
 
@@ -299,12 +319,15 @@ class MowerStateReducer(StateReducer):
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]  # type: ignore
                 device.map.update(NavGetCommData.from_dict(common_data.to_dict(casing=betterproto2.Casing.SNAKE)))
-                if len(device.map.missing_hashlist(0)) == 0:
+                # Skip eager geojson regen during sagas — the saga's on_complete
+                # handler regenerates once after all frames arrive instead of
+                # paying the O(N) cost on every frame.
+                if not self._is_saga_active() and len(device.map.missing_hashlist(0)) == 0:
                     device.map.generate_geojson(device.location.RTK, device.location.dock)
             case "cover_path_upload":
                 mow_path: CoverPathUploadT = nav_msg[1]  # type: ignore
                 device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
-                if len(device.map.find_missing_mow_path_frames()) == 0:
+                if not self._is_saga_active() and len(device.map.find_missing_mow_path_frames()) == 0:
                     device.map.generate_mowing_geojson(device.location.RTK)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]  # type: ignore
@@ -415,7 +438,13 @@ class MowerStateReducer(StateReducer):
                 device.buffer(sys_msg[1])  # type: ignore
                 # If the RTK yaw just arrived or changed, regenerate any GeoJSON
                 # that was built without (or with a different) yaw correction.
-                if device.map.area and device.map.geojson_needs_regeneration(device.location.RTK):
+                # Skip during sagas — the saga's on_complete handler will
+                # regenerate with the correct yaw once the fetch is done.
+                if (
+                    not self._is_saga_active()
+                    and device.map.area
+                    and device.map.geojson_needs_regeneration(device.location.RTK)
+                ):
                     device.map.generate_geojson(device.location.RTK, device.location.dock)
             case "toapp_report_data":
                 device.update_report_data(sys_msg[1])  # type: ignore
@@ -675,6 +704,80 @@ class MowerStateReducer(StateReducer):
                     device.device_firmwares.device_version = ota.version
             except (ValueError, KeyError, TypeError):
                 _logger.debug("MowerStateReducer: failed to parse otaProgress property")
+
+        return device
+
+    def apply_mammotion_properties(  # type: ignore
+        self, current: MowingDevice, properties: MammotionPropertiesMessage
+    ) -> MowingDevice:
+        """Extract mower state from a Mammotion MQTT flat property push.
+
+        Mirrors :meth:`apply_properties` but reads from the already-typed
+        :class:`~pymammotion.data.mqtt.mammotion_properties.DeviceProperties`
+        directly (no ``Item.value`` wrappers).
+        """
+        device: MowingDevice = dataclasses.replace(current)
+        device.mower_state = copy.deepcopy(current.mower_state)
+        device.device_firmwares = copy.deepcopy(current.device_firmwares)
+        device.report_data = copy.deepcopy(current.report_data)
+        p = properties.params
+
+        device.report_data.dev.battery_val = p.battery_percentage
+        device.report_data.dev.sys_status = p.device_state
+        device.report_data.work.knife_height = p.knife_height
+        if p.device_version:
+            device.device_firmwares.device_version = p.device_version
+        if p.lora_general_config:
+            device.mower_state.lora_config = p.lora_general_config
+        if p.ext_mod:
+            device.mower_state.model = p.ext_mod
+        if p.int_mod:
+            device.mower_state.internal_model = p.int_mod
+        if p.bms_hardware_version:
+            device.mower_state.battery_hardware = p.bms_hardware_version
+
+        for attr, fw_type in (
+            ("stm32_h7_version", "1"),
+            ("mc_boot_version", "8"),
+            ("left_motor_version", "3"),
+            ("right_motor_version", "4"),
+            ("left_motor_boot_version", "9"),
+            ("right_motor_boot_version", "10"),
+            ("bms_version", "7"),
+            ("rtk_version", "5"),
+        ):
+            if v := getattr(p, attr, ""):
+                _apply_mower_fw_module(device.device_firmwares, fw_type, v)
+
+        try:
+            if p.device_version_info.dev_ver:
+                device.device_firmwares.device_version = p.device_version_info.dev_ver
+            for module in p.device_version_info.fw_info:
+                if module.v:
+                    _apply_mower_fw_module(device.device_firmwares, module.t, module.v)
+        except (AttributeError, TypeError):
+            _logger.debug("MowerStateReducer: failed to apply deviceVersionInfo (mammotion)")
+
+            if p.coordinate.lat != 0 and p.coordinate:
+                device.location.device.latitude = p.coordinate.lat
+            if p.coordinate.lon != 0 and p.coordinate:
+                device.location.device.longitude = p.coordinate.lon
+
+        try:
+            net = p.network_info
+            device.mower_state.wifi_mac = net.wifi_sta_mac or device.mower_state.wifi_mac
+            device.mower_state.ble_mac = net.bt_mac or device.mower_state.ble_mac
+            device.mower_state.wifi_ssid = net.ssid or device.mower_state.wifi_ssid
+            device.mower_state.ip_address = net.ip or device.mower_state.ip_address
+            device.report_data.connect.wifi_rssi = net.wifi_rssi
+            if net.mileage:
+                device.report_data.dev.mileage = int(net.mileage)
+            if net.wt_sec is not None:
+                device.report_data.dev.work_time_sec = int(net.wt_sec)
+            if net.bat_cycles:
+                device.report_data.maintenance.bat_cycles = int(net.bat_cycles)
+        except (AttributeError, ValueError, TypeError):
+            _logger.debug("MowerStateReducer: failed to apply networkInfo (mammotion)")
 
         return device
 
@@ -1055,13 +1158,17 @@ class RTKStateReducer(StateReducer):
         return device
 
 
-def get_state_reducer(device_name: str) -> StateReducer:
+def get_state_reducer(device_name: str, is_saga_active: Callable[[], bool] | None = None) -> StateReducer:
     """Return the appropriate :class:`StateReducer` for *device_name*.
 
     Dispatches to:
     - :class:`RTKStateReducer` for RTK base stations (RTK, RBS03A0/A1/A2, RTKNB)
     - :class:`PoolStateReducer` for Spino pool cleaners
     - :class:`MowerStateReducer` for all lawn mowers (the historical default)
+
+    *is_saga_active* — optional callable returning True while a saga holds the
+    device's command queue.  Forwarded to the reducer so it can skip eager
+    geojson regeneration during fetches.
 
     Picked once per device at handle construction time so the hot path
     doesn't pay an isinstance check on every incoming message.
@@ -1071,7 +1178,7 @@ def get_state_reducer(device_name: str) -> StateReducer:
     from pymammotion.utility.device_type import DeviceType
 
     if DeviceType.is_swimming_pool(device_name):
-        return PoolStateReducer()
+        return PoolStateReducer(is_saga_active)
     if DeviceType.is_rtk(device_name):
-        return RTKStateReducer()
-    return MowerStateReducer()
+        return RTKStateReducer(is_saga_active)
+    return MowerStateReducer(is_saga_active)

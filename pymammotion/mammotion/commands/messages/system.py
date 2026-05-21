@@ -321,7 +321,7 @@ class MessageSystem(AbstractMessage, ABC):
             timeout=timeout,
             period=period,
             no_change_period=no_change_period,
-            count=1,
+            count=0,
         )
         report_cfg.sub.append(RptInfoType.RIT_CONNECT)
         report_cfg.sub.append(RptInfoType.RIT_RTK)
@@ -351,7 +351,7 @@ class MessageSystem(AbstractMessage, ABC):
         self,
         timeout: int = 10000,
         period: int = 1000,
-        no_change_period: int = 2000,
+        no_change_period: int = 4000,
         count: int = 1,
     ) -> bytes:
         """Start full-status IoT reporting covering connectivity, RTK, work, vision, and base station info.

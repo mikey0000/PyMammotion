@@ -584,9 +584,16 @@ async def test_map_saga_resumes_partial_area_via_synchronize_hash_data() -> None
 
     async def send_command(cmd: bytes) -> None:
         sent_commands.append(cmd)
+        if cmd == b"hash_list_cmd" and active_callbacks:
+            # Deliver the single-frame root hash list (same hashes as seeded).
+            await active_callbacks[-1](
+                _make_hash_list_ack_response(
+                    total_frame=1, current_frame=1, sub_cmd=0, data_couple=[111, 222, 333]
+                )
+            )
         # After saga sends synchronize_hash_data for the partial hash,
         # simulate the device delivering the missing frame.
-        if cmd == b"sync_cmd" and active_callbacks:
+        elif cmd == b"sync_cmd" and active_callbacks:
             # Append the missing second frame of the partial area.
             hash_list.area[333].data.append(
                 NavGetCommData(
@@ -605,7 +612,12 @@ async def test_map_saga_resumes_partial_area_via_synchronize_hash_data() -> None
     def _which_one_of(obj: Any, group: str) -> tuple[str, Any]:
         if group == "LubaSubMsg":
             return ("nav", obj.nav)
-        return ("toapp_get_commondata_ack", obj.nav.toapp_get_commondata_ack)
+        # For SubNavMsg, obj is msg.nav.  Detect the frame type by whether
+        # toapp_gethash_ack.total_frame is a real int (set explicitly by
+        # _make_hash_list_ack_response) vs a MagicMock (auto-created attribute).
+        if isinstance(getattr(obj.toapp_gethash_ack, "total_frame", None), int):
+            return ("toapp_gethash_ack", obj.toapp_gethash_ack)
+        return ("toapp_get_commondata_ack", obj.toapp_get_commondata_ack)
 
     with patch("betterproto2.which_one_of", side_effect=_which_one_of):
         saga = MapFetchSaga(
@@ -662,26 +674,23 @@ async def test_invalidate_maps_clears_only_root_hash_list_on_mismatch() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_mow_path_saga_clears_stale_tx_on_run() -> None:
-    """current_mow_path must be cleared at the start of each _run() call.
+async def test_mow_path_saga_preserves_current_mow_path_across_runs() -> None:
+    """current_mow_path must NOT be wiped at the start of each _run() call.
 
-    Without this, stale partial transaction_ids left by a prior interrupted
-    attempt accumulate in current_mow_path.  find_missing_mow_path_frames()
-    iterates all transaction_ids so the completion check never passes — the
-    saga loops forever on retry.
+    Wiping on retry defeats the per-hash skip logic that lets the saga avoid
+    re-fetching cover-path data already cached from prior frames.  Stale entries
+    are cleared by ``HashList.invalidate_mow_path()`` only when the device
+    reports ``path_hash`` 0 or 1 (job ended), mirroring the APK's HashDataManager.
     """
     hash_list = HashList()
-    # Simulate stale partial data left by a prior interrupted attempt.
-    hash_list.current_mow_path = {
-        99999: {1: MowPath(total_frame=3, current_frame=1, transaction_id=99999)}
-    }
+    stale_tx = {99999: {1: MowPath(total_frame=3, current_frame=1, transaction_id=99999)}}
+    hash_list.current_mow_path = dict(stale_tx)
 
     broker = AsyncMock(spec=DeviceMessageBroker)
-    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    subscribe_side_effect, _active_callbacks = _make_subscribe_ctx()
     broker.subscribe_unsolicited.side_effect = subscribe_side_effect
 
     builder = _make_command_builder()
-    # send_command never delivers a response — all attempts time out.
     send_command = AsyncMock()
 
     with patch("betterproto2.which_one_of", side_effect=_which_one_of_for_hash):
@@ -695,5 +704,9 @@ async def test_mow_path_saga_clears_stale_tx_on_run() -> None:
             saga.step_timeout = 0.01
             await saga.execute(broker)
 
-    # Stale data must be gone even when the device returns no line hashes.
+    # The saga itself must leave stale entries alone — per-hash skip relies on this.
+    assert hash_list.current_mow_path == stale_tx
+
+    # Only invalidate_mow_path(0) clears it (job ended → cache flush).
+    hash_list.invalidate_mow_path(0)
     assert hash_list.current_mow_path == {}

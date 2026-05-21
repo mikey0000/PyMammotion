@@ -58,6 +58,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.client import MammotionClient
+from pymammotion.messaging.broker import _LUBA_SUB_GROUP
 from pymammotion.transport.base import Subscription, TransportType
 
 
@@ -166,6 +167,7 @@ class DevConsole:
             external_mqtt.dev_console = self
         # Strong references to all callbacks and subscriptions — must outlive the connection
         self._notification_cbs: dict[str, tuple[Callable[..., Awaitable[None]], Subscription]] = {}
+        self._sent_cbs: dict[str, tuple[Callable[..., Awaitable[None]], Subscription]] = {}
 
     # ── File helpers ──────────────────────────────────────────────────────────
 
@@ -192,27 +194,47 @@ class DevConsole:
 
     # ── Callback factory ──────────────────────────────────────────────────────
 
+    @staticmethod
+    def _describe_luba_msg(msg: Any) -> str:
+        """Return ``"group.sub_name"`` (e.g. ``"nav.toapp_gethash_ack"``) for a LubaMsg.
+
+        Falls back to the top-level group name when no leaf can be extracted, or
+        ``"(empty)"`` if the message has no recognizable sub-group.
+        """
+        import betterproto2
+
+        try:
+            sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
+        except Exception:  # noqa: BLE001
+            return "(message)"
+        if not sub_name:
+            return "(empty)"
+        leaf_group = _LUBA_SUB_GROUP.get(sub_name)
+        if leaf_group and sub_val is not None:
+            try:
+                leaf_name, _ = betterproto2.which_one_of(sub_val, leaf_group)
+                if leaf_name:
+                    return f"{sub_name}.{leaf_name}"
+            except Exception:  # noqa: BLE001, S110
+                pass
+        return sub_name
+
     def _make_notification_cb(self, device_name: str) -> Callable[[Any], Awaitable[None]]:
         """Return an async callback for broker.subscribe_unsolicited.
 
         Called with a LubaMsg on every unsolicited incoming message.
         """
-        import betterproto2
 
         async def _on_message(msg: Any) -> None:
             if self.always_dump:
                 self.dump(device_name)
             if self.external_mqtt is not None and self.external_mqtt.connected:
                 await self.external_mqtt._publish_device_to_external_mqtt(device_name)
-            try:
-                sub_name, _ = betterproto2.which_one_of(msg, "LubaSubMsg")
-                _LOGGER.info(
-                    "[bold cyan]← %s[/bold cyan]  [green]%s[/green]",
-                    device_name,
-                    sub_name,
-                )
-            except Exception:  # noqa: BLE001
-                _LOGGER.info("[bold cyan]← %s[/bold cyan]  [green](message)[/green]", device_name)
+            _LOGGER.info(
+                "[bold cyan]← %s[/bold cyan]  [green]%s[/green]",
+                device_name,
+                self._describe_luba_msg(msg),
+            )
 
         return _on_message
 
@@ -322,6 +344,30 @@ class DevConsole:
 
     # ── Device wiring ─────────────────────────────────────────────────────────
 
+    def _make_sent_cb(self, device_name: str) -> Callable[[bytes], Awaitable[None]]:
+        """Return an async callback for handle.subscribe_sent.
+
+        Called with the raw command bytes of every outbound payload.
+        """
+        from pymammotion.proto import LubaMsg
+
+        async def _on_sent(payload: bytes) -> None:
+            try:
+                msg = LubaMsg().parse(payload)
+                _LOGGER.info(
+                    "[bold yellow]→ %s[/bold yellow]  [magenta]%s[/magenta]",
+                    device_name,
+                    self._describe_luba_msg(msg),
+                )
+            except Exception:  # noqa: BLE001
+                _LOGGER.info(
+                    "[bold yellow]→ %s[/bold yellow]  [magenta](%d bytes)[/magenta]",
+                    device_name,
+                    len(payload),
+                )
+
+        return _on_sent
+
     def hook_device(self, device_name: str) -> None:
         """Attach the state-change callback to a device (idempotent)."""
         if device_name in self._notification_cbs:
@@ -332,7 +378,10 @@ class DevConsole:
         cb = self._make_notification_cb(device_name)
         sub = handle.broker.subscribe_unsolicited(cb)
         self._notification_cbs[device_name] = (cb, sub)  # keep both alive
-        _LOGGER.info("Hooked broker callback for [bold]%s[/bold]", device_name)
+        sent_cb = self._make_sent_cb(device_name)
+        sent_sub = handle.subscribe_sent(sent_cb)
+        self._sent_cbs[device_name] = (sent_cb, sent_sub)
+        _LOGGER.info("Hooked broker + sent callbacks for [bold]%s[/bold]", device_name)
 
     def hook_all_devices(self) -> None:
 
@@ -372,7 +421,10 @@ class DevConsole:
         cb = self._make_rtk_state_cb(device_name)
         sub = handle.subscribe_state_changed(cb)
         self._notification_cbs[device_name] = (cb, sub)
-        _LOGGER.info("Hooked state-change callback for RTK [bold]%s[/bold]", device_name)
+        sent_cb = self._make_sent_cb(device_name)
+        sent_sub = handle.subscribe_sent(sent_cb)
+        self._sent_cbs[device_name] = (sent_cb, sent_sub)
+        _LOGGER.info("Hooked state-change + sent callbacks for RTK [bold]%s[/bold]", device_name)
 
     def hook_all_rtk_devices(self) -> None:
         """Attach state-change callbacks to every registered RTK base station."""

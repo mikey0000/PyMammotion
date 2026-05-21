@@ -266,6 +266,7 @@ class WorkMode(IntEnum):
     MODE_NOT_ACTIVE = 0
     MODE_ONLINE = 1
     MODE_OFFLINE = 2
+    MODE_POWER_OFF = 3
     MODE_DISABLE = 8
     MODE_INITIALIZATION = 10
     MODE_READY = 11
@@ -351,6 +352,7 @@ def device_mode(value: int) -> str:
         0: "MODE_NOT_ACTIVE",
         1: "MODE_ONLINE",
         2: "MODE_OFFLINE",
+        3: "MODE_POWER_OFF",
         8: "MODE_DISABLE",
         10: "MODE_INITIALIZATION",
         11: "MODE_READY",

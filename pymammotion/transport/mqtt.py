@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
 
-from pymammotion.data.mqtt.properties import ThingPropertiesMessage
-from pymammotion.data.mqtt.status import ThingStatusMessage
+from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
+from pymammotion.data.mqtt.status import MammotionStatusMessage, ThingStatusMessage
 from pymammotion.transport.base import (
     AuthError,
     ReLoginRequiredError,
@@ -63,6 +63,10 @@ class MQTTTransport(Transport):
 
     on_message: Callable[[bytes], Awaitable[None]] | None = None
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
+    #: Fired for ``/thing/event/{identifier}/post`` messages on the Mammotion MQTT.
+    #: Called with (iot_id, identifier) — the identifier is the event name extracted
+    #: from the topic path (e.g. ``"device_notification_event"``).
+    on_device_notification: Callable[[str, str], Awaitable[None]] | None = None
 
     #: Fired when the connection loop exhausts JWT refresh attempts and gives up.
     #: The callback receives the underlying exception.  The client should trigger
@@ -434,6 +438,14 @@ class MQTTTransport(Transport):
             await self._dispatch_device_properties(topic, raw)
             return
 
+        if topic.endswith("/property/post"):
+            await self._dispatch_mammotion_properties(topic, raw)
+            return
+
+        if "/thing/event/" in topic and topic.endswith("/post"):
+            await self._dispatch_mammotion_event(topic, raw)
+            return
+
         if self.on_device_message is not None:
             # Extract (product_key, device_name) from topic: /sys/<pk>/<dn>/...
             parts = topic.split("/")
@@ -445,22 +457,36 @@ class MQTTTransport(Transport):
                     if decoded is not None:
                         await self.on_device_message(iot_id, decoded)
                         return
-            _logger.debug("MQTTTransport: could not route message on topic %s", topic)
+            _logger.debug("MQTTTransport: could not route message on topic %s: %s", topic, raw)
             return
 
         if self.on_message is not None:
             await self.on_message(raw)
 
     async def _dispatch_device_status(self, topic: str, raw: bytes) -> None:
-        """Parse a thing/status message and notify on_device_status."""
+        """Parse a thing/status message and notify on_device_status.
+
+        Handles two formats:
+
+        * **Aliyun** — ``{"method":"thing.status","params":{...},"version":"1.0"}``
+        * **Mammotion MQTT** — ``{"action":"online","iotId":"...","productKey":"..."}``
+        """
         if self.on_device_status is None:
             return
         try:
-            msg = ThingStatusMessage.from_json(raw)
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            _logger.debug("MQTTTransport: non-JSON thing/status on %s: %s", topic, raw)
+            return
+        try:
+            if "action" in parsed:
+                msg = MammotionStatusMessage.from_dict(parsed).to_thing_status()
+            else:
+                msg = ThingStatusMessage.from_dict(parsed)
             if msg.params.iot_id:
                 await self.on_device_status(msg.params.iot_id, msg)
         except Exception:
-            _logger.debug("MQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
+            _logger.debug("MQTTTransport: failed to parse thing/status on %s: %s", topic, raw, exc_info=True)
 
     async def _dispatch_device_properties(self, topic: str, raw: bytes) -> None:
         """Parse a thing/properties message and notify on_device_properties."""
@@ -472,6 +498,57 @@ class MQTTTransport(Transport):
                 await self.on_device_properties(props.params.iot_id, props)
         except Exception:  # noqa: BLE001
             _logger.debug("MQTTTransport: failed to parse thing/properties on %s", topic, exc_info=True)
+
+    async def _dispatch_mammotion_properties(self, topic: str, raw: bytes) -> None:
+        """Parse a Mammotion MQTT flat property/post message and notify on_device_mammotion_properties."""
+        if self.on_device_mammotion_properties is None:
+            return
+        parts = topic.split("/")
+        if len(parts) < 4:
+            return
+        pk, dn = parts[2], parts[3]
+        iot_id = self._device_to_iot.get((pk, dn))
+        if not iot_id:
+            _logger.debug("MQTTTransport: no iot_id for property/post on %s", topic)
+            return
+        try:
+            msg = MammotionPropertiesMessage.from_json(raw)
+            await self.on_device_mammotion_properties(iot_id, msg)
+        except Exception:
+            _logger.debug("MQTTTransport: failed to parse property/post on %s: %s", topic, raw, exc_info=True)
+
+    async def _dispatch_mammotion_event(self, topic: str, raw: bytes) -> None:
+        """Dispatch a Mammotion direct-MQTT thing/event/{identifier}/post message.
+
+        Topic structure: /sys/{product_key}/{device_name}/thing/event/{identifier}/post
+
+        ``device_protobuf_msg_event`` carries a base64-encoded LubaMsg and is
+        forwarded to ``on_device_message`` exactly like a raw protobuf delivery.
+        All other identifiers (notification, warning-code, information, …) are
+        passed to ``on_device_notification`` so the client can react (e.g. by
+        refreshing the report config).
+        """
+        parts = topic.split("/")
+        # parts: ['', 'sys', pk, dn, 'thing', 'event', identifier, 'post']
+        if len(parts) < 8:
+            _logger.debug("MQTTTransport: malformed thing/event topic %s", topic)
+            return
+        pk, dn, identifier = parts[2], parts[3], parts[6]
+        iot_id = self._device_to_iot.get((pk, dn))
+        if not iot_id:
+            _logger.debug("MQTTTransport: no iot_id for thing/event on %s", topic)
+            return
+
+        if identifier == "device_protobuf_msg_event":
+            decoded = self._unwrap_envelope(topic, raw)
+            if decoded is not None and self.on_device_message is not None:
+                await self.on_device_message(iot_id, decoded)
+            else:
+                _logger.debug("MQTTTransport: could not unwrap protobuf on %s", topic)
+            return
+
+        if self.on_device_notification is not None:
+            await self.on_device_notification(iot_id, identifier)
 
     @staticmethod
     def _unwrap_envelope(topic: str, raw: bytes) -> bytes | None:

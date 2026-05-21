@@ -23,6 +23,7 @@ from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.http.model.http import CheckDeviceVersion
 from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemTardStateTunnelMsg, SystemUpdateBufMsg
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES
+from pymammotion.utility.constant.device_constant import WorkMode
 from pymammotion.utility.conversions import parse_double
 from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.map import CoordinateConverter
@@ -222,7 +223,9 @@ class MowerDevice(Device):
         self.location.work_zone = self.mowing_state.zone_hash
 
     def mow_info(self, toapp_mow_info: MowToAppInfoT) -> None:
-        """Set mow info."""
+        """Set mow info — type 3 signals a power-off event."""
+        if toapp_mow_info.type == 3:
+            self.report_data.dev.sys_status = WorkMode.MODE_POWER_OFF
 
     def report_missing_data(self) -> list[str]:
         """Report what data is missing for basic operation."""

@@ -35,7 +35,7 @@ jobs:
           uv run ruff check pymammotion/
           uv run ruff format --check pymammotion/
       - name: Run tests
-        run: uv run pytest tests/
+        run: uv run pytest tests/ -m "not live"
 
   proto-codegen:
     # Verify that the checked-in pymammotion/proto/*.py files still match what

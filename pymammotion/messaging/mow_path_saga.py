@@ -57,6 +57,7 @@ class MowPathSaga(Saga):
         *,
         skip_planning: bool = False,
         device_name: str = "",
+        sync_type: int = 3,
     ) -> None:
         """Initialise the saga.
 
@@ -82,6 +83,7 @@ class MowPathSaga(Saga):
         self._route_info = route_info
         self._skip_planning = skip_planning
         self._device_name = device_name
+        self._sync_type = sync_type  # 2 = BLE, 3 = IoT/MQTT
         self.result: dict[int, dict[int, MowPath]] = {}
         self._route_val: GenerateRouteInformation | None = (
             route_info  # persists across retries to skip step 2 if already fetched
@@ -90,10 +92,13 @@ class MowPathSaga(Saga):
     async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute all saga steps."""
         self.result = {}
-        self._get_map().current_mow_path = {}
+        # Do NOT wipe current_mow_path here — invalidate_mow_path() handles
+        # clearing the cache when the device reports path_hash 0/1.  Wiping here
+        # defeats the per-hash skip logic below and forces a full re-fetch on
+        # every retry, mirroring what the APK's HashDataManager avoids.
 
         # start with ble sync
-        cmd = self._command_builder.send_todev_ble_sync(sync_type=3)
+        cmd = self._command_builder.send_todev_ble_sync(sync_type=self._sync_type)
         await self._send_command(cmd)
 
         # ------------------------------------------------------------------
@@ -195,8 +200,25 @@ class MowPathSaga(Saga):
         ]
         _logger.debug("MowPathSaga: %d total hash(es) from map", len(all_hashes))
 
+        # Skip hashes whose cover-path data is already cached in current_mow_path,
+        # matching the APK's getHashLineNew() per-hash DB check (HashDataManager line 470).
+        current_map = self._get_map()
+        missing_hashes = [h for h in all_hashes if not current_map.has_mow_path_for_hash(h)]
+        if not missing_hashes:
+            _logger.debug("MowPathSaga: all %d hash(es) already cached — skipping fetch", len(all_hashes))
+            self.result = current_map.current_mow_path
+            return
+
+        if len(missing_hashes) < len(all_hashes):
+            _logger.debug(
+                "MowPathSaga: %d/%d hash(es) already cached — fetching %d missing",
+                len(all_hashes) - len(missing_hashes),
+                len(all_hashes),
+                len(missing_hashes),
+            )
+
         _BATCH_SIZE = 20
-        hash_batches = [all_hashes[i : i + _BATCH_SIZE] for i in range(0, len(all_hashes), _BATCH_SIZE)]
+        hash_batches = [missing_hashes[i : i + _BATCH_SIZE] for i in range(0, len(missing_hashes), _BATCH_SIZE)]
         _logger.debug(
             "MowPathSaga: %d batch(es) of up to %d hash(es) each",
             len(hash_batches),

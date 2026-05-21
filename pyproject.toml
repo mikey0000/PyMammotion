@@ -397,6 +397,10 @@ max-line-length-suggestions = 120
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+markers = [
+    "live: tests that hit a real Mammotion device (skipped by default; requires MAMMOTION_EMAIL/PASSWORD env vars)",
+]
 
 [tool.ruff]
 required-version = ">=0.4.3"

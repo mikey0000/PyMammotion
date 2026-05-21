@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
+from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
@@ -64,7 +65,7 @@ if TYPE_CHECKING:
 
     from pymammotion.data.model.device import Device, MowingDevice
     from pymammotion.data.mqtt.event import ThingEventMessage
-    from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.device.readiness import ReadinessChecker, ReadinessStatus
     from pymammotion.messaging.saga import Saga
@@ -162,6 +163,10 @@ class DeviceHandle:
     Subscribe to state_changed to receive DeviceSnapshot updates.
     """
 
+    #: Seconds since the last inbound protobuf after which an online thing/status
+    #: event triggers an immediate get_report_cfg to refresh device state.
+    _REPORT_STALE_THRESHOLD: float = 60.0
+
     def __init__(
         self,
         device_id: str,
@@ -191,13 +196,17 @@ class DeviceHandle:
         self._status_bus: EventBus[ThingStatusMessage] = EventBus()
         self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
         self._event_bus: EventBus[ThingEventMessage] = EventBus()
+        #: Emits the raw command bytes of every outbound payload (excludes heartbeats).
+        #: Subscribers can decode to LubaMsg for tracing/debug purposes.
+        self._sent_bus: EventBus[bytes] = EventBus()
         self._prefer_ble: bool = prefer_ble
         self._mow_path_fetch_enabled: bool = True
         # Pick a reducer matching the device kind. PoolCleanerDevice instances
         # get a PoolStateReducer (currently a stub); everything else gets the
         # full mower reducer. Decided once at construction so the per-message
-        # hot path doesn't pay an isinstance check.
-        self._reducer: StateReducer = get_state_reducer(device_name)
+        # hot path doesn't pay an isinstance check.  The saga-active callable
+        # lets the reducer skip eager geojson regen during map fetches.
+        self._reducer: StateReducer = get_state_reducer(device_name, is_saga_active=lambda: self.queue.is_saga_active)
         self._error_bus: EventBus[Exception] = EventBus()
         self._map_updated_bus: EventBus[None] = EventBus()
         self._shutdown_bus: EventBus[DeviceShutdownEvent] = EventBus()
@@ -362,13 +371,16 @@ class DeviceHandle:
         if transport.transport_type != TransportType.BLE:
             last = transport.last_send_monotonic
             if last != 0.0 and time.monotonic() - last > 50:
-                # No MQTT commands sent for 50 seconds — prepend a BLE sync so the
-                # device knows we are still connected before the real payload.
-                # Use send_heartbeat so this keepalive doesn't count against the cloud quota.
+                # No MQTT commands sent for 50 seconds — fire a BLE sync alongside
+                # the real payload so the device knows we are still connected.
+                # Fire-and-forget so the keepalive packet doesn't add a round-trip
+                # to the user's command.  send_heartbeat keeps it off the cloud quota.
                 sync = self.commands.send_todev_ble_sync(sync_type=3)
-                await transport.send_heartbeat(sync, iot_id=self.iot_id)
+                _task = asyncio.create_task(transport.send_heartbeat(sync, iot_id=self.iot_id))
 
         await transport.send(payload, iot_id=self.iot_id)
+        if not self._stopping:
+            await self._sent_bus.emit(payload)
 
     async def _on_critical_error(self, error: Exception) -> None:
         """Propagate critical errors to the error bus."""
@@ -405,9 +417,13 @@ class DeviceHandle:
         Steps:
           1. Decode bytes → LubaMsg (log and return on error)
           2. Clear mqtt_reported_offline if this message arrived over a cloud transport
-          3. Apply LubaMsg to state via StateReducer
-          4. Update DeviceStateMachine and emit the new snapshot
-          5. Route LubaMsg to broker for request/response correlation
+          3. Route LubaMsg to broker for request/response correlation
+             (done BEFORE the state pipeline so saga acks aren't blocked by
+             slow state-changed subscribers — e.g. HA coordinator entity
+             rebuilds, geojson generation — which can add hundreds of ms per
+             frame to map-fetch latency).
+          4. Apply LubaMsg to state via StateReducer
+          5. Update DeviceStateMachine and emit the new snapshot
         """
         # 1. Parse bytes → LubaMsg
         try:
@@ -438,18 +454,23 @@ class DeviceHandle:
         if self._availability.mqtt_reported_offline and transport_type != TransportType.BLE:
             self.update_availability(transport_type, self._availability.mqtt, mqtt_reported_offline=False)
 
-        # 3. Apply to state via reducer (returns a new MowingDevice copy)
+        # 3. Route to broker for request/response correlation FIRST.
+        # Saga handlers only enqueue the message into their internal asyncio
+        # queue, so this is microseconds — but it must not be gated behind
+        # the slow state pipeline (deep-copy of the map, plus all
+        # state_changed subscribers) or saga ack latency stretches into
+        # seconds per frame and map fetches take minutes.
+        await self.broker.on_message(luba_msg)
+
+        # 4. Apply to state via reducer (returns a new MowingDevice copy)
         updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
 
-        # 4. Update state machine and emit if anything in the model changed.
+        # 5. Update state machine and emit if anything in the model changed.
         # _diff now walks `raw`, so deep-field mutations (e.g.
         # report_data.dev.sys_status) correctly produce a non-empty `changed`.
         snapshot, changed = self.state_machine.apply(updated_device, self._availability)
         if changed and not self._stopping:
             await self._state_changed_bus.emit(snapshot)
-
-        # 5. Route to broker for request/response correlation
-        await self.broker.on_message(luba_msg)
 
         # 6. Emit map_updated when the device sends a fresh area-name list.
         if luba_msg.nav is not None and luba_msg.nav.toapp_all_hash_name is not None:
@@ -466,12 +487,42 @@ class DeviceHandle:
                 )
 
     async def on_status_message(self, msg: ThingStatusMessage) -> None:
-        """Store status_properties on the device model from a thing/status message."""
+        """Store status_properties on the device model from a thing/status message.
+
+        If the device is reported online and no protobuf has been received within
+        :attr:`_REPORT_STALE_THRESHOLD` seconds, a ``get_report_cfg`` is enqueued
+        immediately so state is refreshed without waiting for the next MQTT poll cycle.
+        """
         updated = dataclasses.replace(self.state_machine.current.raw, status_properties=msg)
         snapshot, _ = self.state_machine.apply(updated, self._availability)
         if not self._stopping:
             await self._state_changed_bus.emit(snapshot)
             await self._status_bus.emit(msg)
+
+        online = msg.params.status.value is StatusType.CONNECTED
+        if online and not self._stopping and time.monotonic() - self._last_report_at > self._REPORT_STALE_THRESHOLD:
+            await self.request_report_cfg(dedup_key="report_cfg_on_status")
+
+    async def request_report_cfg(self, *, dedup_key: str = "report_cfg") -> None:
+        """Enqueue a get_report_cfg command in the background."""
+        if self._stopping:
+            return
+        cmd = self.commands.get_report_cfg()
+
+        async def _send() -> None:
+            try:
+                await self.send_raw(cmd)
+            except Exception:
+                _logger.debug("request_report_cfg [%s]: failed", self.device_name, exc_info=True)
+
+        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True, dedup_key=dedup_key)
+
+    async def on_mammotion_properties(self, properties: MammotionPropertiesMessage) -> None:
+        """Update device state from a Mammotion MQTT flat property push."""
+        updated = self._reducer.apply_mammotion_properties(self.state_machine.current.raw, properties)
+        snapshot, _ = self.state_machine.apply(updated, self._availability)
+        if not self._stopping:
+            await self._state_changed_bus.emit(snapshot)
 
     async def on_device_event(self, event: ThingEventMessage) -> None:
         """Update device state with a thing.events message.
@@ -730,6 +781,18 @@ class DeviceHandle:
         """Subscribe to non-protobuf thing/events messages. Returns RAII Subscription handle."""
         return self._event_bus.subscribe(handler)
 
+    def subscribe_sent(
+        self,
+        handler: Callable[[bytes], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to outbound command bytes for tracing/debug purposes.
+
+        Fires for every payload sent via :meth:`_send_marked` (excludes raw
+        heartbeats). Subscribers can decode to ``LubaMsg`` to extract the
+        ``which_one_of`` field name. Returns RAII Subscription handle.
+        """
+        return self._sent_bus.subscribe(handler)
+
     def subscribe_map_updated(
         self,
         handler: Callable[[], Awaitable[None]],
@@ -965,7 +1028,7 @@ class DeviceHandle:
             rpt_act=RptAct.RPT_START,
             rpt_info_type=_REPORT_CHANNELS,
             timeout=duration_ms,
-            period=1000,
+            period=3000,
             no_change_period=4000,
             count=0,
         )

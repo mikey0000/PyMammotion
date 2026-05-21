@@ -410,11 +410,12 @@ async def test_map_saga_refetches_area_names_on_each_run() -> None:
 
 
 async def test_ble_sync_sent_before_payload_after_5_minute_idle() -> None:
-    """_send_marked must prepend a BLE sync when no command was sent for > 5 minutes.
+    """_send_marked must fire a BLE sync when no command was sent for > 5 minutes.
 
-    The sync is sent directly, immediately before the payload — not queued
-    separately, so ordering is guaranteed even under queue backpressure.
+    The sync is fire-and-forget via ``asyncio.create_task`` so it does not delay
+    the user's payload, but it must still be scheduled alongside the real send.
     """
+    import asyncio
     import time
 
     mqtt_transport = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
@@ -432,6 +433,8 @@ async def test_ble_sync_sent_before_payload_after_5_minute_idle() -> None:
 
     # Directly call _send_marked (the path used inside send_command)
     await handle._send_marked(mqtt_transport, b"\xde\xad")
+    # Let the fire-and-forget BLE sync task run
+    await asyncio.sleep(0)
 
     # Sync goes through send_heartbeat (quota-exempt path); payload goes through send
     mqtt_transport.send_heartbeat.assert_awaited_once()

@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from pymammotion.data.model.hash_list import AreaHashNameList, HashList, RootHashList
+from pymammotion.data.model.hash_list import AreaHashNameList, HashList
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.messaging.saga import Saga
 from pymammotion.transport.base import CommandTimeoutError
@@ -36,12 +36,12 @@ class MapFetchSaga(Saga):
     ``get_map().missing_hashlist()`` after a ``comm_queue.get()`` already
     reflects the newly received frame — no separate internal tracking needed.
 
-    Resume behaviour on restart:
-      * Root list complete → skip to step 4.
-      * Otherwise → call get_all_boundary_hash_list once; the device starts
-        streaming, and each incoming frame is acked with get_hash_response
-        which tells the device to send the next one.  get_hash_response is
-        never sent proactively — only in response to an incoming frame.
+    The root hash list is always re-fetched on every run; the device must
+    receive get_all_boundary_hash_list before it will serve comm data frames,
+    so skipping it causes step 4 to time out.  Each incoming frame is acked
+    with get_hash_response which tells the device to send the next one.
+    get_hash_response is never sent proactively — only in response to an
+    incoming frame.
     """
 
     name = "map_fetch"
@@ -60,6 +60,7 @@ class MapFetchSaga(Saga):
         command_builder: Any,  # Navigation instance — typed as Any to avoid tight coupling
         send_command: Callable[[bytes], Awaitable[None]],
         get_map: Callable[[], HashList],
+        sync_type: int = 3,
     ) -> None:
         """Initialise the saga with device info and transport helpers.
 
@@ -74,6 +75,7 @@ class MapFetchSaga(Saga):
         self._command_builder = command_builder
         self._send_command = send_command
         self._get_map = get_map
+        self._sync_type = sync_type  # 2 = BLE, 3 = IoT/MQTT
 
         # Result — set on success, None until then
         self.result: HashList | None = None
@@ -83,28 +85,13 @@ class MapFetchSaga(Saga):
         self.result = None
         self._reset_attempt_counter = False
 
-        # Pre-check root hash list completion so step 1 can be skipped on
-        # retry paths where only step 4 remains (saves one round-trip).
-        partial_root: RootHashList | None = None
-        root_list_complete = False
-
-        cmd = self._command_builder.send_todev_ble_sync(sync_type=3)
+        cmd = self._command_builder.send_todev_ble_sync(sync_type=self._sync_type)
         await self._send_command(cmd)
-
-        partial_root = next((r for r in self._get_map().root_hash_lists if r.sub_cmd == 0), None)
-        root_list_complete = (
-            partial_root is not None
-            and partial_root.total_frame > 0
-            and len(partial_root.data) >= partial_root.total_frame
-        )
 
         # ------------------------------------------------------------------
         # Step 1: Fetch area names (non-Luba1 only).
-        # Skipped when root hash list already complete — we're resuming step 4
-        # and names from the first run are still valid.  Always fetched in
-        # area_names_only mode (that mode exists solely to refresh names).
         # ------------------------------------------------------------------
-        if not self._is_luba1 and not root_list_complete:
+        if not self._is_luba1:
             _logger.debug("MapFetchSaga[%s]: fetching area names", self._device_name)
             cmd = self._command_builder.get_area_name_list(self._device_id)
             try:
@@ -127,11 +114,6 @@ class MapFetchSaga(Saga):
                     AreaHashNameList(name=item.name, hash=item.hash) for item in area_hash_name_msg.hashnames
                 ]
             _logger.debug("MapFetchSaga[%s]: got %d area names", self._device_name, len(self._get_map().area_name))
-        elif not self._is_luba1:
-            _logger.debug(
-                "MapFetchSaga[%s]: root hash list already complete — skipping area name re-fetch",
-                self._device_name,
-            )
 
         # ------------------------------------------------------------------
         # Steps 2-3: Root hash list frames.
@@ -139,13 +121,11 @@ class MapFetchSaga(Saga):
         # pushes multiple frames at once before we can register a second
         # send_and_wait.
         #
-        # Resume logic:
-        #   a) Root list already complete  → skip straight to step 4.
-        #   b) Otherwise                   → get_all_boundary_hash_list once;
-        #      every incoming frame is acked via get_hash_response which also
-        #      requests the next frame.  get_hash_response is never sent
-        #      proactively — only as an ack to an incoming frame.  This matches
-        #      HashDataManager.setHashList in the APK (line 1173).
+        # get_all_boundary_hash_list is always sent; every incoming frame is
+        # acked via get_hash_response which tells the device to send the next
+        # one.  get_hash_response is never sent proactively — only as an ack
+        # to an incoming frame.  This matches HashDataManager.setHashList in
+        # the APK (line 1173).
         # ------------------------------------------------------------------
         _logger.debug("MapFetchSaga[%s]: requesting hash list", self._device_name)
 
@@ -156,39 +136,31 @@ class MapFetchSaga(Saga):
                 hash_frame_queue.put_nowait(msg)
 
         with broker.subscribe_unsolicited(_collect_hash_frame):
-            if root_list_complete:
-                assert partial_root is not None  # noqa: S101
-                _logger.debug(
-                    "MapFetchSaga[%s]: root hash list already complete (%d frame(s)) — skipping to comm data",
-                    self._device_name,
-                    partial_root.total_frame,
+            cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
+            await self._send_command(cmd)
+
+            # Ack-driven loop: every frame received from the device is
+            # acked via get_hash_response, which tells the device to send
+            # the next one.  We never call get_hash_response proactively.
+            while True:
+                try:
+                    response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
+                except TimeoutError:
+                    raise CommandTimeoutError("toapp_gethash_ack", 1) from None
+
+                _hash_frame = self.extract_nav_frame(response, "toapp_gethash_ack")
+                if _hash_frame is None:
+                    raise CommandTimeoutError("toapp_gethash_ack", 1)
+                hash_ack = _hash_frame[1]
+
+                # Ack this frame (device interprets as "send me the next one").
+                ack_cmd = self._command_builder.get_hash_response(
+                    total_frame=hash_ack.total_frame, current_frame=hash_ack.current_frame
                 )
-            else:
-                cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
-                await self._send_command(cmd)
+                await self._send_command(ack_cmd)
 
-                # Ack-driven loop: every frame received from the device is
-                # acked via get_hash_response, which tells the device to send
-                # the next one.  We never call get_hash_response proactively.
-                while True:
-                    try:
-                        response = await asyncio.wait_for(hash_frame_queue.get(), timeout=self.step_timeout)
-                    except TimeoutError:
-                        raise CommandTimeoutError("toapp_gethash_ack", 1) from None
-
-                    _hash_frame = self.extract_nav_frame(response, "toapp_gethash_ack")
-                    if _hash_frame is None:
-                        raise CommandTimeoutError("toapp_gethash_ack", 1)
-                    hash_ack = _hash_frame[1]
-
-                    # Ack this frame (device interprets as "send me the next one").
-                    ack_cmd = self._command_builder.get_hash_response(
-                        total_frame=hash_ack.total_frame, current_frame=hash_ack.current_frame
-                    )
-                    await self._send_command(ack_cmd)
-
-                    if hash_ack.current_frame >= hash_ack.total_frame:
-                        break
+                if hash_ack.current_frame >= hash_ack.total_frame:
+                    break
 
         _logger.debug(
             "MapFetchSaga[%s]: hash list complete — %d hash IDs to fetch",
@@ -256,28 +228,86 @@ class MapFetchSaga(Saga):
                 # waiting on (device replays old data while processing our
                 # request, which would reset the step_timeout without making
                 # any progress — see HashDataManager.setRegionalData line 1267).
+                #
+                # SVG tiles use data_hash (the tile's own assigned hash) rather
+                # than the area hash used in the request.  The link back to the
+                # requesting area is paternal_hash_a.  Accept SVG frames when
+                # either the tile's data_hash or its paternal_hash_a is in scope.
                 frame_hash = int(leaf_val.data_hash) if leaf_name == "toapp_svg_msg" else int(leaf_val.hash)
-                if frame_hash not in missing_hashes and frame_hash != current_hash:
+                if leaf_name == "toapp_svg_msg":
+                    parent_hash = int(leaf_val.paternal_hash_a)
+                    if (
+                        frame_hash not in missing_hashes
+                        and frame_hash != current_hash
+                        and parent_hash not in missing_hashes
+                        and parent_hash != current_hash
+                    ):
+                        continue
+                elif frame_hash not in missing_hashes and frame_hash != current_hash:
                     continue
+
+                # Always ack EVERY received frame — including the final
+                # one of a transaction.  The device interprets the ack as
+                # "frame received"; without it, the device retransmits the
+                # same frame indefinitely with an incrementing dataHash
+                # (visible in mammotion_dev.log as 1-of-1 frames repeating
+                # every second with dataHash 370, 371, 372, ...).
+                # SVG uses todev_svg_msg (sub_cmd=2); comm data uses todev_get_commondata.
+                if leaf_name == "toapp_svg_msg":
+                    ack_cmd = self._command_builder.send_svg_response(
+                        total_frame=leaf_val.total_frame,
+                        current_frame=leaf_val.current_frame,
+                        data_hash=leaf_val.data_hash,
+                        paternal_hash_a=leaf_val.paternal_hash_a,
+                    )
+                else:
+                    region_data = self._make_region_data(leaf_val)
+                    ack_cmd = self._command_builder.get_regional_data(regional_data=region_data)
+                await self._send_command(ack_cmd)
 
                 current_map = self._get_map()
                 missing_frames = current_map.missing_frame(leaf_val)
                 if missing_frames:
-                    # More frames needed — ack the received frame so the device sends the next.
-                    # SVG uses todev_svg_msg (sub_cmd=2); comm data uses todev_get_commondata.
-                    if leaf_name == "toapp_svg_msg":
-                        cmd = self._command_builder.send_svg_response(
-                            total_frame=leaf_val.total_frame,
-                            current_frame=leaf_val.current_frame,
-                            data_hash=leaf_val.data_hash,
-                            paternal_hash_a=leaf_val.paternal_hash_a,
-                        )
-                    else:
-                        region_data = self._make_region_data(leaf_val)
-                        cmd = self._command_builder.get_regional_data(regional_data=region_data)
-                    await self._send_command(cmd)
+                    # More frames still needed for this transaction — the device
+                    # will send the next one in response to the ack above.
+                    pass
                 else:
+                    # Before checking find_incomplete_hashes, drain any frames
+                    # for current_hash that are already in the queue.  The device
+                    # sends area boundary data and SVG tiles for the same hash in
+                    # quick succession; without the drain, area completion can
+                    # advance current_hash before the SVG tile is processed.
+                    while not comm_queue.empty():
+                        try:
+                            queued_msg = comm_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                        q_frame = self.extract_nav_frame(queued_msg, ("toapp_get_commondata_ack", "toapp_svg_msg"))
+                        if q_frame is None:
+                            comm_queue.put_nowait(queued_msg)
+                            break
+                        q_name, q_val = q_frame
+                        q_hash = int(q_val.data_hash) if q_name == "toapp_svg_msg" else int(q_val.hash)
+                        q_parent = int(q_val.paternal_hash_a) if q_name == "toapp_svg_msg" else 0
+                        if q_hash != current_hash and q_parent != current_hash:
+                            comm_queue.put_nowait(queued_msg)
+                            break
+                        # Always ack drained frames (same rationale as the
+                        # main loop above — the device retransmits unacked
+                        # frames indefinitely).
+                        if q_name == "toapp_svg_msg":
+                            ack = self._command_builder.send_svg_response(
+                                total_frame=q_val.total_frame,
+                                current_frame=q_val.current_frame,
+                                data_hash=q_val.data_hash,
+                                paternal_hash_a=q_val.paternal_hash_a,
+                            )
+                        else:
+                            ack = self._command_builder.get_regional_data(regional_data=self._make_region_data(q_val))
+                        await self._send_command(ack)
+
                     # This data item is complete — check whether the whole hash is done.
+                    current_map = self._get_map()
                     new_missing = current_map.find_incomplete_hashes(0)
                     if len(new_missing) < len(missing_hashes):
                         no_progress = 0

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
+import dataclasses
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
@@ -355,6 +355,39 @@ class HashList(DataClassORJSONMixin):
     generated_mow_progress_geojson: dict[str, Any] = field(default_factory=dict)
     """Completed portion of the planned mow path, sliced to ``now_index``."""
 
+    #: Frozen snapshot of ``area_root_hashlist`` taken when ``generated_geojson``
+    #: was last built.  Used by ``geojson_needs_regeneration`` to short-circuit
+    #: the expensive feature-walk when the hashlist hasn't changed.
+    _geojson_hashlist_snapshot: frozenset[int] = field(default_factory=frozenset)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> HashList:
+        """Deepcopy that shares the four ``generated_*_geojson`` dicts by reference.
+
+        These dicts can be MB-sized for large maps and are the dominant cost of
+        the per-frame ``copy.deepcopy(current.map)`` in ``MowerStateReducer.apply``.
+        They are ONLY ever replaced wholesale by the matching ``generate_*_geojson``
+        methods — never mutated in place — so sharing references across copies
+        is safe.
+        """
+        import copy as _copy
+
+        cls = self.__class__
+        new = cls.__new__(cls)
+        memo[id(self)] = new
+        shared_geojson = {
+            "generated_geojson",
+            "generated_mow_path_geojson",
+            "generated_mow_progress_geojson",
+            "generated_dynamics_line_geojson",
+        }
+        for f in dataclasses.fields(self):
+            value = getattr(self, f.name)
+            if f.name in shared_geojson:
+                object.__setattr__(new, f.name, value)
+            else:
+                object.__setattr__(new, f.name, _copy.deepcopy(value, memo))
+        return new
+
     def update_hash_lists(self, hashlist: list[int], bol_hash: int | None = None) -> None:
         """Drop entries from every per-type dict whose hash isn't in *hashlist*."""
         if not hashlist:
@@ -441,37 +474,42 @@ class HashList(DataClassORJSONMixin):
           or auto-assign the lowest unused "Area N" number.
         * If area_name has no entry at all → same as above but also add one.
 
-        Uses deepcopy so self.area_name is never mutated by a property access.
+        Returns a fresh list of fresh AreaHashNameList objects, so the caller
+        may mutate without affecting ``self.area_name``.
         """
-        area_name_list = deepcopy(self.area_name)
+        # O(A) — one pass to clone entries and build a hash → entry index, plus
+        # one pass to compute the initial set of used "Area N" numbers.  The
+        # main loop is then O(A) with O(1) lookups, replacing the previous
+        # O(A²) next()/comprehension-per-area pattern.
+        area_name_list: list[AreaHashNameList] = [AreaHashNameList(name=a.name, hash=a.hash) for a in self.area_name]
+        by_hash: dict[int, AreaHashNameList] = {a.hash: a for a in area_name_list}
+        used_numbers: set[int] = {
+            int(a.name.split()[-1])
+            for a in area_name_list
+            if a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
+        }
+        next_n = 1
+
+        def _take_next_number() -> int:
+            nonlocal next_n
+            while next_n in used_numbers:
+                next_n += 1
+            used_numbers.add(next_n)
+            return next_n
 
         for hash_id, area in self.area.items():
-            existing_area = next((a for a in area_name_list if a.hash == hash_id), None)
-            if not existing_area:
+            existing_area = by_hash.get(hash_id)
+            if existing_area is None:
                 if area.name:
-                    area_name_list.append(AreaHashNameList(name=area.name, hash=hash_id))
+                    entry = AreaHashNameList(name=area.name, hash=hash_id)
                 else:
-                    used_numbers = {
-                        int(a.name.split()[-1])
-                        for a in area_name_list
-                        if a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
-                    }
-                    n = 1
-                    while n in used_numbers:
-                        n += 1
-                    area_name_list.append(AreaHashNameList(name=f"Area {n}", hash=hash_id))
+                    entry = AreaHashNameList(name=f"Area {_take_next_number()}", hash=hash_id)
+                area_name_list.append(entry)
+                by_hash[hash_id] = entry
             elif not existing_area.name and area.name:
                 existing_area.name = area.name
             elif not existing_area.name:
-                used_numbers = {
-                    int(a.name.split()[-1])
-                    for a in area_name_list
-                    if a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
-                }
-                n = 1
-                while n in used_numbers:
-                    n += 1
-                existing_area.name = f"Area {n}"
+                existing_area.name = f"Area {_take_next_number()}"
 
         return area_name_list
 
@@ -515,10 +553,9 @@ class HashList(DataClassORJSONMixin):
         should use this method so interrupted areas trigger a fresh fetch.
         """
         path_type_mapping = self._get_path_type_mapping()
-        # missing_hashlist uses a union of *all* per-type keys for sub_cmd=0,
-        # so replicate that lookup for sub_cmd=0 too.
         if sub_cmd == 3:
             lookup: dict[int, FrameList] = self.line
+            svg_for_hash: dict[int, list[SvgFrameList]] = {}
         else:
             lookup = {}
             for target in path_type_mapping.values():
@@ -526,8 +563,17 @@ class HashList(DataClassORJSONMixin):
                     continue
                 for hash_id, frames in target.items():
                     lookup[hash_id] = frames
-            for hash_id, frames in self.svg.items():
-                lookup[hash_id] = frames
+            # Build a reverse mapping so each data_couple hash_id can be checked
+            # against every SVG tile it owns — both by direct data_hash match
+            # (when the SVG tile's own hash == the area hash) and by paternal_hash_a
+            # (when the SVG tile has a distinct hash but is linked to this area).
+            svg_for_hash = {}
+            for data_hash, svg_fl in self.svg.items():
+                svg_for_hash.setdefault(data_hash, []).append(svg_fl)
+                if svg_fl.data:
+                    parent = svg_fl.data[0].paternal_hash_a
+                    if parent and parent != data_hash:
+                        svg_for_hash.setdefault(parent, []).append(svg_fl)
 
         incomplete: list[int] = []
         for root_list in self.root_hash_lists:
@@ -535,8 +581,23 @@ class HashList(DataClassORJSONMixin):
                 continue
             for obj in root_list.data:
                 for hash_id in obj.data_couple:
-                    entry = lookup.get(hash_id)
-                    if entry is None or self.find_missing_frames(entry):
+                    if hash_id == 0:
+                        continue
+                    area_entry = lookup.get(hash_id)
+                    svg_entries = svg_for_hash.get(hash_id, [])
+
+                    # Nothing fetched at all for this hash yet.
+                    if area_entry is None and not svg_entries:
+                        incomplete.append(hash_id)
+                        continue
+
+                    # Area/boundary data exists but is still partial.
+                    if area_entry is not None and self.find_missing_frames(area_entry):
+                        incomplete.append(hash_id)
+                        continue
+
+                    # Any associated SVG tile (by data_hash or paternal_hash_a) is partial.
+                    if any(self.find_missing_frames(fl) for fl in svg_entries):
                         incomplete.append(hash_id)
         return incomplete
 
@@ -859,26 +920,29 @@ class HashList(DataClassORJSONMixin):
         coordinate rotation used at generation time no longer matches the
         current RTK heading, so the GeoJSON should be regenerated.
 
-        Hash staleness is detected by comparing the hashes present in the
-        GeoJSON features against the device's current ``area_root_hashlist``
-        (sub_cmd=0 entries only; sub_cmd=3 breakpoint lines are never rendered
-        in the GeoJSON).  Any feature hash absent from the root list means the
-        GeoJSON was built from data that has since been deleted on the device.
+        Hash staleness is detected by comparing the current
+        ``area_root_hashlist`` against the snapshot taken when the GeoJSON was
+        last built.  If unchanged, the expensive per-feature hash walk is
+        skipped — the dominant cost on the ~4 Hz ``system_update_buf`` hot
+        path during mowing.
         """
         if not self.generated_geojson:
             return True
         if abs(rtk.yaw - self.geojson_yaw) > yaw_threshold:
             return True
-        current_hashlist = set(self.area_root_hashlist)
-        if current_hashlist:
-            geojson_hashes = {
-                f["properties"]["hash"]
-                for f in self.generated_geojson.get("features", [])
-                if isinstance(f.get("properties"), dict) and f["properties"].get("hash") is not None
-            }
-            if geojson_hashes - current_hashlist:
-                return True
-        return False
+        current_hashlist = frozenset(self.area_root_hashlist)
+        if not current_hashlist:
+            return False
+        if current_hashlist == self._geojson_hashlist_snapshot:
+            return False
+        # Hashlist changed since last generation — verify whether any feature
+        # references a hash that no longer exists on the device.
+        geojson_hashes = {
+            f["properties"]["hash"]
+            for f in self.generated_geojson.get("features", [])
+            if isinstance(f.get("properties"), dict) and f["properties"].get("hash") is not None
+        }
+        return bool(geojson_hashes - current_hashlist)
 
     def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
         """Rebuild ``generated_geojson`` from the cached frames."""
@@ -898,6 +962,9 @@ class HashList(DataClassORJSONMixin):
             yaw=rtk.yaw,
         )
         self.geojson_yaw = rtk.yaw
+        # Record the hashlist used so the next geojson_needs_regeneration()
+        # can short-circuit when state hasn't changed.
+        self._geojson_hashlist_snapshot = frozenset(self.area_root_hashlist)
 
     def generate_mowing_geojson(self, rtk: LocationPoint) -> Any:
         """Rebuild ``generated_mow_path_geojson`` from the cached mow-path frames."""

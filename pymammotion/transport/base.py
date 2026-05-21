@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from pymammotion.data.mqtt.event import ThingEventMessage
-    from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
 
 _logger = logging.getLogger(__name__)
@@ -222,6 +222,9 @@ class Transport(ABC):
 
     #: Called when a thing.properties message arrives (iot_id, properties).
     on_device_properties: Callable[[str, ThingPropertiesMessage], Awaitable[None]] | None = None
+
+    #: Called when a Mammotion MQTT flat property/post message arrives (iot_id, properties).
+    on_device_mammotion_properties: Callable[[str, MammotionPropertiesMessage], Awaitable[None]] | None = None
 
     #: Duration of the rate-limit ban in seconds (12 hours).
     _RATE_LIMIT_DURATION: float = 43200.0

@@ -235,3 +235,8 @@ fabric.properties
 .idea/caches/build_file_checksums.ser
 scripts.txt
 .idea
+
+# Live-device scenario / test artefacts (state dumps, JSON reports, logs)
+examples/dev_output/
+tests/dev_output/
+examples/dev_credentials.json
