@@ -22,19 +22,19 @@ Description:
 
         {base_topic}/devices/{device_id}/send                               raw command, payload with details
         {base_topic}/devices/{device_id}/send_and_wait                      raw command, payload with details
-        {base_topic}/devices/{device_id}/sync_map                           DevConsole Function, same as sync_areas
+        {base_topic}/devices/{device_id}/sync_map                           DevConsole Function, same as sync_areas_and_paths
         {base_topic}/devices/{device_id}/fetch_rtk                          DevConsole Function, device_id must be rtk station
 
-        {base_topic}/devices/{device_id}/start_report_stream                PyMammotion internal
         {base_topic}/devices/{device_id}/ensure_fresh_state                 PyMammotion internal
+        {base_topic}/devices/{device_id}/start_report_stream                PyMammotion internal
         {base_topic}/devices/{device_id}/request_report_snapshot            PyMammotion internal
         {base_topic}/devices/{device_id}/request_reports                    PyMammotion internal
 
         Sagas:
-        {base_topic}/devices/{device_id}/sync_areas                         areas_json / map.area (Mow areas)
+        {base_topic}/devices/{device_id}/sync_mowpath                       mowpath_json / map.current_mow_path (Waypoints)
+        {base_topic}/devices/{device_id}/sync_areas_and_paths               areas_json / map.area (Mow areas)
                                                                             paths_json / map.path (Paths channels/tunnels)
         {base_topic}/devices/{device_id}/sync_plans                         plans_json / map.plan (Tasks)
-        {base_topic}/devices/{device_id}/sync_mowpath                       mowpath_json / map.current_mow_path (Waypoints)
         
         Streaming:
         {base_topic}/devices/{device_id}/get_stream_subscription            response on {base_topic}/devices/{device_id}/stream_subscription_json
@@ -354,14 +354,14 @@ class ExternalMQTTPublisher:
 
         try:
             await self.client.subscribe(f"{self.base_topic}/devices/+/publish_all")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/clear_state")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/clear_states")
             await self.client.subscribe(f"{self.base_topic}/devices/+/send")
             await self.client.subscribe(f"{self.base_topic}/devices/+/send_and_wait")
 
             await self.client.subscribe(f"{self.base_topic}/devices/+/sync_map")
             await self.client.subscribe(f"{self.base_topic}/devices/+/fetch_rtk")
 
-            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_areas")
+            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_areas_and_paths")
             await self.client.subscribe(f"{self.base_topic}/devices/+/sync_plans")
             await self.client.subscribe(f"{self.base_topic}/devices/+/sync_mowpath")
             
@@ -420,9 +420,10 @@ class ExternalMQTTPublisher:
                     #return
 
             _LOGGER.info(
-                "[bold yellow]→ MQTT Command[/bold yellow]  [cyan]%s[/cyan]  [green]%s[/green]",
+                "[bold yellow]→ MQTT Command[/bold yellow]  [cyan]%s[/cyan]  [green]%s[/green] %s",
                 device_name,
                 command,
+                str(cmd_data),
             )
 
             if not self.dev_console:
@@ -445,8 +446,8 @@ class ExternalMQTTPublisher:
                 # Clear complex object cache (plans / areas / paths / mowpath)
                 self._previous_complex_state.pop(device_name, None)
                 
-            elif command == "sync_areas":
-                await self._execute_sync_areas(device_name, cmd_data)
+            elif command == "sync_areas_and_paths":
+                await self._execute_sync_areas_and_paths(device_name, cmd_data)
             elif command == "sync_plans":
                 await self._execute_sync_plans(device_name, cmd_data)    
             elif command == "sync_mowpath":
@@ -499,7 +500,7 @@ class ExternalMQTTPublisher:
                     await handle.start_report_stream()
 
             elif command == "request_reports":
-                """Enqueue a one-shot "request_iot_sys(count=count)" data refresh."""
+                """Enqueue a one-shot "request_iot_sys" data refresh."""
                 handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
                 if handle:
                     await handle.request_reports()
@@ -517,12 +518,12 @@ class ExternalMQTTPublisher:
             elif command == "req_errors":
                 await self._execute_send(device_name, {"cmd": "allpowerfull_rw","kwargs": {"rw_id": 5,"rw": 1,"context": 2}})
                 await self._execute_send(device_name, {"cmd": "allpowerfull_rw","kwargs": {"rw_id": 5,"rw": 1,"context": 3}})
+
+
             elif command == "req_dock_location":
                 # send_and_Wait
                 await self._execute_send(device_name, {"cmd":"read_write_device","expected_field":"bidire_comm_cmd","kwargs": {"rw_id":5,"rw":1,"context":1,}})
             
-
-
             elif command == "get_error_info":
                 await self._execute_get_error_info(cmd_data)
             elif command == "kill":
@@ -860,7 +861,7 @@ class ExternalMQTTPublisher:
                 retain=True,
             )
             
-            _LOGGER.info("✓ get_error_info executed for language: %s (%d errors)", language_code, len(error_codes))
+            _LOGGER.info("✓ get_error_info executed for language: %s (returned %d errors)", language_code, len(error_codes))
         except Exception as e:
             _LOGGER.error("✗ get_error_info failed: %s", e, exc_info=True)
 
@@ -1007,29 +1008,35 @@ class ExternalMQTTPublisher:
         await self._send_response(device_name, "sync_mowpath", "sending", timeout=timeout)
         
         try:
+            #self.dev_console.mammotion.set_mow_path_fetch_enabled(device_id,enabled=True)
+            handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+            if handle:
+                #if handle.mow_path_fetch_enabled == False:
+                handle.set_mow_path_fetch_enabled(value=True)
+
             await self.dev_console.mammotion.check_and_get_mow_path(device_name)
-            await self._send_response(device_name, "sync_mowpath", "success", timeout=timeout)
+            await self._send_response(device_name, "sync_mowpath", "enqueued", timeout=timeout)
             _LOGGER.info("✓ sync_mowpath enqueued: %s", device_name)
         except Exception as e:
             await self._send_response(device_name, "sync_mowpath", "error", error=str(e))
             _LOGGER.error("✗ sync_mowpath failed: %s", e)
-    async def _execute_sync_areas(self, device_name: str, cmd_data: dict) -> None:
-        """Execute sync_areas command."""
+    async def _execute_sync_areas_and_paths(self, device_name: str, cmd_data: dict) -> None:
+        """Execute sync_areas_and_paths command."""
         if not self.dev_console:
             return
 
         timeout = cmd_data.get("timeout", 120.0)
         
-        await self._send_response(device_name, "sync_areas", "sending", timeout=timeout)
+        await self._send_response(device_name, "sync_areas_and_paths", "sending", timeout=timeout)
         
         try:
             #self.dev_console.sync_map(device_name,timeout=timeout) # use implementation in dev_console
             await self.dev_console.mammotion.start_map_sync(device_name)
-            await self._send_response(device_name, "sync_areas", "success", timeout=timeout)
-            _LOGGER.info("✓ sync_areas enqueued: %s", device_name)
+            await self._send_response(device_name, "sync_areas_and_paths", "enqueued", timeout=timeout)
+            _LOGGER.info("✓ sync_areas_and_paths enqueued: %s", device_name)
         except Exception as e:
-            await self._send_response(device_name, "sync_areas", "error", error=str(e))
-            _LOGGER.error("✗ sync_areas failed: %s", e)
+            await self._send_response(device_name, "sync_areas_and_paths", "error", error=str(e))
+            _LOGGER.error("✗ sync_areas_and_paths failed: %s", e)
     async def _execute_sync_plans(self, device_name: str, cmd_data: dict) -> None:
         """Execute sync_plans command."""
         if not self.dev_console:
@@ -1041,7 +1048,7 @@ class ExternalMQTTPublisher:
         
         try:
             await self.dev_console.mammotion.start_plan_sync(device_name)
-            await self._send_response(device_name, "sync_plans", "success", timeout=timeout)
+            await self._send_response(device_name, "sync_plans", "enqueued", timeout=timeout)
             _LOGGER.info("✓ sync_plans enqueued: %s", device_name)
         except Exception as e:
             await self._send_response(device_name, "sync_plans", "error", error=str(e))
