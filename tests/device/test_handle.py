@@ -9,6 +9,7 @@ import pytest
 from pymammotion.aliyun.exceptions import DeviceOfflineException
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.messaging.command_queue import Priority
+from pymammotion.proto import LubaMsg as RealLubaMsg
 from pymammotion.state.device_state import DeviceAvailability, DeviceConnectionState, TransportAvailability
 from pymammotion.transport.base import NoTransportAvailableError, TransportType
 
@@ -338,7 +339,7 @@ async def test_incoming_message_clears_reported_offline(transport_type: Transpor
     # Simulate a message arriving from the device over the cloud transport
     _patch_raw_message_internals(handle)
     with patch("pymammotion.device.handle.LubaMsg") as mock_luba:
-        mock_luba.return_value.parse.return_value = MagicMock()
+        mock_luba.return_value.parse.return_value = RealLubaMsg()
         await handle.on_raw_message(b"\x00", transport_type)
 
     assert handle.availability.mqtt_reported_offline is False

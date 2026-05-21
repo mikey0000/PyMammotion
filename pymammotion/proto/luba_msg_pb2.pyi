@@ -6,6 +6,8 @@ from pymammotion.proto import dev_net_pb2 as _dev_net_pb2
 from pymammotion.proto import mctrl_ota_pb2 as _mctrl_ota_pb2
 from pymammotion.proto import luba_mul_pb2 as _luba_mul_pb2
 from pymammotion.proto import mctrl_pept_pb2 as _mctrl_pept_pb2
+from pymammotion.proto import pdt_pb2 as _pdt_pb2
+from pymammotion.proto import spino_ctrl_pb2 as _spino_ctrl_pb2
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -46,8 +48,9 @@ MSG_CMD_TYPE_START: MsgCmdType
 SOC_MODULE_MULTIMEDIA: MsgDevice
 
 class LubaMsg(_message.Message):
-    __slots__ = ["base", "driver", "msgattr", "msgtype", "mul", "nav", "net", "null", "ota", "pept", "rcver", "sender", "seqs", "subtype", "sys", "timestamp", "version"]
+    __slots__ = ["base", "ctrl", "driver", "msgattr", "msgtype", "mul", "nav", "net", "null", "ota", "pdt", "pept", "rcver", "sender", "seqs", "subtype", "sys", "timestamp", "version"]
     BASE_FIELD_NUMBER: _ClassVar[int]
+    CTRL_FIELD_NUMBER: _ClassVar[int]
     DRIVER_FIELD_NUMBER: _ClassVar[int]
     MSGATTR_FIELD_NUMBER: _ClassVar[int]
     MSGTYPE_FIELD_NUMBER: _ClassVar[int]
@@ -56,6 +59,7 @@ class LubaMsg(_message.Message):
     NET_FIELD_NUMBER: _ClassVar[int]
     NULL_FIELD_NUMBER: _ClassVar[int]
     OTA_FIELD_NUMBER: _ClassVar[int]
+    PDT_FIELD_NUMBER: _ClassVar[int]
     PEPT_FIELD_NUMBER: _ClassVar[int]
     RCVER_FIELD_NUMBER: _ClassVar[int]
     SENDER_FIELD_NUMBER: _ClassVar[int]
@@ -65,6 +69,7 @@ class LubaMsg(_message.Message):
     TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
     base: _basestation_pb2.BaseStation
+    ctrl: _spino_ctrl_pb2.SpinoCtrl
     driver: _mctrl_driver_pb2.MctlDriver
     msgattr: MsgAttr
     msgtype: MsgCmdType
@@ -73,6 +78,7 @@ class LubaMsg(_message.Message):
     net: _dev_net_pb2.DevNet
     null: MsgNull
     ota: _mctrl_ota_pb2.MctlOta
+    pdt: _pdt_pb2.PdtMessage
     pept: _mctrl_pept_pb2.MctlPept
     rcver: MsgDevice
     sender: MsgDevice
@@ -81,7 +87,7 @@ class LubaMsg(_message.Message):
     sys: _mctrl_sys_pb2.MctlSys
     timestamp: int
     version: int
-    def __init__(self, msgtype: _Optional[_Union[MsgCmdType, str]] = ..., sender: _Optional[_Union[MsgDevice, str]] = ..., rcver: _Optional[_Union[MsgDevice, str]] = ..., msgattr: _Optional[_Union[MsgAttr, str]] = ..., seqs: _Optional[int] = ..., version: _Optional[int] = ..., subtype: _Optional[int] = ..., net: _Optional[_Union[_dev_net_pb2.DevNet, _Mapping]] = ..., sys: _Optional[_Union[_mctrl_sys_pb2.MctlSys, _Mapping]] = ..., nav: _Optional[_Union[_mctrl_nav_pb2.MctlNav, _Mapping]] = ..., driver: _Optional[_Union[_mctrl_driver_pb2.MctlDriver, _Mapping]] = ..., ota: _Optional[_Union[_mctrl_ota_pb2.MctlOta, _Mapping]] = ..., mul: _Optional[_Union[_luba_mul_pb2.SocMul, _Mapping]] = ..., null: _Optional[_Union[MsgNull, _Mapping]] = ..., pept: _Optional[_Union[_mctrl_pept_pb2.MctlPept, _Mapping]] = ..., base: _Optional[_Union[_basestation_pb2.BaseStation, _Mapping]] = ..., timestamp: _Optional[int] = ...) -> None: ...
+    def __init__(self, msgtype: _Optional[_Union[MsgCmdType, str]] = ..., sender: _Optional[_Union[MsgDevice, str]] = ..., rcver: _Optional[_Union[MsgDevice, str]] = ..., msgattr: _Optional[_Union[MsgAttr, str]] = ..., seqs: _Optional[int] = ..., version: _Optional[int] = ..., subtype: _Optional[int] = ..., net: _Optional[_Union[_dev_net_pb2.DevNet, _Mapping]] = ..., sys: _Optional[_Union[_mctrl_sys_pb2.MctlSys, _Mapping]] = ..., nav: _Optional[_Union[_mctrl_nav_pb2.MctlNav, _Mapping]] = ..., driver: _Optional[_Union[_mctrl_driver_pb2.MctlDriver, _Mapping]] = ..., ota: _Optional[_Union[_mctrl_ota_pb2.MctlOta, _Mapping]] = ..., mul: _Optional[_Union[_luba_mul_pb2.SocMul, _Mapping]] = ..., null: _Optional[_Union[MsgNull, _Mapping]] = ..., pept: _Optional[_Union[_mctrl_pept_pb2.MctlPept, _Mapping]] = ..., base: _Optional[_Union[_basestation_pb2.BaseStation, _Mapping]] = ..., pdt: _Optional[_Union[_pdt_pb2.PdtMessage, _Mapping]] = ..., ctrl: _Optional[_Union[_spino_ctrl_pb2.SpinoCtrl, _Mapping]] = ..., timestamp: _Optional[int] = ...) -> None: ...
 
 class MsgNull(_message.Message):
     __slots__ = []

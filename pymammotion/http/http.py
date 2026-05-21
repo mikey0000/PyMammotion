@@ -230,7 +230,7 @@ class MammotionHTTP:
                     await asyncio.sleep(_RETRY_DELAYS[attempt - 1])
                 try:
                     return await func(self, *args, **kwargs)
-                except (ClientError, asyncio.TimeoutError) as exc:
+                except (TimeoutError, ClientError) as exc:
                     last_exc = exc
                     _LOGGER.debug("Network error on attempt %d/%d: %s", attempt + 1, _MAX_ATTEMPTS, exc)
             raise last_exc

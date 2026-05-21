@@ -112,10 +112,19 @@ class MQTTTransport(Transport):
         self._config = replace(self._config, password=new_jwt)
         self._stop_event.clear()
 
-    def add_topic(self, topic: str) -> None:
-        """Register a topic to subscribe to on next (or current) connect."""
+    async def add_topic(self, topic: str) -> None:
+        """Register a topic to subscribe to on next (or current) connect.
+
+        If the transport is already connected, subscribes immediately on the live
+        client so that messages start arriving without waiting for a reconnect.
+        """
         if topic not in self._topics:
             self._topics.append(topic)
+            if self._client is not None:
+                try:
+                    await self._client.subscribe(topic)
+                except Exception:
+                    _logger.debug("add_topic: live subscribe failed (will retry on reconnect)", exc_info=True)
 
     def register_device(self, product_key: str, device_name: str, iot_id: str) -> None:
         """Map a (product_key, device_name) pair to an iot_id for message routing."""
