@@ -989,26 +989,7 @@ class MammotionClient:
             await al_transport.connect()
 
         if mammotion_records:
-            await mammotion_http.get_mqtt_credentials()
-            if mammotion_http.mqtt_credentials is None:
-                _logger.error("Could not obtain Mammotion MQTT credentials — skipping post-2025 devices")
-            else:
-                if acct_session.token_manager is None:
-                    acct_session.token_manager = TokenManager(account, mammotion_http)
-                    acct_session.token_manager.on_credentials_updated = self._on_credentials_updated
-                transport = self._setup_mammotion_transport(
-                    mammotion_http.mqtt_credentials, mammotion_http, acct_session, acct_session.token_manager
-                )
-                acct_session.mammotion_transport = transport
-                ua = acct_session.user_account
-                for record in mammotion_records:
-                    if record.device_name:
-                        iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                        await self._register_mammotion_device(
-                            record, transport, ua, iot_id_override, token_manager=acct_session.token_manager
-                        )
-                        acct_session.device_ids.add(record.device_name)
-                await transport.connect()
+            await self._bootstrap_mammotion_mqtt(account, mammotion_http, acct_session, owned_iot_id_map)
 
         await self._account_registry.register(acct_session)
 
@@ -1084,9 +1065,33 @@ class MammotionClient:
             )
 
         if "mammotion_mqtt" in cached_data and "mammotion_device_records" in cached_data:
-            await self._restore_mammotion_mqtt(
-                account, password, cached_data, session, acct_session, check_for_new_devices=check_for_new_devices
-            )
+            await self._restore_mammotion_mqtt(account, password, cached_data, session, acct_session)
+
+        # Accept pending shares, check for new post-2025 devices, and bootstrap/extend the
+        # Mammotion MQTT transport as needed.  _bootstrap_mammotion_mqtt handles both
+        # "no transport yet" (fresh credential fetch + connect) and "transport already
+        # connected" (register only devices not in skip_ids) transparently.
+        if check_for_new_devices and acct_session.mammotion_http is not None:
+            try:
+                owned_iot_id_map: dict[str, str] = {}
+                try:
+                    owned_resp = await acct_session.mammotion_http.get_user_device_list()
+                    owned_iot_id_map = {
+                        d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id
+                    }
+                except Exception:  # noqa: BLE001
+                    _logger.warning(
+                        "restore_credentials: failed to fetch iot_id map for Mammotion bootstrap", exc_info=True
+                    )
+                await self._bootstrap_mammotion_mqtt(
+                    account,
+                    acct_session.mammotion_http,
+                    acct_session,
+                    owned_iot_id_map,
+                    skip_ids=set(acct_session.device_ids),
+                )
+            except Exception:  # noqa: BLE001
+                _logger.warning("restore_credentials: Mammotion MQTT bootstrap failed", exc_info=True)
 
     @property
     def token_manager(self) -> TokenManager | None:
@@ -1420,8 +1425,6 @@ class MammotionClient:
         cached_data: dict[str, Any],
         session: ClientSession | None,
         acct_session: AccountSession,
-        *,
-        check_for_new_devices: bool,
     ) -> None:
         """Restore a Mammotion MQTT session and register all known devices."""
         from pymammotion.http.model.http import LoginResponseData, MQTTConnection
@@ -1495,20 +1498,90 @@ class MammotionClient:
 
             await transport.connect()
 
-            if check_for_new_devices:
-                try:
-                    page_resp = await mammotion_http.get_user_device_page()
-                    for record in (page_resp.data.records if page_resp.data else []) or []:
-                        if record.device_name and record.device_name not in known_ids:
-                            iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                            await self._register_mammotion_device(
-                                record, transport, ua, iot_id_override, token_manager=acct_session.token_manager
-                            )
-                            known_ids.add(record.device_name)
-                except Exception:  # noqa: BLE001
-                    _logger.warning("restore_credentials: new-device discovery failed (Mammotion)", exc_info=True)
-
         acct_session.device_ids.update(known_ids)
+
+    async def _bootstrap_mammotion_mqtt(
+        self,
+        account: str,
+        mammotion_http: MammotionHTTP,
+        acct_session: AccountSession,
+        owned_iot_id_map: dict[str, str],
+        *,
+        skip_ids: set[str] | None = None,
+    ) -> None:
+        """Accept pending share invitations then register all post-2025 Mammotion MQTT devices.
+
+        Handles two scenarios transparently:
+
+        * **No transport yet** — fetches fresh MQTT credentials, calls
+          :meth:`_setup_mammotion_transport`, registers every device returned by
+          the device-page API, then connects.  This is the path taken by
+          ``login_and_initiate_cloud`` and by ``restore_credentials`` when a
+          post-2025 device appears for the first time on an account that previously
+          had only Aliyun devices.
+
+        * **Transport already connected** — reuses the existing transport to
+          register any device returned by the device-page API that is not in
+          *skip_ids*.  ``restore_credentials`` passes the IDs already registered
+          from cache so that only genuinely new devices are added.
+
+        Args:
+            account:          Mammotion account e-mail or phone number.
+            mammotion_http:   Active :class:`MammotionHTTP` session.
+            acct_session:     Account session to update with the new transport and IDs.
+            owned_iot_id_map: ``device_name → iot_id`` map from ``get_user_device_list()``.
+            skip_ids:         Device names already registered; new devices not in this set
+                              are registered.  ``None`` means register all returned devices.
+
+        """
+        # Accept any pending Mammotion-side share invitations before fetching the list.
+        shared_resp = await mammotion_http.get_user_shared_device_page()
+        if shared_resp.data and shared_resp.data.records:
+            pending_by_batch: dict[str, list[int]] = {}
+            for record in shared_resp.data.records:
+                if record.is_receiver == 1 and record.status == -1:
+                    pending_by_batch.setdefault(record.batch_id, []).append(int(record.record_id))
+            for batch_id, record_ids in pending_by_batch.items():
+                await mammotion_http.confirm_share(batch_id, record_ids)
+
+        page_resp = await mammotion_http.get_user_device_page()
+        mammotion_records = (page_resp.data.records if page_resp.data else []) or []
+        if not mammotion_records:
+            return
+
+        transport = acct_session.mammotion_transport
+        new_transport = transport is None
+        if new_transport:
+            await mammotion_http.get_mqtt_credentials()
+            if mammotion_http.mqtt_credentials is None:
+                _logger.error(
+                    "_bootstrap_mammotion_mqtt: could not obtain MQTT credentials — skipping post-2025 devices"
+                )
+                return
+            if acct_session.token_manager is None:
+                acct_session.token_manager = TokenManager(account, mammotion_http)
+                acct_session.token_manager.on_credentials_updated = self._on_credentials_updated
+            transport = self._setup_mammotion_transport(
+                mammotion_http.mqtt_credentials, mammotion_http, acct_session, acct_session.token_manager
+            )
+            acct_session.mammotion_transport = transport
+
+        ua = acct_session.user_account
+        already_known = skip_ids or set()
+        for record in mammotion_records:
+            if record.device_name and record.device_name not in already_known:
+                iot_id_override = owned_iot_id_map.get(record.device_name, "")
+                await self._register_mammotion_device(
+                    record,
+                    transport,
+                    ua,
+                    iot_id_override,
+                    token_manager=acct_session.token_manager,  # type: ignore[arg-type]
+                )
+                acct_session.device_ids.add(record.device_name)
+
+        if new_transport:
+            await transport.connect()  # type: ignore[union-attr]
 
     @staticmethod
     async def _connect_iot(cloud_client: CloudIOTGateway) -> None:

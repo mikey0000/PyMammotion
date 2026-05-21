@@ -380,7 +380,7 @@ async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
     ):
         mock_login.return_value = MagicMock(code=0, data=MagicMock())
         await client._restore_mammotion_mqtt(
-            "user@test.com", "pass", cached_data, None, acct_session, check_for_new_devices=False
+            "user@test.com", "pass", cached_data, None, acct_session
         )
 
     assert acct_session.token_manager is not None
@@ -433,6 +433,235 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
     session = client._account_registry.get("user@test.com")
     assert session is not None
     assert session.token_manager is not None
+
+
+# ---------------------------------------------------------------------------
+# _bootstrap_mammotion_mqtt — connect() and confirm_share call-count invariants
+# ---------------------------------------------------------------------------
+
+
+def _make_share_record(*, is_receiver: int = 1, status: int = -1, batch_id: str = "batch1", record_id: str = "1") -> MagicMock:
+    """Return a MagicMock shaped like a ShareRecord."""
+    r = MagicMock()
+    r.is_receiver = is_receiver
+    r.status = status
+    r.batch_id = batch_id
+    r.record_id = record_id
+    return r
+
+
+def _make_device_record(device_name: str = "Yuka-TEST", iot_id: str = "iot-yuka", product_key: str = "pk1") -> MagicMock:
+    """Return a MagicMock shaped like a DeviceRecord."""
+    r = MagicMock()
+    r.device_name = device_name
+    r.iot_id = iot_id
+    r.product_key = product_key
+    return r
+
+
+def _make_mock_http(
+    *,
+    device_records: list[MagicMock] | None = None,
+    share_records: list[MagicMock] | None = None,
+    mqtt_creds: MagicMock | None = None,
+) -> MagicMock:
+    """Return a MagicMock shaped like MammotionHTTP with the given fixture data."""
+    http = MagicMock()
+    http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+    http.get_user_shared_device_page = AsyncMock(
+        return_value=MagicMock(data=MagicMock(records=share_records or []))
+    )
+    # get_user_device_page both returns data AND updates http.device_records (side-effect)
+    page_data = MagicMock()
+    page_data.records = device_records or []
+    page_resp = MagicMock()
+    page_resp.data = page_data
+    http.get_user_device_page = AsyncMock(return_value=page_resp)
+    http.get_mqtt_credentials = AsyncMock()
+    http.confirm_share = AsyncMock()
+    http.mqtt_credentials = mqtt_creds or MagicMock()
+    http.login_info = MagicMock()
+    return http
+
+
+async def test_bootstrap_no_existing_transport_calls_connect_once() -> None:
+    """When no transport exists, _bootstrap_mammotion_mqtt must connect exactly once."""
+    from pymammotion.account.registry import AccountSession
+
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="u@x.com", email="u@x.com", password="pw")
+
+    mock_http = _make_mock_http(device_records=[_make_device_record()])
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    with patch.object(client, "_setup_mammotion_transport", return_value=mock_transport), \
+         patch.object(client, "_register_mammotion_device", AsyncMock()):
+        await client._bootstrap_mammotion_mqtt("u@x.com", mock_http, acct_session, {})
+
+    mock_transport.connect.assert_awaited_once()
+
+
+async def test_bootstrap_existing_transport_does_not_call_connect() -> None:
+    """When a transport already exists, _bootstrap_mammotion_mqtt must NOT call connect()."""
+    from pymammotion.account.registry import AccountSession
+
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="u@x.com", email="u@x.com", password="pw")
+
+    existing_transport = MagicMock()
+    existing_transport.connect = AsyncMock()
+    acct_session.mammotion_transport = existing_transport
+
+    mock_http = _make_mock_http(device_records=[_make_device_record("Yuka-NEW")])
+
+    with patch.object(client, "_register_mammotion_device", AsyncMock()):
+        await client._bootstrap_mammotion_mqtt(
+            "u@x.com", mock_http, acct_session, {}, skip_ids=set()
+        )
+
+    existing_transport.connect.assert_not_awaited()
+
+
+async def test_bootstrap_confirm_share_called_once_per_batch() -> None:
+    """confirm_share must be called once for each unique batch_id with pending shares."""
+    from pymammotion.account.registry import AccountSession
+
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="u@x.com", email="u@x.com", password="pw")
+
+    share_records = [
+        _make_share_record(batch_id="batch1", record_id="1"),
+        _make_share_record(batch_id="batch1", record_id="2"),  # same batch
+        _make_share_record(batch_id="batch2", record_id="3"),  # different batch
+        _make_share_record(is_receiver=0, batch_id="batch3", record_id="4"),  # not receiver → skip
+        _make_share_record(status=0, batch_id="batch4", record_id="5"),  # already accepted → skip
+    ]
+    mock_http = _make_mock_http(
+        device_records=[_make_device_record()],
+        share_records=share_records,
+    )
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    with patch.object(client, "_setup_mammotion_transport", return_value=mock_transport), \
+         patch.object(client, "_register_mammotion_device", AsyncMock()):
+        await client._bootstrap_mammotion_mqtt("u@x.com", mock_http, acct_session, {})
+
+    # Only batch1 and batch2 should have been confirmed (2 calls total)
+    assert mock_http.confirm_share.await_count == 2
+    calls = {call.args[0] for call in mock_http.confirm_share.await_args_list}
+    assert calls == {"batch1", "batch2"}
+
+
+async def test_bootstrap_skip_ids_prevents_double_registration() -> None:
+    """Devices listed in skip_ids must not be registered a second time."""
+    from pymammotion.account.registry import AccountSession
+
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="u@x.com", email="u@x.com", password="pw")
+
+    existing_transport = MagicMock()
+    existing_transport.connect = AsyncMock()
+    acct_session.mammotion_transport = existing_transport
+
+    already_registered = _make_device_record("Luba-OLD")
+    new_device = _make_device_record("Yuka-NEW")
+    mock_http = _make_mock_http(device_records=[already_registered, new_device])
+
+    register_mock = AsyncMock()
+    with patch.object(client, "_register_mammotion_device", register_mock):
+        await client._bootstrap_mammotion_mqtt(
+            "u@x.com", mock_http, acct_session, {}, skip_ids={"Luba-OLD"}
+        )
+
+    registered_names = [call.args[0].device_name for call in register_mock.await_args_list]
+    assert registered_names == ["Yuka-NEW"]
+    assert "Luba-OLD" not in registered_names
+
+
+async def test_restore_credentials_connect_called_exactly_once_when_cache_has_devices() -> None:
+    """restore_credentials with cached Mammotion MQTT devices must call connect() exactly once.
+
+    _restore_mammotion_mqtt connects the transport; the subsequent _bootstrap_mammotion_mqtt
+    call must reuse the existing transport (new_transport=False) and NOT connect again.
+    """
+    from pymammotion.http.model.http import MQTTConnection
+
+    client = MammotionClient()
+
+    mqtt_creds = MQTTConnection(host="h", client_id="c", username="u", jwt="j")
+    cached_record = _make_device_record("Luba-OLD")
+
+    cached_data = {
+        "mammotion_mqtt": mqtt_creds.to_dict(),
+        "mammotion_device_records": {
+            "records": [
+                {
+                    "identityId": "id1", "iotId": "iot-old", "productKey": "pk1",
+                    "deviceName": "Luba-OLD", "owned": 1, "status": 1,
+                    "bindTime": 0, "createTime": "2024-01-01",
+                }
+            ],
+            "total": 1, "size": 100, "current": 1, "pages": 1,
+        },
+    }
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    mock_http = _make_mock_http(
+        device_records=[cached_record, _make_device_record("Yuka-NEW")],
+    )
+
+    with (
+        patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
+        patch.object(client, "_register_mammotion_device", AsyncMock()),
+        patch("pymammotion.client.MammotionHTTP", return_value=mock_http),
+        patch("pymammotion.http.http.MammotionHTTP.login_v2", new_callable=AsyncMock) as mock_login,
+    ):
+        mock_login.return_value = MagicMock(code=0)
+        await client.restore_credentials(
+            "u@x.com", "pass", cached_data, check_for_new_devices=True
+        )
+
+    # connect() must be called exactly once — from _restore_mammotion_mqtt, not again from bootstrap
+    mock_transport.connect.assert_awaited_once()
+
+
+async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None:
+    """restore_credentials with no mammotion_mqtt cache must bootstrap a fresh transport.
+
+    When the account has only Aliyun credentials cached and a Mammotion MQTT device
+    (e.g. a Yuka) appears, restore_credentials must discover it and call connect() once.
+    """
+    client = MammotionClient()
+
+    mock_cloud = MagicMock()
+    mock_cloud.mammotion_http = _make_mock_http(
+        device_records=[_make_device_record("Yuka-NEW")],
+    )
+    mock_cloud.devices_by_account_response = None
+    mock_cloud.aep_response = None
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    cached_data = {"aep_data": {"some": "data"}}
+
+    with (
+        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
+        patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
+        patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
+        patch.object(client, "_register_mammotion_device", AsyncMock()),
+    ):
+        await client.restore_credentials(
+            "u@x.com", "pass", cached_data, check_for_new_devices=True
+        )
+
+    # The Mammotion MQTT bootstrap must have connected the new transport once
+    mock_transport.connect.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
