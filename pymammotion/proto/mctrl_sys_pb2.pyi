@@ -5,8 +5,16 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
+ACK: ack_to_app_type_e
+BOTTOM_CURVE_COMPLEX_SHAPE: pool_bottom_type_e
+BOTTOM_CURVE_SIMPLE_SHAPE: pool_bottom_type_e
+BOTTOM_RIGHT_ANGLE_COMPLEX_SHAPE: pool_bottom_type_e
+BOTTOM_RIGHT_ANGLE_SIMPLE_SHAPE: pool_bottom_type_e
 DESCRIPTOR: _descriptor.FileDescriptor
 ERASE: Operation
+INQUIRY: ack_to_app_type_e
+INQUIRY_ACK: ack_to_app_type_e
+NACK: ack_to_app_type_e
 NET_USED_TYPE_MNET: net_used_type
 NET_USED_TYPE_NONE: net_used_type
 NET_USED_TYPE_WIFI: net_used_type
@@ -81,7 +89,94 @@ RS_OK: Command_Result
 RTK_USED_INTERNET: rtk_used_type
 RTK_USED_LORA: rtk_used_type
 RTK_USED_NRTK: rtk_used_type
+SYS_STA_CHARGEBACKING: SpinoSysStatus
+SYS_STA_READY: SpinoSysStatus
+SYS_STA_WORKBACKING: SpinoSysStatus
+SYS_STA_WORKING: SpinoSysStatus
+WAIT_ACK: ack_to_app_type_e
+WALL_CERAMICS: wall_material_e
+WALL_GLASS: wall_material_e
+WALL_SAND_STONE: wall_material_e
 WRITE: Operation
+app_area_clean_cmd: app_downlink_cmd_type_e
+app_bottom_type_cmd: app_downlink_cmd_type_e
+app_docking_time_cmd: app_downlink_cmd_type_e
+app_floor_speed_cmd: app_downlink_cmd_type_e
+app_get_line_cmd: app_downlink_cmd_type_e
+app_get_map_cmd: app_downlink_cmd_type_e
+app_wall_material_cmd: app_downlink_cmd_type_e
+
+class AreaClean(_message.Message):
+    __slots__ = ["points", "type"]
+    POINTS_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    points: _containers.RepeatedCompositeFieldContainer[MapPoints]
+    type: int
+    def __init__(self, type: _Optional[int] = ..., points: _Optional[_Iterable[_Union[MapPoints, _Mapping]]] = ...) -> None: ...
+
+class BmsCtrlInfoMsg(_message.Message):
+    __slots__ = ["bat_cycle_times", "bat_health_state", "charge_soc_threshold", "peak_valley_charge_switch", "smart_charge_switch", "valley_charge_end_time", "valley_charge_start_time"]
+    BAT_CYCLE_TIMES_FIELD_NUMBER: _ClassVar[int]
+    BAT_HEALTH_STATE_FIELD_NUMBER: _ClassVar[int]
+    CHARGE_SOC_THRESHOLD_FIELD_NUMBER: _ClassVar[int]
+    PEAK_VALLEY_CHARGE_SWITCH_FIELD_NUMBER: _ClassVar[int]
+    SMART_CHARGE_SWITCH_FIELD_NUMBER: _ClassVar[int]
+    VALLEY_CHARGE_END_TIME_FIELD_NUMBER: _ClassVar[int]
+    VALLEY_CHARGE_START_TIME_FIELD_NUMBER: _ClassVar[int]
+    bat_cycle_times: int
+    bat_health_state: int
+    charge_soc_threshold: int
+    peak_valley_charge_switch: int
+    smart_charge_switch: int
+    valley_charge_end_time: int
+    valley_charge_start_time: int
+    def __init__(self, bat_cycle_times: _Optional[int] = ..., bat_health_state: _Optional[int] = ..., smart_charge_switch: _Optional[int] = ..., charge_soc_threshold: _Optional[int] = ..., peak_valley_charge_switch: _Optional[int] = ..., valley_charge_start_time: _Optional[int] = ..., valley_charge_end_time: _Optional[int] = ...) -> None: ...
+
+class DockingTime(_message.Message):
+    __slots__ = ["time", "type"]
+    TIME_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    time: DockingTimePoint
+    type: int
+    def __init__(self, type: _Optional[int] = ..., time: _Optional[_Union[DockingTimePoint, _Mapping]] = ...) -> None: ...
+
+class DockingTimePoint(_message.Message):
+    __slots__ = ["hours", "minutes"]
+    HOURS_FIELD_NUMBER: _ClassVar[int]
+    MINUTES_FIELD_NUMBER: _ClassVar[int]
+    hours: int
+    minutes: int
+    def __init__(self, hours: _Optional[int] = ..., minutes: _Optional[int] = ...) -> None: ...
+
+class FileTransferRequest(_message.Message):
+    __slots__ = ["biz_id", "pack_size", "total_size", "type"]
+    BIZ_ID_FIELD_NUMBER: _ClassVar[int]
+    PACK_SIZE_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_SIZE_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    biz_id: str
+    pack_size: int
+    total_size: int
+    type: int
+    def __init__(self, biz_id: _Optional[str] = ..., type: _Optional[int] = ..., total_size: _Optional[int] = ..., pack_size: _Optional[int] = ...) -> None: ...
+
+class FileTransferResponse(_message.Message):
+    __slots__ = ["biz_id", "progress", "result"]
+    BIZ_ID_FIELD_NUMBER: _ClassVar[int]
+    PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    biz_id: str
+    progress: int
+    result: int
+    def __init__(self, biz_id: _Optional[str] = ..., result: _Optional[int] = ..., progress: _Optional[int] = ...) -> None: ...
+
+class FileTransferResult(_message.Message):
+    __slots__ = ["biz_id", "result"]
+    BIZ_ID_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    biz_id: str
+    result: int
+    def __init__(self, biz_id: _Optional[str] = ..., result: _Optional[int] = ...) -> None: ...
 
 class LoraCfgReq(_message.Message):
     __slots__ = ["cfg", "op"]
@@ -98,17 +193,41 @@ class LoraCfgRsp(_message.Message):
     OP_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
     cfg: str
-    fac_cfg: str
+    fac_cfg: bytes
     op: int
     result: int
-    def __init__(self, result: _Optional[int] = ..., op: _Optional[int] = ..., cfg: _Optional[str] = ..., fac_cfg: _Optional[str] = ...) -> None: ...
+    def __init__(self, result: _Optional[int] = ..., op: _Optional[int] = ..., cfg: _Optional[str] = ..., fac_cfg: _Optional[bytes] = ...) -> None: ...
+
+class MapInfo(_message.Message):
+    __slots__ = ["pack_index", "pack_num", "points", "tag", "total_points"]
+    PACK_INDEX_FIELD_NUMBER: _ClassVar[int]
+    PACK_NUM_FIELD_NUMBER: _ClassVar[int]
+    POINTS_FIELD_NUMBER: _ClassVar[int]
+    TAG_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_POINTS_FIELD_NUMBER: _ClassVar[int]
+    pack_index: int
+    pack_num: int
+    points: _containers.RepeatedCompositeFieldContainer[MapPoints]
+    tag: int
+    total_points: int
+    def __init__(self, points: _Optional[_Iterable[_Union[MapPoints, _Mapping]]] = ..., tag: _Optional[int] = ..., total_points: _Optional[int] = ..., pack_index: _Optional[int] = ..., pack_num: _Optional[int] = ...) -> None: ...
+
+class MapPoints(_message.Message):
+    __slots__ = ["x", "y"]
+    X_FIELD_NUMBER: _ClassVar[int]
+    Y_FIELD_NUMBER: _ClassVar[int]
+    x: float
+    y: float
+    def __init__(self, x: _Optional[float] = ..., y: _Optional[float] = ...) -> None: ...
 
 class MctlSys(_message.Message):
-    __slots__ = ["app_to_dev_get_mqtt_config_msg", "app_to_dev_set_mqtt_rtk_msg", "bidire_comm_cmd", "blade_used_warn_time", "border", "current_cutter_mode", "debug_cfg_read", "debug_cfg_write", "debug_common_report", "debug_enable", "debug_errocode_report", "debug_res_cfg_ability", "dev_to_app_get_mqtt_config_msg", "dev_to_app_set_mqtt_rtk_msg", "device_product_type_info", "job_plan", "mow_to_app_info", "mow_to_app_qctools_info", "plan_job_del", "report_info", "response_set_mode", "set_peripherals", "set_special_mode", "set_work_mode", "simulation_cmd", "systemRapidStateTunnel", "systemTardStateTunnel", "systemTmpCycleTx", "systemUpdateBuf", "to_app_msgbus", "to_app_remote_reset", "to_dev_msgbus", "to_dev_remote_reset", "to_dev_set_sun_time", "toapp_batinfo", "toapp_dev_fw_info", "toapp_err_code", "toapp_lora_cfg_rsp", "toapp_mow_info", "toapp_plan_status", "toapp_report_data", "toapp_ul_fprogress", "toapp_work_state", "todev_data_time", "todev_deljobplan", "todev_factor_reset_system", "todev_get_dev_fw_info", "todev_job_plan_time", "todev_knife_ctrl", "todev_lora_cfg_req", "todev_mow_info_up", "todev_off_chip_flash", "todev_report_cfg", "todev_reset_blade_used_time", "todev_reset_blade_used_time_status", "todev_reset_system", "todev_reset_system_status", "todev_time_ctrl_light", "todev_time_zone"]
+    __slots__ = ["app_downlink_cmd", "app_to_dev_get_mqtt_config_msg", "app_to_dev_set_mqtt_rtk_msg", "bidire_comm_cmd", "blade_used_warn_time", "bms_ctrl_info_msg", "border", "current_cutter_mode", "debug_cfg_read", "debug_cfg_write", "debug_common_report", "debug_enable", "debug_errocode_report", "debug_res_cfg_ability", "dev_to_app_get_mqtt_config_msg", "dev_to_app_set_mqtt_rtk_msg", "device_product_type_info", "gfsk_cfg_cmd", "iot_product_param_req", "iot_product_param_rsp", "job_plan", "mow_to_app_info", "mow_to_app_qctools_info", "plan_job_del", "report_info", "response_set_mode", "set_peripherals", "set_special_mode", "set_work_mode", "simulation_cmd", "systemRapidStateTunnel", "systemTardStateTunnel", "systemTmpCycleTx", "systemUpdateBuf", "task_report_interaction", "task_report_req", "task_report_resp", "task_report_result", "to_app_msgbus", "to_app_remote_reset", "to_app_self_check_info_rsp", "to_dev_msgbus", "to_dev_remote_reset", "to_dev_self_check_info_req", "to_dev_set_sun_time", "to_get_dev_low_power_cmd", "to_set_dev_low_power_cmd", "toapp_batinfo", "toapp_dev_fw_info", "toapp_err_code", "toapp_lora_cfg_rsp", "toapp_mow_info", "toapp_plan_status", "toapp_report_data", "toapp_ul_fprogress", "toapp_work_state", "todev_data_time", "todev_deljobplan", "todev_factor_reset_system", "todev_get_dev_fw_info", "todev_job_plan_time", "todev_knife_ctrl", "todev_lora_cfg_req", "todev_mow_info_up", "todev_off_chip_flash", "todev_report_cfg", "todev_reset_blade_used_time", "todev_reset_blade_used_time_status", "todev_reset_system", "todev_reset_system_status", "todev_time_ctrl_light", "todev_time_zone"]
+    APP_DOWNLINK_CMD_FIELD_NUMBER: _ClassVar[int]
     APP_TO_DEV_GET_MQTT_CONFIG_MSG_FIELD_NUMBER: _ClassVar[int]
     APP_TO_DEV_SET_MQTT_RTK_MSG_FIELD_NUMBER: _ClassVar[int]
     BIDIRE_COMM_CMD_FIELD_NUMBER: _ClassVar[int]
     BLADE_USED_WARN_TIME_FIELD_NUMBER: _ClassVar[int]
+    BMS_CTRL_INFO_MSG_FIELD_NUMBER: _ClassVar[int]
     BORDER_FIELD_NUMBER: _ClassVar[int]
     CURRENT_CUTTER_MODE_FIELD_NUMBER: _ClassVar[int]
     DEBUG_CFG_READ_FIELD_NUMBER: _ClassVar[int]
@@ -120,6 +239,9 @@ class MctlSys(_message.Message):
     DEVICE_PRODUCT_TYPE_INFO_FIELD_NUMBER: _ClassVar[int]
     DEV_TO_APP_GET_MQTT_CONFIG_MSG_FIELD_NUMBER: _ClassVar[int]
     DEV_TO_APP_SET_MQTT_RTK_MSG_FIELD_NUMBER: _ClassVar[int]
+    GFSK_CFG_CMD_FIELD_NUMBER: _ClassVar[int]
+    IOT_PRODUCT_PARAM_REQ_FIELD_NUMBER: _ClassVar[int]
+    IOT_PRODUCT_PARAM_RSP_FIELD_NUMBER: _ClassVar[int]
     JOB_PLAN_FIELD_NUMBER: _ClassVar[int]
     MOW_TO_APP_INFO_FIELD_NUMBER: _ClassVar[int]
     MOW_TO_APP_QCTOOLS_INFO_FIELD_NUMBER: _ClassVar[int]
@@ -134,6 +256,10 @@ class MctlSys(_message.Message):
     SYSTEMTARDSTATETUNNEL_FIELD_NUMBER: _ClassVar[int]
     SYSTEMTMPCYCLETX_FIELD_NUMBER: _ClassVar[int]
     SYSTEMUPDATEBUF_FIELD_NUMBER: _ClassVar[int]
+    TASK_REPORT_INTERACTION_FIELD_NUMBER: _ClassVar[int]
+    TASK_REPORT_REQ_FIELD_NUMBER: _ClassVar[int]
+    TASK_REPORT_RESP_FIELD_NUMBER: _ClassVar[int]
+    TASK_REPORT_RESULT_FIELD_NUMBER: _ClassVar[int]
     TOAPP_BATINFO_FIELD_NUMBER: _ClassVar[int]
     TOAPP_DEV_FW_INFO_FIELD_NUMBER: _ClassVar[int]
     TOAPP_ERR_CODE_FIELD_NUMBER: _ClassVar[int]
@@ -161,13 +287,19 @@ class MctlSys(_message.Message):
     TODEV_TIME_ZONE_FIELD_NUMBER: _ClassVar[int]
     TO_APP_MSGBUS_FIELD_NUMBER: _ClassVar[int]
     TO_APP_REMOTE_RESET_FIELD_NUMBER: _ClassVar[int]
+    TO_APP_SELF_CHECK_INFO_RSP_FIELD_NUMBER: _ClassVar[int]
     TO_DEV_MSGBUS_FIELD_NUMBER: _ClassVar[int]
     TO_DEV_REMOTE_RESET_FIELD_NUMBER: _ClassVar[int]
+    TO_DEV_SELF_CHECK_INFO_REQ_FIELD_NUMBER: _ClassVar[int]
     TO_DEV_SET_SUN_TIME_FIELD_NUMBER: _ClassVar[int]
+    TO_GET_DEV_LOW_POWER_CMD_FIELD_NUMBER: _ClassVar[int]
+    TO_SET_DEV_LOW_POWER_CMD_FIELD_NUMBER: _ClassVar[int]
+    app_downlink_cmd: app_downlink_cmd_t
     app_to_dev_get_mqtt_config_msg: app_to_dev_get_mqtt_config_t
     app_to_dev_set_mqtt_rtk_msg: app_to_dev_set_mqtt_rtk_t
     bidire_comm_cmd: SysCommCmd
     blade_used_warn_time: user_set_blade_used_warn_time
+    bms_ctrl_info_msg: BmsCtrlInfoMsg
     border: SysBorder
     current_cutter_mode: rpt_cutter_rpm
     debug_cfg_read: debug_cfg_read_t
@@ -179,6 +311,9 @@ class MctlSys(_message.Message):
     dev_to_app_get_mqtt_config_msg: dev_to_app_get_mqtt_config_t
     dev_to_app_set_mqtt_rtk_msg: dev_to_app_set_mqtt_rtk_t
     device_product_type_info: device_product_type_info_t
+    gfsk_cfg_cmd: gfsk_cfg_cmd_t
+    iot_product_param_req: iot_product_param_req_t
+    iot_product_param_rsp: iot_product_param_rsp_t
     job_plan: SysJobPlan
     mow_to_app_info: mow_to_app_info_t
     mow_to_app_qctools_info: mow_to_app_qctools_info_t
@@ -193,11 +328,19 @@ class MctlSys(_message.Message):
     systemTardStateTunnel: systemTardStateTunnel_msg
     systemTmpCycleTx: systemTmpCycleTx_msg
     systemUpdateBuf: systemUpdateBuf_msg
+    task_report_interaction: task_report_interaction_t
+    task_report_req: FileTransferRequest
+    task_report_resp: FileTransferResponse
+    task_report_result: FileTransferResult
     to_app_msgbus: msgbus_pkt
     to_app_remote_reset: remote_reset_rsp_t
+    to_app_self_check_info_rsp: self_check_info_rsp
     to_dev_msgbus: msgbus_pkt
     to_dev_remote_reset: remote_reset_req_t
+    to_dev_self_check_info_req: self_check_info_req
     to_dev_set_sun_time: debug_sun_time_t
+    to_get_dev_low_power_cmd: dev_low_power_get
+    to_set_dev_low_power_cmd: dev_low_power_set_info
     toapp_batinfo: SysBatUp
     toapp_dev_fw_info: device_fw_info
     toapp_err_code: SysDevErrCode
@@ -223,7 +366,7 @@ class MctlSys(_message.Message):
     todev_reset_system_status: SysResetSystemStatus
     todev_time_ctrl_light: TimeCtrlLight
     todev_time_zone: SysSetTimeZone
-    def __init__(self, toapp_batinfo: _Optional[_Union[SysBatUp, _Mapping]] = ..., toapp_work_state: _Optional[_Union[SysWorkState, _Mapping]] = ..., todev_time_zone: _Optional[_Union[SysSetTimeZone, _Mapping]] = ..., todev_data_time: _Optional[_Union[SysSetDateTime, _Mapping]] = ..., job_plan: _Optional[_Union[SysJobPlan, _Mapping]] = ..., toapp_err_code: _Optional[_Union[SysDevErrCode, _Mapping]] = ..., todev_job_plan_time: _Optional[_Union[SysJobPlanTime, _Mapping]] = ..., toapp_mow_info: _Optional[_Union[SysMowInfo, _Mapping]] = ..., bidire_comm_cmd: _Optional[_Union[SysCommCmd, _Mapping]] = ..., plan_job_del: _Optional[int] = ..., border: _Optional[_Union[SysBorder, _Mapping]] = ..., toapp_plan_status: _Optional[_Union[SysPlanJobStatus, _Mapping]] = ..., toapp_ul_fprogress: _Optional[_Union[SysUploadFileProgress, _Mapping]] = ..., todev_deljobplan: _Optional[_Union[SysDelJobPlan, _Mapping]] = ..., todev_mow_info_up: _Optional[int] = ..., todev_knife_ctrl: _Optional[_Union[SysKnifeControl, _Mapping]] = ..., todev_reset_system: _Optional[int] = ..., todev_reset_system_status: _Optional[_Union[SysResetSystemStatus, _Mapping]] = ..., systemRapidStateTunnel: _Optional[_Union[systemRapidStateTunnel_msg, _Mapping]] = ..., systemTardStateTunnel: _Optional[_Union[systemTardStateTunnel_msg, _Mapping]] = ..., systemUpdateBuf: _Optional[_Union[systemUpdateBuf_msg, _Mapping]] = ..., todev_time_ctrl_light: _Optional[_Union[TimeCtrlLight, _Mapping]] = ..., systemTmpCycleTx: _Optional[_Union[systemTmpCycleTx_msg, _Mapping]] = ..., todev_off_chip_flash: _Optional[_Union[SysOffChipFlash, _Mapping]] = ..., todev_get_dev_fw_info: _Optional[int] = ..., toapp_dev_fw_info: _Optional[_Union[device_fw_info, _Mapping]] = ..., todev_lora_cfg_req: _Optional[_Union[LoraCfgReq, _Mapping]] = ..., toapp_lora_cfg_rsp: _Optional[_Union[LoraCfgRsp, _Mapping]] = ..., mow_to_app_info: _Optional[_Union[mow_to_app_info_t, _Mapping]] = ..., device_product_type_info: _Optional[_Union[device_product_type_info_t, _Mapping]] = ..., mow_to_app_qctools_info: _Optional[_Union[mow_to_app_qctools_info_t, _Mapping]] = ..., todev_report_cfg: _Optional[_Union[report_info_cfg, _Mapping]] = ..., toapp_report_data: _Optional[_Union[report_info_data, _Mapping]] = ..., simulation_cmd: _Optional[_Union[mCtrlSimulationCmdData, _Mapping]] = ..., app_to_dev_get_mqtt_config_msg: _Optional[_Union[app_to_dev_get_mqtt_config_t, _Mapping]] = ..., dev_to_app_get_mqtt_config_msg: _Optional[_Union[dev_to_app_get_mqtt_config_t, _Mapping]] = ..., app_to_dev_set_mqtt_rtk_msg: _Optional[_Union[app_to_dev_set_mqtt_rtk_t, _Mapping]] = ..., dev_to_app_set_mqtt_rtk_msg: _Optional[_Union[dev_to_app_set_mqtt_rtk_t, _Mapping]] = ..., todev_reset_blade_used_time: _Optional[int] = ..., todev_reset_blade_used_time_status: _Optional[_Union[SysResetBladeUsedTimeStatus, _Mapping]] = ..., todev_factor_reset_system: _Optional[int] = ..., blade_used_warn_time: _Optional[_Union[user_set_blade_used_warn_time, _Mapping]] = ..., debug_common_report: _Optional[_Union[debug_common_report_t, _Mapping]] = ..., debug_errocode_report: _Optional[_Union[debug_errocode_report_t, _Mapping]] = ..., debug_enable: _Optional[_Union[debug_enable_t, _Mapping]] = ..., debug_cfg_read: _Optional[_Union[debug_cfg_read_t, _Mapping]] = ..., debug_cfg_write: _Optional[_Union[debug_cfg_write_t, _Mapping]] = ..., debug_res_cfg_ability: _Optional[_Union[debug_res_cfg_ability_t, _Mapping]] = ..., to_dev_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., to_app_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., response_set_mode: _Optional[_Union[response_set_mode_t, _Mapping]] = ..., report_info: _Optional[_Union[report_info_t, _Mapping]] = ..., set_work_mode: _Optional[_Union[work_mode_t, _Mapping]] = ..., set_special_mode: _Optional[_Union[special_mode_t, _Mapping]] = ..., set_peripherals: _Optional[_Union[set_peripherals_t, _Mapping]] = ..., to_dev_set_sun_time: _Optional[_Union[debug_sun_time_t, _Mapping]] = ..., to_dev_remote_reset: _Optional[_Union[remote_reset_req_t, _Mapping]] = ..., to_app_remote_reset: _Optional[_Union[remote_reset_rsp_t, _Mapping]] = ..., current_cutter_mode: _Optional[_Union[rpt_cutter_rpm, _Mapping]] = ...) -> None: ...
+    def __init__(self, toapp_batinfo: _Optional[_Union[SysBatUp, _Mapping]] = ..., toapp_work_state: _Optional[_Union[SysWorkState, _Mapping]] = ..., todev_time_zone: _Optional[_Union[SysSetTimeZone, _Mapping]] = ..., todev_data_time: _Optional[_Union[SysSetDateTime, _Mapping]] = ..., job_plan: _Optional[_Union[SysJobPlan, _Mapping]] = ..., toapp_err_code: _Optional[_Union[SysDevErrCode, _Mapping]] = ..., todev_job_plan_time: _Optional[_Union[SysJobPlanTime, _Mapping]] = ..., toapp_mow_info: _Optional[_Union[SysMowInfo, _Mapping]] = ..., bidire_comm_cmd: _Optional[_Union[SysCommCmd, _Mapping]] = ..., plan_job_del: _Optional[int] = ..., border: _Optional[_Union[SysBorder, _Mapping]] = ..., toapp_plan_status: _Optional[_Union[SysPlanJobStatus, _Mapping]] = ..., toapp_ul_fprogress: _Optional[_Union[SysUploadFileProgress, _Mapping]] = ..., todev_deljobplan: _Optional[_Union[SysDelJobPlan, _Mapping]] = ..., todev_mow_info_up: _Optional[int] = ..., todev_knife_ctrl: _Optional[_Union[SysKnifeControl, _Mapping]] = ..., todev_reset_system: _Optional[int] = ..., todev_reset_system_status: _Optional[_Union[SysResetSystemStatus, _Mapping]] = ..., systemRapidStateTunnel: _Optional[_Union[systemRapidStateTunnel_msg, _Mapping]] = ..., systemTardStateTunnel: _Optional[_Union[systemTardStateTunnel_msg, _Mapping]] = ..., systemUpdateBuf: _Optional[_Union[systemUpdateBuf_msg, _Mapping]] = ..., todev_time_ctrl_light: _Optional[_Union[TimeCtrlLight, _Mapping]] = ..., systemTmpCycleTx: _Optional[_Union[systemTmpCycleTx_msg, _Mapping]] = ..., todev_off_chip_flash: _Optional[_Union[SysOffChipFlash, _Mapping]] = ..., todev_get_dev_fw_info: _Optional[int] = ..., toapp_dev_fw_info: _Optional[_Union[device_fw_info, _Mapping]] = ..., todev_lora_cfg_req: _Optional[_Union[LoraCfgReq, _Mapping]] = ..., toapp_lora_cfg_rsp: _Optional[_Union[LoraCfgRsp, _Mapping]] = ..., mow_to_app_info: _Optional[_Union[mow_to_app_info_t, _Mapping]] = ..., device_product_type_info: _Optional[_Union[device_product_type_info_t, _Mapping]] = ..., mow_to_app_qctools_info: _Optional[_Union[mow_to_app_qctools_info_t, _Mapping]] = ..., todev_report_cfg: _Optional[_Union[report_info_cfg, _Mapping]] = ..., toapp_report_data: _Optional[_Union[report_info_data, _Mapping]] = ..., simulation_cmd: _Optional[_Union[mCtrlSimulationCmdData, _Mapping]] = ..., app_to_dev_get_mqtt_config_msg: _Optional[_Union[app_to_dev_get_mqtt_config_t, _Mapping]] = ..., dev_to_app_get_mqtt_config_msg: _Optional[_Union[dev_to_app_get_mqtt_config_t, _Mapping]] = ..., app_to_dev_set_mqtt_rtk_msg: _Optional[_Union[app_to_dev_set_mqtt_rtk_t, _Mapping]] = ..., dev_to_app_set_mqtt_rtk_msg: _Optional[_Union[dev_to_app_set_mqtt_rtk_t, _Mapping]] = ..., todev_reset_blade_used_time: _Optional[int] = ..., todev_reset_blade_used_time_status: _Optional[_Union[SysResetBladeUsedTimeStatus, _Mapping]] = ..., todev_factor_reset_system: _Optional[int] = ..., blade_used_warn_time: _Optional[_Union[user_set_blade_used_warn_time, _Mapping]] = ..., debug_common_report: _Optional[_Union[debug_common_report_t, _Mapping]] = ..., debug_errocode_report: _Optional[_Union[debug_errocode_report_t, _Mapping]] = ..., debug_enable: _Optional[_Union[debug_enable_t, _Mapping]] = ..., debug_cfg_read: _Optional[_Union[debug_cfg_read_t, _Mapping]] = ..., debug_cfg_write: _Optional[_Union[debug_cfg_write_t, _Mapping]] = ..., debug_res_cfg_ability: _Optional[_Union[debug_res_cfg_ability_t, _Mapping]] = ..., to_dev_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., to_app_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., response_set_mode: _Optional[_Union[response_set_mode_t, _Mapping]] = ..., report_info: _Optional[_Union[report_info_t, _Mapping]] = ..., set_work_mode: _Optional[_Union[work_mode_t, _Mapping]] = ..., set_special_mode: _Optional[_Union[special_mode_t, _Mapping]] = ..., set_peripherals: _Optional[_Union[set_peripherals_t, _Mapping]] = ..., to_dev_set_sun_time: _Optional[_Union[debug_sun_time_t, _Mapping]] = ..., to_dev_remote_reset: _Optional[_Union[remote_reset_req_t, _Mapping]] = ..., to_app_remote_reset: _Optional[_Union[remote_reset_rsp_t, _Mapping]] = ..., current_cutter_mode: _Optional[_Union[rpt_cutter_rpm, _Mapping]] = ..., app_downlink_cmd: _Optional[_Union[app_downlink_cmd_t, _Mapping]] = ..., to_dev_self_check_info_req: _Optional[_Union[self_check_info_req, _Mapping]] = ..., to_app_self_check_info_rsp: _Optional[_Union[self_check_info_rsp, _Mapping]] = ..., iot_product_param_req: _Optional[_Union[iot_product_param_req_t, _Mapping]] = ..., iot_product_param_rsp: _Optional[_Union[iot_product_param_rsp_t, _Mapping]] = ..., task_report_interaction: _Optional[_Union[task_report_interaction_t, _Mapping]] = ..., task_report_req: _Optional[_Union[FileTransferRequest, _Mapping]] = ..., task_report_resp: _Optional[_Union[FileTransferResponse, _Mapping]] = ..., task_report_result: _Optional[_Union[FileTransferResult, _Mapping]] = ..., bms_ctrl_info_msg: _Optional[_Union[BmsCtrlInfoMsg, _Mapping]] = ..., to_set_dev_low_power_cmd: _Optional[_Union[dev_low_power_set_info, _Mapping]] = ..., to_get_dev_low_power_cmd: _Optional[_Union[dev_low_power_get, _Mapping]] = ..., gfsk_cfg_cmd: _Optional[_Union[gfsk_cfg_cmd_t, _Mapping]] = ...) -> None: ...
 
 class QCAppTestConditions(_message.Message):
     __slots__ = ["cond_type", "double_val", "float_val", "int_val", "string_val"]
@@ -477,6 +620,28 @@ class TimeCtrlLight(_message.Message):
     start_min: int
     def __init__(self, operate: _Optional[int] = ..., enable: _Optional[int] = ..., start_hour: _Optional[int] = ..., start_min: _Optional[int] = ..., end_hour: _Optional[int] = ..., end_min: _Optional[int] = ..., action: _Optional[int] = ...) -> None: ...
 
+class app_downlink_cmd_t(_message.Message):
+    __slots__ = ["ack", "area_clean", "bottom_type", "cmd", "docking_time", "floor_speed", "line_info", "map_info", "wall_material"]
+    ACK_FIELD_NUMBER: _ClassVar[int]
+    AREA_CLEAN_FIELD_NUMBER: _ClassVar[int]
+    BOTTOM_TYPE_FIELD_NUMBER: _ClassVar[int]
+    CMD_FIELD_NUMBER: _ClassVar[int]
+    DOCKING_TIME_FIELD_NUMBER: _ClassVar[int]
+    FLOOR_SPEED_FIELD_NUMBER: _ClassVar[int]
+    LINE_INFO_FIELD_NUMBER: _ClassVar[int]
+    MAP_INFO_FIELD_NUMBER: _ClassVar[int]
+    WALL_MATERIAL_FIELD_NUMBER: _ClassVar[int]
+    ack: ack_to_app_type_e
+    area_clean: AreaClean
+    bottom_type: pool_bottom_type_e
+    cmd: app_downlink_cmd_type_e
+    docking_time: DockingTime
+    floor_speed: float
+    line_info: MapInfo
+    map_info: MapInfo
+    wall_material: int
+    def __init__(self, cmd: _Optional[_Union[app_downlink_cmd_type_e, str]] = ..., ack: _Optional[_Union[ack_to_app_type_e, str]] = ..., wall_material: _Optional[int] = ..., bottom_type: _Optional[_Union[pool_bottom_type_e, str]] = ..., floor_speed: _Optional[float] = ..., map_info: _Optional[_Union[MapInfo, _Mapping]] = ..., line_info: _Optional[_Union[MapInfo, _Mapping]] = ..., docking_time: _Optional[_Union[DockingTime, _Mapping]] = ..., area_clean: _Optional[_Union[AreaClean, _Mapping]] = ...) -> None: ...
+
 class app_to_dev_get_mqtt_config_t(_message.Message):
     __slots__ = ["get_mqtt_config"]
     GET_MQTT_CONFIG_FIELD_NUMBER: _ClassVar[int]
@@ -575,33 +740,73 @@ class debug_sun_time_t(_message.Message):
     sunSetTime: int
     def __init__(self, subCmd: _Optional[int] = ..., sunRiseTime: _Optional[int] = ..., sunSetTime: _Optional[int] = ...) -> None: ...
 
+class dev_low_power_get(_message.Message):
+    __slots__ = ["charging_low_power", "uncharging_low_power"]
+    CHARGING_LOW_POWER_FIELD_NUMBER: _ClassVar[int]
+    UNCHARGING_LOW_POWER_FIELD_NUMBER: _ClassVar[int]
+    charging_low_power: int
+    uncharging_low_power: int
+    def __init__(self, uncharging_low_power: _Optional[int] = ..., charging_low_power: _Optional[int] = ...) -> None: ...
+
+class dev_low_power_set_info(_message.Message):
+    __slots__ = ["charging_low_power", "set_charging_lowpower_sta", "set_uncharging_lowpower_sta", "uncharging_low_power"]
+    CHARGING_LOW_POWER_FIELD_NUMBER: _ClassVar[int]
+    SET_CHARGING_LOWPOWER_STA_FIELD_NUMBER: _ClassVar[int]
+    SET_UNCHARGING_LOWPOWER_STA_FIELD_NUMBER: _ClassVar[int]
+    UNCHARGING_LOW_POWER_FIELD_NUMBER: _ClassVar[int]
+    charging_low_power: int
+    set_charging_lowpower_sta: bool
+    set_uncharging_lowpower_sta: bool
+    uncharging_low_power: int
+    def __init__(self, set_uncharging_lowpower_sta: bool = ..., uncharging_low_power: _Optional[int] = ..., set_charging_lowpower_sta: bool = ..., charging_low_power: _Optional[int] = ...) -> None: ...
+
 class dev_statue_t(_message.Message):
-    __slots__ = ["bat_val", "ble_rssi", "charge_status", "iot_connect_status", "model", "pump_status", "sys_status", "wheel_status", "wifi_available", "wifi_connect_status", "wifi_rssi", "work_mode"]
+    __slots__ = ["adverse_ble_rssi", "adverse_iot_connect_status", "adverse_wifi_connect_status", "adverse_wifi_rssi", "bat_val", "ble_rssi", "charge_status", "custom_list", "iot_connect_status", "iot_supported", "lora_connect", "model", "operating_power", "pump_status", "speed", "sys_status", "wheel_status", "wifi_available", "wifi_connect_status", "wifi_rssi", "work_mode", "work_time"]
+    ADVERSE_BLE_RSSI_FIELD_NUMBER: _ClassVar[int]
+    ADVERSE_IOT_CONNECT_STATUS_FIELD_NUMBER: _ClassVar[int]
+    ADVERSE_WIFI_CONNECT_STATUS_FIELD_NUMBER: _ClassVar[int]
+    ADVERSE_WIFI_RSSI_FIELD_NUMBER: _ClassVar[int]
     BAT_VAL_FIELD_NUMBER: _ClassVar[int]
     BLE_RSSI_FIELD_NUMBER: _ClassVar[int]
     CHARGE_STATUS_FIELD_NUMBER: _ClassVar[int]
+    CUSTOM_LIST_FIELD_NUMBER: _ClassVar[int]
     IOT_CONNECT_STATUS_FIELD_NUMBER: _ClassVar[int]
+    IOT_SUPPORTED_FIELD_NUMBER: _ClassVar[int]
+    LORA_CONNECT_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
+    OPERATING_POWER_FIELD_NUMBER: _ClassVar[int]
     PUMP_STATUS_FIELD_NUMBER: _ClassVar[int]
+    SPEED_FIELD_NUMBER: _ClassVar[int]
     SYS_STATUS_FIELD_NUMBER: _ClassVar[int]
     WHEEL_STATUS_FIELD_NUMBER: _ClassVar[int]
     WIFI_AVAILABLE_FIELD_NUMBER: _ClassVar[int]
     WIFI_CONNECT_STATUS_FIELD_NUMBER: _ClassVar[int]
     WIFI_RSSI_FIELD_NUMBER: _ClassVar[int]
     WORK_MODE_FIELD_NUMBER: _ClassVar[int]
+    WORK_TIME_FIELD_NUMBER: _ClassVar[int]
+    adverse_ble_rssi: int
+    adverse_iot_connect_status: int
+    adverse_wifi_connect_status: int
+    adverse_wifi_rssi: int
     bat_val: int
     ble_rssi: int
     charge_status: int
+    custom_list: _containers.RepeatedScalarFieldContainer[int]
     iot_connect_status: int
+    iot_supported: bool
+    lora_connect: int
     model: int
+    operating_power: int
     pump_status: int
+    speed: int
     sys_status: int
     wheel_status: int
     wifi_available: int
     wifi_connect_status: int
     wifi_rssi: int
     work_mode: int
-    def __init__(self, sys_status: _Optional[int] = ..., charge_status: _Optional[int] = ..., bat_val: _Optional[int] = ..., wheel_status: _Optional[int] = ..., pump_status: _Optional[int] = ..., work_mode: _Optional[int] = ..., model: _Optional[int] = ..., ble_rssi: _Optional[int] = ..., wifi_rssi: _Optional[int] = ..., wifi_connect_status: _Optional[int] = ..., iot_connect_status: _Optional[int] = ..., wifi_available: _Optional[int] = ...) -> None: ...
+    work_time: int
+    def __init__(self, sys_status: _Optional[int] = ..., charge_status: _Optional[int] = ..., bat_val: _Optional[int] = ..., wheel_status: _Optional[int] = ..., pump_status: _Optional[int] = ..., work_mode: _Optional[int] = ..., model: _Optional[int] = ..., ble_rssi: _Optional[int] = ..., wifi_rssi: _Optional[int] = ..., wifi_connect_status: _Optional[int] = ..., iot_connect_status: _Optional[int] = ..., wifi_available: _Optional[int] = ..., lora_connect: _Optional[int] = ..., work_time: _Optional[int] = ..., adverse_ble_rssi: _Optional[int] = ..., adverse_wifi_rssi: _Optional[int] = ..., adverse_wifi_connect_status: _Optional[int] = ..., adverse_iot_connect_status: _Optional[int] = ..., custom_list: _Optional[_Iterable[int]] = ..., iot_supported: bool = ..., speed: _Optional[int] = ..., operating_power: _Optional[int] = ...) -> None: ...
 
 class dev_to_app_get_mqtt_config_t(_message.Message):
     __slots__ = ["rtk_base_num", "rtk_status"]
@@ -646,6 +851,48 @@ class fpv_to_app_info_t(_message.Message):
     mobile_net_available: int
     wifi_available: int
     def __init__(self, fpv_flag: _Optional[int] = ..., wifi_available: _Optional[int] = ..., mobile_net_available: _Optional[int] = ...) -> None: ...
+
+class gfsk_cfg_cmd_t(_message.Message):
+    __slots__ = ["cfg", "cmd", "result"]
+    CFG_FIELD_NUMBER: _ClassVar[int]
+    CMD_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    cfg: str
+    cmd: int
+    result: int
+    def __init__(self, cmd: _Optional[int] = ..., result: _Optional[int] = ..., cfg: _Optional[str] = ...) -> None: ...
+
+class iot_product_param_req_t(_message.Message):
+    __slots__ = ["account", "cmd", "origin_device_name", "test_key"]
+    ACCOUNT_FIELD_NUMBER: _ClassVar[int]
+    CMD_FIELD_NUMBER: _ClassVar[int]
+    ORIGIN_DEVICE_NAME_FIELD_NUMBER: _ClassVar[int]
+    TEST_KEY_FIELD_NUMBER: _ClassVar[int]
+    account: int
+    cmd: int
+    origin_device_name: str
+    test_key: iot_quaternion
+    def __init__(self, account: _Optional[int] = ..., cmd: _Optional[int] = ..., origin_device_name: _Optional[str] = ..., test_key: _Optional[_Union[iot_quaternion, _Mapping]] = ...) -> None: ...
+
+class iot_product_param_rsp_t(_message.Message):
+    __slots__ = ["param", "result"]
+    PARAM_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    param: iot_quaternion
+    result: int
+    def __init__(self, result: _Optional[int] = ..., param: _Optional[_Union[iot_quaternion, _Mapping]] = ...) -> None: ...
+
+class iot_quaternion(_message.Message):
+    __slots__ = ["device_name", "device_secret", "product_key", "product_secret"]
+    DEVICE_NAME_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_SECRET_FIELD_NUMBER: _ClassVar[int]
+    PRODUCT_KEY_FIELD_NUMBER: _ClassVar[int]
+    PRODUCT_SECRET_FIELD_NUMBER: _ClassVar[int]
+    device_name: str
+    device_secret: str
+    product_key: str
+    product_secret: str
+    def __init__(self, product_key: _Optional[str] = ..., product_secret: _Optional[str] = ..., device_name: _Optional[str] = ..., device_secret: _Optional[str] = ...) -> None: ...
 
 class lock_state_t(_message.Message):
     __slots__ = ["lock_state"]
@@ -843,9 +1090,10 @@ class report_info_t(_message.Message):
     def __init__(self, dev_status: _Optional[_Union[dev_statue_t, _Mapping]] = ...) -> None: ...
 
 class response_set_mode_t(_message.Message):
-    __slots__ = ["cur_work_mode", "cur_work_time", "end_work_time", "interruptflag", "set_work_mode", "start_work_time", "statue"]
+    __slots__ = ["cur_work_mode", "cur_work_time", "custom_list", "end_work_time", "interruptflag", "set_work_mode", "start_work_time", "statue"]
     CUR_WORK_MODE_FIELD_NUMBER: _ClassVar[int]
     CUR_WORK_TIME_FIELD_NUMBER: _ClassVar[int]
+    CUSTOM_LIST_FIELD_NUMBER: _ClassVar[int]
     END_WORK_TIME_FIELD_NUMBER: _ClassVar[int]
     INTERRUPTFLAG_FIELD_NUMBER: _ClassVar[int]
     SET_WORK_MODE_FIELD_NUMBER: _ClassVar[int]
@@ -853,12 +1101,13 @@ class response_set_mode_t(_message.Message):
     STATUE_FIELD_NUMBER: _ClassVar[int]
     cur_work_mode: int
     cur_work_time: int
+    custom_list: _containers.RepeatedScalarFieldContainer[int]
     end_work_time: int
     interruptflag: int
     set_work_mode: int
     start_work_time: int
     statue: int
-    def __init__(self, statue: _Optional[int] = ..., set_work_mode: _Optional[int] = ..., cur_work_mode: _Optional[int] = ..., start_work_time: _Optional[int] = ..., end_work_time: _Optional[int] = ..., interruptflag: _Optional[int] = ..., cur_work_time: _Optional[int] = ...) -> None: ...
+    def __init__(self, statue: _Optional[int] = ..., set_work_mode: _Optional[int] = ..., cur_work_mode: _Optional[int] = ..., start_work_time: _Optional[int] = ..., end_work_time: _Optional[int] = ..., interruptflag: _Optional[int] = ..., cur_work_time: _Optional[int] = ..., custom_list: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class rpt_basestation_info(_message.Message):
     __slots__ = ["basestation_status", "connect_status_since_poweron", "ver_build", "ver_major", "ver_minor", "ver_patch"]
@@ -931,11 +1180,12 @@ class rpt_dev_location(_message.Message):
     def __init__(self, real_pos_x: _Optional[int] = ..., real_pos_y: _Optional[int] = ..., real_toward: _Optional[int] = ..., pos_type: _Optional[int] = ..., zone_hash: _Optional[int] = ..., bol_hash: _Optional[int] = ...) -> None: ...
 
 class rpt_dev_status(_message.Message):
-    __slots__ = ["battery_val", "charge_state", "collector_status", "fpv_info", "last_status", "lock_state", "mnet_info", "self_check_status", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
+    __slots__ = ["battery_val", "charge_state", "collector_status", "fpv_info", "headlamp_status", "last_status", "lock_state", "mnet_info", "self_check_status", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
     BATTERY_VAL_FIELD_NUMBER: _ClassVar[int]
     CHARGE_STATE_FIELD_NUMBER: _ClassVar[int]
     COLLECTOR_STATUS_FIELD_NUMBER: _ClassVar[int]
     FPV_INFO_FIELD_NUMBER: _ClassVar[int]
+    HEADLAMP_STATUS_FIELD_NUMBER: _ClassVar[int]
     LAST_STATUS_FIELD_NUMBER: _ClassVar[int]
     LOCK_STATE_FIELD_NUMBER: _ClassVar[int]
     MNET_INFO_FIELD_NUMBER: _ClassVar[int]
@@ -949,6 +1199,7 @@ class rpt_dev_status(_message.Message):
     charge_state: int
     collector_status: collector_status_t
     fpv_info: fpv_to_app_info_t
+    headlamp_status: int
     last_status: int
     lock_state: lock_state_t
     mnet_info: _dev_net_pb2.MnetInfo
@@ -958,7 +1209,7 @@ class rpt_dev_status(_message.Message):
     sys_time_stamp: int
     vio_survival_info: vio_survival_info_t
     vslam_status: int
-    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ..., self_check_status: _Optional[int] = ..., fpv_info: _Optional[_Union[fpv_to_app_info_t, _Mapping]] = ...) -> None: ...
+    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ..., self_check_status: _Optional[int] = ..., fpv_info: _Optional[_Union[fpv_to_app_info_t, _Mapping]] = ..., headlamp_status: _Optional[int] = ...) -> None: ...
 
 class rpt_lora(_message.Message):
     __slots__ = ["lora_connection_status", "pair_code_channel", "pair_code_locid", "pair_code_netid", "pair_code_scan"]
@@ -1068,6 +1319,30 @@ class rpt_work(_message.Message):
     ub_zone_hash: int
     def __init__(self, plan: _Optional[int] = ..., path_hash: _Optional[int] = ..., progress: _Optional[int] = ..., area: _Optional[int] = ..., bp_info: _Optional[int] = ..., bp_hash: _Optional[int] = ..., bp_pos_x: _Optional[int] = ..., bp_pos_y: _Optional[int] = ..., real_path_num: _Optional[int] = ..., path_pos_x: _Optional[int] = ..., path_pos_y: _Optional[int] = ..., ub_zone_hash: _Optional[int] = ..., ub_path_hash: _Optional[int] = ..., init_cfg_hash: _Optional[int] = ..., ub_ecode_hash: _Optional[int] = ..., nav_run_mode: _Optional[int] = ..., test_mode_status: _Optional[int] = ..., man_run_speed: _Optional[int] = ..., nav_edit_status: _Optional[int] = ..., knife_height: _Optional[int] = ..., nav_heading_state: _Optional[_Union[nav_heading_state_t, _Mapping]] = ..., cutter_offset: _Optional[float] = ..., cutter_width: _Optional[float] = ...) -> None: ...
 
+class self_check_info_req(_message.Message):
+    __slots__ = ["self_check_reqid"]
+    SELF_CHECK_REQID_FIELD_NUMBER: _ClassVar[int]
+    self_check_reqid: int
+    def __init__(self, self_check_reqid: _Optional[int] = ...) -> None: ...
+
+class self_check_info_rsp(_message.Message):
+    __slots__ = ["check_result", "sc_data", "self_check_rspid"]
+    CHECK_RESULT_FIELD_NUMBER: _ClassVar[int]
+    SC_DATA_FIELD_NUMBER: _ClassVar[int]
+    SELF_CHECK_RSPID_FIELD_NUMBER: _ClassVar[int]
+    check_result: int
+    sc_data: _containers.RepeatedCompositeFieldContainer[self_check_rsp]
+    self_check_rspid: int
+    def __init__(self, check_result: _Optional[int] = ..., self_check_rspid: _Optional[int] = ..., sc_data: _Optional[_Iterable[_Union[self_check_rsp, _Mapping]]] = ...) -> None: ...
+
+class self_check_rsp(_message.Message):
+    __slots__ = ["scp", "scr"]
+    SCP_FIELD_NUMBER: _ClassVar[int]
+    SCR_FIELD_NUMBER: _ClassVar[int]
+    scp: int
+    scr: int
+    def __init__(self, scp: _Optional[int] = ..., scr: _Optional[int] = ...) -> None: ...
+
 class set_peripherals_t(_message.Message):
     __slots__ = ["buzz_enable"]
     BUZZ_ENABLE_FIELD_NUMBER: _ClassVar[int]
@@ -1113,6 +1388,16 @@ class systemUpdateBuf_msg(_message.Message):
     UPDATE_BUF_DATA_FIELD_NUMBER: _ClassVar[int]
     update_buf_data: _containers.RepeatedScalarFieldContainer[int]
     def __init__(self, update_buf_data: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class task_report_interaction_t(_message.Message):
+    __slots__ = ["cmd", "data", "type"]
+    CMD_FIELD_NUMBER: _ClassVar[int]
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    cmd: int
+    data: bytes
+    type: int
+    def __init__(self, type: _Optional[int] = ..., cmd: _Optional[int] = ..., data: _Optional[bytes] = ...) -> None: ...
 
 class user_set_blade_used_warn_time(_message.Message):
     __slots__ = ["blade_used_warn_time"]
@@ -1183,10 +1468,16 @@ class vision_statistic_msg(_message.Message):
     def __init__(self, mean: _Optional[float] = ..., var: _Optional[float] = ...) -> None: ...
 
 class work_mode_t(_message.Message):
-    __slots__ = ["work_mode"]
+    __slots__ = ["custom_list", "operating_power", "speed", "work_mode"]
+    CUSTOM_LIST_FIELD_NUMBER: _ClassVar[int]
+    OPERATING_POWER_FIELD_NUMBER: _ClassVar[int]
+    SPEED_FIELD_NUMBER: _ClassVar[int]
     WORK_MODE_FIELD_NUMBER: _ClassVar[int]
+    custom_list: _containers.RepeatedScalarFieldContainer[int]
+    operating_power: int
+    speed: int
     work_mode: int
-    def __init__(self, work_mode: _Optional[int] = ...) -> None: ...
+    def __init__(self, work_mode: _Optional[int] = ..., custom_list: _Optional[_Iterable[int]] = ..., speed: _Optional[int] = ..., operating_power: _Optional[int] = ...) -> None: ...
 
 class Operation(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = []
@@ -1210,4 +1501,19 @@ class rpt_act(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = []
 
 class Command_Result(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class SpinoSysStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class pool_bottom_type_e(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class app_downlink_cmd_type_e(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class ack_to_app_type_e(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class wall_material_e(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = []

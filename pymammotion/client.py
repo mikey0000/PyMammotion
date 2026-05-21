@@ -1318,7 +1318,7 @@ class MammotionClient:
             f"/sys/{record.product_key}/{record.device_name}/app/down/thing/status",
             # f"/sys/{record.product_key}/{record.device_name}/app/down/thing/properties",
         ):
-            transport.add_topic(topic)
+            await transport.add_topic(topic)
         transport.register_device(record.product_key, record.device_name, iot_id)
 
         handle = DeviceHandle(

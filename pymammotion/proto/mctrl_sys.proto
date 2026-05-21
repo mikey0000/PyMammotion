@@ -453,6 +453,7 @@ message rpt_dev_status {
   lock_state_t lock_state = 11;
   uint32 self_check_status = 12;
   fpv_to_app_info_t fpv_info = 13;
+  int32 headlamp_status = 15;
 }
 
 message net_speed {
@@ -616,6 +617,7 @@ message response_set_mode_t {
   int64 end_work_time = 5;
   int32 interruptflag = 6;
   int32 cur_work_time = 7;
+  repeated int32 custom_list = 8;
 }
 
 message rpt_cutter_rpm {
@@ -636,6 +638,16 @@ message dev_statue_t {
   int32 wifi_connect_status = 10;
   int32 iot_connect_status = 11;
   int32 wifi_available = 12;
+  int32 lora_connect = 13;
+  int32 work_time = 14;
+  int32 adverse_ble_rssi = 15;
+  int32 adverse_wifi_rssi = 16;
+  int32 adverse_wifi_connect_status = 17;
+  int32 adverse_iot_connect_status = 18;
+  repeated int32 custom_list = 19;
+  bool iot_supported = 20;
+  fixed32 speed = 21;
+  fixed32 operating_power = 22;
 }
 
 message report_info_t {
@@ -644,6 +656,9 @@ message report_info_t {
 
 message work_mode_t {
   int32 work_mode = 1;
+  repeated int32 custom_list = 2;
+  fixed32 speed = 10;
+  fixed32 operating_power = 11;
 }
 
 enum SpinoSysStatus {
@@ -666,6 +681,8 @@ enum app_downlink_cmd_type_e {
   app_floor_speed_cmd = 2;
   app_get_map_cmd = 3;
   app_get_line_cmd = 4;
+  app_docking_time_cmd = 5;
+  app_area_clean_cmd = 6;
 }
 
 enum ack_to_app_type_e {
@@ -695,6 +712,21 @@ message MapInfo {
   int32 pack_num = 5;
 }
 
+message DockingTimePoint {
+  int32 hours = 1;
+  int32 minutes = 2;
+}
+
+message DockingTime {
+  int32 type = 1;
+  DockingTimePoint time = 2;
+}
+
+message AreaClean {
+  int32 type = 1;
+  repeated MapPoints points = 2;
+}
+
 message app_downlink_cmd_t {
   app_downlink_cmd_type_e cmd = 1;
   ack_to_app_type_e ack = 2;
@@ -704,6 +736,8 @@ message app_downlink_cmd_t {
     float floor_speed = 5;
     MapInfo map_info = 6;
     MapInfo line_info = 7;
+    DockingTime docking_time = 8;
+    AreaClean area_clean = 9;
   }
 }
 
@@ -876,5 +910,26 @@ message MctlSys {
     FileTransferResponse task_report_resp = 76;
     FileTransferResult task_report_result = 77;
     BmsCtrlInfoMsg bms_ctrl_info_msg = 78;
+    dev_low_power_set_info to_set_dev_low_power_cmd = 79;
+    dev_low_power_get to_get_dev_low_power_cmd = 80;
+    gfsk_cfg_cmd_t gfsk_cfg_cmd = 81;
   }
+}
+
+message dev_low_power_get {
+  int32 uncharging_low_power = 1;
+  int32 charging_low_power = 2;
+}
+
+message dev_low_power_set_info {
+  bool set_uncharging_lowpower_sta = 1;
+  int32 uncharging_low_power = 2;
+  bool set_charging_lowpower_sta = 3;
+  int32 charging_low_power = 4;
+}
+
+message gfsk_cfg_cmd_t {
+  int32 cmd = 1;
+  int32 result = 2;
+  string cfg = 3;
 }

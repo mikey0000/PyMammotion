@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+message ModulesFwInfo {
+  int32 type = 1;
+  string component_id = 2;
+  string component_version = 3;
+}
+
+message PdtDeviceFwInfo {
+  string device_version = 1;
+  repeated ModulesFwInfo modules_info = 2;
+  int32 result = 3;
+}
+
+message ModulesName {
+  string modules_name = 1;
+}
+
+message PdtItem {
+  string data_msg = 1;
+  int32 data_state = 2;
+}
+
+message PdtInfoReq {
+  string sesstion_id = 1;
+  int32 pdt_type = 2;
+}
+
+message PdtInfoRsp {
+  string sesstion_id = 1;
+  oneof pdt_info_rsp_details {
+    ModulesName modules = 2;
+    PdtItem pdt_data = 3;
+    PdtDeviceFwInfo fw_version = 4;
+  }
+}
+
+message PdtTestMod {
+  int32 testmod = 1;
+}
+
+message PdtTestReq {
+  int32 control_result = 1;
+}
+
+message PdtMessage {
+  oneof sub_pdt_type {
+    PdtInfoReq to_dev_get_pdt_info_req = 1;
+    PdtInfoRsp to_app_get_pdt_info_rsp = 2;
+    PdtTestMod to_dev_control_pdt_test_req = 3;
+    PdtTestReq to_app_result_pdt_test_rsp = 4;
+  }
+}

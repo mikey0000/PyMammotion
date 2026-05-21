@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+message PlanJobSet {
+  int32 cmd = 1;
+  int32 work_mode = 2;
+  int32 sub_mode = 3;
+  string userid = 4;
+  string deviceid = 5;
+  int32 starttime = 6;
+  int32 totalplannum = 7;
+  int32 planindex = 8;
+  int32 result = 9;
+  fixed32 speed = 10;
+  fixed32 operating_power = 11;
+  string jobname = 12;
+  string jobid = 13;
+  string startdate = 14;
+  string enddate = 15;
+  int32 triggertype = 16;
+  int32 day = 17;
+  repeated int32 weeks = 18;
+  int32 remained_seconds = 19;
+  int32 enable = 20;
+}
+
+message SpinoCtrl {
+  PlanJobSet plan_job_set = 1;
+}

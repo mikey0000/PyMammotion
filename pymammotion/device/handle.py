@@ -16,7 +16,7 @@ from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
-from pymammotion.proto import LubaMsg, RptAct, RptInfoType
+from pymammotion.proto import LubaMsg, MsgDevice, RptAct, RptInfoType
 from pymammotion.state.device_state import (
     DeviceAvailability,
     DeviceConnectionState,
@@ -418,7 +418,21 @@ class DeviceHandle:
             _logger.info("Failed to parse incoming bytes as LubaMsg (%d bytes)", len(payload))
             return
 
-        _logger.debug("← %s  %s", self.device_name, luba_msg.to_dict(include_default_values=False))
+        # Sanity-check the envelope fields. If sender/rcver parsed as a list
+        # (packed repeated bytes misidentified as field 2/3) the payload is not
+        # a LubaMsg — protobuf silently accepts alien wire formats, so we must
+        # guard here rather than letting garbage propagate to the state machine.
+        # NOTE: msgtype is intentionally NOT checked here — MsgCmdType.START == 0
+        # is the protobuf default, so legitimate cloud messages that omit msgtype
+        # would be incorrectly dropped.
+        if not isinstance(luba_msg.sender, MsgDevice) or not isinstance(luba_msg.rcver, MsgDevice):
+            _logger.debug("← %s  ignored non-LubaMsg BLE notification (%d bytes)", self.device_name, len(payload))
+            return
+
+        try:
+            _logger.debug("← %s  %s", self.device_name, luba_msg.to_dict(include_default_values=False))
+        except (ValueError, KeyError):
+            _logger.debug("← %s  <unparseable protobuf — unknown enum value>", self.device_name)
         self._last_report_at = time.monotonic()
 
         if self._availability.mqtt_reported_offline and transport_type != TransportType.BLE:
