@@ -331,11 +331,15 @@ class DeviceHandle:
         self._rearm_event.set()  # wake MQTT loop early so it sees BLE is now connected
         self._start_ble_loop()
         self._start_ble_polling_loop()
-        try:
-            cmd = self.commands.get_report_cfg()
-            await self.send_raw(cmd, prefer_ble=True)
-        except Exception:
-            _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
+        cmd = self.commands.get_report_cfg()
+
+        async def _send_report_cfg() -> None:
+            try:
+                await self.send_raw(cmd, prefer_ble=True)
+            except Exception:
+                _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
+
+        await self.queue.enqueue(_send_report_cfg, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _send_marked(self, transport: Transport, payload: bytes) -> None:
         """Send *payload* on *transport* and record the send time.
@@ -355,13 +359,14 @@ class DeviceHandle:
                 f"Transport {transport.transport_type.value} is rate-limited — send blocked"
             )
 
-        last = transport.last_send_monotonic
-        # this will always be BLE as ble constantly pings 20s ble sync messages
-        if last != 0.0 and time.monotonic() - last > 50:
-            # No commands sent for 50 seconds — prepend a BLE sync so the
-            # device knows we are still connected before the real payload.
-            sync = self.commands.send_todev_ble_sync(sync_type=3)
-            await transport.send(sync, iot_id=self.iot_id)
+        if transport.transport_type != TransportType.BLE:
+            last = transport.last_send_monotonic
+            if last != 0.0 and time.monotonic() - last > 50:
+                # No MQTT commands sent for 50 seconds — prepend a BLE sync so the
+                # device knows we are still connected before the real payload.
+                # Use send_heartbeat so this keepalive doesn't count against the cloud quota.
+                sync = self.commands.send_todev_ble_sync(sync_type=3)
+                await transport.send_heartbeat(sync, iot_id=self.iot_id)
 
         await transport.send(payload, iot_id=self.iot_id)
 
@@ -951,7 +956,10 @@ class DeviceHandle:
             count=0,
         )
 
-        await self.send_raw(cmd_bytes)
+        async def _send() -> None:
+            await self.send_raw(cmd_bytes)
+
+        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _send_report_stream_keep(self) -> None:
         """Enqueue RPT_KEEP to refresh an already-active continuous stream."""
@@ -1011,7 +1019,11 @@ class DeviceHandle:
             timeout=timeout,
             count=count,
         )
-        await self.send_raw(cmd_bytes)
+
+        async def _send() -> None:
+            await self.send_raw(cmd_bytes)
+
+        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
     async def _enqueue_ble_stream_command(self, act: RptAct, count: int) -> None:
         """Enqueue a BLE-pinned ``request_iot_sys`` config command.
@@ -1110,6 +1122,7 @@ class DeviceHandle:
         )
 
         use_ble = self.prefer_ble if prefer_ble is None else prefer_ble
+        _ble_fallback = False  # True when BLE was intended but fell back to MQTT
         if use_ble:
             ble = self._transports.get(TransportType.BLE)
             if ble is not None and not ble.is_connected:
@@ -1122,6 +1135,7 @@ class DeviceHandle:
                         self.device_name,
                     )
                     prefer_ble = False
+                    _ble_fallback = True
                 else:
                     _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
                     try:
@@ -1137,6 +1151,7 @@ class DeviceHandle:
                                 exc,
                             )
                             prefer_ble = False  # force active_transport() to pick MQTT below
+                            _ble_fallback = True
                         else:
                             raise
         try:

@@ -139,6 +139,11 @@ Decompiled APK source (Mammotion 2.2.4.13) is available at:
 /home/michael/Downloads/Mammotion_2.2.4.13_APKPure/com.agilexrobotics/java_src/com/agilexrobotics/
 ```
 
+Decompiled APK source (Mammotion 2.3.8.201) is available at:
+```
+/home/michael/Downloads/mammotion-2-3-8-201/agilex/java_src/com/agilexrobotics/
+```
+
 Key files for protocol/logic research:
 - `mvp/fieldmower/device/HashDataManager.java` — map/hash/line/cover-path fetch logic, clearing conditions, retry logic
 - `mvp/fieldmower/device/MACarDataManager.java` — incoming message parsing, device state callbacks, calls to HashDataManager

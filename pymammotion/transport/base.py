@@ -61,6 +61,16 @@ class ReLoginRequiredError(AuthError):
         super().__init__(f"Re-login required for account '{account_id}': {reason}")
 
 
+class AccountInUseError(ReLoginRequiredError):
+    """The Aliyun account is already active in another session (distributed lock held).
+
+    Code 2152 / "distributed lock failed" from the broker means another app or
+    device has an exclusive session lock on this account.  Re-login will not help
+    until the other session releases the lock or times out.  HA-Luba should catch
+    this separately and surface a user-visible message rather than silently retrying.
+    """
+
+
 class LoginFailedError(AuthError):
     """Full re-login with stored credentials failed; user must reconfigure."""
 

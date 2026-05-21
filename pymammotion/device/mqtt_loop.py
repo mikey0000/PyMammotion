@@ -12,6 +12,7 @@ a method on it.  All state (transports, rearm event, last-send timestamps,
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import TYPE_CHECKING
 
@@ -28,11 +29,14 @@ _logger = logging.getLogger(__name__)
 _RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
 
 #: MQTT one-shot (count=1) poll cadence per device mode.  Tuned for cloud quotas.
+#: Each entry can be overridden at process startup via an environment variable:
+#:   MAMMOTION_POLL_ACTIVE_SECS, MAMMOTION_POLL_DOCKED_CHARGING_SECS,
+#:   MAMMOTION_POLL_DOCKED_FULL_SECS, MAMMOTION_POLL_IDLE_SECS
 _MQTT_POLL_INTERVAL: dict[_DeviceMode, float] = {
-    _DeviceMode.ACTIVE: 20 * 60.0,
-    _DeviceMode.DOCKED_CHARGING: 30 * 60.0,
-    _DeviceMode.DOCKED_FULL: 60 * 60.0,
-    _DeviceMode.IDLE: 15 * 60.0,
+    _DeviceMode.ACTIVE: float(os.environ.get("MAMMOTION_POLL_ACTIVE_SECS", 15 * 60)),
+    _DeviceMode.DOCKED_CHARGING: float(os.environ.get("MAMMOTION_POLL_DOCKED_CHARGING_SECS", 30 * 60)),
+    _DeviceMode.DOCKED_FULL: float(os.environ.get("MAMMOTION_POLL_DOCKED_FULL_SECS", 60 * 60)),
+    _DeviceMode.IDLE: float(os.environ.get("MAMMOTION_POLL_IDLE_SECS", 15 * 60)),
 }
 
 

@@ -251,7 +251,9 @@ class BLETransport(Transport):
                     self._ble_device,
                     self._config.device_id,
                     self._handle_disconnect,
-                    max_attempts=1,
+                    use_services_cache=True,
+                    timeout=2,
+                    max_attempts=2,
                     ble_device_callback=lambda: self._ble_device,  # type: ignore
                 )
             except BleakError as exc:
@@ -354,7 +356,10 @@ class BLETransport(Transport):
     async def disconnect(self) -> None:
         """Gracefully disconnect the BLE client."""
         if self._client is not None and self._client.is_connected:
-            await self._client.disconnect()
+            try:
+                await self._client.disconnect()
+            except BleakError as exc:
+                _logger.warning("BLETransport[%s]: failed to disconnect: %s", self._config.device_id, exc)
         self._client = None
         self._message = None
         self.clear_ble_device()

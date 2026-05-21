@@ -33,6 +33,8 @@ bytes to read for the filename string.
 
 from __future__ import annotations
 
+import dataclasses
+
 from pymammotion.data.model.hash_list import CommDataCouple, SvgMessage, SvgMessageData
 
 #: Default SVG base dimensions in metres.  Luba 1 / Yuka use 2.5 m; Luba 2 uses 4.0 m.
@@ -254,3 +256,63 @@ def build_svg_ack(incoming: SvgMessage) -> SvgMessage:
         result=0,
         svg_message=SvgMessageData(),
     )
+
+
+#: Maximum SVG payload bytes per frame (matches APK ``data_count`` constant).
+_SVG_CHUNK_SIZE: int = 500
+
+
+def chunk_svg_messages(msg: SvgMessage, chunk_size: int = _SVG_CHUNK_SIZE) -> list[SvgMessage]:
+    """Split an :class:`SvgMessage` into transport-sized frames.
+
+    The APK (``PlanMapLandFragment.sendSvgDataBean``) slices ``svg_file_data``
+    into *chunk_size*-character windows and assigns ``data_count = chunk_size``
+    on every frame.
+
+    Frame-counting conventions (from the device protocol):
+
+    - **Single frame** (``len(svg_file_data) <= chunk_size``):
+      ``total_frame=0, current_frame=0`` — the APK singles-frame convention.
+    - **Multi-frame**: 1-based ``current_frame`` from 1 to *N*,
+      ``total_frame=N``.
+
+    The input *msg* is never mutated.
+
+    Args:
+        msg:        The :class:`SvgMessage` to split.  Its ``svg_file_data``
+                    field supplies the payload to chunk.  All other fields are
+                    copied to every output frame unchanged, except for
+                    ``total_frame``, ``current_frame``, ``svg_file_data``, and
+                    ``data_count``.
+        chunk_size: Maximum number of characters per frame (default 500).
+
+    Returns:
+        A list of one or more :class:`SvgMessage` frames ready to pass to
+        :class:`~pymammotion.messaging.svg_saga.SvgSendSaga`.
+
+    """
+    data = msg.svg_message.svg_file_data
+
+    if len(data) <= chunk_size:
+        return [
+            dataclasses.replace(
+                msg,
+                svg_message=dataclasses.replace(msg.svg_message, data_count=chunk_size),
+            )
+        ]
+
+    raw_chunks = [data[i : i + chunk_size] for i in range(0, len(data), chunk_size)]
+    total = len(raw_chunks)
+    return [
+        dataclasses.replace(
+            msg,
+            total_frame=total,
+            current_frame=i + 1,
+            svg_message=dataclasses.replace(
+                msg.svg_message,
+                svg_file_data=raw_chunks[i],
+                data_count=chunk_size,
+            ),
+        )
+        for i in range(total)
+    ]

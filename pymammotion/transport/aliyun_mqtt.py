@@ -28,6 +28,7 @@ from Tea.exceptions import UnretryableException
 
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import (
+    AccountInUseError,
     ReLoginRequiredError,
     SessionExpiredError,
     Transport,
@@ -404,6 +405,12 @@ class AliyunMQTTTransport(Transport):
                             await self._dispatch_device_status(topic, raw)
                         elif topic.endswith("/account/bind_reply"):
                             code = self._handle_bind_reply(raw)
+                            if code == 2152:
+                                raise AccountInUseError(
+                                    "",
+                                    "Account is already active in another session (distributed lock held). "
+                                    "Sign out of the Mammotion app or wait for the other session to expire.",
+                                )
                             if code == 2043:
                                 raise SessionExpiredError(
                                     TransportType.CLOUD_ALIYUN,
@@ -438,6 +445,10 @@ class AliyunMQTTTransport(Transport):
                     await self._handle_fatal_auth_error(fatal)
                     raise fatal from exc
                 _logger.warning("Aliyun MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
+            except AccountInUseError as exc:
+                _logger.error("Aliyun account in use elsewhere — cannot connect: %s", exc)
+                await self._handle_fatal_auth_error(exc)
+                raise
             except SessionExpiredError as exc:
                 _logger.warning("Aliyun bind token expired — attempting credential refresh: %s", exc)
                 if self.on_auth_failure is not None:
