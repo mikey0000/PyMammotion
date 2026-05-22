@@ -36,18 +36,13 @@ from pymammotion.transport.base import (
     TransportRateLimitedError,
     TransportType,
 )
+from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
+from pymammotion.device.modes import _DeviceMode
+from pymammotion.device.mqtt_loop import mqtt_activity_loop, poll_interval
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
 from pymammotion.utility.device_type import DeviceType
 
 _T = TypeVar("_T")
-
-
-# The cadence loops live in their own modules so this file stays focused on the
-# DeviceHandle facade.  Constants and tables live with the loops; consumers that
-# need them (tests, external code) should import directly from those modules.
-from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
-from pymammotion.device.modes import _DeviceMode
-from pymammotion.device.mqtt_loop import mqtt_activity_loop, poll_interval
 
 #: Channels sent in one-shot (count=1) polls AND in the BLE continuous stream.
 _REPORT_CHANNELS: list[RptInfoType] = [
@@ -371,12 +366,12 @@ class DeviceHandle:
         if transport.transport_type != TransportType.BLE:
             last = transport.last_send_monotonic
             if last != 0.0 and time.monotonic() - last > 50:
-                # No MQTT commands sent for 50 seconds — fire a BLE sync alongside
-                # the real payload so the device knows we are still connected.
-                # Fire-and-forget so the keepalive packet doesn't add a round-trip
-                # to the user's command.  send_heartbeat keeps it off the cloud quota.
+                # No MQTT commands sent for 50 seconds — the device needs a BLE sync
+                # before it will respond to any command.  Await it so it is guaranteed
+                # to arrive before the real payload; sending concurrently (create_task)
+                # lets the payload race ahead and the device ignores it.
                 sync = self.commands.send_todev_ble_sync(sync_type=3)
-                _task = asyncio.create_task(transport.send_heartbeat(sync, iot_id=self.iot_id))
+                await transport.send_heartbeat(sync, iot_id=self.iot_id)
 
         await transport.send(payload, iot_id=self.iot_id)
         if not self._stopping:

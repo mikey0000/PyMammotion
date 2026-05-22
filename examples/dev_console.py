@@ -62,6 +62,27 @@ from pymammotion.messaging.broker import _LUBA_SUB_GROUP
 from pymammotion.transport.base import Subscription, TransportType
 
 
+def _commondata_detail(leaf_name: str, leaf_val: Any) -> str:
+    """Annotate ``todev_get_commondata`` with sync/ack distinction.
+
+    ``synchronize_hash_data`` and ``get_regional_data`` both wrap
+    ``NavGetCommData`` so they're indistinguishable by leaf name alone.
+    ``current_frame > 0`` means this is an ack of a received frame;
+    ``current_frame == 0`` means it's a fresh sync/fetch request.
+    """
+    if leaf_name != "todev_get_commondata" or leaf_val is None:
+        return ""
+    try:
+        current_frame = int(getattr(leaf_val, "current_frame", 0) or 0)
+        total_frame = int(getattr(leaf_val, "total_frame", 0) or 0)
+        hash_val = int(getattr(leaf_val, "hash", 0) or 0)
+    except (TypeError, ValueError):
+        return ""
+    if current_frame > 0:
+        return f" [ack frame={current_frame}/{total_frame} hash={hash_val}]"
+    return f" [sync hash={hash_val}]"
+
+
 class ExternalMQTT(Protocol):
     """Protocol for optional external MQTT publishers (see mammotion_to_mqtt.py)."""
 
@@ -196,10 +217,15 @@ class DevConsole:
 
     @staticmethod
     def _describe_luba_msg(msg: Any) -> str:
-        """Return ``"group.sub_name"`` (e.g. ``"nav.toapp_gethash_ack"``) for a LubaMsg.
+        """Return ``"group.sub_name[ detail]"`` (e.g. ``"nav.toapp_gethash_ack"``) for a LubaMsg.
 
         Falls back to the top-level group name when no leaf can be extracted, or
         ``"(empty)"`` if the message has no recognizable sub-group.
+
+        For ``nav.todev_get_commondata`` the inner field combo is annotated so a
+        ``synchronize_hash_data`` (sub_cmd=1, current_frame=0) can be distinguished
+        from a ``get_regional_data`` ack (current_frame>0) — both wrap the same
+        protobuf field and would otherwise be indistinguishable.
         """
         import betterproto2
 
@@ -212,9 +238,10 @@ class DevConsole:
         leaf_group = _LUBA_SUB_GROUP.get(sub_name)
         if leaf_group and sub_val is not None:
             try:
-                leaf_name, _ = betterproto2.which_one_of(sub_val, leaf_group)
+                leaf_name, leaf_val = betterproto2.which_one_of(sub_val, leaf_group)
                 if leaf_name:
-                    return f"{sub_name}.{leaf_name}"
+                    detail = _commondata_detail(leaf_name, leaf_val)
+                    return f"{sub_name}.{leaf_name}{detail}"
             except Exception:  # noqa: BLE001, S110
                 pass
         return sub_name

@@ -1394,23 +1394,34 @@ class MammotionClient:
                     known_ids.add(device.device_name)
 
         if check_for_new_devices:
-            try:
-                fresh = await cloud_client.list_binding_by_account()
-                if fresh.data:
-                    for device in fresh.data.data:
-                        if device.device_name and device.device_name not in known_ids:
-                            iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                            await self._register_aliyun_device(
-                                device.device_name,
-                                iot_id,
-                                transport,
-                                ua,
-                                device.product_key,
-                                token_manager=acct_session.token_manager,
-                            )
-                            known_ids.add(device.device_name)
-            except Exception:  # noqa: BLE001
-                _logger.warning("restore_credentials: new-device discovery failed (Aliyun)", exc_info=True)
+            session_data = (
+                cloud_client.session_by_authcode_response.data
+                if cloud_client.session_by_authcode_response is not None
+                else None
+            )
+            if session_data is None or not session_data.iotToken:
+                _logger.warning(
+                    "restore_credentials: skipping list_binding_by_account — iotToken not available"
+                    " (credentials not fully restored)"
+                )
+            else:
+                try:
+                    fresh = await cloud_client.list_binding_by_account()
+                    if fresh.data:
+                        for device in fresh.data.data:
+                            if device.device_name and device.device_name not in known_ids:
+                                iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                                await self._register_aliyun_device(
+                                    device.device_name,
+                                    iot_id,
+                                    transport,
+                                    ua,
+                                    device.product_key,
+                                    token_manager=acct_session.token_manager,
+                                )
+                                known_ids.add(device.device_name)
+                except Exception:  # noqa: BLE001
+                    _logger.warning("restore_credentials: new-device discovery failed (Aliyun)", exc_info=True)
 
         if not known_ids:
             _logger.info("No Aliyun devices found — skipping Aliyun MQTT connection")
