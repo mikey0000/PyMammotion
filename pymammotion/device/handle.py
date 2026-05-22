@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING, TypeVar, cast
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.data.mqtt.status import StatusType
+from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
+from pymammotion.device.modes import _DeviceMode
+from pymammotion.device.mqtt_loop import mqtt_activity_loop, poll_interval
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
@@ -36,9 +39,6 @@ from pymammotion.transport.base import (
     TransportRateLimitedError,
     TransportType,
 )
-from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
-from pymammotion.device.modes import _DeviceMode
-from pymammotion.device.mqtt_loop import mqtt_activity_loop, poll_interval
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
 from pymammotion.utility.device_type import DeviceType
 
