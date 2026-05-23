@@ -83,13 +83,19 @@ Usage:
         MAMMOTION2MQTT_HA_VERSION="0.5.45"
         MAMMOTION2MQTT_PUBLISH_STATE=false
 Flags:
-    -l / --listen          Connect and receive messages without sending any outbound polls.
-                           Useful for passive observation or debugging device-initiated traffic.
-    --ble-address MAC      BLE-only mode: connect over Bluetooth to the mower at MAC.
-                           Skips cloud login / MQTT entirely; transport runs its own
-                           BleakScanner.find_device_by_address lookup.
-    --device-name NAME     Friendly device name to register under (BLE-only mode).
-                           Defaults to "Luba-BLE-<MAC suffix>".
+    -l / --listen           Connect and receive messages without sending any outbound polls.
+                            Useful for passive observation or debugging device-initiated traffic.
+    --ble-address MAC       BLE-only mode: connect over Bluetooth to the mower at MAC.
+                            Skips cloud login / MQTT entirely; transport runs its own
+                            BleakScanner.find_device_by_address lookup.
+    --device-name NAME      Friendly device name to register under (BLE-only mode).
+                            Defaults to "Luba-BLE-<MAC suffix>".
+    --esphome-proxy HOST    Route the BLE connection through an ESPHome bluetooth proxy
+                            at HOST (e.g. esp32-bluetooth-proxy.local).  Requires
+                            --ble-address.  Needs the 'extras' deps:
+                                uv sync --group extras
+    --esphome-password PASS Password for the ESPHome proxy (default: empty).
+
 Aditional Required packages:
     pymammotion and the file "pymammotion/examples/dev_console.py" in the same folder as this.
     ipython
@@ -122,31 +128,37 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 import json
 import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any
-from importlib.metadata import version
+from typing import Any, Protocol
 
-import aiomqtt
-import IPython  # noqa: F401 — re-exported for REPL namespace
+import IPython
+from rich.console import Console
 from rich.logging import RichHandler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from pymammotion.account.registry import BLE_ONLY_ACCOUNT
+from pymammotion.client import MammotionClient
+from pymammotion.messaging.broker import _LUBA_SUB_GROUP
+from pymammotion.transport.base import Subscription, TransportType
+
 sys.path.insert(0, str(Path(__file__).parent))
+from importlib.metadata import version
+import aiomqtt
+
 
 from dev_console import DevConsole, _bootstrap_ble_only, _bootstrap_ble_via_proxy, _load_credentials, _rich_console, _save_credentials
 from dotenv import load_dotenv
-
-from pymammotion.client import MammotionClient
-from pymammotion.transport.base import TransportType
-
 from pymammotion.http.model.http import ErrorInfo
 
 _LOGGER = logging.getLogger(__name__)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Config — populated by _load_env_config() at startup
@@ -203,6 +215,7 @@ def _setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
+    # Rich handler — INFO+ to terminal
     rich = RichHandler(
         console=_rich_console,
         rich_tracebacks=True,
@@ -378,7 +391,7 @@ class ExternalMQTTPublisher:
             await self.client.subscribe(f"{self.base_topic}/devices/+/request_report_snapshot")
             await self.client.subscribe(f"{self.base_topic}/devices/+/request_reports")
 
-            
+            await self.client.subscribe(f"{self.base_topic}/devices/+/test_route")
             
             await self.client.subscribe(f"{self.base_topic}/devices/global/setup_all_mower_watchers")
             await self.client.subscribe(f"{self.base_topic}/devices/global/get_error_info")
@@ -420,7 +433,7 @@ class ExternalMQTTPublisher:
                     #return
 
             _LOGGER.info(
-                "[bold yellow]→ MQTT Command[/bold yellow]  [cyan]%s[/cyan]  [green]%s[/green] %s",
+                "[bold orange]↪ MQTT Command[/bold orange]  [yellow]%s[/yellow]  [white]%s[/white] %s",
                 device_name,
                 command,
                 str(cmd_data),
@@ -512,6 +525,30 @@ class ExternalMQTTPublisher:
                 Skips RTK base stations and swimming-pool (Spino/S1/E1) devices.
                 """
                 self.dev_console.mammotion.setup_all_mower_watchers()
+
+            elif command == "test_route":
+                ## unable to detect any change after doing this
+                from pymammotion.data.model import GenerateRouteInformation
+                generate_route_info = GenerateRouteInformation(
+                    one_hashs=[6844243750031320102],  # Hash value of R-Nedre Area
+                    job_mode=4,
+                    edge_mode=1,
+                    channel_mode=0,
+                    channel_width=12,
+                    blade_height=60,
+                    speed=0.5,
+                    ultra_wave=10,
+                    toward=0,
+                    toward_included_angle=0,
+                    toward_mode=0,
+                    path_order=""
+
+                )
+
+                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+                if handle:
+                    handle.commands.generate_route_information(generate_route_info)
+                _LOGGER.info("test_route done")
                 
             elif command == "req_state_and_location":
                 await self._execute_send(device_name, { "cmd": "get_report_cfg"})
@@ -618,7 +655,7 @@ class ExternalMQTTPublisher:
                 self._previous_complex_state[device_name][key] = data_str
 
                 _LOGGER.info(
-                    "Published updated %s for %s",
+                    "↩ Published updated %s for %s",
                     key,
                     device_name,
                 )
@@ -790,10 +827,10 @@ class ExternalMQTTPublisher:
                     await self.publish(field_topic, value_str, retain=False, qos=2)
                     previous[key] = value_str
                     _LOGGER.debug(
-                        "Published changed parameter for %s: %s = %s", device_name, key, value_str
+                        "↩ Published changed parameter for %s: %s = %s", device_name, key, value_str
                     )
 
-            _LOGGER.debug("Published device %s to external MQTT with change detection", device_name)
+            _LOGGER.debug("↩ Published device %s to external MQTT with change detection", device_name)
         except Exception as e:
             _LOGGER.error("Error publishing device %s to external MQTT: %s", device_name, e)
 
@@ -1232,7 +1269,7 @@ async def _main(args: argparse.Namespace) -> None:
     }
 
     mqtt_note = (
-        "  [cyan]publish_all()[/cyan]                                      "
+        "  [cyan]publish_all()[/cyan]                                       "
         "— publish all parameters to external MQTT\n"
         if external_mqtt
         else ""
@@ -1253,7 +1290,7 @@ async def _main(args: argparse.Namespace) -> None:
         "  [cyan]debug(on=True)[/cyan]                                      — toggle DEBUG logging on terminal\n"
         "  [cyan]listen(on=True)[/cyan]                                     — stop/resume MQTT polling on all devices\n"
         f"{mqtt_note}"
-        f"  [cyan]loop[/cyan]                                               — main asyncio event loop\n"
+        f"  [cyan]loop[/cyan]                                                — main asyncio event loop\n"
         f"\n  Output → [dim]{OUTPUT_DIR}[/dim]\n"
     )
 
@@ -1270,8 +1307,7 @@ async def _main(args: argparse.Namespace) -> None:
             time.sleep(60)
 
     def _start_repl() -> None:
-        import IPython as _IPython
-        _IPython.embed(user_ns=namespace, using="asyncio")
+        IPython.embed(user_ns=namespace, using="asyncio")
 
     if sys.stdout.isatty():
         print("Terminal attached, starting REPL")
