@@ -8,7 +8,7 @@ import contextlib
 import dataclasses
 import logging
 import time
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
@@ -239,6 +239,10 @@ class DeviceHandle:
         #: Monotonic timestamp of the last successfully-parsed inbound LubaMsg.
         #: Used by ensure_fresh_state to decide whether a snapshot poll is needed.
         self._last_report_at: float = 0.0
+        #: Snapshot of the previous active_transport selection / availability so
+        #: the DEBUG log can suppress repeats — only the transitions matter.
+        #: Tuple of (selection_path, prefer_ble, ble_usable, mqtt_usable).
+        self._last_active_transport_log: tuple[str, bool, bool, bool] | None = None
         #: Timer handle for the transient continuous-stream auto-stop.
         self._report_stream_timer: asyncio.TimerHandle | None = None
         # Wire up critical error propagation from queue
@@ -1222,6 +1226,69 @@ class DeviceHandle:
         if t is not None and t.is_connected:
             await t.disconnect()
 
+    async def wait_until_connected(self, *, timeout: float = 30.0, mqtt_stable_for: float = 10.0) -> bool:
+        """Block until a transport is ready to carry commands, or *timeout* elapses.
+
+        Readiness mirrors how the transports actually behave at startup:
+
+        * **BLE** counts as ready the moment it reports connected — it's the
+          preferred, lowest-latency path with no cloud-side settling delay.
+        * **MQTT** (either cloud variant) counts as ready only once it has stayed
+          continuously connected for *mqtt_stable_for* seconds. A freshly opened
+          MQTT session can drop and re-subscribe in its first few seconds, and
+          commands sent during that window would time out waiting for a reply; if
+          the connection drops, the stability timer restarts.
+
+        This only *waits* — it does not initiate connects. MQTT auto-connects
+        after login; callers that want BLE connected (e.g. when ``prefer_ble``)
+        must call :meth:`connect_transport` before awaiting this.
+
+        Args:
+            timeout:         Maximum time to wait, in seconds. On expiry the
+                             method returns ``False`` so the caller can proceed
+                             anyway rather than block startup indefinitely.
+            mqtt_stable_for: How long MQTT must stay continuously connected before
+                             it counts as ready.
+
+        Returns:
+            ``True`` if a transport became ready within *timeout*, ``False`` if it
+            timed out (caller should continue regardless).
+
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        mqtt_connected_since: float | None = None
+        poll_interval = 0.25
+
+        while True:
+            now = loop.time()
+
+            # BLE is ready as soon as it connects — no settling window needed.
+            if self.is_transport_connected(TransportType.BLE):
+                return True
+
+            # MQTT is ready only after holding the connection for mqtt_stable_for.
+            mqtt_connected = self.is_transport_connected(TransportType.CLOUD_MAMMOTION) or self.is_transport_connected(
+                TransportType.CLOUD_ALIYUN
+            )
+            if mqtt_connected:
+                if mqtt_connected_since is None:
+                    mqtt_connected_since = now
+                elif now - mqtt_connected_since >= mqtt_stable_for:
+                    return True
+            else:
+                mqtt_connected_since = None
+
+            remaining = deadline - now
+            if remaining <= 0:
+                _logger.debug(
+                    "DeviceHandle[%s]: no transport ready after %.0fs — continuing anyway",
+                    self.device_name,
+                    timeout,
+                )
+                return False
+            await asyncio.sleep(min(poll_interval, remaining))
+
     async def send_raw(self, payload: bytes, *, prefer_ble: bool | None = None) -> None:
         """Send raw bytes via the best available transport, with BLE fallback on offline."""
         _logger.debug(
@@ -1453,43 +1520,41 @@ class DeviceHandle:
         mqtt_registered = mqtt is not None
         mqtt_usable = mqtt is not None and not mqtt_reported_offline and mqtt.is_usable
 
-        _logger.debug(
-            "active_transport '%s': prefer_ble=%s ble_connected=%s ble_usable=%s"
-            " mqtt_registered=%s mqtt_usable=%s mqtt_offline=%s",
-            self.device_name,
-            use_ble_first,
-            ble_connected,
-            ble_usable,
-            mqtt_registered,
-            mqtt_usable,
-            mqtt_reported_offline,
-        )
+        def _log_selection(path: str, *args: Any) -> None:
+            """Log only when the (path, prefer_ble, ble_usable, mqtt_usable) tuple changes.
+
+            Senders churn on this every poll; logging on every call buries the
+            transitions that actually matter (BLE drop / recover, MQTT offline).
+            """
+            key = (path, use_ble_first, ble_usable, mqtt_usable)
+            if self._last_active_transport_log == key:
+                return
+            self._last_active_transport_log = key
+            _logger.debug(path, self.device_name, *args)
 
         # Rule 1: an actively-connected BLE link always wins.
         if ble_connected and ble is not None:
-            _logger.debug("active_transport '%s': selected BLE (actively connected)", self.device_name)
+            _log_selection("active_transport '%s': selected BLE (actively connected)")
             return ble
 
         if use_ble_first:
             if ble_usable and ble is not None:
-                _logger.debug(
-                    "active_transport '%s': BLE preferred and usable — returning BLE for caller to (re)connect",
-                    self.device_name,
+                _log_selection(
+                    "active_transport '%s': BLE preferred and usable — returning BLE for caller to (re)connect"
                 )
                 return ble
             if mqtt_usable and mqtt is not None:
-                _logger.debug(
+                _log_selection(
                     "active_transport '%s': BLE preferred but not usable — falling back to %s",
-                    self.device_name,
                     mqtt.transport_type,
                 )
                 return mqtt
         else:
             if mqtt_usable and mqtt is not None:
-                _logger.debug("active_transport '%s': selected %s", self.device_name, mqtt.transport_type)
+                _log_selection("active_transport '%s': selected %s", mqtt.transport_type)
                 return mqtt
             if ble_usable and ble is not None:
-                _logger.debug("active_transport '%s': MQTT unusable — falling back to BLE", self.device_name)
+                _log_selection("active_transport '%s': MQTT unusable — falling back to BLE")
                 return ble
 
         transport_states = (

@@ -206,6 +206,12 @@ class MapFetchSaga(Saga):
             # the missing frames from scratch.
             missing_hashes = self._get_map().find_incomplete_hashes(0)
             current_hash: int | None = None
+            # Saga-local tracker of hashes whose `current_frame == total_frame`
+            # transaction we've observed.  Used to advance current_hash even
+            # when ``find_incomplete_hashes`` doesn't realise a hash is done
+            # (e.g. radar-only types like 23 that have no PathType entry).
+            addressed_hashes: set[int] = set()
+
             if missing_hashes:
                 current_hash = missing_hashes[0]
                 _logger.debug("MapFetchSaga[%s]: fetching data for hash %d", self._device_name, current_hash)
@@ -224,10 +230,30 @@ class MapFetchSaga(Saga):
                     continue
                 leaf_name, leaf_val = _comm_frame
 
+                # Always ack first — mirrors APK ``HashDataManager.setRegionalData``
+                # at line 1219 which acks every non-duplicate frame regardless
+                # of whether it's the hash we're currently fetching.  Acking
+                # unrelated frames (dynamics_line type=18 arriving mid-fetch,
+                # stale frames from a previous request) stops the device from
+                # retransmitting them with incrementing ``dataHash``, which
+                # otherwise floods MQTT and stalls the real fetch.  SVG uses
+                # todev_svg_msg (sub_cmd=2); comm data uses todev_get_commondata.
+                if leaf_name == "toapp_svg_msg":
+                    ack_cmd = self._command_builder.send_svg_response(
+                        total_frame=leaf_val.total_frame,
+                        current_frame=leaf_val.current_frame,
+                        data_hash=leaf_val.data_hash,
+                        paternal_hash_a=leaf_val.paternal_hash_a,
+                    )
+                else:
+                    region_data = self._make_region_data(leaf_val)
+                    ack_cmd = self._command_builder.get_regional_data(regional_data=region_data)
+                await self._send_command(ack_cmd)
+
                 # APK guard: ignore frames for hashes we are not currently
                 # waiting on (device replays old data while processing our
                 # request, which would reset the step_timeout without making
-                # any progress — see HashDataManager.setRegionalData line 1267).
+                # any progress — see HashDataManager.setRegionalData line 1245).
                 #
                 # SVG tiles use data_hash (the tile's own assigned hash) rather
                 # than the area hash used in the request.  The link back to the
@@ -246,24 +272,13 @@ class MapFetchSaga(Saga):
                 elif frame_hash not in missing_hashes and frame_hash != current_hash:
                     continue
 
-                # Always ack EVERY received frame — including the final
-                # one of a transaction.  The device interprets the ack as
-                # "frame received"; without it, the device retransmits the
-                # same frame indefinitely with an incrementing dataHash
-                # (visible in mammotion_dev.log as 1-of-1 frames repeating
-                # every second with dataHash 370, 371, 372, ...).
-                # SVG uses todev_svg_msg (sub_cmd=2); comm data uses todev_get_commondata.
-                if leaf_name == "toapp_svg_msg":
-                    ack_cmd = self._command_builder.send_svg_response(
-                        total_frame=leaf_val.total_frame,
-                        current_frame=leaf_val.current_frame,
-                        data_hash=leaf_val.data_hash,
-                        paternal_hash_a=leaf_val.paternal_hash_a,
-                    )
-                else:
-                    region_data = self._make_region_data(leaf_val)
-                    ack_cmd = self._command_builder.get_regional_data(regional_data=region_data)
-                await self._send_command(ack_cmd)
+                # Track per-hash completion locally so the advancement decision
+                # doesn't rely solely on find_incomplete_hashes (which can miss
+                # radar/unknown types — see addressed_hashes init comment).
+                if leaf_val.current_frame >= leaf_val.total_frame and leaf_val.total_frame > 0:
+                    addressed_hashes.add(frame_hash)
+                    if leaf_name == "toapp_svg_msg":
+                        addressed_hashes.add(int(leaf_val.paternal_hash_a))
 
                 current_map = self._get_map()
                 missing_frames = current_map.missing_frame(leaf_val)
@@ -307,8 +322,11 @@ class MapFetchSaga(Saga):
                         await self._send_command(ack)
 
                     # This data item is complete — check whether the whole hash is done.
+                    # Filter find_incomplete_hashes by addressed_hashes so that
+                    # hashes whose only frame had an unknown type (e.g. radar
+                    # type=23) don't keep us pinned to the same current_hash.
                     current_map = self._get_map()
-                    new_missing = current_map.find_incomplete_hashes(0)
+                    new_missing = [h for h in current_map.find_incomplete_hashes(0) if h not in addressed_hashes]
                     if len(new_missing) < len(missing_hashes):
                         no_progress = 0
                         self._reset_attempt_counter = True  # genuine map progress — refresh attempt budget

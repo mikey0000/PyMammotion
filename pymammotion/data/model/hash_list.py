@@ -58,6 +58,22 @@ class PathType(IntEnum):
     VIRTUAL_WALL = 21
     """User-drawn virtual fence / keep-out line."""
 
+    NO_GO_ZONE_VARIANT = 22
+    """Sibling of NO_GO_ZONE (23).  Both encode as ``(shape=0, type=1)`` in
+    ``ManualElementMessage`` and are grouped with the user-drawn manual
+    elements (21/22/23/24/25) in APK ``AreaDBHelper.deleteMapElementDB231``.
+    The exact distinction from NO_GO_ZONE isn't visible in the decompiled
+    APK — one variant is likely vision-detected (mirroring the 25/26
+    safe/visual-obstacle split) but this isn't confirmed.  Stored separately
+    in ``HashList.no_go_zone_variant`` so the two aren't conflated.
+    """
+
+    NO_GO_ZONE = 23
+    """User-drawn rectangular no-go zone (APK: ``updateNoGoZone`` /
+    ``rectangularRestrictedPoint``).  Observed on LUBA_VA — siblings are
+    21 (virtual wall line), 25 (safe rectangle), 26 (visual obstacle zone).
+    """
+
     VISUAL_SAFETY_ZONE = 25
     """Vision-detected safety zone (Luba 2 Vision / Pro only)."""
 
@@ -335,6 +351,8 @@ class HashList(DataClassORJSONMixin):
     corridor_line: dict[int, FrameList] = field(default_factory=dict)  # type 19
     corridor_point: dict[int, FrameList] = field(default_factory=dict)  # type 20
     virtual_wall: dict[int, FrameList] = field(default_factory=dict)  # type 21
+    no_go_zone_variant: dict[int, FrameList] = field(default_factory=dict)  # type 22
+    no_go_zone: dict[int, FrameList] = field(default_factory=dict)  # type 23
     plan: dict[str, Plan] = field(default_factory=dict)
     area_name: list[AreaHashNameList] = field(default_factory=list)
     current_mow_path: dict[int, dict[int, MowPath]] = field(default_factory=dict)
@@ -354,6 +372,12 @@ class HashList(DataClassORJSONMixin):
     """WGS-84 LineString of ``dynamics_line``, regenerated after each fetch."""
     generated_mow_progress_geojson: dict[str, Any] = field(default_factory=dict)
     """Completed portion of the planned mow path, sliced to ``now_index``."""
+
+    #: Fallback storage for frames whose ``type`` isn't in ``PathType`` (e.g.
+    #: radar-only types like 23 observed on LUBA_VA).  Keyed [type][hash].
+    #: ``find_incomplete_hashes`` consults this so an unknown-type hash isn't
+    #: forever flagged as missing and stalling ``MapFetchSaga``.
+    unknown_type_frames: dict[int, dict[int, FrameList]] = field(default_factory=dict)
 
     #: Frozen snapshot of ``area_root_hashlist`` taken when ``generated_geojson``
     #: was last built.  Used by ``geojson_needs_regeneration`` to short-circuit
@@ -563,6 +587,11 @@ class HashList(DataClassORJSONMixin):
                     continue
                 for hash_id, frames in target.items():
                     lookup[hash_id] = frames
+            # Include unknown-type frames so hashes whose only data arrived
+            # under a type pymammotion doesn't model still count as fetched.
+            for bucket in self.unknown_type_frames.values():
+                for hash_id, frames in bucket.items():
+                    lookup.setdefault(hash_id, frames)
             # Build a reverse mapping so each data_couple hash_id can be checked
             # against every SVG tile it owns — both by direct data_hash match
             # (when the SVG tile's own hash == the area hash) and by paternal_hash_a
@@ -696,6 +725,8 @@ class HashList(DataClassORJSONMixin):
             PathType.CORRIDOR_LINE: self.corridor_line,
             PathType.CORRIDOR_POINT: self.corridor_point,
             PathType.VIRTUAL_WALL: self.virtual_wall,
+            PathType.NO_GO_ZONE_VARIANT: self.no_go_zone_variant,
+            PathType.NO_GO_ZONE: self.no_go_zone,
         }
 
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
@@ -704,6 +735,11 @@ class HashList(DataClassORJSONMixin):
         AREA frames also auto-assign an ``area_name`` ("Area N") if none exists
         for the hash yet.  DYNAMICS_LINE (type 18) is keyed by frame order and
         resets on ``current_frame == 1``.
+
+        Unknown types (e.g. radar-specific 23 we've seen on LUBA_VA) are stored
+        in ``unknown_type_frames`` so the hash is still tracked as "received".
+        Without this, ``find_incomplete_hashes`` would keep flagging the hash
+        as missing and ``MapFetchSaga`` would stall re-requesting it.
 
         SvgMessage frames go to self.svg (SvgFrameList) via _add_svg_data.
         NavGetCommData with type=SVG is discarded — real SVG geometry only
@@ -731,7 +767,10 @@ class HashList(DataClassORJSONMixin):
         if target_dict is not None:
             return self._add_hash_data(target_dict, hash_data)
 
-        return False
+        # Unknown type — store under unknown_type_frames keyed by (type, hash)
+        # so the hash is still considered "received" by find_incomplete_hashes.
+        bucket = self.unknown_type_frames.setdefault(hash_data.type, {})
+        return self._add_hash_data(bucket, hash_data)
 
     def update_dynamics_line(self, points: list[CommDataCouple]) -> None:
         """Replace ``dynamics_line`` with *points*.

@@ -528,7 +528,9 @@ class MowerStateReducer(StateReducer):
         match net_msg[0]:
             case "toapp_wifi_iot_status":
                 wifi_iot_status: WifiIotStatusReport = net_msg[1]  # type: ignore
-                device.mower_state.product_key = wifi_iot_status.productkey
+                if wifi_iot_status.productkey:
+                    # Don't clobber a product_key already seeded from the device list.
+                    device.mower_state.product_key = wifi_iot_status.productkey
             case "toapp_devinfo_resp":
                 toapp_devinfo_resp: DrvDevInfoResp = net_msg[1]  # type: ignore
                 for resp in toapp_devinfo_resp.resp_ids:
@@ -1021,7 +1023,9 @@ class RTKStateReducer(StateReducer):
         match net_msg[0]:
             case "toapp_wifi_iot_status":
                 wifi_iot: WifiIotStatusReport = net_msg[1]  # type: ignore
-                device.product_key = wifi_iot.productkey
+                if wifi_iot.productkey:
+                    # Don't clobber a product_key already seeded from the device list.
+                    device.product_key = wifi_iot.productkey
             case "toapp_networkinfo_rsp":
                 net_info: GetNetworkInfoRsp = net_msg[1]  # type: ignore
                 device.wifi_ssid = net_info.wifi_ssid

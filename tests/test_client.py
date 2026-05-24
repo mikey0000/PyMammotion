@@ -824,9 +824,16 @@ async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback
 
 
 async def test_set_scheduled_updates_false_disconnects_all_transports() -> None:
-    """set_scheduled_updates(enabled=False) must disconnect all transport types."""
+    """set_scheduled_updates(enabled=False) must disconnect all transport types.
+
+    Cloud transports are routed through ``handle.disconnect_transport``; BLE is
+    disconnected directly on the transport (gated by ``is_usable``).
+    """
     client = MammotionClient()
     handle = make_handle("dev1", "Luba-Sched")
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.connect = AsyncMock()
+    await handle.add_transport(ble)
     handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
     handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
     await client._device_registry.register(handle)
@@ -836,14 +843,22 @@ async def test_set_scheduled_updates_false_disconnects_all_transports() -> None:
     disconnected = [call.args[0] for call in handle.disconnect_transport.await_args_list]
     assert TransportType.CLOUD_ALIYUN in disconnected
     assert TransportType.CLOUD_MAMMOTION in disconnected
-    assert TransportType.BLE in disconnected
+    ble.disconnect.assert_awaited_once()
+    ble.connect.assert_not_awaited()
     handle.connect_transport.assert_not_awaited()
 
 
 async def test_set_scheduled_updates_true_connects_all_transports() -> None:
-    """set_scheduled_updates(enabled=True) must reconnect all transport types."""
+    """set_scheduled_updates(enabled=True) must reconnect all transport types.
+
+    Cloud transports are routed through ``handle.connect_transport``; BLE is
+    connected directly on the transport (gated by ``is_usable``).
+    """
     client = MammotionClient()
     handle = make_handle("dev1", "Luba-Sched2")
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.connect = AsyncMock()
+    await handle.add_transport(ble)
     handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
     handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
     await client._device_registry.register(handle)
@@ -853,8 +868,26 @@ async def test_set_scheduled_updates_true_connects_all_transports() -> None:
     connected = [call.args[0] for call in handle.connect_transport.await_args_list]
     assert TransportType.CLOUD_ALIYUN in connected
     assert TransportType.CLOUD_MAMMOTION in connected
-    assert TransportType.BLE in connected
+    ble.connect.assert_awaited_once()
+    ble.disconnect.assert_not_awaited()
     handle.disconnect_transport.assert_not_awaited()
+
+
+async def test_set_scheduled_updates_skips_ble_when_not_usable() -> None:
+    """When BLE exists but ``is_usable`` is False (e.g. cooldown), it must be skipped."""
+    client = MammotionClient()
+    handle = make_handle("dev1", "Luba-Sched3")
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_usable = False
+    ble.connect = AsyncMock()
+    await handle.add_transport(ble)
+    await client._device_registry.register(handle)
+
+    await client.set_scheduled_updates("Luba-Sched3", enabled=True)
+    await client.set_scheduled_updates("Luba-Sched3", enabled=False)
+
+    ble.connect.assert_not_awaited()
+    ble.disconnect.assert_not_awaited()
 
 
 async def test_set_scheduled_updates_noop_for_unknown_device() -> None:

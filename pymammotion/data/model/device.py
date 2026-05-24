@@ -403,8 +403,17 @@ def create_device(name: str, product_key: str = "") -> "Device":
     if DeviceType.is_swimming_pool(name):
         return PoolCleanerDevice(name=name)
     if DeviceType.is_rtk(name, product_key):
-        return RTKBaseStationDevice(name=name)
-    return MowerDevice(name=name)
+        rtk = RTKBaseStationDevice(name=name)
+        if product_key:
+            rtk.product_key = product_key
+        return rtk
+    mower = MowerDevice(name=name)
+    if product_key:
+        # Seed product_key from the device list so it's available before any
+        # protobuf telemetry arrives; the reducer refreshes it from
+        # toapp_wifi_iot_status once a report comes in.
+        mower.mower_state.product_key = product_key
+    return mower
 
 
 # Backwards-compatible alias. The library was previously called MowingDevice

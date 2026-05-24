@@ -43,7 +43,14 @@ def _hash_list_msg(hash_ids: list[int]) -> LubaMsg:
     )
 
 
-def _comm_data_msg(hash_id: int, type_code: int) -> LubaMsg:
+def _comm_data_msg(
+    hash_id: int,
+    type_code: int,
+    *,
+    current_frame: int = 1,
+    total_frame: int = 1,
+    paternal_hash_a: int = 0,
+) -> LubaMsg:
     """Build a LubaMsg carrying a single-frame toapp_get_commondata_ack."""
     return LubaMsg(
         nav=MctlNav(
@@ -52,8 +59,9 @@ def _comm_data_msg(hash_id: int, type_code: int) -> LubaMsg:
                 action=8,
                 type=type_code,
                 hash=hash_id,
-                total_frame=1,
-                current_frame=1,
+                total_frame=total_frame,
+                current_frame=current_frame,
+                paternal_hash_a=paternal_hash_a,
             )
         )
     )
@@ -301,3 +309,168 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
     assert virtual_wall_hash not in saga.result.corridor_line
     # Saga should have asked for each hash exactly once.
     assert saga._command_builder.synchronize_hash_data.call_count == 3  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for LUBA_VA log incident 2026-05-22
+# ---------------------------------------------------------------------------
+
+
+async def test_saga_acks_unrelated_dynamics_line_frame() -> None:
+    """type=18 frames arriving mid-fetch must be acked, not silently dropped.
+
+    Regression for HA log 2026-05-22: LUBA_VA was spontaneously sending
+    dynamics_line (type=18, no hash) frames while MapFetchSaga was waiting on
+    area data.  The saga's hash-filter dropped them without acking, so the
+    device kept retransmitting with incrementing ``dataHash``, eventually
+    starving the actual area-data response and timing out.
+
+    Mirrors APK ``HashDataManager.setRegionalData`` (HashDataManager.java:1219)
+    which acks every non-duplicate frame regardless of hash.
+    """
+    broker = DeviceMessageBroker()
+    sends: list[bytes] = []
+
+    async def send_command(cmd: bytes) -> None:
+        sends.append(cmd)
+
+    _map = HashList()
+    cb = _make_command_builder()
+    saga = MapFetchSaga(
+        device_id="dev-luba-va",
+        device_name="Luba-VAAAYRNG",
+        is_luba1=True,
+        command_builder=cb,
+        send_command=send_command,
+        get_map=lambda: _map,
+    )
+
+    area_hash = 5829472998950549898
+
+    await asyncio.wait_for(
+        _run_saga_with_messages(
+            broker,
+            saga,
+            messages=[
+                _hash_list_msg([area_hash]),
+                # Dynamics-line frame arrives BEFORE the area frame — saga must
+                # ack it even though it doesn't match the current hash.
+                _comm_data_msg(0, type_code=18),
+                _comm_data_msg(area_hash, type_code=0),
+            ],
+            map_update=_map,
+        ),
+        timeout=5.0,
+    )
+
+    # The dynamics-line frame must have been acked via get_regional_data.
+    # Total acks expected: 1 hash-list-ack + 1 unrelated-dynamics ack +
+    # 1 area-data ack = 2 get_regional_data calls (hash-list uses a different builder).
+    assert cb.get_regional_data.call_count >= 2, (
+        f"saga must ack unrelated dynamics_line frames; "
+        f"got only {cb.get_regional_data.call_count} get_regional_data calls"
+    )
+    assert saga.result is not None
+    assert area_hash in saga.result.area
+
+
+async def test_saga_advances_on_unknown_type_single_frame() -> None:
+    """Saga must advance current_hash after receiving a single-frame transaction
+    of an unknown type (e.g. radar-only type=23 observed on LUBA_VA).
+
+    Regression for HA log: device returned type=23 single-frame for a hash that
+    pymammotion's PathType didn't model.  The frame was dropped at update(),
+    find_incomplete_hashes kept reporting the hash as missing, and the saga
+    looped re-requesting it indefinitely.  Fixed by:
+    (a) HashList stores unknown types in unknown_type_frames, and
+    (b) saga tracks addressed_hashes locally to advance even if the data
+        layer hadn't classified the type.
+    """
+    broker = DeviceMessageBroker()
+    sends: list[bytes] = []
+
+    async def send_command(cmd: bytes) -> None:
+        sends.append(cmd)
+
+    _map = HashList()
+    cb = _make_command_builder()
+    saga = MapFetchSaga(
+        device_id="dev-luba-va-2",
+        device_name="Luba-VAAAYRNG",
+        is_luba1=True,
+        command_builder=cb,
+        send_command=send_command,
+        get_map=lambda: _map,
+    )
+
+    # Two hashes — the first responds with a totally unknown type=99 single
+    # frame, the second with a known type=0 (AREA).  Saga must advance past
+    # the first and complete.
+    unknown_hash = 2284403252077069651
+    area_hash = 5829472998950549898
+
+    await asyncio.wait_for(
+        _run_saga_with_messages(
+            broker,
+            saga,
+            messages=[
+                _hash_list_msg([unknown_hash, area_hash]),
+                _comm_data_msg(unknown_hash, type_code=99),  # never-modelled
+                _comm_data_msg(area_hash, type_code=0),
+            ],
+            map_update=_map,
+        ),
+        timeout=5.0,
+    )
+
+    assert saga.result is not None
+    # Saga must have advanced past unknown_hash and fetched area_hash.
+    assert area_hash in saga.result.area
+    # Each hash requested exactly once — no re-request loop.
+    assert cb.synchronize_hash_data.call_count == 2, (
+        f"saga looped on unknown type; expected 2 synchronize_hash_data calls, "
+        f"got {cb.synchronize_hash_data.call_count}"
+    )
+
+
+async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
+    """Same shape as the unknown-type test but with PathType.NO_GO_ZONE (23),
+    which we now explicitly model.  Verifies the known-type path also advances
+    cleanly on a single-frame radar element."""
+    broker = DeviceMessageBroker()
+
+    async def send_command(cmd: bytes) -> None:
+        pass
+
+    _map = HashList()
+    cb = _make_command_builder()
+    saga = MapFetchSaga(
+        device_id="dev-radar",
+        device_name="Luba-VAAAYRNG",
+        is_luba1=True,
+        command_builder=cb,
+        send_command=send_command,
+        get_map=lambda: _map,
+    )
+
+    no_go_hash = 2284403252077069651
+    area_hash = 5829472998950549898
+
+    await asyncio.wait_for(
+        _run_saga_with_messages(
+            broker,
+            saga,
+            messages=[
+                _hash_list_msg([no_go_hash, area_hash]),
+                _comm_data_msg(no_go_hash, type_code=23),  # NO_GO_ZONE
+                _comm_data_msg(area_hash, type_code=0),
+            ],
+            map_update=_map,
+        ),
+        timeout=5.0,
+    )
+
+    assert saga.result is not None
+    assert no_go_hash in saga.result.no_go_zone
+    assert area_hash in saga.result.area
+    assert cb.synchronize_hash_data.call_count == 2
