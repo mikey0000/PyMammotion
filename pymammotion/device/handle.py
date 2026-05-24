@@ -14,6 +14,7 @@ from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequest
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
+from pymammotion.device.dynamics_line_loop import dynamics_line_loop
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.device.mqtt_loop import mqtt_activity_loop, poll_interval
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
@@ -227,6 +228,11 @@ class DeviceHandle:
         #: Task running the BLE polling/streaming loop (renews continuous stream while
         #: mowing, falls back to count=1 polls when docked).
         self._ble_polling_task: asyncio.Task[None] | None = None
+        #: Task running the dynamics-line poll loop — sends NavGetCommData(action=8,
+        #: type=18) every 10 s while the device is in ACTIVE mode, for device types
+        #: where DeviceType.is_support_dynamics_line() is true.  Mirrors APK
+        #: HashDataManager.handlerType_getDynamicsLine.
+        self._dynamics_line_task: asyncio.Task[None] | None = None
         #: True while the BLE continuous (count=0) report stream is active.  The MQTT
         #: activity loop checks this and skips its own poll while the stream is feeding.
         self._ble_stream_active: bool = False
@@ -300,6 +306,11 @@ class DeviceHandle:
                         task = self._ble_polling_task
                         if task is not None and not task.done():
                             task.cancel()
+                        # Dynamics-line polling is BLE-only — cancel here so it
+                        # restarts cleanly on the next _on_ble_connected.
+                        dl_task = self._dynamics_line_task
+                        if dl_task is not None and not dl_task.done():
+                            dl_task.cancel()
                         self._ble_stream_active = False
             elif state == TransportAvailability.CONNECTING:
                 # MQTT subscription is not yet active — commands sent now would time
@@ -335,6 +346,7 @@ class DeviceHandle:
         self._rearm_event.set()  # wake MQTT loop early so it sees BLE is now connected
         self._start_ble_loop()
         self._start_ble_polling_loop()
+        self._start_dynamics_line_loop()
         cmd = self.commands.get_report_cfg()
 
         async def _send_report_cfg() -> None:
@@ -827,6 +839,9 @@ class DeviceHandle:
         self.queue.start()
         if not self._is_rtk and (self._keep_alive_task is None or self._keep_alive_task.done()):
             self._keep_alive_task = asyncio.get_running_loop().create_task(mqtt_activity_loop(self))
+        # _dynamics_line_task is BLE-gated and starts/stops from _on_ble_connected
+        # / the BLE availability handler — not from start().  Dynamics-line polling
+        # only makes sense over BLE (10 s cadence would be MQTT-quota-expensive).
 
     def _start_ble_loop(self) -> None:
         """Start (or restart) the BLE heartbeat task if not already running."""
@@ -843,6 +858,24 @@ class DeviceHandle:
         if self._ble_polling_task is None or self._ble_polling_task.done():
             _logger.debug("start_ble_polling_loop [%s]: starting BLE polling loop", self.device_name)
             self._ble_polling_task = asyncio.get_running_loop().create_task(ble_polling_loop(self))
+
+    def _start_dynamics_line_loop(self) -> None:
+        """Start (or restart) the dynamics-line poll loop if the device type supports it.
+
+        BLE-gated — only called from ``_on_ble_connected``.  Skipped entirely for
+        device types that can never support dynamics line; LUBA_VA is included
+        because its eligibility flips on firmware >= 1.15.3.4422, which the loop
+        re-checks on every tick using the live ``main_controller`` version.
+        """
+        if self._is_rtk or self._stopping:
+            return
+        if self._dynamics_line_task is not None and not self._dynamics_line_task.done():
+            return
+        dt = DeviceType.value_of_str(self.device_name)
+        if not (dt.is_support_dynamics_line() or dt is DeviceType.LUBA_VA):
+            return
+        _logger.debug("start_dynamics_line_loop [%s]: starting dynamics-line poll loop", self.device_name)
+        self._dynamics_line_task = asyncio.get_running_loop().create_task(dynamics_line_loop(self))
 
     async def restart_keep_alive(self) -> None:
         """Restart the MQTT activity loop if it has exited or was never started."""
@@ -871,7 +904,12 @@ class DeviceHandle:
         if self._report_stream_timer is not None:
             self._report_stream_timer.cancel()
             self._report_stream_timer = None
-        for task in (self._keep_alive_task, self._ble_keep_alive_task, self._ble_polling_task):
+        for task in (
+            self._keep_alive_task,
+            self._ble_keep_alive_task,
+            self._ble_polling_task,
+            self._dynamics_line_task,
+        ):
             if task is not None and not task.done():
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -879,6 +917,7 @@ class DeviceHandle:
         self._keep_alive_task = None
         self._ble_keep_alive_task = None
         self._ble_polling_task = None
+        self._dynamics_line_task = None
         self._ble_stream_active = False
         await self.queue.stop()
         await self.broker.close()

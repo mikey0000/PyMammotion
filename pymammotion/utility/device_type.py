@@ -1,5 +1,6 @@
 """Device type definitions and product key mappings for Mammotion robot mowers."""
 
+from collections.abc import Callable
 from enum import Enum
 
 LubaProductKey = [
@@ -42,6 +43,8 @@ LubaMDProductKey = ["a1T6VTFTc0C", "a14iRDqMepW"]
 
 LubaMBProductKey = ["a1pb9toor70"]
 
+LubaMEProductKey = ["HK8snDC8Kxh"]
+
 RTKNBProductKey = ["a1NfZqdSREf", "a1ZuQVL7UiN"]
 
 LubaLAProductKey = ["CDYuKXTYrSP"]
@@ -72,6 +75,35 @@ AliyunProductKey = [
     *LubaMBProductKey,
     *RTKNBProductKey,
 ]
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    """Parse a dotted firmware version (e.g. ``1.12.0.466``) into an int tuple.
+
+    Stops at the first non-numeric segment, so trailing content like a git hash
+    in ``5.1.2.1540 (dc75bb0b)`` is ignored.
+    """
+    parts: list[int] = []
+    for segment in version.strip().split("."):
+        digits = ""
+        for char in segment:
+            if not char.isdigit():
+                break
+            digits += char
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def _version_less_than(version: str, target: str) -> bool:
+    """Return True if dotted ``version`` is strictly older than dotted ``target``."""
+    current = _version_tuple(version)
+    threshold = _version_tuple(target)
+    length = max(len(current), len(threshold))
+    current += (0,) * (length - len(current))
+    threshold += (0,) * (length - len(threshold))
+    return current < threshold
 
 
 class DeviceType(Enum):
@@ -107,6 +139,7 @@ class DeviceType(Enum):
     SWIMMINGPOOL_SP = (26, "Spino-SP", "Spino-SP")
     SD_PX = (27, "SDPX", "SDPX")
     LUBA_HM = (28, "Luba-HM", "HM610")
+    LUBA_ME = (29, "Luba-ME", "HM620")
 
     def __init__(self, value: int, name: str, model: str) -> None:
         """Initialize device type with its integer id, short name, and model string."""
@@ -150,6 +183,10 @@ class DeviceType(Enum):
         """Return True if this is a Luba HM (HM610)."""
         return self == DeviceType.LUBA_HM
 
+    def is_luba_me(self) -> bool:
+        """Return True if this is a Luba ME (HM620)."""
+        return self == DeviceType.LUBA_ME
+
     def is_luba_la(self) -> bool:
         """Return True if this is a Luba LA (HM432)."""
         return self == DeviceType.LUBA_LA
@@ -188,6 +225,7 @@ class DeviceType(Enum):
             DeviceType.LUBA_LD,
             DeviceType.LUBA_VA,
             DeviceType.LUBA_HM,
+            DeviceType.LUBA_ME,
             DeviceType.LUBA_MB,
             DeviceType.LUBA_LA,
             DeviceType.CM900,
@@ -196,6 +234,40 @@ class DeviceType(Enum):
     def is_cm900(self) -> bool:
         """Return True if this is a CM900 (Kumar-MK / KM01)."""
         return self == DeviceType.CM900
+
+    def is_support_dynamics_line(self, firmware_version: str | None = None) -> bool:
+        """Return True if this device supports the dynamics-line (live mow-progress) stream.
+
+        Mirrors ``DeviceType.isSupportDynamicsLine(ICarDevice)`` in APK 2.3.8.201
+        (`DeviceType.java:606-607`).  Supporting devices stream the actual cut
+        path as a separate ``NavGetCommData(action=8, type=18)`` response that
+        the APK polls every 10 s while the device is mowing.
+
+        LUBA_VA qualifies only when the main-controller firmware is at least
+        ``1.15.3.4422`` — pass ``firmware_version`` to enable that case
+        (typically ``mower_device.device_firmwares.main_controller``).  When
+        ``firmware_version`` is omitted, LUBA_VA is treated as unsupported
+        (conservative — matches the APK's behaviour for missing/older firmware).
+
+        Args:
+            firmware_version: Optional main-controller firmware version string
+                (e.g. ``"1.15.4.0"``).  Only consulted for LUBA_VA.
+
+        """
+        if self in (
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_ML,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_ME,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MB,
+            DeviceType.CM900,
+        ):
+            return True
+        if self is DeviceType.LUBA_VA and firmware_version:
+            return not _version_less_than(firmware_version, "1.15.3.4422")
+        return False
 
     def is_rtk_type(self) -> bool:
         """Return True if this is any RTK device (instance version of is_rtk)."""
@@ -278,65 +350,7 @@ class DeviceType(Enum):
     @staticmethod
     def from_value(value: int) -> "DeviceType":
         """Return the DeviceType corresponding to the given value."""
-        if value == 0:
-            return DeviceType.RTK
-        if value == 1:
-            return DeviceType.LUBA
-        if value == 2:
-            return DeviceType.LUBA_2
-        if value == 3:
-            return DeviceType.LUBA_YUKA
-        if value == 4:
-            return DeviceType.YUKA_MINI
-        if value == 5:
-            return DeviceType.YUKA_MINI2
-        if value == 6:
-            return DeviceType.LUBA_VP
-        if value == 7:
-            return DeviceType.LUBA_MN
-        if value == 8:
-            return DeviceType.YUKA_VP
-        if value == 9:
-            return DeviceType.SPINO
-        if value == 10:
-            return DeviceType.RTK3A1
-        if value == 11:
-            return DeviceType.LUBA_LD
-        if value == 12:
-            return DeviceType.RTK3A0
-        if value == 13:
-            return DeviceType.RTK3A2
-        if value == 14:
-            return DeviceType.YUKA_MINIV
-        if value == 15:
-            return DeviceType.LUBA_VA
-        if value == 16:
-            return DeviceType.YUKA_ML
-        if value == 17:
-            return DeviceType.LUBA_MD
-        if value == 18:
-            return DeviceType.LUBA_LA
-        if value == 19:
-            return DeviceType.SWIMMINGPOOL_S1
-        if value == 20:
-            return DeviceType.SWIMMINGPOOL_E1
-        if value == 21:
-            return DeviceType.YUKA_MN100
-        if value == 22:
-            return DeviceType.RTKNB
-        if value == 23:
-            return DeviceType.LUBA_MB
-        if value == 24:
-            return DeviceType.CM900
-        if value == 25:
-            return DeviceType.YUKA_MN101
-        if value == 26:
-            return DeviceType.SWIMMINGPOOL_SP
-        if value == 27:
-            return DeviceType.SD_PX
-        if value == 28:
-            return DeviceType.LUBA_HM
-        return DeviceType.UNKNOWN
+        return _VALUE_TO_DEVICE_TYPE.get(value, DeviceType.UNKNOWN)
 
     @staticmethod
     def value_of_str(device_name: str, product_key: str = "") -> "DeviceType":
@@ -354,69 +368,14 @@ class DeviceType(Enum):
             return DeviceType.UNKNOWN
 
         try:
-            substring = device_name[:3]
-            substring2 = device_name[:7]
-
-            if DeviceType.RTK.get_name() in substring or DeviceType.contain_rtk_product_key(product_key):
-                return DeviceType.RTK
-            if DeviceType.LUBA_2.get_name() in substring2 or DeviceType.contain_luba_2_product_key(product_key):
-                return DeviceType.LUBA_2
-            if DeviceType.LUBA_LD.get_name() in substring2:
-                return DeviceType.LUBA_LD
-            if DeviceType.LUBA_VP.get_name() in substring2:
-                return DeviceType.LUBA_VP
-            if DeviceType.LUBA_MN.get_name() in substring2:
-                return DeviceType.LUBA_MN
-            if DeviceType.YUKA_VP.get_name() in substring2:
-                return DeviceType.YUKA_VP
-            if DeviceType.YUKA_MINI.get_name() in substring2:
-                return DeviceType.YUKA_MINI
-            if DeviceType.YUKA_MINI2.get_name() in substring2:
-                return DeviceType.YUKA_MINI2
-            if DeviceType.LUBA_YUKA.get_name() in substring2:
-                return DeviceType.LUBA_YUKA
-            if DeviceType.RTK3A1.get_name() in substring2:
-                return DeviceType.RTK3A1
-            if DeviceType.RTK3A0.get_name() in substring2:
-                return DeviceType.RTK3A0
-            if DeviceType.RTK3A2.get_name() in substring2:
-                return DeviceType.RTK3A2
-            if DeviceType.YUKA_MINIV.get_name() in substring2:
-                return DeviceType.YUKA_MINIV
-            if DeviceType.LUBA_VA.get_name() in substring2:
-                return DeviceType.LUBA_VA
-            if DeviceType.YUKA_ML.get_name() in substring2:
-                return DeviceType.YUKA_ML
-            if DeviceType.LUBA_MD.get_name() in substring2:
-                return DeviceType.LUBA_MD
-            if DeviceType.LUBA_LA.get_name() in substring2:
-                return DeviceType.LUBA_LA
-            if DeviceType.SWIMMINGPOOL_S1.get_name() in device_name[:8]:
-                return DeviceType.SWIMMINGPOOL_S1
-            if DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8]:
-                return DeviceType.SWIMMINGPOOL_E1
-            if DeviceType.SWIMMINGPOOL_SP.get_name() in device_name[:8]:
-                return DeviceType.SWIMMINGPOOL_SP
-            if DeviceType.SPINO.get_name() in substring2:
-                return DeviceType.SPINO
-            if DeviceType.YUKA_MN100.get_name() in substring2:
-                return DeviceType.YUKA_MN100
-            if DeviceType.YUKA_MN101.get_name() in substring2:
-                return DeviceType.YUKA_MN101
-            if DeviceType.RTKNB.get_name() in substring2:
-                return DeviceType.RTKNB
-            if DeviceType.LUBA_MB.get_name() in substring2:
-                return DeviceType.LUBA_MB
-            if DeviceType.CM900.get_name() in substring2:
-                return DeviceType.CM900
-            if DeviceType.SD_PX.get_name() in substring2:
-                return DeviceType.SD_PX
-            if DeviceType.LUBA_HM.get_name() in substring2:
-                return DeviceType.LUBA_HM
-            if DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
-                return DeviceType.LUBA
+            for device_type, name_slice, product_key_match in _VALUE_OF_STR_RULES:
+                if device_type.get_name() in device_name[:name_slice] or (
+                    product_key_match is not None and product_key_match(product_key)
+                ):
+                    return device_type
+        except (AttributeError, TypeError, IndexError):
             return DeviceType.UNKNOWN
-        except Exception:
+        else:
             return DeviceType.UNKNOWN
 
     @staticmethod
@@ -430,6 +389,24 @@ class DeviceType(Enum):
         """Check if the given device is of type LUBA (original Luba 1)."""
         device_type = DeviceType.value_of_str(device_name, product_key)
         return device_type.get_value() == DeviceType.LUBA.get_value()
+
+    @staticmethod
+    def uses_new_obstacle_detection(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:
+        """Whether the device presents the new-style obstacle-detection options.
+
+        Mirrors the app's ``isLuba2YukaNewFirmwareVersion``: Luba 2 and the
+        original Yuka switched obstacle-detection options at firmware ``1.12.0``.
+        Below that they use the old four-option touch UI; at/above it — or when
+        the version is unknown (matching the app's ``versionCode == 0`` branch) —
+        they use the new Off/Standard/Sensitive options. All other devices always
+        use the new options.
+        """
+        device_type = DeviceType.value_of_str(device_name, product_key)
+        if device_type in (DeviceType.LUBA_2, DeviceType.LUBA_YUKA):
+            if not firmware_version:
+                return True
+            return not _version_less_than(firmware_version, "1.12.0")
+        return True
 
     @staticmethod
     def is_luba_pro(device_name: str, product_key: str = "") -> bool:
@@ -550,6 +527,11 @@ class DeviceType(Enum):
         return bool(product_key) and product_key in LubaMBProductKey
 
     @staticmethod
+    def contain_luba_me_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba ME device (HM620)."""
+        return bool(product_key) and product_key in LubaMEProductKey
+
+    @staticmethod
     def contain_luba_v_pro_product_key(product_key: str) -> bool:
         """Return True if the product key belongs to a Luba VP (Luba 2 Pro) device."""
         return bool(product_key) and product_key in LubaVProProductKey
@@ -625,3 +607,50 @@ class DeviceType(Enum):
     def is_support_video(self) -> bool:
         """Return True if this device type supports video streaming (all models except the original Luba 1)."""
         return self != DeviceType.LUBA
+
+
+# Numeric id -> DeviceType, used by DeviceType.from_value. Built straight from the
+# enum members' ids (the first tuple element), so it stays 1:1 with the definitions
+# above; any id not present (including UNKNOWN's -1) falls back to DeviceType.UNKNOWN.
+_VALUE_TO_DEVICE_TYPE: dict[int, "DeviceType"] = {
+    dt.get_value(): dt for dt in DeviceType if dt is not DeviceType.UNKNOWN
+}
+
+# Ordered (device_type, name-prefix slice length, optional product-key predicate)
+# rules for DeviceType.value_of_str. Order is significant: it reproduces the original
+# if-chain exactly, so specific "Luba-XX"/"Yuka-XX" prefixes are matched before the
+# generic "Luba", and the product-key checks fire at the same positions they did in the
+# chain. Most names are matched against device_name[:7]; RTK uses [:3] and the
+# swimming-pool models use [:8].
+_VALUE_OF_STR_RULES: tuple[tuple["DeviceType", int, Callable[[str], bool] | None], ...] = (
+    (DeviceType.RTK, 3, DeviceType.contain_rtk_product_key),
+    (DeviceType.LUBA_2, 7, DeviceType.contain_luba_2_product_key),
+    (DeviceType.LUBA_LD, 7, None),
+    (DeviceType.LUBA_VP, 7, None),
+    (DeviceType.LUBA_MN, 7, None),
+    (DeviceType.YUKA_VP, 7, None),
+    (DeviceType.YUKA_MINI, 7, None),
+    (DeviceType.YUKA_MINI2, 7, None),
+    (DeviceType.LUBA_YUKA, 7, None),
+    (DeviceType.RTK3A1, 7, None),
+    (DeviceType.RTK3A0, 7, None),
+    (DeviceType.RTK3A2, 7, None),
+    (DeviceType.YUKA_MINIV, 7, None),
+    (DeviceType.LUBA_VA, 7, None),
+    (DeviceType.YUKA_ML, 7, None),
+    (DeviceType.LUBA_MD, 7, None),
+    (DeviceType.LUBA_LA, 7, None),
+    (DeviceType.SWIMMINGPOOL_S1, 8, None),
+    (DeviceType.SWIMMINGPOOL_E1, 8, None),
+    (DeviceType.SWIMMINGPOOL_SP, 8, None),
+    (DeviceType.SPINO, 7, None),
+    (DeviceType.YUKA_MN100, 7, None),
+    (DeviceType.YUKA_MN101, 7, None),
+    (DeviceType.RTKNB, 7, None),
+    (DeviceType.LUBA_MB, 7, None),
+    (DeviceType.CM900, 7, None),
+    (DeviceType.SD_PX, 7, None),
+    (DeviceType.LUBA_HM, 7, None),
+    (DeviceType.LUBA_ME, 7, DeviceType.contain_luba_me_product_key),
+    (DeviceType.LUBA, 7, DeviceType.contain_luba_product_key),
+)

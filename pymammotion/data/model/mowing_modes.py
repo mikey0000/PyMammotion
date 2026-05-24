@@ -1,3 +1,5 @@
+"""IntEnum definitions for mowing modes and cutting options (cutting mode, speed, border patrol, obstacle laps, mow order, detection strategy, etc.)."""
+
 from __future__ import annotations
 
 from enum import IntEnum
@@ -6,7 +8,7 @@ from pymammotion.utility.device_type import DeviceType
 
 
 class CuttingMode(IntEnum):
-    """job_mode"""
+    """Cutting/job mode (protobuf job_mode field)."""
 
     single_grid = 0
     double_grid = 1
@@ -15,7 +17,7 @@ class CuttingMode(IntEnum):
 
 
 class CuttingSpeedMode(IntEnum):
-    """speed"""
+    """Cutting speed mode (protobuf speed field)."""
 
     normal = 0
     slow = 1
@@ -23,7 +25,7 @@ class CuttingSpeedMode(IntEnum):
 
 
 class BorderPatrolMode(IntEnum):
-    """"""
+    """Number of border/perimeter patrol laps to ride before starting the mowing grid (none through four)."""
 
     none = 0
     one = 1
@@ -33,7 +35,7 @@ class BorderPatrolMode(IntEnum):
 
 
 class ObstacleLapsMode(IntEnum):
-    """mowingLaps"""
+    """Number of obstacle-avoidance mowing laps (protobuf mowingLaps field)."""
 
     none = 0
     one = 1
@@ -43,7 +45,7 @@ class ObstacleLapsMode(IntEnum):
 
 
 class MowOrder(IntEnum):
-    """path_order"""
+    """Mowing path order: whether to mow the border or grid first (protobuf path_order field)."""
 
     border_first = 0
     grid_first = 1
@@ -83,13 +85,15 @@ class DetectionStrategy(IntEnum):
       1  slow_touch    "Slow touch"
       2  less_touch    "Less touch"
 
-    Original Yuka (LUBA_YUKA) uses the old-style UI with four options:
+    Luba 2 and the original Yuka (LUBA_YUKA) below firmware 1.12.0 use the
+    old-style UI with four options:
       0  direct_touch  "Direct touch"
       1  slow_touch    "Slow touch"
       2  less_touch    "Less touch"
       10 no_touch      "No touch"
 
-    All other devices (Luba 2+, all Yuka mini/pro/MV variants) use a new-style UI:
+    Luba 2 / Yuka at firmware 1.12.0+ and all other devices (Yuka mini/pro/MV
+    variants) use a new-style UI:
       0   direct_touch  "Off"       — firmware also accepts 1; APK sends 1 but device treats both identically
       10  no_touch      "Standard"  — proactive obstacle avoidance
       11  sensitive     "Sensitive" — avoids obstacles and non-grassy areas
@@ -102,12 +106,21 @@ class DetectionStrategy(IntEnum):
     sensitive = 11
 
     @classmethod
-    def for_device(cls, device_name: str) -> list[DetectionStrategy]:
-        """Return the detection strategies supported by the given device."""
+    def for_device(cls, device_name: str, firmware_version: str = "") -> list[DetectionStrategy]:
+        """Return the detection strategies supported by the given device.
+
+        Luba 2 and the original Yuka expose the old four-option touch UI below
+        firmware 1.12.0 and the new Off/Standard/Sensitive options at/above it
+        (see ``DeviceType.uses_new_obstacle_detection``). Pass the device's
+        firmware version so older units get the right options; when omitted the
+        new options are assumed.
+        """
         dt = DeviceType.value_of_str(device_name)
         if dt == DeviceType.LUBA:
             return [cls.direct_touch, cls.slow_touch, cls.less_touch]
-        if dt == DeviceType.LUBA_YUKA:
+        if dt in (DeviceType.LUBA_2, DeviceType.LUBA_YUKA) and not DeviceType.uses_new_obstacle_detection(
+            device_name, firmware_version
+        ):
             return [cls.direct_touch, cls.slow_touch, cls.less_touch, cls.no_touch]
         return [cls.direct_touch, cls.no_touch, cls.sensitive]
 

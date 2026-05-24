@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 import betterproto2
 
 from pymammotion.data.model.hash_list import CommDataCouple
+from pymammotion.data.model.region_data import RegionData
 from pymammotion.messaging.saga import Saga
 from pymammotion.transport.base import CommandTimeoutError
 
@@ -106,6 +107,24 @@ class CommonDataSaga(Saga):
                 _, nav_val = betterproto2.which_one_of(msg, "LubaSubMsg")
                 assert nav_val is not None
                 ack = nav_val.toapp_get_commondata_ack
+
+                # Per-frame ack — mirrors APK HashDataManager.updateDynamicsLine
+                # (HashDataManager.java:1608) and setRegionalData (:1219), which
+                # both call getRegionalData(bean) on every incoming frame
+                # including the final one.  The device waits for this echo
+                # (sub_cmd=2, action/type/hash/total/current echoed) before
+                # sending the next frame; without it, multi-frame responses
+                # stall after frame 1.
+                region_data = RegionData()
+                region_data.action = ack.action
+                region_data.type = ack.type
+                region_data.hash = ack.hash
+                region_data.total_frame = ack.total_frame
+                region_data.current_frame = ack.current_frame
+                region_data.sub_cmd = ack.sub_cmd
+                ack_cmd = self._command_builder.get_regional_data(regional_data=region_data)
+                await self._send_command(ack_cmd)
+
                 total_frame = ack.total_frame
                 frames[ack.current_frame] = [CommDataCouple(x=p.x, y=p.y) for p in ack.data_couple]
 
