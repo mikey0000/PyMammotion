@@ -216,7 +216,7 @@ class MapFetchSaga(Saga):
                 try:
                     response = await asyncio.wait_for(comm_queue.get(), timeout=self.step_timeout)
                 except TimeoutError:
-                    raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
+                    raise CommandTimeoutError(f"toapp_get_commondata_ack or toapp_svg_msg {current_hash}", 1) from None
 
                 # State reducer has already applied this frame to device.map.
                 _comm_frame = self.extract_nav_frame(response, ("toapp_get_commondata_ack", "toapp_svg_msg"))

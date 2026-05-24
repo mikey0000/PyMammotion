@@ -1961,11 +1961,14 @@ class MammotionClient:
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             return
+        if (ble_transport := handle.get_transport(TransportType.BLE)) and ble_transport.is_usable:
+            await ble_transport.connect() if enabled else await ble_transport.disconnect()
+
         if enabled:
-            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION, TransportType.BLE):
+            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
                 await handle.connect_transport(t_type)
         else:
-            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION, TransportType.BLE):
+            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
                 await handle.disconnect_transport(t_type)
 
     # ------------------------------------------------------------------
@@ -2116,7 +2119,7 @@ class MammotionClient:
             except AttributeError:
                 new_fpv = False
             if not new_fpv:
-                await self._send_agora_join_over_mqtt(handle)
+                await self.send_command_with_args(device_name, "device_agora_join_channel_with_position", enter_state=1)
 
         return subscription
 
@@ -2142,18 +2145,9 @@ class MammotionClient:
             except AttributeError:
                 new_fpv = False
             if not new_fpv:
-                await self._send_agora_join_over_mqtt(handle)
+                await self.send_command_with_args(device_name, "device_agora_join_channel_with_position", enter_state=1)
 
         return subscription
-
-    async def _send_agora_join_over_mqtt(self, handle: DeviceHandle) -> None:
-        """Fire the Agora join-channel command over MQTT only, without waiting for an ack."""
-        command_bytes = handle.commands.device_agora_join_channel_with_position(enter_state=1)
-        for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-            mqtt_transport = handle.get_transport(transport_type)
-            if mqtt_transport is not None and mqtt_transport.is_connected:
-                await handle._send_marked(mqtt_transport, command_bytes)
-                break
 
     # ------------------------------------------------------------------
     # Commands
