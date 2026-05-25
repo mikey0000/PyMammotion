@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
 import betterproto2
 
 from pymammotion.messaging.saga import Saga
-from pymammotion.transport.base import CommandTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -78,23 +76,12 @@ class SvgSendSaga(Saga):
         self.result_hash = None
         expected_sub_cmd = self._chunks[0].sub_cmd
 
-        frame_queue: asyncio.Queue[Any] = asyncio.Queue()
-
-        async def _collect(msg: Any) -> None:
-            frame = self.extract_nav_frame(msg, "toapp_svg_msg")
-            if frame is not None and frame[1].sub_cmd == expected_sub_cmd:
-                frame_queue.put_nowait(msg)
-
-        with broker.subscribe_unsolicited(_collect):
+        with self._collect_frames(broker, "toapp_svg_msg", lambda v: v.sub_cmd == expected_sub_cmd) as frame_queue:
             for i, chunk in enumerate(self._chunks):
                 cmd = self._command_builder.send_svg_data(chunk)
                 await self._send_command(cmd)
 
-                try:
-                    msg = await asyncio.wait_for(frame_queue.get(), timeout=self.step_timeout)
-                except TimeoutError:
-                    field = "toapp_svg_msg"
-                    raise CommandTimeoutError(field, chunk.current_frame) from None
+                msg = await self._next_frame(frame_queue, "toapp_svg_msg", chunk.current_frame)
 
                 _, nav_val = betterproto2.which_one_of(msg, "LubaSubMsg")
                 if nav_val is None:

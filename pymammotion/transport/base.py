@@ -7,6 +7,7 @@ import collections
 import contextlib
 from enum import Enum
 import logging
+import socket
 import time
 from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
@@ -79,6 +80,36 @@ class LoginFailedError(AuthError):
         self.account_id = account_id
         self.reason = reason
         super().__init__(f"Login failed for account '{account_id}': {reason}")
+
+
+def is_transient_network_error(exc: BaseException) -> bool:
+    """Return True if *exc* is a transient connectivity failure rather than an auth one.
+
+    Covers DNS resolution failures, connection refused/timeout, and any OSError
+    socket-class error indicating the network is down.  These must NOT be
+    wrapped as ``ReLoginRequiredError`` — doing so triggers a destructive full
+    re-login in the MQTT transport fatal-auth handler, which itself fails the
+    same way and leaves the integration looping.  Let them propagate as their
+    original type so the connection loop's existing exponential-backoff catch
+    handles them.
+
+    Recognises:
+      * ``socket.gaierror``                  — DNS resolution failure
+      * ``ConnectionError`` / ``TimeoutError`` — generic connection failures
+      * ``OSError``                          — broader socket-level errors
+      * ``aiohttp.ClientConnectorError`` and subclasses, by class name (so we
+        don't introduce a hard runtime dep on aiohttp from this module)
+      * The ``__cause__`` chain for any of the above (aiohttp wraps OSError)
+    """
+    if isinstance(exc, (socket.gaierror, ConnectionError, TimeoutError, OSError)):
+        return True
+    name = type(exc).__name__
+    if name in {"ClientConnectorError", "ClientConnectorDNSError", "ClientConnectorCertificateError"}:
+        return True
+    cause = exc.__cause__
+    if cause is not None and isinstance(cause, (socket.gaierror, OSError, ConnectionError, TimeoutError)):
+        return True
+    return False
 
 
 class NoBLEAddressKnownError(TransportError):

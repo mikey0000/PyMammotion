@@ -4,15 +4,19 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 
 import betterproto2
 
 from pymammotion.aliyun.exceptions import GatewayTimeoutException
+from pymammotion.data.model.region_data import RegionData
 from pymammotion.transport.base import CommandTimeoutError, SagaFailedError, SagaInterruptedError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from pymammotion.messaging.broker import DeviceMessageBroker
 
 _logger = logging.getLogger(__name__)
@@ -71,6 +75,58 @@ class Saga(ABC):
         if frame_name in expected_set:
             return frame_name, frame_val
         return None
+
+    @contextlib.contextmanager
+    def _collect_frames(
+        self,
+        broker: DeviceMessageBroker,
+        field: str | tuple[str, ...],
+        predicate: Callable[[Any], bool] | None = None,
+    ) -> Iterator[asyncio.Queue[Any]]:
+        """Subscribe to unsolicited nav frames matching *field* and queue them.
+
+        Yields an ``asyncio.Queue`` fed with every message whose SubNavMsg frame
+        is in *field* and, when *predicate* is given, whose frame value satisfies
+        it.  Subscribing before the caller's first send avoids the race where the
+        device replies before a handler is registered; the subscription is removed
+        on context exit (RAII).
+        """
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        async def _collect(msg: Any) -> None:
+            frame = self.extract_nav_frame(msg, field)
+            if frame is not None and (predicate is None or predicate(frame[1])):
+                queue.put_nowait(msg)
+
+        with broker.subscribe_unsolicited(_collect):
+            yield queue
+
+    async def _next_frame(self, queue: asyncio.Queue[Any], field: str, current_frame: int = 1) -> Any:
+        """Await the next queued frame, or raise ``CommandTimeoutError`` after ``step_timeout``.
+
+        Wraps the ``asyncio.wait_for(queue.get(), step_timeout)`` →
+        ``CommandTimeoutError`` pattern every ack-driven saga step shares.
+        """
+        try:
+            return await asyncio.wait_for(queue.get(), timeout=self.step_timeout)
+        except TimeoutError:
+            raise CommandTimeoutError(field, current_frame) from None
+
+    @staticmethod
+    def _region_data(frame: Any) -> RegionData:
+        """Build a ``RegionData`` echo-ack for a received comm-data / region frame.
+
+        The device waits for this echo (``get_regional_data``) before sending the
+        next frame; it mirrors back action/type/hash/total/current/sub_cmd.
+        """
+        region_data = RegionData()
+        region_data.total_frame = frame.total_frame
+        region_data.current_frame = frame.current_frame
+        region_data.sub_cmd = frame.sub_cmd
+        region_data.type = frame.type
+        region_data.hash = frame.hash
+        region_data.action = frame.action
+        return region_data
 
     @abstractmethod
     async def _run(self, broker: DeviceMessageBroker) -> None:

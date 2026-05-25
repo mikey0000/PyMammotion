@@ -105,16 +105,9 @@ class MowPathSaga(Saga):
         # Step 1: Request the line hash list (sub_cmd=3), collect all frames,
         # send get_hash_response acks for each.
         # ------------------------------------------------------------------
-        hash_ack_queue: asyncio.Queue[Any] = asyncio.Queue()
-
-        async def _collect_hash_ack(msg: Any) -> None:
-            frame = self.extract_nav_frame(msg, "toapp_gethash_ack")
-            if frame is not None and frame[1].sub_cmd == 3:
-                hash_ack_queue.put_nowait(msg)
-
         _current_frame = 1
         _total_frame = 0
-        with broker.subscribe_unsolicited(_collect_hash_ack):
+        with self._collect_frames(broker, "toapp_gethash_ack", lambda v: v.sub_cmd == 3) as hash_ack_queue:
             _logger.debug("MowPathSaga: requesting line hash list (sub_cmd=3)")
             cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=3)
             await self._send_command(cmd)
@@ -229,12 +222,6 @@ class MowPathSaga(Saga):
         # Step 3–4: For each batch of up to 20 hashes, request cover paths and
         # collect all cover_path_upload frames before moving to the next batch.
         # ------------------------------------------------------------------
-        path_queue: asyncio.Queue[Any] = asyncio.Queue()
-
-        async def _collect_path(msg: Any) -> None:
-            if self.extract_nav_frame(msg, "cover_path_upload") is not None:
-                path_queue.put_nowait(msg)
-
         current_run_tx_ids: set[int] = set()
 
         _NO_PROGRESS_LIMIT = 10
@@ -242,7 +229,7 @@ class MowPathSaga(Saga):
         def _missing_frame_count() -> int:
             return sum(len(v) for v in self._get_map().find_missing_mow_path_frames().values())
 
-        with broker.subscribe_unsolicited(_collect_path):
+        with self._collect_frames(broker, "cover_path_upload") as path_queue:
             for batch_idx, batch_hashes in enumerate(hash_batches):
                 transaction_id = int(time.time() * 1000)
                 current_run_tx_ids.add(transaction_id)
@@ -264,10 +251,7 @@ class MowPathSaga(Saga):
                 no_progress = 0
 
                 while True:
-                    try:
-                        frame_response = await asyncio.wait_for(path_queue.get(), timeout=self.step_timeout)
-                    except TimeoutError:
-                        raise CommandTimeoutError("cover_path_upload", 1) from None
+                    frame_response = await self._next_frame(path_queue, "cover_path_upload")
 
                     _, path_val = betterproto2.which_one_of(frame_response.nav, "SubNavMsg")
                     assert path_val is not None

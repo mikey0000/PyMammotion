@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -10,7 +9,6 @@ import betterproto2
 
 from pymammotion.data.model.hash_list import CommDataCouple, EdgePoints
 from pymammotion.messaging.saga import Saga
-from pymammotion.transport.base import CommandTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -65,25 +63,15 @@ class EdgeMappingSaga(Saga):
         self.result = {}
         collected: dict[int, EdgePoints] = {}  # hash → EdgePoints
 
-        frame_queue: asyncio.Queue[Any] = asyncio.Queue()
-
-        async def _collect_frame(msg: Any) -> None:
-            if self.extract_nav_frame(msg, "toapp_edge_points") is not None:
-                frame_queue.put_nowait(msg)
-
-        with broker.subscribe_unsolicited(_collect_frame):
+        with self._collect_frames(broker, "toapp_edge_points") as frame_queue:
             if not self._skip_start:
                 _logger.debug("EdgeMappingSaga: sending along_border to start edge mapping")
                 cmd = self._command_builder.along_border()
                 await self._send_command(cmd)
 
             # Collect frames — the device streams them until current_frame >= total_frame
-            _expected_field = "toapp_edge_points"
             while True:
-                try:
-                    frame_msg = await asyncio.wait_for(frame_queue.get(), timeout=self.step_timeout)
-                except TimeoutError:
-                    raise CommandTimeoutError(_expected_field, 1) from None
+                frame_msg = await self._next_frame(frame_queue, "toapp_edge_points")
 
                 _, nav_val = betterproto2.which_one_of(frame_msg, "LubaSubMsg")
                 assert nav_val is not None

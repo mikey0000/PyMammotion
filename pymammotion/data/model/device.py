@@ -48,6 +48,19 @@ class Device(DataClassORJSONMixin):
     status_properties: ThingStatusMessage | None = None
     device_event: ThingEventMessage | None = None
 
+    def apply_version_check(self, check: CheckDeviceVersion) -> None:
+        """Store the OTA version-check result and seed the current firmware version.
+
+        ``check.current_version`` is the cloud's view of the installed firmware.
+        Mirror it into ``device_firmwares.device_version`` (when the subclass
+        tracks firmware) so consumers have a version before any protobuf report
+        arrives; the state reducer refreshes it from telemetry once reports flow.
+        """
+        self.update_check = check
+        device_firmwares = getattr(self, "device_firmwares", None)
+        if device_firmwares is not None and check.current_version:
+            device_firmwares.device_version = check.current_version
+
 
 @dataclass
 class MowerDevice(Device):

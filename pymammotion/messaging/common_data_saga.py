@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
 import betterproto2
 
 from pymammotion.data.model.hash_list import CommDataCouple
-from pymammotion.data.model.region_data import RegionData
 from pymammotion.messaging.saga import Saga
-from pymammotion.transport.base import CommandTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -87,22 +84,12 @@ class CommonDataSaga(Saga):
         frames: dict[int, list[CommDataCouple]] = {}
         total_frame: int | None = None
 
-        frame_queue: asyncio.Queue[Any] = asyncio.Queue()
-
-        async def _collect(msg: Any) -> None:
-            frame = self.extract_nav_frame(msg, "toapp_get_commondata_ack")
-            if frame is not None and frame[1].type == self._type:
-                frame_queue.put_nowait(msg)
-
-        with broker.subscribe_unsolicited(_collect):
+        with self._collect_frames(broker, "toapp_get_commondata_ack", lambda v: v.type == self._type) as frame_queue:
             cmd = self._command_builder.get_common_data(action=self._action, type=self._type, hash_num=self._hash_num)
             await self._send_command(cmd)
 
             while True:
-                try:
-                    msg = await asyncio.wait_for(frame_queue.get(), timeout=self.step_timeout)
-                except TimeoutError:
-                    raise CommandTimeoutError("toapp_get_commondata_ack", 1) from None
+                msg = await self._next_frame(frame_queue, "toapp_get_commondata_ack")
 
                 _, nav_val = betterproto2.which_one_of(msg, "LubaSubMsg")
                 assert nav_val is not None
@@ -115,14 +102,7 @@ class CommonDataSaga(Saga):
                 # (sub_cmd=2, action/type/hash/total/current echoed) before
                 # sending the next frame; without it, multi-frame responses
                 # stall after frame 1.
-                region_data = RegionData()
-                region_data.action = ack.action
-                region_data.type = ack.type
-                region_data.hash = ack.hash
-                region_data.total_frame = ack.total_frame
-                region_data.current_frame = ack.current_frame
-                region_data.sub_cmd = ack.sub_cmd
-                ack_cmd = self._command_builder.get_regional_data(regional_data=region_data)
+                ack_cmd = self._command_builder.get_regional_data(regional_data=self._region_data(ack))
                 await self._send_command(ack_cmd)
 
                 total_frame = ack.total_frame

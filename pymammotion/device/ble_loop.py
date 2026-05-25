@@ -55,9 +55,14 @@ async def ble_activity_loop(handle: DeviceHandle) -> None:
     Sends ``todev_ble_sync(2)`` every ``_KEEP_ALIVE_BLE_INTERVAL`` seconds
     on a fixed cadence, **regardless of user-sent commands or active sagas**:
 
-    * Cadence is timed off the previous heartbeat send only.  Recent user
-      commands or inbound traffic do not delay a heartbeat — predictable
-      cadence is more important than saving one packet.
+    * The first heartbeat fires immediately on loop start (right after
+      ``_on_ble_connected``), then the cadence is timed off each send.  This
+      matches the APK's behaviour (``MACarDataManager.java`` msg 1002 lambda
+      schedules the first BLE sync at ~1 s post-connect) and avoids a 20 s
+      silent window where the firmware-side GATT keep-alive timer could trip
+      if the queue's initial ``get_report_cfg`` is dropped by a saga gate.
+    * Recent user commands or inbound traffic do not delay a heartbeat —
+      predictable cadence is more important than saving one packet.
     * The send bypasses the device queue and goes directly to the transport.
       A long saga holds the queue's exclusive lock for minutes; routing
       heartbeats through the queue meant they were either dropped
@@ -73,11 +78,6 @@ async def ble_activity_loop(handle: DeviceHandle) -> None:
       * The handle is stopping.
     """
     while not handle._stopping:  # noqa: SLF001
-        try:
-            await asyncio.sleep(_KEEP_ALIVE_BLE_INTERVAL)
-        except asyncio.CancelledError:
-            break
-
         ble = handle.get_transport(TransportType.BLE)
         if ble is None:
             break  # transport removed — exit cleanly
@@ -107,6 +107,11 @@ async def ble_activity_loop(handle: DeviceHandle) -> None:
         except Exception:  # noqa: BLE001
             handle._ble_heartbeat_failures += 1  # noqa: SLF001
             _logger.debug("ble_loop [%s]: unexpected error in heartbeat", handle.device_name, exc_info=True)
+
+        try:
+            await asyncio.sleep(_KEEP_ALIVE_BLE_INTERVAL)
+        except asyncio.CancelledError:
+            break
 
 
 async def ble_polling_loop(handle: DeviceHandle) -> None:

@@ -35,7 +35,7 @@ YukaMVProductKey = ["a1jFe8HzcDb", "a16cz0iXgUJ", "USpE46bNTC7", "pdA6uJrBfjz"]
 
 LubaLDProductKey = ["a1jDMfG2Fgj", "a1vtZq9LUFS"]
 
-LubaVAProductKey = ["a1Ce85210Be", "a1BBOJnnjb9"]
+LubaVAProductKey = ["a1Ce85210Be", "a1BBOJnnjb9", "uY54W5rM8YH"]
 
 YukaMLProductKey = ["a1OWGO8WXbh", "a1s6znKxGvI"]
 

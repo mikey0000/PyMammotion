@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -10,7 +9,6 @@ import betterproto2
 
 from pymammotion.data.model.hash_list import Plan
 from pymammotion.messaging.saga import Saga
-from pymammotion.transport.base import CommandTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -51,21 +49,12 @@ class PlanFetchSaga(Saga):
         """Request all plans from the device and collect responses."""
         self.result = {}
 
-        plan_queue: asyncio.Queue[Any] = asyncio.Queue()
-
-        async def _collect_plan(msg: Any) -> None:
-            if self.extract_nav_frame(msg, "todev_planjob_set") is not None:
-                plan_queue.put_nowait(msg)
-
-        with broker.subscribe_unsolicited(_collect_plan):
+        with self._collect_frames(broker, "todev_planjob_set") as plan_queue:
             # Request first plan (index 0)
             cmd = self._command_builder.read_plan(sub_cmd=2, plan_index=0)
             await self._send_command(cmd)
 
-            try:
-                response = await asyncio.wait_for(plan_queue.get(), timeout=self.step_timeout)
-            except TimeoutError:
-                raise CommandTimeoutError("todev_planjob_set", 1) from None
+            response = await self._next_frame(plan_queue, "todev_planjob_set")
 
             _, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
             assert leaf_val is not None
@@ -85,10 +74,7 @@ class PlanFetchSaga(Saga):
                 cmd = self._command_builder.read_plan(sub_cmd=2, plan_index=next_index)
                 await self._send_command(cmd)
 
-                try:
-                    response = await asyncio.wait_for(plan_queue.get(), timeout=self.step_timeout)
-                except TimeoutError:
-                    raise CommandTimeoutError("todev_planjob_set", 1) from None
+                response = await self._next_frame(plan_queue, "todev_planjob_set")
 
                 _, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
                 assert leaf_val is not None

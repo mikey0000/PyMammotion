@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from pymammotion.aliyun.exceptions import LoginException
 from pymammotion.http.model.http import MQTTConnection, UnauthorizedException
 from pymammotion.transport import AuthError
-from pymammotion.transport.base import ReLoginRequiredError, TransportType
+from pymammotion.transport.base import ReLoginRequiredError, TransportType, is_transient_network_error
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -325,6 +325,11 @@ class TokenManager:
         except ReLoginRequiredError:
             raise
         except Exception as exc:
+            # DNS / connection / timeout failures must propagate as-is so the
+            # MQTT transport's reconnect-with-backoff path handles them rather
+            # than triggering a destructive full re-login on a network outage.
+            if is_transient_network_error(exc):
+                raise
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         if self.on_credentials_updated is not None:
             try:
@@ -389,6 +394,10 @@ class TokenManager:
         except (AuthRefreshException, LoginException) as exc:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         except Exception as exc:
+            # DNS / connection / timeout failures must propagate as-is — see
+            # refresh_http() for the rationale.
+            if is_transient_network_error(exc):
+                raise
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         if self.on_credentials_updated is not None:
             try:
@@ -428,6 +437,11 @@ class TokenManager:
             except UnauthorizedException as exc:
                 raise ReLoginRequiredError(self._account_id, str(exc)) from exc
             except Exception as exc:
+                # Network outage / DNS failure isn't an auth problem — let the
+                # caller see the original exception and back off instead of
+                # treating it as an unrecoverable token error.
+                if is_transient_network_error(exc):
+                    raise
                 raise AuthError(exc)
 
     async def force_refresh_invoke_token(self) -> None:
@@ -465,6 +479,8 @@ class TokenManager:
                 raise ReLoginRequiredError(self._account_id, str(exc)) from exc
             except Exception as exc:
                 self._invoke_refresh_failed_at = time.monotonic()
+                if is_transient_network_error(exc):
+                    raise
                 raise AuthError(exc)
 
     async def refresh_mqtt_creds(self) -> MQTTCredentials:
@@ -514,8 +530,12 @@ class TokenManager:
                 except ReLoginRequiredError:
                     raise
                 except Exception as exc:
+                    if is_transient_network_error(exc):
+                        raise
                     raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         except Exception as exc:
+            if is_transient_network_error(exc):
+                raise
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         if self.on_credentials_updated is not None:
             try:

@@ -71,6 +71,7 @@ from pymammotion.transport.base import (
     Subscription,
     TransportError,
     TransportType,
+    is_transient_network_error,
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
@@ -481,6 +482,13 @@ class MammotionClient:
         except LoginFailedError:
             raise
         except Exception as exc:
+            # DNS / connection / timeout — the network is down, not the
+            # credentials.  Let the original exception propagate so the caller
+            # (MQTT transport, send-retry chain) treats it as a transient
+            # condition and backs off, rather than logging an "unrecoverable
+            # auth error" and surfacing it to the user.
+            if is_transient_network_error(exc):
+                raise
             raise LoginFailedError(session.email, str(exc)) from exc
 
     async def _send_with_auth_retry(
@@ -587,6 +595,10 @@ class MammotionClient:
 
     def rtk_device(self, name: str) -> DeviceHandle | None:
         """Return the DeviceHandle for the named RTK base station, or None."""
+        return self._device_registry.get_by_name(name)
+
+    def pool_cleaner_device(self, name: str) -> DeviceHandle | None:
+        """Return the DeviceHandle for the named Spino pool cleaner, or None."""
         return self._device_registry.get_by_name(name)
 
     async def fetch_rtk_lora_info(self, device_name: str) -> None:

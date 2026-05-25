@@ -761,6 +761,13 @@ class HashList(DataClassORJSONMixin):
             self.dynamics_line.extend(hash_data.data_couple)
             return True
 
+        # NavGetCommData with type=SVG carries no geometry — real SVG geometry only
+        # arrives as SvgMessage (toapp_svg_msg).  Discard rather than storing it as a
+        # geometry-less unknown-type frame (which would also mark the hash "received"
+        # via find_incomplete_hashes and skip fetching its real data).
+        if hash_data.type == PathType.SVG:
+            return False
+
         path_type_mapping = self._get_path_type_mapping()
         target_dict = path_type_mapping.get(hash_data.type)
 
