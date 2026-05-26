@@ -1,5 +1,7 @@
 from enum import Enum, IntEnum
 
+from pymammotion.utility.enum_base import UnknownTolerantIntEnum
+
 
 class ConnectionPreference(Enum):
     """Enum for connection preference."""
@@ -174,7 +176,7 @@ class IotConnectionStatus(IntEnum):
     RESET = 2
 
 
-class TaskAreaStatus(IntEnum):
+class TaskAreaStatus(UnknownTolerantIntEnum):
     """Per-zone status within a work task session.
 
     Stored as the value in WorkTaskEvent.hash_area_map (dict[zone_hash, TaskAreaStatus]).
@@ -183,6 +185,7 @@ class TaskAreaStatus(IntEnum):
     Source: APK comments (Chinese) extracted from device update buffer parsing.
     """
 
+    UNKNOWN = -1  # Unmodelled status code (newer firmware) — see UnknownTolerantIntEnum
     NOT_STARTED = 0  # Zone selected but mowing has not yet begun
     WAITING = 1  # Zone selected, queued behind another zone (选中未割)
     MOWING = 2  # Zone currently being mowed (选中正在割)

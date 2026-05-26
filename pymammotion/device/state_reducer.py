@@ -33,7 +33,14 @@ from pymammotion.data.model.hash_list import (
     Plan,
     SvgMessage,
 )
-from pymammotion.data.model.pool_state import PoolBottomType, PoolPoint, SpinoSysStatus, SpinoWorkMode, WallMaterial
+from pymammotion.data.model.pool_state import (
+    PoolBottomType,
+    PoolPoint,
+    SpinoSysStatus,
+    SpinoToggle,
+    SpinoWorkMode,
+    WallMaterial,
+)
 from pymammotion.data.model.report_info import BaseScore
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import OTAProgressItems
@@ -872,6 +879,9 @@ class PoolStateReducer(StateReducer):
                 device.pool_state = copy.deepcopy(current.pool_state)
                 device.pool_map = copy.deepcopy(current.pool_map)
                 self._update_app_downlink_cmd(device, sys_msg[1])  # type: ignore
+            case "bidire_comm_cmd":
+                device.pool_state = copy.deepcopy(current.pool_state)
+                self._update_toggle(device, sys_msg[1])  # type: ignore
             case _:
                 _logger.debug(
                     "PoolStateReducer: ignoring unhandled sys sub-message %r for %s",
@@ -887,47 +897,37 @@ class PoolStateReducer(StateReducer):
             return
         status = report.dev_status
 
-        # sys_status is an int on the wire — coerce to our enum, falling back
-        # to the raw int if a future firmware sends a value we don't yet model.
-        try:
-            device.pool_state.sys_status = SpinoSysStatus(status.sys_status)
-        except ValueError:
-            _logger.debug(
-                "PoolStateReducer: unknown sys_status=%d for %s — leaving previous value",
-                status.sys_status,
-                device.name,
-            )
-        try:
-            device.pool_state.work_mode = SpinoWorkMode(status.work_mode)
-        except ValueError:
-            _logger.debug(
-                "PoolStateReducer: unknown work_mode=%d for %s — leaving previous value",
-                status.work_mode,
-                device.name,
-            )
+        # SpinoSysStatus / SpinoWorkMode are UnknownTolerantIntEnum — an unmodelled
+        # wire value resolves to UNKNOWN (logged once) rather than raising.
+        device.pool_state.sys_status = SpinoSysStatus(status.sys_status)
+        device.pool_state.work_mode = SpinoWorkMode(status.work_mode)
         device.pool_state.battery = status.bat_val
+
+    def _update_toggle(self, device: PoolCleanerDevice, cmd: SysCommCmd) -> None:
+        """Apply a ``SysCommCmd`` (``allpowerfullRW``) read/ack to a pool toggle.
+
+        ``cmd.id`` is the toggle (see :class:`SpinoToggle`) and ``cmd.context`` its
+        0/1 value.  IDs we don't model (mower-side generic RW) are ignored.
+        """
+        try:
+            toggle = SpinoToggle(cmd.id)
+        except ValueError:
+            _logger.error(
+                "PoolStateReducer: ignoring unknown SysCommCmd id=%d for %s",
+                cmd.id,
+                device.name,
+            )
+            return
+        setattr(device.pool_state, toggle.name, bool(cmd.context))
 
     def _update_app_downlink_cmd(self, device: PoolCleanerDevice, cmd: AppDownlinkCmdT) -> None:
         """Apply an incoming ``AppDownlinkCmdT`` (settings ack or map data) to *device*."""
-        # Settings — only update fields the device actually populated.
+        # Settings — only update fields the device actually populated.  WallMaterial
+        # / PoolBottomType are UnknownTolerantIntEnum (unknown → UNKNOWN, logged once).
         if cmd.wall_material is not None:
-            try:
-                device.pool_state.wall_material = WallMaterial(cmd.wall_material)
-            except ValueError:
-                _logger.debug(
-                    "PoolStateReducer: unknown wall_material=%d for %s",
-                    cmd.wall_material,
-                    device.name,
-                )
+            device.pool_state.wall_material = WallMaterial(cmd.wall_material)
         if cmd.bottom_type is not None:
-            try:
-                device.pool_state.bottom_type = PoolBottomType(int(cmd.bottom_type))
-            except ValueError:
-                _logger.debug(
-                    "PoolStateReducer: unknown bottom_type=%s for %s",
-                    cmd.bottom_type,
-                    device.name,
-                )
+            device.pool_state.bottom_type = PoolBottomType(int(cmd.bottom_type))
         if cmd.floor_speed is not None:
             device.pool_state.floor_speed = cmd.floor_speed
 

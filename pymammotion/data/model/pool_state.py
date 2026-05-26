@@ -19,8 +19,10 @@ from enum import IntEnum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pymammotion.utility.enum_base import UnknownTolerantIntEnum
 
-class SpinoSysStatus(IntEnum):
+
+class SpinoSysStatus(UnknownTolerantIntEnum):
     """Top-level system state shown on the Spino home screen.
 
     Mirrors the ``SpinoSysStatus`` proto enum and the four UI labels
@@ -28,48 +30,70 @@ class SpinoSysStatus(IntEnum):
     STANDBY, WORKING, RETURNING, and the SP-only CHARGEBACKING.
     """
 
-    READY = 0           # UI label: "STANDBY"
-    WORKING = 1         # UI label: "WORKING"
-    WORKBACKING = 2     # UI label: "RETURNING"
-    CHARGEBACKING = 3   # UI label: SP-only "RETURNING TO CHARGE"
+    UNKNOWN = -1
+    READY = 0  # UI label: "STANDBY"
+    WORKING = 1  # UI label: "WORKING"
+    WORKBACKING = 2  # UI label: "RETURNING"
+    CHARGEBACKING = 3  # UI label: SP-only "RETURNING TO CHARGE"
 
 
-class SpinoWorkMode(IntEnum):
+class SpinoWorkMode(UnknownTolerantIntEnum):
     """Cleaning mode picker on the Spino home screen.
 
     Mirrors the ``SwimmingWorkModule`` Java enum used by the Mammotion app's
     mode buttons. The numeric values match ``dev_statue_t.work_mode``.
     """
 
+    UNKNOWN = -1
     RECHARGE = 0  # SP-only "RECHARGE" button
-    AUTO = 1      # "ALL"
-    FLOOR = 2     # "FLOOR"
-    WALL = 3      # "WALL"
-    ECO = 4       # "ECO"
-    LINE = 5      # "LINE"
+    AUTO = 1  # "ALL"
+    FLOOR = 2  # "FLOOR"
+    WALL = 3  # "WALL"
+    ECO = 4  # "ECO"
+    LINE = 5  # "LINE"
 
 
-class WallMaterial(IntEnum):
+class WallMaterial(UnknownTolerantIntEnum):
     """Pool wall material — user-selectable in the calibration screen.
 
     Mirrors the ``WallMaterialE`` proto enum.
     """
 
+    UNKNOWN = -1
     GLASS = 0
     CERAMICS = 1
     SAND_STONE = 2
 
 
-class PoolBottomType(IntEnum):
+class PoolBottomType(UnknownTolerantIntEnum):
     """Pool bottom shape — user-selectable in the calibration screen.
 
     Mirrors the ``PoolBottomTypeE`` proto enum.
     """
 
+    UNKNOWN = -1
     RIGHT_ANGLE_SIMPLE = 0
     RIGHT_ANGLE_COMPLEX = 1
     CURVE_SIMPLE = 2
     CURVE_COMPLEX = 3
+
+
+class SpinoToggle(IntEnum):
+    """On/off toggles the Spino exposes via the generic ``SysCommCmd`` (``allpowerfullRW``).
+
+    The value is the command ``id`` used in ``read_write_device(rw_id, context, rw)``:
+    ``context`` carries 0/1, ``rw`` is 1 to write and 0 to read.  **Member names match
+    the corresponding ``PoolState`` boolean field names** so the reducer can map an
+    incoming ``SysCommCmd`` straight onto state via ``SpinoToggle(id).name``.
+
+    ``buzzer`` is on the main pool-settings screen; the other three live in the app's
+    "Beta Features" screen (``SwimmingPoolTestToolsActivity``).
+    """
+
+    buzzer = 20  # title_buzzer
+    turbo_clean = 21  # title_power_clean (force module)
+    platform_cleaning = 22  # title_step_clean (stairs module)
+    waterline_parking = 23  # title_waterline_dock (waterline module)
 
 
 @dataclass
@@ -133,3 +157,10 @@ class PoolState(DataClassORJSONMixin):
     wall_material: WallMaterial = WallMaterial.GLASS
     bottom_type: PoolBottomType = PoolBottomType.RIGHT_ANGLE_SIMPLE
     floor_speed: float = 0.0
+
+    # --- Toggle settings (SysCommCmd / allpowerfullRW, see SpinoToggle) -----
+    # Field names match SpinoToggle member names so the reducer can map by id.
+    buzzer: bool = False
+    turbo_clean: bool = False
+    platform_cleaning: bool = False
+    waterline_parking: bool = False

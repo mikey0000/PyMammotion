@@ -531,7 +531,7 @@ async def test_sleep_or_rearm_returns_immediately_if_event_pre_set() -> None:
 
     # A 30-second sleep would block the test if the bug were still present.
     started = asyncio.get_event_loop().time()
-    woke = await asyncio.wait_for(handle._sleep_or_rearm(30.0), timeout=1.0)  # noqa: SLF001
+    woke = await asyncio.wait_for(handle.sleep_or_rearm(30.0), timeout=1.0)
     elapsed = asyncio.get_event_loop().time() - started
 
     assert woke is True
@@ -545,7 +545,7 @@ async def test_sleep_or_rearm_times_out_when_no_signal() -> None:
     handle = make_handle()
     assert not handle._rearm_event.is_set()  # noqa: SLF001
 
-    woke = await handle._sleep_or_rearm(0.05)  # noqa: SLF001
+    woke = await handle.sleep_or_rearm(0.05)
     assert woke is False
 
 
@@ -558,6 +558,6 @@ async def test_sleep_or_rearm_wakes_on_signal_during_wait() -> None:
         handle._rearm_event.set()  # noqa: SLF001
 
     asyncio.create_task(signal_after_delay())
-    woke = await asyncio.wait_for(handle._sleep_or_rearm(5.0), timeout=1.0)  # noqa: SLF001
+    woke = await asyncio.wait_for(handle.sleep_or_rearm(5.0), timeout=1.0)
     assert woke is True
     assert not handle._rearm_event.is_set()  # noqa: SLF001

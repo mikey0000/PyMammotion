@@ -29,7 +29,7 @@ from pymammotion.utility.svg import (
     build_svg_update,
 )
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 _SIMPLE_SQUARE = [
     CommDataCouple(x=0.0, y=0.0),

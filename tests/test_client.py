@@ -1034,7 +1034,7 @@ async def test_poll_interval_mowing_returns_fifteen_minutes() -> None:
     handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
     assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]  # noqa: SLF001
-    assert handle._device_mode() is _DeviceMode.ACTIVE  # noqa: SLF001
+    assert handle.device_mode() is _DeviceMode.ACTIVE  # noqa: SLF001
 
 
 async def test_poll_interval_returning_returns_fifteen_minutes() -> None:
@@ -1049,7 +1049,7 @@ async def test_poll_interval_idle_returns_fifteen_minutes() -> None:
     """sys_status=0 with no charge → IDLE (paused/lost) → 15 min for MQTT."""
     handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = 0
-    assert handle._device_mode() is _DeviceMode.IDLE  # noqa: SLF001
+    assert handle.device_mode() is _DeviceMode.IDLE  # noqa: SLF001
     assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.IDLE]  # noqa: SLF001
 
 
@@ -1058,7 +1058,7 @@ async def test_poll_interval_docked_charging_returns_thirty_minutes() -> None:
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 80
     handle.snapshot.raw.report_data.dev.charge_state = 1
-    assert handle._device_mode() is _DeviceMode.DOCKED_CHARGING  # noqa: SLF001
+    assert handle.device_mode() is _DeviceMode.DOCKED_CHARGING  # noqa: SLF001
     assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_CHARGING]  # noqa: SLF001
 
 
@@ -1067,7 +1067,7 @@ async def test_poll_interval_docked_full_returns_sixty_minutes() -> None:
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 100
     handle.snapshot.raw.report_data.dev.charge_state = 1
-    assert handle._device_mode() is _DeviceMode.DOCKED_FULL  # noqa: SLF001
+    assert handle.device_mode() is _DeviceMode.DOCKED_FULL  # noqa: SLF001
     assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_FULL]  # noqa: SLF001
 
 
@@ -1097,7 +1097,7 @@ async def test_poll_loop_sends_after_silence() -> None:
         await one_shot_mock()
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(return_value=False)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(return_value=False)),
         patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
@@ -1122,7 +1122,7 @@ async def test_poll_loop_rate_limited_no_ble_backs_off() -> None:
     one_shot_mock = AsyncMock()
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_record_sleep)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_record_sleep)),
         patch.object(handle, "_send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
@@ -1159,7 +1159,7 @@ async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
         await one_shot_mock()
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(return_value=False)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(return_value=False)),
         patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
@@ -1186,7 +1186,7 @@ async def test_poll_loop_defers_while_ble_stream_active() -> None:
         return False
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_record_and_stop)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_record_and_stop)),
         patch.object(handle, "_send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
@@ -1213,7 +1213,7 @@ async def test_poll_loop_skips_during_saga() -> None:
     from pymammotion.messaging.command_queue import DeviceCommandQueue
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
         patch.object(handle, "_send_one_shot_report", one_shot_mock),
         patch.object(type(handle.queue), "is_saga_active", new_callable=lambda: property(lambda _: True)),
     ):
@@ -1541,7 +1541,7 @@ async def test_poll_loop_never_polls_when_device_reported_offline_and_no_ble() -
         return False
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
         patch.object(handle, "_send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
@@ -1590,7 +1590,7 @@ async def test_poll_loop_resumes_after_mqtt_offline_clears() -> None:
         await one_shot_mock()
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_sleep_then_recover)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_sleep_then_recover)),
         patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
@@ -1620,7 +1620,7 @@ async def test_poll_loop_skips_when_ble_only_in_cooldown_and_no_mqtt() -> None:
         return False
 
     with (
-        patch.object(handle, "_sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
+        patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
         patch.object(handle, "_send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
