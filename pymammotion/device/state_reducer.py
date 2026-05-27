@@ -70,6 +70,7 @@ from pymammotion.proto import (
     NavGetAllPlanTask,
     NavGetCommDataAck,
     NavGetHashListAck,
+    NavMapNameMsg,
     NavPlanJobSet,
     NavReqCoverPath,
     NavSysParamMsg,
@@ -366,6 +367,14 @@ class MowerStateReducer(StateReducer):
                     ]
                 # else: no areas fetched yet — leave area_name alone; HashList.update()
                 # will generate fallback names as each area chunk arrives.
+            case "toapp_map_name_msg":
+                # Single-area rename echo (NavMapNameMsg, one per area) — the
+                # device acks set_area_name with the hash + new name rather than
+                # re-sending the whole toapp_all_hash_name list, so patch the one
+                # entry in place. hash == 0 is the get-list request shape, ignore.
+                name_msg: NavMapNameMsg = nav_msg[1]  # type: ignore
+                if name_msg.hash and name_msg.name:
+                    device.map.upsert_area_name(name_msg.hash, name_msg.name)
             case "bidire_reqconver_path":
                 work_settings: NavReqCoverPath = nav_msg[1]  # type: ignore
                 current_task = CurrentTaskSettings.from_dict(work_settings.to_dict(casing=betterproto2.Casing.SNAKE))
