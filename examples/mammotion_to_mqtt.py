@@ -1134,22 +1134,22 @@ class ExternalMQTTPublisher:
             await self._publish_command_response(device_name, "sync_mowpath", "error", error=str(e))
             _LOGGER.error("✗ sync_mowpath failed: %s", e)
     async def _execute_sync_map(self, device_name: str,payload:str, cmd_data: dict) -> None:
-        """Execute sync_areas_and_paths command."""
+        """Execute sync_map command."""
         if not self.dev_console:
             return
 
         timeout = cmd_data.get("timeout", 120.0)
         
-        await self._publish_command_response(device_name, "sync_areas_and_paths", "sending", timeout=timeout)
+        await self._publish_command_response(device_name, "sync_map", "sending", timeout=timeout)
         
         try:
             #self.dev_console.sync_map(device_name,timeout=timeout) # use implementation in dev_console
             await self.dev_console.mammotion.start_map_sync(device_name)
-            await self._publish_command_response(device_name, "sync_areas_and_paths", "enqueued", timeout=timeout)
-            _LOGGER.info("✓ sync_areas_and_paths enqueued: %s", device_name)
+            await self._publish_command_response(device_name, "sync_map", "enqueued", timeout=timeout)
+            _LOGGER.info("✓ sync_map enqueued: %s", device_name)
         except Exception as e:
-            await self._publish_command_response(device_name, "sync_areas_and_paths", "error", error=str(e))
-            _LOGGER.error("✗ sync_areas_and_paths failed: %s", e)
+            await self._publish_command_response(device_name, "sync_map", "error", error=str(e))
+            _LOGGER.error("✗ sync_map failed: %s", e)
     async def _execute_sync_plans(self, device_name: str,payload:str, cmd_data: dict) -> None:
         """Execute sync_plans command."""
         if not self.dev_console:
