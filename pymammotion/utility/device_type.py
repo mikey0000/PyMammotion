@@ -435,9 +435,14 @@ class DeviceType(Enum):
 
     @staticmethod
     def is_yuka_mini(device_name: str) -> bool:
-        """Return True if the device name identifies a Yuka Mini or Yuka Mini 2 device."""
+        """Return True if the device name identifies a Yuka Mini-class device.
+
+        Covers the Yuka Mini (Yuka-MN), Yuka Mini 2 (Yuka-YM) and the Yuka Mini 2
+        ML variant (Yuka-ML / MN232). These compact, single-drive-motor units mulch
+        only (no grass collection), so this gate excludes the dump/collection entities.
+        """
         dt = DeviceType.value_of_str(device_name)
-        return dt in (DeviceType.YUKA_MINI, DeviceType.YUKA_MINI2)
+        return dt in (DeviceType.YUKA_MINI, DeviceType.YUKA_MINI2, DeviceType.YUKA_ML)
 
     @staticmethod
     def is_mini_or_x_series(device_name: str) -> bool:
@@ -447,6 +452,7 @@ class DeviceType(Enum):
             DeviceType.YUKA_MINI,
             DeviceType.YUKA_MINI2,
             DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_ML,
             DeviceType.YUKA_VP,
             DeviceType.LUBA_MN,
             DeviceType.LUBA_VP,
@@ -631,13 +637,16 @@ _VALUE_OF_STR_RULES: tuple[tuple["DeviceType", int, Callable[[str], bool] | None
     (DeviceType.YUKA_VP, 7, None),
     (DeviceType.YUKA_MINI, 7, None),
     (DeviceType.YUKA_MINI2, 7, None),
-    (DeviceType.LUBA_YUKA, 7, None),
     (DeviceType.RTK3A1, 7, None),
     (DeviceType.RTK3A0, 7, None),
     (DeviceType.RTK3A2, 7, None),
     (DeviceType.YUKA_MINIV, 7, None),
     (DeviceType.LUBA_VA, 7, None),
     (DeviceType.YUKA_ML, 7, None),
+    # Generic "Yuka-" (the original Yuka) must come AFTER every specific "Yuka-XX"
+    # prefix (Yuka-MV, Yuka-ML, ...): its name is a substring of theirs, so placing
+    # it earlier shadowed them (e.g. "Yuka-ML744..." resolved to LUBA_YUKA, not YUKA_ML).
+    (DeviceType.LUBA_YUKA, 7, None),
     (DeviceType.LUBA_MD, 7, None),
     (DeviceType.LUBA_LA, 7, None),
     (DeviceType.SWIMMINGPOOL_S1, 8, None),
