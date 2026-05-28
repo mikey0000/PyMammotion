@@ -1,0 +1,31 @@
+{
+  "id": "746",
+  "version": "1.0",
+  "sys": {
+    "ack": 0
+  },
+  "params": {
+    "deviceState": 13,
+    "deviceVersionInfo": "{\"devVer\":\"2.3.23.19\",\"whole\":1,\"fwInfo\":[{\"t\":\"202\",\"c\":\"202-MNWheelfG4BT\",\"v\":\"1.2.0.475 (c498c268)\",\"h\":\"\"},{\"t\":\"201\",\"c\":\"201-MNWheelfG4\",\"v\":\"1.2.0.479 (71f252a4)\",\"h\":\"\"},{\"t\":\"204\",\"c\":\"204-MNCutterfG4BT\",\"v\":\"1.2.0.475 (c498c268)\",\"h\":\"\"},{\"t\":\"203\",\"c\":\"203-MNCutterfG4\",\"v\":\"1.2.0.480 (9eb8acbc)\",\"h\":\"\"},{\"t\":\"8\",\"c\":\"8-MNGMcuH5BT\",\"v\":\"5.1.2.1674 (fcd1f48ef)\",\"h\":\"\"},{\"t\":\"1\",\"c\":\"1-MNGMcuH5\",\"v\":\"5.1.2.2712 (9dcb93c79)\",\"h\":\"\"},{\"t\":\"11\",\"c\":\"11-YMNX5RBsp\",\"v\":\"1.0.0.418 (db68ee20e)\",\"h\":\"0ee31c8a2d65d8e0e071e7f9d0a9197c2b2b7278814718000e61a7f37c49cd3e\"},{\"t\":\"12\",\"c\":\"12-YMNX5RMidware\",\"v\":\"5.0.0.4928 (0a4b6a0ec)\",\"h\":\"59f4cbe9aa2a9d737fce9f2627d8e073a3557909129701bcbfc265d5f28a9a29\"},{\"t\":\"17\",\"c\":\"17-LdAK1\",\"v\":\"PS25112528PL0c020600MO25102730\",\"h\":\"\"}]}",
+    "batteryPercentage": 31,
+    "deviceVersion": "2.3.23.19",
+    "knifeHeight": 60,
+    "loraGeneralConfig": "0.0.0.0",
+    "coordinate": "{\"lon\": 0.0, \"lat\": 0.0}",
+    "extMod": "YUKA mini 2 1000H",
+    "intMod": "120",
+    "iotState": 1,
+    "iotMsgTotal": 100000,
+    "iotMsgHz": 5000,
+    "deviceOtherInfo": "{\"socUpTime\":7411,\"mcuUpTime\":7414,\"socLoads\":\"15.75 14.73 12.91\",\"socMemFree\":672632,\"socMemTotal\":1606220,\"socMmcLifeTime\":1,\"usbDisCnt\":0,\"socPstore\":0,\"socCoredump\":1,\"embedCoredump\":0,\"navCoredump\":1,\"perceptionCoredump\":0,\"locationCoredump\":0,\"otherCoredump\":0,\"socTmp\":78,\"mcMcu\":\"STM32H562\",\"max_work_tilt_degree\":\"21.59\",\"cur_tilt_degree\":\"3.68\",\"iMsgFree\":99080,\"iMsgLimit\":0,\"iMsgRaw\":0,\"iMsgprop\":5,\"iMsgServ\":0,\"iMsgInfo\":0,\"iMsgWarn\":0,\"iMsgFault\":0,\"iMsgOtaStage\":0,\"iMsgProtobuf\":734,\"iMsgNotify\":1,\"iMsgLogProg\":0,\"iMsgBizReq\":3,\"iMsgCfgReq\":2,\"iMsgVoice\":0,\"iMsgWarnCode\":0,\"pbNet\":0,\"pbSys\":288,\"pbNav\":405,\"pbLocal\":0,\"pbPlan\":0,\"pbEDrv\":2,\"pbESys\":31,\"pbMidware\":0,\"pbOta\":0,\"pbAppl\":0,\"pbMul\":8,\"pbOther\":0,\"loraConnect\":0,\"Basestatus\":0,\"iot_con_timeout\":0,\"iot_con\":0,\"iot_con_fail_max\":0,\"iot_con_fail_min\":0,\"iot_url_count\":0,\"iot_url_max\":0,\"iot_url_min\":0,\"iot_cn\":0,\"iot_ap\":0,\"iot_us\":0,\"iot_eu\":0,\"mqtt_rtk_switch\":0,\"mqtt_rtk_channel\":0,\"mqtt_rtk_status\":0,\"mqtt_rtcm_cnt\":0,\"mqtt_conn_cnt\":0,\"mqtt_disconn_cnt\":0,\"mqtt_rtk_hb_flag\":0,\"mqtt_rtk_hb_count\":0,\"mqtt_start_cnt\":0,\"mqtt_close_cnt\":0,\"mqtt_rtk_ssl_fail\":0,\"mqtt_rtk_wifi_config\":1,\"nrtk_svc_prov\":1,\"nrtk_svc_err\":0,\"nrtk_traffic_limit\":0,\"nrtk_low_power\":0,\"nrtk_req_flood\":0,\"nrtk_rtcm_bytes\":0,\"nrtk_rtcm_lose\":0,\"nrtk_password_err\":0,\"nrtk_req_cnt\":1,\"nrtk_rate\":0,\"base_stn_id\":0,\"nrtk_mountpoint\":\"\",\"nrtk_url\":\"\",\"nrtk_freq\":0,\"nrtk_account_ready\":1,\"map_switch_err_101\":0,\"map_switch_err_102\":0,\"map_switch_err_103\":0,\"map_switch_err_104\":0,\"map_switch_err_105\":0,\"map_switch_err_106\":0,\"rtk_status\":19,\"charge_status\":0,\"chassis_state\":2,\"mqtt_net_choice\":3,\"rtk_wifi_to_mnet\":0,\"rtk_mnet_to_wifi\":0,\"nav\":\" (dd4381662)\",\"ins_fusion\":\"fopen error!\",\"perception\":\"3.3.6-master (b513c4c7)\",\"vision_proxy\":\"fopen error!\",\"vslam_vio\":\"fopen error!\",\"task_area\":935.000000,\"task_count\":3,\"task_hash\":\"6558175430275015982\",\"systemioBootTime\":\"9\",\"dds_no_gdc\":0,\"process_restart_count\":-1}",
+    "ltMrMod": "",
+    "rtMrMod": "",
+    "bmsHardwareVersion": "BW_BATTERY_33V_6S2P",
+    "networkInfo": "{\"ssid\": \"REDACTED\", \"wifi_sta_mac\": \"REDACTED\", \"wifi_rssi\": -65, \"wifi_ip\": \"REDACTED\", \"wifi_dns\": \"REDACTED\", \"used_net\": 1, \"mnet_model\": \"\", \"imei\": \"\", \"fw_ver\": \"\", \"sim\": \"Unkown\", \"imsi\": \"\", \"mnet_rssi\": 0, \"signal\": 0, \"mnet_link\": 0, \"mnet_ip\": \"0.0.0.0\", \"mnet_dns\": \"\", \"wifi_available\": 1, \"sim_source\": \"Unknown\", \"iccid\": \"\", \"mnet_option\": \"\", \"mnet_reg\": \"\", \"mnet_rsrp\": 0, \"mnet_snr\": 0.0, \"mnet_enable\": 0, \"apn_info\": \"\", \"apn_cid\": 0, \"bt_mac\": \"REDACTED\", \"hub_reset\": 0, \"mnet_dis\": 0, \"airplane_times\": 0, \"lsusb_num\": 4, \"bTra\": {\"IoT\": 0, \"RoI\": 0, \"FPV\": 0, \"inav\": {\"NAV\": 0, \"Pau\": 0, \"rPau\": 0, \"MCU\": 0, \"APP\": 0, \"wSlp\": 0, \"iSlp\": 0}}, \"bwTra\": {\"IoT\": 358, \"RoI\": 0, \"FPV\": 2018, \"inav\": {\"NAV\": 0, \"Pau\": 0, \"rPau\": 0, \"MCU\": 0, \"APP\": 0, \"wSlp\": 0, \"iSlp\": 0}}, \"mnet_rx\": 0, \"mnet_tx\": 0, \"mTra\": {\"upt\": \"260527 194716\", \"Hour\": {\"0\": {\"r\": 0, \"t\": 0, \"s\": \"260527 19\"}, \"1\": {\"r\": 0, \"t\": 0, \"s\": \"260527 18\"}}, \"Day\": {\"0\": {\"r\": 0, \"t\": 0, \"s\": \"260527 00\"}, \"1\": {\"r\": 0, \"t\": 0, \"s\": \"260526 00\"}}, \"Mon\": {\"0\": {\"r\": 0, \"t\": 0, \"s\": \"260501 00\"}, \"1\": {\"r\": 0, \"t\": 0, \"s\": \"260414 15\"}}}, \"mnet_uniot\": 0, \"mnet_un_getiot\": 0, \"ssh_flag\": \"0\", \"mileage\": \"155528\", \"work_time\": \"189 h 55 min 20 s\", \"wt_sec\": 683720, \"bat_cycles\": \"65535\"}",
+    "stm32H7Version": "5.1.2.2712 (9dcb93c79)",
+    "mcBootVersion": "5.1.2.1674 (fcd1f48ef)",
+    "checkData": "{\"result\":\"OK\",\"Error\":[],\"Warn\":[],\"OK\":[28,20,5,10,22,25,37,38,1,2,16,18,17]}",
+    "behindLiftSwitch": 0
+  },
+  "method": "thing.event.property.post"
+}

@@ -91,7 +91,6 @@ class NetworkInfo(DataClassORJSONMixin):
     """Comprehensive network information including WiFi, cellular, and traffic statistics."""
 
     ssid: str
-    ip: str
     wifi_sta_mac: str
     wifi_rssi: int
     wifi_available: int
@@ -112,7 +111,6 @@ class NetworkInfo(DataClassORJSONMixin):
     mnet_rsrp: str
     mnet_snr: str
     mnet_enable: int
-    apn_num: int
     apn_info: str
     apn_cid: int
     used_net: int
@@ -133,6 +131,11 @@ class NetworkInfo(DataClassORJSONMixin):
     wt_sec: int
     bat_cycles: str
 
+    # Device-class-dependent: a WiFi-only device omits cellular fields and vice versa,
+    # and some firmware omits these entirely. Optional so absence doesn't drop the message.
+    ip: str = ""
+    apn_num: int = 0
+
 
 @dataclass
 class DeviceOtherInfo(DataClassORJSONMixin):
@@ -149,7 +152,6 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     soc_coredump: Annotated[int, Alias("socCoredump")]
     soc_tmp: Annotated[int, Alias("socTmp")]
     mc_mcu: Annotated[str, Alias("mcMcu")]
-    tilt_degree: str
     i_msg_free: Annotated[int, Alias("iMsgFree")]
     i_msg_limit: Annotated[int, Alias("iMsgLimit")]
     i_msg_raw: Annotated[int, Alias("iMsgRaw")]
@@ -206,7 +208,7 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     iot_con_timeout: int
     iot_con: int
     iot_con_fail_max: str
-    iot_con_fail_min: Annotated[str, Alias("iot_con__fail_min")]
+    iot_con_fail_min: Annotated[str, Alias("iot_con_fail_min")]
     iot_url_count: int
     iot_url_max: str
     iot_url_min: str
@@ -219,6 +221,9 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     task_hash: str
     systemio_boot_time: Annotated[str, Alias("systemioBootTime")]
     dds_no_gdc: int
+
+    # Optional / firmware-dependent: older or differently-equipped firmware omits this.
+    tilt_degree: str = ""
 
     class Config(BaseConfig):
         allow_deserialization_not_by_alias = True
@@ -255,13 +260,7 @@ class DeviceProperties(DataClassORJSONMixin):
     rt_mr_mod: Annotated[str, Alias("rtMrMod")]
     bms_hardware_version: Annotated[str, Alias("bmsHardwareVersion")]
     stm32_h7_version: Annotated[str, Alias("stm32H7Version")]
-    left_motor_version: Annotated[str, Alias("leftMotorVersion")]
-    right_motor_version: Annotated[str, Alias("rightMotorVersion")]
-    rtk_version: Annotated[str, Alias("rtkVersion")]
-    bms_version: Annotated[str, Alias("bmsVersion")]
     mc_boot_version: Annotated[str, Alias("mcBootVersion")]
-    left_motor_boot_version: Annotated[str, Alias("leftMotorBootVersion")]
-    right_motor_boot_version: Annotated[str, Alias("rightMotorBootVersion")]
 
     # Nested JSON objects
     device_version_info: Annotated[DeviceVersionInfo, Alias("deviceVersionInfo")]
@@ -269,7 +268,19 @@ class DeviceProperties(DataClassORJSONMixin):
     device_other_info: Annotated[DeviceOtherInfo, Alias("deviceOtherInfo")]
     network_info: Annotated[NetworkInfo, Alias("networkInfo")]
     check_data: Annotated[CheckData, Alias("checkData")]
+
+    # Per-side motor / module versions are device-class dependent and may be absent.
+    # A dual-drive chassis (Luba) reports left/right motor versions; a single-motor
+    # device (Yuka Mini 2) omits them entirely, and a non-RTK device omits rtk_version.
+    # These must be optional — otherwise a single missing key makes mashumaro raise
+    # MissingField and the entire property update (battery, state, etc.) is dropped.
     iot_id: str = ""
+    left_motor_version: Annotated[str, Alias("leftMotorVersion")] = ""
+    right_motor_version: Annotated[str, Alias("rightMotorVersion")] = ""
+    rtk_version: Annotated[str, Alias("rtkVersion")] = ""
+    bms_version: Annotated[str, Alias("bmsVersion")] = ""
+    left_motor_boot_version: Annotated[str, Alias("leftMotorBootVersion")] = ""
+    right_motor_boot_version: Annotated[str, Alias("rightMotorBootVersion")] = ""
 
     class Config(BaseConfig):
         allow_deserialization_not_by_alias = True
