@@ -1,7 +1,7 @@
 """Dataclass models for Mammotion direct-MQTT device properties payloads."""
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
