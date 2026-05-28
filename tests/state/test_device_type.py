@@ -61,3 +61,35 @@ def test_specific_yuka_prefix_not_shadowed_by_luba_yuka(
 ) -> None:
     """Regression: LUBA_YUKA ('Yuka-') must not shadow more specific Yuka- variants."""
     assert DeviceType.value_of_str(device_name) is expected
+
+
+# ---------------------------------------------------------------------------
+# is_yuka_mini — Yuka Mini, Yuka Mini 2, and Yuka ML are all treated as "mini"
+# variants (callers in mower_api/device_config/readiness/mammotion gate behavior
+# off this; ML belongs with the mini class, not the full Yuka class).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("device_name", [
+    "Yuka-MN6ABCDE",  # YUKA_MINI
+    "Yuka-YM6ABCDE",  # YUKA_MINI2
+    "Yuka-ML6ABCDE",  # YUKA_ML
+])
+def test_is_yuka_mini_returns_true_for_mini_class(device_name: str) -> None:
+    assert DeviceType.is_yuka_mini(device_name), (
+        f"Expected is_yuka_mini True for '{device_name}' "
+        f"(resolved as {DeviceType.value_of_str(device_name)})"
+    )
+
+
+@pytest.mark.parametrize("device_name", [
+    "Yuka-6ABCDEF",   # LUBA_YUKA (original Yuka)
+    "Yuka-VP6ABCDE",  # YUKA_VP
+    "Yuka-MV6ABCDE",  # YUKA_MINIV
+    "Luba-VS6ABCDE",  # LUBA_2
+    "RTK6ABCDE",      # RTK
+])
+def test_is_yuka_mini_returns_false_for_non_mini(device_name: str) -> None:
+    assert not DeviceType.is_yuka_mini(device_name), (
+        f"Expected is_yuka_mini False for '{device_name}' "
+        f"(resolved as {DeviceType.value_of_str(device_name)})"
+    )
