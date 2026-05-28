@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from unittest.mock import MagicMock
 
 import betterproto2
 
@@ -11,21 +10,7 @@ from pymammotion.data.model.hash_list import HashList, NavGetCommData, NavGetHas
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.proto import LubaMsg, MctlNav, NavGetCommDataAck, NavGetHashListAck
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_command_builder() -> MagicMock:
-    """Minimal command-builder double — just returns empty bytes for every call."""
-    cb = MagicMock()
-    cb.get_area_name_list.return_value = b""
-    cb.get_all_boundary_hash_list.return_value = b""
-    cb.synchronize_hash_data.return_value = b""
-    cb.get_regional_data.return_value = b""
-    return cb
+from tests.messaging._helpers import make_command_builder as _make_command_builder
 
 
 def _hash_list_msg(hash_ids: list[int]) -> LubaMsg:

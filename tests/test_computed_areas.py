@@ -345,3 +345,36 @@ class TestMixedScenarios:
         assert by_hash[2328695440254478069] == "back backyard 2"
         # h3 has no area_name entry → filled from frame name
         assert by_hash[h3] == "Backyard part 1"
+
+
+# ---------------------------------------------------------------------------
+# Tests: upsert_area_name (single-area rename echo, toapp_map_name_msg path)
+# ---------------------------------------------------------------------------
+
+
+class TestUpsertAreaName:
+    def test_insert_when_hash_absent(self) -> None:
+        hl = _make_hash_list()
+        hl.upsert_area_name(123, "Front Lawn")
+        assert hl.area_name == [AreaHashNameList(name="Front Lawn", hash=123)]
+
+    def test_update_in_place_when_hash_present(self) -> None:
+        hl = _make_hash_list(
+            area_name=[AreaHashNameList(name="Front Lawn", hash=123)]
+        )
+        hl.upsert_area_name(123, "Back Lawn")
+        # Same single entry, name replaced — no duplicate appended.
+        assert hl.area_name == [AreaHashNameList(name="Back Lawn", hash=123)]
+
+    def test_update_leaves_other_entries_untouched(self) -> None:
+        hl = _make_hash_list(
+            area_name=[
+                AreaHashNameList(name="One", hash=111),
+                AreaHashNameList(name="Two", hash=222),
+            ]
+        )
+        hl.upsert_area_name(222, "Renamed")
+        assert hl.area_name == [
+            AreaHashNameList(name="One", hash=111),
+            AreaHashNameList(name="Renamed", hash=222),
+        ]

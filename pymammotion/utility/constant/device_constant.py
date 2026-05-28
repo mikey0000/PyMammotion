@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import IntEnum
 
 from pymammotion.data.model.report_info import ConnectData
+from pymammotion.utility.enum_base import UnknownTolerantIntEnum
 
 
 class BleOrderCmd(IntEnum):
@@ -197,7 +198,7 @@ class SystemTardStateTunnel(IntEnum):
     UB_ZONE_STATE_HASH_INDEX = 17
 
 
-class VioState(IntEnum):
+class VioState(UnknownTolerantIntEnum):
     """Visual-inertial odometry signal quality.
 
     Surfaces on ``vio_to_app_info_msg.vio_state``.  Sourced from the APK's
@@ -208,22 +209,18 @@ class VioState(IntEnum):
     (e.g. ``172`` observed when the camera pipeline is initialising) is
     treated as unknown in both the app UI and this enum.  ``VioState(x)``
     for any unrecognised ``x`` returns :data:`SIGNAL_UNKNOWN` instead of
-    raising :exc:`ValueError` — see :meth:`_missing_`.
+    raising :exc:`ValueError` (via ``UnknownTolerantIntEnum._missing_``).
     """
 
     SIGNAL_UNKNOWN = -1
+    UNKNOWN = -1  # alias of SIGNAL_UNKNOWN (canonical) so the base _missing_ can return it
     SIGNAL_NONE = 0
     SIGNAL_INIT = 1
     SIGNAL_GOOD = 2
     SIGNAL_BAD = 3
 
-    @classmethod
-    def _missing_(cls, value: object) -> VioState:
-        """Return :data:`SIGNAL_UNKNOWN` for values outside the documented range."""
-        return cls.SIGNAL_UNKNOWN
 
-
-class RTKPositionMode(IntEnum):
+class RTKPositionMode(UnknownTolerantIntEnum):
     """Positioning / RTK source mode reported on ``rpt_basestation_info.rtk_status``.
 
     Labelled "Positioning status" in the app UI.  Sourced from the APK's
@@ -231,6 +228,7 @@ class RTKPositionMode(IntEnum):
     (``newui/mvp/view/activity/status/newstatus/SignalHelper.java:217``).
     """
 
+    UNKNOWN = -1
     #: Antenna Over DataLink — RTK corrections via the LoRa pairing to a base station.
     RTK_OVER_DATALINK = 0
     #: RTK Over Internet — network-RTK via the device's 4G/Wi-Fi uplink.
@@ -241,7 +239,7 @@ class RTKPositionMode(IntEnum):
     INAVI_RTK_BOX = 3
 
 
-class AppConnectType(IntEnum):
+class AppConnectType(UnknownTolerantIntEnum):
     """How the app/client is linked to the device, reported on the RTK base station.
 
     Surfaces on ``rpt_basestation_info.app_connect_type``.  Sourced from the
@@ -378,9 +376,10 @@ def device_mode(value: int) -> str:
     return modes.get(value, "Invalid mode")
 
 
-class PosType(IntEnum):
+class PosType(UnknownTolerantIntEnum):
     """Position of the robot."""
 
+    UNKNOWN = -1
     AREA_BORDER_ON = 7
     AREA_INSIDE = 1
     AREA_OUT = 0

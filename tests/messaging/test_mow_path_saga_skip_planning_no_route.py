@@ -10,7 +10,6 @@ raise SagaFailedError.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
 
 import betterproto2
 import pytest
@@ -20,16 +19,7 @@ from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.mow_path_saga import MowPathSaga
 from pymammotion.proto import LubaMsg, MctlNav, NavGetHashListAck
 from pymammotion.transport.base import SagaFailedError
-
-
-def _make_command_builder() -> MagicMock:
-    """Minimal command-builder double — every method returns empty bytes."""
-    cb = MagicMock()
-    cb.get_all_boundary_hash_list.return_value = b""
-    cb.get_hash_response.return_value = b""
-    cb.generate_route_information.return_value = b""
-    cb.get_line_info_list.return_value = b""
-    return cb
+from tests.messaging._helpers import make_command_builder as _make_command_builder
 
 
 def _hash_list_msg_sub3(hash_ids: list[int]) -> LubaMsg:

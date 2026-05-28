@@ -17,7 +17,7 @@ from pymammotion.data.model.hash_list import (
 )
 from pymammotion.data.model.location import Dock, LocationPoint
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
 def _load_fixture(name: str = "hash_list_fixture.json") -> dict:
@@ -904,7 +904,7 @@ def test_mow_progress_geojson_matches_example_script_output() -> None:
     raw_y = work.get("path_pos_y", 0)
     path_pos = (raw_x / 10000.0, raw_y / 10000.0) if (raw_x or raw_y) else None
 
-    dev_output = Path(__file__).parent.parent / "examples" / "dev_output"
+    dev_output = Path(__file__).parent.parent.parent / "examples" / "dev_output"
 
     for now_index in (1, 300, 550):
         ref_file = dev_output / f"mow_progress_{now_index}.geojson"

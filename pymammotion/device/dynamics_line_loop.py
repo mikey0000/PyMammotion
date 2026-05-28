@@ -14,7 +14,7 @@ matters anyway (HA users watching live mow progress are typically nearby).
 
 Per-tick gates:
 
-* device is in ACTIVE mode (``DeviceHandle._device_mode``)
+* device is in ACTIVE mode (``DeviceHandle.device_mode``)
 * BLE transport is still connected
 * device type supports dynamics line (re-checked because LUBA_VA is
   firmware-gated and firmware may not be known at loop-start)
@@ -63,7 +63,7 @@ async def dynamics_line_loop(handle: DeviceHandle) -> None:
     device_type = DeviceType.value_of_str(handle.device_name)
 
     while not handle._stopping:  # noqa: SLF001
-        if await handle._sleep_or_rearm(_DYNAMICS_LINE_POLL_INTERVAL):  # noqa: SLF001
+        if await handle.sleep_or_rearm(_DYNAMICS_LINE_POLL_INTERVAL):
             # rearmed by a user command — re-evaluate immediately
             pass
 
@@ -78,7 +78,7 @@ async def dynamics_line_loop(handle: DeviceHandle) -> None:
             _logger.debug("dynamics_line_loop [%s]: BLE not connected — loop exiting", handle.device_name)
             return
 
-        if handle._device_mode() != _DeviceMode.ACTIVE:  # noqa: SLF001
+        if handle.device_mode() != _DeviceMode.ACTIVE:
             continue
 
         if handle.queue.is_saga_active:

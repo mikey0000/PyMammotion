@@ -17,41 +17,45 @@ Description:
         {base_topic}/error_info/{language_code}_json
 
     Accepts commands on there topics:
-        {base_topic}/devices/{device_id}/publish_all                        publishes all topics for device.
-        {base_topic}/devices/{device_id}/clear_states                       clears state for areas, paths, plans and error_list
+        Global functions
+        {base_topic}/devices/global/get_error_info                          publishes to {base_topic}/error_info/{language_code}/{error_code}) 
+                                                                            and {base_topic}/error_info/{language_code}_json
+        {base_topic}/devices/global/kill                                    payload must be 'kill'
+        {base_topic}/devices/global/clear_states                            clears state for areas, paths, plans and error_list
+        {base_topic}/devices/global/listen                                  Listen only mode (on/off)
+        {base_topic}/devices/global/debug                                   Print debug to console (on/off)
 
+        Device functions
+        {base_topic}/devices/{device_id}/publish_all                        publishes all topics for device.
         {base_topic}/devices/{device_id}/send                               raw command, payload with details
         {base_topic}/devices/{device_id}/send_and_wait                      raw command, payload with details
-        {base_topic}/devices/{device_id}/sync_map                           DevConsole Function, same as sync_areas_and_paths
-        {base_topic}/devices/{device_id}/fetch_rtk                          DevConsole Function, device_id must be rtk station
+        
 
-        {base_topic}/devices/{device_id}/ensure_fresh_state                 PyMammotion internal
-        {base_topic}/devices/{device_id}/start_report_stream                PyMammotion internal
-        {base_topic}/devices/{device_id}/request_report_snapshot            PyMammotion internal
-        {base_topic}/devices/{device_id}/request_reports                    PyMammotion internal
 
         Sagas:
-        {base_topic}/devices/{device_id}/sync_mowpath                       mowpath_json / map.current_mow_path (Waypoints)
-        {base_topic}/devices/{device_id}/sync_areas_and_paths               areas_json / map.area (Mow areas)
-                                                                            paths_json / map.path (Paths channels/tunnels)
         {base_topic}/devices/{device_id}/sync_plans                         plans_json / map.plan (Tasks)
+        {base_topic}/devices/{device_id}/sync_mowpath                       mowpath_json / map.current_mow_path (Waypoints)
+        {base_topic}/devices/{device_id}/sync_map                           areas_json / map.area (Mow areas)
+                                                                            paths_json / map.path (Paths channels/tunnels)
         
         Streaming:
         {base_topic}/devices/{device_id}/get_stream_subscription            response on {base_topic}/devices/{device_id}/stream_subscription_json
         {base_topic}/devices/{device_id}/start_stream                       command to device to start streaming (required on older devices only)
         {base_topic}/devices/{device_id}/stop_stream                        command to device to stop streaming (be nice)
         
-        Helpers:
+        Update Requests:
         {base_topic}/devices/{device_id}/req_state_and_location             Updates sys_status and location.device
         {base_topic}/devices/{device_id}/req_errors                         Updates errors including errors_json
         {base_topic}/devices/{device_id}/req_dock_location                  Updates location.RTK and location.dock
         
 
-        Other Functions:
-        {base_topic}/devices/global/setup_all_mower_watchers                PyMammotion internal
-        {base_topic}/devices/global/get_error_info                          publishes to {base_topic}/error_info/{language_code}/{error_code}) 
-                                                                            and {base_topic}/error_info/{language_code}_json
-        {base_topic}/devices/global/kill                                    payload must be 'kill'
+        {base_topic}/devices/{device_id}/start_report_stream                
+        {base_topic}/devices/{device_id}/ensure_fresh_state                 
+        {base_topic}/devices/{device_id}/request_report_snapshot            
+        {base_topic}/devices/{device_id}/request_reports                    
+        {base_topic}/devices/{device_id}/request_report_cfg                 payload is dedup_key
+        {base_topic}/devices/{device_id}/fetch_rtk                          rtk base station info
+
         
     Command response JSON is published to {base_topic}/devices/{device_name}/{command}/response_json
 
@@ -123,7 +127,9 @@ Available in the IPython REPL if running with attached terminal:
     loop                            The main asyncio event loop
     publish_all                     Publish all parameters to MQTT for all devices. Even if the value has not changed.
 """
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Imports
+# ──────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import argparse
@@ -248,7 +254,7 @@ def _setup_logging() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# External MQTT Publisher
+# External MQTT Publisher Class
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -276,7 +282,10 @@ class ExternalMQTTPublisher:
         self._listener_task: asyncio.Task | None = None
         self._previous_state: dict[str, dict[str, Any]] = {}
         self._previous_complex_state: dict[str, dict[str, str]] = {}
+        #self._mqtt_commands: dict[str, Callable[[str, str,str, dict[str, Any]], Any]] = {}
+        self._mqtt_commands: dict[str,Callable[[str, str, str, dict[str, Any]], Awaitable[Any]]] = {}
 
+    
     async def connect(self) -> None:
         """Connect to the external MQTT broker."""
         self._will = aiomqtt.Will(
@@ -316,7 +325,7 @@ class ExternalMQTTPublisher:
                 self.port,
             )
             try:
-                self._listener_task = asyncio.create_task(self._listen_for_commands())
+                self._listener_task = asyncio.create_task(self._mqtt_listen_loop())
                 _LOGGER.info("Command listener task created")
             except Exception as e:
                 _LOGGER.error("Failed to create command listener task: %s", e, exc_info=True)
@@ -359,49 +368,21 @@ class ExternalMQTTPublisher:
         except Exception as e:
             _LOGGER.warning("Failed to publish to %s: %s", topic, e)
 
-    async def _listen_for_commands(self) -> None:
+    async def _mqtt_listen_loop(self) -> None:
         """Subscribe to command topics and process incoming commands."""
         if not self.client:
             _LOGGER.error("MQTT client not initialized")
             return
 
         try:
-            await self.client.subscribe(f"{self.base_topic}/devices/+/publish_all")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/clear_states")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/send")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/send_and_wait")
 
-            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_map")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/fetch_rtk")
-
-            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_areas_and_paths")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_plans")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/sync_mowpath")
-            
-            await self.client.subscribe(f"{self.base_topic}/devices/+/get_stream_subscription")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/start_stream")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/stop_stream")
-
-            await self.client.subscribe(f"{self.base_topic}/devices/+/req_state_and_location")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/req_errors")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/req_dock_location")
-
-            await self.client.subscribe(f"{self.base_topic}/devices/+/start_report_stream")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/ensure_fresh_state")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/request_report_snapshot")
-            await self.client.subscribe(f"{self.base_topic}/devices/+/request_reports")
-
-            await self.client.subscribe(f"{self.base_topic}/devices/+/test_route")
-            
-            await self.client.subscribe(f"{self.base_topic}/devices/global/setup_all_mower_watchers")
-            await self.client.subscribe(f"{self.base_topic}/devices/global/get_error_info")
-            await self.client.subscribe(f"{self.base_topic}/devices/global/kill")
+            await self.setup_mqtt_commands() 
 
             _LOGGER.info("Subscribed to command topics under [bold]%s/devices/+[/bold]", self.base_topic)
 
             async for message in self.client.messages:
                 try:
-                    await self._handle_command(message)
+                    await self._parse_mqtt_message(message)
                 except Exception as e:
                     _LOGGER.error("Error handling command message: %s", e, exc_info=True)
 
@@ -409,9 +390,101 @@ class ExternalMQTTPublisher:
             _LOGGER.info("Command listener cancelled")
         except Exception as e:
             _LOGGER.error("Error in command listener: %s", e, exc_info=True)
+    
+    
+    async def add_mqtt_command(self,name: str,isGlobal :bool, func: Callable[[str, str, dict[str, Any]], Awaitable[Any]] ) -> None:
+        """Add a named function to the list."""
+        # returns awaitable if only one line of async function is executed
+        # lambdas in python is wery limited. 🤦
+        deviceOrGlobal = "+"
+        if isGlobal: 
+            deviceOrGlobal = "global"
+        self._mqtt_commands[name] = func
+        await self.client.subscribe(f"{self.base_topic}/devices/" + deviceOrGlobal + "/" + name)
 
-    async def _handle_command(self, message: Any) -> None:
-        """Handle an incoming MQTT command message."""
+    async def setup_mqtt_commands(self):
+        # MQTT Command subscriptions
+
+        # test this
+        # def alambda(x, *args, **kwds):
+        #     async def wrapped():
+        #         return x(*args, **kwds)
+        #     return wrapped
+
+
+        
+        await self.add_mqtt_command("clear_state",True, lambda device_name,payload, data: (self._previous_complex_state.pop(device_name, None)))
+        await self.add_mqtt_command("get_error_info",True, lambda device_name,payload, data: (self._execute_get_error_info(data)))
+        await self.add_mqtt_command("kill",True, self._execute_kill)
+        await self.add_mqtt_command("listen",True, self._execute_listen)
+        await self.add_mqtt_command("debug",True, lambda device_name,payload, data: (self.dev_console.debug(on=(payload == "on"))))
+
+        await self.add_mqtt_command("publish_all",False, self._execute_publish_all)
+        await self.add_mqtt_command("send",False,self._execute_send)
+        await self.add_mqtt_command("send_and_wait",False,self._execute_send_and_wait)
+
+        await self.add_mqtt_command("sync_map",False, self._execute_sync_map)
+        await self.add_mqtt_command("sync_plans",False, self._execute_sync_plans)
+        await self.add_mqtt_command("sync_mowpath",False, self._execute_sync_mowpath)
+
+        await self.add_mqtt_command("get_stream_subscription",False, self._execute_get_stream_subscription)
+        await self.add_mqtt_command("start_stream",False, self._execute_start_stream)
+        await self.add_mqtt_command("stop_stream",False, self._execute_stop_stream)
+
+
+        await self.add_mqtt_command("start_report_stream",False, lambda device_name,payload, data: (self._execute_start_report_stream(device_name,payload, data)))
+        await self.add_mqtt_command("ensure_fresh_state",False, lambda device_name,payload, data: (self._execute_ensure_fresh_state(device_name,payload, data)))    
+        await self.add_mqtt_command("request_report_snapshot",False, lambda device_name,payload, data: (self._execute_request_report_snapshot(device_name,payload, data)))
+        await self.add_mqtt_command("request_reports",False, lambda device_name,payload, data: (self._execute_request_reports(device_name,payload, data)))
+        await self.add_mqtt_command("request_report_cfg",False, lambda device_name,payload, data: (self._execute_request_report_cfg(device_name,payload, data)))
+        await self.add_mqtt_command("fetch_rtk",False, lambda device_name,payload, data: (self.mammotion.fetch_rtk_lora_info(device_name)))
+        
+        
+        # mammotion_to_mqtt custom req functions
+        await self.add_mqtt_command("req_state_and_location",False, lambda device_name,payload, data: (self._execute_send(device_name, { "cmd": "get_report_cfg"})))
+        async def _execute_req_errors(device_name,payload, data):
+            await self._execute_send(device_name, "",{"cmd": "allpowerfull_rw","kwargs": {"rw_id": 5,"rw": 1,"context": 2}})
+            await self._execute_send(device_name,"", {"cmd": "allpowerfull_rw","kwargs": {"rw_id": 5,"rw": 1,"context": 3}})
+        await self.add_mqtt_command("req_errors",False, lambda device_name,payload, data: (_execute_req_errors(device_name,payload,data))) # have to use function here since we need to run 2 async functions
+        await self.add_mqtt_command("req_state_and_location",False, lambda device_name,payload, data: (self._execute_send(device_name,"", {"cmd":"read_write_device","expected_field":"bidire_comm_cmd","kwargs": {"rw_id":5,"rw":1,"context":1,}})))
+
+        await self.add_mqtt_command("send_todev_ble_sync_mqtt",False, lambda device_name,payload, data: (self._execute_send(device_name,"", {"cmd":"send_todev_ble_sync","kwargs": {"sync_type": 3}})))
+        await self.add_mqtt_command("send_todev_ble_sync_ble",False, lambda device_name,payload, data: (self._execute_send(device_name,"", {"cmd":"send_todev_ble_sync","kwargs": {"sync_type": 1}})))
+
+            
+
+    
+
+        
+        # await self.add_mqtt_command("setup_all_mower_watchers",True, lambda device_name,payload, data: (    
+        #     # unable to even have multi line comment in lambda, python is bad
+        #     #"""Set up state-change watchers for all registered mower devices.
+        #     #Skips RTK base stations and swimming-pool (Spino/S1/E1) devices.
+        #     #"""
+        #     self.dev_console.mammotion.setup_all_mower_watchers()
+        # ))
+
+
+        # end of execute_listen function is here, shown since python dont use }
+
+    async def execute_named_mqtt_command(self, name: str, device_name:str, payload: str, data_dict: dict[str, Any]) -> bool:
+        """Execute a named function. Returns True if found and executed, False otherwise."""
+        if name not in self._mqtt_commands:
+            return False
+        _LOGGER.info("Running '" + name + "' in '_mqtt_commands'")
+        result = self._mqtt_commands[name](device_name,payload, data_dict)
+        if asyncio.iscoroutine(result):
+            _LOGGER.info("Awaiting")
+            await result
+            
+        return True
+
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Helpers
+    # ──────────────────────────────────────────────────────────────────────────────
+
+    async def _parse_mqtt_message(self, message: Any) -> None:
+        """Handle an incoming MQTT message."""
         try:
             topic = str(message.topic)
             payload = message.payload.decode() if isinstance(message.payload, bytes) else message.payload
@@ -424,10 +497,10 @@ class ExternalMQTTPublisher:
             device_name = parts[2]
             command = parts[3]
 
-            cmd_data: dict[str, Any] = {}
+            data_dict: dict[str, Any] = {}
             if payload:
                 try:
-                    cmd_data = json.loads(payload)
+                    data_dict = json.loads(payload)
                 except json.JSONDecodeError:
                     _LOGGER.warning("Invalid JSON in command payload: %s", payload)
                     #return
@@ -436,141 +509,16 @@ class ExternalMQTTPublisher:
                 "[bold orange]↪ MQTT Command[/bold orange]  [yellow]%s[/yellow]  [white]%s[/white] %s",
                 device_name,
                 command,
-                str(cmd_data),
+                str(data_dict),
             )
 
             if not self.dev_console:
                 _LOGGER.error("DevConsole not set up for command execution")
                 return
 
-            if command == "send":
-                await self._execute_send(device_name, cmd_data)
-            elif command == "send_and_wait":
-                await self._execute_send_and_wait(device_name, cmd_data)
-            elif command == "sync_map":
-                await self.dev_console.sync_map(device_name)
-            elif command == "fetch_rtk":
-                await self.dev_console.fetch_rtk(device_name)
-                #await self._execute_fetch_rtk(device_name, cmd_data)
-
-            elif command == "publish_all":
-                await self._execute_publish_all(device_name, cmd_data)
-            elif command == "clear_state":
-                # Clear complex object cache (plans / areas / paths / mowpath)
-                self._previous_complex_state.pop(device_name, None)
-                
-            elif command == "sync_areas_and_paths":
-                await self._execute_sync_areas_and_paths(device_name, cmd_data)
-            elif command == "sync_plans":
-                await self._execute_sync_plans(device_name, cmd_data)    
-            elif command == "sync_mowpath":
-                await self._execute_sync_mowpath(device_name, cmd_data)
-            elif command == "get_stream_subscription":
-                await self._execute_get_stream_subscription(device_name,cmd_data)  
-            elif command == "start_stream":
-                await self._execute_start_stream(device_name,cmd_data)    
-            elif command == "stop_stream":
-                await self._execute_stop_stream(device_name,cmd_data)    
-            elif command == "request_report_snapshot":
-                """Fire a one-shot count=1 report, skipped if the BLE stream is already active.
-
-                Use after state-changing commands or on state-change watchers to get a fresh
-                snapshot without fighting an in-progress BLE continuous feed.
-                Used by HA after state-changing commands and in the sys_status watcher.
-                Safe to call at any time; skips silently if BLE is already streaming fresher data.
-                """
-                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
-                if handle:
-                    await handle.request_report_snapshot()
-            elif command == "ensure_fresh_state":
-                """Fire a one-shot snapshot if the last inbound report is older than ``max_age_s`` seconds.
-
-                Intended for use at the top of user-action handlers (start/dock/pause/cancel)
-                to avoid acting on stale state after a long idle period.  Fire-and-forget:
-                the response arrives asynchronously.
-                """
-
-                await self.dev_console.mammotion.ensure_fresh_state(device_name)
-                
-            elif command == "start_report_stream":
-                """Start a transient report window lasting ``duration_ms`` ms.
-
-                If the device is actively mowing or returning (ACTIVE mode), starts a
-                continuous (count=0) stream and arms a stop timer.  In any other mode
-                (docked, idle) a single one-shot count=1 poll is issued instead — there
-                is no point holding a continuous stream for a stationary device.
-
-                For the continuous path:
-                * Repeated calls within the window reset the timer without re-sending
-                RPT_START (prevents cloud quota spam on frequent callers like a dashboard).
-                * If the BLE polling loop already holds a continuous stream the RPT_START
-                is skipped (data already flowing) but the timer is still armed.
-                * The stop callback skips RPT_STOP if BLE is still streaming so the BLE
-                polling loop is never interrupted mid-run.
-                """
-                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
-                if handle:
-                    await handle.start_report_stream()
-
-            elif command == "request_reports":
-                """Enqueue a one-shot "request_iot_sys" data refresh."""
-                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
-                if handle:
-                    await handle.request_reports()
-
-                    
-            elif command == "setup_all_mower_watchers":
-                """Set up state-change watchers for all registered mower devices.
-
-                Skips RTK base stations and swimming-pool (Spino/S1/E1) devices.
-                """
-                self.dev_console.mammotion.setup_all_mower_watchers()
-
-            elif command == "test_route":
-                ## unable to detect any change after doing this
-                from pymammotion.data.model import GenerateRouteInformation
-                generate_route_info = GenerateRouteInformation(
-                    one_hashs=[6844243750031320102],  # Hash value of R-Nedre Area
-                    job_mode=4,
-                    edge_mode=1,
-                    channel_mode=0,
-                    channel_width=12,
-                    blade_height=60,
-                    speed=0.5,
-                    ultra_wave=10,
-                    toward=0,
-                    toward_included_angle=0,
-                    toward_mode=0,
-                    path_order=""
-
-                )
-
-                handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
-                if handle:
-                    handle.commands.generate_route_information(generate_route_info)
-                _LOGGER.info("test_route done")
-                
-            elif command == "req_state_and_location":
-                await self._execute_send(device_name, { "cmd": "get_report_cfg"})
-            elif command == "req_errors":
-                await self._execute_send(device_name, {"cmd": "allpowerfull_rw","kwargs": {"rw_id": 5,"rw": 1,"context": 2}})
-                await self._execute_send(device_name, {"cmd": "allpowerfull_rw","kwargs": {"rw_id": 5,"rw": 1,"context": 3}})
-
-
-            elif command == "req_dock_location":
-                # send_and_Wait
-                await self._execute_send(device_name, {"cmd":"read_write_device","expected_field":"bidire_comm_cmd","kwargs": {"rw_id":5,"rw":1,"context":1,}})
-            
-            elif command == "get_error_info":
-                await self._execute_get_error_info(cmd_data)
-            elif command == "kill":
-                if payload == "kill":
-                    _LOGGER.warning("Killing app in 3 seconds. App might restart if running in a container")
-                    await self.client.publish(f"{self.base_topic}/mammotion2mqtt/status", payload="kill", retain=True)
-                    await asyncio.sleep(3)
-                    self._listener_task.cancel()
-                    #sys.exit(0)
-                    os._exit(0) # hard exit
+            if await self.execute_named_mqtt_command(command,device_name,payload,data_dict):
+                """ The command was found in _mqtt_commands dict """
+                return
             else:
                 _LOGGER.warning("Unknown command: %s", command)
 
@@ -715,6 +663,27 @@ class ExternalMQTTPublisher:
 
         # Fallback
         return str(obj)
+    async def _publish_command_response(
+            self,
+            device_name: str,
+            command: str,
+            status: str,
+            **extra_fields
+        ) -> None:
+            """Send a response message for a command."""
+            response: dict[str, Any] = {
+                "status": status,
+                "device": device_name,
+                "command": command,
+                "timestamp": datetime.now(UTC).isoformat(),
+                **extra_fields,
+            }
+            
+            # Use command-specific topic, fall back to generic "send" topic
+            topic_suffix = command if command in ["send_and_wait","send"] else "mammotion_to_mqtt"
+            topic = f"{self.base_topic}/devices/{device_name}/{topic_suffix}/response_json"
+            
+            await self.publish(topic, response, retain=False)
 
 
 
@@ -834,12 +803,109 @@ class ExternalMQTTPublisher:
         except Exception as e:
             _LOGGER.error("Error publishing device %s to external MQTT: %s", device_name, e)
 
-    async def _execute_publish_all(self, device_name: str, cmd_data: dict) -> None:  # noqa: ARG002
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Mqtt Command Executors      Define with: async def _execute_NAME(device_name : str, payload : str, data : dict):
+    # ──────────────────────────────────────────────────────────────────────────────
+    async def _execute_test_route(device_name,payload, data):
+        ## unable to detect any change after doing this
+        from pymammotion.data.model import GenerateRouteInformation
+        generate_route_info = GenerateRouteInformation(
+            one_hashs=[6844243750031320102],  # Hash value of R-Nedre Area
+            job_mode=4,
+            edge_mode=1,
+            channel_mode=0,
+            channel_width=12,
+            blade_height=60,
+            speed=0.5,
+            ultra_wave=10,
+            toward=0,
+            toward_included_angle=0,
+            toward_mode=0,
+            path_order=""
+
+        )
+
+        handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+        if handle:
+            handle.commands.generate_route_information(generate_route_info)
+        _LOGGER.info("test_route done")
+    async def _execute_listen(device_name,payload, data):
+            on=(payload == "on")
+            for handle in self.dev_console.mammotion.device_registry.all_devices:
+                if on:
+                    await handle.stop_polling()
+                else:
+                    await handle.start()
+            state = "ON (polling stopped)" if on else "OFF (polling resumed)"
+            _LOGGER.info("Listen-only mode: [bold]%s[/bold]", state)
+    async def _execute_start_report_stream(self, device_name: str,payload :str, cmd_data: dict) -> None:
+        """Start a transient report window lasting ``duration_ms`` ms.
+
+        If the device is actively mowing or returning (ACTIVE mode), starts a
+        continuous (count=0) stream and arms a stop timer.  In any other mode
+        (docked, idle) a single one-shot count=1 poll is issued instead — there
+        is no point holding a continuous stream for a stationary device.
+
+        For the continuous path:
+        * Repeated calls within the window reset the timer without re-sending
+        RPT_START (prevents cloud quota spam on frequent callers like a dashboard).
+        * If the BLE polling loop already holds a continuous stream the RPT_START
+        is skipped (data already flowing) but the timer is still armed.
+        * The stop callback skips RPT_STOP if BLE is still streaming so the BLE
+        polling loop is never interrupted mid-run.
+        """
+        handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+        if handle:
+            await handle.start_report_stream()
+    async def _execute_ensure_fresh_state(self, device_name: str,payload :str, cmd_data: dict) -> None:
+        """Fire a one-shot snapshot if the last inbound report is older than ``max_age_s`` seconds.
+
+        Intended for use at the top of user-action handlers (start/dock/pause/cancel)
+        to avoid acting on stale state after a long idle period.  Fire-and-forget:
+        the response arrives asynchronously.
+        """
+
+        await self.dev_console.mammotion.ensure_fresh_state(device_name)
+    async def _execute_request_report_snapshot(self, device_name: str,payload :str, cmd_data: dict) -> None:
+        """Fire a one-shot count=1 report, skipped if the BLE stream is already active.
+
+        Use after state-changing commands or on state-change watchers to get a fresh
+        snapshot without fighting an in-progress BLE continuous feed.
+        Used by HA after state-changing commands and in the sys_status watcher.
+        Safe to call at any time; skips silently if BLE is already streaming fresher data.
+        """
+        handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+        if handle:
+            await handle.request_report_snapshot()
+    async def _execute_request_reports(self, device_name: str,payload :str, cmd_data: dict) -> None:
+        """Enqueue a one-shot "request_iot_sys" data refresh."""
+        handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+        if handle:
+            await handle.request_reports()
+    async def _execute_request_report_cfg(self, device_name: str,payload :str, cmd_data: dict) -> None:
+        """Enqueue a get_report_cfg command in the background."""
+        if payload == "":
+            payload = "mammotion2mqtt"
+        handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
+        if handle:
+            await handle.request_report_cfg(dedup_key=payload)
+            
+    async def _execute_kill(self, device_name: str,payload :str, cmd_data: dict) -> None:
+            if payload == "kill":
+                _LOGGER.warning("Killing app in 3 seconds. App might restart if running in a container")
+                await self.client.publish(f"{self.base_topic}/mammotion2mqtt/status", payload="kill", retain=True)
+                await asyncio.sleep(3)
+                self._listener_task.cancel()
+                #sys.exit(0)
+                os._exit(0) # hard exit
+            else:
+                _LOGGER.warning("Payload needs to be 'kill'")
+    async def _execute_publish_all(self, device_name: str,payload :str, cmd_data: dict) -> None:  # noqa: ARG002
         """Force publish all parameters for a device."""
         if not self.dev_console:
             return
 
-        await self._send_response(device_name, "publish_all", "sending")
+        await self._publish_command_response(device_name, "publish_all", "sending")
         
         try:
             #if device_name in self._previous_state:
@@ -852,10 +918,10 @@ class ExternalMQTTPublisher:
             self._previous_complex_state.pop(device_name, None)
 
             await self._publish_device_to_external_mqtt(device_name)
-            await self._send_response(device_name, "publish_all", "success")
+            await self._publish_command_response(device_name, "publish_all", "success")
             _LOGGER.info("✓ publish_all executed: %s", device_name)
         except Exception as e:
-            await self._send_response(device_name, "publish_all", "error", error=str(e))
+            await self._publish_command_response(device_name, "publish_all", "error", error=str(e))
             _LOGGER.error("✗ publish_all failed: %s", e)
 
     async def _execute_get_error_info(self, cmd_data: dict) -> None:
@@ -902,7 +968,7 @@ class ExternalMQTTPublisher:
         except Exception as e:
             _LOGGER.error("✗ get_error_info failed: %s", e, exc_info=True)
 
-    async def _execute_get_stream_subscription(self, device_name: str, cmd_data:dict) -> None:
+    async def _execute_get_stream_subscription(self, device_name: str,payload:str, cmd_data:dict) -> None:
         #device_id = cmd_data.get("device_id")
         iot_id : str | None = None
         device_id = ""
@@ -915,7 +981,7 @@ class ExternalMQTTPublisher:
 
         if iot_id == None:
             _LOGGER.warning("Unable to find device: %s", device_name)
-            await self._send_response(device_name, "get_stream_subscription", "error", error="Device not found")
+            await self._publish_command_response(device_name, "get_stream_subscription", "error", error="Device not found")
             return
 
         all_sessions = self.dev_console.mammotion.account_registry.all_sessions
@@ -943,23 +1009,33 @@ class ExternalMQTTPublisher:
             retain=True,
         )
 
-    
-
-    async def _execute_start_stream(self, device_name: str, cmd_data:dict) -> None:
+    async def _execute_start_stream(self, device_name: str,payload:str, cmd_data:dict) -> None:
 
         handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
         if handle is None:
-            await self._send_response(device_name, "start_stream", "error", error="Device not found")
+            await self._publish_command_response(device_name, "start_stream", "error", error="Device not found")
             return
 
+        """Fire the Agora join-channel command over MQTT only, without waiting for an ack."""
+        command_bytes = handle.commands.device_agora_join_channel_with_position(enter_state=1)
+        mqtt_transport = handle._transports.get(TransportType.CLOUD_ALIYUN) or handle._transports.get(  # noqa: SLF001
+            TransportType.CLOUD_MAMMOTION
+        )
+        #for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+        #    mqtt_transport = handle.get_transport(transport_type)
+        if mqtt_transport is not None and mqtt_transport.is_connected:
+            await handle._send_marked(mqtt_transport, command_bytes)
+            #break
         
-        await self.dev_console.mammotion._send_agora_join_over_mqtt(handle)
+        #await self.dev_console.mammotion._send_agora_join_over_mqtt(handle)
 
 
-    async def _execute_stop_stream(self, device_name: str, cmd_data:dict) -> None:    
+
+
+    async def _execute_stop_stream(self, device_name: str,payload:str, cmd_data:dict) -> None:    
         handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
         if handle is None:
-            await self._send_response(device_name, "stop_stream", "error", error="Device not found")
+            await self._publish_command_response(device_name, "stop_stream", "error", error="Device not found")
             return
         
         """Fire the Agora join-channel command over MQTT only, without waiting for an ack."""
@@ -974,7 +1050,7 @@ class ExternalMQTTPublisher:
             #break
             
 
-    async def _execute_send(self, device_name: str, cmd_data: dict) -> None:
+    async def _execute_send(self, device_name: str, not_used :str, cmd_data: dict) -> None:
         """Execute send command."""
         if not self.dev_console:
             return
@@ -982,22 +1058,22 @@ class ExternalMQTTPublisher:
         cmd = cmd_data.get("cmd")
         kwargs = cmd_data.get("kwargs", {})
         
-        await self._send_response(device_name, "send", "sending", cmd=cmd)
+        await self._publish_command_response(device_name, "send", "sending", cmd=cmd)
         
         if not cmd:
             _LOGGER.warning("send: missing 'cmd' field")
-            await self._send_response(device_name, "send", "missing 'cmd' field", cmd=cmd)
+            await self._publish_command_response(device_name, "send", "missing 'cmd' field", cmd=cmd)
             return
 
         try:
             await self.dev_console.mammotion.send_command_with_args(device_name, cmd, **kwargs)
-            await self._send_response(device_name, "send", "success", cmd=cmd)
+            await self._publish_command_response(device_name, "send", "success", cmd=cmd)
             _LOGGER.info("✓ send executed: %s %s", device_name, cmd)
         except Exception as e:
-            await self._send_response(device_name, "send", "error", cmd=cmd, error=str(e))
+            await self._publish_command_response(device_name, "send", "error", cmd=cmd, error=str(e))
             _LOGGER.error("✗ send failed: %s", e)
 
-    async def _execute_send_and_wait(self, device_name: str, cmd_data: dict) -> None:
+    async def _execute_send_and_wait(self, device_name: str,not_used :str, cmd_data: dict) -> None:
         """Execute send_and_wait command."""
         if not self.dev_console:
             return
@@ -1007,14 +1083,14 @@ class ExternalMQTTPublisher:
         kwargs = cmd_data.get("kwargs", {})
         send_timeout = cmd_data.get("send_timeout", 1.0)
 
-        await self._send_response(
+        await self._publish_command_response(
             device_name, "send_and_wait", "sending",
             cmd=cmd, expected_field=expected_field
         )
         
         if not cmd or not expected_field:
             _LOGGER.warning("send_and_wait: missing 'cmd' or 'expected_field'")
-            await self._send_response(
+            await self._publish_command_response(
                 device_name, "send_and_wait", "missing 'cmd' or 'expected_field'",
                 cmd=cmd, expected_field=expected_field
             )
@@ -1024,25 +1100,25 @@ class ExternalMQTTPublisher:
             result = await self.dev_console.mammotion.send_command_and_wait(
                 device_name, cmd, expected_field, send_timeout=send_timeout, **kwargs
             )
-            await self._send_response(
+            await self._publish_command_response(
                 device_name, "send_and_wait", "success",
                 cmd=cmd, expected_field=expected_field, result=str(result)
             )
             _LOGGER.info("✓ send_and_wait executed: %s %s → %s", device_name, cmd, expected_field)
         except Exception as e:
-            await self._send_response(
+            await self._publish_command_response(
                 device_name, "send_and_wait", "error",
                 cmd=cmd, expected_field=expected_field, error=str(e)
             )
             _LOGGER.error("✗ send_and_wait failed: %s", e)
-    async def _execute_sync_mowpath(self, device_name: str, cmd_data: dict) -> None:
+    async def _execute_sync_mowpath(self, device_name: str,payload:str, cmd_data: dict) -> None:
         """Execute sync_mowpath command."""
         if not self.dev_console:
             return
 
         timeout = cmd_data.get("timeout", 120.0)
         
-        await self._send_response(device_name, "sync_mowpath", "sending", timeout=timeout)
+        await self._publish_command_response(device_name, "sync_mowpath", "sending", timeout=timeout)
         
         try:
             #self.dev_console.mammotion.set_mow_path_fetch_enabled(device_id,enabled=True)
@@ -1052,85 +1128,50 @@ class ExternalMQTTPublisher:
                 handle.set_mow_path_fetch_enabled(value=True)
 
             await self.dev_console.mammotion.check_and_get_mow_path(device_name)
-            await self._send_response(device_name, "sync_mowpath", "enqueued", timeout=timeout)
+            await self._publish_command_response(device_name, "sync_mowpath", "enqueued", timeout=timeout)
             _LOGGER.info("✓ sync_mowpath enqueued: %s", device_name)
         except Exception as e:
-            await self._send_response(device_name, "sync_mowpath", "error", error=str(e))
+            await self._publish_command_response(device_name, "sync_mowpath", "error", error=str(e))
             _LOGGER.error("✗ sync_mowpath failed: %s", e)
-    async def _execute_sync_areas_and_paths(self, device_name: str, cmd_data: dict) -> None:
-        """Execute sync_areas_and_paths command."""
+    async def _execute_sync_map(self, device_name: str,payload:str, cmd_data: dict) -> None:
+        """Execute sync_map command."""
         if not self.dev_console:
             return
 
         timeout = cmd_data.get("timeout", 120.0)
         
-        await self._send_response(device_name, "sync_areas_and_paths", "sending", timeout=timeout)
+        await self._publish_command_response(device_name, "sync_map", "sending", timeout=timeout)
         
         try:
             #self.dev_console.sync_map(device_name,timeout=timeout) # use implementation in dev_console
             await self.dev_console.mammotion.start_map_sync(device_name)
-            await self._send_response(device_name, "sync_areas_and_paths", "enqueued", timeout=timeout)
-            _LOGGER.info("✓ sync_areas_and_paths enqueued: %s", device_name)
+            await self._publish_command_response(device_name, "sync_map", "enqueued", timeout=timeout)
+            _LOGGER.info("✓ sync_map enqueued: %s", device_name)
         except Exception as e:
-            await self._send_response(device_name, "sync_areas_and_paths", "error", error=str(e))
-            _LOGGER.error("✗ sync_areas_and_paths failed: %s", e)
-    async def _execute_sync_plans(self, device_name: str, cmd_data: dict) -> None:
+            await self._publish_command_response(device_name, "sync_map", "error", error=str(e))
+            _LOGGER.error("✗ sync_map failed: %s", e)
+    async def _execute_sync_plans(self, device_name: str,payload:str, cmd_data: dict) -> None:
         """Execute sync_plans command."""
         if not self.dev_console:
             return
 
         timeout = cmd_data.get("timeout", 120.0)
         
-        await self._send_response(device_name, "sync_plans", "sending", timeout=timeout)
+        await self._publish_command_response(device_name, "sync_plans", "sending", timeout=timeout)
         
         try:
             await self.dev_console.mammotion.start_plan_sync(device_name)
-            await self._send_response(device_name, "sync_plans", "enqueued", timeout=timeout)
+            await self._publish_command_response(device_name, "sync_plans", "enqueued", timeout=timeout)
             _LOGGER.info("✓ sync_plans enqueued: %s", device_name)
         except Exception as e:
-            await self._send_response(device_name, "sync_plans", "error", error=str(e))
+            await self._publish_command_response(device_name, "sync_plans", "error", error=str(e))
             _LOGGER.error("✗ sync_plans failed: %s", e)
-    # async def _execute_fetch_rtk(self, device_name: str, cmd_data: dict) -> None:  # noqa: ARG002
-    #     """Execute fetch_rtk command."""
-    #     if not self.dev_console:
-    #         return
+    
 
-    #     await self._send_response(device_name, "fetch_rtk", "sending")
-        
-    #     try:
-    #         #self.dev_console.fetch_rtk(device_name) # use implementation in dev_console
-    #         await self.dev_console.mammotion.fetch_rtk_lora_info(device_name)
-    #         await self._send_response(device_name, "fetch_rtk", "success")
-    #         _LOGGER.info("✓ fetch_rtk executed: %s", device_name)
-    #     except Exception as e:
-    #         await self._send_response(device_name, "fetch_rtk", "error", error=str(e))
-    #         _LOGGER.error("✗ fetch_rtk failed: %s", e)
-
-    async def _send_response(
-        self,
-        device_name: str,
-        command: str,
-        status: str,
-        **extra_fields
-    ) -> None:
-        """Send a response message for a command."""
-        response: dict[str, Any] = {
-            "status": status,
-            "device": device_name,
-            "command": command,
-            "timestamp": datetime.now(UTC).isoformat(),
-            **extra_fields,
-        }
-        
-        # Use command-specific topic, fall back to generic "send" topic
-        topic_suffix = command if command in ["sync_map", "send_and_wait", "fetch_rtk","send"] else "mammotion_to_mqtt"
-        topic = f"{self.base_topic}/devices/{device_name}/{topic_suffix}/response_json"
-        
-        await self.publish(topic, response, retain=False)
-
+    
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Main
+# Main Function
 # ──────────────────────────────────────────────────────────────────────────────
 
 async def _main(args: argparse.Namespace) -> None:
@@ -1213,6 +1254,7 @@ async def _main(args: argparse.Namespace) -> None:
     dev.hook_all_devices()
     dev.hook_all_rtk_devices()
     await dev.start_all_devices()
+    dev.mammotion.setup_all_mower_watchers()
 
     if args.listen:
         for handle in mammotion.device_registry.all_devices:

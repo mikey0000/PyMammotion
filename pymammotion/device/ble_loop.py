@@ -38,6 +38,15 @@ _BLE_MODE_RECHECK_INTERVAL: float = 30.0
 #: ``sync_type`` for BLE heartbeats (matches APK ``sendBlueToothDeviceSync(2, ...)``).
 _KEEP_ALIVE_SYNC_TYPE_BLE: int = 2
 
+#: How long the continuous report stream may go silent before we treat it as
+#: stalled and bounce it (STOP + fresh START on the next tick).  Mirrors the
+#: APK's ``MSG_RPT_START_TIME_OUT_SECOND`` default of 15 s — generous enough
+#: to ride out a brief packet drop, tight enough that a stalled subscription
+#: doesn't sit idle longer than two renew intervals.  Reports in ACTIVE mode
+#: should arrive ~every 1 s; >15 s of silence means the device-side
+#: subscription has lapsed despite our RPT_KEEP renews.
+_BLE_STREAM_STALE_THRESHOLD: float = 15.0
+
 #: BLE poll cadence per device mode.  ``None`` means continuous count=0 stream
 #: renewed every ``_BLE_STREAM_RENEW_INTERVAL`` seconds.  Numeric values are
 #: count=1 polls at that cadence.
@@ -84,28 +93,28 @@ async def ble_activity_loop(handle: DeviceHandle) -> None:
         if not ble.is_connected:
             # BLE disconnected — exit and let _on_ble_connected restart this loop.
             break
-        if handle._ble_heartbeat_failures >= _BLE_HEARTBEAT_FAIL_LIMIT:  # noqa: SLF001
+        if handle.ble_heartbeat_failures >= _BLE_HEARTBEAT_FAIL_LIMIT:
             _logger.warning(
                 "ble_loop [%s]: %d consecutive failures — exiting BLE loop",
                 handle.device_name,
-                handle._ble_heartbeat_failures,  # noqa: SLF001
+                handle.ble_heartbeat_failures,
             )
             break
 
         cmd_bytes = handle.commands.send_todev_ble_sync(sync_type=_KEEP_ALIVE_SYNC_TYPE_BLE)
         try:
             await ble.send_heartbeat(cmd_bytes, iot_id=handle.iot_id)
-            handle._ble_heartbeat_failures = 0  # noqa: SLF001
+            handle.ble_heartbeat_failures = 0
         except TransportError:
-            handle._ble_heartbeat_failures += 1  # noqa: SLF001
+            handle.ble_heartbeat_failures += 1
             _logger.debug(
                 "ble_loop [%s]: send failed (attempt %d/%d) — marking disconnected",
                 handle.device_name,
-                handle._ble_heartbeat_failures,  # noqa: SLF001
+                handle.ble_heartbeat_failures,
                 _BLE_HEARTBEAT_FAIL_LIMIT,
             )
         except Exception:  # noqa: BLE001
-            handle._ble_heartbeat_failures += 1  # noqa: SLF001
+            handle.ble_heartbeat_failures += 1
             _logger.debug("ble_loop [%s]: unexpected error in heartbeat", handle.device_name, exc_info=True)
 
         try:
@@ -117,7 +126,7 @@ async def ble_activity_loop(handle: DeviceHandle) -> None:
 async def ble_polling_loop(handle: DeviceHandle) -> None:
     """BLE-side polling and continuous-stream loop, tied to BLE connection lifetime.
 
-    Each tick reads :meth:`DeviceHandle._device_mode` and dispatches:
+    Each tick reads :meth:`DeviceHandle.device_mode` and dispatches:
 
     * **Continuous mode** (``_BLE_POLL_INTERVAL[mode] is None`` — ACTIVE
       or IDLE): re-send ``request_iot_sys(RPT_START, count=0)`` every
@@ -145,7 +154,7 @@ async def ble_polling_loop(handle: DeviceHandle) -> None:
             if ble is None or not ble.is_connected:
                 break
 
-            mode = handle._device_mode()  # noqa: SLF001
+            mode = handle.device_mode()
             ble_interval = _BLE_POLL_INTERVAL[mode]
 
             if was_continuous and ble_interval is not None:
@@ -154,20 +163,52 @@ async def ble_polling_loop(handle: DeviceHandle) -> None:
                     await handle._enqueue_ble_stream_command(RptAct.RPT_STOP, count=1)  # noqa: SLF001
                 except Exception:
                     _logger.debug("ble_polling [%s]: STOP enqueue failed", handle.device_name, exc_info=True)
-                handle._ble_stream_active = False  # noqa: SLF001
+                handle.ble_stream_active = False
                 handle._rearm_event.set()  # noqa: SLF001 — wake MQTT loop now that it owns the cadence again
                 last_one_shot_at = 0.0  # force a fresh count=1 poll on this tick
 
             if ble_interval is None:
+                # Watchdog: if reports have gone silent for longer than the
+                # stale threshold despite us renewing the subscription, the
+                # device-side subscription has lapsed — log and bounce by
+                # clearing the active flag so the next branch sends a fresh
+                # RPT_START.  Mirrors APK ``MSG_RPT_START_TIME_OUT`` /
+                # ``MSG_DATA_TIME_OUT`` semantics.  Only act once the stream
+                # was supposed to be active and we've had at least one report
+                # — otherwise the threshold trips on a fresh boot.
+                if (
+                    handle.ble_stream_active
+                    and handle.last_report_at > 0.0
+                    and time.monotonic() - handle.last_report_at > _BLE_STREAM_STALE_THRESHOLD
+                ):
+                    _logger.warning(
+                        "ble_polling [%s]: no report frames for %.0fs — bouncing stream"
+                        " (RPT_STOP + fresh RPT_START)",
+                        handle.device_name,
+                        time.monotonic() - handle.last_report_at,
+                    )
+                    try:
+                        await handle._enqueue_ble_stream_command(RptAct.RPT_STOP, count=1)  # noqa: SLF001
+                    except Exception:
+                        _logger.debug(
+                            "ble_polling [%s]: stale-bounce RPT_STOP failed (continuing)",
+                            handle.device_name,
+                            exc_info=True,
+                        )
+                    handle.ble_stream_active = False
+
                 try:
-                    if handle._ble_stream_active:  # noqa: SLF001
+                    if handle.ble_stream_active:
                         # Stream already running — send RPT_KEEP to renew the
                         # device-side subscription before the 10 s timeout.
                         await handle._send_report_stream_keep()  # noqa: SLF001
                     else:
                         # Stream not yet active — establish it with RPT_START.
+                        # _enqueue_ble_stream_command verifies via send_and_wait
+                        # and sets ble_stream_active itself on success.  If
+                        # verification fails the flag stays False and this
+                        # branch retries on the next tick.
                         await handle._enqueue_ble_stream_command(RptAct.RPT_START, count=0)  # noqa: SLF001
-                        handle._ble_stream_active = True  # noqa: SLF001
                 except Exception:
                     _logger.debug(
                         "ble_polling [%s]: stream renew/start failed",
@@ -177,7 +218,7 @@ async def ble_polling_loop(handle: DeviceHandle) -> None:
                 wait = _BLE_STREAM_RENEW_INTERVAL
             else:
                 now = time.monotonic()
-                if now - last_one_shot_at >= ble_interval and not handle._in_no_request_mode():  # noqa: SLF001
+                if now - last_one_shot_at >= ble_interval and not handle.in_no_request_mode():
                     try:
                         await handle._send_one_shot_report()  # noqa: SLF001
                         last_one_shot_at = now
@@ -197,6 +238,6 @@ async def ble_polling_loop(handle: DeviceHandle) -> None:
             except asyncio.CancelledError:
                 break
     finally:
-        if handle._ble_stream_active:  # noqa: SLF001
-            handle._ble_stream_active = False  # noqa: SLF001
+        if handle.ble_stream_active:
+            handle.ble_stream_active = False
             handle._rearm_event.set()  # noqa: SLF001

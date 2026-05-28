@@ -1131,6 +1131,55 @@ class MammotionClient:
             return int(mammotion_http.login_info.userInformation.userAccount)
         return 0
 
+    def _wire_transport_callbacks(self, transport: Any) -> None:
+        """Attach the six ``_route_device_*`` callbacks to *transport*.
+
+        Sets all six unconditionally; transports that don't fire a given
+        callback simply never read its attribute, so the extra assignment is
+        harmless and keeps Aliyun / Mammotion wiring from drifting apart.
+        """
+        transport.on_device_message = self._route_device_message
+        transport.on_device_status = self._route_device_status
+        transport.on_device_properties = self._route_device_properties
+        transport.on_device_event = self._route_device_event
+        transport.on_device_mammotion_properties = self._route_device_mammotion_properties
+        transport.on_device_notification = self._route_device_notification
+
+    async def _register_device_on_transport(
+        self,
+        *,
+        device_name: str,
+        iot_id: str,
+        product_key: str,
+        transport: Any,
+        user_account: int,
+        token_manager: TokenManager | None,
+    ) -> None:
+        """Create a DeviceHandle, register it, start it, subscribe token-manager,
+        and track the iot_id → device_name mapping.
+
+        Shared by Aliyun and Mammotion device registration; the
+        topic-subscription / device-registration step that's Mammotion-specific
+        stays in ``_register_mammotion_device`` and is performed before this
+        helper is called.
+        """
+        from pymammotion.data.model.device import create_device
+
+        handle = DeviceHandle(
+            device_id=device_name,
+            device_name=device_name,
+            initial_device=create_device(device_name, product_key),
+            iot_id=iot_id,
+            user_account=user_account,
+            mqtt_transport=transport,
+            readiness_checker=get_readiness_checker(device_name, product_key),
+        )
+        await self._device_registry.register(handle)
+        await handle.start()
+        if token_manager is not None:
+            token_manager.subscribe_handle(handle)
+        self._iot_id_to_device_id[iot_id] = device_name
+
     def _setup_aliyun_transport(
         self, cloud_client: CloudIOTGateway, acct_session: AccountSession
     ) -> AliyunMQTTTransport:
@@ -1148,10 +1197,7 @@ class MammotionClient:
             iot_token=session_data.iotToken,  # type: ignore
         )
         transport = AliyunMQTTTransport(config, cloud_client)
-        transport.on_device_message = self._route_device_message
-        transport.on_device_status = self._route_device_status
-        transport.on_device_event = self._route_device_event
-        transport.on_device_properties = self._route_device_properties
+        self._wire_transport_callbacks(transport)
 
         token_manager = acct_session.token_manager
 
@@ -1253,11 +1299,7 @@ class MammotionClient:
             return str(creds.jwt)
 
         transport = MQTTTransport(config, mammotion_http, jwt_refresher=_refresh_jwt, token_manager=token_manager)
-        transport.on_device_message = self._route_device_message
-        transport.on_device_status = self._route_device_status
-        transport.on_device_properties = self._route_device_properties
-        transport.on_device_mammotion_properties = self._route_device_mammotion_properties
-        transport.on_device_notification = self._route_device_notification
+        self._wire_transport_callbacks(transport)
 
         # When the connection loop permanently fails auth, trigger a full
         # re-login and reconnect so the integration recovers automatically.
@@ -1290,22 +1332,14 @@ class MammotionClient:
         token_manager: TokenManager | None = None,
     ) -> None:
         """Register a single Aliyun device in the device registry."""
-        from pymammotion.data.model.device import create_device
-
-        handle = DeviceHandle(
-            device_id=device_name,
+        await self._register_device_on_transport(
             device_name=device_name,
-            initial_device=create_device(device_name, product_key),
             iot_id=iot_id,
+            product_key=product_key,
+            transport=transport,
             user_account=user_account,
-            mqtt_transport=transport,
-            readiness_checker=get_readiness_checker(device_name, product_key),
+            token_manager=token_manager,
         )
-        await self._device_registry.register(handle)
-        await handle.start()
-        if token_manager is not None:
-            token_manager.subscribe_handle(handle)
-        self._iot_id_to_device_id[iot_id] = device_name
         _logger.info("Aliyun device registered: %s (iot_id=%s)", device_name, iot_id)
 
     async def _register_mammotion_device(
@@ -1328,8 +1362,6 @@ class MammotionClient:
                              record carries a stale or incorrect value.
 
         """
-        from pymammotion.data.model.device import create_device
-
         iot_id = iot_id_override or record.iot_id
         for topic in (
             f"/sys/{record.product_key}/{record.device_name}/thing/event/+/post",
@@ -1340,20 +1372,14 @@ class MammotionClient:
             await transport.add_topic(topic)
         transport.register_device(record.product_key, record.device_name, iot_id)
 
-        handle = DeviceHandle(
-            device_id=record.device_name,
+        await self._register_device_on_transport(
             device_name=record.device_name,
-            initial_device=create_device(record.device_name, record.product_key),
             iot_id=iot_id,
+            product_key=record.product_key,
+            transport=transport,
             user_account=user_account,
-            mqtt_transport=transport,
-            readiness_checker=get_readiness_checker(record.device_name, record.product_key),
+            token_manager=token_manager,
         )
-        await self._device_registry.register(handle)
-        await handle.start()
-        if token_manager is not None:
-            token_manager.subscribe_handle(handle)
-        self._iot_id_to_device_id[iot_id] = record.device_name
         _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, iot_id)
 
     async def _restore_aliyun(
@@ -1739,7 +1765,7 @@ class MammotionClient:
                 # some Mammotion cloud sessions never deliver — leaving zone
                 # entities permanently missing even though the saga successfully
                 # populated ``device.map.area``.
-                await handle._map_updated_bus.emit(None)
+                await handle.emit_map_updated()
 
             await handle.enqueue_saga(saga, on_complete=_on_map_complete)
         else:
