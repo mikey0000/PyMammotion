@@ -424,6 +424,50 @@ class MessageSystem(AbstractMessage, ABC):
         )
         return bytes(luba_msg.SerializeToString())
 
+    def get_report_cfg_spino(
+        self,
+        count: int = 1,
+        timeout: int = 10000,
+        period: int = 1000,
+        no_change_period: int = 4000,
+    ) -> bytes:
+        """Start status reporting for a Spino pool cleaner.
+
+        Pool cleaners only surface ``RIT_DEV_STA`` (``dev_statue_t`` → sys_status
+        / work_mode / battery, applied by ``PoolStateReducer``) plus
+        ``RIT_CONNECT`` for connectivity.  The mower-only channels (RTK, WORK,
+        VISION, BASESTATION, …) don't apply, so the subscription is deliberately
+        minimal — this mirrors the APK's ``requestHomeConnectStatus``
+        (``{RIT_CONNECT, RIT_DEV_STA}``).
+
+        ``count=0`` streams continuously until ``get_report_cfg_stop``; the
+        default ``count=1`` is a one-shot poll (used by the refresh-status
+        button). See :meth:`get_report_cfg` for the full field reference.
+        """
+        report_cfg = ReportInfoCfg(
+            act=RptAct.RPT_START,
+            timeout=timeout,
+            period=period,
+            no_change_period=no_change_period,
+            count=count,
+        )
+        report_cfg.sub.append(RptInfoType.RIT_CONNECT)
+        report_cfg.sub.append(RptInfoType.RIT_DEV_STA)
+        mctl_sys = MctlSys(todev_report_cfg=report_cfg)
+
+        luba_msg = LubaMsg(
+            msgtype=MsgCmdType.EMBED_SYS,
+            sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=MsgDevice.DEV_MAINCTL,
+            msgattr=MsgAttr.REQ,
+            seqs=self.seqs.increment_and_get() & 255,
+            version=1,
+            subtype=self.user_account,
+            sys=mctl_sys,
+            timestamp=round(time.time() * 1000),
+        )
+        return bytes(luba_msg.SerializeToString())
+
     def remote_restart(self, force_reset: int = 1) -> bytes:
         """Send a remote restart command.
         force_reset: 0 - normal restart, 1 - force restart

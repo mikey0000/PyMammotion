@@ -77,8 +77,6 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             return DeviceType.YUKA_MINI
         if DeviceType.YUKA_MINI2.get_name() in substring2:
             return DeviceType.YUKA_MINI2
-        if DeviceType.LUBA_YUKA.get_name() in substring2:
-            return DeviceType.LUBA_YUKA
         if DeviceType.RTK3A1.get_name() in substring2:
             return DeviceType.RTK3A1
         if DeviceType.RTK3A0.get_name() in substring2:
@@ -95,6 +93,8 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             return DeviceType.LUBA_MD
         if DeviceType.LUBA_LA.get_name() in substring2:
             return DeviceType.LUBA_LA
+        if DeviceType.LUBA_YUKA.get_name() in substring2:
+            return DeviceType.LUBA_YUKA
         if DeviceType.SWIMMINGPOOL_S1.get_name() in device_name[:8]:
             return DeviceType.SWIMMINGPOOL_S1
         if DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8]:
