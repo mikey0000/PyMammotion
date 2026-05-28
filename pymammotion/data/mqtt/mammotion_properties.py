@@ -1,3 +1,5 @@
+"""Dataclass models for Mammotion direct-MQTT device properties payloads."""
+
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -24,6 +26,8 @@ class DeviceVersionInfo(DataClassORJSONMixin):
     fw_info: Annotated[list[FirmwareInfo], Alias("fwInfo")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -48,6 +52,8 @@ class InternalNavigation(DataClassORJSONMixin):
     i_slp: Annotated[str, Alias("iSlp")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -61,6 +67,8 @@ class BandwidthTraffic(DataClassORJSONMixin):
     inav: InternalNavigation
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -83,6 +91,8 @@ class TrafficData(DataClassORJSONMixin):
     mon: Annotated[dict[str, TrafficPeriod], Alias("Mon")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -91,7 +101,6 @@ class NetworkInfo(DataClassORJSONMixin):
     """Comprehensive network information including WiFi, cellular, and traffic statistics."""
 
     ssid: str
-    ip: str
     wifi_sta_mac: str
     wifi_rssi: int
     wifi_available: int
@@ -112,7 +121,6 @@ class NetworkInfo(DataClassORJSONMixin):
     mnet_rsrp: str
     mnet_snr: str
     mnet_enable: int
-    apn_num: int
     apn_info: str
     apn_cid: int
     used_net: int
@@ -132,6 +140,8 @@ class NetworkInfo(DataClassORJSONMixin):
     work_time: str
     wt_sec: int
     bat_cycles: str
+    ip: str = ""
+    apn_num: int = 0
 
 
 @dataclass
@@ -149,7 +159,6 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     soc_coredump: Annotated[int, Alias("socCoredump")]
     soc_tmp: Annotated[int, Alias("socTmp")]
     mc_mcu: Annotated[str, Alias("mcMcu")]
-    tilt_degree: str
     i_msg_free: Annotated[int, Alias("iMsgFree")]
     i_msg_limit: Annotated[int, Alias("iMsgLimit")]
     i_msg_raw: Annotated[int, Alias("iMsgRaw")]
@@ -206,7 +215,7 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     iot_con_timeout: int
     iot_con: int
     iot_con_fail_max: str
-    iot_con_fail_min: Annotated[str, Alias("iot_con__fail_min")]
+    iot_con_fail_min: Annotated[str, Alias("iot_con_fail_min")]
     iot_url_count: int
     iot_url_max: str
     iot_url_min: str
@@ -219,8 +228,11 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     task_hash: str
     systemio_boot_time: Annotated[str, Alias("systemioBootTime")]
     dds_no_gdc: int
+    tilt_degree: str = ""
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -234,6 +246,8 @@ class CheckData(DataClassORJSONMixin):
     ok: Annotated[list[int], Alias("OK")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -255,13 +269,7 @@ class DeviceProperties(DataClassORJSONMixin):
     rt_mr_mod: Annotated[str, Alias("rtMrMod")]
     bms_hardware_version: Annotated[str, Alias("bmsHardwareVersion")]
     stm32_h7_version: Annotated[str, Alias("stm32H7Version")]
-    left_motor_version: Annotated[str, Alias("leftMotorVersion")]
-    right_motor_version: Annotated[str, Alias("rightMotorVersion")]
-    rtk_version: Annotated[str, Alias("rtkVersion")]
-    bms_version: Annotated[str, Alias("bmsVersion")]
     mc_boot_version: Annotated[str, Alias("mcBootVersion")]
-    left_motor_boot_version: Annotated[str, Alias("leftMotorBootVersion")]
-    right_motor_boot_version: Annotated[str, Alias("rightMotorBootVersion")]
 
     # Nested JSON objects
     device_version_info: Annotated[DeviceVersionInfo, Alias("deviceVersionInfo")]
@@ -270,10 +278,17 @@ class DeviceProperties(DataClassORJSONMixin):
     network_info: Annotated[NetworkInfo, Alias("networkInfo")]
     check_data: Annotated[CheckData, Alias("checkData")]
     iot_id: str = ""
+    left_motor_version: Annotated[str, Alias("leftMotorVersion")] = ""
+    right_motor_version: Annotated[str, Alias("rightMotorVersion")] = ""
+    rtk_version: Annotated[str, Alias("rtkVersion")] = ""
+    bms_version: Annotated[str, Alias("bmsVersion")] = ""
+    left_motor_boot_version: Annotated[str, Alias("leftMotorBootVersion")] = ""
+    right_motor_boot_version: Annotated[str, Alias("rightMotorBootVersion")] = ""
 
     class Config(BaseConfig):
+        """Mashumaro config: accept raw field names and decode nested JSON-string fields."""
+
         allow_deserialization_not_by_alias = True
-        # Custom deserializer for nested JSON strings
         serialization_strategy = {
             DeviceVersionInfo: {
                 "deserialize": lambda x: DeviceVersionInfo.from_json(x) if isinstance(x, str) else x,
