@@ -1,5 +1,6 @@
 # === sendOrderMsg_Nav ===
 from abc import ABC
+import dataclasses
 import logging
 import time
 
@@ -258,6 +259,64 @@ class MessageNavigation(AbstractMessage, ABC):
         build = MctlNav(todev_planjob_set=NavPlanJobSet(sub_cmd=sub_cmd, plan_id=plan_id))
         logger.debug(f"Send command--Send delete job plan command cmd={sub_cmd} planId = {plan_id}")
         return self.send_order_msg_nav(build)
+
+    # ------------------------------------------------------------------
+    # Convenience wrappers for the mower task CRUD operations.
+    # Each maps to the right ``sub_cmd`` so HA callers don't have to
+    # remember magic numbers.  See ``docs/tasks_and_schedules.md`` § 1.1.
+    # ------------------------------------------------------------------
+
+    def create_plan(self, plan: Plan) -> bytes:
+        """Send a brand-new mowing plan (``sub_cmd=1``).
+
+        ``plan.plan_id`` MUST be a fresh 21-character id produced via
+        :func:`pymammotion.utility.plan_id.new_mower_plan_id` — re-using
+        an existing id would be treated as an edit by the device.
+        """
+        plan_copy = dataclasses.replace(plan, sub_cmd=1)
+        return self.send_schedule(plan_copy)
+
+    def edit_plan(self, plan: Plan) -> bytes:
+        """Edit an existing mowing plan (``sub_cmd=4``).
+
+        ``plan.plan_id`` must match a plan already on the device; the
+        device replaces the stored plan wholesale with what we send.
+        """
+        plan_copy = dataclasses.replace(plan, sub_cmd=4)
+        return self.send_schedule(plan_copy)
+
+    def delete_plan_by_id(self, plan_id: str) -> bytes:
+        """Delete the mowing plan with the given ``plan_id`` (``sub_cmd=3``)."""
+        return self.delete_plan(sub_cmd=3, plan_id=plan_id)
+
+    def enable_plan(self, plan: Plan, enabled: bool) -> bytes:
+        """Toggle a plan's enable flag and resend as an edit.
+
+        The flag lives in ``Plan.reserved[2]``; the other reserved bytes
+        are preserved verbatim from the stored plan, matching the APK's
+        ``scheduleSwitch`` (``JobScheduleActivity.java:1342``).
+        """
+        return self.edit_plan(plan.with_enabled(enabled))
+
+    def rename_plan(self, plan: Plan, new_name: str) -> bytes:
+        """Rename a plan (updates ``task_name`` and resends as an edit)."""
+        return self.edit_plan(plan.with_renamed(new_name))
+
+    def copy_plan(self, plan: Plan, new_name: str, new_plan_id: str) -> bytes:
+        """Duplicate *plan* under a new id + name and create it on the device.
+
+        Caller supplies the new ``plan_id`` (via
+        :func:`pymammotion.utility.plan_id.new_mower_plan_id`) and the new
+        ``task_name`` (via :func:`pymammotion.utility.plan_id.make_copy_name`
+        applied to the existing plan names) so the helper stays pure.
+        """
+        clone = dataclasses.replace(
+            plan,
+            plan_id=new_plan_id,
+            task_name=new_name,
+            sub_cmd=1,
+        )
+        return self.send_schedule(clone)
 
     def set_plan_unable_time(self, sub_cmd: int, device_id: str, unable_end_time: str, unable_start_time: str) -> bytes:
         """Set a scheduled unavailability (blackout) time window for a mowing plan."""

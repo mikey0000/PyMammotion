@@ -1,9 +1,11 @@
 # === sendOrderMsg_Sys ===
 from abc import ABC
+import dataclasses
 import datetime
 import time
 
 from pymammotion import logger
+from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
     AckToAppTypeE,
@@ -26,6 +28,7 @@ from pymammotion.proto import (
     MsgAttr,
     MsgCmdType,
     MsgDevice,
+    PlanJobSet,
     PoolBottomTypeE,
     QcAppTestId,
     RemoteResetReqT,
@@ -33,6 +36,7 @@ from pymammotion.proto import (
     RptAct,
     RptInfoType,
     RtkUsedType,
+    SpinoCtrl,
     SysCommCmd,
     SysKnifeControl,
     SysSetDateTime,
@@ -677,3 +681,117 @@ class MessageSystem(AbstractMessage, ABC):
         build = MctlSys(task_report_resp=FileTransferResponse(biz_id=biz_id, result=result, progress=progress))
         logger.debug(f"Send command - Confirm report biz_id={biz_id}, result={result}, progress={progress}")
         return self.send_order_msg_sys(build)
+
+    # ==================================================================
+    # Spino schedule plan CRUD — wraps ``SpinoCtrl(plan_job_set=...)``
+    # in ``LubaMsg.ctrl`` (msgtype = MSG_CMD_TYPE_SPINO_CTRL).  See
+    # ``docs/tasks_and_schedules.md`` § 2 for the wire protocol.
+    # ==================================================================
+
+    def send_order_spino_ctrl(self, ctrl: SpinoCtrl) -> bytes:
+        """Serialise a ``SpinoCtrl`` payload as a LubaMsg request (msgtype=253).
+
+        Mirrors the APK helper ``sendOrderSpino_Ctrl``
+        (``command/app/MACommandApiHelper.java:342-345``) — the Spino plan
+        path uses its own envelope distinct from ``EMBED_SYS``.
+        """
+        luba_msg = LubaMsg(
+            msgtype=MsgCmdType.SPINO_CTRL,
+            msgattr=MsgAttr.REQ,
+            sender=MsgDevice.DEV_MOBILEAPP,
+            rcver=MsgDevice.DEV_MAINCTL,
+            seqs=self.seqs.increment_and_get() & 255,
+            version=1,
+            subtype=self.user_account,
+            ctrl=ctrl,
+            timestamp=round(time.time() * 1000),
+        )
+        return bytes(luba_msg.SerializeToString())
+
+    @staticmethod
+    def _pool_plan_to_proto(plan: PoolPlan, cmd: int) -> PlanJobSet:
+        """Encode a ``PoolPlan`` to the wire proto with the right ``cmd``.
+
+        Crucially, the wire ``enable`` field is INVERTED: ``0 == enabled,
+        1 == disabled``.  Keep that inversion strictly inside this helper
+        so ``PoolPlan.enabled`` is a natural ``bool`` everywhere else.
+        """
+        return PlanJobSet(
+            cmd=cmd,
+            work_mode=plan.work_mode,
+            sub_mode=list(plan.sub_mode),
+            userid=plan.userid,
+            deviceid=plan.deviceid,
+            starttime=plan.starttime,
+            totalplannum=plan.totalplannum,
+            planindex=plan.planindex,
+            result=plan.result,
+            speed=plan.speed,
+            operating_power=plan.operating_power,
+            jobname=plan.jobname,
+            jobid=plan.jobid,
+            startdate=plan.startdate,
+            enddate=plan.enddate,
+            triggertype=plan.triggertype,
+            day=plan.day,
+            weeks=list(plan.weeks),
+            remained_seconds=plan.remained_seconds,
+            enable=0 if plan.enabled else 1,
+        )
+
+    def _send_spino_plan(self, plan: PoolPlan, cmd: int) -> bytes:
+        """Internal: build a full-plan SpinoCtrl frame with the given ``cmd``."""
+        wire = self._pool_plan_to_proto(plan, cmd)
+        return self.send_order_spino_ctrl(SpinoCtrl(plan_job_set=wire))
+
+    def read_spino_plan(self, plan_index: int = 0) -> bytes:
+        """Read one Spino plan by index (``cmd = QUERY = 2``).
+
+        The fetch saga loops ``plan_index`` 0..total_plan_num−1; the device
+        replies with one ``plan_job_set`` per index.
+        """
+        return self.send_order_spino_ctrl(
+            SpinoCtrl(plan_job_set=PlanJobSet(cmd=2, planindex=plan_index)),
+        )
+
+    def create_spino_plan(self, plan: PoolPlan) -> bytes:
+        """Create a new Spino plan (``cmd = ADD = 1``).
+
+        ``plan.jobid`` MUST be a fresh 64-bit id — re-using an existing
+        jobid would be treated as an edit by the device.
+        """
+        return self._send_spino_plan(plan, cmd=1)
+
+    def edit_spino_plan(self, plan: PoolPlan) -> bytes:
+        """Edit an existing Spino plan (``cmd = EDIT = 4``)."""
+        return self._send_spino_plan(plan, cmd=4)
+
+    def delete_spino_plan(self, jobid: int) -> bytes:
+        """Delete the Spino plan identified by ``jobid`` (``cmd = DELETE = 3``)."""
+        return self.send_order_spino_ctrl(
+            SpinoCtrl(plan_job_set=PlanJobSet(cmd=3, jobid=jobid)),
+        )
+
+    def delete_all_spino_plans(self) -> bytes:
+        """Wipe every Spino plan on the device (``cmd = DELETE_ALL = 5``)."""
+        return self.send_order_spino_ctrl(
+            SpinoCtrl(plan_job_set=PlanJobSet(cmd=5)),
+        )
+
+    def enable_spino_plan(self, plan: PoolPlan, enabled: bool) -> bytes:
+        """Toggle a Spino plan's enable flag (resent as ``cmd = EDIT = 4``)."""
+        return self.edit_spino_plan(plan.with_enabled(enabled))
+
+    def rename_spino_plan(self, plan: PoolPlan, new_name: str) -> bytes:
+        """Rename a Spino plan (resent as ``cmd = EDIT = 4``)."""
+        return self.edit_spino_plan(plan.with_renamed(new_name))
+
+    def copy_spino_plan(self, plan: PoolPlan, new_name: str, new_jobid: int) -> bytes:
+        """Duplicate *plan* under a new jobid + name (``cmd = ADD = 1``).
+
+        Caller supplies ``new_jobid`` (a fresh 64-bit int — generate with
+        ``secrets.randbits(63) | 1``) and ``new_name`` (e.g. via
+        :func:`pymammotion.utility.plan_id.make_copy_name`).
+        """
+        clone = dataclasses.replace(plan, jobid=new_jobid, jobname=new_name)
+        return self.create_spino_plan(clone)

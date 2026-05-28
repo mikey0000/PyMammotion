@@ -81,12 +81,21 @@ async def test_refresh_mqtt_creds_fast_path_stores_credentials() -> None:
 
 
 async def test_refresh_mqtt_creds_falls_back_to_authorization_token() -> None:
-    """get_mqtt_credentials() returns None data → refresh_authorization_token is called."""
+    """get_mqtt_credentials() returns None data → refresh_authorization_token is called,
+    then get_mqtt_credentials is re-invoked to actually fetch a fresh JWT.
+
+    Previously the fallback read self._http.mqtt_credentials directly — but
+    refresh_authorization_token never populates that field, so the JWT was
+    whatever stale value was last cached on the HTTP client (often the JWT the
+    broker had just rejected).
+    """
     http = AsyncMock()
-    http.get_mqtt_credentials.return_value = MagicMock(data=None)
-    # refresh_authorization_token() sets self.mqtt_credentials as a side effect on the real
-    # http object; on the mock we pre-set it so _refresh_mqtt_creds can read it back.
-    http.mqtt_credentials = _make_mqtt_data("jwt-via-authcode")
+    # First call returns None data → triggers fallback;
+    # second call (after refresh_authorization_token) returns a real JWT.
+    http.get_mqtt_credentials.side_effect = [
+        MagicMock(data=None),
+        MagicMock(data=_make_mqtt_data("jwt-via-authcode")),
+    ]
 
     tm = TokenManager("acc", http)
     await tm.initialize(None, None, None)
@@ -94,6 +103,7 @@ async def test_refresh_mqtt_creds_falls_back_to_authorization_token() -> None:
 
     assert creds.jwt == "jwt-via-authcode"
     http.refresh_authorization_token.assert_awaited_once()
+    assert http.get_mqtt_credentials.await_count == 2
 
 
 async def test_refresh_mqtt_creds_authcode_fallback_raises_relogin_when_credentials_absent() -> None:

@@ -486,6 +486,8 @@ class MsgCmdType(betterproto2.Enum):
 
     BASESTATION = 251
 
+    SPINO_CTRL = 253
+
     @classmethod
     def betterproto_value_to_renamed_proto_names(cls) -> dict[int, str]:
         return {
@@ -502,6 +504,7 @@ class MsgCmdType(betterproto2.Enum):
             249: "MSG_CMD_TYPE_MUL",
             250: "MSG_CMD_TYPE_PEPT",
             251: "MSG_CMD_TYPE_BASESTATION",
+            253: "MSG_CMD_TYPE_SPINO_CTRL",
         }
 
     @classmethod
@@ -520,6 +523,7 @@ class MsgCmdType(betterproto2.Enum):
             "MSG_CMD_TYPE_MUL": 249,
             "MSG_CMD_TYPE_PEPT": 250,
             "MSG_CMD_TYPE_BASESTATION": 251,
+            "MSG_CMD_TYPE_SPINO_CTRL": 253,
         }
 
 
@@ -4205,7 +4209,7 @@ class PlanJobSet(betterproto2.Message):
 
     work_mode: "int" = betterproto2.field(2, betterproto2.TYPE_INT32)
 
-    sub_mode: "int" = betterproto2.field(3, betterproto2.TYPE_INT32)
+    sub_mode: "list[int]" = betterproto2.field(3, betterproto2.TYPE_INT32, repeated=True)
 
     userid: "str" = betterproto2.field(4, betterproto2.TYPE_STRING)
 
@@ -4225,7 +4229,7 @@ class PlanJobSet(betterproto2.Message):
 
     jobname: "str" = betterproto2.field(12, betterproto2.TYPE_STRING)
 
-    jobid: "str" = betterproto2.field(13, betterproto2.TYPE_STRING)
+    jobid: "int" = betterproto2.field(13, betterproto2.TYPE_FIXED64)
 
     startdate: "str" = betterproto2.field(14, betterproto2.TYPE_STRING)
 

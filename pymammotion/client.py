@@ -117,6 +117,14 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+# Re-login circuit breaker: cap how often a transport may trigger a fatal-auth
+# recovery cycle. If the recovery itself produces credentials that are still
+# rejected (revoked refreshToken, server-side block, clock skew, …) the
+# transport will keep failing — without this cap, the recovery path loops
+# forever, spamming logs and hammering the auth endpoints.
+_FATAL_AUTH_CIRCUIT_MAX = 3
+_FATAL_AUTH_CIRCUIT_WINDOW_SEC = 300
+
 
 def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash: int) -> bool:
     """Return True if a MowPathSaga should be triggered.
@@ -457,10 +465,14 @@ class MammotionClient:
         elif transport_type == TransportType.CLOUD_MAMMOTION:
             await session.token_manager.refresh_mqtt_credentials()
 
-    async def _full_relogin(self, session: AccountSession | None) -> None:
-        """Re-login with stored credentials and refresh all tokens.
+    async def _full_relogin(self, session: AccountSession | None, transport_type: TransportType | None = None) -> None:
+        """Re-login with stored credentials and refresh tokens.
 
-        Called when token refresh fails (ReLoginRequiredError).
+        Called when token refresh fails (ReLoginRequiredError). When
+        *transport_type* is given, only that transport's cloud credentials are
+        re-fetched after the login (HTTP is always refreshed). Defaults to
+        ``None`` (refresh every active credential type).
+
         Raises LoginFailedError if the re-login itself fails.
         """
         if session is None or not session.email or not session.password:
@@ -478,7 +490,7 @@ class MammotionClient:
             if login_resp.code != 0:
                 raise LoginFailedError(session.email, login_resp.msg)
             if session.token_manager is not None:
-                await session.token_manager.force_refresh()
+                await session.token_manager.force_refresh(transport_type=transport_type)
         except LoginFailedError:
             raise
         except Exception as exc:
@@ -1245,10 +1257,32 @@ class MammotionClient:
         # transport raises ReLoginRequiredError and fires this callback.
         # Mirror the Mammotion MQTT pattern: attempt a final full re-login
         # and reconnect so the integration can recover without user action.
+        # Circuit-break: too many fatal_auth events in a short window means
+        # the refreshToken itself is revoked — stop reconnecting and tell HA.
+        aliyun_fatal_auth_history: list[float] = []
+
         async def _on_aliyun_fatal_auth(exc: ReLoginRequiredError) -> None:
+            now = time.monotonic()
+            aliyun_fatal_auth_history[:] = [
+                t for t in aliyun_fatal_auth_history if now - t < _FATAL_AUTH_CIRCUIT_WINDOW_SEC
+            ]
+            aliyun_fatal_auth_history.append(now)
+            if len(aliyun_fatal_auth_history) > _FATAL_AUTH_CIRCUIT_MAX:
+                _logger.error(
+                    "Aliyun transport: %d fatal-auth events in %ds — circuit-breaker tripped; "
+                    "user must re-authenticate",
+                    len(aliyun_fatal_auth_history),
+                    _FATAL_AUTH_CIRCUIT_WINDOW_SEC,
+                )
+                transport.mark_unrecoverable_auth_failure()
+                if self.on_unrecoverable_auth_error is not None:
+                    with contextlib.suppress(Exception):
+                        await self.on_unrecoverable_auth_error(exc)
+                return
+
             _logger.warning("Aliyun transport fatal auth error — attempting final re-login: %s", exc)
             try:
-                await self._full_relogin(acct_session)
+                await self._full_relogin(acct_session, transport_type=TransportType.CLOUD_ALIYUN)
                 if token_manager is not None:
                     creds = await token_manager.get_aliyun_credentials()
                     transport.update_iot_token(creds.iot_token)
@@ -1291,9 +1325,13 @@ class MammotionClient:
         )
 
         # Build a jwt_refresher that uses the TokenManager to get a fresh JWT.
+        # Use the public refresh_mqtt_credentials (holds self._lock) — not the
+        # private refresh_mqtt_creds — so concurrent refresh paths (this loop's
+        # pre-connect refresh, force_refresh_invoke_token, force_refresh, …)
+        # serialize correctly instead of racing.
 
         async def _refresh_jwt() -> str:
-            creds = await token_manager.refresh_mqtt_creds()
+            creds = await token_manager.refresh_mqtt_credentials()
             if creds is None:
                 raise ReLoginRequiredError(token_manager.account_id, "No JWT available after credential refresh")
             return str(creds.jwt)
@@ -1303,10 +1341,36 @@ class MammotionClient:
 
         # When the connection loop permanently fails auth, trigger a full
         # re-login and reconnect so the integration recovers automatically.
+        # Guarded by a circuit breaker: if too many fatal_auth events fire in a
+        # short window, stop scheduling reconnects (the recovery path is itself
+        # broken — likely a revoked refreshToken — and looping just spams logs).
+        fatal_auth_history: list[float] = []
+
         async def _on_fatal_auth(exc: Exception) -> None:
+            now = time.monotonic()
+            fatal_auth_history[:] = [t for t in fatal_auth_history if now - t < _FATAL_AUTH_CIRCUIT_WINDOW_SEC]
+            fatal_auth_history.append(now)
+            if len(fatal_auth_history) > _FATAL_AUTH_CIRCUIT_MAX:
+                _logger.error(
+                    "MQTT transport: %d fatal-auth events in %ds — circuit-breaker tripped; "
+                    "user must re-authenticate",
+                    len(fatal_auth_history),
+                    _FATAL_AUTH_CIRCUIT_WINDOW_SEC,
+                )
+                # Mark so any queued call_soon(connect()) from an earlier
+                # (non-tripped) fatal_auth cycle finds the flag set and bails
+                # instead of resurrecting the receive loop.  The existing _run
+                # task already exits (stop_event is set + we returned after
+                # _fire_fatal_auth) — no explicit disconnect needed.
+                transport.mark_unrecoverable_auth_failure()
+                if self.on_unrecoverable_auth_error is not None:
+                    with contextlib.suppress(Exception):
+                        await self.on_unrecoverable_auth_error(exc)
+                return
+
             _logger.warning("MQTT transport fatal auth error — attempting full re-login: %s", exc)
             try:
-                await self._full_relogin(acct_session)
+                await self._full_relogin(acct_session, transport_type=TransportType.CLOUD_MAMMOTION)
                 new_jwt = await _refresh_jwt()
                 transport.update_jwt(new_jwt)
                 transport.clear_auth_failed()
@@ -1786,6 +1850,22 @@ class MammotionClient:
             _logger.warning("start_plan_sync: device '%s' not registered", device_name)
             return
         saga = PlanFetchSaga(command_builder=handle.commands, send_command=handle.send_raw)
+        await handle.enqueue_saga(saga)
+
+    async def start_spino_plan_sync(self, device_name: str) -> None:
+        """Enqueue a :class:`SpinoPlanFetchSaga` to fetch all Spino cleaning plans.
+
+        Mirror of :meth:`start_plan_sync` for swimming-pool cleaners — plans
+        arrive as ``LubaMsg.ctrl.plan_job_set`` frames which the
+        :class:`PoolStateReducer` applies to ``device.plans`` automatically.
+        """
+        from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
+
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            _logger.warning("start_spino_plan_sync: device '%s' not registered", device_name)
+            return
+        saga = SpinoPlanFetchSaga(command_builder=handle.commands, send_command=handle.send_raw)
         await handle.enqueue_saga(saga)
 
     async def send_svg(

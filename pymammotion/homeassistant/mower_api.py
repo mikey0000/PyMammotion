@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 from pymammotion.client import MammotionClient
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
+from pymammotion.data.model.hash_list import Plan
+from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.proto import RptAct, RptInfoType
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, TransportType
 from pymammotion.utility.device_config import DeviceConfig
@@ -426,6 +428,100 @@ class HomeAssistantMowerApi:
     async def start_task(self, device_name: str, plan_id: str) -> None:
         """Start task."""
         await self.async_send_command(device_name, "single_schedule", plan_id=plan_id)
+
+    # ------------------------------------------------------------------
+    # Task / schedule CRUD — mower (Luba / Yuka).  See
+    # ``docs/tasks_and_schedules.md`` § 1 for the wire protocol.
+    # All operations dispatch into the navigation command builders
+    # which set the correct ``sub_cmd`` on ``NavPlanJobSet``.
+    # ------------------------------------------------------------------
+
+    async def create_mower_task(self, device_name: str, plan: Plan) -> None:
+        """Create a brand-new mower schedule (``sub_cmd=1``).
+
+        Caller is responsible for assigning a fresh ``plan.plan_id`` via
+        :func:`pymammotion.utility.plan_id.new_mower_plan_id`.
+        """
+        await self.async_send_command(device_name, "create_plan", plan=plan)
+
+    async def edit_mower_task(self, device_name: str, plan: Plan) -> None:
+        """Edit an existing mower schedule (``sub_cmd=4``).
+
+        ``plan.plan_id`` must match a plan already stored on the device.
+        """
+        await self.async_send_command(device_name, "edit_plan", plan=plan)
+
+    async def rename_mower_task(self, device_name: str, plan: Plan, new_name: str) -> None:
+        """Rename a mower schedule — resent as an edit (``sub_cmd=4``)."""
+        await self.async_send_command(device_name, "rename_plan", plan=plan, new_name=new_name)
+
+    async def set_mower_task_enabled(self, device_name: str, plan: Plan, enabled: bool) -> None:
+        """Toggle a mower schedule's enable flag (``reserved[2]``, ``sub_cmd=4``)."""
+        await self.async_send_command(device_name, "enable_plan", plan=plan, enabled=enabled)
+
+    async def delete_mower_task(self, device_name: str, plan_id: str) -> None:
+        """Delete the mower schedule with ``plan_id`` (``sub_cmd=3``)."""
+        await self.async_send_command(device_name, "delete_plan_by_id", plan_id=plan_id)
+
+    async def copy_mower_task(self, device_name: str, plan: Plan, new_name: str, new_plan_id: str) -> None:
+        """Duplicate a mower schedule under a new id + name (``sub_cmd=1``).
+
+        Caller supplies ``new_plan_id`` via
+        :func:`pymammotion.utility.plan_id.new_mower_plan_id` and
+        ``new_name`` via :func:`pymammotion.utility.plan_id.make_copy_name`.
+        """
+        await self.async_send_command(device_name, "copy_plan", plan=plan, new_name=new_name, new_plan_id=new_plan_id)
+
+    # ------------------------------------------------------------------
+    # Task / schedule CRUD — Spino swimming-pool cleaner.  See
+    # ``docs/tasks_and_schedules.md`` § 2 for the wire protocol.
+    # ``enable`` is INVERTED on the wire — handled inside the builder.
+    # ------------------------------------------------------------------
+
+    async def create_spino_task(self, device_name: str, plan: PoolPlan) -> None:
+        """Create a brand-new Spino schedule (``cmd = ADD = 1``).
+
+        Caller assigns ``plan.jobid`` (a fresh 64-bit int, e.g.
+        ``secrets.randbits(63) | 1``).
+        """
+        await self.async_send_command(device_name, "create_spino_plan", plan=plan)
+
+    async def edit_spino_task(self, device_name: str, plan: PoolPlan) -> None:
+        """Edit an existing Spino schedule (``cmd = EDIT = 4``)."""
+        await self.async_send_command(device_name, "edit_spino_plan", plan=plan)
+
+    async def rename_spino_task(self, device_name: str, plan: PoolPlan, new_name: str) -> None:
+        """Rename a Spino schedule — resent as an edit (``cmd = EDIT = 4``)."""
+        await self.async_send_command(device_name, "rename_spino_plan", plan=plan, new_name=new_name)
+
+    async def set_spino_task_enabled(self, device_name: str, plan: PoolPlan, enabled: bool) -> None:
+        """Toggle a Spino schedule's enable flag (resent as ``cmd = EDIT``).
+
+        The wire conversion (``enable = 0 if enabled else 1``) lives inside
+        the command builder so the bool here is in natural orientation.
+        """
+        await self.async_send_command(device_name, "enable_spino_plan", plan=plan, enabled=enabled)
+
+    async def delete_spino_task(self, device_name: str, jobid: int) -> None:
+        """Delete the Spino schedule with the given ``jobid`` (``cmd = DELETE = 3``)."""
+        await self.async_send_command(device_name, "delete_spino_plan", jobid=jobid)
+
+    async def delete_all_spino_tasks(self, device_name: str) -> None:
+        """Wipe every Spino schedule (``cmd = DELETE_ALL = 5``).
+
+        The device does NOT echo the wipe with per-plan frames; callers
+        should trigger an explicit :meth:`start_spino_plan_sync` afterwards
+        to refresh ``device.plans`` (which is the route the HA coordinator
+        takes — see ``MammotionSpinoCoordinator.async_refresh_tasks``).
+        """
+        await self.async_send_command(device_name, "delete_all_spino_plans")
+
+    async def copy_spino_task(self, device_name: str, plan: PoolPlan, new_name: str, new_jobid: int) -> None:
+        """Duplicate a Spino schedule under a new id + name (``cmd = ADD = 1``).
+
+        Caller supplies ``new_jobid`` (fresh 64-bit int) and ``new_name``.
+        """
+        await self.async_send_command(device_name, "copy_spino_plan", plan=plan, new_name=new_name, new_jobid=new_jobid)
 
     async def clear_update_failures(self, device_name: str) -> None:
         """Clear update failures."""

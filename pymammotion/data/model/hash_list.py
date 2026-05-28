@@ -295,6 +295,43 @@ class Plan(DataClassORJSONMixin):
     toward_mode: int = 0
     toward_included_angle: int = 0
 
+    # --- enable / rename helpers -----------------------------------------
+    # ``reserved`` is an 8-byte buffer the device stores alongside the
+    # plan.  Byte 2 = enable flag (0/1); the other bytes carry settings
+    # encoded with a +10 offset (exact meaning not fully decoded —
+    # ``docs/tasks_and_schedules.md`` § 1.3).  For enable/rename/copy
+    # we round-trip the stored buffer verbatim and only mutate byte 2 so
+    # callers don't have to know the layout.
+    #
+    # All bytes the APK writes are < 128, so latin-1 round-trips
+    # losslessly between str and bytes.
+
+    def is_enabled(self) -> bool:
+        """Return True when the plan's enable flag (``reserved[2]``) is set.
+
+        Plans with a missing or short ``reserved`` buffer (e.g. legacy
+        firmware or freshly constructed Plan objects) default to enabled —
+        matching the APK's behaviour when the byte is absent.
+        """
+        raw = self.reserved.encode("latin-1") if self.reserved else b""
+        return raw[2] == 1 if len(raw) > 2 else True
+
+    def with_enabled(self, enabled: bool) -> Plan:
+        """Return a copy of this plan with ``reserved[2]`` set to *enabled*.
+
+        Bytes 0,1,3,4,5,6,7 are preserved verbatim from the existing
+        ``reserved`` buffer (or padded to 8 zero bytes when absent).
+        """
+        raw = bytearray(self.reserved.encode("latin-1") if self.reserved else b"")
+        if len(raw) < 8:
+            raw.extend(b"\x00" * (8 - len(raw)))
+        raw[2] = 1 if enabled else 0
+        return dataclasses.replace(self, reserved=raw.decode("latin-1"))
+
+    def with_renamed(self, new_name: str) -> Plan:
+        """Return a copy of this plan with ``task_name`` set to *new_name*."""
+        return dataclasses.replace(self, task_name=new_name)
+
 
 @dataclass(eq=False, repr=False)
 class NavGetHashListData(DataClassORJSONMixin):

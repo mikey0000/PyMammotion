@@ -52,6 +52,7 @@ enum MsgCmdType {
   MSG_CMD_TYPE_MUL = 249;
   MSG_CMD_TYPE_PEPT = 250;
   MSG_CMD_TYPE_BASESTATION = 251;
+  MSG_CMD_TYPE_SPINO_CTRL = 253;
 }
 
 enum MsgAttr {

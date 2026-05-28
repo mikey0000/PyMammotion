@@ -14,7 +14,7 @@ from pymammotion.data.model.enums import TaskAreaStatus
 from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import Events
 from pymammotion.data.model.location import Location
-from pymammotion.data.model.pool_state import PoolMap, PoolState
+from pymammotion.data.model.pool_state import PoolMap, PoolPlan, PoolState
 from pymammotion.data.model.report_info import BaseScore, ReportData, WorkSessionResult
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.event import ThingEventMessage
@@ -311,6 +311,14 @@ class PoolCleanerDevice(Device):
     iot_id: str = ""
     pool_state: PoolState = field(default_factory=PoolState)
     pool_map: PoolMap = field(default_factory=PoolMap)
+    plans: dict[int, PoolPlan] = field(default_factory=dict)
+    """Scheduled cleaning plans, keyed by ``PoolPlan.jobid``. Populated by
+    the PoolStateReducer from ``LubaMsg.ctrl.plan_job_set`` frames; fetched
+    by ``MammotionClient.start_spino_plan_sync``."""
+    plans_stale: bool = False
+    """Set by the reducer when it sees a ``plan_job_set`` with a
+    ``totalplannum`` greater than ``len(plans)`` — a hint to the HA polling
+    layer that a re-fetch is required."""
     device_firmwares: DeviceFirmwares = field(default_factory=DeviceFirmwares)
     errors: DeviceErrors = field(default_factory=DeviceErrors)
 

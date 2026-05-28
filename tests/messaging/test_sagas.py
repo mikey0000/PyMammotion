@@ -710,3 +710,96 @@ async def test_mow_path_saga_preserves_current_mow_path_across_runs() -> None:
     # Only invalidate_mow_path(0) clears it (job ended → cache flush).
     hash_list.invalidate_mow_path(0)
     assert hash_list.current_mow_path == {}
+
+
+# ---------------------------------------------------------------------------
+# SpinoPlanFetchSaga tests — Spino path mirrors the mower's PlanFetchSaga but
+# the leaf field name is ``plan_job_set`` (not ``todev_planjob_set``), the
+# payload lives in ``LubaMsg.ctrl.plan_job_set``, and plans are keyed by the
+# numeric ``jobid`` (fixed64) instead of a string ``plan_id``.
+# ---------------------------------------------------------------------------
+
+
+async def test_spino_plan_saga_collects_all_plans_by_jobid() -> None:
+    """SpinoPlanFetchSaga must loop plan_index 0..total-1 and key by jobid."""
+    from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
+
+    broker = AsyncMock(spec=DeviceMessageBroker)
+
+    builder = MagicMock()
+    builder.read_spino_plan.return_value = b"read_spino_plan_cmd"
+
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
+
+    # Three plans on the device.  Each "response" is a MagicMock standing
+    # in for the LubaMsg; ``_extract_plan_job_set`` only reaches it via
+    # ``betterproto2.which_one_of(..., "LubaSubMsg")`` which we patch
+    # below to return the appropriate PlanJobSet stub per call.
+    fake_plans = [
+        MagicMock(totalplannum=3, jobid=0xAA01, jobname="A"),
+        MagicMock(totalplannum=3, jobid=0xAA02, jobname="B"),
+        MagicMock(totalplannum=3, jobid=0xAA03, jobname="C"),
+    ]
+    responses = [MagicMock(ctrl=MagicMock(plan_job_set=p)) for p in fake_plans]
+    call_idx = 0
+
+    async def send_command(_cmd: bytes) -> None:
+        nonlocal call_idx
+        if active_callbacks:
+            await active_callbacks[-1](responses[call_idx])
+            call_idx += 1
+
+    def _which(obj: Any, group: str) -> tuple[str, Any]:
+        # Saga subscribes on ``plan_job_set``; ``_collect_frames`` only
+        # cares that the leaf name matches.  ``_extract_plan_job_set``
+        # uses the ``LubaSubMsg`` group to dig back down.
+        if group == "LubaSubMsg":
+            return ("ctrl", obj.ctrl)
+        return ("plan_job_set", obj.ctrl.plan_job_set)
+
+    with patch("betterproto2.which_one_of", side_effect=_which):
+        saga = SpinoPlanFetchSaga(command_builder=builder, send_command=send_command)
+        await saga.execute(broker)
+
+    # All three jobids landed, keyed numerically
+    assert set(saga.result.keys()) == {0xAA01, 0xAA02, 0xAA03}
+    # First call at index 0 + two more for indices 1, 2
+    assert builder.read_spino_plan.call_count == 3
+    builder.read_spino_plan.assert_any_call(plan_index=0)
+    builder.read_spino_plan.assert_any_call(plan_index=1)
+    builder.read_spino_plan.assert_any_call(plan_index=2)
+
+
+async def test_spino_plan_saga_empty_device_short_circuits() -> None:
+    """``totalplannum == 0`` means no plans — saga must return immediately."""
+    from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
+
+    broker = AsyncMock(spec=DeviceMessageBroker)
+
+    builder = MagicMock()
+    builder.read_spino_plan.return_value = b"read_spino_plan_cmd"
+
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
+
+    empty_response = MagicMock(
+        ctrl=MagicMock(plan_job_set=MagicMock(totalplannum=0, jobid=0))
+    )
+
+    async def send_command(_cmd: bytes) -> None:
+        if active_callbacks:
+            await active_callbacks[-1](empty_response)
+
+    def _which(obj: Any, group: str) -> tuple[str, Any]:
+        if group == "LubaSubMsg":
+            return ("ctrl", obj.ctrl)
+        return ("plan_job_set", obj.ctrl.plan_job_set)
+
+    with patch("betterproto2.which_one_of", side_effect=_which):
+        saga = SpinoPlanFetchSaga(command_builder=builder, send_command=send_command)
+        await saga.execute(broker)
+
+    assert saga.result == {}
+    # Only the first read — saga short-circuits on totalplannum=0.
+    assert builder.read_spino_plan.call_count == 1

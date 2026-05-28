@@ -268,17 +268,23 @@ class TokenManager:
         async with self._lock:
             await self._refresh_aliyun()
 
-    async def refresh_mqtt_credentials(self) -> None:
+    async def refresh_mqtt_credentials(self) -> MQTTCredentials:
         """Force-refresh only Mammotion MQTT JWT credentials; called on MQTT auth errors (401/460).
 
-        Does not touch HTTP or Aliyun credentials.
+        Does not touch HTTP or Aliyun credentials.  Acquires ``self._lock`` so
+        concurrent refresh attempts serialize — callers outside TokenManager
+        MUST use this method (not the private ``refresh_mqtt_creds``) or they
+        race the lock-holding paths.
+
+        Returns:
+            The refreshed :class:`MQTTCredentials`.
 
         Raises:
             ReLoginRequiredError: If the MQTT credentials cannot be renewed.
 
         """
         async with self._lock:
-            await self.refresh_mqtt_creds()
+            return await self.refresh_mqtt_creds()
 
     def subscribe_handle(self, handle: DeviceHandle) -> None:
         """Subscribe to auth errors from *handle* and refresh credentials automatically.
@@ -511,22 +517,24 @@ class TokenManager:
                 raise AuthError("get_mqtt_credentials returned no data")
             _store_mqtt_creds(data)
         except AuthError:
-            # JWT endpoint failed — refresh the authorization code first (which
-            # internally calls get_mqtt_credentials() and stores the result on self._http).
+            # JWT endpoint failed — refresh the authorization code, then re-fetch
+            # the MQTT JWT.  Reading self._http.mqtt_credentials here would yield
+            # the prior (now-rejected) JWT; refresh_authorization_token does not
+            # touch mqtt_credentials.
             try:
                 await self._http.refresh_authorization_token()
-                creds = self._http.mqtt_credentials
-                if creds is None:
-                    raise AuthError("refresh_authorization_code returned no MQTT credentials")
-                _store_mqtt_creds(creds)
+                response = await self._http.get_mqtt_credentials()
+                if response.data is None:
+                    raise AuthError("get_mqtt_credentials after authz refresh returned no data")
+                _store_mqtt_creds(response.data)
             except (Exception, AuthError):
                 # Authorization code refresh also failed — fall back to a full HTTP re-login.
                 try:
                     await self.refresh_http()
                     await self._http.refresh_authorization_token()
-                    creds = self._http.mqtt_credentials
-                    if creds is not None:
-                        _store_mqtt_creds(creds)
+                    response = await self._http.get_mqtt_credentials()
+                    if response.data is not None:
+                        _store_mqtt_creds(response.data)
                 except ReLoginRequiredError:
                     raise
                 except Exception as exc:

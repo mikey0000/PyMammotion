@@ -145,6 +145,7 @@ class MammotionHTTP:
         self._password = password
         self._response: Response | None = None
         self._login_info: LoginResponseData | None = None
+        self.devices_shared_info = ShareRecords()
         self.jwt_info: JWTTokenInfo = JWTTokenInfo("", "")
         app_version = f"HA,2.{ha_version}" if ha_version else f"NOT HA,{APP_VERSION}"
         # app_version = f"ALIYUN DEMO,{APP_VERSION}"  # f"HA,{ha_version}"
@@ -344,6 +345,8 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
                 _LOGGER.debug("handle_expiry response: %s", data)
+                if data.get("code") != 0:
+                    return Response(code=data.get("code"), msg="Failed to refresh token")
                 login_info = self._require_login_info
                 login_info.access_token = data["data"].get("accessToken", login_info.access_token)
                 login_info.authorization_code = data["data"].get("code", login_info.authorization_code)
@@ -680,6 +683,13 @@ class MammotionHTTP:
             )
         self.login_info = None
         self._headers.pop("Authorization", None)
+        # Any caller reading these after a logout should see "no creds" rather
+        # than a JWT/expiry bound to the previous login.  Without this, a stale
+        # MQTT JWT survives the logout and gets re-used until the next explicit
+        # get_mqtt_credentials() call.
+        self.mqtt_credentials = None
+        self.expires_in = 0.0
+        self.jwt_info = JWTTokenInfo("", "")
 
     async def refresh_login(self) -> Response[LoginResponseData]:
         """Attempt a token refresh, falling back to a full re-login if the token has already expired."""

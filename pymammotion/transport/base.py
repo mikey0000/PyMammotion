@@ -279,6 +279,12 @@ class Transport(ABC):
         #: Set by mark_auth_failed() when a send fails with ReLoginRequiredError.
         #: Cleared by clear_auth_failed() after successful credential recovery.
         self._auth_failed: bool = False
+        #: Set by mark_unrecoverable_auth_failure() when the re-login circuit
+        #: breaker trips.  Unlike _auth_failed, this is a permanent state — the
+        #: transport's connect() must refuse to start a new receive loop, and
+        #: is_usable stays False until something explicitly clears it.  The
+        #: integration host (HA) is expected to initiate a reauth flow.
+        self._unrecoverable_auth_failure: bool = False
 
     @property
     def on_message(self) -> Callable[[bytes], Awaitable[None]] | None:
@@ -367,10 +373,16 @@ class Transport(ABC):
         """True when this transport is in a state where ``send()`` could plausibly succeed.
 
         Returns False when an auth failure has been recorded via
-        :meth:`mark_auth_failed`.  :class:`~pymammotion.transport.ble.BLETransport`
-        overrides this to add BLEDevice-presence and cooldown gating.
+        :meth:`mark_auth_failed` or :meth:`mark_unrecoverable_auth_failure`.
+        :class:`~pymammotion.transport.ble.BLETransport` overrides this to add
+        BLEDevice-presence and cooldown gating.
         """
-        return not self._auth_failed
+        return not self._auth_failed and not self._unrecoverable_auth_failure
+
+    @property
+    def is_unrecoverable_auth_failure(self) -> bool:
+        """True after the re-login circuit breaker has tripped on this transport."""
+        return self._unrecoverable_auth_failure
 
     def set_rate_limited(self) -> None:
         """Record a rate-limit event; blocks sends on this transport for _RATE_LIMIT_DURATION seconds."""
@@ -420,6 +432,16 @@ class Transport(ABC):
     def clear_auth_failed(self) -> None:
         """Clear the auth-failed flag after successful credential recovery."""
         self._auth_failed = False
+
+    def mark_unrecoverable_auth_failure(self) -> None:
+        """Mark this transport as permanently failed — the re-login circuit breaker tripped.
+
+        Concrete transports must check this in ``connect()`` and refuse to spawn
+        a new receive loop while set; otherwise stale ``call_soon(connect())``
+        callbacks (scheduled by an earlier ``_on_fatal_auth`` cycle) will keep
+        restarting the loop after the breaker has decided to give up.
+        """
+        self._unrecoverable_auth_failure = True
 
     @abstractmethod
     async def connect(self) -> None:

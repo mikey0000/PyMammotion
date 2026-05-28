@@ -35,6 +35,7 @@ from pymammotion.data.model.hash_list import (
 )
 from pymammotion.data.model.pool_state import (
     PoolBottomType,
+    PoolPlan,
     PoolPoint,
     SpinoSysStatus,
     SpinoToggle,
@@ -76,6 +77,7 @@ from pymammotion.proto import (
     NavSysParamMsg,
     NavTaskCtrlAck,
     NavUnableTimeSet,
+    PlanJobSet,
     ReportInfoData,
     ReportInfoT,
     ResponseBasestationInfoT,
@@ -875,8 +877,15 @@ class PoolStateReducer(StateReducer):
             device.online = True
 
         sub_msg_type = betterproto2.which_one_of(message, "LubaSubMsg")[0]
+        if sub_msg_type == "ctrl":
+            # ``LubaMsg.ctrl`` is the Spino-only SpinoCtrl envelope; right
+            # now it only carries ``plan_job_set`` (schedule CRUD).  See
+            # ``docs/tasks_and_schedules.md`` § 2.
+            if message.ctrl is not None and message.ctrl.plan_job_set is not None:
+                self._update_plan_job_set(device, message.ctrl.plan_job_set)
+            return device
         if sub_msg_type != "sys":
-            # Only the sys envelope carries Spino payloads we currently model.
+            # Only the sys + ctrl envelopes carry Spino payloads we currently model.
             return device
 
         sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")  # type: ignore
@@ -960,6 +969,52 @@ class PoolStateReducer(StateReducer):
                     map_info.tag,
                     device.name,
                 )
+
+    def _update_plan_job_set(self, device: PoolCleanerDevice, wire: PlanJobSet) -> None:
+        """Upsert a Spino plan into ``device.plans`` from a wire ``PlanJobSet``.
+
+        Mirror image of :meth:`MessageSystem._pool_plan_to_proto` — the only
+        non-trivial conversion is the **inverted** ``enable`` field
+        (``0 == enabled, 1 == disabled``).  Plans without a ``jobid`` (likely
+        the empty echo of a DELETE_ALL or an error response) are ignored.
+
+        Also maintains ``device.plans_stale``: set when the device tells us
+        ``totalplannum`` is larger than the count we've actually stored,
+        cleared once the two match.  The HA polling layer watches that flag
+        to decide whether to enqueue another :class:`SpinoPlanFetchSaga`.
+        """
+        # Mutable copy of the plans dict so dataclass.replace() snapshot
+        # semantics in ``apply`` still hold.
+        device.plans = dict(device.plans)
+
+        if wire.jobid:
+            device.plans[wire.jobid] = PoolPlan(
+                cmd=wire.cmd,
+                totalplannum=wire.totalplannum,
+                planindex=wire.planindex,
+                result=wire.result,
+                jobid=wire.jobid,
+                jobname=wire.jobname,
+                userid=wire.userid,
+                deviceid=wire.deviceid,
+                enabled=wire.enable == 0,
+                work_mode=wire.work_mode,
+                sub_mode=list(wire.sub_mode),
+                speed=wire.speed,
+                operating_power=wire.operating_power,
+                starttime=wire.starttime,
+                startdate=wire.startdate,
+                enddate=wire.enddate,
+                triggertype=wire.triggertype,
+                day=wire.day,
+                weeks=list(wire.weeks),
+                remained_seconds=wire.remained_seconds,
+            )
+
+        if wire.totalplannum and wire.totalplannum > len(device.plans):
+            device.plans_stale = True
+        elif wire.totalplannum and wire.totalplannum == len(device.plans):
+            device.plans_stale = False
 
 
 class RTKStateReducer(StateReducer):

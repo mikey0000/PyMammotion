@@ -313,6 +313,64 @@ async def test_concurrent_calls_trigger_single_refresh() -> None:
     assert results[0] == results[1]
 
 
+@pytest.mark.asyncio
+async def test_refresh_mqtt_credentials_serialises_with_other_refresh_paths() -> None:
+    """The public refresh_mqtt_credentials() (with -s) must hold the same lock as
+    force_refresh()/refresh_aliyun_credentials() so concurrent refresh paths run
+    sequentially, not in parallel.
+
+    This is the lock the MQTT transport's _refresh_jwt callback (in client.py)
+    relies on — without it, the pre-connect JWT refresh in MQTTTransport._run can
+    race with TokenManager.force_refresh_invoke_token() or another coroutine's
+    force_refresh(), and two concurrent HTTP token-refresh calls clobber each
+    other's state.
+    """
+    overlap_max = 0
+    active = 0
+
+    async def tracked_refresh(*_args, **_kwargs) -> MagicMock:  # type: ignore[no-untyped-def]
+        nonlocal active, overlap_max
+        active += 1
+        overlap_max = max(overlap_max, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        data = MagicMock()
+        data.access_token = "tok"
+        data.refresh_token = "ref"
+        data.expires_in = 3600.0
+        return MagicMock(data=data)
+
+    async def tracked_mqtt(*_args, **_kwargs) -> MagicMock:  # type: ignore[no-untyped-def]
+        nonlocal active, overlap_max
+        active += 1
+        overlap_max = max(overlap_max, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        d = MagicMock()
+        d.host = "h"
+        d.client_id = "c"
+        d.username = "u"
+        d.jwt = "jwt-fresh"
+        return MagicMock(data=d)
+
+    http = AsyncMock()
+    http.refresh_login.side_effect = tracked_refresh
+    http.get_mqtt_credentials.side_effect = tracked_mqtt
+
+    tm = TokenManager(account_id="acc", mammotion_http=http)
+    await tm.initialize(http_creds=None, aliyun_creds=None, mqtt_creds=_expiring_mqtt_creds(100))
+
+    # Fire three concurrent refresh paths that all touch the HTTP client.
+    await asyncio.gather(
+        tm.refresh_mqtt_credentials(),
+        tm.force_refresh(),
+        tm.refresh_mqtt_credentials(),
+    )
+
+    # If the lock works, only one HTTP call is ever in flight at a time.
+    assert overlap_max == 1, f"Concurrent refreshes overlapped (max active = {overlap_max})"
+
+
 # ---------------------------------------------------------------------------
 # Broker subscriptions survive token refresh
 # ---------------------------------------------------------------------------

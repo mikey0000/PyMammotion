@@ -873,7 +873,7 @@ async def _bootstrap_ble_via_proxy(
 async def _main(args: argparse.Namespace) -> None:
     _setup_logging()
 
-    mammotion = MammotionClient("0.5.27")
+    mammotion = MammotionClient("0.6.0")
     main_loop = asyncio.get_running_loop()
     dev = DevConsole(mammotion, main_loop)
 

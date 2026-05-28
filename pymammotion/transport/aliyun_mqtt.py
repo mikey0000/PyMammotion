@@ -216,8 +216,14 @@ class AliyunMQTTTransport(Transport):
         """Start the Aliyun MQTT receive loop task.
 
         Does nothing if the task is already running (connected or in a retry-sleep).
-        If the task has died unexpectedly it is restarted.
+        If the task has died unexpectedly it is restarted.  Refuses to start once
+        the re-login circuit breaker has tripped — otherwise queued
+        ``call_soon(connect())`` callbacks from earlier ``_on_fatal_auth`` cycles
+        would resurrect the loop indefinitely.
         """
+        if self._unrecoverable_auth_failure:
+            _logger.debug("AliyunMQTTTransport.connect() called after unrecoverable auth failure — refusing")
+            return
         if self._task is not None and not self._task.done():
             _logger.debug(
                 "AliyunMQTTTransport.connect() called while task is running (availability=%s) — ignoring",

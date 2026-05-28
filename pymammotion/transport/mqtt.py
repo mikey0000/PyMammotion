@@ -160,7 +160,13 @@ class MQTTTransport(Transport):
 
         Idempotent: does nothing if the task is already running (connected or
         in a retry-sleep). If the task has died unexpectedly it is restarted.
+        Refuses to start once the re-login circuit breaker has tripped —
+        otherwise queued ``call_soon(connect())`` callbacks from earlier
+        ``_on_fatal_auth`` cycles would resurrect the loop indefinitely.
         """
+        if self._unrecoverable_auth_failure:
+            _logger.debug("MQTTTransport.connect() called after unrecoverable auth failure — refusing")
+            return
         if self.is_connected:
             _logger.debug("MQTTTransport.connect() called while already connected — ignoring")
             return
@@ -322,7 +328,11 @@ class MQTTTransport(Transport):
                     self._stop_event.set()
                     self.mark_auth_failed()
                     await self._fire_fatal_auth(rle)
-                    raise
+                    # Handler owns recovery (it may schedule a new connect()).
+                    # Returning lets this task end cleanly instead of leaving an
+                    # unretrieved exception on the asyncio task.
+                    await self._notify_availability(TransportAvailability.DISCONNECTED)
+                    return
                 except Exception:
                     _logger.warning("Pre-connect JWT refresh failed", exc_info=True)
 
@@ -362,11 +372,24 @@ class MQTTTransport(Transport):
                     _bad_credentials_attempts += 1
                     if _bad_credentials_attempts < _BAD_CREDENTIALS_MAX:
                         _logger.debug(
-                            "MQTT auth failure (rc=%s), attempt %d/%d — retrying",
+                            "MQTT auth failure (rc=%s), attempt %d/%d — retrying in %ds",
                             rc,
                             _bad_credentials_attempts,
                             _BAD_CREDENTIALS_MAX,
+                            backoff,
                         )
+                        # Exponential backoff between auth retries — aiomqtt
+                        # disables paho's auto-reconnect (reconnect_on_failure=False
+                        # is hardcoded), so a bare `continue` here would hot-loop
+                        # the broker at network-RTT speed (~1.2 s per attempt) and
+                        # exhaust _BAD_CREDENTIALS_MAX in seconds.  Sleep first,
+                        # then double the backoff for the next attempt.  Reset
+                        # happens implicitly on successful connect (line above).
+                        try:
+                            await asyncio.sleep(backoff)
+                        except asyncio.CancelledError:
+                            break
+                        backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
                         if self._jwt_refresher is not None:
                             # Pre-connect refresh on next loop iteration rotates the JWT;
                             # don't double-refresh here.
@@ -385,14 +408,16 @@ class MQTTTransport(Transport):
                     )
                     self.mark_auth_failed()
                     await self._fire_fatal_auth(auth_exc)
-                    raise auth_exc from exc
+                    # Handler owns recovery; let the stop_event break the while
+                    # loop rather than raising into an unawaited task.
+                    return
                 _logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except ReLoginRequiredError as exc:
                 _logger.error("Re-login required during MQTT connection loop: %s", exc)
                 self._stop_event.set()
                 self.mark_auth_failed()
                 await self._fire_fatal_auth(exc)
-                raise
+                return
             except aiomqtt.MqttError as exc:
                 _logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:

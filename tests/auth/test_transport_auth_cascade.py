@@ -91,7 +91,11 @@ class _MqttAuthFailClient:
 @pytest.mark.asyncio
 async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
     """rc=134 from MQTT broker + jwt_refresher raising ReLoginRequiredError
-    must surface as ReLoginRequiredError via on_fatal_auth_error."""
+    must surface as ReLoginRequiredError via on_fatal_auth_error.
+
+    _run() exits cleanly after firing the handler — the handler owns recovery,
+    so re-raising would only produce an unretrieved task exception.
+    """
     fatal_errors: list[Exception] = []
 
     async def _on_fatal(exc: Exception) -> None:
@@ -112,8 +116,7 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
     transport.on_fatal_auth_error = _on_fatal
 
     with patch("aiomqtt.Client", return_value=_MqttAuthFailClient()):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     assert len(fatal_errors) == 1
     assert isinstance(fatal_errors[0], ReLoginRequiredError)
@@ -122,7 +125,10 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
 @pytest.mark.asyncio
 async def test_mammotion_mqtt_broker_auth_failure_exhausts_retries_then_relogin() -> None:
     """rc=134 exhausts _BAD_CREDENTIALS_MAX refresh attempts → on_fatal_auth_error called
-    even when jwt_refresher succeeds (returns a JWT) but the broker keeps rejecting it."""
+    even when jwt_refresher succeeds (returns a JWT) but the broker keeps rejecting it.
+
+    _run() exits cleanly after firing the handler (no re-raise — handler owns recovery).
+    """
     fatal_errors: list[Exception] = []
 
     async def _on_fatal(exc: Exception) -> None:
@@ -144,15 +150,27 @@ async def test_mammotion_mqtt_broker_auth_failure_exhausts_retries_then_relogin(
     )
     transport.on_fatal_auth_error = _on_fatal
 
-    # Broker always rejects — all refresh attempts fail
-    with patch("aiomqtt.Client", return_value=_MqttAuthFailClient()):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+    # Broker always rejects — all refresh attempts fail.
+    # Patch asyncio.sleep so the exponential backoff between auth retries
+    # doesn't add real wall-clock seconds to the test.
+    sleeps: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    with (
+        patch("aiomqtt.Client", return_value=_MqttAuthFailClient()),
+        patch("pymammotion.transport.mqtt.asyncio.sleep", new=_fake_sleep),
+    ):
+        await transport._run()
 
     # Refresh was attempted _BAD_CREDENTIALS_MAX (3) times before giving up
     assert refresh_count == 3
     assert len(fatal_errors) == 1
     assert isinstance(fatal_errors[0], ReLoginRequiredError)
+    # Auth-retry backoff fired between attempts (exponential: 1 s, 2 s).
+    # 3 attempts → 2 sleeps before the final exhaust.
+    assert sleeps == [1, 2], f"expected exponential backoff [1, 2], got {sleeps}"
 
 
 # ---------------------------------------------------------------------------
