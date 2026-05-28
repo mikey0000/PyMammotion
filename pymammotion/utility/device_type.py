@@ -447,6 +447,7 @@ class DeviceType(Enum):
             DeviceType.YUKA_MINI,
             DeviceType.YUKA_MINI2,
             DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_ML,
             DeviceType.YUKA_VP,
             DeviceType.LUBA_MN,
             DeviceType.LUBA_VP,
