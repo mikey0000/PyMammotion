@@ -1,5 +1,7 @@
+"""Dataclass models for Mammotion direct-MQTT device properties payloads."""
+
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -24,6 +26,8 @@ class DeviceVersionInfo(DataClassORJSONMixin):
     fw_info: Annotated[list[FirmwareInfo], Alias("fwInfo")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -48,6 +52,8 @@ class InternalNavigation(DataClassORJSONMixin):
     i_slp: Annotated[str, Alias("iSlp")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -61,6 +67,8 @@ class BandwidthTraffic(DataClassORJSONMixin):
     inav: InternalNavigation
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -83,6 +91,8 @@ class TrafficData(DataClassORJSONMixin):
     mon: Annotated[dict[str, TrafficPeriod], Alias("Mon")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -130,9 +140,6 @@ class NetworkInfo(DataClassORJSONMixin):
     work_time: str
     wt_sec: int
     bat_cycles: str
-
-    # Device-class-dependent: a WiFi-only device omits cellular fields and vice versa,
-    # and some firmware omits these entirely. Optional so absence doesn't drop the message.
     ip: str = ""
     apn_num: int = 0
 
@@ -221,11 +228,11 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     task_hash: str
     systemio_boot_time: Annotated[str, Alias("systemioBootTime")]
     dds_no_gdc: int
-
-    # Optional / firmware-dependent: older or differently-equipped firmware omits this.
     tilt_degree: str = ""
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -239,6 +246,8 @@ class CheckData(DataClassORJSONMixin):
     ok: Annotated[list[int], Alias("OK")]
 
     class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
         allow_deserialization_not_by_alias = True
 
 
@@ -268,12 +277,6 @@ class DeviceProperties(DataClassORJSONMixin):
     device_other_info: Annotated[DeviceOtherInfo, Alias("deviceOtherInfo")]
     network_info: Annotated[NetworkInfo, Alias("networkInfo")]
     check_data: Annotated[CheckData, Alias("checkData")]
-
-    # Per-side motor / module versions are device-class dependent and may be absent.
-    # A dual-drive chassis (Luba) reports left/right motor versions; a single-motor
-    # device (Yuka Mini 2) omits them entirely, and a non-RTK device omits rtk_version.
-    # These must be optional — otherwise a single missing key makes mashumaro raise
-    # MissingField and the entire property update (battery, state, etc.) is dropped.
     iot_id: str = ""
     left_motor_version: Annotated[str, Alias("leftMotorVersion")] = ""
     right_motor_version: Annotated[str, Alias("rightMotorVersion")] = ""
@@ -283,8 +286,9 @@ class DeviceProperties(DataClassORJSONMixin):
     right_motor_boot_version: Annotated[str, Alias("rightMotorBootVersion")] = ""
 
     class Config(BaseConfig):
+        """Mashumaro config: accept raw field names and decode nested JSON-string fields."""
+
         allow_deserialization_not_by_alias = True
-        # Custom deserializer for nested JSON strings
         serialization_strategy = {
             DeviceVersionInfo: {
                 "deserialize": lambda x: DeviceVersionInfo.from_json(x) if isinstance(x, str) else x,
