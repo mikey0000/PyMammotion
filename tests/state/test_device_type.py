@@ -93,3 +93,34 @@ def test_is_yuka_mini_returns_false_for_non_mini(device_name: str) -> None:
         f"Expected is_yuka_mini False for '{device_name}' "
         f"(resolved as {DeviceType.value_of_str(device_name)})"
     )
+
+
+@pytest.mark.parametrize("device_name", [
+    "Yuka-MN6ABCDE",  # YUKA_MINI
+    "Yuka-YM6ABCDE",  # YUKA_MINI2
+    "Yuka-ML6ABCDE",  # YUKA_ML
+    "Yuka-MV6ABCDE",  # YUKA_MINIV
+    "Yuka-VP6ABCDE",  # YUKA_VP
+    "Luba-MN6ABCDE",  # LUBA_MN
+    "Luba-VP6ABCDE",  # LUBA_VP
+    "Luba-LD6ABCDE",  # LUBA_LD
+])
+def test_is_mini_or_x_series_returns_true(device_name: str) -> None:
+    assert DeviceType.is_mini_or_x_series(device_name), (
+        f"Expected is_mini_or_x_series True for '{device_name}' "
+        f"(resolved as {DeviceType.value_of_str(device_name)})"
+    )
+
+
+@pytest.mark.parametrize("device_name", [
+    "Yuka-6ABCDEF",   # LUBA_YUKA (original Yuka)
+    "Luba-VS6ABCDE",  # LUBA_2
+    "Luba6ABCDE",     # LUBA
+    "RTK6ABCDE",      # RTK
+    "Spino6ABCDE",    # SPINO
+])
+def test_is_mini_or_x_series_returns_false(device_name: str) -> None:
+    assert not DeviceType.is_mini_or_x_series(device_name), (
+        f"Expected is_mini_or_x_series False for '{device_name}' "
+        f"(resolved as {DeviceType.value_of_str(device_name)})"
+    )
