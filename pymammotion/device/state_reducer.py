@@ -237,10 +237,7 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case (
-                        "bidire_comm_cmd"
-                        | "todev_time_ctrl_light"
-                        | "toapp_lora_cfg_rsp"
-                        | "device_product_type_info"
+                        "bidire_comm_cmd" | "todev_time_ctrl_light" | "toapp_lora_cfg_rsp" | "device_product_type_info"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -770,32 +767,35 @@ class MowerStateReducer(StateReducer):
                 _apply_mower_fw_module(device.device_firmwares, fw_type, v)
 
         try:
-            if p.device_version_info.dev_ver:
-                device.device_firmwares.device_version = p.device_version_info.dev_ver
-            for module in p.device_version_info.fw_info:
-                if module.v:
-                    _apply_mower_fw_module(device.device_firmwares, module.t, module.v)
+            if p.device_version_info is not None:
+                if p.device_version_info.dev_ver:
+                    device.device_firmwares.device_version = p.device_version_info.dev_ver
+                for module in p.device_version_info.fw_info:
+                    if module.v:
+                        _apply_mower_fw_module(device.device_firmwares, module.t, module.v)
         except (AttributeError, TypeError):
             _logger.debug("MowerStateReducer: failed to apply deviceVersionInfo (mammotion)")
 
-            if p.coordinate.lat != 0 and p.coordinate:
+        if p.coordinate is not None:
+            if p.coordinate.lat != 0:
                 device.location.device.latitude = p.coordinate.lat
-            if p.coordinate.lon != 0 and p.coordinate:
+            if p.coordinate.lon != 0:
                 device.location.device.longitude = p.coordinate.lon
 
         try:
             net = p.network_info
-            device.mower_state.wifi_mac = net.wifi_sta_mac or device.mower_state.wifi_mac
-            device.mower_state.ble_mac = net.bt_mac or device.mower_state.ble_mac
-            device.mower_state.wifi_ssid = net.ssid or device.mower_state.wifi_ssid
-            device.mower_state.ip_address = net.ip or device.mower_state.ip_address
-            device.report_data.connect.wifi_rssi = net.wifi_rssi
-            if net.mileage:
-                device.report_data.dev.mileage = int(net.mileage)
-            if net.wt_sec is not None:
-                device.report_data.dev.work_time_sec = int(net.wt_sec)
-            if net.bat_cycles:
-                device.report_data.maintenance.bat_cycles = int(net.bat_cycles)
+            if net is not None:
+                device.mower_state.wifi_mac = net.wifi_sta_mac or device.mower_state.wifi_mac
+                device.mower_state.ble_mac = net.bt_mac or device.mower_state.ble_mac
+                device.mower_state.wifi_ssid = net.ssid or device.mower_state.wifi_ssid
+                device.mower_state.ip_address = net.ip or device.mower_state.ip_address
+                device.report_data.connect.wifi_rssi = net.wifi_rssi
+                if net.mileage:
+                    device.report_data.dev.mileage = int(net.mileage)
+                if net.wt_sec is not None:
+                    device.report_data.dev.work_time_sec = int(net.wt_sec)
+                if net.bat_cycles:
+                    device.report_data.maintenance.bat_cycles = int(net.bat_cycles)
         except (AttributeError, ValueError, TypeError):
             _logger.debug("MowerStateReducer: failed to apply networkInfo (mammotion)")
 
