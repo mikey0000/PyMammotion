@@ -969,8 +969,6 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def radar_test_send(self, cmd: int) -> bytes:
         """Send radar static test command. Sends to DEV_PERCEPTION instead of DEV_MAINCTL."""
-        import time as _time
-
         luba_msg = LubaMsg(
             msgtype=MsgCmdType.NAV,
             sender=MsgDevice.DEV_MOBILEAPP,
@@ -980,7 +978,7 @@ class MessageNavigation(AbstractMessage, ABC):
             version=1,
             subtype=self.user_account,
             nav=MctlNav(vision_ctrl=VisionCtrlMsg(type=1, cmd=cmd)),
-            timestamp=round(_time.time() * 1000),
+            timestamp=round(time.time() * 1000),
         )
         logger.debug(f"Send command - Radar test cmd={cmd}")
         return luba_msg.SerializeToString()
