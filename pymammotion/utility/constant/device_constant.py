@@ -242,20 +242,25 @@ class RTKPositionMode(UnknownTolerantIntEnum):
 class AppConnectType(UnknownTolerantIntEnum):
     """How the app/client is linked to the device, reported on the RTK base station.
 
-    Surfaces on ``rpt_basestation_info.app_connect_type``.  Sourced from the
-    APK's ``MACarDataManager.java``:
+    Surfaces on ``rpt_basestation_info.app_connect_type`` and on
+    ``rpt_connect_status.connect_type`` in mower report frames.  Sourced from
+    the APK's ``MACarDataManager.java``:
 
     - ``currentConn 1=ble`` debug string (``:5689, :9444, :9739, :10172``)
     - ``if (appConnectType != 2 && wifiRssi == 0)`` gate at ``:7774`` —
       establishes that ``2`` implies Wi-Fi
 
-    No APK reference to other values has been confirmed; ``0`` is treated as
-    the unset/unknown sentinel.
+    ``3`` is inferred from observed Yuka-ML traces: it appears exclusively
+    while the app is in an active interactive screen (manual drive, live
+    view), and the value matches a bitmask of ``CON_BLE | CON_WIFI`` — both
+    transports engaged simultaneously.  Not yet confirmed against APK source.
+    ``0`` is treated as the unset/unknown sentinel.
     """
 
     UNKNOWN = 0
     CON_BLE = 1
     CON_WIFI = 2
+    CON_BLE_WIFI = 3
 
 
 class WorkMode(IntEnum):
