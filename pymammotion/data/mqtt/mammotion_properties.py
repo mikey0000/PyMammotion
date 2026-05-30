@@ -103,24 +103,17 @@ class NetworkInfo(DataClassORJSONMixin):
     ssid: str
     wifi_sta_mac: str
     wifi_rssi: int
-    wifi_available: int
     bt_mac: str
     mnet_model: str
     imei: str
     fw_ver: str
     sim: str
     imsi: str
-    iccid: str
-    sim_source: str
     mnet_rssi: int
     signal: int
     mnet_link: int
     mnet_option: str
     mnet_ip: str
-    mnet_reg: str
-    mnet_rsrp: str
-    mnet_snr: str
-    mnet_enable: int
     apn_info: str
     apn_cid: int
     used_net: int
@@ -128,20 +121,27 @@ class NetworkInfo(DataClassORJSONMixin):
     mnet_dis: int
     airplane_times: int
     lsusb_num: int
-    b_tra: Annotated[BandwidthTraffic, Alias("bTra")]
-    bw_tra: Annotated[BandwidthTraffic, Alias("bwTra")]
     mnet_rx: str
     mnet_tx: str
-    m_tra: Annotated[TrafficData, Alias("mTra")]
     mnet_uniot: int
     mnet_un_getiot: int
     ssh_flag: str
     mileage: str
     work_time: str
-    wt_sec: int
     bat_cycles: str
     ip: str = ""
     apn_num: int = 0
+    wifi_available: int = 0
+    iccid: str = ""
+    sim_source: str = ""
+    mnet_reg: str = ""
+    mnet_rsrp: str = ""
+    mnet_snr: str = ""
+    mnet_enable: int = 0
+    wt_sec: int = 0
+    b_tra: Annotated[BandwidthTraffic | None, Alias("bTra")] = None
+    bw_tra: Annotated[BandwidthTraffic | None, Alias("bwTra")] = None
+    m_tra: Annotated[TrafficData | None, Alias("mTra")] = None
 
 
 @dataclass
