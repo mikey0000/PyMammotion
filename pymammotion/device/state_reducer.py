@@ -767,24 +767,23 @@ class MowerStateReducer(StateReducer):
                 _apply_mower_fw_module(device.device_firmwares, fw_type, v)
 
         try:
-            if p.device_version_info is not None:
-                if p.device_version_info.dev_ver:
-                    device.device_firmwares.device_version = p.device_version_info.dev_ver
-                for module in p.device_version_info.fw_info:
+            if device_version_info := p.device_version_info:
+                if device_version_info.dev_ver:
+                    device.device_firmwares.device_version = device_version_info.dev_ver
+                for module in device_version_info.fw_info:
                     if module.v:
                         _apply_mower_fw_module(device.device_firmwares, module.t, module.v)
         except (AttributeError, TypeError):
             _logger.debug("MowerStateReducer: failed to apply deviceVersionInfo (mammotion)")
 
-        if p.coordinate is not None:
-            if p.coordinate.lat != 0:
-                device.location.device.latitude = p.coordinate.lat
-            if p.coordinate.lon != 0:
-                device.location.device.longitude = p.coordinate.lon
+        if coordinate := p.coordinate:
+            if coordinate.lat != 0:
+                device.location.device.latitude = coordinate.lat
+            if coordinate.lon != 0:
+                device.location.device.longitude = coordinate.lon
 
         try:
-            net = p.network_info
-            if net is not None:
+            if net := p.network_info:
                 device.mower_state.wifi_mac = net.wifi_sta_mac or device.mower_state.wifi_mac
                 device.mower_state.ble_mac = net.bt_mac or device.mower_state.ble_mac
                 device.mower_state.wifi_ssid = net.ssid or device.mower_state.wifi_ssid
