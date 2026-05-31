@@ -20,6 +20,9 @@ jobs:
       ENCODED_BRANCH_NAME: ${{ steps.branchname.outputs.ENCODED_BRANCH_NAME }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history is needed to diff against the PR base / previous push.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -30,10 +33,29 @@ jobs:
           python-version-file: pyproject.toml
       - name: Install dependencies
         run: uv sync --frozen
-      - name: Python Ruff Lint and Format
+      - name: Determine changed Python files
+        id: changed
         run: |
-          uv run ruff check pymammotion/
-          uv run ruff format --check pymammotion/
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            git fetch --no-tags --depth=50 origin "$BASE_REF"
+            BASE_SHA=$(git merge-base "origin/$BASE_REF" HEAD)
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+          CHANGED=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD \
+            -- 'pymammotion/**/*.py' ':(exclude)pymammotion/proto/**' | tr '\n' ' ')
+          echo "files=$CHANGED" >> "$GITHUB_OUTPUT"
+          if [ -n "$CHANGED" ]; then
+            echo "Changed Python files: $CHANGED"
+          else
+            echo "No Python files changed under pymammotion/."
+          fi
+      - name: Python Ruff Lint and Format (changed files only)
+        if: steps.changed.outputs.files != ''
+        run: |
+          uv run ruff check ${{ steps.changed.outputs.files }}
+          uv run ruff format --check ${{ steps.changed.outputs.files }}
       - name: Run tests
         run: uv run pytest tests/ -m "not live"
 

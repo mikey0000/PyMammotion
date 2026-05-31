@@ -468,6 +468,49 @@ ignore = [
     "D203", # Conflicts with other rules
     "D417", # False positives in some occasions
     "ISC001", # Conflicts with formatter
+
+    # Naming exemptions for code that mirrors Mammotion's mixed-case wire format
+    # (protobuf-derived dataclasses, MQTT property keys, etc.).
+    "N802", # invalid function name (not snake_case)
+    "N803", # invalid argument name
+    "N806", # non-lowercase variable in function
+    "N815", # mixed-case variable in class scope
+
+    # Docstring presence / cosmetic style. Per #6 discussion: D102 and D103
+    # remain enforced (docstrings required on every function and method);
+    # the four cosmetic D-rules (D205 / D400 / D401 / D415) are also
+    # enforced. Module / package / magic-method / __init__ / nested-class
+    # presence rules below are kept ignored.
+    "D100", # undocumented public module
+    "D104", # undocumented public package
+    "D105", # undocumented magic method
+    "D106", # undocumented public nested class
+    "D107", # undocumented public __init__
+
+    # Type annotation gaps. Type coverage improves incrementally; blanket
+    # enforcement creates churn without proportional safety gain.
+    "ANN001", # missing type annotation for function argument
+    "ANN201", # missing return type for public function
+    "ANN204", # missing return type for special method
+    "ANN205", # missing return type for static method
+    "ANN206", # missing return type for classmethod
+
+    # Style preferences with no safety value.
+    "G004",   # logging f-string (modern Python; equivalent perf)
+    "FBT001", # boolean-trap: positional bool argument
+    "FBT002", # boolean-trap: default bool argument
+    "FBT003", # boolean-trap: positional bool literal at call site
+    "EM101",  # raw string in exception
+    "EM102",  # f-string in exception
+    "TRY300", # try-consider-else
+
+    # Comment / metadata hygiene. False-positive heavy or low-value.
+    "ERA001", # commented-out-code (frequent false positives in dataclasses)
+    "PGH003", # blanket type-ignore (codebase convention)
+    "FIX002", # line contains TODO
+    "TD002",  # missing TODO author
+    "TD003",  # missing TODO link
+    "TD004",  # missing TODO colon
 ]
 
 [tool.ruff.lint.isort]
