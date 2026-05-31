@@ -476,16 +476,16 @@ ignore = [
     "N806", # non-lowercase variable in function
     "N815", # mixed-case variable in class scope
 
-    # Docstring presence / cosmetic style. Encouraged where useful, not enforced.
+    # Docstring presence / cosmetic style. Per #6 discussion: D102 and D103
+    # remain enforced (docstrings required on every function and method);
+    # the four cosmetic D-rules (D205 / D400 / D401 / D415) are also
+    # enforced. Module / package / magic-method / __init__ / nested-class
+    # presence rules below are kept ignored.
     "D100", # undocumented public module
     "D104", # undocumented public package
     "D105", # undocumented magic method
     "D106", # undocumented public nested class
     "D107", # undocumented public __init__
-    "D205", # 1 blank line required between summary line and description
-    "D400", # docstring missing trailing period
-    "D401", # non-imperative-mood docstring
-    "D415", # docstring missing terminal punctuation
 
     # Type annotation gaps. Type coverage improves incrementally; blanket
     # enforcement creates churn without proportional safety gain.
