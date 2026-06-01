@@ -308,12 +308,12 @@ class BleMessage:
     async def get_task(self) -> None:
         """Request the current task status from the device over BLE."""
         hash_map = {"pver": 1, "subCmd": 2, "result": 0}
-        await self.post_custom_data(self.get_json_string(BleOrderCmd.task, hash_map))
+        await self.post_custom_data(self.get_json_string(BleOrderCmd.TASK, hash_map))
 
     async def send_ble_alive(self) -> None:
         """Send a keepalive ping to maintain the BLE connection."""
         hash_map = {"ctrl": 1}
-        await self.post_custom_data(self.get_json_string(BleOrderCmd.bleAlive, hash_map))
+        await self.post_custom_data(self.get_json_string(BleOrderCmd.BLE_ALIVE, hash_map))
 
     def get_json_string(self, cmd: int, hash_map: dict[str, int]) -> str:
         """Build a JSON command string with the given command code and parameter map."""

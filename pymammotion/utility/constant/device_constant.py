@@ -1,91 +1,94 @@
 from __future__ import annotations
 
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
-from pymammotion.data.model.report_info import ConnectData
 from pymammotion.utility.enum_base import UnknownTolerantIntEnum
+
+if TYPE_CHECKING:
+    from pymammotion.data.model.report_info import ConnectData
 
 
 class BleOrderCmd(IntEnum):
     """BLE command opcode identifiers used in the Mammotion protocol."""
 
-    allpowerfullRW = 67
-    alongBorder = 9
-    areaAndTimeAndPathUpdate = 27
-    autoUnderPile = 65
-    batteryValueUpdate = 5
-    bleAlive = 59
-    cancelCurrentRecord = 62
-    cancelLogUpdate = 45
-    cancelPauseExecuteTask = 47
-    checkFramwareVersion = 41
-    checkFramwareVersionCallBack = 42
-    checkSoftVersion = 35
-    checkSoftVersionCallBack = 36
-    closeKinfe = 50
-    close_clear_connect_current_wifi = 77
-    deletingConnectionPath = 22
-    deviceOrderResponse = 46
-    deviceStatusUpdate = 31
-    endChannelLine = 15
-    endDrawBarrier = 13
-    endDrawBorder = 11
-    errorCodeUpdate = 34
-    framwarePackageCallBack = 40
-    framwareSuccessUpdate = 48
-    framwareUpdateCallBack = 38
-    generateRouteInformation = 210
-    getAreaData = 209
-    getDeiveBorderState = 64
-    getDeviceInfo = 63
-    getDeviceLogInfo = 43
-    getHashList = 208
-    getrecordwifi = 69
-    initPointUpdate = 3
-    job_plan_setting_read_delete = 78
-    job_plan_setting_read_delete_unable_time = 79
-    kinfeState = 51
-    knifeHightUpdate = 29
-    logProgressUpdate = 44
-    openKinfe = 49
-    optimizationBorderUpadate = 17
-    optimizationChannalLineUpdate = 19
-    optimizationObstacleUpdate = 18
-    originLagLog = 52
-    pauseExecuteTask = 7
-    removeObstaclesOrObstructions = 21
-    replyOptimizationPackage = 20
-    resetBaseStation = 61
-    responseDevice = 52
-    retrunGenerateRouteInformation = 211
-    returnCharge = 8
-    rtloactionUpdate = 4
-    saveTask = 16
-    sendBorderPackage = 21
-    sendBorderPackageCallBack = 22
-    sendChannalLinePackage = 25
-    sendChannalLinePackageCallBack = 26
-    sendContrlCallBack = 2
-    sendControl = 1
-    sendExecuteTask = 6
-    sendFramwarePackage = 39
-    sendFramwareUpdate = 37
-    sendObstaclePackage = 23
-    sendObstaclePackageCallBack = 24
-    sendPlan = 32
-    setKnifeHight = 28
-    setMaxSpeed = 33
-    startChannelLine = 14
-    startDrawBarrier = 12
-    startDrawBorder = 10
-    startWorkOrder = 60
-    startjob = 212
-    synTime = 57
-    task = 213
-    taskProgressUpdate = 30
-    testPW = 52
-    wificonnectinfoupdate = 68
-    wirteReadSpeed = 66
+    ALLPOWERFULL_RW = 67
+    ALONG_BORDER = 9
+    AREA_AND_TIME_AND_PATH_UPDATE = 27
+    AUTO_UNDER_PILE = 65
+    BATTERY_VALUE_UPDATE = 5
+    BLE_ALIVE = 59
+    CANCEL_CURRENT_RECORD = 62
+    CANCEL_LOG_UPDATE = 45
+    CANCEL_PAUSE_EXECUTE_TASK = 47
+    CHECK_FRAMWARE_VERSION = 41
+    CHECK_FRAMWARE_VERSION_CALL_BACK = 42
+    CHECK_SOFT_VERSION = 35
+    CHECK_SOFT_VERSION_CALL_BACK = 36
+    CLOSE_KINFE = 50
+    CLOSE_CLEAR_CONNECT_CURRENT_WIFI = 77
+    DELETING_CONNECTION_PATH = 22
+    DEVICE_ORDER_RESPONSE = 46
+    DEVICE_STATUS_UPDATE = 31
+    END_CHANNEL_LINE = 15
+    END_DRAW_BARRIER = 13
+    END_DRAW_BORDER = 11
+    ERROR_CODE_UPDATE = 34
+    FRAMWARE_PACKAGE_CALL_BACK = 40
+    FRAMWARE_SUCCESS_UPDATE = 48
+    FRAMWARE_UPDATE_CALL_BACK = 38
+    GENERATE_ROUTE_INFORMATION = 210
+    GET_AREA_DATA = 209
+    GET_DEIVE_BORDER_STATE = 64
+    GET_DEVICE_INFO = 63
+    GET_DEVICE_LOG_INFO = 43
+    GET_HASH_LIST = 208
+    GET_RECORD_WIFI = 69
+    INIT_POINT_UPDATE = 3
+    JOB_PLAN_SETTING_READ_DELETE = 78
+    JOB_PLAN_SETTING_READ_DELETE_UNABLE_TIME = 79
+    KINFE_STATE = 51
+    KNIFE_HIGHT_UPDATE = 29
+    LOG_PROGRESS_UPDATE = 44
+    OPEN_KINFE = 49
+    OPTIMIZATION_BORDER_UPADATE = 17
+    OPTIMIZATION_CHANNAL_LINE_UPDATE = 19
+    OPTIMIZATION_OBSTACLE_UPDATE = 18
+    ORIGIN_LAG_LOG = 52
+    PAUSE_EXECUTE_TASK = 7
+    REMOVE_OBSTACLES_OR_OBSTRUCTIONS = 21
+    REPLY_OPTIMIZATION_PACKAGE = 20
+    RESET_BASE_STATION = 61
+    RESPONSE_DEVICE = 52
+    RETRUN_GENERATE_ROUTE_INFORMATION = 211
+    RETURN_CHARGE = 8
+    RTLOACTION_UPDATE = 4
+    SAVE_TASK = 16
+    SEND_BORDER_PACKAGE = 21
+    SEND_BORDER_PACKAGE_CALL_BACK = 22
+    SEND_CHANNAL_LINE_PACKAGE = 25
+    SEND_CHANNAL_LINE_PACKAGE_CALL_BACK = 26
+    SEND_CONTRL_CALL_BACK = 2
+    SEND_CONTROL = 1
+    SEND_EXECUTE_TASK = 6
+    SEND_FRAMWARE_PACKAGE = 39
+    SEND_FRAMWARE_UPDATE = 37
+    SEND_OBSTACLE_PACKAGE = 23
+    SEND_OBSTACLE_PACKAGE_CALL_BACK = 24
+    SEND_PLAN = 32
+    SET_KNIFE_HIGHT = 28
+    SET_MAX_SPEED = 33
+    START_CHANNEL_LINE = 14
+    START_DRAW_BARRIER = 12
+    START_DRAW_BORDER = 10
+    START_WORK_ORDER = 60
+    START_JOB = 212
+    SYN_TIME = 57
+    TASK = 213
+    TASK_PROGRESS_UPDATE = 30
+    TEST_PW = 52
+    WIFI_CONNECT_INFO_UPDATE = 68
+    WIRTE_READ_SPEED = 66
 
 
 class SystemUpdateBuf(IntEnum):
@@ -240,7 +243,9 @@ class RTKPositionMode(UnknownTolerantIntEnum):
 
 
 class AppConnectType(UnknownTolerantIntEnum):
-    """How the app/client is linked to the device, reported on the RTK base station.
+    """How the app/client is linked to the device, reported on the RTK base station and mowers.
+
+    Older mowers do not support connect_type 3.
 
     Surfaces on ``rpt_basestation_info.app_connect_type`` and on
     ``rpt_connect_status.connect_type`` in mower report frames.  Sourced from
@@ -250,10 +255,8 @@ class AppConnectType(UnknownTolerantIntEnum):
     - ``if (appConnectType != 2 && wifiRssi == 0)`` gate at ``:7774`` —
       establishes that ``2`` implies Wi-Fi
 
-    ``3`` is inferred from observed Yuka-ML traces: it appears exclusively
-    while the app is in an active interactive screen (manual drive, live
-    view), and the value matches a bitmask of ``CON_BLE | CON_WIFI`` — both
-    transports engaged simultaneously.  Not yet confirmed against APK source.
+    ``3`` is inferred from observed traces: the value matches a bitmask of ``CON_BLE | CON_WIFI`` — both
+    transports engaged simultaneously.
     ``0`` is treated as the unset/unknown sentinel.
     """
 
