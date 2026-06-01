@@ -78,11 +78,11 @@ def test_northern_origin() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Southern hemisphere (New Zealand, lat ≈ -38°)
+# Southern hemisphere (lat ≈ -14.5°)
 # ---------------------------------------------------------------------------
 
-SOUTH_LAT = -38.002342
-SOUTH_LON = 175.317709
+SOUTH_LAT = -14.502342
+SOUTH_LON = 44.817709
 
 
 def test_southern_pure_east() -> None:

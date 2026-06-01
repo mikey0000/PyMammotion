@@ -504,11 +504,11 @@ def test_yuka_mow_path_geojson_has_linestring_coordinates() -> None:
     coords = geometry["coordinates"]
     assert len(coords) > 0, "Expected coordinates in the LineString"
 
-    # Coordinates should be [lon, lat] pairs near the Yuka's real-world location
-    # RTK is at approximately lon=175.318, lat=-38.002 (New Zealand)
+    # Coordinates should be [lon, lat] pairs near the fixture RTK location
+    # RTK is at approximately lon=44.818, lat=-14.502
     for lon, lat in coords:
-        assert 175.0 < lon < 176.0, f"Longitude {lon} out of expected range"
-        assert -39.0 < lat < -37.0, f"Latitude {lat} out of expected range"
+        assert 44.0 < lon < 46.0, f"Longitude {lon} out of expected range"
+        assert -15.5 < lat < -13.5, f"Latitude {lat} out of expected range"
 
 
 def test_yuka_incomplete_mow_path_empty_geojson() -> None:
@@ -582,8 +582,8 @@ def test_yuka_apply_mow_path_geojson_populates_device() -> None:
 
     # Verify coordinates are in expected real-world range
     for lon, lat in mow_feature["geometry"]["coordinates"]:
-        assert 175.0 < lon < 176.0
-        assert -39.0 < lat < -37.0
+        assert 44.0 < lon < 46.0
+        assert -15.5 < lat < -13.5
 
 
 # ---------------------------------------------------------------------------
@@ -714,10 +714,10 @@ def test_mow_progress_geojson_now_index_exceeds_total() -> None:
 
 
 def test_mow_progress_geojson_coordinates_in_expected_range() -> None:
-    """Progress GeoJSON coordinates should be near the Yuka's real-world RTK location.
+    """Progress GeoJSON coordinates should be near the fixture RTK location.
 
     LocationPoint.latitude/longitude in the Yuka fixture are stored in radians
-    (-0.663 rad ≈ -37.97° S, 3.06 rad ≈ 175.3° E — New Zealand).
+    (-0.253 rad ≈ -14.5° S, 0.782 rad ≈ 44.8° E).
     generate_mow_progress_geojson expects a WGS-84 Point already converted via
     CoordinateConverter.enu_to_lla, matching the same contract as
     generate_mow_path_geojson.
@@ -742,8 +742,8 @@ def test_mow_progress_geojson_coordinates_in_expected_range() -> None:
 
     assert result["features"], "Expected at least one feature"
     for lon, lat in result["features"][0]["geometry"]["coordinates"]:
-        assert 175.0 < lon < 176.0, f"Longitude {lon} out of expected NZ range"
-        assert -39.0 < lat < -37.0, f"Latitude {lat} out of expected NZ range"
+        assert 44.0 < lon < 46.0, f"Longitude {lon} out of expected range"
+        assert -15.5 < lat < -13.5, f"Latitude {lat} out of expected range"
 
 
 def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:

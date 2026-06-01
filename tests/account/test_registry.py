@@ -267,15 +267,15 @@ async def test_multiple_ble_devices_each_get_own_session_entry() -> None:
         ble_device=_make_ble_device("CC:64:1A:49:37:95"),
     )
     await client.add_ble_only_device(
-        device_id="Yuka-MNTXVHBE",
-        device_name="Yuka-MNTXVHBE",
-        initial_device=MowingDevice(name="Yuka-MNTXVHBE"),
-        ble_device=_make_ble_device("14:5D:34:31:DB:F7"),
+        device_id="Yuka-TESTDEV1",
+        device_name="Yuka-TESTDEV1",
+        initial_device=MowingDevice(name="Yuka-TESTDEV1"),
+        ble_device=_make_ble_device("02:00:00:12:34:57"),
     )
 
     ble_session = client._account_registry.get(BLE_ONLY_ACCOUNT)
     assert ble_session is not None
     assert "Luba-VS563L6H" in ble_session.device_ids
-    assert "Yuka-MNTXVHBE" in ble_session.device_ids
+    assert "Yuka-TESTDEV1" in ble_session.device_ids
     assert len(ble_session.device_ids) == 2
     assert len(client._device_registry.all_devices) == 2
