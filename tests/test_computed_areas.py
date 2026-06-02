@@ -378,3 +378,80 @@ class TestUpsertAreaName:
             AreaHashNameList(name="One", hash=111),
             AreaHashNameList(name="Renamed", hash=222),
         ]
+
+
+# ---------------------------------------------------------------------------
+# Tests: computed_areas reflects the post-map-sync state
+# ---------------------------------------------------------------------------
+
+
+class TestComputedAreasAfterMapSync:
+    """After a sync, computed_areas must reflect the device's CURRENT areas.
+
+    A sync replaces area_name wholesale (toapp_all_hash_name) and prunes/refetches
+    area geometry, so computed_areas — the merged view HA renders — must surface the
+    updated set: edited areas under their new hash, renames applied, and no
+    pre-edit/removed hashes lingering.
+    """
+
+    def test_edited_area_appears_under_new_hash_and_drops_old(self) -> None:
+        """Editing an area gives it a new hash; the old hash must not linger."""
+        # Post-sync state: only the NEW hash has geometry + a name.
+        hl = _make_hash_list(
+            area={999: _make_frame_list("Backyard part 1")},
+            area_name=[AreaHashNameList(name="Backyard part 1", hash=999)],
+        )
+        by_hash = {a.hash: a.name for a in hl.computed_areas}
+        assert by_hash == {999: "Backyard part 1"}
+        assert 111 not in by_hash  # the pre-edit hash is gone
+
+    def test_rename_is_reflected(self) -> None:
+        """A renamed area (area_name updated in place) shows the new name."""
+        hl = _make_hash_list(
+            area={123: _make_frame_list("Old Name")},
+            area_name=[AreaHashNameList(name="Front Lawn", hash=123)],
+        )
+        # area_name (set by toapp_all_hash_name / set_area_name) wins over the frame name.
+        by_hash = {a.hash: a.name for a in hl.computed_areas}
+        assert by_hash[123] == "Front Lawn"
+
+    def test_full_set_after_sync_matches_geometry_and_names(self) -> None:
+        """All synced areas (geometry + names aligned) are returned, none missing/extra."""
+        hl = _make_hash_list(
+            area={
+                111: _make_frame_list("Backyard part 1"),
+                222: _make_frame_list("Backyard part 2"),
+                333: _make_frame_list("Small strip near plum"),
+            },
+            area_name=[
+                AreaHashNameList(name="Backyard part 1", hash=111),
+                AreaHashNameList(name="Backyard part 2", hash=222),
+                AreaHashNameList(name="Small strip near plum", hash=333),
+            ],
+        )
+        by_hash = {a.hash: a.name for a in hl.computed_areas}
+        assert by_hash == {
+            111: "Backyard part 1",
+            222: "Backyard part 2",
+            333: "Small strip near plum",
+        }
+
+    def test_removed_area_not_returned(self) -> None:
+        """An area deleted device-side (gone from both geometry and names) is dropped."""
+        hl = _make_hash_list(
+            area={111: _make_frame_list("Kept")},
+            area_name=[AreaHashNameList(name="Kept", hash=111)],
+        )
+        by_hash = {a.hash: a.name for a in hl.computed_areas}
+        assert by_hash == {111: "Kept"}
+
+    def test_new_area_with_geometry_but_missing_name_gets_label(self) -> None:
+        """A freshly-fetched area whose name hasn't arrived yet still surfaces."""
+        # Geometry present, but area_name doesn't list this hash and the frame is unnamed.
+        hl = _make_hash_list(
+            area={777: _make_empty_frame_list()},
+            area_name=[],
+        )
+        by_hash = {a.hash: a.name for a in hl.computed_areas}
+        assert 777 in by_hash
+        assert by_hash[777].startswith("Area ")

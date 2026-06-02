@@ -561,3 +561,84 @@ async def test_sleep_or_rearm_wakes_on_signal_during_wait() -> None:
     woke = await asyncio.wait_for(handle.sleep_or_rearm(5.0), timeout=1.0)
     assert woke is True
     assert not handle._rearm_event.is_set()  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# map_updated emission — area-name changes must notify HA
+# ---------------------------------------------------------------------------
+
+
+async def _emit_via_raw_message(handle: DeviceHandle, msg: RealLubaMsg) -> None:
+    """Drive *msg* through on_raw_message with state internals stubbed out."""
+    _patch_raw_message_internals(handle)
+    with patch("pymammotion.device.handle.LubaMsg") as mock_luba:
+        mock_luba.return_value.parse.return_value = msg
+        await handle.on_raw_message(b"\x00", TransportType.CLOUD_ALIYUN)
+
+
+async def test_map_updated_emitted_on_area_name_list() -> None:
+    """The wholesale area-name list (toapp_all_hash_name) fires map_updated (existing behaviour)."""
+    from pymammotion.proto import AppGetAllAreaHashName, AreaHashName, MctlNav
+
+    handle = make_handle()
+    fired: list[bool] = []
+    handle.subscribe_map_updated(lambda: _record(fired))
+
+    msg = RealLubaMsg(
+        nav=MctlNav(toapp_all_hash_name=AppGetAllAreaHashName(hashnames=[AreaHashName(hash=1, name="A")]))
+    )
+    await _emit_via_raw_message(handle, msg)
+
+    assert fired == [True]
+
+
+async def test_map_updated_emitted_on_single_area_rename() -> None:
+    """A single-area rename (toapp_map_name_msg) must fire map_updated so HA refreshes names."""
+    from pymammotion.proto import MctlNav, NavMapNameMsg
+
+    handle = make_handle()
+    fired: list[bool] = []
+    handle.subscribe_map_updated(lambda: _record(fired))
+
+    msg = RealLubaMsg(nav=MctlNav(toapp_map_name_msg=NavMapNameMsg(hash=123, name="Front Lawn")))
+    await _emit_via_raw_message(handle, msg)
+
+    assert fired == [True]
+
+
+async def test_map_updated_not_emitted_on_rename_request_with_zero_hash() -> None:
+    """hash == 0 is the get-list request shape (not a rename) — must NOT fire map_updated."""
+    from pymammotion.proto import MctlNav, NavMapNameMsg
+
+    handle = make_handle()
+    fired: list[bool] = []
+    handle.subscribe_map_updated(lambda: _record(fired))
+
+    msg = RealLubaMsg(nav=MctlNav(toapp_map_name_msg=NavMapNameMsg(hash=0, name="")))
+    await _emit_via_raw_message(handle, msg)
+
+    assert fired == []
+
+
+async def test_map_updated_not_emitted_on_area_geometry() -> None:
+    """Area geometry (toapp_get_commondata_ack) must NOT fire map_updated.
+
+    It arrives per-frame in bulk; the MapFetchSaga's on_complete emits once instead.
+    """
+    from pymammotion.proto import MctlNav, NavGetCommDataAck
+
+    handle = make_handle()
+    fired: list[bool] = []
+    handle.subscribe_map_updated(lambda: _record(fired))
+
+    msg = RealLubaMsg(
+        nav=MctlNav(toapp_get_commondata_ack=NavGetCommDataAck(type=0, hash=123, total_frame=1, current_frame=1))
+    )
+    await _emit_via_raw_message(handle, msg)
+
+    assert fired == []
+
+
+async def _record(sink: list[bool]) -> None:
+    """Async map_updated subscriber that records a firing."""
+    sink.append(True)

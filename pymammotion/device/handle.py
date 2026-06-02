@@ -506,8 +506,18 @@ class DeviceHandle:
         if changed and not self._stopping:
             await self._state_changed_bus.emit(snapshot)
 
-        # 6. Emit map_updated when the device sends a fresh area-name list.
-        if luba_msg.nav is not None and luba_msg.nav.toapp_all_hash_name is not None:
+        # 6. Emit map_updated when the area set HA renders changes:
+        #   - toapp_all_hash_name: wholesale area-name list (post-2025 / non-Luba1).
+        #   - toapp_map_name_msg: single-area rename ack (hash != 0; hash == 0 is
+        #     the get-list request shape, not a rename).
+        # Area geometry (toapp_get_commondata_ack) is deliberately NOT a trigger: it
+        # arrives per-frame in bulk during a MapFetchSaga, and the saga's on_complete
+        # already emits map_updated once at the end — so firing per frame would just
+        # churn map-derived UI mid-fetch.
+        nav = luba_msg.nav
+        if nav is not None and (
+            nav.toapp_all_hash_name is not None or (nav.toapp_map_name_msg is not None and nav.toapp_map_name_msg.hash)
+        ):
             await self._map_updated_bus.emit(None)
 
         # 7. Emit shutdown when the device notifies it is about to power off.

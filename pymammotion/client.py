@@ -1921,6 +1921,9 @@ class MammotionClient:
                 command_builder=commands,
                 send_command=handle.send_raw,
                 get_map=lambda: cast(MowerDevice, handle.snapshot.raw).map,
+                get_bol_hash=lambda: (
+                    locs[0].bol_hash if (locs := cast(MowerDevice, handle.snapshot.raw).report_data.locations) else 0
+                ),
                 sync_type=2 if handle.is_transport_connected(TransportType.BLE) else 3,
             )
 

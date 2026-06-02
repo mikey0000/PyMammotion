@@ -62,6 +62,7 @@ class MapFetchSaga(Saga):
         command_builder: Any,  # Navigation instance — typed as Any to avoid tight coupling
         send_command: Callable[[bytes], Awaitable[None]],
         get_map: Callable[[], HashList],
+        get_bol_hash: Callable[[], int] | None = None,
         sync_type: int = 3,
     ) -> None:
         """Initialise the saga with device info and transport helpers.
@@ -70,6 +71,11 @@ class MapFetchSaga(Saga):
         ``lambda: handle.snapshot.raw.map``).  The saga never creates its
         own HashList — it operates directly on the device state so that
         partial data is preserved across retries without any extra bookkeeping.
+
+        *get_bol_hash* returns the device's most recently reported ``bol_hash``
+        (``report_data.locations[0].bol_hash``), used for the start-of-run
+        staleness check.  Defaults to a getter that returns 0 (no check) so
+        callers/tests that don't supply it behave as before.
         """
         self._device_id = device_id
         self._device_name = device_name
@@ -77,6 +83,7 @@ class MapFetchSaga(Saga):
         self._command_builder = command_builder
         self._send_command = send_command
         self._get_map = get_map
+        self._get_bol_hash = get_bol_hash or (lambda: 0)
         self._sync_type = sync_type  # 2 = BLE, 3 = IoT/MQTT
 
         # Result — set on success, None until then
@@ -86,6 +93,18 @@ class MapFetchSaga(Saga):
         """Execute all saga steps.  Uses device.map (via get_map) as the source of truth."""
         self.result = None
         self._reset_attempt_counter = False
+
+        # Start-of-run staleness check: if the device's reported bol_hash no longer
+        # matches our stored root manifest, the map was edited device-side since we
+        # last synced.  invalidate_maps() only wipes root_hash_lists when the hashes
+        # actually mismatch, so an in-sync map (or a mid-fetch resume) is left intact
+        # and only a genuinely stale manifest is dropped — forcing steps 2-3 to
+        # rebuild it to match the device's CURRENT boundary list.  Guard on a known
+        # (non-zero) bol_hash so a device that hasn't reported one yet is never wiped.
+        # This is the manual-"sync maps" safety net: the report-driven invalidate in
+        # MowingDevice already handles the watcher-triggered path.
+        if bol_hash := self._get_bol_hash():
+            self._get_map().invalidate_maps(bol_hash)
 
         cmd = self._command_builder.send_todev_ble_sync(sync_type=self._sync_type)
         await self._send_command(cmd)

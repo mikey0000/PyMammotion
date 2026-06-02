@@ -364,11 +364,17 @@ class MowerStateReducer(StateReducer):
                 # prune in HashList.update drops the edited area's freshly-arriving
                 # geometry (its hash isn't in the stale manifest) — removing the area
                 # instead of replacing it.  An empty manifest makes update_hash_lists a
-                # no-op, so the geometry survives until the map saga re-fetches a fresh
-                # root hash list.
-                bol_hash = device.report_data.locations[0].bol_hash if device.report_data.locations else 0
-                if bol_hash:
-                    device.map.invalidate_maps(bol_hash)
+                # no-op, so the geometry survives until the map saga re-fetches it.
+                #
+                # Only do this OUTSIDE a saga: during a MapFetchSaga the saga owns
+                # root_hash_lists freshness (it always re-fetches it), and the device
+                # may push toapp_all_hash_name mid-fetch.  Wiping the manifest then
+                # would empty find_incomplete_hashes and stop step 4 early, leaving
+                # area geometry unfetched.  The saga handles staleness at its start.
+                if not self._is_saga_active():
+                    bol_hash = device.report_data.locations[0].bol_hash if device.report_data.locations else 0
+                    if bol_hash:
+                        device.map.invalidate_maps(bol_hash)
                 if hash_names.hashnames:
                     device.map.area_name = [
                         AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames
