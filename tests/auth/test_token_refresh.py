@@ -228,6 +228,150 @@ async def test_get_mammotion_mqtt_credentials_no_refresh_when_valid() -> None:
 
 
 # ---------------------------------------------------------------------------
+# MQTT JWT expiry is read from the token's exp claim, not a fixed 24h assumption
+# ---------------------------------------------------------------------------
+
+
+def _encode_jwt(claims: dict) -> str:
+    import jwt as _pyjwt
+
+    return _pyjwt.encode(claims, "x" * 32, algorithm="HS256")
+
+
+def test_jwt_expiry_reads_exp_claim() -> None:
+    """_jwt_expiry returns the absolute exp claim from the token."""
+    from pymammotion.auth.token_manager import _jwt_expiry
+
+    exp = int(time.time()) + 7200
+    assert _jwt_expiry(_encode_jwt({"exp": exp})) == pytest.approx(exp)
+
+
+def test_jwt_expiry_falls_back_for_opaque_token() -> None:
+    """A non-JWT / undecodable token falls back to now + default_ttl."""
+    from pymammotion.auth.token_manager import _jwt_expiry
+
+    before = time.time()
+    result = _jwt_expiry("not-a-jwt", default_ttl=123.0)
+    assert before + 123.0 <= result <= time.time() + 123.0
+
+
+def test_jwt_expiry_falls_back_when_exp_claim_absent() -> None:
+    """A valid JWT without an exp claim falls back to now + default_ttl."""
+    from pymammotion.auth.token_manager import _jwt_expiry
+
+    before = time.time()
+    result = _jwt_expiry(_encode_jwt({"sub": "x"}), default_ttl=456.0)
+    assert before + 456.0 <= result <= time.time() + 456.0
+
+
+@pytest.mark.asyncio
+async def test_refresh_mqtt_creds_sets_expiry_from_jwt_exp() -> None:
+    """refresh_mqtt_creds must read expires_at from the JWT exp claim so proactive
+    refresh tracks the broker's real lifetime rather than assuming 24 hours.
+    """
+    exp = int(time.time()) + 7200
+    http = _make_mqtt_http_mock(jwt=_encode_jwt({"exp": exp}))
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
+
+    creds = await tm.refresh_mqtt_credentials()
+
+    assert creds.expires_at == pytest.approx(exp)
+
+
+@pytest.mark.asyncio
+async def test_refresh_mqtt_creds_falls_back_to_24h_for_opaque_jwt() -> None:
+    """An opaque (non-decodable) JWT keeps the 24h fallback so refresh still works."""
+    http = _make_mqtt_http_mock(jwt="opaque-token")
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
+
+    before = time.time()
+    creds = await tm.refresh_mqtt_credentials()
+
+    assert before + 86400 <= creds.expires_at <= time.time() + 86400
+
+
+# ---------------------------------------------------------------------------
+# Strict Mammotion refresh — refresh-token only, never login_v2
+# ---------------------------------------------------------------------------
+
+
+def _make_strict_http_mock(*, refresh_code: int = 0, jwt: str = "jwt-strict") -> AsyncMock:
+    """HTTP mock whose refresh_token_v2 + get_mqtt_credentials drive the strict path."""
+    http = AsyncMock()
+    rt_data = MagicMock()
+    rt_data.access_token = "access-strict"
+    rt_data.refresh_token = "refresh-strict"
+    rt_data.expires_in = 3600.0
+    http.refresh_token_v2.return_value = MagicMock(code=refresh_code, data=rt_data if refresh_code == 0 else None)
+    mqtt_data = MagicMock()
+    mqtt_data.host = "mqtt.new.example.com"
+    mqtt_data.client_id = "client-strict"
+    mqtt_data.username = "user-strict"
+    mqtt_data.jwt = jwt
+    http.get_mqtt_credentials.return_value = MagicMock(data=mqtt_data)
+    return http
+
+
+@pytest.mark.asyncio
+async def test_refresh_mqtt_credentials_strict_uses_refresh_token_not_login() -> None:
+    """The strict path must use refresh_token_v2 and never call refresh_login/login_v2."""
+    http = _make_strict_http_mock(jwt="jwt-strict")
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
+
+    creds = await tm.refresh_mqtt_credentials_strict()
+
+    assert creds.jwt == "jwt-strict"
+    http.refresh_token_v2.assert_awaited_once()
+    http.refresh_login.assert_not_called()
+    http.login_v2.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_refresh_mqtt_credentials_strict_raises_when_refresh_token_dead() -> None:
+    """If refresh_token_v2 returns a non-zero code, give up (ReLoginRequiredError) — no login_v2."""
+    http = _make_strict_http_mock(refresh_code=401)
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.refresh_mqtt_credentials_strict()
+    http.login_v2.assert_not_called()
+    http.get_mqtt_credentials.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_refresh_mqtt_credentials_strict_raises_when_jwt_endpoint_empty() -> None:
+    """If the JWT endpoint returns no data after a token refresh, give up — no login_v2."""
+    http = _make_strict_http_mock()
+    http.get_mqtt_credentials.return_value = MagicMock(data=None)
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.refresh_mqtt_credentials_strict()
+    http.login_v2.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_invoke_token_strict_uses_refresh_token_only() -> None:
+    """allow_relogin=False must refresh via refresh_token_v2 (not refresh_login/login_v2)."""
+    http = _make_strict_http_mock()
+    http.fetch_authorization_token = AsyncMock()
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
+
+    await tm.force_refresh_invoke_token(allow_relogin=False)
+
+    http.refresh_token_v2.assert_awaited_once()
+    http.refresh_login.assert_not_called()
+    http.login_v2.assert_not_called()
+    http.fetch_authorization_token.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # TokenManager — force_refresh
 # ---------------------------------------------------------------------------
 

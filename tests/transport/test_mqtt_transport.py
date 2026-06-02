@@ -1,4 +1,5 @@
 """Tests for MQTTTransport."""
+
 from __future__ import annotations
 
 import asyncio
@@ -49,6 +50,75 @@ def test_transport_type(transport: MQTTTransport) -> None:
 
 def test_is_connected_initially_false(transport: MQTTTransport) -> None:
     assert transport.is_connected is False
+
+
+# ---------------------------------------------------------------------------
+# update_jwt / update_credentials — full credential rotation
+# ---------------------------------------------------------------------------
+
+
+def test_update_jwt_replaces_only_password(transport: MQTTTransport) -> None:
+    """update_jwt swaps the password and leaves client_id/username intact."""
+    transport.update_jwt("new-jwt")
+    cfg = transport._config
+    assert cfg.password == "new-jwt"
+    assert cfg.client_id == "test-client"
+    assert cfg.username == "user"
+
+
+def test_update_credentials_rotates_client_id_username_and_jwt(transport: MQTTTransport) -> None:
+    """A re-login can mint a new client_id/username bound to the new JWT, so all
+    of host/client_id/username/password must be applied together — swapping only
+    the password leaves a stale client_id/username the broker rejects.
+    """
+    from pymammotion.auth.token_manager import MQTTCredentials
+
+    transport.update_credentials(
+        MQTTCredentials(
+            host="mqtts://broker.new.example:8883",
+            client_id="rotated-client",
+            username="rotated-user",
+            jwt="rotated-jwt",
+            expires_at=0.0,
+        )
+    )
+    cfg = transport._config
+    assert cfg.client_id == "rotated-client"
+    assert cfg.username == "rotated-user"
+    assert cfg.password == "rotated-jwt"
+    assert cfg.host == "broker.new.example"
+    assert cfg.port == 8883
+    assert cfg.use_ssl is True
+    assert transport._tls_context is not None
+
+
+def test_update_credentials_plain_host_defaults_to_plaintext_port(transport: MQTTTransport) -> None:
+    """A bare hostname (no scheme) must default to the plaintext MQTT port."""
+    from pymammotion.auth.token_manager import MQTTCredentials
+
+    transport.update_credentials(
+        MQTTCredentials(host="plain.broker", client_id="c", username="u", jwt="j", expires_at=0.0)
+    )
+    cfg = transport._config
+    assert cfg.host == "plain.broker"
+    assert cfg.port == 1883
+    assert cfg.use_ssl is False
+
+
+@pytest.mark.asyncio
+async def test_refresh_credentials_applies_full_rotated_set(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """_refresh_credentials must apply the full rotated set (not just the JWT)."""
+    from pymammotion.auth.token_manager import MQTTCredentials
+
+    async def _refresher(force: bool) -> MQTTCredentials:  # noqa: ARG001
+        return MQTTCredentials(host="newhost", client_id="newcid", username="newuser", jwt="newjwt", expires_at=0.0)
+
+    transport = MQTTTransport(config, mammotion_http, AsyncMock(), creds_refresher=_refresher)
+    await transport._refresh_credentials(force=True)
+    cfg = transport._config
+    assert (cfg.client_id, cfg.username, cfg.password) == ("newcid", "newuser", "newjwt")
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +192,40 @@ async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig, m
         await asyncio.sleep(0.05)
         await transport.disconnect()
         assert transport.is_connected is False
+
+
+@pytest.mark.asyncio
+async def test_run_preconnect_refresh_rotates_full_credentials(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """The pre-connect refresh in _run must hand the *full* rotated credential
+    set to aiomqtt.Client — not just the password — so a re-login that rotated
+    client_id/username connects with matching identifiers (the bug that left the
+    broker rejecting every reconnect as "Not Authorized").
+    """
+    from pymammotion.auth.token_manager import MQTTCredentials
+
+    async def _refresher(force: bool) -> MQTTCredentials:  # noqa: ARG001
+        return MQTTCredentials(
+            host="mqtt.example.com",
+            client_id="rotated-client",
+            username="rotated-user",
+            jwt="rotated-jwt",
+            expires_at=0.0,
+        )
+
+    transport = MQTTTransport(config, mammotion_http, AsyncMock(), creds_refresher=_refresher)
+    fake_client = _FakeMQTTClient()
+
+    with patch("aiomqtt.Client", return_value=fake_client) as mock_client:
+        await transport.connect()
+        await asyncio.sleep(0.05)
+        await transport.disconnect()
+
+    kwargs = mock_client.call_args.kwargs
+    assert kwargs["identifier"] == "rotated-client"
+    assert kwargs["username"] == "rotated-user"
+    assert kwargs["password"] == "rotated-jwt"
 
 
 # ---------------------------------------------------------------------------
@@ -219,9 +323,11 @@ async def test_oserror_retries_without_counting_as_auth_failure(
         return _FakeMQTTClient()  # succeeds on 3rd attempt
 
     # Zero-out backoff so retries happen immediately; real asyncio.sleep(0) yields the event loop.
-    with patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0), \
-         patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0), \
-         patch("aiomqtt.Client", side_effect=_client_factory):
+    with (
+        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0),
+        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0),
+        patch("aiomqtt.Client", side_effect=_client_factory),
+    ):
         await transport.connect()
         for _ in range(100):
             if connect_attempts >= 3:
@@ -252,9 +358,11 @@ async def test_dns_error_retries_without_counting_as_auth_failure(
             return _NetworkErrorClient(socket.gaierror(-2, "Name or service not known"))
         return _FakeMQTTClient()
 
-    with patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0), \
-         patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0), \
-         patch("aiomqtt.Client", side_effect=_client_factory):
+    with (
+        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0),
+        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0),
+        patch("aiomqtt.Client", side_effect=_client_factory),
+    ):
         await transport.connect()
         for _ in range(100):
             if connect_attempts >= 2:

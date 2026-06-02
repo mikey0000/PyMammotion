@@ -20,7 +20,6 @@ from aiohttp import ClientSession, ConnectionTimeoutError
 from alibabacloud_iot_api_gateway.models import CommonParams, Config, IoTApiRequest
 from alibabacloud_tea_util.client import Client as UtilClient
 from alibabacloud_tea_util.models import RuntimeOptions
-from mashumaro import MissingField
 
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.exceptions import (
@@ -45,9 +44,7 @@ from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import (
     DeviceInfo,
     DeviceRecords,
-    JWTTokenInfo,
     LoginResponseData,
-    MQTTConnection,
     Response,
 )
 from pymammotion.http.model.response_factory import response_factory
@@ -115,12 +112,18 @@ class CloudIOTGateway:
         self._session_by_authcode_response = session_by_authcode_response
         self._region_response = region_response
         self._devices_by_account_response = dev_by_account
+        # Default to "now" only on the fresh-login path, where no session exists yet
+        # and session_by_auth_code() will stamp the real issued-at.  When a session is
+        # present but its issued-at is unknown (e.g. a cache written before issued-at
+        # was persisted), treat it as the epoch so the next freshness check forces a
+        # refresh rather than trusting a possibly-expired iotToken (which would 401/460
+        # on the first cloud call).
         self._iot_token_issued_at = int(time.time())
         if self._session_by_authcode_response:
             self._iot_token_issued_at = (
                 self._session_by_authcode_response.token_issued_at
                 if self._session_by_authcode_response.token_issued_at is not None
-                else int(time.time())
+                else 0
             )
 
     @staticmethod
@@ -1087,6 +1090,16 @@ class CloudIOTGateway:
         Returns a dict containing all response objects needed to restore the cloud
         connection without re-authenticating. Fields with a None value are omitted.
         """
+        # Stamp the real issued-at into the serializable session model.  The
+        # authoritative value lives only in the in-memory ``_iot_token_issued_at``
+        # (set at login and on every refresh); the model field is otherwise None.
+        # Without this, ``from_cache`` would seed ``_iot_token_issued_at`` to "now"
+        # and ``check_or_refresh_session`` would treat a stale iotToken as fresh,
+        # skip the refresh, and the first cloud call (e.g. list_binding_by_account)
+        # would 401/460.
+        if self._session_by_authcode_response is not None:
+            self._session_by_authcode_response.token_issued_at = self._iot_token_issued_at
+
         raw: dict[str, Any] = {
             "connect_response": self._connect_response,
             "auth_data": self._login_by_oauth_response,
@@ -1142,10 +1155,8 @@ class CloudIOTGateway:
         session_data = data["session_data"]
         device_data = data["device_data"]
         mammotion_data = data["mammotion_data"]
-        mammotion_mqtt = data.get("mammotion_mqtt")
         mammotion_device_list = data.get("mammotion_device_list")
         mammotion_device_records = data.get("mammotion_device_records")
-        mammotion_jwt = data.get("mammotion_jwt_info")
 
         if any(
             v is None
@@ -1173,18 +1184,7 @@ class CloudIOTGateway:
                 if isinstance(mammotion_device_records, dict)
                 else mammotion_device_records
             )
-        try:
-            if mammotion_mqtt:
-                mammotion_http.mqtt_credentials = (
-                    MQTTConnection.from_dict(mammotion_mqtt) if isinstance(mammotion_mqtt, dict) else mammotion_mqtt
-                )
-        except MissingField:
-            mammotion_http.mqtt_credentials = None
 
-        if mammotion_jwt:
-            mammotion_http.jwt_info = (
-                JWTTokenInfo.from_dict(mammotion_jwt) if isinstance(mammotion_jwt, dict) else mammotion_jwt
-            )
         mammotion_http.login_info = (
             LoginResponseData.from_dict(mammotion_response_data.data)
             if isinstance(mammotion_response_data.data, dict)

@@ -161,6 +161,7 @@ Key files for protocol/logic research:
 - Ruff excludes `pymammotion/proto/`, `tests/`, and `scripts/` from linting
 - ty excludes `pymammotion/proto/**`, `tests/**`, `scripts/**`, `examples/**`, and `pymammotion/mqtt/linkkit/**`
 - **No local imports inside function bodies** — always use top-level imports. Exception: `TYPE_CHECKING` guards for type-hint-only imports that would cause circular imports at runtime.
+- **Walrus operator (`:=`)** — prefer it wherever it removes a separate assignment line: guards (`if x := foo()`), loop conditions (`while chunk := f.read()`), and inline captures inside comprehensions or `match` arms. Only avoid it when the binding would make the expression harder to read than two lines would.
 
 ## Working in this codebase (rules for Claude)
 

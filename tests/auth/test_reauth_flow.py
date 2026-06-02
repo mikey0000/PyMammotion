@@ -267,20 +267,26 @@ async def test_send_retries_successfully_after_http_token_refresh() -> None:
     assert http.mqtt_invoke.await_count == 2
 
 
-async def test_send_propagates_relogin_required_from_force_refresh() -> None:
-    """ReLoginRequiredError from force_refresh() must bubble out of send()."""
+async def test_send_gives_up_as_no_transport_when_invoke_token_refresh_fails() -> None:
+    """Mammotion never re-logins on the send path: if the invoke-token refresh raises
+    ReLoginRequiredError, send() gives up and raises NoTransportAvailableError so the
+    send-retry cascade does NOT trigger a full re-login."""
     from pymammotion.http.model.http import UnauthorizedException
+    from pymammotion.transport.base import NoTransportAvailableError
 
     http = AsyncMock()
     http.mqtt_invoke.side_effect = UnauthorizedException("expired")
 
     tm = AsyncMock()
-    tm.force_refresh.side_effect = ReLoginRequiredError("acc", "refresh token expired")  # any transport_type
+    tm.account_id = "acc"
+    tm.force_refresh_invoke_token.side_effect = ReLoginRequiredError("acc", "refresh token expired")
 
     transport = _make_transport(http, tm)
 
-    with pytest.raises(ReLoginRequiredError):
+    with pytest.raises(NoTransportAvailableError):
         await transport.send(b"\x00\x01", iot_id="device-001")
+
+    tm.force_refresh_invoke_token.assert_awaited_once_with(allow_relogin=False)
 
 
 async def test_send_raises_auth_error_when_retry_fails_after_token_refresh() -> None:

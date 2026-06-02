@@ -227,7 +227,7 @@ async def test_add_ble_device_wires_transport_when_handle_exists() -> None:
         await client.add_ble_device("Luba-WIRE", fake_ble_device)
 
     MockBLETransport.assert_called_once()
-    mock_transport.set_ble_device.assert_called_once_with(fake_ble_device)
+    mock_transport.set_ble_device.assert_called_once_with(fake_ble_device, None)
     assert handle._transports.get(TransportType.BLE) is mock_transport
 
 

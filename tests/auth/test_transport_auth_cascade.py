@@ -35,6 +35,7 @@ import pytest
 
 from pymammotion.aliyun.exceptions import CheckSessionException
 from pymammotion.account.registry import AccountSession
+from pymammotion.auth.token_manager import MQTTCredentials
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import (
     AuthError,
@@ -90,8 +91,8 @@ class _MqttAuthFailClient:
 
 @pytest.mark.asyncio
 async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
-    """rc=134 from MQTT broker + jwt_refresher raising ReLoginRequiredError
-    must surface as ReLoginRequiredError via on_fatal_auth_error.
+    """A creds_refresher that raises ReLoginRequiredError (refresh token dead) must
+    surface as ReLoginRequiredError via on_fatal_auth_error — the transport gives up.
 
     _run() exits cleanly after firing the handler — the handler owns recovery,
     so re-raising would only produce an unretrieved task exception.
@@ -101,9 +102,9 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
     async def _on_fatal(exc: Exception) -> None:
         fatal_errors.append(exc)
 
-    relogin = ReLoginRequiredError("acc", "JWT refresh exhausted")
+    relogin = ReLoginRequiredError("acc", "refresh token rejected")
 
-    async def _jwt_refresher() -> str:
+    async def _creds_refresher(force: bool) -> MQTTCredentials:  # noqa: ARG001
         raise relogin
 
     http = AsyncMock()
@@ -111,7 +112,7 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
         _mammotion_config(),
         http,
         AsyncMock(),
-        jwt_refresher=_jwt_refresher,
+        creds_refresher=_creds_refresher,
     )
     transport.on_fatal_auth_error = _on_fatal
 
@@ -123,54 +124,44 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mammotion_mqtt_broker_auth_failure_exhausts_retries_then_relogin() -> None:
-    """rc=134 exhausts _BAD_CREDENTIALS_MAX refresh attempts → on_fatal_auth_error called
-    even when jwt_refresher succeeds (returns a JWT) but the broker keeps rejecting it.
-
-    _run() exits cleanly after firing the handler (no re-raise — handler owns recovery).
+async def test_mammotion_mqtt_broker_auth_failure_refreshes_once_then_gives_up() -> None:
+    """When the broker keeps rejecting even after a full credential refresh, the
+    transport forces ONE refresh (force=True), retries, and then gives up — firing
+    on_fatal_auth_error.  It never loops indefinitely and never re-logins.
     """
     fatal_errors: list[Exception] = []
 
     async def _on_fatal(exc: Exception) -> None:
         fatal_errors.append(exc)
 
-    refresh_count = 0
+    forces: list[bool] = []
 
-    async def _jwt_refresher() -> str:
-        nonlocal refresh_count
-        refresh_count += 1
-        return "new-jwt"
+    async def _creds_refresher(force: bool) -> MQTTCredentials:
+        forces.append(force)
+        return MQTTCredentials(
+            host="mqtt.example.com",
+            client_id="c1",
+            username="u",
+            jwt="new-jwt",
+            expires_at=0.0,
+        )
 
     http = AsyncMock()
     transport = MQTTTransport(
         _mammotion_config(),
         http,
         AsyncMock(),
-        jwt_refresher=_jwt_refresher,
+        creds_refresher=_creds_refresher,
     )
     transport.on_fatal_auth_error = _on_fatal
 
-    # Broker always rejects — all refresh attempts fail.
-    # Patch asyncio.sleep so the exponential backoff between auth retries
-    # doesn't add real wall-clock seconds to the test.
-    sleeps: list[float] = []
-
-    async def _fake_sleep(seconds: float) -> None:
-        sleeps.append(seconds)
-
-    with (
-        patch("aiomqtt.Client", return_value=_MqttAuthFailClient()),
-        patch("pymammotion.transport.mqtt.asyncio.sleep", new=_fake_sleep),
-    ):
+    with patch("aiomqtt.Client", return_value=_MqttAuthFailClient()):
         await transport._run()
 
-    # Refresh was attempted _BAD_CREDENTIALS_MAX (3) times before giving up
-    assert refresh_count == 3
+    # Exactly one forced refresh happened, then we gave up (fatal fired once).
+    assert forces.count(True) == 1
     assert len(fatal_errors) == 1
     assert isinstance(fatal_errors[0], ReLoginRequiredError)
-    # Auth-retry backoff fired between attempts (exponential: 1 s, 2 s).
-    # 3 attempts → 2 sleeps before the final exhaust.
-    assert sleeps == [1, 2], f"expected exponential backoff [1, 2], got {sleeps}"
 
 
 # ---------------------------------------------------------------------------
@@ -179,8 +170,9 @@ async def test_mammotion_mqtt_broker_auth_failure_exhausts_retries_then_relogin(
 
 
 @pytest.mark.asyncio
-async def test_mammotion_invoke_401_force_refresh_invoke_token_called() -> None:
-    """UnauthorizedException from mqtt_invoke must call force_refresh_invoke_token()."""
+async def test_mammotion_invoke_401_refreshes_invoke_token_without_relogin() -> None:
+    """UnauthorizedException from mqtt_invoke must refresh the invoke token with
+    allow_relogin=False (Mammotion never re-logins)."""
     from pymammotion.http.model.http import UnauthorizedException
 
     http = AsyncMock()
@@ -191,27 +183,37 @@ async def test_mammotion_invoke_401_force_refresh_invoke_token_called() -> None:
 
     await transport.send(b"\x00\x01", iot_id="device-001")
 
-    tm.force_refresh_invoke_token.assert_awaited_once()
+    tm.force_refresh_invoke_token.assert_awaited_once_with(allow_relogin=False)
 
 
 @pytest.mark.asyncio
-async def test_mammotion_invoke_401_force_refresh_invoke_token_raises_relogin_propagates() -> None:
-    """If force_refresh_invoke_token() raises ReLoginRequiredError it must
-    propagate from send() so the caller can trigger a full re-login."""
+async def test_mammotion_invoke_401_gives_up_as_no_transport_available() -> None:
+    """If the invoke-token refresh raises ReLoginRequiredError, send() gives up:
+    it fires the fatal handler and raises NoTransportAvailableError (NOT
+    ReLoginRequiredError) so the send-retry cascade does not trigger a re-login."""
     from pymammotion.http.model.http import UnauthorizedException
+    from pymammotion.transport.base import NoTransportAvailableError
 
     http = AsyncMock()
     http.mqtt_invoke.side_effect = UnauthorizedException("expired")
 
     tm = AsyncMock()
+    tm.account_id = "acc"
     tm.force_refresh_invoke_token.side_effect = ReLoginRequiredError("acc", "all credentials exhausted")
 
-    transport = MQTTTransport(_mammotion_config(), http, token_manager=tm)
+    fatal_errors: list[Exception] = []
 
-    with pytest.raises(ReLoginRequiredError, match="all credentials exhausted"):
+    async def _on_fatal(exc: Exception) -> None:
+        fatal_errors.append(exc)
+
+    transport = MQTTTransport(_mammotion_config(), http, token_manager=tm)
+    transport.on_fatal_auth_error = _on_fatal
+
+    with pytest.raises(NoTransportAvailableError):
         await transport.send(b"\x00\x01", iot_id="device-001")
 
-    tm.force_refresh_invoke_token.assert_awaited_once()
+    tm.force_refresh_invoke_token.assert_awaited_once_with(allow_relogin=False)
+    assert len(fatal_errors) == 1
 
 
 @pytest.mark.asyncio
@@ -285,9 +287,7 @@ async def test_aliyun_cloud_gateway_session_expired_cascade_to_relogin() -> None
     client = _make_client(session)
 
     cloud_gateway = AsyncMock()
-    cloud_gateway.send_cloud_command = AsyncMock(
-        side_effect=[CheckSessionException("session gone"), None]
-    )
+    cloud_gateway.send_cloud_command = AsyncMock(side_effect=[CheckSessionException("session gone"), None])
 
     config = AliyunMQTTConfig(
         host="pk.iot-as-mqtt.cn-shanghai.aliyuncs.com",
@@ -333,9 +333,7 @@ async def test_aliyun_cloud_gateway_session_expired_full_relogin_fails() -> None
     client = _make_client(session)
 
     cloud_gateway = AsyncMock()
-    cloud_gateway.send_cloud_command = AsyncMock(
-        side_effect=CheckSessionException("session expired")
-    )
+    cloud_gateway.send_cloud_command = AsyncMock(side_effect=CheckSessionException("session expired"))
 
     config = AliyunMQTTConfig(
         host="pk.iot-as-mqtt.cn-shanghai.aliyuncs.com",
@@ -390,9 +388,7 @@ async def test_aliyun_cloud_gateway_auth_error_force_refresh_then_relogin() -> N
     aliyun_transport = AliyunMQTTTransport(config, cloud_gateway)
 
     # force_refresh raises ReLoginRequiredError; full re-login fails
-    session.token_manager.force_refresh = AsyncMock(
-        side_effect=ReLoginRequiredError("acc", "all gone")
-    )
+    session.token_manager.force_refresh = AsyncMock(side_effect=ReLoginRequiredError("acc", "all gone"))
     login_resp = MagicMock()
     login_resp.code = 500
     login_resp.msg = "server error"

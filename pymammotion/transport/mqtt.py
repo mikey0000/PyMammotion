@@ -11,6 +11,7 @@ import logging
 import ssl
 import time
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
@@ -19,6 +20,7 @@ from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPr
 from pymammotion.data.mqtt.status import MammotionStatusMessage, ThingStatusMessage
 from pymammotion.transport.base import (
     AuthError,
+    NoTransportAvailableError,
     ReLoginRequiredError,
     Transport,
     TransportAvailability,
@@ -30,14 +32,13 @@ from pymammotion.transport.base import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from pymammotion.auth.token_manager import TokenManager
+    from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
     from pymammotion.http.http import MammotionHTTP
 
 _logger = logging.getLogger(__name__)
 
 _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 120
-_BAD_CREDENTIALS_MAX = 3
 
 
 @dataclass(frozen=True)
@@ -78,16 +79,21 @@ class MQTTTransport(Transport):
         config: MQTTTransportConfig,
         mammotion_http: MammotionHTTP,
         token_manager: TokenManager,
-        jwt_refresher: Callable[[], Awaitable[str]] | None = None,
+        creds_refresher: Callable[[bool], Awaitable[MQTTCredentials]] | None = None,
     ) -> None:
         """Initialise the transport with the supplied configuration.
 
         Args:
             config: Frozen MQTT connection configuration.
             mammotion_http: HTTP client for the invoke API.
-            jwt_refresher: Optional async callable that returns a fresh JWT password.
-                           Called before each reconnect and on auth failure.
-                           Specific to Mammotion direct-MQTT (post-2025 devices).
+            creds_refresher: Optional async callable ``(force: bool) -> MQTTCredentials``
+                           returning a fresh credential set (host/client_id/username/jwt).
+                           Called before each connect with ``force=False`` (routine —
+                           refresh only if near expiry) and once after a broker auth
+                           rejection with ``force=True`` (full refresh-token-based refresh).
+                           Returns the full set — not just the JWT — because a fresh
+                           login can rotate the client_id/username the broker binds the
+                           JWT to.  Specific to Mammotion direct-MQTT (post-2025 devices).
             token_manager: Optional TokenManager used by send() to refresh the HTTP
                            bearer token via get_valid_http_token() rather than calling
                            refresh_login() directly.
@@ -96,7 +102,7 @@ class MQTTTransport(Transport):
         super().__init__()
         self._config = config
         self._http = mammotion_http
-        self._jwt_refresher = jwt_refresher
+        self._creds_refresher = creds_refresher
         self._token_manager = token_manager
         self._tls_context: ssl.SSLContext | None = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS) if config.use_ssl else None
         self._client: aiomqtt.Client | None = None
@@ -112,8 +118,45 @@ class MQTTTransport(Transport):
     # ------------------------------------------------------------------
 
     def update_jwt(self, new_jwt: str) -> None:
-        """Replace the MQTT password (JWT) on the current config for the next connection attempt."""
+        """Replace the MQTT password (JWT) on the current config for the next connection attempt.
+
+        Prefer :meth:`update_credentials` after a full re-login — swapping only the
+        password leaves a stale client_id/username that the broker rejects when the
+        login rotated them.
+        """
         self._config = replace(self._config, password=new_jwt)
+        self._stop_event.clear()
+
+    def update_credentials(self, creds: MQTTCredentials) -> None:
+        """Replace the full MQTT credential set for the next connection attempt.
+
+        Like :meth:`update_jwt` but also rotates host/client_id/username.  A full
+        re-login (``login_v2``) can mint a new client_id/username bound to the new
+        JWT; reconnecting with only a swapped password leaves the stale
+        client_id/username and the broker rejects it as "Not Authorized".
+        """
+        self._apply_credentials(creds)
+
+    def _apply_credentials(self, creds: MQTTCredentials) -> None:
+        """Fold a freshly-minted credential set into ``self._config``.
+
+        Re-derives host/port/use_ssl from ``creds.host`` exactly as
+        :meth:`MammotionClient._setup_mammotion_transport` does at first connect,
+        so a rebuilt config and a refreshed one stay identical.
+        """
+        parsed = urlparse(creds.host if "://" in creds.host else "tcp://" + creds.host)
+        use_ssl = parsed.scheme in ("mqtts", "ssl")
+        self._config = replace(
+            self._config,
+            host=parsed.hostname or creds.host,
+            port=parsed.port or (8883 if use_ssl else 1883),
+            use_ssl=use_ssl,
+            client_id=creds.client_id,
+            username=creds.username,
+            password=creds.jwt,
+        )
+        if use_ssl and self._tls_context is None:
+            self._tls_context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS)
         self._stop_event.clear()
 
     async def add_topic(self, topic: str) -> None:
@@ -207,6 +250,17 @@ class MQTTTransport(Transport):
             with contextlib.suppress(Exception):
                 await self.on_fatal_auth_error(exc)
 
+    async def _give_up(self, exc: Exception) -> None:
+        """Stop the receive loop and hand off to the fatal-auth handler.
+
+        Used when Mammotion MQTT auth can't be recovered without a full re-login —
+        which this transport never does.  The handler (``on_fatal_auth_error``)
+        marks this transport unrecoverable and signals the affected mowers.
+        """
+        self._stop_event.set()
+        self.mark_auth_failed()
+        await self._fire_fatal_auth(exc)
+
     async def _invoke(self, payload: bytes, iot_id: str) -> None:
         """Invoke the Mammotion HTTP endpoint (shared by send/send_heartbeat)."""
         from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
@@ -221,24 +275,24 @@ class MQTTTransport(Transport):
         except ClientConnectorDNSError:
             raise TransportError("MQTTTransport.send: DNS lookup timed out") from None
         except UnauthorizedException:
-            _logger.info("MQTTTransport.send: HTTP access token expired — force-refreshing invoke token")
+            _logger.info("MQTTTransport.send: HTTP access token expired — refreshing invoke token (no re-login)")
             if self._token_manager is None:
                 raise TransportError("Token manager not configured for MQTT transport") from None
+            # Mammotion never re-logins (login_v2) on the send path — refresh the
+            # invoke token via the refresh token only.  If that fails, give up.
             try:
-                await self._token_manager.force_refresh_invoke_token()
+                await self._token_manager.force_refresh_invoke_token(allow_relogin=False)
             except (ReLoginRequiredError, AuthError) as refresh_exc:
-                self.mark_auth_failed()
-                await self._fire_fatal_auth(refresh_exc)
-                raise
+                await self._give_up(refresh_exc)
+                raise NoTransportAvailableError(f"Mammotion MQTT auth unrecoverable: {refresh_exc}") from refresh_exc
             try:
                 res = await self._http.mqtt_invoke(content, "", iot_id)
             except UnauthorizedException as exc:
-                relogin_exc = ReLoginRequiredError(
+                give_up_exc = ReLoginRequiredError(
                     self._token_manager.account_id, f"MQTT invoke still 401 after token refresh: {exc}"
                 )
-                self.mark_auth_failed()
-                await self._fire_fatal_auth(relogin_exc)
-                raise relogin_exc from exc
+                await self._give_up(give_up_exc)
+                raise NoTransportAvailableError(f"Mammotion MQTT auth unrecoverable: {give_up_exc}") from exc
             except Exception as retry_exc:
                 raise AuthError(
                     f"Access token expired and retry failed after credential refresh {retry_exc}"
@@ -286,55 +340,45 @@ class MQTTTransport(Transport):
         self._availability = state
         await self._fire_availability_listeners(state)
 
-    async def _refresh_jwt(self) -> bool:
-        """Attempt to refresh the JWT via the jwt_refresher callback.
+    async def _refresh_credentials(self, *, force: bool) -> None:
+        """Apply a fresh credential set from the creds_refresher.
 
-        Returns True if credentials were refreshed, False otherwise.
-        Raises ReLoginRequiredError if the refresher signals that a full
-        re-login is needed (e.g. HTTP token also expired).
+        ``force=False`` is the routine pre-connect refresh (refresh only if near
+        expiry); ``force=True`` is the post-auth-rejection full refresh.  Raises
+        whatever the refresher raises (ReLoginRequiredError → give up; transient
+        network errors → caller backs off).
         """
-        if self._jwt_refresher is not None:
-            try:
-                new_jwt = await self._jwt_refresher()
-                self._config = replace(self._config, password=new_jwt)
-                _logger.debug("Mammotion MQTT JWT refreshed")
-                return True
-            except ReLoginRequiredError:
-                raise
-            except Exception:
-                _logger.warning("JWT refresh failed", exc_info=True)
-        if self.on_auth_failure is not None:
-            try:
-                return await self.on_auth_failure()
-            except Exception:
-                _logger.warning("on_auth_failure callback failed", exc_info=True)
-        return False
+        if self._creds_refresher is None:
+            return
+        creds = await self._creds_refresher(force)
+        self._apply_credentials(creds)
 
     async def _run(self) -> None:
-        """Run the main connection loop, reconnecting with exponential backoff."""
+        """Run the main connection loop.
+
+        Auth recovery is deliberately minimal: on a broker auth rejection we force
+        ONE full credential refresh (refresh-token based — never ``login_v2``) and
+        retry; if the broker still rejects, we give up (``_give_up`` marks this
+        transport unrecoverable and signals the affected mowers).  Non-auth
+        disconnects reconnect with exponential backoff as usual.
+        """
         backoff = _MQTT_RECONNECT_MIN_SEC
-        _bad_credentials_attempts = 0
+        auth_force_refreshed = False
 
         while not self._stop_event.is_set():
             await self._notify_availability(TransportAvailability.CONNECTING)
 
-            # Refresh JWT before each reconnect attempt (Mammotion MQTT only)
-            if self._jwt_refresher is not None:
-                try:
-                    new_jwt = await self._jwt_refresher()
-                    self._config = replace(self._config, password=new_jwt)
-                except ReLoginRequiredError as rle:
-                    _logger.error("Pre-connect JWT refresh raised ReLoginRequiredError: %s", rle)
-                    self._stop_event.set()
-                    self.mark_auth_failed()
-                    await self._fire_fatal_auth(rle)
-                    # Handler owns recovery (it may schedule a new connect()).
-                    # Returning lets this task end cleanly instead of leaving an
-                    # unretrieved exception on the asyncio task.
-                    await self._notify_availability(TransportAvailability.DISCONNECTED)
-                    return
-                except Exception:
-                    _logger.warning("Pre-connect JWT refresh failed", exc_info=True)
+            # Routine pre-connect credential check (Mammotion MQTT only): refresh
+            # only if near expiry — usually returns cached creds, no network call.
+            try:
+                await self._refresh_credentials(force=False)
+            except ReLoginRequiredError as rle:
+                _logger.error("Pre-connect credential refresh requires re-login — giving up: %s", rle)
+                await self._give_up(rle)
+                await self._notify_availability(TransportAvailability.DISCONNECTED)
+                return
+            except Exception:
+                _logger.warning("Pre-connect credential refresh failed (transient?)", exc_info=True)
 
             try:
                 async with aiomqtt.Client(
@@ -351,7 +395,7 @@ class MQTTTransport(Transport):
                 ) as client:
                     self._client = client
                     backoff = _MQTT_RECONNECT_MIN_SEC
-                    _bad_credentials_attempts = 0
+                    auth_force_refreshed = False
                     await self._notify_availability(TransportAvailability.CONNECTED)
 
                     for topic in self._topics:
@@ -369,54 +413,45 @@ class MQTTTransport(Transport):
                 # rc=5/135 = Not Authorized (MQTT 3.1.1 / 5.0)
                 is_auth_failure = rc in (4, 5, 134, 135) or "bad user name" in exc_str or "not authorized" in exc_str
                 if is_auth_failure:
-                    _bad_credentials_attempts += 1
-                    if _bad_credentials_attempts < _BAD_CREDENTIALS_MAX:
-                        _logger.debug(
-                            "MQTT auth failure (rc=%s), attempt %d/%d — retrying in %ds",
-                            rc,
-                            _bad_credentials_attempts,
-                            _BAD_CREDENTIALS_MAX,
-                            backoff,
-                        )
-                        # Exponential backoff between auth retries — aiomqtt
-                        # disables paho's auto-reconnect (reconnect_on_failure=False
-                        # is hardcoded), so a bare `continue` here would hot-loop
-                        # the broker at network-RTT speed (~1.2 s per attempt) and
-                        # exhaust _BAD_CREDENTIALS_MAX in seconds.  Sleep first,
-                        # then double the backoff for the next attempt.  Reset
-                        # happens implicitly on successful connect (line above).
+                    if not auth_force_refreshed and self._creds_refresher is not None:
+                        _logger.warning("MQTT broker rejected auth (rc=%s) — forcing full credential refresh", rc)
                         try:
-                            await asyncio.sleep(backoff)
-                        except asyncio.CancelledError:
-                            break
-                        backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
-                        if self._jwt_refresher is not None:
-                            # Pre-connect refresh on next loop iteration rotates the JWT;
-                            # don't double-refresh here.
+                            await self._refresh_credentials(force=True)
+                        except ReLoginRequiredError as rle:
+                            _logger.error(
+                                "MQTT credential refresh requires re-login — giving up on %s: %s",
+                                self.transport_type.value,
+                                rle,
+                            )
+                            await self._give_up(rle)
+                            return
+                        except Exception:
+                            # Transient refresh failure (network) — back off and
+                            # retry without giving up.
+                            _logger.warning("Forced credential refresh failed (transient?)", exc_info=True)
+                        else:
+                            # Retry once, immediately, with the refreshed credentials.
+                            auth_force_refreshed = True
                             continue
-                        if await self._refresh_jwt():
-                            continue
-                    _logger.error(
-                        "MQTT auth failed after %d attempt(s) (rc=%s) — stopping",
-                        _bad_credentials_attempts,
-                        rc,
-                    )
-                    self._stop_event.set()
-                    auth_exc = ReLoginRequiredError(
-                        self._token_manager.account_id,
-                        f"MQTT auth exhausted after {_bad_credentials_attempts} attempt(s) (rc={rc})",
-                    )
-                    self.mark_auth_failed()
-                    await self._fire_fatal_auth(auth_exc)
-                    # Handler owns recovery; let the stop_event break the while
-                    # loop rather than raising into an unawaited task.
-                    return
-                _logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
+                    else:
+                        # Already force-refreshed this cycle and the broker still
+                        # rejects — the credentials are genuinely bad; give up.
+                        _logger.error(
+                            "MQTT auth still rejected after full credential refresh (rc=%s) — giving up on %s",
+                            rc,
+                            self.transport_type.value,
+                        )
+                        auth_exc = ReLoginRequiredError(
+                            self._token_manager.account_id,
+                            f"MQTT auth rejected after full credential refresh (rc={rc})",
+                        )
+                        await self._give_up(auth_exc)
+                        return
+                else:
+                    _logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except ReLoginRequiredError as exc:
-                _logger.error("Re-login required during MQTT connection loop: %s", exc)
-                self._stop_event.set()
-                self.mark_auth_failed()
-                await self._fire_fatal_auth(exc)
+                _logger.error("Re-login required during MQTT connection loop — giving up: %s", exc)
+                await self._give_up(exc)
                 return
             except aiomqtt.MqttError as exc:
                 _logger.warning("MQTT disconnected: %s — retry in %ds", exc, backoff)

@@ -49,6 +49,24 @@ T = TypeVar("T")
 _LOGGER = logging.getLogger(__name__)
 
 
+def _token_fingerprint(token: str | None) -> str:
+    """Return a non-sensitive fingerprint of a JWT for correlating refreshes in logs.
+
+    Emits ``<jti-or-hash>@exp=<unix>`` so successive refreshes that rotate the
+    access token are visible (a new fingerprint each line) and a stale token being
+    reused is visible (the same fingerprint reappearing after a "refreshed" log).
+    Never logs the token itself.
+    """
+    if not token:
+        return "none"
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+        ident = claims.get("jti") or hashlib.sha1(token.encode(), usedforsecurity=False).hexdigest()[:8]
+        return f"{ident}@exp={claims.get('exp', '?')}"
+    except Exception:  # noqa: BLE001 — a malformed token must never break logging
+        return f"sha1:{hashlib.sha1((token or '').encode(), usedforsecurity=False).hexdigest()[:8]}"
+
+
 def sign_with_hmac_sha256(data: str, app_secret: str) -> str:
     """Sign data with HMAC-SHA256 algorithm.
 
@@ -254,6 +272,19 @@ class MammotionHTTP:
         async def wrapper(self: MammotionHTTP, *args: Any, **kwargs: Any) -> T:
             # Check if token will expire in the next 5 minutes
             if self.expires_in < time.time() + 300:  # 300 seconds = 5 minutes
+                # NOTE: this refresh is NOT serialised — N concurrent decorated calls
+                # (e.g. one per device sharing this MammotionHTTP) can all enter here
+                # at once and each fire refresh_login(), rotating the server-side
+                # refresh token and invalidating each other.  The log below makes that
+                # stampede visible: multiple "decorator refresh" lines for the same
+                # account within milliseconds == the race.
+                _LOGGER.debug(
+                    "refresh_token_decorator[%s]: token near expiry (expires_in=%s, now=%.0f, fp=%s) — refreshing",
+                    getattr(func, "__name__", "?"),
+                    self.expires_in,
+                    time.time(),
+                    _token_fingerprint(self._login_info.access_token if self._login_info else None),
+                )
                 await self.refresh_login()
             return await func(self, *args, **kwargs)
 
@@ -344,7 +375,20 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
-                _LOGGER.debug("handle_expiry response: %s", data)
+                # This is the /authorization/code endpoint, NOT handle_expiry.  Its
+                # response carries data.code (a fresh authorization *code*), and only
+                # SOMETIMES data.accessToken.  When accessToken is absent (the common
+                # case — see logs) the access token is left UNCHANGED, so this call
+                # alone does not recover an expired bearer; the access token must come
+                # from refresh_login()/refresh_token_v2().  Logged explicitly so a
+                # "still 401 after token refresh" can be traced to a no-op authz fetch.
+                had_access_token = "accessToken" in (data.get("data") or {})
+                _LOGGER.debug(
+                    "fetch_authorization_token: code=%s, carries_accessToken=%s (access_token left fp=%s)",
+                    data.get("code"),
+                    had_access_token,
+                    _token_fingerprint(self._login_info.access_token if self._login_info else None),
+                )
                 if data.get("code") != 0:
                     return Response(code=data.get("code"), msg="Failed to refresh token")
                 login_info = self._require_login_info
@@ -663,10 +707,19 @@ class MammotionHTTP:
                 },
             )
             resp_dict = await resp.json()
+        # Check auth failure BEFORE the generic non-200 bail-out: a 401 can arrive as
+        # an HTTP status or as an in-body code, and it must surface as
+        # UnauthorizedException (which drives the force-refresh path) rather than a
+        # plain Response(code=401).
+        if resp.status == 401 or resp_dict.get("code") == 401:
+            _LOGGER.debug(
+                "mqtt_invoke: 401 for iot_id=%s with access_token fp=%s",
+                iot_id,
+                _token_fingerprint(self._login_info.access_token if self._login_info else None),
+            )
+            raise UnauthorizedException("Access Token expired")
         if resp.status != 200:
             return Response.from_dict({"code": resp.status, "msg": "invoke mqtt failed"})
-        if resp.status == 401 or resp_dict.get("code") == 401:
-            raise UnauthorizedException("Access Token expired")
         if resp_dict.get("code") != 0:
             return Response.from_dict({"code": resp_dict.get("code"), "msg": resp_dict.get("msg")})
 
@@ -697,6 +750,7 @@ class MammotionHTTP:
             res = await self.refresh_token_v2()
             if res.code == 0:
                 return res
+            _LOGGER.debug("refresh_login: refresh_token_v2 failed (code=%s) — falling back to full login_v2", res.code)
         return await self.login_v2(self.account, self._password)  # type: ignore
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
@@ -776,7 +830,13 @@ class MammotionHTTP:
             data = await resp.json()
         refresh_response = response_factory(Response[LoginResponseData], data)
         if refresh_response is None or refresh_response.data is None:
+            _LOGGER.debug("refresh_token_v2: empty/failed response (status=%s, code=%s)", resp.status, data.get("code"))
             return Response.from_dict({"code": resp.status, "msg": "Refresh login token failed"})
+        _LOGGER.debug(
+            "refresh_token_v2: OK — access_token %s -> %s",
+            _token_fingerprint(self._login_info.access_token if self._login_info else None),
+            _token_fingerprint(refresh_response.data.access_token),
+        )
         self.login_info = refresh_response.data
         self.expires_in = refresh_response.data.expires_in + time.time()
         self._headers["Authorization"] = (

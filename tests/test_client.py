@@ -9,6 +9,15 @@ import pytest
 from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
+from pymammotion.http.http import MammotionHTTP
+from pymammotion.http.model.http import (
+    DeviceRecords,
+    JWTTokenInfo,
+    LoginResponseData,
+    LoginResponseUserInformation,
+    MQTTConnection,
+    Response,
+)
 from pymammotion.transport.base import TransportType
 
 
@@ -353,6 +362,45 @@ async def test_token_manager_set_after_restore_aliyun() -> None:
     assert acct_session.token_manager is not None
 
 
+async def test_restore_aliyun_refreshes_session_before_device_list() -> None:
+    """_restore_aliyun must check/refresh the Aliyun session before listing devices.
+
+    The cached iotToken may have expired; list_binding_by_account uses it directly
+    and would 401/460 otherwise.
+    """
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+
+    order: list[str] = []
+
+    mock_cloud = MagicMock()
+    mock_cloud.mammotion_http = MagicMock()
+    mock_cloud.mammotion_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+    mock_cloud.devices_by_account_response = None
+    mock_cloud.session_by_authcode_response = MagicMock()
+    mock_cloud.session_by_authcode_response.data.iotToken = "tok"
+
+    async def _check(*_a: object, **_k: object) -> None:
+        order.append("check_or_refresh_session")
+
+    async def _list(*_a: object, **_k: object) -> MagicMock:
+        order.append("list_binding_by_account")
+        return MagicMock(data=None)
+
+    mock_cloud.check_or_refresh_session = _check
+    mock_cloud.list_binding_by_account = _list
+
+    with (
+        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
+        patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
+    ):
+        await client._restore_aliyun(
+            "user@test.com", "pass", {}, acct_session, check_for_new_devices=True
+        )
+
+    assert order == ["check_or_refresh_session", "list_binding_by_account"]
+
+
 async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
     """_restore_mammotion_mqtt must set token_manager on the session when mqtt_creds are present."""
     from pymammotion.http.model.http import MQTTConnection
@@ -384,6 +432,168 @@ async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
         )
 
     assert acct_session.token_manager is not None
+    # The cached MQTT credentials must actually be restored onto the http object,
+    # not merely accepted.  (Catches the `data`/`cached_data` NameError regression.)
+    assert acct_session.mammotion_http is not None
+    assert acct_session.mammotion_http.mqtt_credentials is not None
+    assert acct_session.mammotion_http.mqtt_credentials.host == "mqtt.example.com"
+
+
+def _access_token(iot: str, robot: str) -> str:
+    """Mint an unsigned-verifiable access token carrying the iot/robot/exp claims.
+
+    ``MammotionHTTP.response``'s setter decodes the access_token to seed
+    ``jwt_info`` and ``expires_in``, so a populated http needs a real JWT.
+    """
+    import jwt as pyjwt
+
+    return pyjwt.encode({"iot": iot, "robot": robot, "exp": 9999999999}, "x" * 32, algorithm="HS256")
+
+
+def _populated_mammotion_http(account: str = "user@test.com") -> MammotionHTTP:
+    """Return a MammotionHTTP populated as it would be after a successful login.
+
+    Carries a login response, MQTT credentials, and JWT info so a ``to_cache`` →
+    restore round-trip has something to preserve.  The explicit ``jwt_info``
+    intentionally differs from the access_token's claims so a round-trip can prove
+    the cached JWT (not the token-derived one) is what gets restored.
+    """
+    user_info = LoginResponseUserInformation(
+        areaCode="44", domainAbbreviation="EU", userId="u1", userAccount="123", authType="email"
+    )
+    login_data = LoginResponseData(
+        access_token=_access_token("token-iot.example.com", "token-robot.example.com"),
+        token_type="bearer",
+        refresh_token="rt",
+        expires_in=3600,
+        authorization_code="ac",
+        userInformation=user_info,
+    )
+    http = MammotionHTTP(account, "pass")
+    http.response = Response(code=0, msg="ok", data=login_data)
+    http.login_info = login_data
+    http.mqtt_credentials = MQTTConnection(
+        host="mqtt.example.com", jwt="jwt-token", client_id="client-1", username="user"
+    )
+    http.jwt_info = JWTTokenInfo(iot="iot.example.com", robot="robot.example.com")
+    return http
+
+
+async def test_restore_mammotion_mqtt_reuses_existing_http_for_hybrid_account() -> None:
+    """Hybrid (Aliyun+Mammotion) account must keep ONE MammotionHTTP.
+
+    Regression: _restore_aliyun runs first and sets acct_session.mammotion_http (A)
+    plus a TokenManager bound to A.  _restore_mammotion_mqtt used to create a *new*
+    MammotionHTTP (B) for the transport while keeping the A-bound TokenManager, so a
+    401-driven refresh updated A's token while mqtt_invoke kept sending B's dead
+    token — an unrecoverable 401 loop.  The transport and its TokenManager must share
+    the same instance.
+    """
+    from pymammotion.auth.token_manager import TokenManager
+
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+
+    # State left by a preceding _restore_aliyun: an authenticated http (A) + bound TM.
+    http_a = _populated_mammotion_http()
+    acct_session.mammotion_http = http_a
+    acct_session.token_manager = TokenManager("user@test.com", http_a)
+
+    mqtt_creds = MQTTConnection(host="mqtt.example.com", client_id="client-1", username="user", jwt="token")
+    cached_data = {
+        "mammotion_mqtt": mqtt_creds.to_dict(),
+        "mammotion_device_records": {"records": []},
+    }
+
+    captured: dict[str, object] = {}
+
+    def _capture_setup(_mqtt_creds: object, mammotion_http: object, _acct: object, token_manager: object) -> object:
+        captured["http"] = mammotion_http
+        captured["tm"] = token_manager
+        transport = MagicMock()
+        transport.connect = AsyncMock()
+        return transport
+
+    with (
+        patch.object(client, "_setup_mammotion_transport", side_effect=_capture_setup),
+        patch("pymammotion.client.MammotionHTTP.get_user_device_list", new_callable=AsyncMock) as mock_list,
+        # Keep the test hermetic: a regressed (instance-B) path would otherwise hit
+        # the live login endpoint here, since the fresh instance has no login_info.
+        patch("pymammotion.http.http.MammotionHTTP.login_v2", new_callable=AsyncMock) as mock_login,
+    ):
+        mock_list.return_value = MagicMock(data=[])
+        mock_login.return_value = MagicMock(code=0, data=MagicMock())
+        await client._restore_mammotion_mqtt("user@test.com", "pass", cached_data, None, acct_session)
+
+    # The account's http must NOT be replaced, and transport + token manager must be
+    # wired to that same instance.
+    assert acct_session.mammotion_http is http_a
+    assert captured["http"] is http_a
+    assert captured["tm"].http is http_a  # type: ignore[attr-defined]
+
+
+async def test_to_cache_includes_mammotion_jwt_info() -> None:
+    """to_cache() must emit mammotion_jwt_info so JWT survives a restore.
+
+    Regression: the Mammotion-MQTT-only branch of to_cache previously omitted the
+    JWT key entirely, so restore had nothing to read.
+    """
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    acct_session.mammotion_http = _populated_mammotion_http()
+    await client._account_registry.register(acct_session)
+
+    raw = client.to_cache()
+
+    assert "mammotion_mqtt" in raw
+    assert "mammotion_jwt_info" in raw
+    assert raw["mammotion_jwt_info"].iot == "iot.example.com"
+
+
+async def test_mammotion_mqtt_cache_round_trips_mqtt_and_jwt() -> None:
+    """A full to_cache() → JSON → restore round-trip preserves MQTT creds and JWT info.
+
+    JSON-normalising the cache between save and restore mimics how the integration
+    persists it to disk, exercising the dict-decoding branches of restore that the
+    object-only tests skip.
+    """
+    import orjson
+
+    # --- save side ---------------------------------------------------------
+    saver = MammotionClient()
+    save_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    save_session.mammotion_http = _populated_mammotion_http()
+    save_session.mammotion_http.device_records = DeviceRecords(records=[], current=0, total=0, size=0, pages=0)
+    await saver._account_registry.register(save_session)
+
+    raw = saver.to_cache()
+    # mimic persistence: model objects → plain JSON dicts and back
+    cached_data = {
+        k: (orjson.loads(v.to_json()) if hasattr(v, "to_json") else v) for k, v in raw.items()
+    }
+    # device_records is required by the restore path
+    cached_data.setdefault("mammotion_device_records", {"records": [], "current": 0, "total": 0, "size": 0, "pages": 0})
+
+    # --- restore side ------------------------------------------------------
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+    with (
+        patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
+        patch("pymammotion.client.MammotionHTTP.get_user_device_list", new_callable=AsyncMock) as mock_list,
+    ):
+        mock_list.return_value = MagicMock(data=[])
+        await client._restore_mammotion_mqtt("user@test.com", "pass", cached_data, None, acct_session)
+
+    http = acct_session.mammotion_http
+    assert http is not None
+    assert http.mqtt_credentials is not None
+    assert http.mqtt_credentials.host == "mqtt.example.com"
+    assert http.mqtt_credentials.jwt == "jwt-token"
+    assert http.jwt_info.iot == "iot.example.com"
+    assert http.jwt_info.robot == "robot.example.com"
 
 
 async def test_token_manager_set_after_login_and_initiate_cloud() -> None:

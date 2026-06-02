@@ -1,6 +1,7 @@
 """Tests for BLETransport."""
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -356,6 +357,40 @@ def test_set_ble_device_returns_false_on_same_address(transport: BLETransport) -
     assert transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF")) is False
 
 
+def test_is_usable_true_when_rssi_above_threshold(transport: BLETransport) -> None:
+    """A strong advertisement RSSI keeps the transport usable."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-55)
+    assert transport.is_usable is True
+
+
+def test_is_usable_false_when_rssi_below_threshold(transport: BLETransport) -> None:
+    """An RSSI weaker than config.min_rssi marks the transport unusable."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-90)
+    assert transport.is_usable is False
+
+
+def test_is_usable_true_when_rssi_unknown(transport: BLETransport) -> None:
+    """An unknown RSSI (never pushed) does not gate is_usable."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    assert transport._last_rssi is None  # noqa: SLF001
+    assert transport.is_usable is True
+
+
+def test_set_ble_device_without_rssi_keeps_last_known(transport: BLETransport) -> None:
+    """A refresh that omits RSSI leaves the previously reported value intact."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-90)
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    assert transport._last_rssi == -90  # noqa: SLF001
+    assert transport.is_usable is False
+
+
+def test_clear_ble_device_resets_rssi(transport: BLETransport) -> None:
+    """clear_ble_device() forgets the last RSSI along with the device."""
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-90)
+    transport.clear_ble_device()
+    assert transport._last_rssi is None  # noqa: SLF001
+
+
 def test_clear_ble_device_resets_state(transport: BLETransport) -> None:
     """clear_ble_device() drops the device, resets failures, and clears any cooldown."""
     transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
@@ -386,6 +421,37 @@ async def test_connect_failure_threshold_triggers_cooldown(config: BLETransportC
                 await transport.connect()
 
     # Threshold trip → BLEDevice cleared, cooldown set, transport unusable.
+    assert transport._ble_device is None  # noqa: SLF001
+    assert transport.is_usable is False
+    assert transport._connect_cooldown_until > 0.0  # noqa: SLF001
+
+
+async def test_out_of_slots_error_trips_cooldown_immediately(config: BLETransportConfig) -> None:
+    """A single BleakOutOfConnectionSlotsError cools down at once (no threshold wait).
+
+    The proxy/adapter is out of connection slots or the device is unreachable — an
+    immediate retry can't succeed, so is_usable must go False after ONE failure and
+    the handle's send paths fall through to MQTT instead of re-attempting BLE on
+    every send.
+    """
+    from bleak_retry_connector import BleakOutOfConnectionSlotsError
+
+    from pymammotion.transport.base import BLEUnavailableError
+
+    # Use a threshold > 1 so a single failure proves the *immediate* path, not the
+    # ordinary consecutive-failure trip (the shared fixture uses threshold=1).
+    slots_config = replace(config, connect_failure_threshold=3)
+    transport = BLETransport(slots_config)
+    transport.set_ble_device(_ble_device_with_address(slots_config.ble_address or "AA:BB:CC:DD:EE:FF"))
+
+    with patch(
+        "pymammotion.transport.ble.establish_connection",
+        new=AsyncMock(side_effect=BleakOutOfConnectionSlotsError("out of slots")),
+    ):
+        with pytest.raises(BLEUnavailableError):
+            await transport.connect()
+
+    # One failure was enough: device cleared, cooldown armed, transport unusable.
     assert transport._ble_device is None  # noqa: SLF001
     assert transport.is_usable is False
     assert transport._connect_cooldown_until > 0.0  # noqa: SLF001

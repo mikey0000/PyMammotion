@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
 import time
 from typing import TYPE_CHECKING
+
+import jwt
 
 from pymammotion.aliyun.exceptions import LoginException
 from pymammotion.http.model.http import MQTTConnection, UnauthorizedException
@@ -53,6 +56,26 @@ class AliyunCredentials:
     iot_token_expires_at: float
     refresh_token: str
     refresh_token_expires_at: float
+
+
+# Fallback lifetime when an MQTT JWT carries no readable ``exp`` claim.
+_MQTT_JWT_DEFAULT_TTL = 86400.0
+
+
+def _jwt_expiry(token: str, default_ttl: float = _MQTT_JWT_DEFAULT_TTL) -> float:
+    """Return the absolute expiry (unix seconds) from a JWT's ``exp`` claim.
+
+    The signature is *not* verified — only the public ``exp`` claim is read, so
+    the proactive-refresh window can track the broker's actual JWT lifetime
+    rather than assuming a fixed 24 h.  Falls back to ``now + default_ttl`` when
+    the token has no ``exp`` claim or cannot be decoded.
+    """
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except Exception:  # noqa: BLE001 - malformed/opaque token → use the fallback TTL
+        return time.time() + default_ttl
+    exp = claims.get("exp") if isinstance(claims, dict) else None
+    return float(exp) if exp is not None else time.time() + default_ttl
 
 
 @dataclass(frozen=True)
@@ -124,6 +147,16 @@ class TokenManager:
         # RAII subscriptions to device handle error buses — kept alive here so they
         # are never garbage-collected while this token manager is active.
         self._handle_subscriptions: list[Subscription] = []
+
+    @property
+    def http(self) -> MammotionHTTP:
+        """The MammotionHTTP this manager refreshes tokens on.
+
+        Exposed so wiring code can assert a transport and its TokenManager share one
+        login session (see ``MammotionClient._setup_mammotion_transport``): a refresh
+        only reaches ``mqtt_invoke`` when both read/write the same instance.
+        """
+        return self._http
 
     async def initialize(
         self,
@@ -309,6 +342,16 @@ class TokenManager:
     # Private helpers — callers are responsible for holding self._lock.
     # ------------------------------------------------------------------
 
+    async def _fire_credentials_updated(self) -> None:
+        """Notify the on_credentials_updated listener, swallowing listener errors.
+
+        Called at the end of every successful credential refresh so integrations
+        can persist the updated token cache.
+        """
+        if self.on_credentials_updated is not None:
+            with contextlib.suppress(Exception):
+                await self.on_credentials_updated()
+
     async def refresh_http(self) -> None:
         """Refresh the HTTP OAuth access token using the stored MammotionHTTP instance.
 
@@ -337,11 +380,40 @@ class TokenManager:
             if is_transient_network_error(exc):
                 raise
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
-        if self.on_credentials_updated is not None:
-            try:
-                await self.on_credentials_updated()
-            except Exception:  # noqa: BLE001
-                pass
+        await self._fire_credentials_updated()
+
+    async def refresh_http_token_only(self) -> None:
+        """Refresh the HTTP access token using the refresh token ONLY — never ``login_v2``.
+
+        Unlike :meth:`refresh_http` (which calls ``refresh_login`` and falls back to a
+        full ``login_v2`` when the refresh token is dead), this calls ``refresh_token_v2``
+        directly and raises :class:`ReLoginRequiredError` if it is rejected.  Used by the
+        Mammotion MQTT paths, which must never trigger a full re-login — they give up
+        instead (see :meth:`refresh_mqtt_credentials_strict`).
+
+        Raises:
+            ReLoginRequiredError: If the refresh token is rejected (give up — do not re-login).
+
+        """
+        try:
+            response = await self._http.refresh_token_v2()
+            data = response.data
+            if response.code != 0 or data is None:
+                raise ReLoginRequiredError(self._account_id, "refresh token rejected by refresh_token_v2")
+            self._http_creds = HTTPCredentials(
+                access_token=data.access_token,
+                refresh_token=data.refresh_token,
+                expires_at=time.time() + data.expires_in,
+            )
+        except ReLoginRequiredError:
+            raise
+        except Exception as exc:
+            # Transient network failures propagate as-is so the caller backs off
+            # rather than treating a blip as an unrecoverable auth error.
+            if is_transient_network_error(exc):
+                raise
+            raise ReLoginRequiredError(self._account_id, str(exc)) from exc
+        await self._fire_credentials_updated()
 
     async def _refresh_aliyun(self) -> None:
         """Refresh the Aliyun IoT session via check_or_refresh_session().
@@ -405,11 +477,7 @@ class TokenManager:
             if is_transient_network_error(exc):
                 raise
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
-        if self.on_credentials_updated is not None:
-            try:
-                await self.on_credentials_updated()
-            except Exception:  # noqa: BLE001
-                pass
+        await self._fire_credentials_updated()
 
     @staticmethod
     async def connect_iot(cloud_client: CloudIOTGateway) -> None:
@@ -450,7 +518,7 @@ class TokenManager:
                     raise
                 raise AuthError(exc)
 
-    async def force_refresh_invoke_token(self) -> None:
+    async def force_refresh_invoke_token(self, *, allow_relogin: bool = True) -> None:
         """Reactive refresh of the HTTP bearer token after a 401 from mqtt_invoke.
 
         Unconditionally force-refreshes the OAuth access token first (bypassing
@@ -462,6 +530,13 @@ class TokenManager:
         If a refresh attempt failed within the last 30 s, raises
         ReLoginRequiredError immediately to prevent hammering the auth server
         when every queued command hits the same expired-token wall.
+
+        Args:
+            allow_relogin: When False, refresh the access token via the refresh
+                token only (:meth:`refresh_http_token_only`) and never fall back
+                to ``login_v2``.  The Mammotion MQTT send path passes False so it
+                gives up instead of re-logging-in.
+
         """
         _invoke_refresh_cooldown = 30.0
 
@@ -474,7 +549,10 @@ class TokenManager:
                         f"invoke token refresh in cooldown ({_invoke_refresh_cooldown - elapsed:.0f}s remaining)",
                     )
             try:
-                await self.refresh_http()  # force: uses refresh_token or full re-login
+                if allow_relogin:
+                    await self.refresh_http()  # uses refresh_token or full re-login
+                else:
+                    await self.refresh_http_token_only()  # refresh token only — never login_v2
                 await self._http.fetch_authorization_token()
                 self._invoke_refresh_failed_at = None
             except ReLoginRequiredError:
@@ -489,33 +567,65 @@ class TokenManager:
                     raise
                 raise AuthError(exc)
 
+    def _set_mqtt_creds(self, data: MQTTConnection) -> MQTTCredentials:
+        """Store MQTTConnection data into self._mqtt_creds and return it.
+
+        Expiry is read from the JWT's own ``exp`` claim so proactive refresh
+        tracks the broker's real lifetime; if the token carries no ``exp`` it
+        falls back to a 24 h assumption (see :func:`_jwt_expiry`).
+        """
+        self._mqtt_creds = MQTTCredentials(
+            host=data.host,
+            client_id=data.client_id,
+            username=data.username,
+            jwt=data.jwt,
+            expires_at=_jwt_expiry(data.jwt),
+        )
+        return self._mqtt_creds
+
+    async def refresh_mqtt_credentials_strict(self) -> MQTTCredentials:
+        """Refresh Mammotion MQTT credentials WITHOUT ever falling back to ``login_v2``.
+
+        Refreshes the HTTP access token via the refresh token only
+        (:meth:`refresh_http_token_only`), then re-fetches the MQTT JWT.  Any
+        failure raises :class:`ReLoginRequiredError` so the Mammotion MQTT
+        transport gives up — it must never trigger a full re-login.  Acquires
+        ``self._lock`` like :meth:`refresh_mqtt_credentials`.
+
+        Raises:
+            ReLoginRequiredError: If the refresh token is dead or the JWT endpoint
+                still rejects after the token refresh (give up — do not re-login).
+
+        """
+        async with self._lock:
+            await self.refresh_http_token_only()
+            # get_mqtt_credentials is @refresh_token_decorator, but the token we
+            # just minted is fresh so the decorator won't fire login_v2.
+            response = await self._http.get_mqtt_credentials()
+            if response.data is None:
+                raise ReLoginRequiredError(
+                    self._account_id, "MQTT JWT endpoint returned no data after refresh-token refresh"
+                )
+            creds = self._set_mqtt_creds(response.data)
+            await self._fire_credentials_updated()
+            return creds
+
     async def refresh_mqtt_creds(self) -> MQTTCredentials:
         """Fetch fresh MQTT credentials from the Mammotion API.
 
-        Updates *_mqtt_creds* in place. The API does not return an explicit expiry,
-        so credentials are assumed valid for 24 hours.
+        Updates *_mqtt_creds* in place. Expiry is taken from the JWT's ``exp``
+        claim (see :func:`_jwt_expiry`), falling back to 24 hours when absent.
 
         Raises:
             ReLoginRequiredError: If the underlying HTTP request fails with an auth error.
 
         """
-
-        def _store_mqtt_creds(data: MQTTConnection) -> None:
-            """Store MQTTConnection data into self._mqtt_creds."""
-            self._mqtt_creds = MQTTCredentials(
-                host=data.host,
-                client_id=data.client_id,
-                username=data.username,
-                jwt=data.jwt,
-                expires_at=time.time() + 86400,
-            )
-
         try:
             response = await self._http.get_mqtt_credentials()
             data = response.data
             if data is None:
                 raise AuthError("get_mqtt_credentials returned no data")
-            _store_mqtt_creds(data)
+            self._set_mqtt_creds(data)
         except AuthError:
             # JWT endpoint failed — refresh the authorization code, then re-fetch
             # the MQTT JWT.  Reading self._http.mqtt_credentials here would yield
@@ -526,7 +636,7 @@ class TokenManager:
                 response = await self._http.get_mqtt_credentials()
                 if response.data is None:
                     raise AuthError("get_mqtt_credentials after authz refresh returned no data")
-                _store_mqtt_creds(response.data)
+                self._set_mqtt_creds(response.data)
             except (Exception, AuthError):
                 # Authorization code refresh also failed — fall back to a full HTTP re-login.
                 try:
@@ -534,7 +644,7 @@ class TokenManager:
                     await self._http.refresh_authorization_token()
                     response = await self._http.get_mqtt_credentials()
                     if response.data is not None:
-                        _store_mqtt_creds(response.data)
+                        self._set_mqtt_creds(response.data)
                 except ReLoginRequiredError:
                     raise
                 except Exception as exc:
@@ -545,11 +655,7 @@ class TokenManager:
             if is_transient_network_error(exc):
                 raise
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
-        if self.on_credentials_updated is not None:
-            try:
-                await self.on_credentials_updated()
-            except Exception:  # noqa: BLE001
-                pass
+        await self._fire_credentials_updated()
         if self._mqtt_creds is None:
             raise ReLoginRequiredError(self._account_id, "MQTT credentials unavailable")
         return self._mqtt_creds
