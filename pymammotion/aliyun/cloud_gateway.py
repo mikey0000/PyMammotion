@@ -41,12 +41,7 @@ from pymammotion.aliyun.model.thing_response import ThingPropertiesResponse
 from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import (
-    DeviceInfo,
-    DeviceRecords,
-    LoginResponseData,
-    Response,
-)
+from pymammotion.http.model.http import DeviceInfo, DeviceRecords, LoginResponseData, Response
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.transport.base import SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter

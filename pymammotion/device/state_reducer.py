@@ -237,7 +237,10 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case (
-                        "bidire_comm_cmd" | "todev_time_ctrl_light" | "toapp_lora_cfg_rsp" | "device_product_type_info"
+                        "bidire_comm_cmd"
+                        | "todev_time_ctrl_light"
+                        | "toapp_lora_cfg_rsp"
+                        | "device_product_type_info"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -353,6 +356,19 @@ class MowerStateReducer(StateReducer):
                 device.map.update(SvgMessage.from_dict(common_svg_data.to_dict(casing=betterproto2.Casing.SNAKE)))
             case "toapp_all_hash_name":
                 hash_names: AppGetAllAreaHashName = nav_msg[1]  # type: ignore
+                # The area name list reflects the device's CURRENT areas.  When the
+                # device's reported bol_hash no longer matches our stored root
+                # manifest, the map was edited device-side — an edited area gets a new
+                # content hash that isn't in our (pre-edit) root_hash_lists.  Reconcile
+                # against bol_hash and wipe the stale manifest, otherwise the per-frame
+                # prune in HashList.update drops the edited area's freshly-arriving
+                # geometry (its hash isn't in the stale manifest) — removing the area
+                # instead of replacing it.  An empty manifest makes update_hash_lists a
+                # no-op, so the geometry survives until the map saga re-fetches a fresh
+                # root hash list.
+                bol_hash = device.report_data.locations[0].bol_hash if device.report_data.locations else 0
+                if bol_hash:
+                    device.map.invalidate_maps(bol_hash)
                 if hash_names.hashnames:
                     device.map.area_name = [
                         AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames

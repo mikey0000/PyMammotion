@@ -48,6 +48,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
 
+from mashumaro import MissingField
+
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
@@ -56,8 +58,6 @@ from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowerDevice, RTKBaseStationDevice
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
-from mashumaro import MissingField
-
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import (
     CheckDeviceVersion,
@@ -552,7 +552,7 @@ class MammotionClient:
         """
         if session is None or not session.email or not session.password:
             msg = "No stored credentials available for re-login"
-            raise LoginFailedError("", msg)  # noqa: EM101
+            raise LoginFailedError("", msg)
         if session.mammotion_http is None:
             msg = "No HTTP client available for re-login"
             raise LoginFailedError(session.email, msg)

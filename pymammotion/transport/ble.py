@@ -11,11 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from bleak import BleakScanner
 from bleak.exc import BleakError
-from bleak_retry_connector import (
-    BleakClientWithServiceCache,
-    BleakOutOfConnectionSlotsError,
-    establish_connection,
-)
+from bleak_retry_connector import BleakClientWithServiceCache, BleakOutOfConnectionSlotsError, establish_connection
 
 from pymammotion.bluetooth.ble_message import BleMessage
 from pymammotion.bluetooth.const import UUID_NOTIFICATION_CHARACTERISTIC
