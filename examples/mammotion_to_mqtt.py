@@ -24,8 +24,10 @@ Description:
         {base_topic}/devices/global/clear_states                            clears state for areas, paths, plans and error_list
         {base_topic}/devices/global/listen                                  Listen only mode (on/off)
         {base_topic}/devices/global/debug                                   Print debug to console (on/off)
+        {base_topic}/devices/global/publish_check_all                       publishes changed topics for all devices (should never be needed, but it is. not all changes trigger a publish. call this every 30 sec to be sure)
 
         Device functions
+        {base_topic}/devices/{device_id}/publish_check                      publishes changed topics for device. (should never be needed, but it is. not all changes trigger a publish)
         {base_topic}/devices/{device_id}/publish_all                        publishes all topics for device.
         {base_topic}/devices/{device_id}/send                               raw command, payload with details
         {base_topic}/devices/{device_id}/send_and_wait                      raw command, payload with details
@@ -418,6 +420,15 @@ class ExternalMQTTPublisher:
         await self.add_mqtt_command("kill",True, self._execute_kill)
         await self.add_mqtt_command("listen",True, self._execute_listen)
         await self.add_mqtt_command("debug",True, lambda device_name,payload, data: (self.dev_console.debug(on=(payload == "on"))))
+        await self.add_mqtt_command("publish_check_all",True, lambda device_name,payload, data: (
+                self._execute_publish_check_all()
+            ))
+
+        await self.add_mqtt_command("publish_check",False, lambda device_name,payload, data: (
+            self._publish_device_to_external_mqtt(device_name,show_info_in_console = True)
+            ))
+
+        
 
         await self.add_mqtt_command("publish_all",False, self._execute_publish_all)
         await self.add_mqtt_command("send",False,self._execute_send)
@@ -695,7 +706,7 @@ class ExternalMQTTPublisher:
         parameters: dict[str, Any] = {
             "device_name": handle.device_name,
             "device_id": handle.device_id,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "mqtt_publish_timestamp": datetime.now(UTC).isoformat(),
         }
 
         mqtt_transport = handle._transports.get(TransportType.CLOUD_ALIYUN) or handle._transports.get(  # noqa: SLF001
@@ -725,8 +736,19 @@ class ExternalMQTTPublisher:
 
         return parameters
 
-    async def _publish_device_to_external_mqtt(self, device_name: str) -> None:
-        """Publish a single device's current state to the external MQTT broker."""
+    async def publish_all_devices_to_external_mqtt (self, show_info_in_console_for_all_devices):
+        
+        _LOGGER.info("Publishing all devices to external MQTT broker …")
+        for handle in self.dev_console.mammotion.device_registry.all_devices:
+            #print(handle.device_name)
+            await self._publish_device_to_external_mqtt(handle.device_name,show_info_in_console_for_all_devices)
+        _LOGGER.info("All devices published to external MQTT broker")
+
+
+    async def _publish_device_to_external_mqtt(self, device_name: str, show_info_in_console = False) -> None:
+        """Publish a single device's current state to the external MQTT broker.
+        This function is called from dev_console.py on message
+        """
         if not self.connected or not self.dev_console:
             return
 
@@ -735,7 +757,6 @@ class ExternalMQTTPublisher:
             return
 
         try:
-            parameters = await self._extract_device_parameters(handle)
 
             
             # --- COMPLEX OBJECT CHANGE DETECTION ---
@@ -774,6 +795,7 @@ class ExternalMQTTPublisher:
             )
 
 
+            parameters = await self._extract_device_parameters(handle)
             state_topic = f"{self.base_topic}/devices/{device_name}/state"
             if publish_full_state:
                 await self.publish(state_topic, parameters, retain=True, qos=2)
@@ -794,10 +816,17 @@ class ExternalMQTTPublisher:
                 if key not in previous or previous[key] != value_str:
                     field_topic = f"{self.base_topic}/devices/{device_name}/{key}"
                     await self.publish(field_topic, value_str, retain=False, qos=2)
+                
+                    prev_value = previous.get(key, "N/A")
                     previous[key] = value_str
-                    _LOGGER.debug(
-                        "↩ Published changed parameter for %s: %s = %s", device_name, key, value_str
-                    )
+                    if show_info_in_console:
+                        _LOGGER.info(
+                            "↩ Published changed parameter for %s: %s = %s (prev: %s)", device_name, key, value_str, prev_value
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "↩ Published changed parameter for %s: %s = %s (prev: %s)", device_name, key, value_str, prev_value
+                        )
 
             _LOGGER.debug("↩ Published device %s to external MQTT with change detection", device_name)
         except Exception as e:
@@ -923,7 +952,16 @@ class ExternalMQTTPublisher:
         except Exception as e:
             await self._publish_command_response(device_name, "publish_all", "error", error=str(e))
             _LOGGER.error("✗ publish_all failed: %s", e)
-
+    async def _execute_publish_check_all(self) -> None:
+        """Publish all devices to external MQTT. (Showing publishes in console)"""
+        try:
+            await self.publish_all_devices_to_external_mqtt(True)
+            
+            _LOGGER.info("✓ publish_check_all executed")
+            
+        except Exception as e:
+            _LOGGER.error("✗ publish_check_all failed: %s", e)
+            
     async def _execute_get_error_info(self, cmd_data: dict) -> None:
         try:
             language_code = cmd_data.get("language_code", "en")
@@ -1199,6 +1237,11 @@ async def _main(args: argparse.Namespace) -> None:
         _LOGGER.info("Connecting to external MQTT Broker [bold]%s[/bold] …", mqtt_host)
         await external_mqtt.connect()
 
+    #need to implement this a an argument to DevConsole
+    start_with_debug = False
+    if args.debug:
+        start_with_debug = True
+
     dev = DevConsole(
         mammotion,
         main_loop,
@@ -1206,6 +1249,9 @@ async def _main(args: argparse.Namespace) -> None:
         output_dir=OUTPUT_DIR,
         always_dump=always_update_dump_files,
     )
+    if start_with_debug:
+        dev.debug(True)
+
 
     if args.esphome_proxy:
         if not args.ble_address:
@@ -1260,7 +1306,7 @@ async def _main(args: argparse.Namespace) -> None:
         for handle in mammotion.device_registry.all_devices:
             await handle.stop_polling()
         _LOGGER.info("[bold yellow]Listen-only mode[/bold yellow] — MQTT polling disabled on all devices")
-
+    
     if not args.ble_address and not args.esphome_proxy:
         # log_mqtt_credentials walks AccountSession.cloud_client / mammotion_http,
         # both of which are None in any BLE-only mode.
@@ -1269,7 +1315,8 @@ async def _main(args: argparse.Namespace) -> None:
         dev.dump_all()
 
     if external_mqtt:
-        await dev.publish_all_devices_to_external_mqtt()
+        await dev.publish_all_devices_to_external_mqtt() # Thread safe
+        # don't use this: await external_mqtt.publish_all_devices_to_external_mqtt(False)
 
     device_names = [h.device_name for h in mammotion.device_registry.all_devices]
     _LOGGER.info(
@@ -1371,6 +1418,11 @@ if __name__ == "__main__":
         "-l", "--listen",
         action="store_true",
         help="listen-only mode: connect and receive messages without sending any polls",
+    )
+    parser.add_argument(
+        "-d", "--debug",
+        action="store_true",
+        help="starts with debug enabled",
     )
     parser.add_argument(
         "--ble-address",
