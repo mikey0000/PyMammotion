@@ -185,6 +185,11 @@ class MammotionClient:
         #: exactly the affected account's mowers-on-that-transport as needing
         #: re-auth.  HA-Luba wires this to ``entry.async_start_reauth()``.
         self.on_unrecoverable_auth_error: Callable[[str, TransportType, Exception], Awaitable[None]] | None = None
+        #: Fired (async) with ``(device_name, iot_id)`` when a device is unbound from
+        #: the cloud (Aliyun 29004) and is no longer present on EITHER cloud after
+        #: re-discovery — i.e. genuinely removed from the account.  HA-Luba wires this
+        #: to delete the device + its entities from the HA device/entity registry.
+        self.on_device_removed: Callable[[str, str], Awaitable[None]] | None = None
         #: Fired (async) whenever any credential type is successfully refreshed.
         #: Integrations can wire this to persist the updated token cache.
         self._on_credentials_updated: Callable[[], Awaitable[None]] | None = None
@@ -1289,6 +1294,7 @@ class MammotionClient:
             mqtt_transport=transport,
             readiness_checker=get_readiness_checker(device_name, product_key),
         )
+        handle.on_device_unbound = self._on_device_unbound
         await self._device_registry.register(handle)
         await handle.start()
         if token_manager is not None:
@@ -1513,14 +1519,7 @@ class MammotionClient:
 
         """
         iot_id = iot_id_override or record.iot_id
-        for topic in (
-            f"/sys/{record.product_key}/{record.device_name}/thing/event/+/post",
-            f"/sys/proto/{record.product_key}/{record.device_name}/thing/event/+/post",
-            f"/sys/{record.product_key}/{record.device_name}/app/down/thing/status",
-            # f"/sys/{record.product_key}/{record.device_name}/app/down/thing/properties",
-        ):
-            await transport.add_topic(topic)
-        transport.register_device(record.product_key, record.device_name, iot_id)
+        await self._subscribe_mammotion_topics(transport, record.product_key, record.device_name, iot_id)
 
         await self._register_device_on_transport(
             device_name=record.device_name,
@@ -1531,6 +1530,118 @@ class MammotionClient:
             token_manager=token_manager,
         )
         _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, iot_id)
+
+    @staticmethod
+    async def _subscribe_mammotion_topics(
+        transport: MQTTTransport, product_key: str, device_name: str, iot_id: str
+    ) -> None:
+        """Subscribe the per-device Mammotion MQTT topics and map the iot_id for routing.
+
+        Shared by first-time registration (``_register_mammotion_device``) and the
+        runtime Aliyun→Mammotion migration (``_on_device_unbound``).
+        """
+        for topic in (
+            f"/sys/{product_key}/{device_name}/thing/event/+/post",
+            f"/sys/proto/{product_key}/{device_name}/thing/event/+/post",
+            f"/sys/{product_key}/{device_name}/app/down/thing/status",
+            # f"/sys/{product_key}/{device_name}/app/down/thing/properties",
+        ):
+            await transport.add_topic(topic)
+        transport.register_device(product_key, device_name, iot_id)
+
+    async def _ensure_mammotion_transport(
+        self, account: str, mammotion_http: MammotionHTTP, acct_session: AccountSession
+    ) -> MQTTTransport | None:
+        """Return the account's Mammotion MQTT transport, creating+connecting one if absent.
+
+        Reuses ``acct_session.mammotion_transport`` when present; otherwise fetches MQTT
+        credentials, ensures a TokenManager, builds the transport via
+        ``_setup_mammotion_transport`` and connects it.  Returns ``None`` if MQTT
+        credentials could not be obtained.
+        """
+        if acct_session.mammotion_transport is not None:
+            return acct_session.mammotion_transport
+        await mammotion_http.get_mqtt_credentials()
+        if mammotion_http.mqtt_credentials is None:
+            _logger.error("could not obtain Mammotion MQTT credentials for account %s", account)
+            return None
+        if acct_session.token_manager is None:
+            acct_session.token_manager = TokenManager(account, mammotion_http)
+            acct_session.token_manager.on_credentials_updated = self._on_credentials_updated
+        transport = self._setup_mammotion_transport(
+            mammotion_http.mqtt_credentials, mammotion_http, acct_session, acct_session.token_manager
+        )
+        await transport.connect()
+        acct_session.mammotion_transport = transport
+        return transport
+
+    async def _on_device_unbound(self, handle: DeviceHandle) -> None:
+        """Re-discover an unbound device (Aliyun 29004) and migrate it, or remove it.
+
+        Fired by ``DeviceHandle._on_device_unbound`` after the Aliyun transport has
+        been detached (non-disconnecting) from the device.  Re-fetches the Mammotion
+        device list: if the device now lives on Mammotion MQTT, attach that transport
+        to the SAME handle (keeping its state/history); if it is gone from the account
+        entirely, remove it.
+        """
+        device_name = handle.device_name
+        session = self._get_session_for_device(device_name)
+        try:
+            if session is None or session.mammotion_http is None:
+                _logger.warning("Device '%s' unbound but no Mammotion session to re-discover — removing", device_name)
+                await self._remove_unbound_device(handle, session)
+                return
+
+            mammotion_http = session.mammotion_http
+            device_list_resp = await mammotion_http.get_user_device_list()
+            owned_iot_id_map = {
+                d.device_name: d.iot_id for d in (device_list_resp.data or []) if d.device_name and d.iot_id
+            }
+            page_resp = await mammotion_http.get_user_device_page()
+            records = (page_resp.data.records if page_resp.data else []) or []
+            record = next((r for r in records if r.device_name == device_name), None)
+            if record is None:
+                _logger.warning("Device '%s' unbound and not on Mammotion MQTT either — removing", device_name)
+                await self._remove_unbound_device(handle, session)
+                return
+
+            transport = await self._ensure_mammotion_transport(session.account_id, mammotion_http, session)
+            if transport is None:
+                _logger.error("Device '%s' unbound: could not set up Mammotion transport — left detached", device_name)
+                return
+
+            iot_id = owned_iot_id_map.get(device_name) or record.iot_id
+            await self._subscribe_mammotion_topics(transport, record.product_key, device_name, iot_id)
+            if iot_id != handle.iot_id:
+                self._iot_id_to_device_id.pop(handle.iot_id, None)
+                handle.iot_id = iot_id
+            self._iot_id_to_device_id[iot_id] = device_name
+            session.device_ids.add(device_name)
+            await handle.add_transport(transport)
+            _logger.info("Device '%s' migrated from Aliyun to Mammotion MQTT (iot_id=%s)", device_name, iot_id)
+        except Exception:
+            _logger.exception("Device '%s' unbound: migration failed", device_name)
+        finally:
+            handle.reset_unbound_migration()
+
+    async def _remove_unbound_device(self, handle: DeviceHandle, session: AccountSession | None) -> None:
+        """Fully remove a device that is unbound from all clouds.
+
+        Safe because the Aliyun transport was already detached (non-disconnecting)
+        before this runs, so stopping the handle only disconnects the device's own
+        remaining transports (e.g. BLE), never the account-shared Aliyun connection.
+        Fires ``on_device_removed`` so the host can delete the device from its registry.
+        """
+        device_name = handle.device_name
+        iot_id = handle.iot_id
+        self._iot_id_to_device_id.pop(iot_id, None)
+        if session is not None:
+            session.device_ids.discard(device_name)
+        await self.remove_device(device_name)
+        _logger.warning("Device '%s' unbound from all clouds — removed", device_name)
+        if self.on_device_removed is not None:
+            with contextlib.suppress(Exception):
+                await self.on_device_removed(device_name, iot_id)
 
     async def _restore_aliyun(
         self,
@@ -1797,23 +1908,10 @@ class MammotionClient:
         if not mammotion_records:
             return
 
-        transport = acct_session.mammotion_transport
-        new_transport = transport is None
-        if new_transport:
-            await mammotion_http.get_mqtt_credentials()
-            if mammotion_http.mqtt_credentials is None:
-                _logger.error(
-                    "_bootstrap_mammotion_mqtt: could not obtain MQTT credentials — skipping post-2025 devices"
-                )
-                return
-            if acct_session.token_manager is None:
-                acct_session.token_manager = TokenManager(account, mammotion_http)
-                acct_session.token_manager.on_credentials_updated = self._on_credentials_updated
-            transport = self._setup_mammotion_transport(
-                mammotion_http.mqtt_credentials, mammotion_http, acct_session, acct_session.token_manager
-            )
-            await transport.connect()
-            acct_session.mammotion_transport = transport
+        transport = await self._ensure_mammotion_transport(account, mammotion_http, acct_session)
+        if transport is None:
+            _logger.error("_bootstrap_mammotion_mqtt: no MQTT transport — skipping post-2025 devices")
+            return
 
         ua = acct_session.user_account
         already_known = skip_ids or set()

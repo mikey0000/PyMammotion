@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 import aiomqtt
 from Tea.exceptions import UnretryableException
 
+from pymammotion.aliyun.exceptions import DeviceUnboundException
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import (
     AccountInUseError,
@@ -256,6 +257,11 @@ class AliyunMQTTTransport(Transport):
         except UnretryableException as ex:
             self.record_error()
             raise TransportError(ex.message) from None
+        except DeviceUnboundException:
+            # The device is unbound from this account — not a fault of the shared
+            # connection, so don't count it against transport health.  The handle
+            # detaches Aliyun and triggers migration/removal.
+            raise
         except Exception:
             self.record_error()
             raise

@@ -26,6 +26,7 @@ from pymammotion.aliyun.exceptions import (
     AuthRefreshException,
     CloudSetupError,
     DeviceOfflineException,
+    DeviceUnboundException,
     FailedRequestException,
     GatewayTimeoutException,
     LoginException,
@@ -944,6 +945,9 @@ class CloudIOTGateway:
             if response_body_dict.get("code") == 6205:
                 logger.debug("Device offline (6205): %s", iot_id)
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
+            if response_body_dict.get("code") == 29004:
+                logger.warning("Device unbound from Aliyun (29004): %s", iot_id)
+                raise DeviceUnboundException(response_body_dict.get("code"), iot_id)
             # 29003 and 460 are expected auth-expiry codes handled by the caller — log at debug.
             # Everything else is unexpected and logged at warning.
             if response_body_dict.get("code") in (29003, 460):

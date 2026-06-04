@@ -979,7 +979,7 @@ class HashList(DataClassORJSONMixin):
         be preserved — the device advances ub_path_hash through segments during
         a mow and wiping on every change would discard live data.
         """
-        if path_hash in (0, 1):
+        if path_hash == 0:
             self.current_mow_path = {}
             self.generated_mow_path_geojson = {}
             self.generated_mow_progress_geojson = {}

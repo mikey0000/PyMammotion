@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pymammotion.aliyun.exceptions import DeviceOfflineException
+from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.proto import LubaMsg as RealLubaMsg
@@ -1603,3 +1603,105 @@ async def test_event_at_threshold_boundary_forwarded(transport: AliyunMQTTTransp
     await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
 
     transport.on_device_event.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Device-unbound (Aliyun 29004): detach (non-disconnecting) + migrate/remove hook
+# ---------------------------------------------------------------------------
+
+
+async def test_detach_transport_pops_without_disconnect() -> None:
+    """detach_transport removes the transport from the handle WITHOUT disconnecting it.
+
+    The Aliyun transport is account-shared; disconnecting it would kill cloud for
+    every other device on the account.  Idempotent: a second call returns None.
+    """
+    handle = make_handle()
+    aliyun = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    await handle.add_transport(aliyun)
+
+    removed = handle.detach_transport(TransportType.CLOUD_ALIYUN)
+
+    assert removed is aliyun
+    assert handle.get_transport(TransportType.CLOUD_ALIYUN) is None
+    aliyun.disconnect.assert_not_awaited()
+    # Idempotent — already gone.
+    assert handle.detach_transport(TransportType.CLOUD_ALIYUN) is None
+
+
+async def test_device_unbound_detaches_aliyun_and_schedules_hook() -> None:
+    """A 29004 detaches the Aliyun transport (not disconnect) and fires the unbound hook once.
+
+    No BLE present → the command re-raises (handled as expected by the queue); the
+    permanent detach must NOT set mqtt_reported_offline.
+    """
+    handle = make_handle()
+    aliyun = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    await handle.add_transport(aliyun)
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED)
+    hook = AsyncMock()
+    handle.on_device_unbound = hook
+
+    handle.broker.send_and_wait = AsyncMock(  # type: ignore[method-assign]
+        side_effect=DeviceUnboundException(29004, "iot-id")
+    )
+
+    await handle.send_command(b"\x01", "some_field")
+    await _drain_queue(handle)
+    await asyncio.sleep(0)  # let the fire-and-forget hook task run
+
+    assert handle.get_transport(TransportType.CLOUD_ALIYUN) is None
+    aliyun.disconnect.assert_not_awaited()
+    hook.assert_awaited_once_with(handle)
+    assert handle.availability.mqtt_reported_offline is False
+    await handle.stop()
+
+
+async def test_device_unbound_retries_over_ble() -> None:
+    """A 29004 (always from Aliyun) detaches Aliyun and the command retries over BLE.
+
+    BLE starts disconnected so Aliyun is chosen first; it comes online for the retry
+    (mirrors the device-offline fallback test).
+    """
+    handle = make_handle()
+    aliyun = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    ble = make_transport(TransportType.BLE, connected=False)  # not connected → Aliyun chosen
+    await handle.add_transport(aliyun)
+    await handle.add_transport(ble)
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED)
+    handle.on_device_unbound = AsyncMock()
+
+    call_count = 0
+
+    async def _side_effect(**kwargs: object) -> None:  # noqa: ARG001
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            ble.is_connected = True  # BLE comes online between Aliyun failure and retry
+            raise DeviceUnboundException(29004, "iot-id")
+        # second call (BLE) succeeds
+
+    handle.broker.send_and_wait = AsyncMock(side_effect=_side_effect)  # type: ignore[method-assign]
+
+    await handle.send_command(b"\x01", "some_field")
+    await _drain_queue(handle)
+
+    assert handle.broker.send_and_wait.call_count == 2
+    assert handle.get_transport(TransportType.CLOUD_ALIYUN) is None
+    await handle.stop()
+
+
+async def test_device_unbound_hook_fires_only_once() -> None:
+    """A second _on_device_unbound (transport already detached) must not re-fire the hook."""
+    handle = make_handle()
+    aliyun = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    await handle.add_transport(aliyun)
+    handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.CONNECTED)
+    hook = AsyncMock()
+    handle.on_device_unbound = hook
+
+    await handle._on_device_unbound(aliyun)  # noqa: SLF001
+    await handle._on_device_unbound(aliyun)  # noqa: SLF001 — already detached
+    await asyncio.sleep(0)
+
+    hook.assert_awaited_once_with(handle)

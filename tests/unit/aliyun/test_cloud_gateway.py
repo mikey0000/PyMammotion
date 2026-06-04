@@ -14,7 +14,7 @@ import orjson
 import pytest
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.aliyun.exceptions import TooManyRequestsException
+from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
 from pymammotion.aliyun.model.regions_response import RegionResponse, RegionResponseData
 from pymammotion.aliyun.model.session_by_authcode_response import (
     SessionByAuthCodeResponse,
@@ -382,3 +382,55 @@ async def test_window_expires_and_request_goes_through() -> None:
         assert msg_id  # a message ID was returned
         assert gw._rate_limited_until == 0.0  # breaker reset
         assert gw._rate_limit_backoff == 60.0
+
+
+# ---------------------------------------------------------------------------
+# Device-unbound (29004) handling in send_cloud_command
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_29004_raises_device_unbound_exception() -> None:
+    """A 29004 ("device is unbind") response raises DeviceUnboundException with the iot_id."""
+    gw = _make_gateway()
+
+    with patch("pymammotion.aliyun.cloud_gateway.Client") as MockClient:
+        mock_client = MockClient.return_value
+        mock_client.async_do_request = AsyncMock(
+            return_value=_make_response(200, b'{"code":29004,"message":"device is unbind"}')
+        )
+
+        with pytest.raises(DeviceUnboundException) as exc_info:
+            await gw.send_cloud_command(_DUMMY_IOT_ID, _DUMMY_COMMAND)
+
+        assert exc_info.value.iot_id == _DUMMY_IOT_ID
+
+
+@pytest.mark.asyncio
+async def test_29004_does_not_arm_rate_limiter() -> None:
+    """29004 raises before the success-path reset and must not arm the rate-limit breaker."""
+    gw = _make_gateway()
+
+    with patch("pymammotion.aliyun.cloud_gateway.Client") as MockClient:
+        mock_client = MockClient.return_value
+        mock_client.async_do_request = AsyncMock(
+            return_value=_make_response(200, b'{"code":29004,"message":"device is unbind"}')
+        )
+
+        with pytest.raises(DeviceUnboundException):
+            await gw.send_cloud_command(_DUMMY_IOT_ID, _DUMMY_COMMAND)
+
+    assert gw._rate_limited_until == 0.0
+
+
+@pytest.mark.asyncio
+async def test_6205_still_raises_device_offline_not_unbound() -> None:
+    """Regression: 6205 stays DeviceOfflineException and is distinct from 29004."""
+    gw = _make_gateway()
+
+    with patch("pymammotion.aliyun.cloud_gateway.Client") as MockClient:
+        mock_client = MockClient.return_value
+        mock_client.async_do_request = AsyncMock(return_value=_make_response(200, b'{"code":6205}'))
+
+        with pytest.raises(DeviceOfflineException):
+            await gw.send_cloud_command(_DUMMY_IOT_ID, _DUMMY_COMMAND)

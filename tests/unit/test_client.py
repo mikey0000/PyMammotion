@@ -1562,3 +1562,77 @@ async def test_has_usable_transport_true_when_offline_with_ble_usable_but_discon
     # Sanity: flipping ble.is_usable=False (cooldown) flips the property too.
     ble.is_usable = False
     assert handle.has_usable_transport is False
+
+
+# ---------------------------------------------------------------------------
+# Device unbound (Aliyun 29004) — migrate to Mammotion MQTT, else remove
+# ---------------------------------------------------------------------------
+
+
+async def test_device_unbound_migrates_to_mammotion() -> None:
+    """When an unbound device now appears on Mammotion MQTT, attach that transport to the
+    SAME handle (no new handle), remap the iot_id, and never disconnect the shared Aliyun.
+    """
+    client = MammotionClient()
+    handle = make_handle("Luba-MIG", "Luba-MIG")
+    handle.iot_id = "iot-old"
+    await client._device_registry.register(handle)
+    client._iot_id_to_device_id["iot-old"] = "Luba-MIG"
+
+    record = _make_device_record(device_name="Luba-MIG", iot_id="iot-new", product_key="pkNEW")
+    http = _make_mock_http(device_records=[record])
+    http.get_user_device_list = AsyncMock(
+        return_value=MagicMock(data=[MagicMock(device_name="Luba-MIG", iot_id="iot-new")])
+    )
+    session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
+    session.mammotion_http = http
+    session.aliyun_transport = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    session.device_ids.add("Luba-MIG")
+    await client._account_registry.register(session)
+
+    mammotion_transport = _make_connected_transport(TransportType.CLOUD_MAMMOTION)
+    mammotion_transport.add_topic = AsyncMock()
+    mammotion_transport.register_device = MagicMock()
+
+    with patch.object(client, "_ensure_mammotion_transport", AsyncMock(return_value=mammotion_transport)):
+        await client._on_device_unbound(handle)
+
+    # Same handle reused; Mammotion attached; iot_id remapped; shared Aliyun untouched.
+    assert client._device_registry.get_by_name("Luba-MIG") is handle
+    assert handle.get_transport(TransportType.CLOUD_MAMMOTION) is mammotion_transport
+    assert handle.iot_id == "iot-new"
+    assert client._iot_id_to_device_id.get("iot-new") == "Luba-MIG"
+    assert "iot-old" not in client._iot_id_to_device_id
+    mammotion_transport.register_device.assert_called_once()
+    session.aliyun_transport.disconnect.assert_not_awaited()
+    await handle.stop()
+
+
+async def test_device_unbound_removed_when_on_no_cloud() -> None:
+    """When the unbound device is on neither cloud, remove it entirely and fire on_device_removed.
+
+    The account-shared Aliyun transport must NOT be disconnected (other devices use it).
+    """
+    client = MammotionClient()
+    handle = make_handle("Luba-GONE", "Luba-GONE")
+    handle.iot_id = "iot-gone"
+    await client._device_registry.register(handle)
+    client._iot_id_to_device_id["iot-gone"] = "Luba-GONE"
+
+    http = _make_mock_http(device_records=[])  # not present on Mammotion either
+    session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
+    session.mammotion_http = http
+    session.aliyun_transport = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    session.device_ids.add("Luba-GONE")
+    await client._account_registry.register(session)
+
+    removed = AsyncMock()
+    client.on_device_removed = removed
+
+    await client._on_device_unbound(handle)
+
+    assert client._device_registry.get_by_name("Luba-GONE") is None
+    assert "iot-gone" not in client._iot_id_to_device_id
+    assert "Luba-GONE" not in session.device_ids
+    removed.assert_awaited_once_with("Luba-GONE", "iot-gone")
+    session.aliyun_transport.disconnect.assert_not_awaited()

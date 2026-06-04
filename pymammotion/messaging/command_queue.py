@@ -10,7 +10,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
+from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
 from pymammotion.transport import TransportError
 from pymammotion.transport.base import (
     AuthError,
@@ -291,7 +291,7 @@ class DeviceCommandQueue:
                 # is automatic: mqtt_reported_offline clears on inbound frames,
                 # BLE rearms via the availability listener.  No retry loop or
                 # caller-side gate needed; just don't pollute the log.
-                if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException)):
+                if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException, DeviceUnboundException)):
                     _logger.debug("DeviceCommandQueue[%s]: %s", self._device_name, exc)
                 elif isinstance(exc, ReLoginRequiredError) or isinstance(
                     exc,

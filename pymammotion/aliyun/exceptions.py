@@ -15,6 +15,19 @@ class DeviceOfflineException(Exception):
         self.iot_id = iot_id
 
 
+class DeviceUnboundException(Exception):
+    """Raise when the cloud reports the device is no longer bound to the account.
+
+    Aliyun returns code 29004 ("device is unbind") when a device has been removed
+    from the account on the Aliyun (pre-2025) platform — usually because it has
+    migrated to the Mammotion direct MQTT (post-2025) platform.
+    """
+
+    def __init__(self, message: object, iot_id: str) -> None:
+        super().__init__(message)
+        self.iot_id = iot_id
+
+
 class FailedRequestException(Exception):
     """Raise exception when request response is bad."""
 

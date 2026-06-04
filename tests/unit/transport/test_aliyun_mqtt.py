@@ -948,3 +948,37 @@ async def test_bind_reply_2043_relogin_success_fires_on_fatal_auth_and_reconnect
     assert transport._stop_event.is_set()
     assert len(fatal_calls) == 1
     assert isinstance(fatal_calls[0], ReLoginRequiredError)
+
+
+@pytest.mark.asyncio
+async def test_send_device_unbound_reraised_without_record_error(config: AliyunMQTTConfig) -> None:
+    """A DeviceUnboundException propagates and must NOT count against transport health.
+
+    A per-device unbind is not a fault of the shared connection, so record_error()
+    must not fire (contrast a generic error below).
+    """
+    from pymammotion.aliyun.exceptions import DeviceUnboundException
+
+    cloud_gateway = MagicMock()
+    cloud_gateway.send_cloud_command = AsyncMock(side_effect=DeviceUnboundException(29004, "abc123"))
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.record_error = MagicMock()
+
+    with pytest.raises(DeviceUnboundException):
+        await transport.send(b"\x01\x02", iot_id="abc123")
+
+    transport.record_error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_generic_error_records_error(config: AliyunMQTTConfig) -> None:
+    """Contrast: a generic send failure DOES count against transport health."""
+    cloud_gateway = MagicMock()
+    cloud_gateway.send_cloud_command = AsyncMock(side_effect=RuntimeError("boom"))
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.record_error = MagicMock()
+
+    with pytest.raises(RuntimeError):
+        await transport.send(b"\x01\x02", iot_id="abc123")
+
+    transport.record_error.assert_called_once()
