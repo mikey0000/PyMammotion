@@ -434,7 +434,7 @@ class BLETransport(Transport):
                     f"BLE send failed for {self._config.device_id!r}: client disconnected during write"
                 )
 
-    async def send(self, payload: bytes, iot_id: str = "") -> None:
+    async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
         """Frame and write payload via the BleMessage codec."""
         _logger.debug("Sending BLE payload: %s, %s iot_id", payload, iot_id)
         self._last_send_monotonic = time.monotonic()
@@ -516,7 +516,7 @@ class BLETransport(Transport):
     # ------------------------------------------------------------------
 
     async def _ble_sync(self) -> None:
-        """Send a one-shot ``todev_ble_sync(2)`` packet.
+        """Send a one-shot sync packet.
 
         Fired on connect (and as a courtesy on clean disconnect).  Periodic
         heartbeats are driven by ``DeviceHandle._keep_alive_loop`` (20 s).

@@ -1581,6 +1581,7 @@ class MammotionClient:
                     )
                     known_ids.add(device.device_name)
 
+        discovery_failed = False
         if check_for_new_devices:
             try:
                 # Refresh the restored Aliyun session before the device-list call: the
@@ -1613,10 +1614,25 @@ class MammotionClient:
                                 )
                                 known_ids.add(device.device_name)
             except Exception:  # noqa: BLE001
-                _logger.warning("restore_credentials: new-device discovery failed (Aliyun)", exc_info=True)
+                discovery_failed = True
+                _logger.warning(
+                    "restore_credentials: new-device discovery failed for account %s (Aliyun)",
+                    account,
+                    exc_info=True,
+                )
 
         if not known_ids:
-            _logger.info("No Aliyun devices found — skipping Aliyun MQTT connection")
+            if discovery_failed:
+                # The device-list call errored (e.g. 401 iotToken rejected) — we
+                # could NOT confirm the device list, so "no devices" is unproven.
+                # Skip the MQTT connection this cycle; the next refresh retries.
+                _logger.warning(
+                    "Aliyun device discovery failed for account %s — device list unconfirmed; "
+                    "skipping Aliyun MQTT connection this cycle (will retry next refresh)",
+                    account,
+                )
+            else:
+                _logger.info("No Aliyun devices found for account %s — skipping Aliyun MQTT connection", account)
             acct_session.aliyun_transport = None
             return
 
@@ -1706,6 +1722,7 @@ class MammotionClient:
             transport = self._setup_mammotion_transport(
                 mqtt_creds, mammotion_http, acct_session, acct_session.token_manager
             )
+            await transport.connect()
             acct_session.mammotion_transport = transport
 
             # Fetch the authoritative iot_id map so stale cached iot_ids are corrected.
@@ -1728,8 +1745,6 @@ class MammotionClient:
                         record, transport, ua, iot_id_override, token_manager=acct_session.token_manager
                     )
                     known_ids.add(record.device_name)
-
-            await transport.connect()
 
         acct_session.device_ids.update(known_ids)
 
@@ -1797,6 +1812,7 @@ class MammotionClient:
             transport = self._setup_mammotion_transport(
                 mammotion_http.mqtt_credentials, mammotion_http, acct_session, acct_session.token_manager
             )
+            await transport.connect()
             acct_session.mammotion_transport = transport
 
         ua = acct_session.user_account
@@ -1812,9 +1828,6 @@ class MammotionClient:
                     token_manager=acct_session.token_manager,  # type: ignore[arg-type]
                 )
                 acct_session.device_ids.add(record.device_name)
-
-        if new_transport:
-            await transport.connect()  # type: ignore[union-attr]
 
     @staticmethod
     async def _connect_iot(cloud_client: CloudIOTGateway) -> None:

@@ -16,6 +16,8 @@ import os
 import time
 from typing import TYPE_CHECKING
 
+from packaging.version import Version
+
 from pymammotion.device.ble_loop import _BLE_MODE_RECHECK_INTERVAL
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.transport.base import Transport, TransportType
@@ -28,15 +30,24 @@ _logger = logging.getLogger(__name__)
 #: Activity-loop backoff when MQTT is rate-limited and no BLE is available.
 _RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
 
+RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
+
 #: MQTT one-shot (count=1) poll cadence per device mode.  Tuned for cloud quotas.
 #: Each entry can be overridden at process startup via an environment variable:
-#:   MAMMOTION_POLL_ACTIVE_SECS, MAMMOTION_POLL_DOCKED_CHARGING_SECS,
-#:   MAMMOTION_POLL_DOCKED_FULL_SECS, MAMMOTION_POLL_IDLE_SECS
+#: MAMMOTION_POLL_ACTIVE_SECS, MAMMOTION_POLL_DOCKED_CHARGING_SECS,
+#: MAMMOTION_POLL_DOCKED_FULL_SECS, MAMMOTION_POLL_IDLE_SECS
 _MQTT_POLL_INTERVAL: dict[_DeviceMode, float] = {
     _DeviceMode.ACTIVE: float(os.environ.get("MAMMOTION_POLL_ACTIVE_SECS", 15 * 60)),
     _DeviceMode.DOCKED_CHARGING: float(os.environ.get("MAMMOTION_POLL_DOCKED_CHARGING_SECS", 30 * 60)),
     _DeviceMode.DOCKED_FULL: float(os.environ.get("MAMMOTION_POLL_DOCKED_FULL_SECS", 60 * 60)),
     _DeviceMode.IDLE: float(os.environ.get("MAMMOTION_POLL_IDLE_SECS", 15 * 60)),
+}
+
+_MQTT_NEW_POLL_INTERVAL: dict[_DeviceMode, float] = {
+    _DeviceMode.ACTIVE: float(os.environ.get("MAMMOTION_POLL_ACTIVE_SECS", 10 * 60)),
+    _DeviceMode.DOCKED_CHARGING: float(os.environ.get("MAMMOTION_POLL_DOCKED_CHARGING_SECS", 5 * 60)),
+    _DeviceMode.DOCKED_FULL: float(os.environ.get("MAMMOTION_POLL_DOCKED_FULL_SECS", 60 * 60)),
+    _DeviceMode.IDLE: float(os.environ.get("MAMMOTION_POLL_IDLE_SECS", 10 * 60)),
 }
 
 
@@ -45,6 +56,12 @@ def poll_interval(handle: DeviceHandle) -> float:
 
     See ``_MQTT_POLL_INTERVAL`` for the per-mode cadence table.
     """
+
+    version = handle.snapshot.raw.update_check.current_version
+
+    if Version(version) >= RATE_LIMIT_REMOVED_VERSION:
+        return _MQTT_NEW_POLL_INTERVAL[handle.device_mode()]
+
     return _MQTT_POLL_INTERVAL[handle.device_mode()]
 
 

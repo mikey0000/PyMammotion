@@ -11,6 +11,7 @@ import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, TooManyRequestsException
+from pymammotion.data.model.device import MowerDevice
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
@@ -341,6 +342,10 @@ class DeviceHandle:
                 # CONNECTED: subscription is live, commands can be dispatched normally.
                 # DISCONNECTED: don't hold commands indefinitely; let NoTransportAvailableError
                 # handle them if no other transport is available.
+                _logger.debug(
+                    "DeviceHandle[%s]: MQTT transport connected — resuming command dispatch",
+                    self.device_name,
+                )
                 self.queue.resume_after_reconnect()
 
         return _handler
@@ -403,7 +408,13 @@ class DeviceHandle:
                 sync = self.commands.send_todev_ble_sync(sync_type=3)
                 await transport.send_heartbeat(sync, iot_id=self.iot_id)
 
-        await transport.send(payload, iot_id=self.iot_id)
+        version = self.snapshot.raw.update_check.current_version
+
+        # TODO do this by device type
+        if version == "1.0.0.0" and hasattr(cast(MowerDevice, self.snapshot.raw), "mower_state"):
+            version = cast(MowerDevice, self.snapshot.raw).mower_state.swversion
+
+        await transport.send(payload, iot_id=self.iot_id, firmware_version=version)
         if not self._stopping:
             await self._sent_bus.emit(payload)
 
@@ -1599,14 +1610,12 @@ class DeviceHandle:
 
     @ble_heartbeat_failures.setter
     def ble_heartbeat_failures(self, value: int) -> None:
-        """Setter so the BLE loop can update the counter without reaching
-        into ``_ble_heartbeat_failures`` directly.
-        """
+        """Setter so the BLE loop can update the counter without reaching into ``_ble_heartbeat_failures`` directly."""
         self._ble_heartbeat_failures = value
 
     @property
     def has_usable_transport(self) -> bool:
-        """Single source of truth: would a send right now find a usable transport?
+        """Single source of truth: would a send right now find a usable transport.
 
         Wraps :meth:`active_transport` in a try/except — True when the selector
         would return a transport, False when it would raise
@@ -1670,7 +1679,6 @@ class DeviceHandle:
             if t is not None:
                 mqtt = t
                 break
-        mqtt_registered = mqtt is not None
         mqtt_usable = mqtt is not None and not mqtt_reported_offline and mqtt.is_usable
 
         def _log_selection(path: str, *args: Any) -> None:

@@ -139,7 +139,7 @@ async def test_happy_path_mqtt_command_round_trip() -> None:
     # Capture the bytes sent so we can verify send() was called
     sent_payloads: list[bytes] = []
 
-    async def fake_send(payload: bytes, iot_id: str = "") -> None:
+    async def fake_send(payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:
         sent_payloads.append(payload)
         # Simulate the device responding after a small delay
         async def _deliver() -> None:
@@ -213,7 +213,7 @@ async def test_ble_preferred_when_connected() -> None:
     broker = handle.broker
     mock_response = _make_mock_response("toapp_gethash_ack")
 
-    async def ble_fake_send(payload: bytes, iot_id: str = "") -> None:  # noqa: ARG001
+    async def ble_fake_send(payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:  # noqa: ARG001
         async def _deliver() -> None:
             await asyncio.sleep(0.05)
             await broker.on_message(mock_response)
@@ -426,7 +426,7 @@ async def test_ble_sync_sent_before_payload_after_5_minute_idle() -> None:
 
     sent: list[bytes] = []
 
-    async def capture_send(payload: bytes, iot_id: str = "") -> None:  # noqa: ARG001
+    async def capture_send(payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:  # noqa: ARG001
         sent.append(payload)
 
     mqtt_transport.send.side_effect = capture_send
@@ -456,7 +456,7 @@ async def test_no_ble_sync_when_recently_active() -> None:
 
     sent: list[bytes] = []
 
-    async def capture_send(payload: bytes, iot_id: str = "") -> None:  # noqa: ARG001
+    async def capture_send(payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:  # noqa: ARG001
         sent.append(payload)
 
     mqtt_transport.send.side_effect = capture_send
@@ -477,7 +477,7 @@ async def test_no_ble_sync_on_first_ever_send() -> None:
 
     sent: list[bytes] = []
 
-    async def capture_send(payload: bytes, iot_id: str = "") -> None:  # noqa: ARG001
+    async def capture_send(payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:  # noqa: ARG001
         sent.append(payload)
 
     mqtt_transport.send.side_effect = capture_send

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import jwt
 
 from pymammotion.aliyun.exceptions import LoginException
-from pymammotion.http.model.http import MQTTConnection, UnauthorizedException
+from pymammotion.http.model.http import MQTTConnection, UnauthorizedExceptionError
 from pymammotion.transport import AuthError
 from pymammotion.transport.base import ReLoginRequiredError, TransportType, is_transient_network_error
 
@@ -508,7 +508,7 @@ class TokenManager:
         async with self._lock:
             try:
                 await self._http.refresh_authorization_token()
-            except UnauthorizedException as exc:
+            except UnauthorizedExceptionError as exc:
                 raise ReLoginRequiredError(self._account_id, str(exc)) from exc
             except Exception as exc:
                 # Network outage / DNS failure isn't an auth problem — let the
@@ -558,7 +558,7 @@ class TokenManager:
             except ReLoginRequiredError:
                 self._invoke_refresh_failed_at = time.monotonic()
                 raise
-            except UnauthorizedException as exc:
+            except UnauthorizedExceptionError as exc:
                 self._invoke_refresh_failed_at = time.monotonic()
                 raise ReLoginRequiredError(self._account_id, str(exc)) from exc
             except Exception as exc:

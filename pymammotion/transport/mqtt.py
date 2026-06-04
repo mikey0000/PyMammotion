@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
+import jwt
+from packaging.version import Version
 
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 from pymammotion.data.mqtt.status import MammotionStatusMessage, ThingStatusMessage
@@ -39,6 +41,43 @@ _logger = logging.getLogger(__name__)
 
 _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 120
+RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
+
+
+def _jwt_claims_summary(token: str | None) -> str:
+    """Return a non-sensitive summary of a broker JWT's claims for diagnostics.
+
+    Decoded WITHOUT signature verification (we only want the claims for logging)
+    and the token itself is never emitted.  Surfaces the fields that explain a
+    broker "Not Authorized": ``clientId``/``username`` (must match the CONNECT),
+    ``location`` (region the JWT is valid for), and ``iat``/``exp`` (expiry).
+    """
+    if not token:
+        return "jwt=none"
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except Exception:  # noqa: BLE001 — diagnostics must never raise
+        return "jwt=undecodable"
+    attrs = claims.get("client_attrs") or {}
+    return (
+        f"jwt[clientId={claims.get('clientId', '?')} username={claims.get('username', '?')} "
+        f"location={claims.get('location', '?')} identityId={attrs.get('identityId', '?')} "
+        f"connectType={attrs.get('connectType', '?')} iat={claims.get('iat', '?')} exp={claims.get('exp', '?')}]"
+    )
+
+
+def _broker_identity_summary(config: MQTTTransportConfig) -> str:
+    """Non-sensitive description of the identity the transport presented to the broker.
+
+    Pairs the CONNECT params (host/client_id/username) with the JWT claims so a
+    rejection is immediately diagnosable: a region mismatch (host vs jwt.location),
+    a CONNECT/JWT identity mismatch (config.client_id vs jwt.clientId), an empty
+    client_id, or an expired token.  The JWT/password itself is never logged.
+    """
+    return (
+        f"host={config.host}:{config.port} client_id={config.client_id or '<empty>'} "
+        f"username={config.username or '<empty>'} {_jwt_claims_summary(config.password)}"
+    )
 
 
 @dataclass(frozen=True)
@@ -264,7 +303,7 @@ class MQTTTransport(Transport):
     async def _invoke(self, payload: bytes, iot_id: str) -> None:
         """Invoke the Mammotion HTTP endpoint (shared by send/send_heartbeat)."""
         from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
-        from pymammotion.http.model.http import UnauthorizedException
+        from pymammotion.http.model.http import UnauthorizedExceptionError
 
         if not iot_id:
             msg = "MQTTTransport.send() requires a non-empty iot_id"
@@ -274,7 +313,7 @@ class MQTTTransport(Transport):
             res = await self._http.mqtt_invoke(content, "", iot_id)
         except ClientConnectorDNSError:
             raise TransportError("MQTTTransport.send: DNS lookup timed out") from None
-        except UnauthorizedException:
+        except UnauthorizedExceptionError:
             _logger.info("MQTTTransport.send: HTTP access token expired — refreshing invoke token (no re-login)")
             if self._token_manager is None:
                 raise TransportError("Token manager not configured for MQTT transport") from None
@@ -287,7 +326,7 @@ class MQTTTransport(Transport):
                 raise NoTransportAvailableError(f"Mammotion MQTT auth unrecoverable: {refresh_exc}") from refresh_exc
             try:
                 res = await self._http.mqtt_invoke(content, "", iot_id)
-            except UnauthorizedException as exc:
+            except UnauthorizedExceptionError as exc:
                 give_up_exc = ReLoginRequiredError(
                     self._token_manager.account_id, f"MQTT invoke still 401 after token refresh: {exc}"
                 )
@@ -310,9 +349,9 @@ class MQTTTransport(Transport):
             msg = f"mqtt_invoke failed: code={res.code} msg={res.msg} iot_id={iot_id}"
             raise TransportError(msg)
 
-    async def send(self, payload: bytes, iot_id: str = "") -> None:
+    async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
         """Send *payload* to the device and count it against the 24-hour quota."""
-        if self.is_rate_limited:
+        if self.is_rate_limited and Version(firmware_version) < RATE_LIMIT_REMOVED_VERSION:
             remaining = self._rate_limited_until - time.monotonic()
             msg = f"MQTTTransport rate-limited for {remaining:.0f}s more"
             raise TransportRateLimitedError(msg)
@@ -391,7 +430,7 @@ class MQTTTransport(Transport):
                     tls_context=self._tls_context,
                     protocol=aiomqtt.ProtocolVersion.V311,
                     clean_session=True,
-                    timeout=30,
+                    timeout=60,
                 ) as client:
                     self._client = client
                     backoff = _MQTT_RECONNECT_MIN_SEC
@@ -414,7 +453,11 @@ class MQTTTransport(Transport):
                 is_auth_failure = rc in (4, 5, 134, 135) or "bad user name" in exc_str or "not authorized" in exc_str
                 if is_auth_failure:
                     if not auth_force_refreshed and self._creds_refresher is not None:
-                        _logger.warning("MQTT broker rejected auth (rc=%s) — forcing full credential refresh", rc)
+                        _logger.warning(
+                            "MQTT broker rejected auth (rc=%s) — forcing full credential refresh [%s]",
+                            rc,
+                            _broker_identity_summary(self._config),
+                        )
                         try:
                             await self._refresh_credentials(force=True)
                         except ReLoginRequiredError as rle:
@@ -437,9 +480,10 @@ class MQTTTransport(Transport):
                         # Already force-refreshed this cycle and the broker still
                         # rejects — the credentials are genuinely bad; give up.
                         _logger.error(
-                            "MQTT auth still rejected after full credential refresh (rc=%s) — giving up on %s",
+                            "MQTT auth still rejected after full credential refresh (rc=%s) — giving up on %s [%s]",
                             rc,
                             self.transport_type.value,
+                            _broker_identity_summary(self._config),
                         )
                         auth_exc = ReLoginRequiredError(
                             self._token_manager.account_id,

@@ -8,7 +8,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
 
 
-class UnauthorizedException(Exception):
+class UnauthorizedExceptionError(Exception):
     """Raised when the Mammotion API returns a 401 Unauthorized response."""
 
 
@@ -123,14 +123,19 @@ class DeviceInfo(DataClassORJSONMixin):
 class DeviceRecord(DataClassORJSONMixin):
     """Single device record returned from the user device page endpoint."""
 
+    """
+    {'identityId': '819056836211638272', 'iotId': 'ZsJiVCEqPo8RliUdK8cF000000', 'productKey': 'ATyVu9QkAdX', 'deviceName': 'Luba-VPNRXLU2', 'owned': 0, 'bindTime': 1780498106000, 'createTime': '2026-06-03T14:48:26'}
+    
+    """
+
     identity_id: Annotated[str, Alias("identityId")]
     iot_id: Annotated[str, Alias("iotId")]
     product_key: Annotated[str, Alias("productKey")]
     device_name: Annotated[str, Alias("deviceName")]
     owned: int
-    status: int
     bind_time: Annotated[int, Alias("bindTime")]
     create_time: Annotated[str, Alias("createTime")]
+    status: int = 0
 
     class Config(BaseConfig):
         allow_deserialization_not_by_alias = True
@@ -226,7 +231,7 @@ class LoginResponseUserInformation(DataClassORJSONMixin):
 
 @dataclass
 class JWTTokenInfo(DataClassORJSONMixin):
-    """specifically for newer devices and mqtt"""
+    """specifically for newer devices and mqtt."""
 
     iot: str  # iot domain e.g api-iot-business-eu-dcdn.mammotion.com
     robot: str  # e.g api-robot-eu.mammotion.com
@@ -285,7 +290,7 @@ class CheckDeviceVersion(DataClassORJSONMixin):
     upgradeable: bool = False
     device_id: Annotated[str, Alias("deviceId")] = ""
     device_name: Annotated[str | None, Alias("deviceName")] = ""
-    current_version: Annotated[str, Alias("currentVersion")] = ""
+    current_version: Annotated[str, Alias("currentVersion")] = "1.0.0.0"
     isupgrading: bool | None = False
     cause_msg: Annotated[str, Alias("causeMsg")] = ""
 
@@ -300,9 +305,5 @@ class CheckDeviceVersion(DataClassORJSONMixin):
             return False
 
         if self.product_version_info_vo and other.product_version_info_vo:
-            if self.product_version_info_vo.release_version != other.product_version_info_vo.release_version:
-                return False
-            return True
-        if self.product_version_info_vo is None and other.product_version_info_vo is None:
-            return False
-        return True
+            return self.product_version_info_vo.release_version == other.product_version_info_vo.release_version
+        return self.product_version_info_vo is None and other.product_version_info_vo is None

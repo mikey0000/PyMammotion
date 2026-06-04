@@ -61,6 +61,18 @@ MOVE_HEADERS = (
 )
 
 
+def _credential_fingerprint(secret: str | None) -> str:
+    """Return a non-sensitive fingerprint of an opaque credential (iotToken/sid).
+
+    Emits ``sha1:<8hex>(len=N)`` so the same token reappearing across log lines is
+    correlatable and a rotation is visible, without logging the secret itself.
+    """
+    if not secret:
+        return "none"
+    digest = hashlib.sha1(secret.encode(), usedforsecurity=False).hexdigest()[:8]
+    return f"sha1:{digest}(len={len(secret)})"
+
+
 class CloudIOTGateway:
     """Class for interacting with Aliyun Cloud IoT Gateway."""
 
@@ -98,9 +110,15 @@ class CloudIOTGateway:
         # expired token.  The second waiter re-checks freshness under the
         # lock and returns early if the first caller already refreshed.
         self._refresh_lock: asyncio.Lock = asyncio.Lock()
-        self._client_id = self.generate_hardware_string(8)  # 8 characters
-        self._device_sn = self.generate_hardware_string(32)  # 32 characters
-        self._utdid = self.generate_hardware_string(32)  # 32 characters
+        # Salt the identity with the account so every account on one host gets a
+        # distinct Aliyun app-device.  Without the salt the value is derived from
+        # the host NIC alone, so all accounts on one machine share the same
+        # productKey+deviceName — and Aliyun's single-connection-per-device rule
+        # makes their MQTT sessions evict each other in an endless reconnect loop.
+        account_seed = self.mammotion_http.account or ""
+        self._client_id = self.generate_hardware_string(8, account_seed)  # 8 characters
+        self._device_sn = self.generate_hardware_string(32, account_seed)  # 32 characters
+        self._utdid = self.generate_hardware_string(32, account_seed)  # 32 characters
         self._connect_response = connect_response
         self._login_by_oauth_response = login_by_oauth_response
         self._aep_response = aep_response
@@ -128,9 +146,16 @@ class CloudIOTGateway:
         return "".join(random.choice(characters) for _ in range(length))
 
     @staticmethod
-    def generate_hardware_string(length: int) -> str:
-        """Generate hardware string that is consistent per device."""
-        hashed_uuid = hashlib.sha1(f"{uuid.getnode()}".encode()).hexdigest()
+    def generate_hardware_string(length: int, seed: str = "") -> str:
+        """Generate a hardware string that is stable per (host, seed) but unique per seed.
+
+        Derived from the host NIC id salted with ``seed`` (the account), so the value
+        is identical every time it is generated for a given account on a given machine,
+        yet differs between accounts.  This keeps each account's Aliyun app-device
+        identity unique; sharing one identity across accounts triggers Aliyun's
+        single-connection-per-device eviction and an endless reconnect loop.
+        """
+        hashed_uuid = hashlib.sha1(f"{uuid.getnode()}{seed}".encode()).hexdigest()
         return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
 
     @staticmethod
@@ -673,7 +698,16 @@ class CloudIOTGateway:
         except (AttributeError, TypeError):
             raise CloudSetupError(f"Error listing devices by account: {response_body_dict}") from None
         if int(code) != 200:
-            raise CloudSetupError(f"Error listing devices by account (code={code}): {msg}")
+            account = getattr(self.mammotion_http, "account", "?")
+            session = self._session_by_authcode_response
+            iot_token = session.data.iotToken if session is not None and session.data is not None else None
+            issued_at = self._iot_token_issued_at
+            age = int(time.time()) - issued_at if issued_at else None
+            raise CloudSetupError(
+                f"Error listing devices by account (code={code}): {msg} "
+                f"[account={account} iotToken={_credential_fingerprint(iot_token)} "
+                f"issued_at={issued_at} age={age}s]"
+            )
 
         self._devices_by_account_response = ListingDevAccountResponse.from_dict(response_body_dict)
         return self._devices_by_account_response

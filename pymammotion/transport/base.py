@@ -107,9 +107,7 @@ def is_transient_network_error(exc: BaseException) -> bool:
     if name in {"ClientConnectorError", "ClientConnectorDNSError", "ClientConnectorCertificateError"}:
         return True
     cause = exc.__cause__
-    if cause is not None and isinstance(cause, (socket.gaierror, OSError, ConnectionError, TimeoutError)):
-        return True
-    return False
+    return cause is not None and isinstance(cause, (socket.gaierror, OSError, ConnectionError, TimeoutError))
 
 
 class NoBLEAddressKnownError(TransportError):
@@ -452,7 +450,7 @@ class Transport(ABC):
         """Gracefully close the connection."""
 
     @abstractmethod
-    async def send(self, payload: bytes, iot_id: str = "") -> None:
+    async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
         """Send a raw payload. Raises TransportError if not connected."""
 
     async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 import csv
 from functools import wraps
@@ -12,7 +11,7 @@ import json
 import logging
 import random
 import time
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 import jwt
@@ -38,11 +37,14 @@ from pymammotion.http.model.http import (
     MQTTConnection,
     Response,
     ShareRecords,
-    UnauthorizedException,
+    UnauthorizedExceptionError,
 )
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
 from pymammotion.transport.base import AuthError
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
 T = TypeVar("T")
 
@@ -137,9 +139,7 @@ def create_oauth_signature(
         hashed_secret = ""
 
     # Sign with HMAC-SHA256
-    signature = sign_with_hmac_sha256(str_to_sign, hashed_secret)
-
-    return signature
+    return sign_with_hmac_sha256(str_to_sign, hashed_secret)
 
 
 class MammotionHTTP:
@@ -717,7 +717,7 @@ class MammotionHTTP:
                 iot_id,
                 _token_fingerprint(self._login_info.access_token if self._login_info else None),
             )
-            raise UnauthorizedException("Access Token expired")
+            raise UnauthorizedExceptionError("Access Token expired")
         if resp.status != 200:
             return Response.from_dict({"code": resp.status, "msg": "invoke mqtt failed"})
         if resp_dict.get("code") != 0:
