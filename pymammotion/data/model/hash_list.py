@@ -1125,7 +1125,10 @@ class HashList(DataClassORJSONMixin):
         """
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
-        if round(rtk.latitude, 0) == 0 or now_index < 0 or not self.current_mow_path:
+        # "Unset" RTK is the exact-0.0 default (radians).  Compare to 0.0, NOT round(lat, 0):
+        # rounding to 0 decimals collapses everything within ~0.5 rad (~28°) of the equator to
+        # 0 and would skip real fixes.
+        if rtk.latitude == 0.0 or now_index < 0 or not self.current_mow_path:
             return
 
         raw_x = path_pos_x / 10000.0
@@ -1150,7 +1153,7 @@ class HashList(DataClassORJSONMixin):
         """
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
-        if round(rtk.latitude, 0) == 0 or len(self.dynamics_line) < 2:
+        if rtk.latitude == 0.0 or len(self.dynamics_line) < 2:
             return
 
         conv = CoordinateConverter(rtk.latitude, rtk.longitude)

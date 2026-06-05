@@ -180,8 +180,8 @@ class MowerDevice(Device):
         if (
             (rtk := toapp_report_data.rtk)
             and (mqtt_rtk := rtk.mqtt_rtk_info)
-            and round(self.location.RTK.latitude, 0) == 0
-            and round(self.location.RTK.longitude, 0) == 0
+            and self.location.RTK.latitude == 0.0
+            and self.location.RTK.longitude == 0.0
         ):
             if mqtt_rtk.latitude != 0.0:
                 self.location.RTK.longitude = math.radians(mqtt_rtk.longitude)
