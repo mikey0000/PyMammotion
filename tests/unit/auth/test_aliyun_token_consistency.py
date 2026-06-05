@@ -354,10 +354,11 @@ async def test_session_expired_relogin_uses_new_gateway_token() -> None:
         side_effect=SessionExpiredError(TransportType.CLOUD_ALIYUN, "2401 refreshToken invalid")
     )
 
-    async def _relogin(cloud_client: CloudIOTGateway) -> None:
-        # Full IoT re-login establishes a brand-new session on the gateway.
-        cloud_client._session_by_authcode_response = _session("post-relogin-token")  # noqa: SLF001
-        cloud_client._iot_token_issued_at = int(time.time())  # noqa: SLF001
+    async def _relogin() -> None:
+        # connect_iot() is now a no-arg instance method — establish a brand-new session
+        # on the gateway (mirrors session_by_auth_code re-running off a fresh login).
+        gw._session_by_authcode_response = _session("post-relogin-token")  # noqa: SLF001
+        gw._iot_token_issued_at = int(time.time())  # noqa: SLF001
 
     with patch.object(TokenManager, "connect_iot", AsyncMock(side_effect=_relogin)):
         await tm.refresh_aliyun_credentials()
@@ -375,8 +376,8 @@ async def test_session_expired_beyond_limit_raises_relogin_required() -> None:
         side_effect=SessionExpiredError(TransportType.CLOUD_ALIYUN, "2401")
     )
 
-    # connect_iot also fails to recover (keeps raising) so failures accumulate to the limit.
-    async def _relogin_fail(_cloud_client: CloudIOTGateway) -> None:
+    # connect_iot (no-arg instance method) also fails to recover, so failures accumulate.
+    async def _relogin_fail() -> None:
         raise SessionExpiredError(TransportType.CLOUD_ALIYUN, "2401 again")
 
     with patch.object(TokenManager, "connect_iot", AsyncMock(side_effect=_relogin_fail)):

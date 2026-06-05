@@ -36,6 +36,8 @@ def _make_session() -> AccountSession:
     tm = MagicMock()
     tm.account_id = "acc"
     tm.force_refresh = AsyncMock()
+    tm.refresh_aliyun_credentials = AsyncMock()  # Aliyun targeted refresh
+    tm.connect_iot = AsyncMock()  # Aliyun-triggered re-login re-establishes via the full IoT flow
     _creds = MQTTCredentials(
         host="tcp://mqtt.example:1883", client_id="cid", username="u", jwt="fresh-jwt", expires_at=0.0
     )

@@ -232,12 +232,12 @@ async def test_active_transport_falls_back_to_mqtt_when_ble_disconnected() -> No
     assert active.transport_type == TransportType.CLOUD_ALIYUN
 
 
-async def test_active_transport_returns_ble_even_when_disconnected() -> None:
-    """When prefer_ble=True and BLE is registered (even disconnected), active_transport() returns BLE.
+async def test_active_transport_prefers_working_mqtt_over_disconnected_ble() -> None:
+    """With prefer_ble=True but BLE merely usable-and-disconnected, a connected MQTT wins.
 
-    ble_ok = ble is not None — registration alone makes BLE eligible.
-    send_raw() is responsible for calling ble.connect() before the send; active_transport()
-    does not gate on is_connected so that send_raw can always route through BLE when preferred.
+    BLE connection is now a background task: active_transport() only returns BLE when it is
+    *actively connected*.  A disconnected-but-usable BLE no longer pre-empts a working MQTT —
+    the send goes over the working connection while BLE reconnects in the background.
     """
     from pymammotion.device.handle import DeviceHandle
 
@@ -254,7 +254,7 @@ async def test_active_transport_returns_ble_even_when_disconnected() -> None:
     await handle.add_transport(ble_transport)
 
     active = handle.active_transport()
-    assert active.transport_type == TransportType.BLE
+    assert active.transport_type == TransportType.CLOUD_ALIYUN
 
 
 async def test_active_transport_raises_when_none_registered() -> None:
@@ -1073,15 +1073,15 @@ def test_identical_selections_emit_one_log_line(dedup_handle: DeviceHandle, capl
 
     caplog.set_level(logging.DEBUG, logger="pymammotion.device.handle")
 
-    # Call active_transport 50 times with BLE preferred but unusable.
+    # Call active_transport 50 times with BLE preferred but unusable (→ MQTT selected).
     for _ in range(50):
         dedup_handle.active_transport(prefer_ble=True)
 
-    fallback_lines = [
-        r for r in caplog.records if "BLE preferred but not usable — falling back" in r.getMessage()
+    selection_lines = [
+        r for r in caplog.records if "selected" in r.getMessage() and "active_transport" in r.getMessage()
     ]
-    assert len(fallback_lines) == 1, (
-        f"Expected 1 fallback log line, got {len(fallback_lines)}.  "
+    assert len(selection_lines) == 1, (
+        f"Expected 1 selection log line, got {len(selection_lines)}.  "
         f"The de-dupe in active_transport regressed."
     )
 
@@ -1222,12 +1222,15 @@ async def test_ble_only_returns_ble_even_when_disconnected() -> None:
     assert handle.active_transport() is ble
 
 
-async def test_ble_only_reconnects_before_send() -> None:
-    """send_raw() must call ble.connect() when BLE is the only transport and it's disconnected."""
+async def test_ble_only_sends_and_reconnects_in_background() -> None:
+    """BLE-only + disconnected: the send goes over BLE now, and a reconnect runs in the background.
+
+    Connecting is no longer awaited inline before the send; it is scheduled as a background
+    task so a slow/failing BLE connect can't block the command path.
+    """
     handle = _make_handle(prefer_ble=True)
     ble = _make_transport(TransportType.BLE, connected=False)
 
-    # After connect() is called, simulate the transport becoming connected.
     async def _do_connect() -> None:
         ble.is_connected = True
 
@@ -1235,9 +1238,10 @@ async def test_ble_only_reconnects_before_send() -> None:
     await handle.add_transport(ble)
 
     await handle.send_raw(b"\x00\x01", prefer_ble=True)
+    await asyncio.sleep(0)  # let the background connect task run
 
-    ble.connect.assert_awaited_once()
     ble.send.assert_awaited_once_with(b"\x00\x01", iot_id="", firmware_version=ANY)
+    ble.connect.assert_awaited_once()  # reconnect attempted in the background
 
 
 # ---------------------------------------------------------------------------
@@ -1301,11 +1305,11 @@ async def test_hybrid_prefer_ble_chooses_ble() -> None:
     assert handle.active_transport() is ble
 
 
-async def test_hybrid_ble_disconnected_still_selected_when_preferred() -> None:
-    """When prefer_ble=True and BLE is registered (disconnected), active_transport() returns BLE.
+async def test_hybrid_disconnected_ble_yields_to_connected_mqtt() -> None:
+    """When prefer_ble=True but BLE is disconnected and MQTT is connected, MQTT is selected.
 
-    ble_ok = ble is not None — registration alone makes BLE eligible even when disconnected.
-    send_raw() is responsible for reconnecting before the payload is sent.
+    A disconnected-but-usable BLE no longer pre-empts a working MQTT; BLE reconnects in the
+    background and only wins once it is actively connected.
     """
     handle = _make_handle(prefer_ble=True)
     mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
@@ -1314,11 +1318,11 @@ async def test_hybrid_ble_disconnected_still_selected_when_preferred() -> None:
     await handle.add_transport(ble)
 
     active = handle.active_transport()
-    assert active is ble
+    assert active is mqtt
 
 
-async def test_hybrid_ble_disconnected_reconnects_when_no_mqtt() -> None:
-    """With prefer_ble=True and MQTT absent, send_raw() reconnects BLE before sending."""
+async def test_hybrid_ble_disconnected_reconnects_in_background_when_no_mqtt() -> None:
+    """With prefer_ble=True and MQTT absent, send_raw() sends over BLE and reconnects in background."""
     handle = _make_handle(prefer_ble=True)
     ble = _make_transport(TransportType.BLE, connected=False)
 
@@ -1329,9 +1333,10 @@ async def test_hybrid_ble_disconnected_reconnects_when_no_mqtt() -> None:
     await handle.add_transport(ble)
 
     await handle.send_raw(b"\xDE\xAD", prefer_ble=True)
+    await asyncio.sleep(0)  # let the background connect task run
 
-    ble.connect.assert_awaited_once()
     ble.send.assert_awaited_once_with(b"\xDE\xAD", iot_id="", firmware_version=ANY)
+    ble.connect.assert_awaited_once()  # reconnect attempted in the background
 
 
 async def test_hybrid_per_call_prefer_ble_override() -> None:

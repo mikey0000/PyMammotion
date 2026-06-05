@@ -576,10 +576,11 @@ async def test_send_command_with_args_uses_mqtt_when_ble_disconnected() -> None:
     ble.send.assert_not_awaited()
 
 
-async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback() -> None:
-    """When prefer_ble=True and BLE is disconnected, send_raw attempts reconnect first.
+async def test_send_command_with_args_prefer_ble_sends_over_mqtt_and_warms_ble() -> None:
+    """When prefer_ble=True and BLE is disconnected, the command goes over the working MQTT now.
 
-    If reconnect succeeds the command goes over BLE, not MQTT.
+    BLE connection is a background task: the command is not blocked on it.  The command uses
+    the connected MQTT immediately while BLE reconnects in the background for later sends.
     """
     client = MammotionClient()
 
@@ -602,12 +603,14 @@ async def test_send_command_with_args_prefer_ble_reconnects_before_mqtt_fallback
         await client._device_registry.register(handle)
         await client.send_command_with_args("Luba-RC", "get_report_cfg", prefer_ble=True)
         await _drain(handle)
+        await asyncio.sleep(0)  # let the background BLE connect run
     finally:
         patcher.stop()
 
+    # Command went over the working MQTT; BLE reconnect happened in the background.
+    mqtt.send.assert_awaited_once_with(fake_bytes, iot_id="", firmware_version=ANY)
+    ble.send.assert_not_awaited()
     ble.connect.assert_awaited_once()
-    ble.send.assert_awaited_once_with(fake_bytes, iot_id="", firmware_version=ANY)
-    mqtt.send.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -765,11 +768,11 @@ async def test_send_command_with_args_record_cmd_false_does_not_stamp() -> None:
     assert handle._last_user_command_monotonic == sentinel  # noqa: SLF001
 
 
-async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> None:
-    """When prefer_ble=True and BLE is registered (disconnected), send_raw reconnects and sends via BLE.
+async def test_send_command_with_args_prefer_ble_uses_mqtt_while_ble_connect_pending() -> None:
+    """prefer_ble=True with a BLE that stays disconnected: the command uses MQTT (the working link).
 
-    ble_ok = ble is not None — BLE is selected by active_transport() regardless of connection
-    state.  send_raw() calls ble.connect() first, then routes the payload through BLE.
+    The background BLE connect is attempted but does not complete here (mock stays disconnected),
+    so active_transport keeps choosing MQTT.  The command is never blocked or dropped.
     """
     client = MammotionClient()
 
@@ -788,12 +791,13 @@ async def test_send_command_with_args_prefer_ble_uses_ble_after_connect() -> Non
         await client._device_registry.register(handle)
         await client.send_command_with_args("Luba-FB", "get_report_cfg", prefer_ble=True)
         await _drain(handle)
+        await asyncio.sleep(0)  # let the background BLE connect run
     finally:
         patcher.stop()
 
-    ble.connect.assert_awaited_once()
-    ble.send.assert_awaited_once_with(fake_bytes, iot_id="", firmware_version=ANY)
-    mqtt.send.assert_not_awaited()
+    mqtt.send.assert_awaited_once_with(fake_bytes, iot_id="", firmware_version=ANY)
+    ble.send.assert_not_awaited()
+    ble.connect.assert_awaited_once()  # background warm-up attempted
 
 
 # ---------------------------------------------------------------------------
@@ -1058,11 +1062,11 @@ async def test_send_raw_sets_rate_limited_on_too_many_requests() -> None:
 
 
 async def test_send_raw_ble_connect_failure_falls_back_to_mqtt() -> None:
-    """When BLE.connect() raises BLEUnavailableError but MQTT is registered,
-    send_raw must route the payload through MQTT instead of dropping it.
+    """A failing background BLE connect must not drop the command: it goes over MQTT.
 
-    Reproduces the production symptom (HA log 2026-05-02): ESPHome BLE proxy
-    out of connection slots → ``BLEUnavailableError`` → request silently lost.
+    Reproduces the production symptom (HA log 2026-05-02): ESPHome BLE proxy out of
+    connection slots → ``BLEUnavailableError``.  The connect now runs in the background
+    (its error is swallowed by attempt_ble_connection), and the command uses MQTT.
     """
     from pymammotion.transport.base import BLEUnavailableError
 
@@ -1079,37 +1083,45 @@ async def test_send_raw_ble_connect_failure_falls_back_to_mqtt() -> None:
     handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
 
     await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
+    await asyncio.sleep(0)  # let the background BLE connect run (and fail, swallowed)
 
-    # Must have attempted BLE reconnect (and failed), then sent via MQTT.
-    ble.connect.assert_awaited_once()
+    # Command sent via MQTT (the working link); BLE reconnect attempted in background.
     mqtt.send.assert_awaited_once_with(b"\xAB\xCD", iot_id="", firmware_version=ANY)
     ble.send.assert_not_awaited()
+    ble.connect.assert_awaited_once()
 
 
-async def test_send_raw_ble_connect_failure_no_mqtt_propagates() -> None:
-    """When BLE.connect() fails AND no MQTT is registered, send_raw must raise."""
+async def test_send_raw_no_usable_transport_propagates() -> None:
+    """BLE unusable (cooldown) and no MQTT → send_raw raises NoTransportAvailableError.
+
+    With background connect, a failed connect no longer surfaces as BLEUnavailableError; the
+    loud failure now comes from active_transport when nothing is usable to carry the command.
+    """
     import pytest
 
-    from pymammotion.transport.base import BLEUnavailableError
+    from pymammotion.transport.base import NoTransportAvailableError
 
     handle = make_handle("dev1", "Luba-NoMQTT")
     handle._prefer_ble = True  # noqa: SLF001
 
     ble = _make_connected_transport(TransportType.BLE)
     ble.is_connected = False
-    ble.connect = AsyncMock(side_effect=BLEUnavailableError("proxy out of slots"))
+    ble.is_usable = False  # cooldown / no cached BLEDevice → not eligible to carry a send
+    ble.connect = AsyncMock()
     handle._transports[TransportType.BLE] = ble  # noqa: SLF001
 
-    with pytest.raises(BLEUnavailableError):
+    with pytest.raises(NoTransportAvailableError):
         await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
 
+    ble.connect.assert_not_awaited()  # unusable BLE: no background connect attempted
 
-async def test_send_raw_ble_connect_failure_mqtt_offline_propagates() -> None:
-    """When BLE.connect() fails AND MQTT is reported offline, send_raw must raise."""
+
+async def test_send_raw_no_usable_transport_mqtt_offline_propagates() -> None:
+    """BLE unusable (cooldown) AND MQTT reported offline → send_raw raises NoTransportAvailableError."""
     import pytest
 
     from pymammotion.state.device_state import DeviceAvailability
-    from pymammotion.transport.base import BLEUnavailableError
+    from pymammotion.transport.base import NoTransportAvailableError
 
     handle = make_handle("dev1", "Luba-MQTTOff")
     handle._prefer_ble = True  # noqa: SLF001
@@ -1122,13 +1134,14 @@ async def test_send_raw_ble_connect_failure_mqtt_offline_propagates() -> None:
 
     ble = _make_connected_transport(TransportType.BLE)
     ble.is_connected = False
-    ble.connect = AsyncMock(side_effect=BLEUnavailableError("proxy out of slots"))
+    ble.is_usable = False  # cooldown → not eligible to carry a send
+    ble.connect = AsyncMock()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
 
     handle._transports[TransportType.BLE] = ble  # noqa: SLF001
     handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
 
-    with pytest.raises(BLEUnavailableError):
+    with pytest.raises(NoTransportAvailableError):
         await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
     mqtt.send.assert_not_awaited()
 

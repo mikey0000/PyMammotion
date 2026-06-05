@@ -43,6 +43,7 @@ from pymammotion.transport.base import (
     TransportRateLimitedError,
     TransportType,
 )
+from pymammotion.transport.ble import BLETransport
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
 from pymammotion.utility.device_type import DeviceType
 
@@ -243,6 +244,13 @@ class DeviceHandle:
         #: where DeviceType.is_support_dynamics_line() is true.  Mirrors APK
         #: HashDataManager.handlerType_getDynamicsLine.
         self._dynamics_line_task: asyncio.Task[None] | None = None
+        #: Background BLE-connect task and its single-flight lock.  ``send_raw`` / ``_do_send``
+        #: kick a background reconnect when BLE is preferred-but-disconnected; the lock keeps
+        #: only one connect running at a time (bursts of sends must not spawn concurrent
+        #: ``ble.connect()`` calls that churn proxy slots) and the stored task lets ``stop()``
+        #: cancel it and prevents the detached task from being garbage-collected mid-connect.
+        self._ble_connect_task: asyncio.Task[None] | None = None
+        self._ble_connect_lock: asyncio.Lock = asyncio.Lock()
         #: True while the BLE continuous (count=0) report stream is active.  The MQTT
         #: activity loop checks this and skips its own poll while the stream is feeding.
         self._ble_stream_active: bool = False
@@ -669,7 +677,7 @@ class DeviceHandle:
                 ble = self._transports.get(TransportType.BLE)
                 if ble is not None and not ble.is_connected and ble.is_usable:
                     _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
-                    await ble.connect()
+                    self.schedule_ble_connection(cast(BLETransport, ble))
             try:
                 transport = self.active_transport()
             except NoTransportAvailableError:
@@ -1049,6 +1057,7 @@ class DeviceHandle:
             self._ble_keep_alive_task,
             self._ble_polling_task,
             self._dynamics_line_task,
+            self._ble_connect_task,
         ):
             if task is not None and not task.done():
                 task.cancel()
@@ -1058,6 +1067,7 @@ class DeviceHandle:
         self._ble_keep_alive_task = None
         self._ble_polling_task = None
         self._dynamics_line_task = None
+        self._ble_connect_task = None
         self._ble_stream_active = False
         await self.queue.stop()
         await self.broker.close()
@@ -1507,6 +1517,46 @@ class DeviceHandle:
                 return False
             await asyncio.sleep(min(poll_interval, remaining))
 
+    def schedule_ble_connection(self, ble: BLETransport) -> None:
+        """Kick a background BLE connect, single-flight.
+
+        No-op if a connect attempt is already in flight — the stored task is the
+        single-flight guard so a burst of sends (or the poll loop) can't spawn
+        concurrent ``ble.connect()`` calls.  The task reference is retained so it is
+        not garbage-collected mid-connect and can be cancelled by :meth:`stop`.
+        """
+        if self._ble_connect_task is not None and not self._ble_connect_task.done():
+            return
+        self._ble_connect_task = asyncio.get_running_loop().create_task(self.attempt_ble_connection(ble))
+
+    async def attempt_ble_connection(self, ble: BLETransport) -> None:
+        """Connect *ble*, serialised by ``_ble_connect_lock`` so it never runs concurrently.
+
+        Errors are swallowed (logged) because this runs as a detached background task:
+        an unretrieved exception would otherwise surface as a noisy
+        "Task exception was never retrieved" warning.
+        """
+        async with self._ble_connect_lock:
+            if ble.is_connected:
+                return
+            try:
+                await ble.connect()
+            except BLEUnavailableError as exc:
+                # Expected/transient: proxy out of slots, device out of range, cooldown.
+                _logger.debug(
+                    "BLE unavailable, connection failed for '%s' (%s)",
+                    self.device_name,
+                    exc,
+                )
+            except Exception:  # noqa: BLE001 — detached task must swallow everything
+                # Any other failure (BleakError, TransportError, timeout, ...) must not
+                # escape the detached task; log it so it's visible without crashing the loop.
+                _logger.warning(
+                    "BLE background connection failed unexpectedly for '%s'",
+                    self.device_name,
+                    exc_info=True,
+                )
+
     async def send_raw(self, payload: bytes, *, prefer_ble: bool | None = None) -> None:
         """Send raw bytes via the best available transport, with BLE fallback on offline."""
         _logger.debug(
@@ -1534,22 +1584,7 @@ class DeviceHandle:
                     _ble_fallback = True
                 else:
                     _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
-                    try:
-                        await ble.connect()
-                    except BLEUnavailableError as exc:
-                        # ESPHome proxy out of connection slots, BLE adapter unavailable, etc.
-                        # If MQTT is registered and usable, route this send through it instead
-                        # of dropping the request entirely.
-                        if self._has_usable_mqtt():
-                            _logger.warning(
-                                "BLE unavailable for '%s' (%s) — falling back to MQTT for this send",
-                                self.device_name,
-                                exc,
-                            )
-                            prefer_ble = False  # force active_transport() to pick MQTT below
-                            _ble_fallback = True
-                        else:
-                            raise
+                    self.schedule_ble_connection(cast(BLETransport, ble))
         try:
             transport = self.active_transport(prefer_ble=prefer_ble)
         except NoTransportAvailableError:
@@ -1664,7 +1699,9 @@ class DeviceHandle:
 
     @ble_stream_active.setter
     def ble_stream_active(self, value: bool) -> None:
-        """Set by the BLE polling loop (and by ``_enqueue_ble_stream_command``
+        """Set by the BLE polling loop
+
+        (and by ``_enqueue_ble_stream_command``
         on a verified RPT_START) to reflect whether a continuous stream is
         currently being renewed.  Exposed as a setter so loops don't need to
         reach into ``_ble_stream_active`` directly.
@@ -1708,32 +1745,30 @@ class DeviceHandle:
         return True
 
     def active_transport(self, *, prefer_ble: bool | None = None) -> Transport:
-        """Return the best transport to send on.
+        """Return the best transport to send on *right now*.
 
-        Selection order:
-          1. **BLE if it's actively connected** — always preferred because it's
-             lower latency and bypasses the cloud throttle (unconditional,
-             regardless of ``prefer_ble``).  Connected implies usable.
-          2. If ``prefer_ble`` is True (via argument or ``self._prefer_ble``):
-             usable BLE (caller is expected to reconnect), falling back to MQTT
-             when MQTT is usable.
-          3. Otherwise: MQTT if usable, falling back to usable BLE.
+        Selection order (``prefer_ble`` does NOT change it — see below):
+          1. **BLE if it's actively connected** — lower latency, bypasses the cloud
+             throttle.  Connected implies usable.
+          2. **MQTT if usable** — chosen over a merely-usable-but-disconnected BLE so a
+             send is never blocked waiting for BLE to connect.
+          3. **Usable BLE** — only when no usable MQTT exists (e.g. BLE-only device).
 
-        BLE is considered usable when it has a cached ``BLEDevice`` and isn't
-        in a connect-failure cooldown (see :attr:`BLETransport.is_usable`).
-        Returning a non-usable BLE transport would cause callers to attempt a
-        connect we already know will fail.
+        Because BLE connection is now a *background* task (see
+        :meth:`schedule_ble_connection`), a disconnected BLE never pre-empts a working
+        MQTT: the command goes over MQTT immediately while BLE reconnects in the
+        background and wins on the next send once it is actively connected.
 
-        MQTT is considered unusable when the cloud has reported the device as
-        offline (``mqtt_reported_offline`` is True).  In that state we raise
-        ``NoTransportAvailableError`` rather than firing commands into the
-        cloud that the device can't receive.  The flag is automatically
-        cleared by ``on_raw_message`` as soon as any MQTT frame arrives.
+        BLE is considered usable when it has a cached ``BLEDevice`` and isn't in a
+        connect-failure cooldown (see :attr:`BLETransport.is_usable`).  MQTT is unusable
+        when the cloud has reported the device offline (``mqtt_reported_offline`` is True,
+        auto-cleared by ``on_raw_message`` on the next inbound frame).
 
         Args:
-            prefer_ble: Per-call override.  When None (default) the handle's
-                        ``_prefer_ble`` attribute is used.  Pass True to force
-                        BLE for a single call without mutating the handle state.
+            prefer_ble: Accepted for call-site compatibility and to bias the
+                        selection-change log de-dup key, but it no longer affects which
+                        transport is returned (a connected BLE always wins; otherwise a
+                        usable MQTT wins).  When None the handle's ``_prefer_ble`` is used.
 
         Raises:
             NoTransportAvailableError: if nothing usable is registered.
@@ -1771,25 +1806,12 @@ class DeviceHandle:
             _log_selection("active_transport '%s': selected BLE (actively connected)")
             return ble
 
-        if use_ble_first:
-            if ble_usable and ble is not None:
-                _log_selection(
-                    "active_transport '%s': BLE preferred and usable — returning BLE for caller to (re)connect"
-                )
-                return ble
-            if mqtt_usable and mqtt is not None:
-                _log_selection(
-                    "active_transport '%s': BLE preferred but not usable — falling back to %s",
-                    mqtt.transport_type,
-                )
-                return mqtt
-        else:
-            if mqtt_usable and mqtt is not None:
-                _log_selection("active_transport '%s': selected %s", mqtt.transport_type)
-                return mqtt
-            if ble_usable and ble is not None:
-                _log_selection("active_transport '%s': MQTT unusable — falling back to BLE")
-                return ble
+        if mqtt_usable and mqtt is not None:
+            _log_selection("active_transport '%s': selected %s", mqtt.transport_type)
+            return mqtt
+        if ble_usable and ble is not None:
+            _log_selection("active_transport '%s': MQTT unusable — falling back to BLE")
+            return ble
 
         transport_states = (
             ", ".join(f"{tt.value}={t.availability.value}" for tt, t in self._transports.items()) or "none registered"

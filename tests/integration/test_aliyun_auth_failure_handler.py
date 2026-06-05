@@ -17,7 +17,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pymammotion.transport.base import ReLoginRequiredError
+from pymammotion.account.registry import AccountSession
+from pymammotion.client import MammotionClient
+from pymammotion.transport.base import ReLoginRequiredError, TransportType
 
 
 def _build_handler(
@@ -133,3 +135,64 @@ async def test_iot_token_pushed_to_transport_on_success() -> None:
     await handler()
 
     transport.update_iot_token.assert_called_once_with("brand_new_token")
+
+
+# ---------------------------------------------------------------------------
+# _full_relogin: an Aliyun-triggered re-login must refresh ONLY Aliyun
+#
+# Regression: the escalation called force_refresh(None), which runs refresh_http
+# (→ refresh_token_v2) and rotates the Mammotion-direct MQTT JWT.  Neither belongs
+# to the Aliyun auth chain — the user saw "refreshing the mqtt auth token instead
+# of the aliyun token" and refresh_token_v2 being called during an Aliyun re-login.
+# ---------------------------------------------------------------------------
+
+
+def _relogin_session() -> tuple[MammotionClient, AccountSession, MagicMock, MagicMock]:
+    """Build a client + AccountSession wired with spied http and token_manager."""
+    client = MammotionClient()
+
+    http = MagicMock()
+    http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
+    http.logout = AsyncMock()
+    # These back refresh_token_v2 — they must NOT be reached on the Aliyun path.
+    http.refresh_login = AsyncMock()
+    http.refresh_token_v2 = AsyncMock()
+
+    tm = MagicMock()
+    tm.refresh_aliyun_credentials = AsyncMock()
+    tm.connect_iot = AsyncMock()  # full Aliyun IoT re-establish used by an Aliyun-triggered re-login
+    tm.force_refresh = AsyncMock()
+    tm.refresh_http = AsyncMock()  # calls refresh_login/refresh_token_v2 in the real TM
+
+    session = AccountSession(account_id="a@b.com", email="a@b.com", password="pw")
+    session.mammotion_http = http
+    session.token_manager = tm
+    return client, session, http, tm
+
+
+async def test_full_relogin_aliyun_refreshes_only_aliyun_not_token_v2() -> None:
+    """transport_type=CLOUD_ALIYUN → refresh_aliyun_credentials only; no refresh_token_v2, no MQTT JWT."""
+    client, session, http, tm = _relogin_session()
+
+    await client._full_relogin(session, transport_type=TransportType.CLOUD_ALIYUN)
+
+    # A fresh login happened, then ONLY the Aliyun session was re-established via the full
+    # IoT flow (connect_iot: session_by_auth_code etc.).
+    http.login_v2.assert_awaited_once()
+    tm.connect_iot.assert_awaited_once()
+    # The Mammotion/HTTP token chain (refresh_token_v2) and the MQTT JWT must be untouched.
+    tm.force_refresh.assert_not_awaited()
+    tm.refresh_http.assert_not_awaited()
+    http.refresh_login.assert_not_awaited()
+    http.refresh_token_v2.assert_not_awaited()
+
+
+async def test_full_relogin_generic_refreshes_all_credentials() -> None:
+    """transport_type=None (send-retry path) → full rotation via force_refresh(None)."""
+    client, session, http, tm = _relogin_session()
+
+    await client._full_relogin(session, transport_type=None)
+
+    http.login_v2.assert_awaited_once()
+    tm.force_refresh.assert_awaited_once_with(transport_type=None)
+    tm.refresh_aliyun_credentials.assert_not_awaited()

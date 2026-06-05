@@ -1125,7 +1125,7 @@ class HashList(DataClassORJSONMixin):
         """
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
-        if rtk.latitude == 0 or now_index < 0 or not self.current_mow_path:
+        if round(rtk.latitude, 0) == 0 or now_index < 0 or not self.current_mow_path:
             return
 
         raw_x = path_pos_x / 10000.0
@@ -1150,7 +1150,7 @@ class HashList(DataClassORJSONMixin):
         """
         from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
-        if rtk.latitude == 0 or len(self.dynamics_line) < 2:
+        if round(rtk.latitude, 0) == 0 or len(self.dynamics_line) < 2:
             return
 
         conv = CoordinateConverter(rtk.latitude, rtk.longitude)

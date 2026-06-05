@@ -452,7 +452,7 @@ class TokenManager:
                 # Do NOT return here: fall through so _aliyun_creds is updated from the
                 # newly established session.  Returning early was the bug that handed the
                 # caller a stale iotToken and caused an infinite bind-failure loop.
-                await self.connect_iot(self._cloud_gateway)
+                await self.connect_iot()
 
             session = self._cloud_gateway.session_by_authcode_response
             session_data = session.data  # type: ignore
@@ -479,9 +479,12 @@ class TokenManager:
             raise ReLoginRequiredError(self._account_id, str(exc)) from exc
         await self._fire_credentials_updated()
 
-    @staticmethod
-    async def connect_iot(cloud_client: CloudIOTGateway) -> None:
+    async def connect_iot(self) -> None:
         """Run the Aliyun IoT gateway setup sequence (region, AEP, session, devices)."""
+
+        if self._cloud_gateway is None:
+            raise ReLoginRequiredError(self._account_id, "No Aliyun cloud gateway configured")
+        cloud_client = self._cloud_gateway
         mammotion_http = cloud_client.mammotion_http
         login_info = mammotion_http.login_info
         if login_info is None:

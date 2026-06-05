@@ -584,9 +584,21 @@ class MammotionClient:
             login_resp = await session.mammotion_http.login_v2(session.email, session.password)
             if login_resp.code != 0:
                 raise LoginFailedError(session.email, login_resp.msg)
-            # A full re-login rotates every token the account holds — refresh them all.
+            # Re-establish credentials for the triggering transport off the fresh login.
+            #
+            # Aliyun is its own auth chain: its IoT session is derived from the login's
+            # authCode via check_or_refresh_session/connect_iot.  Refresh ONLY Aliyun for an
+            # Aliyun-triggered re-login — calling force_refresh() here would also run
+            # refresh_http (refresh_token_v2) and rotate the Mammotion-direct MQTT JWT, neither
+            # of which the Aliyun path needs (and login_v2 already minted fresh HTTP creds).
+            #
+            # For the generic send-retry path (transport_type is None) a full re-login really
+            # does rotate everything, so refresh all credential types.
             if session.token_manager is not None:
-                await session.token_manager.force_refresh(transport_type=None)
+                if transport_type == TransportType.CLOUD_ALIYUN:
+                    await session.token_manager.connect_iot()
+                else:
+                    await session.token_manager.force_refresh(transport_type=None)
 
             # Restart the transports we tore down, with fresh credentials.
             for tt, t in to_restart.items():
@@ -2058,7 +2070,7 @@ class MammotionClient:
                     _logger.debug(f"Restoring root_hash_lists for {saga.result} from saga result")
                     device.map.root_hash_lists = saga.result.root_hash_lists
                 device.map.update_hash_lists(device.map.hashlist)
-                if device.location.RTK.latitude != 0:
+                if device.location.RTK.latitude != 0.0:
                     device.map.generate_geojson(device.location.RTK, device.location.dock)
                 # Notify map_updated subscribers after a successful saga, matching
                 # ``handle.subscribe_map_updated`` 's docstring promise.  Without
@@ -2226,7 +2238,7 @@ class MammotionClient:
 
             async def _on_mow_path_complete() -> None:
                 device = self.get_device_by_name(device_name)
-                if device is not None and device.location.RTK.latitude != 0:
+                if device is not None and device.location.RTK.latitude != 0.0:
                     device.map.generate_mowing_geojson(device.location.RTK)
 
             await handle.enqueue_saga(saga, on_complete=_on_mow_path_complete)

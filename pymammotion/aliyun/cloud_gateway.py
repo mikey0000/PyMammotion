@@ -625,15 +625,14 @@ class CloudIOTGateway:
             response_body_str = response.body.decode("utf-8")
             response_body_dict = self.parse_json_response(response_body_str)
 
-            if int(response_body_dict.get("code") or 0) != 200:
-                logger.error(response_body_dict)
+            if response_body_dict.get("code") == 2401:
                 await self.sign_out()
                 raise SessionExpiredError(
                     TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
                 )
 
-            if response_body_dict.get("code") == 2401:
-                await self.sign_out()
+            if int(response_body_dict.get("code") or 0) != 200:
+                logger.error(response_body_dict)
                 raise SessionExpiredError(
                     TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
                 )
