@@ -1636,3 +1636,47 @@ async def test_device_unbound_removed_when_on_no_cloud() -> None:
     assert "Luba-GONE" not in session.device_ids
     removed.assert_awaited_once_with("Luba-GONE", "iot-gone")
     session.aliyun_transport.disconnect.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# get_stream_subscription: retry once when the token response carries no data
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_stream_subscription_retries_on_empty_data() -> None:
+    """An empty data payload is logged and the token fetch is retried once."""
+    client = MammotionClient()
+    http = MagicMock()
+    empty = MagicMock(data=None)
+    good = MagicMock(data=MagicMock())
+    http.get_stream_subscription = AsyncMock(side_effect=[empty, good])
+
+    result = await client._fetch_stream_subscription(http, "iot-1", is_yuka=False)
+
+    assert result is good
+    assert http.get_stream_subscription.await_count == 2
+
+
+async def test_fetch_stream_subscription_no_retry_when_data_present() -> None:
+    """A populated response is returned immediately with no retry."""
+    client = MammotionClient()
+    http = MagicMock()
+    good = MagicMock(data=MagicMock())
+    http.get_stream_subscription = AsyncMock(return_value=good)
+
+    result = await client._fetch_stream_subscription(http, "iot-1", is_yuka=True)
+
+    assert result is good
+    http.get_stream_subscription.assert_awaited_once()
+
+
+async def test_fetch_stream_subscription_returns_empty_after_retry_exhausted() -> None:
+    """If both attempts return no data, the (empty) second response is returned."""
+    client = MammotionClient()
+    http = MagicMock()
+    http.get_stream_subscription = AsyncMock(side_effect=[None, MagicMock(data=None)])
+
+    result = await client._fetch_stream_subscription(http, "iot-1", is_yuka=False)
+
+    assert result.data is None
+    assert http.get_stream_subscription.await_count == 2

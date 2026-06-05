@@ -147,8 +147,11 @@ async def test_restore_aliyun_refreshes_session_before_device_list() -> None:
     mock_cloud.session_by_authcode_response = MagicMock()
     mock_cloud.session_by_authcode_response.data.iotToken = "tok"
 
-    async def _check(*_a: object, **_k: object) -> None:
+    check_kwargs: dict[str, object] = {}
+
+    async def _check(*_a: object, **kwargs: object) -> None:
         order.append("check_or_refresh_session")
+        check_kwargs.update(kwargs)
 
     async def _list(*_a: object, **_k: object) -> MagicMock:
         order.append("list_binding_by_account")
@@ -166,6 +169,52 @@ async def test_restore_aliyun_refreshes_session_before_device_list() -> None:
         )
 
     assert order == ["check_or_refresh_session", "list_binding_by_account"]
+    # Cold restore must FORCE the refresh — the cached token can't be trusted even when it
+    # looks nominally fresh (server may have invalidated it early while HA was offline).
+    assert check_kwargs.get("force") is True
+
+
+async def test_restore_aliyun_applies_refreshed_token_before_listing() -> None:
+    """_restore_aliyun must refresh the Aliyun session and have the UPDATED iotToken set on
+    the gateway before list_binding_by_account runs.
+
+    Regression for the 401 on restore: list_binding_by_account reads the token straight off
+    the gateway session, so the refresh must have applied the new token to the gateway first.
+    """
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+
+    mock_cloud = MagicMock()
+    mock_cloud.mammotion_http = MagicMock()
+    mock_cloud.mammotion_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+    mock_cloud.devices_by_account_response = None
+    mock_cloud.session_by_authcode_response = MagicMock()
+    mock_cloud.session_by_authcode_response.data.iotToken = "stale-token"
+
+    async def _check(*_a: object, **_k: object) -> None:
+        # A real check_or_refresh_session applies the new token to the gateway session.
+        mock_cloud.session_by_authcode_response.data.iotToken = "refreshed-token"
+
+    token_seen_by_list: list[str] = []
+
+    async def _list(*_a: object, **_k: object) -> MagicMock:
+        token_seen_by_list.append(mock_cloud.session_by_authcode_response.data.iotToken)
+        return MagicMock(data=None)
+
+    mock_cloud.check_or_refresh_session = _check
+    mock_cloud.list_binding_by_account = _list
+
+    with (
+        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
+        patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
+    ):
+        await client._restore_aliyun(
+            "user@test.com", "pass", {}, acct_session, check_for_new_devices=True
+        )
+
+    # The device-list call ran with the refreshed token (set on the gateway), not the stale one.
+    assert token_seen_by_list == ["refreshed-token"]
+    assert mock_cloud.session_by_authcode_response.data.iotToken == "refreshed-token"
 
 async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
     """_restore_mammotion_mqtt must set token_manager on the session when mqtt_creds are present."""

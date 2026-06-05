@@ -171,6 +171,42 @@ async def test_check_or_refresh_session_skips_when_token_fresh() -> None:
     mock_client_cls.assert_not_called()
 
 
+async def test_check_or_refresh_session_force_refreshes_even_when_fresh() -> None:
+    """force=True must refresh even a nominally-fresh token.
+
+    This is what _restore_aliyun relies on: on a cold restore the cached token can look
+    fresh by the local clock yet be invalidated server-side (phone app / another session
+    rotated it), so the device-list call would 401.  force=True bypasses the freshness gate.
+    """
+    gateway = CloudIOTGateway(
+        mammotion_http=MagicMock(),
+        session_by_authcode_response=_session(iot_token_expire=86_400),
+        region_response=_region(),
+    )
+    gateway._iot_token_issued_at = int(time.time())  # noqa: SLF001 — looks fresh
+
+    refreshed = {
+        "code": 200,
+        "data": {
+            "identityId": "identity-1",
+            "refreshTokenExpire": 2_592_000,
+            "iotToken": "force-new-token",
+            "iotTokenExpire": 86_400,
+            "refreshToken": "new-refresh-token",
+        },
+    }
+    mock_response = MagicMock()
+    mock_response.body = orjson.dumps(refreshed)
+    mock_client = MagicMock()
+    mock_client.async_do_request = AsyncMock(return_value=mock_response)
+
+    with patch("pymammotion.aliyun.cloud_gateway.Client", return_value=mock_client):
+        await gateway.check_or_refresh_session(force=True)
+
+    mock_client.async_do_request.assert_awaited_once()
+    assert gateway.session_by_authcode_response.data.iotToken == "force-new-token"  # noqa: SLF001
+
+
 # ===========================================================================
 # Rate-limiting circuit breaker — send_cloud_command on HTTP 429
 # ===========================================================================
@@ -434,3 +470,60 @@ async def test_6205_still_raises_device_offline_not_unbound() -> None:
 
         with pytest.raises(DeviceOfflineException):
             await gw.send_cloud_command(_DUMMY_IOT_ID, _DUMMY_COMMAND)
+
+
+# ---------------------------------------------------------------------------
+# Restore refresh → the new iotToken is set on the gateway AND used by list_binding
+# ---------------------------------------------------------------------------
+
+
+async def test_refreshed_token_flows_into_list_binding_by_account() -> None:
+    """check_or_refresh_session must apply the new iotToken to the gateway, and the
+    subsequent list_binding_by_account call must send THAT token (the call that 401s
+    when a stale token is used)."""
+    # Expired cached token → the freshness gate forces a refresh.
+    gateway = CloudIOTGateway(
+        mammotion_http=MagicMock(),
+        session_by_authcode_response=_session(iot_token_expire=86_400),
+        region_response=_region(),
+    )
+    gateway._iot_token_issued_at = int(time.time()) - 100_000  # noqa: SLF001 — expired
+
+    refreshed_session = {
+        "code": 200,
+        "data": {
+            "identityId": "identity-1",
+            "refreshTokenExpire": 2_592_000,
+            "iotToken": "new-iot-token",
+            "iotTokenExpire": 86_400,
+            "refreshToken": "new-refresh-token",
+        },
+    }
+    empty_device_list = {"code": 200, "data": {"total": 0, "data": [], "pageNo": 1, "pageSize": 100}}
+
+    captured: dict[str, object] = {}
+
+    def _do_request(path: str, *args: object, **kwargs: object) -> MagicMock:
+        # async_do_request(path, scheme, method, headers, body, options)
+        body = args[3] if len(args) >= 4 else kwargs.get("body")
+        resp = MagicMock()
+        if path == "/account/checkOrRefreshSession":
+            resp.body = orjson.dumps(refreshed_session)
+        elif path == "/uc/listBindingByAccount":
+            captured["body"] = body
+            resp.body = orjson.dumps(empty_device_list)
+        else:
+            resp.body = orjson.dumps({"code": 200})
+        return resp
+
+    mock_client = MagicMock()
+    mock_client.async_do_request = AsyncMock(side_effect=_do_request)
+
+    with patch("pymammotion.aliyun.cloud_gateway.Client", return_value=mock_client):
+        await gateway.check_or_refresh_session()
+        await gateway.list_binding_by_account()
+
+    # The refreshed token is set on the gateway...
+    assert gateway.session_by_authcode_response.data.iotToken == "new-iot-token"  # noqa: SLF001
+    # ...and list_binding_by_account sent exactly that token (not the stale cached one).
+    assert captured["body"].request.iot_token == "new-iot-token"  # type: ignore[union-attr]

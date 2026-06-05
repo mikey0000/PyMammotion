@@ -953,6 +953,33 @@ class HashList(DataClassORJSONMixin):
             return True
         return False
 
+    def is_map_synced(self, bol_hash: int) -> bool:
+        """Return True when the local map state is fully in sync with the device.
+
+        Three conditions must all hold:
+
+        * **BOL hash match** — ``computed_bol_hash == bol_hash``: our root hash
+          list reflects the device's current area set.
+        * **No incomplete areas** — ``find_incomplete_hashes(0)`` is empty:
+          every area declared in ``root_hash_lists`` has all its frame data.
+        * **Area names covered** — every hash in ``area_name`` is present in
+          ``area_root_hashlist``: the device's name list and our root manifest
+          agree on which areas exist.
+
+        Returns False immediately when *bol_hash* is 0 (device has not yet
+        reported a valid hash) or when ``root_hash_lists`` is empty.
+        """
+        if not bol_hash:
+            return False
+        if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
+            return False
+        if self.computed_bol_hash != bol_hash:
+            return False
+        if self.find_incomplete_hashes(0):
+            return False
+        area_name_hashes = {a.hash for a in self.area_name}
+        return not area_name_hashes or area_name_hashes.issubset(set(self.area_root_hashlist))
+
     def invalidate_maps(self, bol_hash: int) -> None:
         """Trigger a map re-fetch when the device reports a new ``bol_hash``.
 
@@ -960,17 +987,20 @@ class HashList(DataClassORJSONMixin):
         of the current area-root hash list.  A mismatch means the map was
         edited device-side.
 
-        Only ``root_hash_lists`` is cleared so that :class:`MapFetchSaga` knows
-        to re-request it.  Per-type dicts (``area``, ``path``, ``obstacle`` …)
-        are preserved: once the new root hash list is fetched,
+        Only ``root_hash_lists`` entries with ``sub_cmd == 0`` (areas) are
+        removed so that :class:`MapFetchSaga` knows to re-request the area
+        manifest.  Entries for other sub_cmds (lines, dump points, …) are
+        preserved.  Per-type geometry dicts (``area``, ``path``, ``obstacle`` …)
+        are also preserved: once the new root hash list is fetched,
         :meth:`update_hash_lists` filters them to remove hash IDs that are no
         longer present, so entries for deleted areas are discarded then rather
         than now.  Hash IDs that remain in the new list re-use their cached
         frames and are not re-fetched.
         """
-        if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) == bol_hash:
+        if not bol_hash or MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) == bol_hash:
             return
-        self.root_hash_lists = []
+        self.root_hash_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd != 0]
+        self.update_hash_lists(self.hashlist)
 
     def invalidate_mow_path(self, path_hash: int) -> None:
         """Clear cached mow-path data once the job has ended.

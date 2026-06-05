@@ -197,7 +197,6 @@ class MowerDevice(Device):
                 east_geo = math.cos(yaw) * x_dev - math.sin(yaw) * y_dev
                 north_geo = math.sin(yaw) * x_dev + math.cos(yaw) * y_dev
                 self.location.device = coordinate_converter.enu_to_lla(north_geo, east_geo)
-                self.map.invalidate_maps(location.bol_hash)
                 self.location.work_zone = location.zone_hash
 
         if toapp_report_data.fw_info:

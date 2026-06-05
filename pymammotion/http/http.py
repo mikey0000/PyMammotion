@@ -474,7 +474,6 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
                 response = response_factory(Response[StreamSubscriptionResponse], data)
-                await self.handle_expiry(response)
                 return response
 
         return Response(code=200, msg="success")

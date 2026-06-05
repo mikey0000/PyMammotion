@@ -103,8 +103,7 @@ class MapFetchSaga(Saga):
         # (non-zero) bol_hash so a device that hasn't reported one yet is never wiped.
         # This is the manual-"sync maps" safety net: the report-driven invalidate in
         # MowingDevice already handles the watcher-triggered path.
-        if bol_hash := self._get_bol_hash():
-            self._get_map().invalidate_maps(bol_hash)
+        self._get_map().invalidate_maps(self._get_bol_hash())
 
         cmd = self._command_builder.send_todev_ble_sync(sync_type=self._sync_type)
         await self._send_command(cmd)

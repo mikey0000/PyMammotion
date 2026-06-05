@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.8.1"
+version = "0.8.2"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -34,7 +34,7 @@ dependencies = [
     "aiomqtt>=2.5.1",
     "pyrsistent>=0.20.0",
     "python-dotenv>=1.0.0",
-    "pillow>=12.2.0",
+    "pillow>=11.0.0",
 ]
 
 [dependency-groups]
@@ -63,6 +63,7 @@ dev = [
     "vulture>=2.16",
     "pymap3d>=3.2.0",
     "ty>=0.0.35",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.uv]
@@ -78,7 +79,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.8.1"
+current_version = "0.8.2"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
