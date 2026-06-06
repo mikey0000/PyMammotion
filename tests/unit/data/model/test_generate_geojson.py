@@ -1014,3 +1014,65 @@ def test_mow_progress_from_start_identical_to_mow_path() -> None:
         assert sorted(progress_coords) == sorted(planned_coords), (
             f"path_type={path_type}: coordinate sets differ"
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression: the "RTK unset" guard must use exact 0.0, not round(lat, 0)
+#
+# RTK lat/lon are stored in RADIANS with an exact-0.0 "unset" sentinel.  A
+# `round(lat, 0) == 0` guard collapsed everything within ~0.5 rad (~28° of the
+# equator) to 0 and skipped geojson generation, leaving an empty {} (KeyError 'type').
+# ---------------------------------------------------------------------------
+
+
+def _device_with_mow_path(rtk_latitude_radians: float):
+    """Build a MowerDevice from the Yuka fixture with an overridden RTK latitude (radians)."""
+    from pymammotion.data.model.device import MowerDevice
+
+    fixture = _load_yuka_fixture()
+    device = MowerDevice(name=fixture["update_check"]["device_name"])
+    device.location.RTK.latitude = rtk_latitude_radians
+    device.location.RTK.longitude = fixture["location"]["RTK"]["longitude"]
+    for _tid, frames in fixture["map"]["current_mow_path"].items():
+        for _fid, frame in frames.items():
+            device.map.update_mow_path(_make_mow_path(frame))
+    device.report_data.work.real_path_num = 0  # now_index=0 → full path
+    return device
+
+
+@pytest.mark.parametrize("rtk_latitude_radians", [0.3, -0.3, 0.4999, 0.0001, 1.4])
+def test_apply_mow_progress_geojson_small_radian_latitude_not_skipped(rtk_latitude_radians: float) -> None:
+    """A nonzero RTK latitude (radians) must generate geojson even when |lat| < 0.5 rad.
+
+    A round(lat, 0) == 0 guard would treat these as "RTK unset" and skip generation.
+    """
+    device = _device_with_mow_path(rtk_latitude_radians)
+    work = device.report_data.work
+
+    device.map.apply_mow_progress_geojson(
+        device.location.RTK,
+        work.now_index,
+        work.ub_path_hash,
+        work.path_pos_x,
+        work.path_pos_y,
+    )
+
+    result = device.map.generated_mow_progress_geojson
+    assert result["type"] == "FeatureCollection"
+    assert len(result["features"]) > 0
+
+
+def test_apply_mow_progress_geojson_unset_rtk_latitude_skipped() -> None:
+    """An exact-0.0 RTK latitude (the unset sentinel) must skip generation (stays empty)."""
+    device = _device_with_mow_path(0.0)
+    work = device.report_data.work
+
+    device.map.apply_mow_progress_geojson(
+        device.location.RTK,
+        work.now_index,
+        work.ub_path_hash,
+        work.path_pos_x,
+        work.path_pos_y,
+    )
+
+    assert device.map.generated_mow_progress_geojson == {}

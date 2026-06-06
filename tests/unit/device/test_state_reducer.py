@@ -722,3 +722,61 @@ class TestStateReducerAreaNameFallback:
         for _ in range(5):
             device = reducer.apply(device, msg)
         assert {a.hash: a.name for a in device.map.area_name} == {111: "Voor", 222: "Achter"}
+
+
+# ===========================================================================
+# Device GPS coordinate (radians) is stored on device.location.device in degrees.
+#
+# The Mammotion property push delivers coordinate.lat/lon in RADIANS, but
+# device.location.device is consumed as degrees (HA device_tracker adds metre
+# offsets ÷ 111111 and never converts).  RTK stays radians (sensor.py * 180/pi).
+# ===========================================================================
+
+
+def test_mammotion_coordinate_stored_in_degrees() -> None:
+    """apply_mammotion_properties must convert coordinate.lat/lon (radians) to degrees."""
+    import math
+
+    from pymammotion.data.mqtt.mammotion_properties import Coordinate, DeviceProperties
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
+
+    reducer = MowerStateReducer()
+    device = _make_device()
+
+    lat_rad, lon_rad = 0.5, 0.2  # ~28.6479°, ~11.4592° — both within ~28° of the equator
+    props = MammotionPropertiesMessage(
+        id="1",
+        version="1.0",
+        sys={},
+        params=DeviceProperties(coordinate=Coordinate(lon=lon_rad, lat=lat_rad)),
+    )
+
+    updated = reducer.apply_mammotion_properties(device, props)
+
+    assert updated.location.device.latitude == pytest.approx(math.degrees(lat_rad))
+    assert updated.location.device.longitude == pytest.approx(math.degrees(lon_rad))
+    # Sanity: the stored value is real degrees, not the raw radians.
+    assert updated.location.device.latitude != pytest.approx(lat_rad)
+
+
+def test_mammotion_coordinate_zero_is_left_unset() -> None:
+    """A 0.0 coordinate component (unset) must not overwrite the stored location."""
+    from pymammotion.data.mqtt.mammotion_properties import Coordinate, DeviceProperties
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
+
+    reducer = MowerStateReducer()
+    device = _make_device()
+    device.location.device.latitude = 12.0
+    device.location.device.longitude = 34.0
+
+    props = MammotionPropertiesMessage(
+        id="1",
+        version="1.0",
+        sys={},
+        params=DeviceProperties(coordinate=Coordinate(lon=0.0, lat=0.0)),
+    )
+
+    updated = reducer.apply_mammotion_properties(device, props)
+
+    assert updated.location.device.latitude == 12.0
+    assert updated.location.device.longitude == 34.0

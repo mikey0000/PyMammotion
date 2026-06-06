@@ -799,10 +799,11 @@ class MowerStateReducer(StateReducer):
             _logger.debug("MowerStateReducer: failed to apply deviceVersionInfo (mammotion)")
 
         if coordinate := p.coordinate:
+            # coordinate.lat/lon arrive in radians; device.location.device is stored in degrees.
             if coordinate.lat != 0:
-                device.location.device.latitude = coordinate.lat
+                device.location.device.latitude = math.degrees(coordinate.lat)
             if coordinate.lon != 0:
-                device.location.device.longitude = coordinate.lon
+                device.location.device.longitude = math.degrees(coordinate.lon)
 
         try:
             if net := p.network_info:
