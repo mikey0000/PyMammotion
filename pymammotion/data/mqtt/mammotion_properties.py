@@ -100,35 +100,35 @@ class TrafficData(DataClassORJSONMixin):
 class NetworkInfo(DataClassORJSONMixin):
     """Comprehensive network information including WiFi, cellular, and traffic statistics."""
 
-    ssid: str
-    wifi_sta_mac: str
-    wifi_rssi: int
-    bt_mac: str
-    mnet_model: str
-    imei: str
-    fw_ver: str
-    sim: str
-    imsi: str
-    mnet_rssi: int
-    signal: int
-    mnet_link: int
-    mnet_option: str
-    mnet_ip: str
-    apn_info: str
-    apn_cid: int
-    used_net: int
-    hub_reset: int
-    mnet_dis: int
-    airplane_times: int
-    lsusb_num: int
-    mnet_rx: str
-    mnet_tx: str
-    mnet_uniot: int
-    mnet_un_getiot: int
-    ssh_flag: str
-    mileage: str
-    work_time: str
-    bat_cycles: str
+    ssid: str = ""
+    wifi_sta_mac: str = ""
+    wifi_rssi: int = 0
+    bt_mac: str = ""
+    mnet_model: str = ""
+    imei: str = ""
+    fw_ver: str = ""
+    sim: str = ""
+    imsi: str = ""
+    mnet_rssi: int = 0
+    signal: int = 0
+    mnet_link: int = 0
+    mnet_option: str = ""
+    mnet_ip: str = ""
+    apn_info: str = ""
+    apn_cid: int = 0
+    used_net: int = 0
+    hub_reset: int = 0
+    mnet_dis: int = 0
+    airplane_times: int = 0
+    lsusb_num: int = 0
+    mnet_rx: str = ""
+    mnet_tx: str = ""
+    mnet_uniot: int = 0
+    mnet_un_getiot: int = 0
+    ssh_flag: str = ""
+    mileage: str = ""
+    work_time: str = ""
+    bat_cycles: str = ""
     ip: str = ""
     apn_num: int = 0
     wifi_available: int = 0

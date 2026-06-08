@@ -2,8 +2,9 @@
 
 Two coroutines extracted from ``handle.py``:
 
-* :func:`ble_activity_loop` — the 20 s ``todev_ble_sync(2)`` heartbeat that
-  keeps the GATT link alive on a fixed cadence regardless of other traffic.
+* :func:`ble_activity_loop` — the ``todev_ble_sync(2)`` heartbeat (every
+  ``_KEEP_ALIVE_BLE_INTERVAL`` s) that keeps the GATT link alive and the device
+  in its synced state on a fixed cadence regardless of other traffic.
 * :func:`ble_polling_loop` — drives either the continuous (count=0) report
   stream or count=1 polls, depending on device mode.
 
@@ -27,8 +28,15 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-#: Keep-alive interval for BLE heartbeats.
-_KEEP_ALIVE_BLE_INTERVAL: float = 20.0
+#: Keep-alive interval for BLE heartbeats.  The device drops out of its "synced"
+#: state (and stops serving hash-list / common-data frames) after roughly its ~10 s
+#: keep-alive window — the same budget the report-stream renewal stays under at 8 s
+#: (see ``_BLE_STREAM_RENEW_INTERVAL``).  The old 20 s interval exceeded that window,
+#: leaving the device unsynced for ~10 s between heartbeats and causing map fetches to
+#: get no ``toapp_gethash_ack``.  The APK sends sync every ~1.5 s; we use 5 s as a
+#: balance — well under the ~10 s timeout while ~3x less BLE/ESPHome-proxy traffic than
+#: the APK cadence (aggressive heartbeats have caused proxy slot/throughput issues here).
+_KEEP_ALIVE_BLE_INTERVAL: float = 5.0
 #: Max consecutive BLE heartbeat failures before the loop gives up on BLE and falls back to MQTT.
 _BLE_HEARTBEAT_FAIL_LIMIT: int = 30
 #: Renewal cadence for the BLE continuous report-stream — must stay below the device 10 s timeout.
@@ -103,15 +111,21 @@ async def ble_activity_loop(handle: DeviceHandle) -> None:
 
         cmd_bytes = handle.commands.send_todev_ble_sync(sync_type=_KEEP_ALIVE_SYNC_TYPE_BLE)
         try:
+            _logger.debug(
+                "ble_loop [%s]: sending todev_ble_sync(%d) heartbeat",
+                handle.device_name,
+                _KEEP_ALIVE_SYNC_TYPE_BLE,
+            )
             await ble.send_heartbeat(cmd_bytes, iot_id=handle.iot_id)
             handle.ble_heartbeat_failures = 0
-        except TransportError:
+        except TransportError as exc:
             handle.ble_heartbeat_failures += 1
             _logger.debug(
-                "ble_loop [%s]: send failed (attempt %d/%d) — marking disconnected",
+                "ble_loop [%s]: send failed (attempt %d/%d) %s",
                 handle.device_name,
                 handle.ble_heartbeat_failures,
                 _BLE_HEARTBEAT_FAIL_LIMIT,
+                exc,
             )
         except Exception:  # noqa: BLE001
             handle.ble_heartbeat_failures += 1

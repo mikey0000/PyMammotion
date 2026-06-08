@@ -443,6 +443,55 @@ async def test_snapshot_raw_updates_after_on_raw_message() -> None:
     assert handle.snapshot.raw.report_data.dev.battery_val == 42
 
 
+async def test_on_raw_message_drops_frame_with_malformed_report_data(caplog: pytest.LogCaptureFixture) -> None:
+    """A corrupt frame whose deserialization raises must be dropped + logged, not propagated.
+
+    Reproduces the field crash where a garbled BLE notification parsed as a LubaMsg but
+    WorkData.from_dict raised mashumaro InvalidFieldValue (a ValueError) deep in the reducer,
+    killing the transport receive task ("Task exception was never retrieved").
+    """
+    import logging
+
+    from mashumaro.exceptions import InvalidFieldValue
+
+    from pymammotion.data.model.device import MowerDevice
+    from pymammotion.proto import LubaMsg, MctlSys, ReportInfoData, RptDevStatus
+
+    handle = DeviceHandle(
+        device_id="dev-bad",
+        device_name="Luba-Bad",
+        initial_device=MowerDevice(name="Luba-Bad"),
+    )
+
+    # First a clean frame so we have a known-good baseline state.
+    await handle.on_raw_message(bytes(LubaMsg(sys=MctlSys(toapp_report_data=ReportInfoData(dev=RptDevStatus(battery_val=55))))))
+    assert handle.snapshot.raw.report_data.dev.battery_val == 55
+
+    emitted: list[object] = []
+    handle.subscribe_state_changed(lambda s: emitted.append(s))  # type: ignore[arg-type,return-value]
+
+    # Now the reducer chokes on a malformed sub-message — must not escape on_raw_message.
+    handle._reducer.apply = MagicMock(  # type: ignore[method-assign]
+        side_effect=InvalidFieldValue("bp_pos_y", int, [114, 30], object)
+    )
+
+    payload = bytes(LubaMsg(sys=MctlSys(toapp_report_data=ReportInfoData())))
+    with caplog.at_level(logging.ERROR):
+        await handle.on_raw_message(payload)
+
+    # State preserved, no snapshot emitted for the bad frame, and the drop was logged at ERROR.
+    assert handle.snapshot.raw.report_data.dev.battery_val == 55
+    assert emitted == []
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR and "dropping frame" in r.getMessage()]
+    assert error_records, "expected an ERROR log for the dropped frame"
+    rendered = error_records[0].getMessage()
+    # The exception message (offending field + bad value) and the raw bytes must be logged
+    # so the bad data can be investigated.
+    assert 'Field "bp_pos_y"' in rendered
+    assert "invalid value [114, 30]" in rendered
+    assert payload.hex() in rendered
+
+
 # ---------------------------------------------------------------------------
 # Regression: protobuf path must emit even when no snapshot-level field changes.
 # DeviceSnapshot._diff only looks at connection_state/online/enabled/battery.
@@ -686,6 +735,7 @@ def _make_mqtt_transport(*, connected: bool = True) -> MagicMock:
     t.is_connected = connected
     t.is_rate_limited = False
     t.send = AsyncMock()
+    t.send_heartbeat = AsyncMock()
     t.set_rate_limited = MagicMock()
     t.disconnect = AsyncMock()
     t.on_message = None
@@ -1173,6 +1223,7 @@ def _make_transport(transport_type: TransportType, *, connected: bool = True) ->
     t.is_rate_limited = False
     t.last_send_monotonic = 0.0
     t.send = AsyncMock()
+    t.send_heartbeat = AsyncMock()
     t.connect = AsyncMock()
     t.disconnect = AsyncMock()
     t.on_message = None

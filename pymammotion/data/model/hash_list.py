@@ -33,6 +33,14 @@ class PathType(IntEnum):
     PATH = 2
     """Recorded travel path segments (Luba 1 path-mode)."""
 
+    TRANSFER_ZONE = 3
+    """Turning/transfer zone near the charging dock (待转区).
+
+    Ephemeral — requested just before docking, hash is always 0, never persisted
+    to the device DB.  Rendered by the APK as a separate ``areaToBeTransferredFeature``
+    overlay, distinct from regular area boundaries.
+    """
+
     LINE = 10
     """Breakpoint line segments (sub_cmd=3)."""
 
@@ -387,6 +395,7 @@ class HashList(DataClassORJSONMixin):
     visual_obstacle_zone: dict[int, FrameList] = field(default_factory=dict)  # type 26
     corridor_line: dict[int, FrameList] = field(default_factory=dict)  # type 19
     corridor_point: dict[int, FrameList] = field(default_factory=dict)  # type 20
+    transfer_zone: dict[int, FrameList] = field(default_factory=dict)  # type 3 — ephemeral dock turning zone
     virtual_wall: dict[int, FrameList] = field(default_factory=dict)  # type 21
     no_go_zone_variant: dict[int, FrameList] = field(default_factory=dict)  # type 22
     no_go_zone: dict[int, FrameList] = field(default_factory=dict)  # type 23
@@ -471,6 +480,8 @@ class HashList(DataClassORJSONMixin):
             hash_id: frames for hash_id, frames in self.corridor_point.items() if hash_id in hashlist
         }
         self.virtual_wall = {hash_id: frames for hash_id, frames in self.virtual_wall.items() if hash_id in hashlist}
+        known_types = set(self._get_path_type_mapping())
+        self.unknown_type_frames = {t: bucket for t, bucket in self.unknown_type_frames.items() if t not in known_types}
 
         area_hashes = list(self.area.keys())
         for hash_id, plan_task in self.plan.copy().items():
@@ -770,6 +781,7 @@ class HashList(DataClassORJSONMixin):
             PathType.AREA: self.area,
             PathType.OBSTACLE: self.obstacle,
             PathType.PATH: self.path,
+            PathType.TRANSFER_ZONE: self.transfer_zone,
             PathType.LINE: self.line,
             PathType.DUMP: self.dump,
             PathType.VISUAL_SAFETY_ZONE: self.visual_safety_zone,

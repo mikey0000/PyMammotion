@@ -10,6 +10,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from mashumaro.exceptions import InvalidFieldValue, MissingField
+
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
 from pymammotion.data.model.device import MowerDevice
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
@@ -48,6 +50,16 @@ from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
 from pymammotion.utility.device_type import DeviceType
 
 _T = TypeVar("_T")
+
+#: How long an MQTT-side ``todev_ble_sync(3)`` keeps the device "synced".  The device
+#: drops out of its synced state (and stops responding to commands / serving report+map
+#: frames) roughly ``~10 s`` after the *last sync* — the same window the BLE heartbeat
+#: stays under (see ``ble_loop._KEEP_ALIVE_BLE_INTERVAL``).  Crucially the device's timer
+#: is reset only by a sync, NOT by ordinary command traffic, so we re-sync whenever it's
+#: been longer than this since the last sync we sent — not since the last command.  7 s
+#: leaves ~3 s of margin for cloud round-trip jitter while keeping sync volume low
+#: (heartbeats are quota-free; see ``Transport.send_heartbeat``).
+_MQTT_SYNC_INTERVAL: float = 7.0
 
 #: Channels sent in one-shot (count=1) polls AND in the BLE continuous stream.
 _REPORT_CHANNELS: list[RptInfoType] = [
@@ -217,6 +229,11 @@ class DeviceHandle:
         #: ``record_user_command``; heartbeats and internal sends do NOT update
         #: this).  Used to wake the poll loop early via ``_rearm_event``.
         self._last_user_command_monotonic: float = time.monotonic()
+        #: Monotonic timestamp of the last ``todev_ble_sync(3)`` we sent per MQTT
+        #: transport.  Read by ``_send_marked`` to keep the device synced on a fixed
+        #: cadence (``_MQTT_SYNC_INTERVAL``) independent of command traffic — see the
+        #: constant's docstring for why the gate is against the last *sync*, not send.
+        self._last_mqtt_sync_monotonic: dict[TransportType, float] = {}
         #: Set by ``record_user_command`` to interrupt a long sleep and re-arm
         #: the activity loop immediately with the short window.
         self._rearm_event: asyncio.Event = asyncio.Event()
@@ -413,14 +430,16 @@ class DeviceHandle:
             )
 
         if transport.transport_type != TransportType.BLE:
-            last = transport.last_send_monotonic
-            if last != 0.0 and time.monotonic() - last > 50:
-                # No MQTT commands sent for 50 seconds — the device needs a BLE sync
-                # before it will respond to any command.  Await it so it is guaranteed
-                # to arrive before the real payload; sending concurrently (create_task)
-                # lets the payload race ahead and the device ignores it.
-                sync = self.commands.send_todev_ble_sync(sync_type=3)
-                await transport.send_heartbeat(sync, iot_id=self.iot_id)
+            # The device drops out of its "synced" state ~10 s after the last sync and
+            # then ignores commands / stops serving report+map frames.  That timer is
+            # reset only by a sync — NOT by ordinary command traffic — so we debounce
+            # against the last *sync* we sent (not the last command, which is why a busy
+            # burst used to desync mid-stream).  Re-sync whenever the window is about to
+            # lapse, awaited so it lands before the payload (a concurrent send lets the
+            # payload race ahead and be ignored).
+            since_sync = time.monotonic() - self._last_mqtt_sync_monotonic.get(transport.transport_type, 0.0)
+            if since_sync > _MQTT_SYNC_INTERVAL:
+                await self._send_mqtt_sync(transport, since_sync=since_sync)
 
         version = self.snapshot.raw.update_check.current_version
 
@@ -431,6 +450,31 @@ class DeviceHandle:
         await transport.send(payload, iot_id=self.iot_id, firmware_version=version)
         if not self._stopping:
             await self._sent_bus.emit(payload)
+
+    async def _send_mqtt_sync(self, transport: Transport, *, since_sync: float) -> None:
+        """Send a ``todev_ble_sync(3)`` keep-alive on *transport* and stamp the sync timer.
+
+        This is the **single source of truth** for ``_last_mqtt_sync_monotonic``: the
+        timestamp is advanced *only here*, and only after the sync is actually handed to
+        the transport.  Because nothing else writes it, the timer can never be *falsely*
+        advanced — a stale entry only ever causes one extra (quota-free) sync, never a
+        missed one, so no caller can induce a desync.
+
+        Other paths that emit a sync as an ordinary payload (the sagas' ``_send_ble_sync``,
+        the RPT_START retry prefix) go through ``send_raw`` → ``_send_marked`` like any
+        command, so this gate re-syncs ahead of their send when the window has lapsed —
+        the device stays synced regardless of which path initiated it.  ``send_heartbeat``
+        keeps the sync off the 24-hour command quota.
+        """
+        _logger.debug(
+            "_send_marked [%s]: %.1fs since last %s sync — sending todev_ble_sync(3)",
+            self.device_name,
+            since_sync,
+            transport.transport_type.value,
+        )
+        sync = self.commands.send_todev_ble_sync(sync_type=3)
+        await transport.send_heartbeat(sync, iot_id=self.iot_id)
+        self._last_mqtt_sync_monotonic[transport.transport_type] = time.monotonic()
 
     async def _on_critical_error(self, error: Exception) -> None:
         """Propagate critical errors to the error bus."""
@@ -532,8 +576,32 @@ class DeviceHandle:
         # seconds per frame and map fetches take minutes.
         await self.broker.on_message(luba_msg)
 
-        # 4. Apply to state via reducer (returns a new MowingDevice copy)
-        updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
+        # 4. Apply to state via reducer (returns a new MowingDevice copy).
+        # A corrupt frame can parse as a LubaMsg yet carry a field of the wrong
+        # shape (e.g. a BLE notification garbled on the wire so WorkData.bp_pos_y
+        # arrives as a list instead of an int).  betterproto2 accepts the alien
+        # wire format and the failure only surfaces here when mashumaro coerces
+        # the model — raising InvalidFieldValue (a ValueError) / TypeError.  Drop
+        # the bad frame and keep the handler alive rather than letting it kill the
+        # transport's receive task; natural traffic supplies a clean frame next.
+        try:
+            updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
+        except (InvalidFieldValue, MissingField, TypeError) as exc:
+            # mashumaro raises InvalidFieldValue (a ValueError) when a field coerces to the
+            # wrong type and MissingField (a LookupError) when a required one is absent; an
+            # unwrapped TypeError can also surface from the underlying coercion.  Catch those
+            # by name (note: MissingField is NOT a KeyError, so a bare LookupError catch would
+            # be the only structural alternative) and drop the frame.  Log the exception
+            # message and the raw bytes (hex) so the offending field/value can be investigated.
+            _logger.error(
+                "← %s  dropping frame: malformed report data failed deserialization (%d bytes): %s | raw=%s",
+                self.device_name,
+                len(payload),
+                exc,
+                payload.hex(),
+                exc_info=True,
+            )
+            return
 
         # 5. Update state machine and emit if anything in the model changed.
         # _diff now walks `raw`, so deep-field mutations (e.g.
@@ -1245,6 +1313,7 @@ class DeviceHandle:
             attempts[0] += 1
             if attempts[0] > 1:
                 try:
+                    _logger.debug("RPT_START [%s]: retry-prefix sending todev_ble_sync(2)", self.device_name)
                     await transport_send(sync_bytes)
                 except Exception:  # noqa: BLE001
                     _logger.debug(
@@ -1299,7 +1368,7 @@ class DeviceHandle:
         )
 
         async def _send() -> None:
-            await self.send_raw(cmd_bytes)
+            await self.broker.send_and_wait(lambda: self.send_raw(cmd_bytes), expected_field="toapp_report_data")
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
@@ -1699,9 +1768,9 @@ class DeviceHandle:
 
     @ble_stream_active.setter
     def ble_stream_active(self, value: bool) -> None:
-        """Set by the BLE polling loop
+        """Set by the BLE polling loop.
 
-        (and by ``_enqueue_ble_stream_command``
+        and by ``_enqueue_ble_stream_command``
         on a verified RPT_START) to reflect whether a continuous stream is
         currently being renewed.  Exposed as a setter so loops don't need to
         reach into ``_ble_stream_active`` directly.

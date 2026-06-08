@@ -75,7 +75,8 @@ The refactored architecture is a **layered, composable system** replacing the ea
 │  Restartable multi-step operations:                      │
 │  ├─ Saga  (saga.py)  — base class with retry logic       │
 │  ├─ MapFetchSaga  (map_saga.py)                          │
-│  └─ MowPathSaga  (mow_path_saga.py)                      │
+│  ├─ MowPathSaga  (mow_path_saga.py)                      │
+│  └─ Plan/Spino/Svg/EdgeMapping sagas (messaging/)        │
 ├──────────────────────────────────────────────────────────┤
 │  Auth  (pymammotion/auth/token_manager.py)               │
 │  TokenManager: one instance per account                  │

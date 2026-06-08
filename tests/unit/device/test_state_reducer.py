@@ -362,6 +362,54 @@ def test_luba2_awd_network_info_parses() -> None:
     assert ni.m_tra is None
 
 
+def test_wifi_only_network_info_omitting_cellular_fields_parses() -> None:
+    """A WiFi-only mower (e.g. Yuka mini) omits the whole cellular block — it must still parse.
+
+    Regression for a real Yuka-MNTXVHBE property post that raised
+    MissingField "mnet_model" and got dropped, so the device never updated state.
+    """
+    wifi_only = json.dumps(
+        {
+            "ssid": "IOT",
+            "ip": "192.168.20.45",
+            "wifi_sta_mac": "14:5d:34:31:db:f6",
+            "wifi_rssi": -56,
+            "wifi_available": 1,
+            "bt_mac": "14:5d:34:31:db:f7",
+            "mnet_enable": 0,
+            "apn_num": 0,
+            "apn_info": "",
+            "apn_cid": 0,
+            "used_net": 1,
+            "hub_reset": 0,
+            "mnet_dis": 0,
+            "airplane_times": 0,
+            "lsusb_num": 4,
+            "mnet_rx": 0,  # WiFi-only devices send an int here, not the cellular "181.47MB" string
+            "mnet_tx": 0,
+            "mnet_uniot": 0,
+            "mnet_un_getiot": 0,
+            "ssh_flag": "0",
+            "mileage": "254960",
+            "work_time": "6 h 42 min 37 s",
+            "wt_sec": 24157,
+            "bat_cycles": "0",
+        }
+    )
+
+    ni = NetworkInfo.from_json(wifi_only)
+
+    # WiFi fields present; cellular fields defaulted rather than raising MissingField.
+    assert ni.wifi_rssi == -56
+    assert ni.ssid == "IOT"
+    assert ni.mnet_model == ""
+    assert ni.imei == ""
+    assert ni.sim == ""
+    assert ni.mnet_rssi == 0
+    assert ni.mnet_rx == "0"  # int coerced to str
+    assert ni.work_time == "6 h 42 min 37 s"
+
+
 # ===========================================================================
 # Tests for PoolStateReducer applying SysCommCmd (allpowerfullRW) pool toggles.
 # ===========================================================================

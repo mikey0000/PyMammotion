@@ -89,6 +89,21 @@ class MapFetchSaga(Saga):
         # Result — set on success, None until then
         self.result: HashList | None = None
 
+    async def _send_ble_sync(self) -> None:
+        """Send a ``todev_ble_sync`` to keep the device in the synced/responsive state.
+
+        The device only serves hash-list and common-data frames while it considers the
+        app "synced", and that state lapses after a few seconds (the APK re-sends sync
+        every ~1.5 s for the whole connection).  We send one immediately before each
+        major fetch step — the root hash-list request and the per-hash data request — so
+        the device is freshly synced when those commands arrive, rather than relying on a
+        single sync at the top of the run that can be stale by the time (e.g. after the
+        area-name step) the request actually goes out.  See the ``ble_loop`` heartbeat for
+        the background keep-alive that covers the gaps between fetch steps.
+        """
+        _logger.debug("MapFetchSaga[%s]: sending todev_ble_sync(%d)", self._device_name, self._sync_type)
+        await self._send_command(self._command_builder.send_todev_ble_sync(sync_type=self._sync_type))
+
     async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute all saga steps.  Uses device.map (via get_map) as the source of truth."""
         self.result = None
@@ -105,8 +120,7 @@ class MapFetchSaga(Saga):
         # MowingDevice already handles the watcher-triggered path.
         self._get_map().invalidate_maps(self._get_bol_hash())
 
-        cmd = self._command_builder.send_todev_ble_sync(sync_type=self._sync_type)
-        await self._send_command(cmd)
+        await self._send_ble_sync()
 
         # ------------------------------------------------------------------
         # Step 1: Fetch area names (non-Luba1 only).
@@ -114,14 +128,12 @@ class MapFetchSaga(Saga):
         if not self._is_luba1:
             _logger.debug("MapFetchSaga[%s]: fetching area names", self._device_name)
             cmd = self._command_builder.get_area_name_list(self._device_id)
-            try:
-                response = await broker.send_and_wait(
-                    send_fn=lambda: self._send_command(cmd),
-                    expected_field="toapp_all_hash_name",
-                    send_timeout=self.step_timeout,
-                )
-            except CommandTimeoutError:
-                raise
+            # will raise a CommandTimeoutError if it fails
+            response = await broker.send_and_wait(
+                send_fn=lambda: self._send_command(cmd),
+                expected_field="toapp_all_hash_name",
+                send_timeout=self.step_timeout,
+            )
 
             _area_frame = self.extract_nav_frame(response, "toapp_all_hash_name")
             area_hash_name_msg = _area_frame[1] if _area_frame is not None else None
@@ -150,6 +162,10 @@ class MapFetchSaga(Saga):
         _logger.debug("MapFetchSaga[%s]: requesting hash list", self._device_name)
 
         with self._collect_frames(broker, "toapp_gethash_ack") as hash_frame_queue:
+            # Re-sync immediately before the root-list request: the area-name step above can
+            # take several seconds, staling the run's initial sync, and an unsynced device
+            # returns no toapp_gethash_ack.
+            await self._send_ble_sync()
             cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
             await self._send_command(cmd)
 
@@ -218,6 +234,9 @@ class MapFetchSaga(Saga):
             addressed_hashes: set[int] = set()
 
             if missing_hashes:
+                # Re-sync before the first per-hash request for the same reason as the
+                # root-list step — keep the device responsive when step 4 begins.
+                await self._send_ble_sync()
                 current_hash = missing_hashes[0]
                 _logger.debug("MapFetchSaga[%s]: fetching data for hash %d", self._device_name, current_hash)
                 cmd = self._command_builder.synchronize_hash_data(hash_num=current_hash)

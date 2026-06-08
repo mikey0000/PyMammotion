@@ -405,24 +405,28 @@ async def test_map_saga_refetches_area_names_on_each_run() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BLE sync prepend after 5 minutes of inactivity
+# MQTT sync prepend — debounced against the last *sync*, not the last command,
+# because the device's ~10 s sync window is only reset by a sync (ordinary
+# command traffic does not keep it synced).  See _MQTT_SYNC_INTERVAL.
 # ---------------------------------------------------------------------------
 
 
-async def test_ble_sync_sent_before_payload_after_5_minute_idle() -> None:
-    """_send_marked must fire a BLE sync when no command was sent for > 5 minutes.
-
-    The sync is fire-and-forget via ``asyncio.create_task`` so it does not delay
-    the user's payload, but it must still be scheduled alongside the real send.
-    """
-    import asyncio
+async def test_mqtt_sync_sent_before_payload_when_sync_window_lapsed() -> None:
+    """_send_marked must prepend a sync (awaited, before the payload) once it's been
+    longer than _MQTT_SYNC_INTERVAL since the last sync to this transport."""
     import time
+
+    from pymammotion.device.handle import _MQTT_SYNC_INTERVAL
 
     mqtt_transport = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
     handle = _make_handle(mqtt_transport=mqtt_transport)
 
-    # Seed the transport's last_send_monotonic to simulate 6 minutes of inactivity
-    mqtt_transport.last_send_monotonic = time.monotonic() - 360
+    # Last sync just outside the window — a command burst keeps last_send fresh, but the
+    # device still desyncs because only a *sync* resets its timer.
+    handle._last_mqtt_sync_monotonic[TransportType.CLOUD_ALIYUN] = (  # noqa: SLF001
+        time.monotonic() - (_MQTT_SYNC_INTERVAL + 1.0)
+    )
+    mqtt_transport.last_send_monotonic = time.monotonic() - 1  # recent command — must NOT suppress the sync
 
     sent: list[bytes] = []
 
@@ -431,28 +435,28 @@ async def test_ble_sync_sent_before_payload_after_5_minute_idle() -> None:
 
     mqtt_transport.send.side_effect = capture_send
 
-    # Directly call _send_marked (the path used inside send_command)
-    await handle._send_marked(mqtt_transport, b"\xde\xad")
-    # Let the fire-and-forget BLE sync task run
-    await asyncio.sleep(0)
+    await handle._send_marked(mqtt_transport, b"\xde\xad")  # noqa: SLF001
 
-    # Sync goes through send_heartbeat (quota-exempt path); payload goes through send
+    # Sync goes through send_heartbeat (quota-exempt path); payload goes through send.
     mqtt_transport.send_heartbeat.assert_awaited_once()
     sync_payload = mqtt_transport.send_heartbeat.call_args[0][0]
-    assert sync_payload != b"\xde\xad", "Heartbeat arg should be the BLE sync, not the payload"
+    assert sync_payload != b"\xde\xad", "Heartbeat arg should be the sync, not the payload"
     assert len(sent) == 1, f"Expected only payload via send, got {len(sent)}: {sent}"
     assert sent[0] == b"\xde\xad", "send() should carry the actual payload"
+    # The sync timestamp is advanced so the next send within the window won't re-sync.
+    assert handle._last_mqtt_sync_monotonic[TransportType.CLOUD_ALIYUN] > 0.0  # noqa: SLF001
 
 
-async def test_no_ble_sync_when_recently_active() -> None:
-    """_send_marked must NOT prepend a sync when the last command was within the 50 s threshold."""
+async def test_no_mqtt_sync_when_synced_recently() -> None:
+    """_send_marked must NOT prepend a sync when the last sync was within _MQTT_SYNC_INTERVAL,
+    even if many commands have been sent in between."""
     import time
 
     mqtt_transport = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
     handle = _make_handle(mqtt_transport=mqtt_transport)
 
-    # Seed the transport's last_send_monotonic to simulate 30 s of inactivity (under 50 s threshold)
-    mqtt_transport.last_send_monotonic = time.monotonic() - 30
+    # Synced 1 s ago — well within the window — so no fresh sync regardless of command volume.
+    handle._last_mqtt_sync_monotonic[TransportType.CLOUD_ALIYUN] = time.monotonic() - 1.0  # noqa: SLF001
 
     sent: list[bytes] = []
 
@@ -461,19 +465,21 @@ async def test_no_ble_sync_when_recently_active() -> None:
 
     mqtt_transport.send.side_effect = capture_send
 
-    await handle._send_marked(mqtt_transport, b"\xca\xfe")
+    await handle._send_marked(mqtt_transport, b"\xca\xfe")  # noqa: SLF001
 
+    mqtt_transport.send_heartbeat.assert_not_awaited()
     assert len(sent) == 1, f"Expected only payload (1 send), got {len(sent)}: {sent}"
     assert sent[0] == b"\xca\xfe"
 
 
-async def test_no_ble_sync_on_first_ever_send() -> None:
-    """_send_marked must NOT prepend a sync when no previous send exists (first ever command)."""
+async def test_mqtt_sync_fires_on_first_ever_send() -> None:
+    """_send_marked must prepend a sync on the first send — with no prior sync the device is
+    assumed desynced (this is the change from the old last-send-based gate)."""
     mqtt_transport = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
     handle = _make_handle(mqtt_transport=mqtt_transport)
 
-    # last_send_monotonic == 0.0 means never sent — no sync should fire
-    assert mqtt_transport.last_send_monotonic == 0.0
+    # No recorded sync for this transport yet.
+    assert TransportType.CLOUD_ALIYUN not in handle._last_mqtt_sync_monotonic  # noqa: SLF001
 
     sent: list[bytes] = []
 
@@ -482,7 +488,41 @@ async def test_no_ble_sync_on_first_ever_send() -> None:
 
     mqtt_transport.send.side_effect = capture_send
 
-    await handle._send_marked(mqtt_transport, b"\x01\x02")
+    await handle._send_marked(mqtt_transport, b"\x01\x02")  # noqa: SLF001
 
+    mqtt_transport.send_heartbeat.assert_awaited_once()
     assert len(sent) == 1
     assert sent[0] == b"\x01\x02"
+
+
+async def test_mqtt_sync_re_fires_during_sustained_command_burst() -> None:
+    """Regression: a continuous command burst must keep re-syncing.
+
+    Reproduces the field log where the device stopped responding ~10 s into a burst:
+    the old gate debounced against the last *command*, so a steady stream of commands
+    kept ``last_send`` fresh and only ONE sync ever fired — the device then desynced
+    after its ~10 s window and ignored everything.  The gate now debounces against the
+    last *sync*, so a long burst re-syncs every ``_MQTT_SYNC_INTERVAL`` seconds.
+    """
+    from unittest.mock import patch
+
+    from pymammotion.device.handle import _MQTT_SYNC_INTERVAL
+
+    mqtt_transport = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    handle = _make_handle(mqtt_transport=mqtt_transport)
+    mqtt_transport.send = AsyncMock()
+
+    clock = {"now": 1000.0}
+
+    with patch("pymammotion.device.handle.time.monotonic", side_effect=lambda: clock["now"]):
+        # t=0: first command — no prior sync, so a sync fires.
+        await handle._send_marked(mqtt_transport, b"\x01")  # noqa: SLF001
+        # A few commands well within the window — last_send stays fresh, but no extra sync.
+        clock["now"] += _MQTT_SYNC_INTERVAL / 2
+        await handle._send_marked(mqtt_transport, b"\x02")  # noqa: SLF001
+        assert mqtt_transport.send_heartbeat.await_count == 1, "burst within window must not re-sync"
+        # Past the window despite the steady command flow — the device would have desynced,
+        # so a second sync must fire.
+        clock["now"] += _MQTT_SYNC_INTERVAL + 0.1
+        await handle._send_marked(mqtt_transport, b"\x03")  # noqa: SLF001
+        assert mqtt_transport.send_heartbeat.await_count == 2, "burst past window must re-sync"

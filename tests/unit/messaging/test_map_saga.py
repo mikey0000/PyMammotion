@@ -514,3 +514,55 @@ class TestAreaNameFallbackAfterSync:
         if not m.area_name and m.area:  # the saga's guard
             _fallback_area_names(m)
         assert m.area_name[0].name == "Existing"
+
+
+# ---------------------------------------------------------------------------
+# BLE-sync ordering: a sync must precede the root-list AND the per-hash request
+#
+# Regression: the device drops out of its "synced" state after a few seconds and
+# then returns no toapp_gethash_ack.  A single sync at the top of the run could be
+# stale by the time the root-list request fires (e.g. after the area-name step), so
+# we re-sync immediately before the root-list and per-hash requests.
+# ---------------------------------------------------------------------------
+
+
+async def test_saga_syncs_immediately_before_root_list_and_per_hash() -> None:
+    """send_todev_ble_sync must be the call immediately before get_all_boundary_hash_list
+    and immediately before the first synchronize_hash_data."""
+    broker = DeviceMessageBroker()
+    cb = _make_command_builder()
+
+    async def send_command(_cmd: bytes) -> None:
+        pass
+
+    _map = HashList()
+    saga = MapFetchSaga(
+        device_id="dev-1",
+        device_name="Luba-Test",
+        is_luba1=True,  # skip area names
+        command_builder=cb,
+        send_command=send_command,
+        get_map=lambda: _map,
+        sync_type=2,  # BLE
+    )
+
+    hash_id = 1640341264244214677
+    await _run_saga_with_messages(
+        broker,
+        saga,
+        messages=[_hash_list_msg([hash_id]), _comm_data_msg(hash_id, type_code=0)],
+        map_update=_map,
+    )
+
+    names = [c[0] for c in cb.mock_calls if c[0]]
+
+    root_idx = names.index("get_all_boundary_hash_list")
+    assert names[root_idx - 1] == "send_todev_ble_sync", f"no sync right before root list: {names[: root_idx + 1]}"
+
+    sh_idx = names.index("synchronize_hash_data")
+    assert names[sh_idx - 1] == "send_todev_ble_sync", f"no sync right before per-hash: {names[: sh_idx + 1]}"
+
+    # At least: top-of-run + before-root-list + before-per-hash.
+    assert names.count("send_todev_ble_sync") >= 3
+    # The BLE sync_type is forwarded to the command builder.
+    cb.send_todev_ble_sync.assert_called_with(sync_type=2)

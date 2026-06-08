@@ -519,10 +519,11 @@ class BLETransport(Transport):
         """Send a one-shot sync packet.
 
         Fired on connect (and as a courtesy on clean disconnect).  Periodic
-        heartbeats are driven by ``DeviceHandle._keep_alive_loop`` (20 s).
+        heartbeats are driven by ``ble_loop.ble_activity_loop``.
         """
         if self._client is None or not self._client.is_connected or self._message is None:
             return
 
         command_bytes = MammotionCommand(self._config.device_id, 0).send_todev_ble_sync(2)
+        _logger.debug("BLETransport: sending one-shot todev_ble_sync(2) (connect/disconnect)")
         await self._message.post_custom_data_bytes(command_bytes)
