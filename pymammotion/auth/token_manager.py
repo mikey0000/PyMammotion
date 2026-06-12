@@ -322,20 +322,34 @@ class TokenManager:
     def subscribe_handle(self, handle: DeviceHandle) -> None:
         """Subscribe to auth errors from *handle* and refresh credentials automatically.
 
+        Also wires the handle's command queue so that a command failing with
+        SessionExpiredError refreshes the credentials and is retried once,
+        instead of being dropped silently.
+
         The subscription is stored internally and lives as long as this
         TokenManager instance — no external lifetime management needed.
         """
         from pymammotion.transport.base import SessionExpiredError
 
-        async def _on_error(exc: Exception) -> None:
-            try:
-                if isinstance(exc, SessionExpiredError) and exc.transport_type == TransportType.CLOUD_MAMMOTION:
-                    await self.refresh_mqtt_credentials()
-                else:
-                    await self.refresh_aliyun_credentials()
-            except Exception:
-                pass  # refresh methods log internally; swallow here to avoid crashing the error bus
+        async def _refresh_for(exc: Exception) -> None:
+            if isinstance(exc, SessionExpiredError) and exc.transport_type == TransportType.CLOUD_MAMMOTION:
+                await self.refresh_mqtt_credentials()
+            else:
+                await self.refresh_aliyun_credentials()
 
+        async def _on_error(exc: Exception) -> None:
+            with contextlib.suppress(Exception):
+                # refresh methods log internally; swallow here to avoid crashing the error bus
+                await _refresh_for(exc)
+
+        async def _on_session_expired(exc: SessionExpiredError) -> bool:
+            try:
+                await _refresh_for(exc)
+            except Exception:
+                return False  # refresh methods log internally; the queue drops the command as before
+            return True
+
+        handle.queue.on_session_expired = _on_session_expired
         self._handle_subscriptions.append(handle.subscribe_errors(_on_error))
 
     # ------------------------------------------------------------------

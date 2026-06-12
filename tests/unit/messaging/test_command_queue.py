@@ -8,7 +8,7 @@ import pytest
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.messaging.saga import Saga
-from pymammotion.transport.base import SagaFailedError
+from pymammotion.transport.base import SagaFailedError, SessionExpiredError, TransportType
 
 
 async def test_is_saga_active_false_initially() -> None:
@@ -178,4 +178,114 @@ async def test_fifo_within_same_priority() -> None:
 
     await asyncio.sleep(0.1)
     assert order == [0, 1, 2]
+    await q.stop()
+
+
+def _session_expired() -> SessionExpiredError:
+    return SessionExpiredError(TransportType.CLOUD_ALIYUN, "identityId is blank (29003) — token refresh required")
+
+
+async def test_session_expired_refreshes_and_retries() -> None:
+    """A SessionExpiredError triggers one credential refresh and a retry of the same command."""
+    q = DeviceCommandQueue()
+    q.start()
+    attempts: list[int] = []
+    refreshes: list[SessionExpiredError] = []
+
+    async def flaky_work() -> None:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise _session_expired()
+
+    async def on_session_expired(exc: SessionExpiredError) -> bool:
+        refreshes.append(exc)
+        return True
+
+    q.on_session_expired = on_session_expired
+    await q.enqueue(flaky_work)
+    await asyncio.sleep(0.1)
+
+    assert len(attempts) == 2
+    assert len(refreshes) == 1
+    await q.stop()
+
+
+async def test_session_expired_failed_refresh_drops_command() -> None:
+    """When the credential refresh fails the command is dropped and reported as critical."""
+    q = DeviceCommandQueue()
+    q.start()
+    attempts: list[int] = []
+    critical: list[Exception] = []
+
+    async def work() -> None:
+        attempts.append(1)
+        raise _session_expired()
+
+    async def on_session_expired(exc: SessionExpiredError) -> bool:
+        return False
+
+    async def on_critical(exc: Exception) -> None:
+        critical.append(exc)
+
+    q.on_session_expired = on_session_expired
+    q.on_critical_error = on_critical
+    await q.enqueue(work)
+    await asyncio.sleep(0.1)
+
+    assert len(attempts) == 1
+    assert len(critical) == 1
+    assert isinstance(critical[0], SessionExpiredError)
+    await q.stop()
+
+
+async def test_session_expired_retries_only_once() -> None:
+    """A second SessionExpiredError after the refresh drops the command — no refresh loop."""
+    q = DeviceCommandQueue()
+    q.start()
+    attempts: list[int] = []
+    refreshes: list[int] = []
+    critical: list[Exception] = []
+
+    async def always_expired() -> None:
+        attempts.append(1)
+        raise _session_expired()
+
+    async def on_session_expired(exc: SessionExpiredError) -> bool:
+        refreshes.append(1)
+        return True
+
+    async def on_critical(exc: Exception) -> None:
+        critical.append(exc)
+
+    q.on_session_expired = on_session_expired
+    q.on_critical_error = on_critical
+    await q.enqueue(always_expired)
+    await asyncio.sleep(0.1)
+
+    assert len(attempts) == 2
+    assert len(refreshes) == 1
+    assert len(critical) == 1
+    await q.stop()
+
+
+async def test_session_expired_without_callback_keeps_previous_behaviour() -> None:
+    """Without a wired refresh callback the command is dropped and reported as critical."""
+    q = DeviceCommandQueue()
+    q.start()
+    attempts: list[int] = []
+    critical: list[Exception] = []
+
+    async def work() -> None:
+        attempts.append(1)
+        raise _session_expired()
+
+    async def on_critical(exc: Exception) -> None:
+        critical.append(exc)
+
+    q.on_critical_error = on_critical
+    await q.enqueue(work)
+    await asyncio.sleep(0.1)
+
+    assert len(attempts) == 1
+    assert len(critical) == 1
     await q.stop()
