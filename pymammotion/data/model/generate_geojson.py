@@ -272,6 +272,13 @@ TYPE_SVG: int = 13
 TYPE_VISUAL_SAFETY_ZONE: int = 25
 TYPE_VISUAL_OBSTACLE_ZONE: int = 26
 
+#: Type ids rendered as GeoJSON Polygons in ``_create_feature_geometry``.  Their
+#: device frames are closed rings but usually do NOT repeat the first point, so
+#: stats must include the implicit closing segment (perimeter) and the enclosed area.
+POLYGON_TYPE_IDS: frozenset[int] = frozenset(
+    {TYPE_MOWING_ZONE, TYPE_OBSTACLE, TYPE_VISUAL_SAFETY_ZONE, TYPE_VISUAL_OBSTACLE_ZONE}
+)
+
 # Coordinate conversion constants
 METERS_PER_DEGREE: int = 111320
 
@@ -634,7 +641,10 @@ class GeojsonGenerator:
                 total_frames += len(frame_list.data)
 
                 lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location, yaw=yaw)
-                length, area = GeojsonGenerator.map_object_stats(local_coords)
+                # Polygon-type objects are closed rings even when the device does not
+                # repeat the first point — without this their area was always 0.0.
+                is_polygon = frame_list.data[0].type in POLYGON_TYPE_IDS
+                length, area = GeojsonGenerator.map_object_stats(local_coords, closed=is_polygon)
 
                 feature = GeojsonGenerator._create_feature(
                     hash_key,
@@ -1144,11 +1154,15 @@ class GeojsonGenerator:
         return new_lon, new_lat
 
     @staticmethod
-    def map_object_stats(coords: list[CommDataCouple]) -> Coordinate:
+    def map_object_stats(coords: list[CommDataCouple], *, closed: bool = False) -> Coordinate:
         """Calculate length and area statistics for map object coordinates.
 
         Args:
             coords: List of coordinate dictionaries with 'x' and 'y' keys
+            closed: Treat *coords* as a closed ring even when the device did not
+                repeat the first point (Polygon-type map objects).  The implicit
+                closing segment is then included in the perimeter and the
+                enclosed area is computed.
 
         Returns:
             Tuple of (length, area) in meters and square meters
@@ -1164,14 +1178,16 @@ class GeojsonGenerator:
 
         length = sum(distance(coords[i], coords[i + 1]) for i in range(len(coords) - 1))
 
-        # Open line
+        ring = coords
         if coords[0] != coords[-1]:
-            return length, 0.0
+            # Open line — only a closed ring (explicit or declared) has an area.
+            if not closed:
+                return length, 0.0
+            length += distance(coords[-1], coords[0])
+            ring = [*coords, coords[0]]
 
         # Closed Polygon - Calculate area using shoelace formula
-        area = 0.5 * abs(
-            sum(coords[i].x * coords[i + 1].y - coords[i + 1].x * coords[i].y for i in range(len(coords) - 1))
-        )
+        area = 0.5 * abs(sum(ring[i].x * ring[i + 1].y - ring[i + 1].x * ring[i].y for i in range(len(ring) - 1)))
 
         return length, area
 
