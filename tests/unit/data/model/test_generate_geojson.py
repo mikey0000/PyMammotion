@@ -1076,3 +1076,59 @@ def test_apply_mow_progress_geojson_unset_rtk_latitude_skipped() -> None:
     )
 
     assert device.map.generated_mow_progress_geojson == {}
+
+
+def _square(size: float = 10.0, *, close: bool = False) -> list[CommDataCouple]:
+    pts = [
+        CommDataCouple(x=0.0, y=0.0),
+        CommDataCouple(x=size, y=0.0),
+        CommDataCouple(x=size, y=size),
+        CommDataCouple(x=0.0, y=size),
+    ]
+    if close:
+        pts.append(CommDataCouple(x=0.0, y=0.0))
+    return pts
+
+
+def test_map_object_stats_open_ring_without_closed_has_no_area() -> None:
+    """Default behaviour unchanged: an open line has a length but no area."""
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    length, area = GeojsonGenerator.map_object_stats(_square())
+
+    assert length == pytest.approx(30.0)
+    assert area == 0.0
+
+
+def test_map_object_stats_open_ring_closed_true_computes_area_and_perimeter() -> None:
+    """Polygon-type device frames do not repeat the first point — closed=True
+    must include the implicit closing segment and compute the enclosed area."""
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    length, area = GeojsonGenerator.map_object_stats(_square(), closed=True)
+
+    assert length == pytest.approx(40.0)
+    assert area == pytest.approx(100.0)
+
+
+def test_map_object_stats_explicitly_closed_ring_unchanged_by_closed_flag() -> None:
+    """An already closed ring yields identical stats with and without closed=True."""
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    length, area = GeojsonGenerator.map_object_stats(_square(close=True))
+    length2, area2 = GeojsonGenerator.map_object_stats(_square(close=True), closed=True)
+
+    assert length == pytest.approx(40.0)
+    assert area == pytest.approx(100.0)
+    assert (length2, area2) == (length, area)
+
+
+def test_map_object_stats_degenerate_closed_segment_has_zero_area() -> None:
+    """Two points declared closed form an out-and-back segment with no area."""
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    coords = [CommDataCouple(x=0.0, y=0.0), CommDataCouple(x=5.0, y=0.0)]
+    length, area = GeojsonGenerator.map_object_stats(coords, closed=True)
+
+    assert length == pytest.approx(10.0)
+    assert area == 0.0
