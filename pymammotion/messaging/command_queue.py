@@ -17,6 +17,7 @@ from pymammotion.transport.base import (
     NoTransportAvailableError,
     ReLoginRequiredError,
     SagaFailedError,
+    SessionExpiredError,
     TransportRateLimitedError,
 )
 
@@ -81,6 +82,10 @@ class DeviceCommandQueue:
         self._pending_dedup_keys: set[str] = set()
         #: Called on critical errors (AuthError, SagaFailedError) so DeviceHandle can propagate them.
         self.on_critical_error: Callable[[Exception], Awaitable[None]] | None = None
+        #: Called when a work item fails with SessionExpiredError so the owner can refresh
+        #: the expired credentials (wired by TokenManager.subscribe_handle()).  Returns True
+        #: when the refresh succeeded — the item is then retried once instead of dropped.
+        self.on_session_expired: Callable[[SessionExpiredError], Awaitable[bool]] | None = None
         #: Fired when an exclusive saga is about to start.  Clients use this to pause the
         #: rapid-report subscription so it doesn't fight the saga for the MQTT channel.
         self.on_saga_start: Callable[[], Awaitable[None]] | None = None
@@ -264,24 +269,42 @@ class DeviceCommandQueue:
                 from pymammotion.aliyun.exceptions import GatewayTimeoutException
 
                 _gateway_timeout_max = 3
-                for _attempt in range(1, _gateway_timeout_max + 1):
+                _gateway_timeouts = 0
+                _session_refresh_done = False
+                while True:
                     try:
                         await item.work()
                         break  # success — exit retry loop
                     except GatewayTimeoutException:
-                        if _attempt < _gateway_timeout_max:
+                        _gateway_timeouts += 1
+                        if _gateway_timeouts < _gateway_timeout_max:
                             _logger.warning(
                                 "DeviceCommandQueue[%s]: gateway timeout (attempt %d/%d) — retrying",
                                 self._device_name,
-                                _attempt,
+                                _gateway_timeouts,
                                 _gateway_timeout_max,
                             )
                         else:
                             _logger.warning(
                                 "DeviceCommandQueue[%s]: gateway timeout after %d attempts — dropping command",
                                 self._device_name,
-                                _attempt,
+                                _gateway_timeouts,
                             )
+                            break
+                    except SessionExpiredError as exc:
+                        # The expired session can be repaired without user action — refresh
+                        # the credentials once and retry, instead of dropping the command
+                        # and leaving the user-visible action silently without effect.
+                        if _session_refresh_done or self.on_session_expired is None:
+                            raise
+                        _session_refresh_done = True
+                        _logger.info(
+                            "DeviceCommandQueue[%s]: %s — refreshing credentials and retrying command",
+                            self._device_name,
+                            exc,
+                        )
+                        if not await self.on_session_expired(exc):
+                            raise
             except asyncio.CancelledError:
                 # stop() sets _running=False before cancelling the processor task,
                 # so CancelledError here always means we are shutting down.
