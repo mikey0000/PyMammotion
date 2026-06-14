@@ -1154,7 +1154,7 @@ class GeojsonGenerator:
         return new_lon, new_lat
 
     @staticmethod
-    def map_object_stats(coords: list[CommDataCouple], *, closed: bool = False) -> Coordinate:
+    def map_object_stats(coords: list[CommDataCouple], closed: bool = False) -> Coordinate:
         """Calculate length and area statistics for map object coordinates.
 
         Args:
