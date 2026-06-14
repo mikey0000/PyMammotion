@@ -538,9 +538,11 @@ class AliyunMQTTTransport(Transport):
         as typed objects via on_device_event (thing/events) or on_device_properties
         (thing/properties).
 
-        Stale events are dropped: if ``params.time`` (Unix ms, cloud-side generation
-        time) is more than ``_STALE_EVENT_THRESHOLD_MS`` behind the current wall
-        clock, the message is logged and discarded.  This prevents buffered messages
+        Stale events are dropped: if the cloud-side envelope timestamp
+        (``params.time`` for thing/events; ``params.generateTime``/``gmtCreate``
+        for thing/properties, which do not carry ``time``) is more than
+        ``_STALE_EVENT_THRESHOLD_MS`` behind the current wall clock, the
+        message is logged and discarded.  This prevents buffered messages
         delivered after a connectivity gap from polluting device state.
         """
         # Non-protobuf: parse and forward typed event
@@ -555,7 +557,12 @@ class AliyunMQTTTransport(Transport):
             return
 
         # Drop stale buffered messages using the cloud-side envelope timestamp.
-        envelope_time_ms: int = parsed.get("params", {}).get("time", 0) or 0
+        # thing/events carry ``params.time``; thing/properties only carry
+        # ``generateTime``/``gmtCreate`` — fall back so both are filtered.
+        params = parsed.get("params", {})
+        envelope_time_ms: int = int(
+            params.get("time") or params.get("generateTime") or params.get("gmtCreate") or 0
+        )
         if envelope_time_ms > 0:
             now_ms = int(time.time() * 1000)
             age_ms = now_ms - envelope_time_ms

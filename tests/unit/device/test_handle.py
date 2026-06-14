@@ -1619,9 +1619,11 @@ async def test_stale_event_dropped(transport: AliyunMQTTTransport):
 
 
 @pytest.mark.asyncio
-async def test_event_without_time_forwarded(transport: AliyunMQTTTransport):
-    """Events with params.time=0 (missing) are not dropped."""
-    raw = _make_event_envelope(0)
+async def test_event_without_any_timestamp_forwarded(transport: AliyunMQTTTransport):
+    """Events with no usable envelope timestamp (time/generateTime/gmtCreate) are not dropped."""
+    payload = json.loads(_make_event_envelope(0))
+    payload["params"]["gmtCreate"] = 0  # the helper's fixture value would trip the fallback
+    raw = json.dumps(payload).encode()
 
     await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
 
@@ -1629,24 +1631,70 @@ async def test_event_without_time_forwarded(transport: AliyunMQTTTransport):
 
 
 @pytest.mark.asyncio
-async def test_stale_properties_dropped(transport: AliyunMQTTTransport):
-    """Stale thing/properties messages are also dropped."""
-    now_ms = int(time.time() * 1000)
+async def test_event_without_time_falls_back_to_gmt_create(transport: AliyunMQTTTransport):
+    """Events missing params.time are filtered via gmtCreate (stale fixture value → dropped)."""
+    raw = _make_event_envelope(0)  # helper sets gmtCreate=1714000000000 (ancient)
+
+    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    transport.on_device_event.assert_not_called()
+
+
+def _make_properties_envelope(generate_time_ms: int) -> bytes:
+    """Realistic thing/properties envelope: carries generateTime/gmtCreate, NO params.time."""
     payload = {
         "method": "thing.properties",
         "id": "test-props-id",
         "version": "1.0",
         "params": {
+            "deviceType": "LawnMower",
+            "checkFailedData": {},
+            "groupIdList": [],
+            "_tenantId": "",
+            "groupId": "",
+            "categoryKey": "LawnMower",
+            "batchId": "",
+            "gmtCreate": generate_time_ms,
+            "productKey": "testpk",
+            "generateTime": generate_time_ms,
+            "deviceName": "testdn",
+            "_traceId": "",
             "iotId": "test_iot_id",
-            "time": now_ms - _STALE_EVENT_THRESHOLD_MS - 30_000,
-            "items": {},
+            "JMSXDeliveryCount": 1,
+            "checkLevel": 0,
+            "qos": 1,
+            "requestId": "1",
+            "_categoryKey": "TmallGenie.LawnMower",
+            "namespace": "",
+            "tenantId": "",
+            "thingType": "DEVICE",
+            "items": {"batteryPercentage": {"time": generate_time_ms, "value": 80}},
+            "tenantInstanceId": "",
         },
     }
-    raw = json.dumps(payload).encode()
+    return json.dumps(payload).encode()
+
+
+@pytest.mark.asyncio
+async def test_stale_properties_dropped(transport: AliyunMQTTTransport):
+    """Stale thing/properties are dropped via generateTime (they carry no params.time)."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_properties_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 30_000)
 
     await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
 
     transport.on_device_properties.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fresh_properties_forwarded(transport: AliyunMQTTTransport):
+    """Fresh thing/properties (recent generateTime, no params.time) are forwarded."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_properties_envelope(now_ms - 5_000)
+
+    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
+
+    transport.on_device_properties.assert_called_once()
 
 
 @pytest.mark.asyncio
