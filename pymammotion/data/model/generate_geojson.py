@@ -641,8 +641,6 @@ class GeojsonGenerator:
                 total_frames += len(frame_list.data)
 
                 lonlat_coords = GeojsonGenerator._convert_to_lonlat_coords(local_coords, rtk_location, yaw=yaw)
-                # Polygon-type objects are closed rings even when the device does not
-                # repeat the first point — without this their area was always 0.0.
                 is_polygon = frame_list.data[0].type in POLYGON_TYPE_IDS
                 length, area = GeojsonGenerator.map_object_stats(local_coords, closed=is_polygon)
 
