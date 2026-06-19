@@ -68,7 +68,7 @@ class BLETransportConfig:
     scan_timeout: float = 10.0
     connect_failure_threshold: int = 1
     connect_cooldown_seconds: float = 120.0
-    min_rssi: int = -80
+    min_rssi: int = -90
 
 
 class BLETransport(Transport):
@@ -427,9 +427,16 @@ class BLETransport(Transport):
             try:
                 await self._message.post_custom_data_bytes(payload)
             except (TimeoutError, BleakError, OSError) as exc:
+                # Clear client refs immediately so is_connected returns False
+                # before _on_disconnect_async runs — prevents the ble_loop from
+                # retrying against a known-dead connection (GATT error 133 etc.).
+                self._client = None
+                self._message = None
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
                 raise TransportError(f"BLE send failed for {self._config.device_id!r}: {exc}") from exc
             if not self._client.is_connected:
+                self._client = None
+                self._message = None
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
                 raise TransportError(
                     f"BLE send failed for {self._config.device_id!r}: client disconnected during write"

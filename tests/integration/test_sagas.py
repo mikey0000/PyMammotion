@@ -346,6 +346,59 @@ async def test_plan_saga_sends_plan_and_waits_for_ack() -> None:
     builder.read_plan.assert_called_once_with(sub_cmd=2, plan_index=0)
 
 
+async def test_plan_saga_iterates_all_indices_when_total_plan_num_is_3() -> None:
+    """When totalPlanNum=3, PlanFetchSaga must request indices 0, 1, and 2.
+
+    This is a regression test for the bug where only plan_index=0 was ever
+    requested: the device returns totalPlanNum in the first response, and the
+    saga must loop through the remaining indices rather than returning early.
+    """
+    broker = AsyncMock(spec=DeviceMessageBroker)
+    builder = _make_command_builder()
+
+    subscribe_side_effect, active_callbacks = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
+
+    # Three plans, each with a distinct plan_id.  All carry totalPlanNum=3 so the
+    # saga knows the total from the first response and loops for indices 1 and 2.
+    plan_dicts = [
+        {"total_plan_num": 3, "plan_id": "plan-aaa", "plan_index": 0, "task_name": "Plan A"},
+        {"total_plan_num": 3, "plan_id": "plan-bbb", "plan_index": 1, "task_name": "Plan B"},
+        {"total_plan_num": 3, "plan_id": "plan-ccc", "plan_index": 2, "task_name": "Plan C"},
+    ]
+    call_count = 0
+
+    async def send_command(cmd: bytes) -> None:
+        nonlocal call_count
+        if active_callbacks:
+            leaf_val = MagicMock()
+            leaf_val.to_dict.return_value = plan_dicts[call_count]
+            response = MagicMock()
+            # _which_plan is called with response.nav as `obj` when unpacking
+            # SubNavMsg, so the leaf_val must be reachable via response.nav._leaf_val.
+            response.nav._leaf_val = leaf_val
+            call_count += 1
+            await active_callbacks[-1](response)
+
+    def _which_plan(obj: Any, group: str) -> tuple[str, Any]:
+        if group == "LubaSubMsg":
+            return ("nav", obj.nav)
+        return ("todev_planjob_set", obj._leaf_val)
+
+    with patch("betterproto2.which_one_of", side_effect=_which_plan):
+        saga = PlanFetchSaga(command_builder=builder, send_command=send_command)
+        await saga.execute(broker)
+
+    # Saga must have sent one read_plan per index.
+    assert builder.read_plan.call_count == 3
+    builder.read_plan.assert_any_call(sub_cmd=2, plan_index=0)
+    builder.read_plan.assert_any_call(sub_cmd=2, plan_index=1)
+    builder.read_plan.assert_any_call(sub_cmd=2, plan_index=2)
+
+    # All three plans must be in the result.
+    assert set(saga.result.keys()) == {"plan-aaa", "plan-bbb", "plan-ccc"}
+
+
 async def test_plan_saga_retries_on_timeout() -> None:
     """When first attempt times out, saga must restart and succeed on second attempt."""
     broker = AsyncMock(spec=DeviceMessageBroker)

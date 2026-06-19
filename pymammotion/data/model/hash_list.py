@@ -517,15 +517,19 @@ class HashList(DataClassORJSONMixin):
 
     @property
     def area_root_hashlist(self) -> list[int]:
-        """Return hash IDs from ``root_hash_lists`` entries with ``sub_cmd == 0`` (area)."""
+        """Return hash IDs from ``root_hash_lists`` entries with ``sub_cmd == 0`` (area).
+
+        Frames are sorted by ``current_frame`` so the concatenated list is in the
+        same position order the device used when building its ``bol_hash``.
+        """
         if not self.root_hash_lists:
             return []
         return [
             i
             for root_list in self.root_hash_lists
-            for obj in root_list.data
-            for i in obj.data_couple
             if root_list.sub_cmd == 0
+            for obj in sorted(root_list.data, key=lambda d: d.current_frame)
+            for i in obj.data_couple
         ]
 
     @property
@@ -991,8 +995,6 @@ class HashList(DataClassORJSONMixin):
         """
         if not bol_hash:
             return False
-        if MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) != bol_hash:
-            return False
         if self.computed_bol_hash != bol_hash:
             return False
         if self.find_incomplete_hashes(0):
@@ -1017,7 +1019,7 @@ class HashList(DataClassORJSONMixin):
         than now.  Hash IDs that remain in the new list re-use their cached
         frames and are not re-fetched.
         """
-        if not bol_hash or MurMurHashUtil.hash_unsigned_list(self.area_root_hashlist) == bol_hash:
+        if not bol_hash or self.computed_bol_hash == bol_hash:
             return
         self.root_hash_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd != 0]
         self.update_hash_lists(self.hashlist)

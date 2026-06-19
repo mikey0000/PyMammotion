@@ -345,6 +345,14 @@ class DeviceHandle:
                     # rather than sleeping out the rest of its 180 s idle period.
                     self._rearm_event.set()
                     if state == TransportAvailability.DISCONNECTED:
+                        # Cancel the BLE heartbeat loop so it stops retrying
+                        # against a dead connection instead of exhausting all
+                        # 30 attempts.  task.cancel() schedules CancelledError
+                        # at the next await inside the task (asyncio.sleep) —
+                        # safe to call from within the task itself.
+                        ka_task = self._ble_keep_alive_task
+                        if ka_task is not None and not ka_task.done():
+                            ka_task.cancel()
                         # Cancel the BLE polling loop so the MQTT loop can resume
                         # without waiting up to _BLE_MODE_RECHECK_INTERVAL for
                         # the loop to detect the disconnect on its own.

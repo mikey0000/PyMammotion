@@ -64,6 +64,7 @@ class MapFetchSaga(Saga):
         get_map: Callable[[], HashList],
         get_bol_hash: Callable[[], int] | None = None,
         sync_type: int = 3,
+        skip_area_names: bool = False,
     ) -> None:
         """Initialise the saga with device info and transport helpers.
 
@@ -76,10 +77,16 @@ class MapFetchSaga(Saga):
         (``report_data.locations[0].bol_hash``), used for the start-of-run
         staleness check.  Defaults to a getter that returns 0 (no check) so
         callers/tests that don't supply it behave as before.
+
+        *skip_area_names* suppresses step 1 (``get_area_name_list``) without
+        implying the full Luba-1 profile.  Use this for incremental updates
+        during mowing where area names haven't changed and the device may not
+        respond to the area-name query while busy.
         """
         self._device_id = device_id
         self._device_name = device_name
         self._is_luba1 = is_luba1
+        self._skip_area_names = skip_area_names
         self._command_builder = command_builder
         self._send_command = send_command
         self._get_map = get_map
@@ -123,9 +130,9 @@ class MapFetchSaga(Saga):
         await self._send_ble_sync()
 
         # ------------------------------------------------------------------
-        # Step 1: Fetch area names (non-Luba1 only).
+        # Step 1: Fetch area names (non-Luba1, non-incremental only).
         # ------------------------------------------------------------------
-        if not self._is_luba1:
+        if not self._is_luba1 and not self._skip_area_names:
             _logger.debug("MapFetchSaga[%s]: fetching area names", self._device_name)
             cmd = self._command_builder.get_area_name_list(self._device_id)
             # will raise a CommandTimeoutError if it fails

@@ -56,6 +56,7 @@ from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowerDevice, RTKBaseStationDevice
+from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.http.http import MammotionHTTP
@@ -124,7 +125,7 @@ if TYPE_CHECKING:
     from pymammotion.data.model.device import MowingDevice
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
-    from pymammotion.data.mqtt.status import StatusType, ThingStatusMessage
+    from pymammotion.data.mqtt.status import ThingStatusMessage
 
 _logger = logging.getLogger(__name__)
 
@@ -296,18 +297,38 @@ class MammotionClient:
                 )
 
         async def _on_bol_hash_changed(bol_hash: int) -> None:
-            # bol_hash changes when the device's map data has been edited or
-            # re-synced on the device side — trigger a re-fetch so our
-            # cached HashList reflects the new topology.
+            # bol_hash changes when the device's map element DB has been edited —
+            # trigger a re-fetch so our cached HashList stays current.
+            #
+            # Dynamics-line devices (lidar-enabled: LUBA_HM, ME, MB, LA, CM900, …)
+            # continuously detect new obstacles (type=1 elements) during mowing,
+            # so bol_hash changes every few seconds while running.  We still need
+            # to pick up those new obstacle hashes — we just skip the area-name
+            # step (step 1) because area names don't change during mowing and the
+            # device may not respond to that query while busy.
+            device_snapshot = cast(MowerDevice, handle.snapshot.raw)
+            device_type = DeviceType.value_of_str(device_name)
+            is_mowing = device_snapshot.report_data.dev.sys_status in (
+                WorkMode.MODE_WORKING,
+                WorkMode.MODE_PAUSE,
+                WorkMode.MODE_RETURNING,
+            )
+            incremental = (
+                device_type.is_support_dynamics_line(device_snapshot.device_firmwares.main_controller) and is_mowing
+            )
             if handle.queue.is_saga_active:
+                _logger.debug(
+                    "Device %s bol_hash changed to %d but saga active — skipping map sync", device_name, bol_hash
+                )
                 return
             _logger.debug(
-                "Device %s bol_hash changed to %d — syncing map",
+                "Device %s bol_hash changed to %d — syncing map (incremental=%s)",
                 device_name,
                 bol_hash,
+                incremental,
             )
             try:
-                await self.start_map_sync(device_name)
+                await self.start_map_sync(device_name, skip_area_names=incremental)
             except Exception:  # noqa: BLE001
                 _logger.warning("Auto-trigger map sync failed for %s", device_name, exc_info=True)
 
@@ -316,6 +337,9 @@ class MammotionClient:
             # changes — mirrors the APK's initCfgHash-driven allpowerfullRW(5,1,1)
             # trigger in DeviceInitializationManager.
             if not cfg_hash or handle.queue.is_saga_active:
+                _logger.debug(
+                    "Device %s init_cfg_hash changed to %d but saga active — skipping plan sync", device_name, cfg_hash
+                )
                 return
             _logger.debug(
                 "Device %s init_cfg_hash changed to %d — syncing plans",
@@ -2047,15 +2071,22 @@ class MammotionClient:
     # Map sync
     # ------------------------------------------------------------------
 
-    async def start_map_sync(self, device_name: str) -> None:
+    async def start_map_sync(self, device_name: str, *, skip_area_names: bool = False) -> None:
         """Enqueue a MapFetchSaga to fetch the complete device map.
 
         The saga is enqueued on the device's command queue and runs exclusively
         (no other commands execute while the map fetch is in progress).
         Map data is automatically applied to device state as messages arrive.
+
+        *skip_area_names* suppresses step 1 (``get_area_name_list``); pass
+        ``True`` for incremental mowing-time updates where area names are
+        stable and the device may not respond to the query while busy.
         """
 
         if handle := self._device_registry.get_by_name(device_name):
+            _logger.debug(
+                "start_map_sync [%s]: enqueuing MapFetchSaga (skip_area_names=%s)", device_name, skip_area_names
+            )
             commands = handle.commands
             saga = MapFetchSaga(
                 device_id=handle.device_id,
@@ -2068,9 +2099,11 @@ class MammotionClient:
                     locs[0].bol_hash if (locs := cast(MowerDevice, handle.snapshot.raw).report_data.locations) else 0
                 ),
                 sync_type=2 if handle.is_transport_connected(TransportType.BLE) else 3,
+                skip_area_names=skip_area_names,
             )
 
             async def _on_map_complete() -> None:
+                _logger.debug("start_map_sync [%s]: saga complete", device_name)
                 device = self.get_device_by_name(device_name)
                 if device is None:
                     return
@@ -2113,6 +2146,7 @@ class MammotionClient:
         if handle is None:
             _logger.warning("start_plan_sync: device '%s' not registered", device_name)
             return
+        _logger.debug("start_plan_sync [%s]: enqueuing PlanFetchSaga", device_name)
         saga = PlanFetchSaga(command_builder=handle.commands, send_command=handle.send_raw)
         await handle.enqueue_saga(saga)
 
@@ -2510,6 +2544,7 @@ class MammotionClient:
         if http is None:
             return None
         is_yuka = DeviceType.is_yuka(device_name)
+        await self.send_command_with_args(device_name, "device_agora_join_channel_with_position", enter_state=0)
         subscription = await self._fetch_stream_subscription(http, iot_id, is_yuka)
 
         if handle := self._device_registry.get_by_name(device_name):
@@ -2536,6 +2571,7 @@ class MammotionClient:
         if http is None:
             return None
         is_yuka = DeviceType.is_yuka(device_name)
+
         subscription = await self._fetch_stream_subscription(http, iot_id, is_yuka)
 
         if handle := self._device_registry.get_by_name(device_name):
