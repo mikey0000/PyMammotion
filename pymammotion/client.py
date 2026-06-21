@@ -116,6 +116,25 @@ _ONE_SHOT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_CUTTER_INFO,
     RptInfoType.RIT_RTK,
 ]
+
+
+def _cached_aliyun_device_data_is_empty(cached_data: dict[str, Any]) -> bool:
+    """Return True when cached Aliyun device_data explicitly contains no devices."""
+    device_data = cached_data.get("device_data")
+    if device_data is None:
+        return False
+
+    data = (
+        device_data.get("data")
+        if isinstance(device_data, dict)
+        else getattr(device_data, "data", None)
+    )
+    devices = data.get("data") if isinstance(data, dict) else getattr(data, "data", None)
+    if devices is None:
+        return False
+    return len(devices) == 0
+
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -1123,7 +1142,7 @@ class MammotionClient:
                 await mammotion_http.confirm_share(batch_id, record_ids)
 
         device_page_resp = await mammotion_http.get_user_device_page()
-        aliyun_devices = device_list_resp.data
+        aliyun_devices = device_list_owned_resp.data or []
         mammotion_records = (device_page_resp.data.records if device_page_resp.data else []) or []
 
         # Build an authoritative device_name→iot_id map from /device-server/v1/device/list.
@@ -1164,19 +1183,27 @@ class MammotionClient:
             al_transport = self._setup_aliyun_transport(cloud_client, acct_session)
             acct_session.aliyun_transport = al_transport
             ua = acct_session.user_account
-            for device in cloud_client.devices_by_account_response.data.data:  # type: ignore
-                if device.device_name:
-                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                    await self._register_aliyun_device(
-                        device.device_name,
-                        iot_id,
-                        al_transport,
-                        ua,
-                        device.product_key,
-                        token_manager=acct_session.token_manager,
-                    )
-                    acct_session.device_ids.add(device.device_name)
-            await al_transport.connect()
+            known_ids: set[str] = set()
+            if cloud_client.devices_by_account_response is not None and cloud_client.devices_by_account_response.data:
+                for device in cloud_client.devices_by_account_response.data.data:  # type: ignore
+                    if device.device_name:
+                        iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                        await self._register_aliyun_device(
+                            device.device_name,
+                            iot_id,
+                            al_transport,
+                            ua,
+                            device.product_key,
+                            token_manager=acct_session.token_manager,
+                        )
+                        known_ids.add(device.device_name)
+
+            if known_ids:
+                acct_session.device_ids.update(known_ids)
+                await al_transport.connect()
+            else:
+                _logger.info("No Aliyun devices found for account %s - skipping Aliyun MQTT connection", account)
+                acct_session.aliyun_transport = None
 
         if mammotion_records:
             await self._bootstrap_mammotion_mqtt(account, mammotion_http, acct_session, owned_iot_id_map)
@@ -1251,9 +1278,14 @@ class MammotionClient:
         else:
             acct_session.password = password
 
-        if "aep_data" in cached_data:
+        if "aep_data" in cached_data and not _cached_aliyun_device_data_is_empty(cached_data):
             await self._restore_aliyun(
                 account, password, cached_data, acct_session, check_for_new_devices=check_for_new_devices
+            )
+        elif "aep_data" in cached_data:
+            _logger.info(
+                "Skipping cached Aliyun restore for account %s because cached device_data is empty",
+                account,
             )
 
         if "mammotion_mqtt" in cached_data and "mammotion_device_records" in cached_data:

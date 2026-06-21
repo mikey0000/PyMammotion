@@ -374,6 +374,7 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
     mock_device = MagicMock()
     mock_device.device_name = "Luba-Cloud"
     mock_device.iot_id = "iot-123"
+    mock_device.product_key = "pk"
 
     mock_devices_data = MagicMock()
     mock_devices_data.data.data = [mock_device]
@@ -391,7 +392,7 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
 
     mock_http = MagicMock()
     mock_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
-    mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=None))
+    mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[mock_device]))
     mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
     mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=None))
     mock_http.login_info = None
@@ -414,6 +415,69 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
     session = client._account_registry.get("user@test.com")
     assert session is not None
     assert session.token_manager is not None
+
+
+async def test_login_shared_only_account_skips_aliyun_and_bootstraps_mammotion_mqtt() -> None:
+    """Shared-only accounts must not start the Aliyun owned-device flow.
+
+    A received/share record is not evidence that list_binding_by_account will
+    succeed for the account.  Shared-only accounts should use the Mammotion MQTT
+    records path instead.
+    """
+    client = MammotionClient()
+
+    mock_http = MagicMock()
+    mock_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
+    mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+    mock_http.get_user_shared_device_page = AsyncMock(
+        return_value=MagicMock(data=MagicMock(records=[]))
+    )
+    page_data = MagicMock()
+    page_data.records = [_make_device_record("Luba-Shared", "iot-shared", "pk-shared")]
+    mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=page_data))
+    mock_http.login_info = None
+
+    with (
+        patch("pymammotion.client.MammotionHTTP", return_value=mock_http),
+        patch("pymammotion.client.CloudIOTGateway") as mock_cloud_gateway,
+        patch.object(client, "_bootstrap_mammotion_mqtt", new_callable=AsyncMock) as mock_bootstrap,
+    ):
+        await client.login_and_initiate_cloud("shared@test.com", "pass")
+
+    mock_cloud_gateway.assert_not_called()
+    mock_bootstrap.assert_awaited_once()
+    assert mock_bootstrap.await_args.args[0] == "shared@test.com"
+
+
+async def test_restore_credentials_skips_empty_cached_aliyun_device_data() -> None:
+    """Cached Aliyun credentials with an explicit empty device list are ignored.
+
+    This is the cache shape produced for shared-only accounts: Aliyun auth data
+    exists, but device_data.data.data is empty.  Restoring it would repeatedly
+    call list_binding_by_account and enter an auth-recovery loop.
+    """
+    client = MammotionClient()
+    cached_data = {
+        "aep_data": {"data": {}},
+        "device_data": {"data": {"total": 0, "data": [], "pageNo": 1, "pageSize": 100}},
+        "mammotion_mqtt": {"host": "mqtt.example.com", "client_id": "c", "username": "u", "jwt": "j"},
+        "mammotion_device_records": {"records": [], "current": 1, "total": 0, "size": 100, "pages": 0},
+    }
+
+    with (
+        patch.object(client, "_restore_aliyun", new_callable=AsyncMock) as mock_restore_aliyun,
+        patch.object(client, "_restore_mammotion_mqtt", new_callable=AsyncMock) as mock_restore_mqtt,
+    ):
+        await client.restore_credentials(
+            "shared@test.com",
+            "pass",
+            cached_data,
+            check_for_new_devices=False,
+        )
+
+    mock_restore_aliyun.assert_not_awaited()
+    mock_restore_mqtt.assert_awaited_once()
+
 
 async def test_bootstrap_no_existing_transport_calls_connect_once() -> None:
     """When no transport exists, _bootstrap_mammotion_mqtt must connect exactly once."""
