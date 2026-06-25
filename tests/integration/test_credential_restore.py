@@ -417,13 +417,8 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
     assert session.token_manager is not None
 
 
-async def test_login_shared_only_account_skips_aliyun_and_bootstraps_mammotion_mqtt() -> None:
-    """Shared-only accounts must not start the Aliyun owned-device flow.
-
-    A received/share record is not evidence that list_binding_by_account will
-    succeed for the account.  Shared-only accounts should use the Mammotion MQTT
-    records path instead.
-    """
+async def test_login_shared_only_account_checks_shared_aliyun_device_without_account_listing() -> None:
+    """Shared-only accounts check per-device Aliyun binding without account-wide listing."""
     client = MammotionClient()
 
     mock_http = MagicMock()
@@ -433,20 +428,103 @@ async def test_login_shared_only_account_skips_aliyun_and_bootstraps_mammotion_m
         return_value=MagicMock(data=MagicMock(records=[]))
     )
     page_data = MagicMock()
-    page_data.records = [_make_device_record("Luba-Shared", "iot-shared", "pk-shared")]
+    shared_record = _make_device_record("Luba-Shared", "iot-shared", "pk-shared")
+    shared_record.owned = 0
+    page_data.records = [shared_record]
     mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=page_data))
     mock_http.login_info = None
 
+    mock_cloud = MagicMock()
+    mock_cloud.devices_by_account_response = None
+    mock_cloud.aep_response = MagicMock()
+    mock_cloud.region_response = MagicMock()
+    mock_cloud.session_by_authcode_response = MagicMock()
+    mock_cloud.session_by_authcode_response.data = MagicMock(iotToken="tok")
+    mock_cloud.get_shared_notice_list = AsyncMock(return_value=MagicMock(data=None))
+    mock_cloud.list_binding_by_dev = AsyncMock(return_value=MagicMock(data=None))
+    mock_cloud.cache_devices_by_account = MagicMock()
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
     with (
         patch("pymammotion.client.MammotionHTTP", return_value=mock_http),
-        patch("pymammotion.client.CloudIOTGateway") as mock_cloud_gateway,
+        patch("pymammotion.client.CloudIOTGateway", return_value=mock_cloud),
+        patch("pymammotion.client.MammotionClient._connect_iot", AsyncMock()) as mock_connect_iot,
+        patch.object(client, "_setup_aliyun_transport", return_value=mock_transport),
         patch.object(client, "_bootstrap_mammotion_mqtt", new_callable=AsyncMock) as mock_bootstrap,
     ):
         await client.login_and_initiate_cloud("shared@test.com", "pass")
 
-    mock_cloud_gateway.assert_not_called()
+    mock_connect_iot.assert_awaited_once_with(mock_cloud, list_devices_by_account=False)
+    mock_cloud.list_binding_by_dev.assert_awaited_once_with("iot-shared")
+    mock_cloud.cache_devices_by_account.assert_not_called()
+    mock_transport.connect.assert_not_awaited()
     mock_bootstrap.assert_awaited_once()
     assert mock_bootstrap.await_args.args[0] == "shared@test.com"
+
+
+async def test_login_combines_owned_and_shared_aliyun_devices() -> None:
+    """Owned Aliyun bindings and shared per-device bindings are registered together."""
+    client = MammotionClient()
+
+    owned_device = MagicMock()
+    owned_device.device_name = "Luba-Owned"
+    owned_device.iot_id = "iot-owned"
+    owned_device.product_key = "pk-owned"
+
+    shared_device = MagicMock()
+    shared_device.device_name = "Luba-Shared"
+    shared_device.iot_id = "iot-shared"
+    shared_device.product_key = "pk-shared"
+
+    mock_devices_data = MagicMock()
+    mock_devices_data.data.data = [owned_device]
+
+    mock_cloud = MagicMock()
+    mock_cloud.devices_by_account_response = mock_devices_data
+    mock_cloud.aep_response = MagicMock()
+    mock_cloud.region_response = MagicMock()
+    mock_cloud.session_by_authcode_response = MagicMock()
+    mock_cloud.session_by_authcode_response.data = MagicMock(iotToken="tok")
+    mock_cloud.get_shared_notice_list = AsyncMock(return_value=MagicMock(data=None))
+    mock_cloud.list_binding_by_dev = AsyncMock(
+        return_value=MagicMock(data=MagicMock(data=[shared_device]))
+    )
+    mock_cloud.cache_devices_by_account = MagicMock()
+
+    shared_record = _make_device_record("Luba-Shared", "iot-shared", "pk-shared")
+    shared_record.owned = 0
+    page_data = MagicMock()
+    page_data.records = [shared_record]
+
+    mock_http = MagicMock()
+    mock_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
+    mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[owned_device]))
+    mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
+    mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=page_data))
+    mock_http.login_info = None
+    mock_http.mqtt_credentials = None
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    with (
+        patch("pymammotion.client.MammotionHTTP", return_value=mock_http),
+        patch("pymammotion.client.CloudIOTGateway", return_value=mock_cloud),
+        patch("pymammotion.client.MammotionClient._connect_iot", AsyncMock()) as mock_connect_iot,
+        patch.object(client, "_setup_aliyun_transport", return_value=mock_transport),
+        patch.object(client, "_register_aliyun_device", AsyncMock()) as mock_register,
+        patch.object(client, "_bootstrap_mammotion_mqtt", new_callable=AsyncMock),
+    ):
+        await client.login_and_initiate_cloud("user@test.com", "pass")
+
+    mock_connect_iot.assert_awaited_once_with(mock_cloud, list_devices_by_account=True)
+    mock_cloud.list_binding_by_dev.assert_awaited_once_with("iot-shared")
+    registered_names = [call.args[0] for call in mock_register.await_args_list]
+    assert registered_names == ["Luba-Owned", "Luba-Shared"]
+    mock_cloud.cache_devices_by_account.assert_called_once_with([owned_device, shared_device])
+    mock_transport.connect.assert_awaited_once()
 
 
 async def test_restore_credentials_skips_empty_cached_aliyun_device_data() -> None:
