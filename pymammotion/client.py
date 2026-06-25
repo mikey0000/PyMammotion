@@ -2029,7 +2029,7 @@ class MammotionClient:
 
             ua = acct_session.user_account
             for record in cached_records.records:
-                if record.device_name:
+                if record.device_name and record.device_name not in acct_session.device_ids:
                     iot_id_override = owned_iot_id_map.get(record.device_name, "")
                     await self._register_mammotion_device(
                         record, transport, ua, iot_id_override, token_manager=acct_session.token_manager

@@ -342,6 +342,59 @@ async def test_restore_mammotion_mqtt_reuses_existing_http_for_hybrid_account() 
     assert captured["http"] is http_a
     assert captured["tm"].http is http_a  # type: ignore[attr-defined]
 
+
+async def test_restore_mammotion_mqtt_skips_devices_already_restored_from_aliyun() -> None:
+    """Mammotion cache restore must not replace devices already registered from Aliyun."""
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    acct_session.mammotion_http = _populated_mammotion_http()
+    acct_session.device_ids.add("Luba-Aliyun")
+
+    mqtt_creds = MQTTConnection(host="mqtt.example.com", client_id="client-1", username="user", jwt="token")
+    cached_data = {
+        "mammotion_mqtt": mqtt_creds.to_dict(),
+        "mammotion_device_records": {
+            "records": [
+                {
+                    "identityId": "identity-aliyun",
+                    "iotId": "iot-aliyun",
+                    "productKey": "pk-aliyun",
+                    "deviceName": "Luba-Aliyun",
+                    "owned": 0,
+                    "bindTime": 0,
+                    "createTime": "2024-01-01",
+                    "status": 1,
+                },
+                {
+                    "identityId": "identity-new",
+                    "iotId": "iot-new",
+                    "productKey": "pk-new",
+                    "deviceName": "Yuka-New",
+                    "owned": 1,
+                    "bindTime": 0,
+                    "createTime": "2024-01-01",
+                    "status": 1,
+                },
+            ],
+        },
+    }
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    with (
+        patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
+        patch.object(client, "_register_mammotion_device", new_callable=AsyncMock) as mock_register,
+        patch("pymammotion.client.MammotionHTTP.get_user_device_list", new_callable=AsyncMock) as mock_list,
+    ):
+        mock_list.return_value = MagicMock(data=[])
+        await client._restore_mammotion_mqtt("user@test.com", "pass", cached_data, None, acct_session)
+
+    registered_names = [call.args[0].device_name for call in mock_register.await_args_list]
+    assert registered_names == ["Yuka-New"]
+    assert acct_session.device_ids == {"Luba-Aliyun", "Yuka-New"}
+
+
 async def test_to_cache_includes_mammotion_jwt_info() -> None:
     """to_cache() must emit mammotion_jwt_info so JWT survives a restore.
 
