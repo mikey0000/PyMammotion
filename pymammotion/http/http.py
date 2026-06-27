@@ -471,12 +471,30 @@ class MammotionHTTP:
                     "Content-Type": "application/json",
                 },
             )
-            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
-                data = await resp.json()
-                response = response_factory(Response[StreamSubscriptionResponse], data)
+            content_type = resp.headers.get("Content-Type") or ""
+            body = await resp.text()
+            _LOGGER.debug(
+                "stream/token response: status=%s content-type=%s body=%.500s",
+                resp.status,
+                content_type,
+                body,
+            )
+            if content_type.startswith("application/json"):
+                response = response_factory(Response[StreamSubscriptionResponse], json.loads(body))
+                if response.data is None:
+                    _LOGGER.warning(
+                        "stream/token returned JSON with no stream data (code=%s msg=%s)",
+                        response.code,
+                        response.msg,
+                    )
                 return response
 
-        return Response(code=200, msg="success")
+            _LOGGER.warning(
+                "stream/token returned non-JSON response (status=%s content-type=%s)",
+                resp.status,
+                content_type,
+            )
+            return Response(code=resp.status, msg="non-json response")
 
     @refresh_token_decorator
     async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
