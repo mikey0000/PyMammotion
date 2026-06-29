@@ -595,6 +595,58 @@ async def test_login_shared_only_account_continues_when_aliyun_share_notice_fail
     mock_bootstrap.assert_awaited_once()
 
 
+async def test_login_with_owned_devices_checks_aliyun_shared_notices() -> None:
+    """Existing owned devices still trigger Aliyun shared-notice acceptance."""
+    client = MammotionClient()
+
+    owned_device = MagicMock()
+    owned_device.device_name = "Luba-Owned"
+    owned_device.iot_id = "iot-owned"
+    owned_device.product_key = "pk-owned"
+
+    mock_devices_data = MagicMock()
+    mock_devices_data.data.data = [owned_device]
+
+    pending_notice = MagicMock()
+    pending_notice.status = -1
+    pending_notice.record_id = "share-record-1"
+
+    mock_cloud = MagicMock()
+    mock_cloud.devices_by_account_response = mock_devices_data
+    mock_cloud.aep_response = MagicMock()
+    mock_cloud.region_response = MagicMock()
+    mock_cloud.session_by_authcode_response = MagicMock()
+    mock_cloud.session_by_authcode_response.data = MagicMock(iotToken="tok")
+    mock_cloud.get_shared_notice_list = AsyncMock(
+        return_value=MagicMock(data=MagicMock(data=[pending_notice]))
+    )
+    mock_cloud.confirm_share = AsyncMock()
+    mock_cloud.cache_devices_by_account = MagicMock()
+
+    mock_http = MagicMock()
+    mock_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
+    mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[owned_device]))
+    mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
+    mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
+    mock_http.login_info = None
+
+    mock_transport = MagicMock()
+    mock_transport.connect = AsyncMock()
+
+    with (
+        patch("pymammotion.client.MammotionHTTP", return_value=mock_http),
+        patch("pymammotion.client.CloudIOTGateway", return_value=mock_cloud),
+        patch("pymammotion.client.MammotionClient._connect_iot", AsyncMock()) as mock_connect_iot,
+        patch.object(client, "_setup_aliyun_transport", return_value=mock_transport),
+        patch.object(client, "_register_aliyun_device", AsyncMock()),
+    ):
+        await client.login_and_initiate_cloud("user@test.com", "pass")
+
+    mock_connect_iot.assert_awaited_once_with(mock_cloud, list_devices_by_account=True)
+    mock_cloud.get_shared_notice_list.assert_awaited_once()
+    mock_cloud.confirm_share.assert_awaited_once_with(["share-record-1"])
+
+
 async def test_login_combines_owned_and_shared_aliyun_devices() -> None:
     """Owned Aliyun bindings and shared per-device bindings are registered together."""
     client = MammotionClient()
