@@ -373,7 +373,10 @@ async def test_thing_status_online_routes_to_on_device_status(
 
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_device_status = _status_handler
-    transport.on_message = AsyncMock()  # must NOT be called
+    # The base on_message setter wraps the callback (receive timestamping), so keep
+    # our own reference to the mock — reading transport.on_message returns the wrapper.
+    raw_handler = AsyncMock()  # must NOT be called
+    transport.on_message = raw_handler
 
     payload = _make_thing_status_payload("iot123", 1)
     fake_client = _FakeMQTTClient(
@@ -388,7 +391,7 @@ async def test_thing_status_online_routes_to_on_device_status(
         assert iot_id == "iot123"
         assert isinstance(msg, ThingStatusMessage)
         assert msg.params.status.value is StatusType.CONNECTED
-        transport.on_message.assert_not_awaited()
+        raw_handler.assert_not_awaited()
         await transport.disconnect()
 
 
@@ -698,9 +701,20 @@ async def test_bind_reply_2043_new_token_sent_on_reconnect(
         second_client,
     ]
 
-    with patch("aiomqtt.Client", side_effect=clients):
+    # _run now sleeps `backoff` before the refresh-driven reconnect — neutralise the
+    # delay so the test doesn't wait out the real backoff.
+    real_sleep = asyncio.sleep
+
+    async def _instant_sleep(_delay: float) -> None:
+        await real_sleep(0)
+
+    with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        # Poll until the reconnected client has published the bind message.
+        for _ in range(200):
+            if second_client.publish.await_count:
+                break
+            await real_sleep(0.005)
         await transport.disconnect()
 
     # The second client's publish should have been called with the new token

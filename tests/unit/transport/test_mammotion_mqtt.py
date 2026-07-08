@@ -53,17 +53,8 @@ def test_is_connected_initially_false(transport: MQTTTransport) -> None:
 
 
 # ---------------------------------------------------------------------------
-# update_jwt / update_credentials — full credential rotation
+# update_credentials — full credential rotation
 # ---------------------------------------------------------------------------
-
-
-def test_update_jwt_replaces_only_password(transport: MQTTTransport) -> None:
-    """update_jwt swaps the password and leaves client_id/username intact."""
-    transport.update_jwt("new-jwt")
-    cfg = transport._config
-    assert cfg.password == "new-jwt"
-    assert cfg.client_id == "test-client"
-    assert cfg.username == "user"
 
 
 def test_update_credentials_rotates_client_id_username_and_jwt(transport: MQTTTransport) -> None:

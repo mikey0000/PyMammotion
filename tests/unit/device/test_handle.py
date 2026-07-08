@@ -8,7 +8,6 @@ import pytest
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
-from pymammotion.messaging.command_queue import Priority
 from pymammotion.proto import LubaMsg as RealLubaMsg
 from pymammotion.state.device_state import DeviceAvailability, DeviceConnectionState, TransportAvailability
 from pymammotion.transport.base import NoTransportAvailableError, TransportType
@@ -76,24 +75,6 @@ async def test_add_transport_sets_on_message() -> None:
     await handle.add_transport(transport)
 
     assert callable(transport.on_message)
-
-
-# ---------------------------------------------------------------------------
-# test 2: send_command enqueues work
-# ---------------------------------------------------------------------------
-
-
-async def test_send_command_enqueues_work() -> None:
-    """send_command should add an item to the queue (queue size grows)."""
-    handle = make_handle()
-    # Add a connected transport so _active_transport doesn't raise
-    transport = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-    await handle.add_transport(transport)
-
-    # Don't start the queue so items accumulate
-    initial_size = handle.queue._queue.qsize()
-    await handle.send_command(b"\x01\x02", "some_field", priority=Priority.NORMAL)
-    assert handle.queue._queue.qsize() == initial_size + 1
 
 
 # ---------------------------------------------------------------------------
@@ -277,13 +258,6 @@ def _patch_raw_message_internals(handle: DeviceHandle) -> None:
     handle.broker.on_message = AsyncMock()  # type: ignore[method-assign]
 
 
-async def _drain_queue(handle: DeviceHandle) -> None:
-    """Start queue, wait for all enqueued items to finish, then stop."""
-    handle.queue.start()
-    await handle.queue._queue.join()
-    await handle.queue.stop()
-
-
 # ---------------------------------------------------------------------------
 # test 8: DeviceOfflineException marks mqtt_reported_offline — CLOUD_ALIYUN
 # ---------------------------------------------------------------------------
@@ -296,18 +270,18 @@ async def _drain_queue(handle: DeviceHandle) -> None:
 )
 async def test_device_offline_marks_reported_offline(transport_type: TransportType) -> None:
     """DeviceOfflineException from either MQTT transport sets mqtt_reported_offline=True
-    and makes the device unavailable (no BLE fallback present)."""
+    and makes the device unavailable (no BLE fallback present → the exception re-raises)."""
     handle = make_handle()
     mqtt = make_transport(transport_type, connected=True)
     await handle.add_transport(mqtt)
     handle.update_availability(transport_type, TransportAvailability.CONNECTED)
 
-    handle.broker.send_and_wait = AsyncMock(  # type: ignore[method-assign]
+    handle._send_marked = AsyncMock(  # type: ignore[method-assign]
         side_effect=DeviceOfflineException(6205, "iot-id")
     )
 
-    await handle.send_command(b"\x01", "some_field")
-    await _drain_queue(handle)
+    with pytest.raises(DeviceOfflineException):
+        await handle.send_raw(b"\x01")
 
     assert handle.availability.mqtt_reported_offline is True
     assert handle.availability.is_available is False
@@ -401,7 +375,7 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
 
     call_count = 0
 
-    async def _send_and_wait_side_effect(**kwargs: object) -> None:  # noqa: ARG001
+    async def _send_marked_side_effect(transport: object, payload: bytes) -> None:  # noqa: ARG001
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -410,14 +384,15 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
             raise DeviceOfflineException(6205, "iot-id")
         # Second call (BLE) succeeds
 
-    handle.broker.send_and_wait = AsyncMock(side_effect=_send_and_wait_side_effect)  # type: ignore[method-assign]
+    handle._send_marked = AsyncMock(side_effect=_send_marked_side_effect)  # type: ignore[method-assign]
 
-    await handle.send_command(b"\x01", "some_field")
-    await _drain_queue(handle)
+    await handle.send_raw(b"\x01")
 
-    # send_and_wait must have been called twice: MQTT then BLE
-    assert handle.broker.send_and_wait.call_count == 2
-    # Device must NOT be marked offline — BLE carried the command
+    # _send_marked must have been called twice: MQTT then BLE
+    assert handle._send_marked.call_count == 2
+    assert handle._send_marked.await_args_list[0].args[0] is mqtt
+    assert handle._send_marked.await_args_list[1].args[0] is ble
+    # The MQTT offline flag stays set — BLE carried the command
     assert handle.availability.mqtt_reported_offline is True
 
 
@@ -1783,7 +1758,7 @@ async def test_detach_transport_pops_without_disconnect() -> None:
 async def test_device_unbound_detaches_aliyun_and_schedules_hook() -> None:
     """A 29004 detaches the Aliyun transport (not disconnect) and fires the unbound hook once.
 
-    No BLE present → the command re-raises (handled as expected by the queue); the
+    No BLE present → send_raw re-raises the DeviceUnboundException; the
     permanent detach must NOT set mqtt_reported_offline.
     """
     handle = make_handle()
@@ -1793,12 +1768,12 @@ async def test_device_unbound_detaches_aliyun_and_schedules_hook() -> None:
     hook = AsyncMock()
     handle.on_device_unbound = hook
 
-    handle.broker.send_and_wait = AsyncMock(  # type: ignore[method-assign]
+    handle._send_marked = AsyncMock(  # type: ignore[method-assign]
         side_effect=DeviceUnboundException(29004, "iot-id")
     )
 
-    await handle.send_command(b"\x01", "some_field")
-    await _drain_queue(handle)
+    with pytest.raises(DeviceUnboundException):
+        await handle.send_raw(b"\x01")
     await asyncio.sleep(0)  # let the fire-and-forget hook task run
 
     assert handle.get_transport(TransportType.CLOUD_ALIYUN) is None
@@ -1824,7 +1799,7 @@ async def test_device_unbound_retries_over_ble() -> None:
 
     call_count = 0
 
-    async def _side_effect(**kwargs: object) -> None:  # noqa: ARG001
+    async def _side_effect(transport: object, payload: bytes) -> None:  # noqa: ARG001
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -1832,12 +1807,12 @@ async def test_device_unbound_retries_over_ble() -> None:
             raise DeviceUnboundException(29004, "iot-id")
         # second call (BLE) succeeds
 
-    handle.broker.send_and_wait = AsyncMock(side_effect=_side_effect)  # type: ignore[method-assign]
+    handle._send_marked = AsyncMock(side_effect=_side_effect)  # type: ignore[method-assign]
 
-    await handle.send_command(b"\x01", "some_field")
-    await _drain_queue(handle)
+    await handle.send_raw(b"\x01")
 
-    assert handle.broker.send_and_wait.call_count == 2
+    assert handle._send_marked.call_count == 2
+    assert handle._send_marked.await_args_list[1].args[0] is ble
     assert handle.get_transport(TransportType.CLOUD_ALIYUN) is None
     await handle.stop()
 

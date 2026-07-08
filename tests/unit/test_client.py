@@ -298,7 +298,7 @@ async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
     mock_device = _make_device_with_rtk(lat=0.5, lon=0.5)
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    with patch("pymammotion.messaging.mow_path_saga.MowPathSaga") as MockSaga:
+    with patch("pymammotion.client.MowPathSaga") as MockSaga:
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "mow_path_fetch"
         mock_saga_instance.max_attempts = 1
@@ -693,79 +693,71 @@ async def test_set_scheduled_updates_noop_for_unknown_device() -> None:
 
 
 # ---------------------------------------------------------------------------
-# User-command stamping: send_command_* stamps handle._last_user_command_monotonic
+# User-command recording: send_command_* wakes the poll loop via _rearm_event
 # ---------------------------------------------------------------------------
 
 
 async def test_send_command_with_args_stamps_user_command_on_handle() -> None:
-    """send_command_with_args must call handle.record_user_command() (updates _last_user_command_monotonic)."""
-    import time
-
+    """send_command_with_args must call handle.record_user_command() (sets _rearm_event)."""
     client = MammotionClient()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-TS")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    # Force an old timestamp so we can verify it changes.
-    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
-    before = time.monotonic()
     await client.send_command_with_args("Luba-TS", "start_job")
-    after = time.monotonic()
 
-    assert before <= handle._last_user_command_monotonic <= after  # noqa: SLF001
+    assert handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_send_command_and_wait_stamps_user_command_on_handle() -> None:
     """send_command_and_wait must call handle.record_user_command() before waiting for response."""
-    import time
-
     client = MammotionClient()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-TS2")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
     with pytest.raises(Exception):  # noqa: BLE001
         await client.send_command_and_wait("Luba-TS2", "start_job", "some_field", send_timeout=0.01)
 
-    assert time.monotonic() - handle._last_user_command_monotonic < 5.0  # noqa: SLF001
+    assert handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_internal_subscription_does_not_stamp_user_command() -> None:
-    """Internal subscription sends must NOT update _last_user_command_monotonic.
+    """Internal subscription sends must NOT call record_user_command (no _rearm_event set).
 
-    If _send_one_shot_report stamped the timestamp, the poll loop would
-    never enter long-idle mode.
+    If _send_one_shot_report woke the poll loop, it would never enter
+    long-idle mode.
     """
     handle = make_handle("dev1", "Luba-NoStamp")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     await handle.add_transport(mqtt)
 
-    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
     await handle._send_one_shot_report()  # noqa: SLF001
 
-    assert handle._last_user_command_monotonic == 0.0  # noqa: SLF001
+    assert not handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_send_command_with_args_record_cmd_false_does_not_stamp() -> None:
-    """send_command_with_args with _record_cmd=False must not update the user-command timestamp."""
+    """send_command_with_args with _record_cmd=False must not call record_user_command."""
     client = MammotionClient()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-NR")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    sentinel = 0.0
-    handle._last_user_command_monotonic = sentinel  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
     await client.send_command_with_args("Luba-NR", "start_job", _record_cmd=False)
 
-    assert handle._last_user_command_monotonic == sentinel  # noqa: SLF001
+    assert not handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_send_command_with_args_prefer_ble_uses_mqtt_while_ble_connect_pending() -> None:
