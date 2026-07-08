@@ -18,6 +18,15 @@ from pymammotion.utility.constant.device_constant import BleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
 
+# The BluFi header's data-length field is a single byte, so a frame's data
+# section (including any fragmentation length prefix) can hold at most 255
+# bytes.  Fragmented frames prepend a 2-byte little-endian "remaining content
+# length" prefix that the inbound parser strips (see ``parseNotification``
+# ``data_offset = 2``), leaving this much room for actual payload per fragment.
+MAX_DATA_LEN = 255
+FRAG_LENGTH_PREFIX_LEN = 2
+FRAG_CONTENT_LEN = MAX_DATA_LEN - FRAG_LENGTH_PREFIX_LEN
+
 CRC_TB = [
     0x0000,
     0x1021,
@@ -562,32 +571,35 @@ class BleMessage:
         type_of: int,
         data: bytes,
     ) -> bool:
-        """Split data into MTU-sized chunks and write each chunk as a BLE packet, handling fragmentation."""
-        chunk_size = 517  # self.client.mtu_size - 3
+        """Split data into BluFi frames and write each one as a BLE packet, handling fragmentation.
 
-        chunks = []
-        for i in range(0, len(data), chunk_size):
-            if i + chunk_size > len(data):
-                chunks.append(data[i : len(data)])
+        The data-length field in the BluFi header is one byte, so each frame's
+        data section is capped at ``MAX_DATA_LEN``.  When the payload does not
+        fit in a single frame, every fragment except the last carries the FRAG
+        frame-control bit plus a 2-byte little-endian prefix holding the total
+        remaining content length (this fragment's content included) — exactly
+        what ``parseNotification`` strips before reassembly.  Each fragment
+        consumes its own send sequence number.
+        """
+        total_length = len(data)
+        offset = 0
+        while offset < total_length:
+            remaining = total_length - offset
+            if frag := remaining > MAX_DATA_LEN:
+                chunk = remaining.to_bytes(FRAG_LENGTH_PREFIX_LEN, "little") + data[offset : offset + FRAG_CONTENT_LEN]
+                offset += FRAG_CONTENT_LEN
             else:
-                chunks.append(data[i : i + chunk_size])
-        for index, chunk in enumerate(chunks):
-            frag = index != len(chunks) - 1
+                chunk = data[offset:]
+                offset = total_length
             sequence = self.generate_send_sequence()
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
-            # _LOGGER.debug("sequence")
-            # _LOGGER.debug(sequence)
             await self.gatt_write(postBytes)
-
-            if not frag:
-                return not require_ack or self.receiveAck(sequence)
 
             if require_ack and not self.receiveAck(sequence):
                 return False
 
-            _LOGGER.debug("sleeping 0.01")
-            await sleep(0.01)
-            return not (require_ack and not self.receiveAck(sequence))
+            if frag:
+                await sleep(0.01)
 
         return True
 
