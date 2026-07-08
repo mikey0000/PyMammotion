@@ -112,6 +112,10 @@ _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_CONNECT,
 ]
 #: Full channel list used by the one-shot request_iot_sync.
+#: Seconds to wait before each Aliyun→Mammotion unbound-migration attempt (first is
+#: immediate).  The cloud-side migration after a firmware update can take minutes.
+_UNBOUND_MIGRATION_DELAYS: tuple[float, ...] = (0.0, 30.0, 60.0, 120.0, 180.0)
+
 _ONE_SHOT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
     RptInfoType.RIT_DEV_LOCAL,
@@ -1652,42 +1656,87 @@ class MammotionClient:
         device_name = handle.device_name
         session = self._get_session_for_device(device_name)
         try:
-            if session is None or session.mammotion_http is None:
-                _logger.warning("Device '%s' unbound but no Mammotion session to re-discover — removing", device_name)
-                await self._remove_unbound_device(handle, session)
-                return
-
-            mammotion_http = session.mammotion_http
-            device_list_resp = await mammotion_http.get_user_device_list()
-            owned_iot_id_map = {
-                d.device_name: d.iot_id for d in (device_list_resp.data or []) if d.device_name and d.iot_id
-            }
-            page_resp = await mammotion_http.get_user_device_page()
-            records = (page_resp.data.records if page_resp.data else []) or []
-            record = next((r for r in records if r.device_name == device_name), None)
-            if record is None:
-                _logger.warning("Device '%s' unbound and not on Mammotion MQTT either — removing", device_name)
-                await self._remove_unbound_device(handle, session)
-                return
-
-            transport = await self._ensure_mammotion_transport(session.account_id, mammotion_http, session)
-            if transport is None:
-                _logger.error("Device '%s' unbound: could not set up Mammotion transport — left detached", device_name)
-                return
-
-            iot_id = owned_iot_id_map.get(device_name) or record.iot_id
-            await self._subscribe_mammotion_topics(transport, record.product_key, device_name, iot_id)
-            if iot_id != handle.iot_id:
-                self._iot_id_to_device_id.pop(handle.iot_id, None)
-                handle.iot_id = iot_id
-            self._iot_id_to_device_id[iot_id] = device_name
-            session.device_ids.add(device_name)
-            await handle.add_transport(transport)
-            _logger.info("Device '%s' migrated from Aliyun to Mammotion MQTT (iot_id=%s)", device_name, iot_id)
-        except Exception:
-            _logger.exception("Device '%s' unbound: migration failed", device_name)
+            # The Aliyun→Mammotion cloud migration after a firmware update is NOT
+            # instantaneous: the 29004 unbind lands before the device is listed on
+            # the Mammotion side.  A one-shot check here removed devices mid-flight
+            # (issue #819) or left them permanently transport-less (#808), so retry
+            # over several minutes before concluding the device is really gone.
+            for attempt, delay in enumerate(_UNBOUND_MIGRATION_DELAYS, start=1):
+                if attempt > 1:
+                    await asyncio.sleep(delay)
+                last_attempt = attempt == len(_UNBOUND_MIGRATION_DELAYS)
+                try:
+                    if await self._try_migrate_unbound(handle, session, final_attempt=last_attempt):
+                        return
+                except Exception:
+                    _logger.exception(
+                        "Device '%s' unbound: migration attempt %d/%d failed",
+                        device_name,
+                        attempt,
+                        len(_UNBOUND_MIGRATION_DELAYS),
+                    )
         finally:
             handle.reset_unbound_migration()
+
+    async def _try_migrate_unbound(
+        self, handle: DeviceHandle, session: AccountSession | None, *, final_attempt: bool
+    ) -> bool:
+        """One Aliyun→Mammotion migration attempt.  Returns True when settled (migrated,
+        removed, or deliberately left BLE-only) — False means "retry later".
+
+        Removal only happens on the *final* attempt, and never while the handle still
+        has a usable BLE transport (a BLE-only device keeps working without any cloud).
+        """
+        device_name = handle.device_name
+
+        def _keep_or_remove(reason: str) -> bool:
+            if not final_attempt:
+                _logger.debug("Device '%s' unbound: %s — will retry", device_name, reason)
+                return False
+            if handle.get_transport(TransportType.BLE) is not None:
+                _logger.warning("Device '%s' unbound: %s — keeping as BLE-only", device_name, reason)
+                return True
+            return False  # caller removes below
+
+        if session is None or session.mammotion_http is None:
+            settled = _keep_or_remove("no Mammotion session to re-discover")
+            if settled or not final_attempt:
+                return settled
+            _logger.warning("Device '%s' unbound but no Mammotion session to re-discover — removing", device_name)
+            await self._remove_unbound_device(handle, session)
+            return True
+
+        mammotion_http = session.mammotion_http
+        device_list_resp = await mammotion_http.get_user_device_list()
+        owned_iot_id_map = {
+            d.device_name: d.iot_id for d in (device_list_resp.data or []) if d.device_name and d.iot_id
+        }
+        page_resp = await mammotion_http.get_user_device_page()
+        records = (page_resp.data.records if page_resp.data else []) or []
+        record = next((r for r in records if r.device_name == device_name), None)
+        if record is None:
+            settled = _keep_or_remove("not on Mammotion MQTT yet")
+            if settled or not final_attempt:
+                return settled
+            _logger.warning("Device '%s' unbound and not on Mammotion MQTT either — removing", device_name)
+            await self._remove_unbound_device(handle, session)
+            return True
+
+        transport = await self._ensure_mammotion_transport(session.account_id, mammotion_http, session)
+        if transport is None:
+            _logger.error("Device '%s' unbound: could not set up Mammotion transport — will retry", device_name)
+            return False
+
+        iot_id = owned_iot_id_map.get(device_name) or record.iot_id
+        await self._subscribe_mammotion_topics(transport, record.product_key, device_name, iot_id)
+        if iot_id != handle.iot_id:
+            self._iot_id_to_device_id.pop(handle.iot_id, None)
+            handle.iot_id = iot_id
+        self._iot_id_to_device_id[iot_id] = device_name
+        session.device_ids.add(device_name)
+        await handle.add_transport(transport)
+        _logger.info("Device '%s' migrated from Aliyun to Mammotion MQTT (iot_id=%s)", device_name, iot_id)
+        return True
 
     async def _remove_unbound_device(self, handle: DeviceHandle, session: AccountSession | None) -> None:
         """Fully remove a device that is unbound from all clouds.

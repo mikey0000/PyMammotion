@@ -1661,7 +1661,9 @@ async def test_device_unbound_removed_when_on_no_cloud() -> None:
     removed = AsyncMock()
     client.on_device_removed = removed
 
-    await client._on_device_unbound(handle)
+    # Collapse the multi-minute migration retry backoff so the test runs instantly.
+    with patch("pymammotion.client._UNBOUND_MIGRATION_DELAYS", (0.0, 0.0)):
+        await client._on_device_unbound(handle)
 
     assert client._device_registry.get_by_name("Luba-GONE") is None
     assert "iot-gone" not in client._iot_id_to_device_id
