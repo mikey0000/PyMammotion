@@ -16,7 +16,6 @@ See ``docs/tasks_and_schedules.md`` § 3 for the fetch protocol.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
@@ -27,6 +26,7 @@ from pymammotion.messaging.saga import Saga
 from pymammotion.proto import PlanJobSet
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from collections.abc import Awaitable, Callable
 
     from pymammotion.messaging.broker import DeviceMessageBroker

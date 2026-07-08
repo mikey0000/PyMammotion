@@ -17,12 +17,7 @@ from pymammotion.aliyun.exceptions import (
     TooManyRequestsException,
 )
 from pymammotion.transport import TransportError
-from pymammotion.transport.base import (
-    AuthError,
-    NoTransportAvailableError,
-    SagaFailedError,
-    TransportRateLimitedError,
-)
+from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError, TransportRateLimitedError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

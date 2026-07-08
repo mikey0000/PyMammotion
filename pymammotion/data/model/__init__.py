@@ -1,4 +1,4 @@
-"""data models"""
+"""data models."""
 
 from .generate_route_information import GenerateRouteInformation
 from .hash_list import HashList

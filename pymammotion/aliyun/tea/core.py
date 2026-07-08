@@ -50,11 +50,11 @@ class TeaCore:
         # logger the request
         url = urlparse(request.url)
         request_base = f"\n> {request.method.upper()} {url.path + url.query} HTTP/1.1"
-        logger.debug(request_base + TeaCore._prepare_http_debug(request, ">"))
+        logger.debug("%s%s", request_base, TeaCore._prepare_http_debug(request, ">"))
 
         # logger the response
         response_base = f"\n< HTTP/1.1 {response.status_code} {(status_codes._codes.get(response.status_code) or ('unknown',))[0].upper()}"
-        logger.debug(response_base + TeaCore._prepare_http_debug(response, "<"))
+        logger.debug("%s%s", response_base, TeaCore._prepare_http_debug(response, "<"))
 
     @staticmethod
     def compose_url(request):
@@ -150,7 +150,7 @@ class TeaCore:
                     tea_resp.status_message = response.reason
                     tea_resp.response = response
             except OSError as e:
-                raise RetryError(str(e))
+                raise RetryError(str(e)) from e
         return tea_resp
 
     @staticmethod
@@ -209,7 +209,7 @@ class TeaCore:
                 cert=cert,
             )
         except OSError as e:
-            raise RetryError(str(e))
+            raise RetryError(str(e)) from e
 
         debug = runtime_option.get("debug") or os.getenv("DEBUG")
         if debug and debug.lower() == "sdk":
@@ -295,7 +295,7 @@ class TeaCore:
         """Convert a TeaModel instance to a dict, returning an empty dict for non-TeaModel values."""
         if isinstance(model, TeaModel):
             return model.to_map()
-        return dict()
+        return {}
 
     @staticmethod
     def from_map(model: TeaModel, dic: dict[str, Any]) -> TeaModel:

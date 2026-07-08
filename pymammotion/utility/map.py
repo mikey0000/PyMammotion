@@ -201,9 +201,7 @@ class CoordinateConverter:
 
         # Calculate resulting angle and convert back to degrees
         result_rad = math.atan2(sin_sum, cos_sum)
-        result_degrees = math.degrees(result_rad)
-
-        return result_degrees
+        return math.degrees(result_rad)
 
     def get_angle_yaw(self) -> float:
         """Get the current yaw angle in degrees.

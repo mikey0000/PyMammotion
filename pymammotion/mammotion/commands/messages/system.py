@@ -412,7 +412,7 @@ class MessageSystem(AbstractMessage, ABC):
         """Send a remote restart command.
         force_reset: 0 - normal restart, 1 - force restart
         Args:
-            force_reset: Force reset flag
+            force_reset: Force reset flag.
         """
         mctl_sys = MctlSys(
             to_dev_remote_reset=RemoteResetReqT(

@@ -9,12 +9,12 @@ class MurMurHashUtil:
 
     @staticmethod
     def get_unsigned_int(i: int) -> int:
-        """Convert signed int to unsigned (32-bit)"""
+        """Convert signed int to unsigned (32-bit)."""
         return i & MurMurHashUtil.MASK_32
 
     @staticmethod
     def hash(data: bytes) -> int:
-        """MurmurHash2 64-bit implementation"""
+        """MurmurHash2 64-bit implementation."""
         pos = 0
         data_len = len(data)
 
@@ -117,18 +117,18 @@ class MurMurHashUtil:
 
     @staticmethod
     def hash_string(s: str) -> int:
-        """Hash a string using UTF-8 encoding"""
+        """Hash a string using UTF-8 encoding."""
         return MurMurHashUtil.hash(s.encode("utf-8"))
 
     @staticmethod
     def read_unsigned_long(value: int) -> int:
-        """Convert to unsigned by masking with Long.MAX_VALUE"""
+        """Convert to unsigned by masking with Long.MAX_VALUE."""
         return value & 0x7FFFFFFFFFFFFFFF
 
     @staticmethod
     def hash_unsigned(data: str | bytes) -> int:
         """Get unsigned hash value
-        Can accept bytes or string
+        Can accept bytes or string.
         """
         if isinstance(data, str):
             hash_val = MurMurHashUtil.hash_string(data)
@@ -141,7 +141,7 @@ class MurMurHashUtil:
     def long_to_bytes(value: int) -> bytes:
         """Convert long to bytes exactly as Java does:
         1. Pack as big-endian (ByteBuffer default)
-        2. Reverse all bytes
+        2. Reverse all bytes.
         """
         if value < 0:
             value = value & 0xFFFFFFFFFFFFFFFF
@@ -151,7 +151,7 @@ class MurMurHashUtil:
 
     @staticmethod
     def hash_unsigned_list(values: list[int]) -> int:
-        """Hash a list of long values"""
+        """Hash a list of long values."""
         data = b""
 
         for val in values:

@@ -279,7 +279,7 @@ CRC_TB = [
 
 
 class BleMessage:
-    """Class for sending and recieving messages from Luba"""
+    """Class for sending and recieving messages from Luba."""
 
     AES_TRANSFORMATION = "AES/CFB/NoPadding"
     DEFAULT_PACKAGE_LENGTH = 20
@@ -565,7 +565,7 @@ class BleMessage:
         """Split data into MTU-sized chunks and write each chunk as a BLE packet, handling fragmentation."""
         chunk_size = 517  # self.client.mtu_size - 3
 
-        chunks = list()
+        chunks = []
         for i in range(0, len(data), chunk_size):
             if i + chunk_size > len(data):
                 chunks.append(data[i : len(data)])
@@ -587,10 +587,7 @@ class BleMessage:
 
             _LOGGER.debug("sleeping 0.01")
             await sleep(0.01)
-            if require_ack and not self.receiveAck(sequence):
-                return False
-
-            return True
+            return not (require_ack and not self.receiveAck(sequence))
 
         return True
 

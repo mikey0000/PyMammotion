@@ -46,16 +46,16 @@ class EncryptionUtils:
 
     @staticmethod
     def load_private_key():
-        """Load the private key from base64 encoded string"""
+        """Load the private key from base64 encoded string."""
         try:
             private_key_bytes = base64.b64decode(EncryptionUtils.PRIVATE_KEY)
             return serialization.load_der_private_key(private_key_bytes, password=None, backend=default_backend())
         except Exception as e:
-            raise Exception(f"Failed to load private key: {e!s}")
+            raise Exception(f"Failed to load private key: {e!s}") from e
 
     @staticmethod
     def load_public_key(is_production: bool = True):
-        """Load the public key from base64 encoded string
+        """Load the public key from base64 encoded string.
 
         Args:
             is_production (bool): If True, uses production key, else uses test key
@@ -66,11 +66,11 @@ class EncryptionUtils:
             public_key_bytes = base64.b64decode(key_string)
             return serialization.load_der_public_key(public_key_bytes, backend=default_backend())
         except Exception as e:
-            raise Exception(f"Failed to load public key: {e!s}")
+            raise Exception(f"Failed to load public key: {e!s}") from e
 
     @staticmethod
     def encrypt(plaintext: str, key: str, iv: str) -> str:
-        """Encrypt text using AES/CBC/PKCS5Padding
+        """Encrypt text using AES/CBC/PKCS5Padding.
 
         Args:
             plaintext (str): Text to encrypt
@@ -105,10 +105,10 @@ class EncryptionUtils:
             return base64.b64encode(encrypted_bytes).decode("utf-8")
 
         except Exception as e:
-            raise Exception(f"Encryption failed: {e!s}")
+            raise Exception(f"Encryption failed: {e!s}") from e
 
     def encryption_by_aes(self, text: str) -> str | None:
-        """Encrypt text using AES with class-level key and IV
+        """Encrypt text using AES with class-level key and IV.
 
         Args:
             text (str): Text to encrypt
@@ -119,9 +119,7 @@ class EncryptionUtils:
         """
         try:
             # Perform encryption
-            encrypted = self.encrypt(text, self.AES_PASW, self.IV)
-
-            return encrypted
+            return self.encrypt(text, self.AES_PASW, self.IV)
 
         except Exception as e:
             _LOGGER.error(f"Encryption failed: {e!s}")

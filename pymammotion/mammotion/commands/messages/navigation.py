@@ -602,7 +602,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def get_line_info_list(self, hash_list: list[int], transaction_id: int) -> bytes:
         """Get route information (mow path) corresponding to the specified hash list based on time.
-        e.g transaction_id = int(time.time() * 1000)
+        e.g transaction_id = int(time.time() * 1000).
         """
         logger.debug(f"Sending==========Get route command: {hash_list}")
 

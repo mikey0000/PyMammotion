@@ -8,7 +8,7 @@ from mashumaro.types import Alias
 
 @dataclass
 class Device(DataClassORJSONMixin):
-    """Unified device model supporting both Device and ShareNotification data"""
+    """Unified device model supporting both Device and ShareNotification data."""
 
     # Core device fields (from Device model)
     gmt_modified: Annotated[int, Alias("gmtModified")]

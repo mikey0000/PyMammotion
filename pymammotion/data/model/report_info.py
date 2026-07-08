@@ -136,7 +136,7 @@ class VioSurvivalInfo(DataClassORJSONMixin):
 
 @dataclass
 class FpvInfo(DataClassORJSONMixin):
-    """fpv_flag: 0: no fpv, 1: fpv ok, 2: fpv error"""
+    """fpv_flag: 0: no fpv, 1: fpv ok, 2: fpv error."""
 
     fpv_flag: int = 0
     wifi_available: int = 0

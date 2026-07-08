@@ -3,7 +3,7 @@ import math
 
 
 class RockerControlUtil:
-    """generated source for class RockerControlUtil"""
+    """generated source for class RockerControlUtil."""
 
     instance_ = None
     list_ = []
@@ -12,7 +12,7 @@ class RockerControlUtil:
     thresholdValue_3 = 15
 
     def __init__(self) -> None:
-        """Generated source for method __init__"""
+        """Generated source for method __init__."""
 
     @classmethod
     def getInstance(cls):

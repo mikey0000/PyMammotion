@@ -2,17 +2,16 @@ import asyncio
 import time
 import uuid
 
+from alibabacloud_apigateway_util.client import Client as APIGatewayUtilClient
+from alibabacloud_tea_util.client import Client as UtilClient
 from Tea.exceptions import UnretryableException
 from Tea.request import TeaRequest
 
 from pymammotion.aliyun.tea.core import TeaCore
 
-from alibabacloud_apigateway_util.client import Client as APIGatewayUtilClient
-from alibabacloud_tea_util.client import Client as UtilClient
-
 
 class Client:
-    """test"""
+    """test."""
 
     _app_key: str | None = None
     _app_secret: str | None = None
@@ -39,7 +38,7 @@ class Client:
         self._max_idle_conns = config.max_idle_conns
 
     async def async_do_request(self, pathname: str, protocol: str, method: str, header: dict[str, str], body, runtime):
-        """Send request
+        """Send request.
 
         @type pathname: str
         @param pathname: the url path
@@ -136,7 +135,7 @@ class Client:
         raise UnretryableException(_last_request, _last_exception)  # type: ignore
 
     def get_user_agent(self) -> str:
-        """Get user agent
+        """Get user agent.
 
         @rtype: str
         @return: user agent

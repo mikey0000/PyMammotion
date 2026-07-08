@@ -549,8 +549,7 @@ class CloudIOTGateway:
         response_body_str = response.body.decode("utf-8")
 
         # Load the JSON string into a dictionary
-        response_body_dict = self.parse_json_response(response_body_str)
-        return response_body_dict
+        return self.parse_json_response(response_body_str)
 
     async def check_or_refresh_session(self, *, force: bool = False) -> None:
         """Check or refresh the Aliyun IoT session token.

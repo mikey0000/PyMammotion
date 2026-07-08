@@ -27,9 +27,9 @@ import aiomqtt
 from Tea.exceptions import UnretryableException
 
 from pymammotion.aliyun.exceptions import DeviceUnboundException
-from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import (
     AccountInUseError,
     ReLoginRequiredError,

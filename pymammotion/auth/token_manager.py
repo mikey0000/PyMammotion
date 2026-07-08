@@ -435,7 +435,7 @@ class TokenManager:
                 await self._cloud_gateway.check_or_refresh_session(force=True)
                 # Successful session check — clear any accumulated failure timestamps.
                 self._aliyun_refresh_failures.clear()
-            except SessionExpiredError:
+            except SessionExpiredError as session_exc:
                 # 2401 "refreshToken invalid" — track failures within a rolling window.
                 now = time.monotonic()
                 self._aliyun_refresh_failures = [
@@ -448,7 +448,7 @@ class TokenManager:
                         self._account_id,
                         f"Aliyun refreshToken rejected {self._ALIYUN_FAILURE_LIMIT} times "
                         f"within {self._ALIYUN_FAILURE_WINDOW:.0f}s — re-authentication required",
-                    )
+                    ) from session_exc
                 # refreshToken was rejected (2401) — re-run the full IoT login sequence.
                 # Do NOT return here: fall through so _aliyun_creds is updated from the
                 # newly established session.  Returning early was the bug that handed the
@@ -520,7 +520,7 @@ class TokenManager:
                 # treating it as an unrecoverable token error.
                 if is_transient_network_error(exc):
                     raise
-                raise AuthError(exc)
+                raise AuthError(exc) from exc
 
     async def force_refresh_invoke_token(self, *, allow_relogin: bool = True) -> None:
         """Reactive refresh of the HTTP bearer token after a 401 from mqtt_invoke.
@@ -569,7 +569,7 @@ class TokenManager:
                 self._invoke_refresh_failed_at = time.monotonic()
                 if is_transient_network_error(exc):
                     raise
-                raise AuthError(exc)
+                raise AuthError(exc) from exc
 
     def _set_mqtt_creds(self, data: MQTTConnection) -> MQTTCredentials:
         """Store MQTTConnection data into self._mqtt_creds and return it.
