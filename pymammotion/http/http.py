@@ -792,7 +792,7 @@ class MammotionHTTP:
                 },
             )
             if resp.status != 200:
-                _LOGGER.debug("login_v2 failed (status=%s): %s", resp.status, resp.json())
+                _LOGGER.debug("login failed (status=%s): %s", resp.status, await resp.text())
                 return Response.from_dict({"code": resp.status, "msg": "Login failed"})
             data = await resp.json()
         login_response = response_factory(Response[LoginResponseData], data)

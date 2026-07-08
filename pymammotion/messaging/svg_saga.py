@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import betterproto2
 
 from pymammotion.messaging.saga import Saga
+from pymammotion.transport import TransportError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -97,6 +98,12 @@ class SvgSendSaga(Saga):
                     ack.result,
                     ack.data_hash,
                 )
+
+                if ack.result != 0:
+                    # Device rejected the frame — abort instead of streaming the
+                    # remaining chunks and reporting success with a bogus data_hash.
+                    msg = f"SvgSendSaga: device rejected frame {ack.current_frame}/{ack.total_frame} (result={ack.result})"
+                    raise TransportError(msg)
 
                 if i == len(self._chunks) - 1:
                     self.result_hash = ack.data_hash

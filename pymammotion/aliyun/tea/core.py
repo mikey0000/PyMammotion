@@ -20,10 +20,9 @@ DEFAULT_CONNECT_TIMEOUT = 5000
 DEFAULT_READ_TIMEOUT = 10000
 DEFAULT_POOL_SIZE = 10
 
+# A library must not configure handlers or levels — that bypasses the host
+# application's logging config (HA's logger settings) and spams stderr.
 logger = logging.getLogger("alibabacloud-tea")
-logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-logger.addHandler(ch)
 
 
 class TeaCore:
@@ -54,7 +53,7 @@ class TeaCore:
         logger.debug(request_base + TeaCore._prepare_http_debug(request, ">"))
 
         # logger the response
-        response_base = f"\n< HTTP/1.1 {response.status_code} {(status_codes._codes.get(response.status_code) or ("unknown",))[0].upper()}"
+        response_base = f"\n< HTTP/1.1 {response.status_code} {(status_codes._codes.get(response.status_code) or ('unknown',))[0].upper()}"
         logger.debug(response_base + TeaCore._prepare_http_debug(response, "<"))
 
     @staticmethod

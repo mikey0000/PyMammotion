@@ -533,7 +533,6 @@ unresolved-import = "ignore"
 [tool.ty.src]
 exclude = [
     "pymammotion/proto/**",
-    "pymammotion/mqtt/linkkit/**",
     "tests/**",
     "scripts/**",
     "examples/**",

@@ -168,7 +168,11 @@ class MapFetchSaga(Saga):
         # ------------------------------------------------------------------
         _logger.debug("MapFetchSaga[%s]: requesting hash list", self._device_name)
 
-        with self._collect_frames(broker, "toapp_gethash_ack") as hash_frame_queue:
+        # Filter to sub_cmd=0: an interrupted MowPathSaga can leave the device
+        # retransmitting unacked sub_cmd=3 line-hash frames, and an unfiltered
+        # collector would accept one as the root list — ending this loop early
+        # and completing the saga with an empty/stale map.
+        with self._collect_frames(broker, "toapp_gethash_ack", lambda v: v.sub_cmd == 0) as hash_frame_queue:
             # Re-sync immediately before the root-list request: the area-name step above can
             # take several seconds, staling the run's initial sync, and an unsynced device
             # returns no toapp_gethash_ack.

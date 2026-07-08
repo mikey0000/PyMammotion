@@ -47,15 +47,18 @@ import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlparse
 
 from mashumaro import MissingField
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
 from pymammotion.data.model import GenerateRouteInformation
-from pymammotion.data.model.device import MowerDevice, RTKBaseStationDevice
+from pymammotion.data.model.device import MowerDevice, MowingDevice, RTKBaseStationDevice, create_device
+from pymammotion.data.model.hash_list import PathType
 from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
@@ -71,7 +74,13 @@ from pymammotion.http.model.http import (
 )
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.messaging.command_queue import Priority
+from pymammotion.messaging.common_data_saga import CommonDataSaga
+from pymammotion.messaging.edge_saga import EdgeMappingSaga
 from pymammotion.messaging.map_saga import MapFetchSaga
+from pymammotion.messaging.mow_path_saga import MowPathSaga
+from pymammotion.messaging.plan_saga import PlanFetchSaga
+from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
+from pymammotion.messaging.svg_saga import SvgSendSaga
 from pymammotion.proto import RptAct, RptInfoType
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import (
@@ -90,6 +99,7 @@ from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.device_type import DeviceType
+from pymammotion.utility.svg import chunk_svg_messages
 
 #: Channels for the continuous subscription (matches HA-Luba async_request_iot_sync_continuous).
 _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
@@ -122,7 +132,6 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
     from bleak import BLEDevice
 
-    from pymammotion.data.model.device import MowingDevice
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
@@ -368,6 +377,11 @@ class MammotionClient:
             _on_init_cfg_hash_changed,
         )
 
+        # Cancel any previous watchers first: a plain overwrite leaves the old
+        # Subscriptions live on the handle's state bus, double-firing every
+        # map/plan sync trigger after a re-setup.
+        for old_sub in self._watcher_subscriptions.pop(device_name, []):
+            old_sub.cancel()
         self._watcher_subscriptions[device_name] = [
             sub,
             progress_sub,
@@ -498,8 +512,6 @@ class MammotionClient:
 
         Skips RTK base stations and swimming-pool (Spino/S1/E1) devices.
         """
-        from pymammotion.utility.device_type import DeviceType
-
         for handle in self._device_registry.all_devices:
             name = handle.device_name
             if DeviceType.is_rtk(name) or DeviceType.is_swimming_pool(name):
@@ -738,8 +750,6 @@ class MammotionClient:
                          checks every registered mower device.
 
         """
-        from pymammotion.data.model.device import MowingDevice
-
         handles = (
             [self._device_registry.get_by_name(device_name)] if device_name else list(self._device_registry.all_devices)
         )
@@ -1208,8 +1218,7 @@ class MammotionClient:
                 raw["mammotion_jwt_info"] = session.mammotion_http.jwt_info
             if session.mammotion_http.device_records.records:
                 raw["mammotion_device_records"] = session.mammotion_http.device_records
-            return raw
-        return {}
+        return raw
 
     async def restore_credentials(
         self,
@@ -1343,8 +1352,6 @@ class MammotionClient:
         stays in ``_register_mammotion_device`` and is performed before this
         helper is called.
         """
-        from pymammotion.data.model.device import create_device
-
         handle = DeviceHandle(
             device_id=device_name,
             device_name=device_name,
@@ -1479,8 +1486,6 @@ class MammotionClient:
         token_manager: TokenManager,
     ) -> MQTTTransport:
         """Build a MQTTTransport from MQTTConnection credentials."""
-        from urllib.parse import urlparse
-
         parsed = urlparse(mqtt_creds.host if "://" in mqtt_creds.host else "tcp://" + mqtt_creds.host)
         use_ssl = parsed.scheme in ("mqtts", "ssl")
         config = MQTTTransportConfig(
@@ -2140,8 +2145,6 @@ class MammotionClient:
         applies to ``device.map.plan`` automatically.  The saga also clears
         ``device.map.plans_stale`` once complete.
         """
-        from pymammotion.messaging.plan_saga import PlanFetchSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("start_plan_sync: device '%s' not registered", device_name)
@@ -2157,8 +2160,6 @@ class MammotionClient:
         arrive as ``LubaMsg.ctrl.plan_job_set`` frames which the
         :class:`PoolStateReducer` applies to ``device.plans`` automatically.
         """
-        from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("start_spino_plan_sync: device '%s' not registered", device_name)
@@ -2204,9 +2205,6 @@ class MammotionClient:
                          ``None`` if the saga did not return a hash (e.g. DELETE).
 
         """
-        from pymammotion.messaging.svg_saga import SvgSendSaga
-        from pymammotion.utility.svg import chunk_svg_messages
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("send_svg: device '%s' not registered", device_name)
@@ -2261,8 +2259,6 @@ class MammotionClient:
                            the device started working externally).
 
         """
-        from pymammotion.messaging.mow_path_saga import MowPathSaga
-
         if handle := self._device_registry.get_by_name(device_name):
             # MQTT-only gate: skip when mow_path_fetch_enabled is False AND BLE
             # isn't actively connected (so this would go over MQTT).  BLE-routed
@@ -2309,9 +2305,6 @@ class MammotionClient:
             device_name: Registered device name.
 
         """
-        from pymammotion.data.model.hash_list import PathType
-        from pymammotion.messaging.common_data_saga import CommonDataSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("get_dynamics_line: device '%s' not registered", device_name)
@@ -2350,8 +2343,6 @@ class MammotionClient:
                          when the device is already mapping.
 
         """
-        from pymammotion.messaging.edge_saga import EdgeMappingSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("start_edge_mapping: device '%s' not registered", device_name)
@@ -2458,10 +2449,6 @@ class MammotionClient:
         The returned Device objects have all required fields populated from the
         record; fields not present in DeviceRecord are set to sensible defaults.
         """
-        import time
-
-        from pymammotion.aliyun.model.dev_by_account_response import Device
-
         result: list[Any] = []
         for rec in records:
             try:
@@ -2538,8 +2525,6 @@ class MammotionClient:
         the video stream — mirroring the APK's ``getVideoResp`` logic.
         New-firmware devices start streaming without a device-side command.
         """
-        from pymammotion.utility.device_type import DeviceType
-
         http = self.mammotion_http
         if http is None:
             return None
@@ -2565,8 +2550,6 @@ class MammotionClient:
         the APK's refresh path (STUN-timeout, ``on_p2p_lost``) which re-runs
         the same flow as the initial join without a preceding leave command.
         """
-        from pymammotion.utility.device_type import DeviceType
-
         http = self.mammotion_http
         if http is None:
             return None

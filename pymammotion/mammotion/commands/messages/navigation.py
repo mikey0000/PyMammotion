@@ -506,7 +506,7 @@ class MessageNavigation(AbstractMessage, ABC):
         if type == -1:
             return None
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=type, hash=hash_num))
-        logger.debug(f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash}")
+        logger.debug(f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash_num}")
         return self.send_order_msg_nav(build)
 
     def delete_charge_point(self) -> bytes:

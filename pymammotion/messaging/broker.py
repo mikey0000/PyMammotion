@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 import betterproto2
@@ -37,8 +36,6 @@ class PendingRequest:
 
     expected_field: str
     future: asyncio.Future[Any]
-    sent_at: float
-    resend: Callable[[], Awaitable[None]]
 
 
 class DeviceMessageBroker:
@@ -84,40 +81,31 @@ class DeviceMessageBroker:
             CommandTimeoutError: No response after all retry attempts.
 
         """
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[Any] = loop.create_future()
+
+        # Single lock block for check + insert so nothing can interleave between them.
         async with self._lock:
             if expected_field in self._pending:
                 msg = f"Already waiting for '{expected_field}'"
                 raise ConcurrentRequestError(msg)
-
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[Any] = loop.create_future()
-        pending = PendingRequest(
-            expected_field=expected_field,
-            future=future,
-            sent_at=time.monotonic(),
-            resend=send_fn,
-        )
-
-        async with self._lock:
-            self._pending[expected_field] = pending
+            self._pending[expected_field] = PendingRequest(expected_field=expected_field, future=future)
 
         try:
             for attempt in range(1, retries + 1):
                 await send_fn()
                 try:
                     # shield prevents the future being cancelled on timeout;
-                    # a late response can still resolve it on retry
-                    return await asyncio.wait_for(asyncio.shield(future), timeout=send_timeout)
-                except (TimeoutError, asyncio.CancelledError) as exc:
-                    # TimeoutError: normal per-attempt timeout.
-                    # CancelledError: in Python 3.12+, asyncio.shield can cause the
-                    # timeout scope's cancellation marker to be lost, so wait_for
-                    # raises CancelledError instead of TimeoutError. Clear the
-                    # pending-cancellation counter so asyncio accounting stays correct.
-                    if isinstance(exc, asyncio.CancelledError):
-                        task = asyncio.current_task()
-                        if task is not None:
-                            task.uncancel()
+                    # a late response can still resolve it on retry.
+                    # asyncio.timeout (unlike wait_for+shield) reliably converts only
+                    # its OWN deadline into TimeoutError: an external cancellation of
+                    # the enclosing task, or the future being cancelled by close(),
+                    # propagates as CancelledError instead of being mistaken for a
+                    # per-attempt timeout — previously that swallowed real cancels
+                    # and kept re-sending after shutdown was requested.
+                    async with asyncio.timeout(send_timeout):
+                        return await asyncio.shield(future)
+                except TimeoutError:
                     if attempt < retries:
                         _logger.debug(
                             "No response for '%s' (attempt %d/%d), retrying",

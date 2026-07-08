@@ -88,6 +88,8 @@ class MowPathSaga(Saga):
         self._route_val: GenerateRouteInformation | None = (
             route_info  # persists across retries to skip step 2 if already fetched
         )
+        #: One-shot: step-1 completion may reset the retry budget at most once per saga.
+        self._budget_reset_granted = False
 
     async def _send_ble_sync(self) -> None:
         """Keep the device in its synced/responsive state before a major fetch request.
@@ -157,8 +159,14 @@ class MowPathSaga(Saga):
                 await self._send_command(ack_cmd)
 
                 if ack.current_frame == ack.total_frame:
-                    # Step 1 fully complete — earned a fresh attempt budget for the rest of the saga.
-                    self._reset_attempt_counter = True
+                    # Step 1 fully complete — earned a fresh attempt budget for the
+                    # rest of the saga, but only ONCE per saga: every run reaches this
+                    # point, and re-earning the budget on each retry made max_attempts
+                    # meaningless (a device that never streams cover paths would loop
+                    # send/timeout/restart for the full total_timeout).
+                    if not self._budget_reset_granted:
+                        self._budget_reset_granted = True
+                        self._reset_attempt_counter = True
                     break
 
         # ------------------------------------------------------------------

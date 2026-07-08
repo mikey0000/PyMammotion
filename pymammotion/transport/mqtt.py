@@ -15,10 +15,12 @@ from urllib.parse import urlparse
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
 import jwt
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 
+from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 from pymammotion.data.mqtt.status import MammotionStatusMessage, ThingStatusMessage
+from pymammotion.http.model.http import UnauthorizedExceptionError
 from pymammotion.transport.base import (
     AuthError,
     NoTransportAvailableError,
@@ -100,7 +102,8 @@ class MQTTTransport(Transport):
     set by the broker layer.
     """
 
-    on_message: Callable[[bytes], Awaitable[None]] | None = None
+    # NOTE: on_message is deliberately NOT redeclared here — a class attribute would
+    # shadow the base Transport.on_message property and defeat its receive-timestamping.
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
     #: Fired for ``/thing/event/{identifier}/post`` messages on the Mammotion MQTT.
     #: Called with (iot_id, identifier) — the identifier is the event name extracted
@@ -155,20 +158,10 @@ class MQTTTransport(Transport):
     # Public topic management
     # ------------------------------------------------------------------
 
-    def update_jwt(self, new_jwt: str) -> None:
-        """Replace the MQTT password (JWT) on the current config for the next connection attempt.
-
-        Prefer :meth:`update_credentials` after a full re-login — swapping only the
-        password leaves a stale client_id/username that the broker rejects when the
-        login rotated them.
-        """
-        self._config = replace(self._config, password=new_jwt)
-        self._stop_event.clear()
-
     def update_credentials(self, creds: MQTTCredentials) -> None:
         """Replace the full MQTT credential set for the next connection attempt.
 
-        Like :meth:`update_jwt` but also rotates host/client_id/username.  A full
+        Rotates password, host, client_id, and username together.  A full
         re-login (``login_v2``) can mint a new client_id/username bound to the new
         JWT; reconnecting with only a swapped password leaves the stale
         client_id/username and the broker rejects it as "Not Authorized".
@@ -301,9 +294,6 @@ class MQTTTransport(Transport):
 
     async def _invoke(self, payload: bytes, iot_id: str) -> None:
         """Invoke the Mammotion HTTP endpoint (shared by send/send_heartbeat)."""
-        from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
-        from pymammotion.http.model.http import UnauthorizedExceptionError
-
         if not iot_id:
             msg = "MQTTTransport.send() requires a non-empty iot_id"
             raise TransportError(msg)
@@ -349,8 +339,8 @@ class MQTTTransport(Transport):
             raise TransportError(msg)
 
     async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
-        """Send *payload* to the device and count it against the 24-hour quota."""
-        if self.is_rate_limited and Version(firmware_version) < RATE_LIMIT_REMOVED_VERSION:
+        """Send *payload* to the device and count it against the send quota."""
+        if self.is_rate_limited and self._version_is_rate_limited(firmware_version):
             remaining = self.seconds_until_send_available()
             msg = f"MQTTTransport rate-limited for {remaining:.0f}s more"
             raise TransportRateLimitedError(msg)
@@ -359,8 +349,21 @@ class MQTTTransport(Transport):
         self.record_send()
 
     async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
-        """Send a keepalive heartbeat without counting it against the 24-hour quota."""
+        """Send a keepalive heartbeat without counting it against the send quota."""
         await self._invoke(payload, iot_id)
+
+    @staticmethod
+    def _version_is_rate_limited(firmware_version: str) -> bool:
+        """True when *firmware_version* predates the firmware that removed rate limiting.
+
+        An unknown/unparseable version (e.g. "" before the first update-check frame)
+        is treated as pre-removal so the rate-limit gate stays engaged rather than
+        letting Version("") raise InvalidVersion out of the send path.
+        """
+        try:
+            return Version(firmware_version) < RATE_LIMIT_REMOVED_VERSION
+        except InvalidVersion:
+            return True
 
     # ------------------------------------------------------------------
     # Internal
@@ -533,6 +536,7 @@ class MQTTTransport(Transport):
         Falls back to the plain ``on_message`` callback (raw bytes, no routing)
         when ``on_device_message`` is not set.
         """
+        self._mark_received()
         if topic.endswith("/thing/status"):
             await self._dispatch_device_status(topic, raw)
             return

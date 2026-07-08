@@ -26,8 +26,6 @@ from pymammotion.transport.base import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from bleak import BLEDevice
     from bleak.backends.characteristic import BleakGATTCharacteristic
 
@@ -84,7 +82,8 @@ class BLETransport(Transport):
     reassembled by BleMessage.parseNotification() before being forwarded.
     """
 
-    on_message: Callable[[bytes], Awaitable[None]] | None = None
+    # NOTE: on_message is deliberately NOT redeclared here — a class attribute would
+    # shadow the base Transport.on_message property and defeat its receive-timestamping.
 
     def __init__(self, config: BLETransportConfig) -> None:
         """Initialise the transport with the supplied configuration."""
@@ -114,6 +113,9 @@ class BLETransport(Transport):
         #: Last advertisement RSSI (dBm) pushed via ``set_ble_device``.  ``None``
         #: until a caller supplies one — an unknown RSSI never gates ``is_usable``.
         self._last_rssi: int | None = None
+        #: Strong reference to the in-flight disconnect handler task (see
+        #: ``_dispatch_disconnect``).
+        self._disconnect_task: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------
     # Public device management
@@ -308,6 +310,13 @@ class BLETransport(Transport):
                         self._config.device_id,
                     )
                 else:
+                    # Tear the link down: is_connected reads the live client, so leaving
+                    # it connected here would wedge the transport into a state where
+                    # writes succeed but responses never arrive (no notify subscription).
+                    with contextlib.suppress(Exception):
+                        await self._client.disconnect()
+                    self._client = None
+                    self._message = None
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
                     self._record_connect_failure()
                     raise BLEUnavailableError(f"BLE start_notify failed for {self._config.device_id!r}: {exc}") from exc
@@ -479,7 +488,10 @@ class BLETransport(Transport):
 
     def _dispatch_disconnect(self) -> None:
         """Schedule async disconnect handling.  Runs on the event loop."""
-        asyncio.create_task(self._on_disconnect_async())
+        # Hold a strong reference so the task can't be garbage-collected before it
+        # runs — a dropped disconnect would leave _client set and availability
+        # CONNECTED until the next write fails.
+        self._disconnect_task = asyncio.create_task(self._on_disconnect_async())
 
     async def _on_disconnect_async(self) -> None:
         """Process an unexpected disconnect on the event loop.

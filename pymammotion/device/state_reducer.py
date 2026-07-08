@@ -241,10 +241,7 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case (
-                        "bidire_comm_cmd"
-                        | "todev_time_ctrl_light"
-                        | "toapp_lora_cfg_rsp"
-                        | "device_product_type_info"
+                        "bidire_comm_cmd" | "todev_time_ctrl_light" | "toapp_lora_cfg_rsp" | "device_product_type_info"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -273,8 +270,12 @@ class MowerStateReducer(StateReducer):
                 # Granular dispatch — most net handlers only touch one field.
                 net_msg_name = betterproto2.which_one_of(message.net, "NetSubType")[0]  # type: ignore
                 match net_msg_name:
-                    case "toapp_wifi_iot_status" | "toapp_networkinfo_rsp":
+                    case "toapp_wifi_iot_status":
                         device.mower_state = copy.deepcopy(current.mower_state)
+                    case "toapp_networkinfo_rsp":
+                        # Writes mower_state fields AND report_data.connect.wifi_rssi.
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                        device.report_data = copy.deepcopy(current.report_data)
                     case "toapp_devinfo_resp":
                         # Writes both mower_state.swversion and device_firmwares.device_version.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -1296,6 +1297,10 @@ class RTKStateReducer(StateReducer):
         if dev_ver_info := items.deviceVersionInfo:
             try:
                 blob = json.loads(dev_ver_info.value)  # type: ignore
+                # dataclasses.replace() is shallow — copy device_firmwares before the
+                # in-place writes below or the previous snapshot is mutated too (and
+                # the identity-based diff never reports the change).
+                device.device_firmwares = copy.deepcopy(current.device_firmwares)
                 if dev_ver := blob.get("devVer"):
                     device.device_version = str(dev_ver)
                     device.device_firmwares.device_version = str(dev_ver)

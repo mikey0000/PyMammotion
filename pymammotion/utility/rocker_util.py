@@ -29,7 +29,7 @@ class RockerControlUtil:
             RockerControlUtil: An instance of RockerControlUtil.
 
         """
-        if cls.instance_ == None:
+        if cls.instance_ is None:
             cls.instance_ = RockerControlUtil()
         return cls.instance_
 

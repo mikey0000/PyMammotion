@@ -311,6 +311,16 @@ class Transport(ABC):
         """Monotonic timestamp of the last inbound message (0.0 if none yet)."""
         return self._last_received_monotonic
 
+    def _mark_received(self) -> None:
+        """Stamp inbound activity for receive paths that bypass the on_message wrapper.
+
+        The MQTT transports deliver most traffic via on_device_message / the topic
+        dispatchers, which never pass through the on_message property setter's
+        timestamping wrapper — they must call this per inbound message so
+        last_received_monotonic (used for poll-staleness cadence) stays honest.
+        """
+        self._last_received_monotonic = time.monotonic()
+
     @property
     def last_send_monotonic(self) -> float:
         """Monotonic timestamp of the last outbound send (0.0 if never sent)."""

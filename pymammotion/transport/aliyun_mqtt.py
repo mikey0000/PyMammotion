@@ -28,6 +28,8 @@ from Tea.exceptions import UnretryableException
 
 from pymammotion.aliyun.exceptions import DeviceUnboundException
 from pymammotion.data.mqtt.status import ThingStatusMessage
+from pymammotion.data.mqtt.event import ThingEventMessage
+from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.transport.base import (
     AccountInUseError,
     ReLoginRequiredError,
@@ -54,6 +56,9 @@ _MQTT_MAX_INFLIGHT = 20
 _MQTT_MAX_QUEUED = 40
 _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 60
+#: Consecutive credential-refresh reconnect cycles allowed (without a single received
+#: message in between) before an rc-4/5 / bind_reply-2043 rejection is treated as fatal.
+_MAX_AUTH_REFRESH_CYCLES = 3
 
 #: Messages with ``params.time`` older than this threshold (in milliseconds)
 #: relative to the current wall clock are considered stale and dropped.  Aliyun
@@ -154,7 +159,8 @@ class AliyunMQTTTransport(Transport):
     the timestamp-embedded signature remains fresh.
     """
 
-    on_message: Callable[[bytes], Awaitable[None]] | None = None
+    # NOTE: on_message is deliberately NOT redeclared here — a class attribute would
+    # shadow the base Transport.on_message property and defeat its receive-timestamping.
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
     on_fatal_auth_error: Callable[[ReLoginRequiredError], Awaitable[None]] | None = None
 
@@ -367,6 +373,11 @@ class AliyunMQTTTransport(Transport):
     async def _run(self) -> None:
         """Run the main Aliyun MQTT connection loop, reconnecting with exponential backoff."""
         backoff = _MQTT_RECONNECT_MIN_SEC
+        #: Consecutive credential-refresh reconnect cycles without receiving a single
+        #: message.  Bounds the rc-4/5 and bind_reply-2043 refresh loops: a refresh that
+        #: "succeeds" but is rejected by the broker again must not retry forever with
+        #: zero backoff — that hammers Aliyun (historically: account blocks).
+        auth_refresh_cycles = 0
 
         _tls_context = await self.get_ssl_context()
 
@@ -412,6 +423,8 @@ class AliyunMQTTTransport(Transport):
                     async for message in client.messages:
                         if self._stop_event.is_set():
                             break
+                        self._mark_received()
+                        auth_refresh_cycles = 0  # broker accepted us — refresh budget resets
                         topic = str(message.topic)
                         raw = bytes(message.payload)
                         if topic.endswith("/thing/status"):
@@ -444,10 +457,13 @@ class AliyunMQTTTransport(Transport):
                 rc = exc.rc
                 if rc in (4, 5):
                     _logger.error("Aliyun MQTT auth refused (rc=%s): %s — attempting credential refresh", rc, exc)
-                    if self.on_auth_failure is not None:
+                    if self.on_auth_failure is not None and auth_refresh_cycles < _MAX_AUTH_REFRESH_CYCLES:
                         try:
                             if await self.on_auth_failure():
+                                auth_refresh_cycles += 1
                                 _logger.info("Aliyun credentials refreshed after auth failure — retrying")
+                                await asyncio.sleep(backoff)
+                                backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
                                 continue
                         except ReLoginRequiredError as relogin_exc:
                             await self._handle_fatal_auth_error(relogin_exc)
@@ -464,10 +480,13 @@ class AliyunMQTTTransport(Transport):
                 raise
             except SessionExpiredError as exc:
                 _logger.warning("Aliyun bind token expired — attempting credential refresh: %s", exc)
-                if self.on_auth_failure is not None:
+                if self.on_auth_failure is not None and auth_refresh_cycles < _MAX_AUTH_REFRESH_CYCLES:
                     try:
                         if await self.on_auth_failure():
+                            auth_refresh_cycles += 1
                             _logger.info("Aliyun credentials refreshed after bind token expiry — reconnecting")
+                            await asyncio.sleep(backoff)
+                            backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
                             continue
                     except ReLoginRequiredError as relogin_exc:
                         await self._handle_fatal_auth_error(relogin_exc)
@@ -485,6 +504,11 @@ class AliyunMQTTTransport(Transport):
                 # Covers DNS failure (socket.gaierror), ENETUNREACHABLE, connection timeout,
                 # and other network-layer errors that aiomqtt does not always wrap.
                 _logger.warning("Aliyun MQTT network error: %s — retry in %ds", exc, backoff)
+            except Exception:
+                # Catch-all mirroring MQTTTransport._run: an unexpected error escaping a
+                # message callback (state pipeline, malformed frame) must not silently
+                # kill the receive loop and leave the transport dead until restart.
+                _logger.exception("AliyunMQTTTransport: unexpected error in _run — retry in %ds", backoff)
             finally:
                 self._client = None
                 if self._availability is not TransportAvailability.DISCONNECTED:
@@ -560,9 +584,7 @@ class AliyunMQTTTransport(Transport):
         # thing/events carry ``params.time``; thing/properties only carry
         # ``generateTime``/``gmtCreate`` — fall back so both are filtered.
         params = parsed.get("params", {})
-        envelope_time_ms: int = int(
-            params.get("time") or params.get("generateTime") or params.get("gmtCreate") or 0
-        )
+        envelope_time_ms: int = int(params.get("time") or params.get("generateTime") or params.get("gmtCreate") or 0)
         if envelope_time_ms > 0:
             now_ms = int(time.time() * 1000)
             age_ms = now_ms - envelope_time_ms
@@ -577,16 +599,12 @@ class AliyunMQTTTransport(Transport):
 
         if topic.endswith("/thing/events") and self.on_device_event is not None:
             try:
-                from pymammotion.data.mqtt.event import ThingEventMessage
-
                 event = ThingEventMessage.from_dicts(parsed)
                 await self.on_device_event(event_iot_id, event)
             except Exception:  # noqa: BLE001
                 _logger.debug("AliyunMQTTTransport: failed to parse thing/events on %s", topic, exc_info=True)
         elif topic.endswith("/thing/properties") and self.on_device_properties is not None:
             try:
-                from pymammotion.data.mqtt.properties import ThingPropertiesMessage
-
                 props = ThingPropertiesMessage.from_dict(parsed)
                 await self.on_device_properties(event_iot_id, props)
             except Exception:  # noqa: BLE001

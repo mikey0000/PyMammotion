@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import itertools
@@ -185,10 +186,10 @@ class CloudIOTGateway:
 
     async def get_region(self, country_code: str) -> RegionResponse:
         """Get the region based on country code and auth code."""
-        auth_code = self.mammotion_http.login_info.authorization_code  # type: ignore
-
         if self._region_response is not None:
             return self._region_response
+
+        auth_code = self.mammotion_http.login_info.authorization_code  # type: ignore
 
         config = Config(app_key=self._app_key, app_secret=self._app_secret, domain=self.domain, protocol="https")
         client = Client(config)
@@ -227,7 +228,11 @@ class CloudIOTGateway:
             body["data"]["pushChannelEndpoint"] = f"living-accs.{region}.aliyuncs.com"
             body["data"]["apiGatewayEndpoint"] = f"{region}.api-iot.aliyuncs.com"
 
-            return RegionResponse.from_dict(body)
+            # Callers read region_response after this returns — the fallback must be
+            # stored too, or the very next step (aep_handle) crashes on None and a
+            # transient network timeout is escalated to a destructive re-login.
+            self._region_response = RegionResponse.from_dict(body)
+            return self._region_response
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
         # Load the JSON string into a dictionary
@@ -239,7 +244,7 @@ class CloudIOTGateway:
         self._region_response = RegionResponse.from_dict(response_body_dict)
         logger.debug("Endpoint: %s", self._region_response.data.mqttEndpoint)
 
-        return response.body
+        return self._region_response
 
     async def aep_handle(self) -> AepResponse:
         """Handle AEP authentication."""
@@ -300,7 +305,6 @@ class CloudIOTGateway:
     async def connect(self) -> ConnectResponse:
         """Connect to the Aliyun Cloud IoT Gateway."""
         region_url = "sdk.openaccount.aliyun.com"
-        time_now = time.time()
         async with ClientSession() as session:
             headers = {
                 "host": region_url,
@@ -626,7 +630,10 @@ class CloudIOTGateway:
             response_body_dict = self.parse_json_response(response_body_str)
 
             if response_body_dict.get("code") == 2401:
-                await self.sign_out()
+                # Best-effort: a network failure inside sign_out must not mask the
+                # 2401 — TokenManager keys its recovery path off SessionExpiredError.
+                with contextlib.suppress(Exception):
+                    await self.sign_out()
                 raise SessionExpiredError(
                     TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
                 )

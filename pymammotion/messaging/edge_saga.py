@@ -68,6 +68,9 @@ class EdgeMappingSaga(Saga):
                 _logger.debug("EdgeMappingSaga: sending along_border to start edge mapping")
                 cmd = self._command_builder.along_border()
                 await self._send_command(cmd)
+                # A retry after a mid-walk timeout must only re-attach the collector —
+                # re-sending along_border would physically restart the border walk.
+                self._skip_start = True
 
             # Collect frames — the device streams them until current_frame >= total_frame
             while True:

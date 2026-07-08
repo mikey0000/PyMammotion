@@ -337,33 +337,6 @@ class BleMessage:
     # async def get_device_info(self):
     #     await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
-    async def requestDeviceStatus(self) -> None:
-        """Request the current device status from the BLE device."""
-        request = False
-        type = self.getTypeValue(0, 5)
-        try:
-            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
-            # _LOGGER.debug(request)
-        except Exception as err:
-            # Log.w(TAG, "post requestDeviceStatus interrupted")
-            request = False
-            _LOGGER.error(err)
-
-        # if not request:
-        #     onStatusResponse(BlufiCallback.CODE_WRITE_DATA_FAILED, null)
-
-    async def requestDeviceVersion(self) -> None:
-        """Request the firmware version information from the BLE device."""
-        request = False
-        type = self.getTypeValue(0, 7)
-        try:
-            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
-            # _LOGGER.debug(request)
-        except Exception as err:
-            # Log.w(TAG, "post requestDeviceStatus interrupted")
-            request = False
-            _LOGGER.error(err)
-
     async def gatt_write(self, data: bytes) -> None:
         """Write raw bytes to the GATT write characteristic with response."""
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
@@ -550,7 +523,7 @@ class BleMessage:
         data = data_str.encode()
         type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
         except Exception as err:
@@ -633,7 +606,7 @@ class BleMessage:
     ) -> bytes:
         """Assemble a BluFi packet header with optional payload into a byte buffer ready for GATT write."""
         byteOS = BytesIO()
-        dataLength = 0 if data == None else len(data)
+        dataLength = 0 if data is None else len(data)
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
         byteOS.write(type.to_bytes(1, sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))

@@ -7,11 +7,6 @@ from Tea.request import TeaRequest
 
 from pymammotion.aliyun.tea.core import TeaCore
 
-try:
-    from typing import Dict
-except ImportError:
-    pass
-
 from alibabacloud_apigateway_util.client import Client as APIGatewayUtilClient
 from alibabacloud_tea_util.client import Client as UtilClient
 
@@ -128,11 +123,11 @@ class Client:
                 _request.headers["x-ca-signature"] = APIGatewayUtilClient.get_signature(_request, self._app_secret)
                 _request.headers["ca_version"] = "1"
                 _last_request = _request
-                try:
-                    _response = await TeaCore.async_do_action(_request, _runtime)
-                    return _response
-                except asyncio.CancelledError:
-                    pass
+                return await TeaCore.async_do_action(_request, _runtime)
+            except asyncio.CancelledError:
+                # Never swallow cancellation: eating it here re-sends the request
+                # (autoretry) or masks the cancel as UnretryableException.
+                raise
             except Exception as e:
                 if TeaCore.is_retryable(e):
                     _last_exception = e
