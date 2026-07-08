@@ -239,9 +239,25 @@ class MammotionClient:
             await handle.stop()
 
     async def remove_device(self, name: str) -> None:
-        """Stop and remove the named device from the registry."""
-        if handle := self._device_registry.get_by_name(name):
-            await self._device_registry.unregister(handle.device_id)
+        """Stop and remove the named device from the registry.
+
+        Account-shared cloud transports (Aliyun / Mammotion MQTT) are detached —
+        NOT disconnected — while other devices on the same account remain, since
+        ``handle.stop()`` disconnects every transport still attached and would
+        otherwise tear down cloud connectivity for every surviving mower.  Only
+        the account's last device takes the shared transport down with it.
+        """
+        handle = self._device_registry.get_by_name(name)
+        if handle is None:
+            return
+        self.teardown_device_watchers(name)
+        self._iot_id_to_device_id.pop(handle.iot_id, None)
+        if (session := self._get_session_for_device(name)) is not None:
+            session.device_ids.discard(name)
+            if session.device_ids:
+                for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                    handle.detach_transport(transport_type)
+        await self._device_registry.unregister(handle.device_id)
 
     # ------------------------------------------------------------------
     # Device state watchers

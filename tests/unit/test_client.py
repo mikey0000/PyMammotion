@@ -1714,3 +1714,53 @@ async def test_fetch_stream_subscription_returns_empty_after_retry_exhausted() -
 
     assert result.data is None
     assert http.get_stream_subscription.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# remove_device: account-shared cloud transport survives unless last device
+# ---------------------------------------------------------------------------
+
+
+async def _make_two_device_session() -> tuple[MammotionClient, DeviceHandle, DeviceHandle, MagicMock, AccountSession]:
+    client = MammotionClient()
+    shared = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+
+    handle_a = make_handle("dev-a", "Luba-A")
+    handle_b = make_handle("dev-b", "Luba-B")
+    await handle_a.add_transport(shared)
+    await handle_b.add_transport(shared)
+    await client._device_registry.register(handle_a)
+    await client._device_registry.register(handle_b)
+
+    session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
+    session.aliyun_transport = shared
+    session.device_ids.update({"Luba-A", "Luba-B"})
+    await client._account_registry.register(session)
+    return client, handle_a, handle_b, shared, session
+
+
+async def test_remove_device_keeps_shared_cloud_transport_for_remaining_devices() -> None:
+    """Removing one of two devices must NOT disconnect the account-shared cloud
+    transport — the surviving device still depends on it."""
+    client, handle_a, handle_b, shared, session = await _make_two_device_session()
+
+    await client.remove_device("Luba-A")
+
+    shared.disconnect.assert_not_awaited()
+    assert client._device_registry.get_by_name("Luba-A") is None
+    assert client._device_registry.get_by_name("Luba-B") is handle_b
+    assert handle_b.get_transport(TransportType.CLOUD_ALIYUN) is shared
+    assert "Luba-A" not in session.device_ids
+    await handle_b.stop()
+
+
+async def test_remove_device_disconnects_shared_cloud_transport_for_last_device() -> None:
+    """Removing the LAST device on the account may tear the shared cloud transport down."""
+    client, handle_a, handle_b, shared, session = await _make_two_device_session()
+
+    await client.remove_device("Luba-A")
+    await client.remove_device("Luba-B")
+
+    shared.disconnect.assert_awaited()
+    assert client._device_registry.get_by_name("Luba-B") is None
+    assert not session.device_ids
