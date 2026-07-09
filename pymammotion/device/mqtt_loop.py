@@ -16,8 +16,6 @@ import os
 import time
 from typing import TYPE_CHECKING
 
-from packaging.version import Version
-
 from pymammotion.device.ble_loop import _BLE_MODE_RECHECK_INTERVAL
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.transport.base import Transport, TransportType
@@ -29,8 +27,6 @@ _logger = logging.getLogger(__name__)
 
 #: Activity-loop backoff when MQTT is rate-limited and no BLE is available.
 _RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
-
-RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
 
 #: MQTT one-shot (count=1) poll cadence per device mode.  Tuned for cloud quotas.
 #: Each entry can be overridden at process startup via an environment variable:
@@ -57,9 +53,7 @@ def poll_interval(handle: DeviceHandle) -> float:
     See ``_MQTT_POLL_INTERVAL`` for the per-mode cadence table.
     """
 
-    version = handle.snapshot.raw.update_check.current_version
-
-    if Version(version) >= RATE_LIMIT_REMOVED_VERSION:
+    if not Transport._version_is_rate_limited(handle.firmware_version):  # noqa: SLF001
         return _MQTT_NEW_POLL_INTERVAL[handle.device_mode()]
 
     return _MQTT_POLL_INTERVAL[handle.device_mode()]
@@ -137,14 +131,16 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
             await handle.sleep_or_rearm(interval)
             continue
 
-        # Back off if MQTT is rate-limited and no BLE transport is connected.
+        # Back off if MQTT sends are blocked and no BLE transport is connected.
+        # is_send_blocked applies the firmware exemption, so quota-free devices
+        # never park the poll loop on the self-imposed send window.
         mqtt: Transport | None = None
         for tt in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
             t = handle._transports.get(tt)  # noqa: SLF001
             if t is not None:
                 mqtt = t
                 break
-        if mqtt is not None and mqtt.is_rate_limited:
+        if mqtt is not None and mqtt.is_send_blocked(handle.firmware_version):
             ble = handle._transports.get(TransportType.BLE)  # noqa: SLF001
             if ble is None or not ble.is_connected:
                 # Back off only until sends are actually available again (the rolling
