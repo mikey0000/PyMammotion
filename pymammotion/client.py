@@ -2148,7 +2148,16 @@ class MammotionClient:
             return
         _logger.debug("start_plan_sync [%s]: enqueuing PlanFetchSaga", device_name)
         saga = PlanFetchSaga(command_builder=handle.commands, send_command=handle.send_raw)
-        await handle.enqueue_saga(saga)
+
+        async def _on_plan_complete() -> None:
+            # The saga walks every plan index and the reducer applies each
+            # todev_planjob_set frame to device.map.plan; once complete the
+            # stored set is authoritative, so clear the stale flag that the
+            # reducer raised on all_plan_task.
+            if device := self.get_device_by_name(device_name):
+                device.map.plans_stale = False
+
+        await handle.enqueue_saga(saga, on_complete=_on_plan_complete)
 
     async def start_spino_plan_sync(self, device_name: str) -> None:
         """Enqueue a :class:`SpinoPlanFetchSaga` to fetch all Spino cleaning plans.
