@@ -294,6 +294,75 @@ class MammotionHTTP:
             return await self.login_v2(self.account, self._password)
         return resp
 
+    def _stream_api_bases(self) -> list[str]:
+        """Return API bases to try for ``/device-server/v1/stream/token``.
+
+        Domestic first (works for NA accounts), then the regional ``robot`` host
+        from the access-token JWT when present (e.g. ``api-robot-eu.mammotion.com``).
+        """
+        bases: list[str] = [MAMMOTION_API_DOMAIN.rstrip("/")]
+        robot = (self.jwt_info.robot or "").strip().rstrip("/")
+        if robot:
+            if not robot.startswith("http"):
+                robot = f"https://{robot}"
+            if robot not in bases:
+                bases.append(robot)
+        return bases
+
+    async def _request_stream_token(
+        self, payload: dict[str, Any], api_base: str
+    ) -> Response[StreamSubscriptionResponse]:
+        """POST ``/device-server/v1/stream/token`` against a single API base."""
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{api_base}/device-server/v1/stream/token",
+                json=payload,
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            )
+            content_type = resp.headers.get("Content-Type") or ""
+            body = await resp.text()
+            _LOGGER.debug(
+                "stream/token response: base=%s status=%s content-type=%s body=%.500s",
+                api_base,
+                resp.status,
+                content_type,
+                body,
+            )
+            if content_type.startswith("application/json"):
+                try:
+                    parsed = json.loads(body)
+                except json.JSONDecodeError:
+                    _LOGGER.warning(
+                        "stream/token returned invalid JSON (base=%s status=%s)",
+                        api_base,
+                        resp.status,
+                    )
+                    return Response(code=resp.status, msg="invalid-json response")
+                response = response_factory(Response[StreamSubscriptionResponse], parsed)
+                if response.data is None:
+                    _LOGGER.warning(
+                        "stream/token returned JSON with no stream data "
+                        "(base=%s code=%s msg=%s)",
+                        api_base,
+                        response.code,
+                        response.msg,
+                    )
+                return response
+
+            _LOGGER.warning(
+                "stream/token returned non-JSON response (base=%s status=%s content-type=%s)",
+                api_base,
+                resp.status,
+                content_type,
+            )
+            return Response(code=resp.status, msg="non-json response")
+
     async def login_by_email(self, email: str, password: str) -> Response[LoginResponseData]:
         """Log in using email and password via the v2 OAuth endpoint."""
         return await self.login_v2(email, password)
@@ -446,53 +515,54 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_stream_subscription(self, iot_id: str, is_yuka: bool) -> Response[StreamSubscriptionResponse]:
-        # Prepare the payload with cameraStates based on is_yuka flag
-        """Fetches stream subscription data for a given IoT device."""
+        """Fetch Agora stream subscription tokens for a given IoT device.
 
-        payload = {"deviceId": iot_id, "mode": 0, "cameraStates": []}
+        On HTTP API ``code=401`` (expired/invalid bearer token), refreshes the
+        OAuth session and retries the same host once.  If the domestic host still
+        returns no usable ``data``, falls back to the regional ``robot`` API host
+        from the JWT (when available) — EU accounts often need that host.
+        """
+        payload: dict[str, Any] = {
+            "deviceId": iot_id,
+            "mode": 0,
+            # Yukas have multiple cameras; only the front camera is useful in HA.
+            "cameraStates": [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 0}],
+        }
+        _ = is_yuka  # kept for API compatibility; camera selection is front-only
 
-        # Add appropriate cameraStates based on the is_yuka flag
-        # yukas have two cameras you could view [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 1}]
-        # but its not useful so ignore this and only subscribe to the front one.
-        if is_yuka:
-            payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 0}]
-        else:
-            payload["cameraStates"] = [{"cameraState": 1}, {"cameraState": 0}, {"cameraState": 0}]
-
-        async with self._client_session() as session:
-            resp = await session.post(
-                f"{MAMMOTION_API_DOMAIN}/device-server/v1/stream/token",
-                json=payload,
-                headers={
-                    **self._headers,
-                    "Authorization": f"Bearer {self._require_login_info.access_token}",
-                    "Content-Type": "application/json",
-                },
-            )
-            content_type = resp.headers.get("Content-Type") or ""
-            body = await resp.text()
-            _LOGGER.debug(
-                "stream/token response: status=%s content-type=%s body=%.500s",
-                resp.status,
-                content_type,
-                body,
-            )
-            if content_type.startswith("application/json"):
-                response = response_factory(Response[StreamSubscriptionResponse], json.loads(body))
-                if response.data is None:
-                    _LOGGER.warning(
-                        "stream/token returned JSON with no stream data (code=%s msg=%s)",
-                        response.code,
-                        response.msg,
-                    )
+        last_response: Response[StreamSubscriptionResponse] | None = None
+        for api_base in self._stream_api_bases():
+            response = await self._request_stream_token(payload, api_base)
+            last_response = response
+            if response.data is not None:
                 return response
 
-            _LOGGER.warning(
-                "stream/token returned non-JSON response (status=%s content-type=%s)",
-                resp.status,
-                content_type,
+            if response.code == 401 and self.account and self._password:
+                _LOGGER.warning(
+                    "stream/token on %s returned 401 — refreshing login and retrying",
+                    api_base,
+                )
+                refresh = await self.refresh_login()
+                if refresh.code == 0 and refresh.data is not None:
+                    response = await self._request_stream_token(payload, api_base)
+                    last_response = response
+                    if response.data is not None:
+                        return response
+                else:
+                    _LOGGER.error(
+                        "stream/token auth recovery failed on %s (code=%s msg=%s)",
+                        api_base,
+                        refresh.code,
+                        refresh.msg,
+                    )
+
+            _LOGGER.debug(
+                "stream/token on %s returned no usable data (code=%s) — trying next API base if any",
+                api_base,
+                response.code,
             )
-            return Response(code=resp.status, msg="non-json response")
+
+        return last_response or Response(code=500, msg="stream/token failed")
 
     @refresh_token_decorator
     async def get_video_resource(self, iot_id: str) -> Response[VideoResourceResponse]:
