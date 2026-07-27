@@ -23,8 +23,8 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
-#: Firmware version at which Mammotion removed the cloud send rate limit.
-#: Devices on this version or newer are exempt from the self-imposed send quota
+#: Firmware version at which devices migrated to the Mammotion MQTT broker.
+#: Devices on this version or newer are not subject to the cloud send quota
 #: (see ``Transport.is_send_blocked``).
 RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
 
@@ -395,7 +395,8 @@ class Transport(ABC):
 
         Callers gating an actual send should use :meth:`is_send_blocked` instead, which
         also applies the firmware exemption — devices on
-        ``RATE_LIMIT_REMOVED_VERSION``+ firmware have no cloud send quota.
+        ``RATE_LIMIT_REMOVED_VERSION``+ firmware have migrated to the Mammotion MQTT
+        broker and have no cloud send quota.
         """
         if time.monotonic() < self._rate_limited_until:
             return True
@@ -403,10 +404,10 @@ class Transport(ABC):
 
     @staticmethod
     def _version_is_rate_limited(firmware_version: str) -> bool:
-        """True when *firmware_version* predates the firmware that removed rate limiting.
+        """True when *firmware_version* predates the migration to the Mammotion MQTT broker.
 
         An unknown/unparseable version (e.g. "" before the first update-check frame)
-        is treated as pre-removal so the rate-limit gate stays engaged rather than
+        is treated as pre-migration so the rate-limit gate stays engaged rather than
         letting Version("") raise InvalidVersion out of the send path.
         """
         try:
