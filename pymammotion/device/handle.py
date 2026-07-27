@@ -426,12 +426,17 @@ class DeviceHandle:
         is read by :meth:`_keep_alive_loop` to skip heartbeat sends when the
         transport has seen activity within the keep-alive window.
 
-        Raises TransportRateLimitedError immediately if the transport is currently
-        rate-limited — without touching the network — so all callers (commands,
-        sagas, heartbeats) are blocked uniformly while the 12-hour ban is active.
+        Raises TransportRateLimitedError immediately if a send is currently
+        blocked — without touching the network — so all callers (commands,
+        sagas, heartbeats) are gated uniformly.  Uses the same
+        ``is_send_blocked`` predicate as ``transport.send()`` itself, so this
+        pre-check can never block a send the transport would have allowed
+        (devices on quota-free firmware are exempt at both layers).
         BLE transports are never rate-limited and are always allowed through.
         """
-        if transport.transport_type != TransportType.BLE and transport.is_rate_limited:
+        version = self.firmware_version
+
+        if transport.transport_type != TransportType.BLE and transport.is_send_blocked(version):
             raise TransportRateLimitedError(
                 f"Transport {transport.transport_type.value} is rate-limited — send blocked"
             )
@@ -447,12 +452,6 @@ class DeviceHandle:
             since_sync = time.monotonic() - self._last_mqtt_sync_monotonic.get(transport.transport_type, 0.0)
             if since_sync > _MQTT_SYNC_INTERVAL:
                 await self._send_mqtt_sync(transport, since_sync=since_sync)
-
-        version = self.snapshot.raw.update_check.current_version
-
-        # TODO do this by device type
-        if version == "1.0.0.0" and hasattr(cast(MowerDevice, self.snapshot.raw), "mower_state"):
-            version = cast(MowerDevice, self.snapshot.raw).mower_state.swversion
 
         await transport.send(payload, iot_id=self.iot_id, firmware_version=version)
         if not self._stopping:
@@ -884,6 +883,22 @@ class DeviceHandle:
     def snapshot(self) -> DeviceSnapshot:
         """The latest immutable device state snapshot."""
         return self.state_machine.current
+
+    @property
+    def firmware_version(self) -> str:
+        """Device firmware version for rate-limit / cadence decisions.
+
+        Falls back to ``mower_state.swversion`` while the update-check frame
+        still holds its "1.0.0.0" placeholder, so every consumer (the send
+        gate, the poll-cadence table, the rate-limit backoff) sees the same
+        version and can never disagree about the firmware exemption.
+        """
+        version = self.snapshot.raw.update_check.current_version
+
+        # TODO do this by device type
+        if version == "1.0.0.0" and hasattr(cast(MowerDevice, self.snapshot.raw), "mower_state"):
+            version = cast(MowerDevice, self.snapshot.raw).mower_state.swversion
+        return version
 
     def restore_device(self, device: Device) -> None:
         """Restore previously saved device state (e.g. from HA storage)."""
@@ -1611,7 +1626,11 @@ class DeviceHandle:
         try:
             await self._send_marked(transport, payload)
         except TransportRateLimitedError:
-            _logger.debug("send_raw '%s': transport rate-limited — send blocked", self.device_name)
+            _logger.warning(
+                "send_raw '%s': transport rate-limited — send blocked (%.0fs until sends resume)",
+                self.device_name,
+                transport.seconds_until_send_available(),
+            )
         except TooManyRequestsException:
             _logger.warning("send_raw '%s': rate limited by cloud — blocking MQTT sends for 12h", self.device_name)
             transport.set_rate_limited()

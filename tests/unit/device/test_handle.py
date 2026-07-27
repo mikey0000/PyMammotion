@@ -709,6 +709,8 @@ def _make_mqtt_transport(*, connected: bool = True) -> MagicMock:
     t.transport_type = TransportType.CLOUD_ALIYUN
     t.is_connected = connected
     t.is_rate_limited = False
+    t.is_send_blocked = MagicMock(return_value=False)
+    t.seconds_until_send_available = MagicMock(return_value=0.0)
     t.send = AsyncMock()
     t.send_heartbeat = AsyncMock()
     t.set_rate_limited = MagicMock()
@@ -853,6 +855,7 @@ async def test_send_marked_raises_when_transport_rate_limited() -> None:
     handle = _make_rl_handle()
     mqtt = _make_mqtt_transport()
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
 
     with pytest.raises(TransportRateLimitedError):
@@ -895,6 +898,7 @@ async def test_send_raw_blocked_silently_when_already_rate_limited() -> None:
     handle = _make_rl_handle()
     mqtt = _make_mqtt_transport()
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
 
     await handle.send_raw(b"\x00")
@@ -942,6 +946,7 @@ async def test_send_raw_guard_does_not_call_set_rate_limited_again() -> None:
     handle = _make_rl_handle()
     mqtt = _make_mqtt_transport()
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
 
     # Call send_raw three times while the transport is already rate-limited.
@@ -1243,6 +1248,8 @@ def _make_transport(transport_type: TransportType, *, connected: bool = True) ->
     t.transport_type = transport_type
     t.is_connected = connected
     t.is_rate_limited = False
+    t.is_send_blocked = MagicMock(return_value=False)
+    t.seconds_until_send_available = MagicMock(return_value=0.0)
     t.last_send_monotonic = 0.0
     t.send = AsyncMock()
     t.send_heartbeat = AsyncMock()
@@ -1831,3 +1838,58 @@ async def test_device_unbound_hook_fires_only_once() -> None:
     await asyncio.sleep(0)
 
     hook.assert_awaited_once_with(handle)
+
+
+# ---------------------------------------------------------------------------
+# Firmware exemption — is_send_blocked must agree at every layer
+# (regression: _send_marked used to check is_rate_limited without the firmware
+# exemption that transport.send() applies, permanently blocking all commands
+# and sagas for quota-free-firmware devices once the window filled or a 429
+# set the ban — while telemetry kept flowing.)
+# ---------------------------------------------------------------------------
+
+
+def test_is_send_blocked_applies_firmware_exemption() -> None:
+    """is_send_blocked() must exempt firmware >= RATE_LIMIT_REMOVED_VERSION."""
+    t = _make_concrete_transport()
+    t.set_rate_limited()
+    assert t.is_rate_limited is True
+
+    # Pre-removal firmware: blocked.
+    assert t.is_send_blocked("1.11.5.0") is True
+    # Post-removal firmware (e.g. Luba Mini 2.x): exempt.
+    assert t.is_send_blocked("2.3.27.16") is False
+    # Unknown / unparseable version: fail closed (blocked).
+    assert t.is_send_blocked("") is True
+
+    # Not rate-limited at all: never blocked, regardless of firmware.
+    t._rate_limited_until = time.monotonic() - 1  # noqa: SLF001
+    assert t.is_send_blocked("1.11.5.0") is False
+
+
+async def test_send_marked_allows_exempt_firmware_while_rate_limited() -> None:
+    """_send_marked() must send when the transport exempts this firmware.
+
+    The pre-check must use the same is_send_blocked predicate as
+    transport.send() — it must never block a send the transport would allow.
+    """
+    handle = _make_rl_handle()
+    mqtt = _make_mqtt_transport()
+    mqtt.is_rate_limited = True  # quota/ban active...
+    mqtt.is_send_blocked = MagicMock(return_value=False)  # ...but firmware is exempt
+    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+
+    await handle._send_marked(mqtt, b"\x01\x02\x03")  # noqa: SLF001
+
+    mqtt.send.assert_awaited_once()
+
+
+async def test_send_marked_passes_firmware_version_to_is_send_blocked() -> None:
+    """The pre-check must consult is_send_blocked with the handle's firmware version."""
+    handle = _make_rl_handle()
+    mqtt = _make_mqtt_transport()
+    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+
+    await handle._send_marked(mqtt, b"\x01")  # noqa: SLF001
+
+    mqtt.is_send_blocked.assert_called_once_with(handle.firmware_version)

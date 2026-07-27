@@ -15,13 +15,13 @@ from urllib.parse import urlparse
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
 import jwt
-from packaging.version import InvalidVersion, Version
 
 from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 from pymammotion.data.mqtt.status import MammotionStatusMessage, ThingStatusMessage
 from pymammotion.http.model.http import UnauthorizedExceptionError
 from pymammotion.transport.base import (
+    RATE_LIMIT_REMOVED_VERSION,  # noqa: F401 — re-exported for backwards compatibility
     AuthError,
     NoTransportAvailableError,
     ReLoginRequiredError,
@@ -42,7 +42,6 @@ _logger = logging.getLogger(__name__)
 
 _MQTT_RECONNECT_MIN_SEC = 1
 _MQTT_RECONNECT_MAX_SEC = 120
-RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
 
 
 def _jwt_claims_summary(token: str | None) -> str:
@@ -340,7 +339,7 @@ class MQTTTransport(Transport):
 
     async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
         """Send *payload* to the device and count it against the send quota."""
-        if self.is_rate_limited and self._version_is_rate_limited(firmware_version):
+        if self.is_send_blocked(firmware_version):
             remaining = self.seconds_until_send_available()
             msg = f"MQTTTransport rate-limited for {remaining:.0f}s more"
             raise TransportRateLimitedError(msg)
@@ -351,19 +350,6 @@ class MQTTTransport(Transport):
     async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
         """Send a keepalive heartbeat without counting it against the send quota."""
         await self._invoke(payload, iot_id)
-
-    @staticmethod
-    def _version_is_rate_limited(firmware_version: str) -> bool:
-        """True when *firmware_version* predates the firmware that removed rate limiting.
-
-        An unknown/unparseable version (e.g. "" before the first update-check frame)
-        is treated as pre-removal so the rate-limit gate stays engaged rather than
-        letting Version("") raise InvalidVersion out of the send path.
-        """
-        try:
-            return Version(firmware_version) < RATE_LIMIT_REMOVED_VERSION
-        except InvalidVersion:
-            return True
 
     # ------------------------------------------------------------------
     # Internal

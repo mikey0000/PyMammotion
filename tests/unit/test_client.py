@@ -466,6 +466,8 @@ def _make_connected_transport(transport_type: TransportType) -> MagicMock:
     t.transport_type = transport_type
     t.is_connected = True
     t.is_rate_limited = False
+    t.is_send_blocked = MagicMock(return_value=False)
+    t.seconds_until_send_available = MagicMock(return_value=0.0)
     t.is_usable = True  # default: ready to attempt sends; tests flip to False to exercise gates
     t.send = AsyncMock()
     t.send_heartbeat = AsyncMock()
@@ -898,6 +900,7 @@ async def test_poll_loop_rate_limited_no_ble_backs_off() -> None:
     handle = make_handle("dev1", "Luba-RL3")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     # The loop now backs off only until sends are available again; a full cloud ban still
     # caps at _RATE_LIMITED_BACKOFF.
     mqtt.seconds_until_send_available = MagicMock(return_value=_RATE_LIMITED_BACKOFF)
@@ -927,6 +930,7 @@ async def test_poll_loop_rate_limited_backoff_shortens_to_window_release() -> No
     handle = make_handle("dev1", "Luba-RL4")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     mqtt.seconds_until_send_available = MagicMock(return_value=300.0)  # window clears in 5 min
     await handle.add_transport(mqtt)
 
@@ -956,6 +960,7 @@ async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
     handle = make_handle("dev1", "Luba-RLBLE")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     ble = _make_connected_transport(TransportType.BLE)
     # Suppress the auto-start of BLE keepalive + polling loops so they don't race
     # with the MQTT loop under test (the polling loop would set _ble_stream_active
