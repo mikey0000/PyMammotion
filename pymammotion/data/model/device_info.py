@@ -112,4 +112,8 @@ class DeviceFirmwares(DataClassORJSONMixin):
     # RTK base station modules
     rtk_version: str = ""  # type 102
     lora_version: str = ""  # type 103 — LoRa on RTK base station
+    # Spino pool cleaner modules
+    wheel_hub_motor: str = ""  # type 63 — PAWG4
+    water_pump: str = ""  # type 65 — PACG4
+    communication: str = ""  # type 67/72 — PESP Wi-Fi module
     model_name: str = ""

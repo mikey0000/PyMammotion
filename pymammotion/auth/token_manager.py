@@ -114,6 +114,7 @@ class TokenManager:
 
     _ALIYUN_FAILURE_WINDOW: float = 120.0  # seconds
     _ALIYUN_FAILURE_LIMIT: int = 2
+    _FORCE_REFRESH_COOLDOWN: float = 30.0  # seconds
 
     def __init__(
         self,
@@ -149,9 +150,18 @@ class TokenManager:
         # Callers that hit the 30 s cooldown window get an immediate ReLoginRequiredError
         # rather than hammering the auth server on every queued command.
         self._invoke_refresh_failed_at: float | None = None
+        # Monotonic timestamp of the last force_refresh() that raised
+        # ReLoginRequiredError.  Within _FORCE_REFRESH_COOLDOWN, force_refresh()
+        # fails fast instead of re-hitting the auth server for every queued
+        # command stuck on the same broken credentials.
+        self._force_refresh_failed_at: float | None = None
         # RAII subscriptions to device handle error buses — kept alive here so they
         # are never garbage-collected while this token manager is active.
         self._handle_subscriptions: list[Subscription] = []
+        # Mirror HTTP-level token rotations (including refresh_token_decorator
+        # refreshes that never pass through this manager) into our snapshot and
+        # persist them — see _on_http_login_refreshed.
+        mammotion_http.on_login_refreshed = self._on_http_login_refreshed
 
     @property
     def http(self) -> MammotionHTTP:
@@ -278,6 +288,11 @@ class TokenManager:
         - ``TransportType.CLOUD_ALIYUN``: HTTP + Aliyun IoT token only.
         - ``None`` (default): HTTP + all active credential types (MQTT and/or Aliyun).
 
+        If a force refresh raised :class:`ReLoginRequiredError` within the last
+        ``_FORCE_REFRESH_COOLDOWN`` seconds, raises it again immediately without
+        touching the network — a burst of queued commands hitting the same broken
+        credentials collapses into one real attempt per window.
+
         Args:
             transport_type: Which transport's credentials to refresh, or ``None`` for all.
 
@@ -286,13 +301,25 @@ class TokenManager:
 
         """
         async with self._lock:
-            await self.refresh_http()
-            refresh_mqtt = transport_type in (TransportType.CLOUD_MAMMOTION, None)
-            refresh_aliyun = transport_type in (TransportType.CLOUD_ALIYUN, None)
-            if refresh_mqtt and self._mqtt_creds is not None:
-                await self.refresh_mqtt_creds()
-            if refresh_aliyun and self._cloud_gateway is not None:
-                await self._refresh_aliyun()
+            if self._force_refresh_failed_at is not None:
+                elapsed = time.monotonic() - self._force_refresh_failed_at
+                if elapsed < self._FORCE_REFRESH_COOLDOWN:
+                    raise ReLoginRequiredError(
+                        self._account_id,
+                        f"force refresh in cooldown ({self._FORCE_REFRESH_COOLDOWN - elapsed:.0f}s remaining)",
+                    )
+            try:
+                await self.refresh_http()
+                refresh_mqtt = transport_type in (TransportType.CLOUD_MAMMOTION, None)
+                refresh_aliyun = transport_type in (TransportType.CLOUD_ALIYUN, None)
+                if refresh_mqtt and self._mqtt_creds is not None:
+                    await self.refresh_mqtt_creds()
+                if refresh_aliyun and self._cloud_gateway is not None:
+                    await self._refresh_aliyun()
+            except ReLoginRequiredError:
+                self._force_refresh_failed_at = time.monotonic()
+                raise
+            self._force_refresh_failed_at = None
 
     async def refresh_aliyun_credentials(self) -> None:
         """Force-refresh only Aliyun IoT credentials; called when identityId is blank (29003) or session expires.
@@ -345,6 +372,30 @@ class TokenManager:
     # ------------------------------------------------------------------
     # Private helpers — callers are responsible for holding self._lock.
     # ------------------------------------------------------------------
+
+    async def _on_http_login_refreshed(self) -> None:
+        """Mirror an HTTP-level token rotation into this manager's snapshot and persist it.
+
+        Fired by MammotionHTTP after any successful oauth2/token exchange —
+        including refreshes triggered by the ``refresh_token_decorator``, which
+        never pass through this manager.  Without this, a decorator refresh
+        rotates the server-side refresh token while the persisted cache keeps the
+        dead one, so the next restart starts with a failed refresh and falls back
+        to a password re-login.
+
+        Deliberately lock-free: it can fire while :meth:`refresh_http` already
+        holds ``self._lock`` (refresh_login → callback), so taking the lock here
+        would deadlock.
+        """
+        login_info = self._http.login_info
+        if login_info is None:
+            return
+        self._http_creds = HTTPCredentials(
+            access_token=login_info.access_token,
+            refresh_token=login_info.refresh_token,
+            expires_at=self._http.expires_in,
+        )
+        await self._fire_credentials_updated()
 
     async def _fire_credentials_updated(self) -> None:
         """Notify the on_credentials_updated listener, swallowing listener errors.
@@ -639,7 +690,7 @@ class TokenManager:
                 await self._http.refresh_authorization_token()
                 response = await self._http.get_mqtt_credentials()
                 if response.data is None:
-                    raise AuthError("get_mqtt_credentials after authz refresh returned no data")
+                    raise AuthError("get_mqtt_credentials after auth refresh returned no data")
                 self._set_mqtt_creds(response.data)
             except Exception:
                 # Authorization code refresh also failed — fall back to a full HTTP re-login.

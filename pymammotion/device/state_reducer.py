@@ -61,6 +61,7 @@ from pymammotion.proto import (
     DrvKnifeChangeReport,
     DrvSrSpeed,
     DrvUpgradeReport,
+    DrvWifiMsg,
     Getlamprsp,
     GetMnetInfoRsp,
     GetNetworkInfoRsp,
@@ -241,7 +242,10 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case (
-                        "bidire_comm_cmd" | "todev_time_ctrl_light" | "toapp_lora_cfg_rsp" | "device_product_type_info"
+                        "bidire_comm_cmd"
+                        | "todev_time_ctrl_light"
+                        | "toapp_lora_cfg_rsp"
+                        | "device_product_type_info"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -897,11 +901,14 @@ class PoolStateReducer(StateReducer):
       speed) and the device's ack responses that carry pool ``map_info`` /
       ``line_info`` geometry rendered by ``SwimmingMapActivity``.
 
-    Other LubaMsg sub-message groups (``nav``, ``driver``, ``base``) are
-    not used by Spino in any path the app reads, so they are intentionally
-    no-ops here. Net / mul / ota will be added once their Spino usage is
-    confirmed against captured traffic — leaving them out is safer than
-    reusing mower dispatch on a device that has no ``mower_state``.
+    - ``sys.toapp_dev_fw_info`` → firmware version + module versions.
+    - ``net.toapp_wifi_iot_status`` / ``net.toapp_WifiMsg`` → connectivity,
+      product key, SSID/IP.  The Wi-Fi password carried by ``toapp_WifiMsg``
+      is never stored.
+
+    Other LubaMsg sub-message groups (``nav``, ``driver``, ``base``, ``mul``,
+    ``ota``) are not used by Spino in any path the app reads, so they are
+    intentionally no-ops here.
     """
 
     def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:  # type: ignore
@@ -918,8 +925,12 @@ class PoolStateReducer(StateReducer):
             if message.ctrl is not None and message.ctrl.plan_job_set is not None:
                 self._update_plan_job_set(device, message.ctrl.plan_job_set)
             return device
+        if sub_msg_type == "net":
+            device.pool_state = copy.deepcopy(current.pool_state)
+            self._update_net(device, message)
+            return device
         if sub_msg_type != "sys":
-            # Only the sys + ctrl envelopes carry Spino payloads we currently model.
+            # Only the sys + ctrl + net envelopes carry Spino payloads we currently model.
             return device
 
         sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")  # type: ignore
@@ -937,6 +948,11 @@ class PoolStateReducer(StateReducer):
             case "system_update_buf":
                 device.pool_state = copy.deepcopy(current.pool_state)
                 self._update_system_update_buf(device, sys_msg[1])  # type: ignore
+            case "toapp_dev_fw_info":
+                device.device_firmwares = copy.deepcopy(current.device_firmwares)
+                self._update_fw_info(device, sys_msg[1])  # type: ignore
+            case "todev_data_time":
+                pass  # device RTC broadcast — nothing to model
             case _:
                 _logger.debug(
                     "PoolStateReducer: ignoring unhandled sys sub-message %r for %s",
@@ -957,6 +973,10 @@ class PoolStateReducer(StateReducer):
         device.pool_state.sys_status = SpinoSysStatus(status.sys_status)
         device.pool_state.work_mode = SpinoWorkMode(status.work_mode)
         device.pool_state.battery = status.bat_val
+        device.pool_state.wifi_rssi = status.wifi_rssi
+        device.pool_state.ble_rssi = status.ble_rssi
+        device.pool_state.wifi_connected = bool(status.wifi_connect_status)
+        device.pool_state.iot_connected = bool(status.iot_connect_status)
 
     def _update_toggle(self, device: PoolCleanerDevice, cmd: SysCommCmd) -> None:
         """Apply a ``SysCommCmd`` (``allpowerfullRW``) read/ack to a pool toggle.
@@ -1069,7 +1089,7 @@ class PoolStateReducer(StateReducer):
                 device.name,
             )
             return
-        device.pool_state.error_count = int(data[2])
+        device.pool_state.error_count = max(0, int(data[2]))
         entries: list[SpinoErrorEntry] = []
         i = 3
         while i + 1 < len(data):
@@ -1079,6 +1099,37 @@ class PoolStateReducer(StateReducer):
                 entries.append(SpinoErrorEntry(code=code, timestamp=stamp))
             i += 2
         device.pool_state.error_log = entries
+
+    def _update_fw_info(self, device: PoolCleanerDevice, fw_info: DeviceFwInfo) -> None:
+        """Apply a ``toapp_dev_fw_info`` response to *device*."""
+        if fw_info.result == 0:
+            return
+        device.device_firmwares.device_version = fw_info.version
+        device.update_device_firmwares(fw_info)
+
+    def _update_net(self, device: PoolCleanerDevice, message: LubaMsg) -> None:
+        """Apply net sub-messages (connectivity info) to *device*."""
+        net_msg = betterproto2.which_one_of(message.net, "NetSubType")  # type: ignore
+        match net_msg[0]:
+            case "toapp_wifi_iot_status":
+                wifi_iot: WifiIotStatusReport = net_msg[1]  # type: ignore
+                device.pool_state.wifi_connected = wifi_iot.wifi_connected
+                device.pool_state.iot_connected = wifi_iot.iot_connected
+                if wifi_iot.productkey:
+                    device.product_key = wifi_iot.productkey
+            case "toapp_WifiMsg":
+                # Never store wifi.password — plaintext Wi-Fi credentials on the wire.
+                wifi: DrvWifiMsg = net_msg[1]  # type: ignore
+                device.wifi_ssid = wifi.msgssid
+                device.ip = wifi.ip
+                device.wifi_enabled = wifi.wifi_enable
+                device.pool_state.wifi_rssi = wifi.rssi
+            case _:
+                _logger.debug(
+                    "PoolStateReducer: ignoring net sub-message %r for %s",
+                    net_msg[0],
+                    device.name,
+                )
 
     def _update_plan_job_set(self, device: PoolCleanerDevice, wire: PlanJobSet) -> None:
         """Upsert a Spino plan into ``device.plans`` from a wire ``PlanJobSet``.

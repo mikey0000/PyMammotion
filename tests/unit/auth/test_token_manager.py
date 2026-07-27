@@ -1227,3 +1227,100 @@ def test_refresh_invoke_token_wraps_non_network_error(token_manager: TokenManage
 
     with pytest.raises(AuthError):
         asyncio.new_event_loop().run_until_complete(token_manager.refresh_invoke_token())
+
+
+# ---------------------------------------------------------------------------
+# force_refresh — failure cooldown (oauth2/token hammering guard)
+# ---------------------------------------------------------------------------
+
+
+async def test_force_refresh_failure_arms_cooldown() -> None:
+    """A ReLoginRequiredError from force_refresh must fail fast on the next call."""
+    tm = TokenManager("acc", AsyncMock())
+    tm.refresh_http = AsyncMock(side_effect=ReLoginRequiredError("acc", "dead"))  # type: ignore[method-assign]
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.force_refresh()
+    with pytest.raises(ReLoginRequiredError, match="cooldown"):
+        await tm.force_refresh()
+
+    assert tm.refresh_http.await_count == 1  # type: ignore[attr-defined]
+
+
+async def test_force_refresh_cooldown_expiry_allows_retry() -> None:
+    tm = TokenManager("acc", AsyncMock())
+    tm.refresh_http = AsyncMock(side_effect=ReLoginRequiredError("acc", "dead"))  # type: ignore[method-assign]
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.force_refresh()
+    tm._force_refresh_failed_at = time.monotonic() - (tm._FORCE_REFRESH_COOLDOWN + 1.0)
+    with pytest.raises(ReLoginRequiredError, match="dead"):
+        await tm.force_refresh()
+
+    assert tm.refresh_http.await_count == 2  # type: ignore[attr-defined]
+
+
+async def test_force_refresh_success_clears_cooldown() -> None:
+    tm = TokenManager("acc", AsyncMock())
+    tm.refresh_http = AsyncMock()  # type: ignore[method-assign]
+    tm._force_refresh_failed_at = time.monotonic() - (tm._FORCE_REFRESH_COOLDOWN + 1.0)
+
+    await tm.force_refresh()
+
+    assert tm._force_refresh_failed_at is None
+
+
+async def test_force_refresh_transient_error_does_not_arm_cooldown() -> None:
+    """Network blips must not block the next force_refresh attempt."""
+    tm = TokenManager("acc", AsyncMock())
+    tm.refresh_http = AsyncMock(side_effect=TimeoutError("net"))  # type: ignore[method-assign]
+
+    with pytest.raises(TimeoutError):
+        await tm.force_refresh()
+
+    assert tm._force_refresh_failed_at is None
+
+
+# ---------------------------------------------------------------------------
+# on_login_refreshed — HTTP-level rotations are mirrored and persisted
+# ---------------------------------------------------------------------------
+
+
+def test_token_manager_wires_on_login_refreshed() -> None:
+    """Constructing a TokenManager must subscribe it to HTTP-level token rotations."""
+    http = MagicMock()
+    tm = TokenManager("acc", http)
+
+    assert http.on_login_refreshed == tm._on_http_login_refreshed
+
+
+async def test_on_http_login_refreshed_syncs_snapshot_and_persists() -> None:
+    """A decorator-driven refresh must update _http_creds and fire persistence.
+
+    Without this, the rotation leaves the persisted cache holding a dead refresh
+    token and the next restart falls back to a password login.
+    """
+    http = MagicMock()
+    http.login_info = MagicMock(access_token="rotated-tok", refresh_token="rotated-ref")
+    http.expires_in = 1234567890.0
+    tm = TokenManager("acc", http)
+    tm.on_credentials_updated = AsyncMock()
+
+    await tm._on_http_login_refreshed()
+
+    assert tm._http_creds == HTTPCredentials(
+        access_token="rotated-tok", refresh_token="rotated-ref", expires_at=1234567890.0
+    )
+    tm.on_credentials_updated.assert_awaited_once()
+
+
+async def test_on_http_login_refreshed_noop_without_login_info() -> None:
+    http = MagicMock()
+    http.login_info = None
+    tm = TokenManager("acc", http)
+    tm.on_credentials_updated = AsyncMock()
+
+    await tm._on_http_login_refreshed()
+
+    assert tm._http_creds is None
+    tm.on_credentials_updated.assert_not_awaited()

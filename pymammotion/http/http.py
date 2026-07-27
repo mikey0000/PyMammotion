@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 import csv
 from functools import wraps
 import hashlib
@@ -13,7 +13,7 @@ import random
 import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-from aiohttp import ClientError, ClientSession, ClientTimeout
+from aiohttp import ClientError, ClientSession, ClientTimeout, ContentTypeError
 import jwt
 
 from pymammotion.const import (
@@ -49,6 +49,12 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 _LOGGER = logging.getLogger(__name__)
+
+#: After a failed token refresh, no further refresh is attempted for this many
+#: seconds — decorated API calls proceed with the stale token instead.  Without
+#: this, a persistently failing refresh turns every decorated call into an
+#: oauth2/token hit (refresh_token_v2 + login_v2 fallback).
+_REFRESH_FAILURE_COOLDOWN = 30.0
 
 
 def _token_fingerprint(token: str | None) -> str:
@@ -167,6 +173,18 @@ class MammotionHTTP:
         # app_version = f"ALIYUN DEMO,{APP_VERSION}"  # f"HA,{ha_version}"
         self._headers = {"User-Agent": "okhttp/4.9.3", "App-Version": app_version}
         self.encryption_utils = EncryptionUtils()
+        # Serializes every oauth2/token exchange (ensure_token_valid, refresh_login,
+        # refresh_token_v2) so concurrent near-expiry callers produce ONE refresh
+        # instead of a stampede of competing rotations.
+        self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        # Monotonic timestamp of the last failed refresh — see _REFRESH_FAILURE_COOLDOWN.
+        self._refresh_failed_at: float | None = None
+        #: Fired (async) after any successful oauth2/token exchange rotates the
+        #: login session.  TokenManager wires this to mirror the rotation into its
+        #: credential snapshot and persist it — a rotation that isn't persisted
+        #: leaves the cached refresh token dead, forcing a password re-login on
+        #: the next restart.
+        self.on_login_refreshed: Callable[[], Awaitable[None]] | None = None
 
         # Add this method to generate a 10-digit random number
         def get_10_random() -> str:
@@ -256,37 +274,78 @@ class MammotionHTTP:
 
     @staticmethod
     def refresh_token_decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
-        """Decorator to handle token refresh before executing a function.
+        """Ensure a valid access token before executing *func*.
 
-        Args:
-            func: The async function to be decorated
-
-        Returns:
-            The wrapped async function that handles token refresh
-
+        Delegates to :meth:`ensure_token_valid` — serialized behind the shared
+        refresh lock with a failure cooldown — so N concurrent decorated calls
+        produce at most one refresh instead of a stampede of competing
+        ``refresh_login()`` calls that rotate each other's refresh token.
         """
 
         @wraps(func)
         async def wrapper(self: MammotionHTTP, *args: Any, **kwargs: Any) -> T:
-            # Check if token will expire in the next 5 minutes
-            if self.expires_in < time.time() + 300:  # 300 seconds = 5 minutes
-                # NOTE: this refresh is NOT serialised — N concurrent decorated calls
-                # (e.g. one per device sharing this MammotionHTTP) can all enter here
-                # at once and each fire refresh_login(), rotating the server-side
-                # refresh token and invalidating each other.  The log below makes that
-                # stampede visible: multiple "decorator refresh" lines for the same
-                # account within milliseconds == the race.
-                _LOGGER.debug(
-                    "refresh_token_decorator[%s]: token near expiry (expires_in=%s, now=%.0f, fp=%s) — refreshing",
-                    getattr(func, "__name__", "?"),
-                    self.expires_in,
-                    time.time(),
-                    _token_fingerprint(self._login_info.access_token if self._login_info else None),
-                )
-                await self.refresh_login()
+            await self.ensure_token_valid(caller=getattr(func, "__name__", "?"))
             return await func(self, *args, **kwargs)
 
         return wrapper
+
+    async def ensure_token_valid(self, caller: str = "") -> None:
+        """Refresh the OAuth access token if it expires within the next 5 minutes.
+
+        Serialized behind ``_refresh_lock``: concurrent callers wait for the single
+        in-flight refresh and then see the fresh token via the double-check under
+        the lock, instead of each firing their own refresh.
+
+        Never raises — on a failed refresh the request proceeds with the stale
+        token and the endpoint's own 401 handling takes over — but a failure arms
+        a :data:`_REFRESH_FAILURE_COOLDOWN` window during which no further refresh
+        is attempted, so a persistently failing refresh cannot turn every API call
+        into an oauth2/token hit.
+        """
+        if self.expires_in >= time.time() + 300:  # 300 seconds = 5 minutes
+            return
+        async with self._refresh_lock:
+            if self.expires_in >= time.time() + 300:
+                return  # a concurrent caller refreshed while we waited on the lock
+            if (failed_at := self._refresh_failed_at) is not None and (
+                elapsed := time.monotonic() - failed_at
+            ) < _REFRESH_FAILURE_COOLDOWN:
+                _LOGGER.debug(
+                    "ensure_token_valid[%s]: refresh failed %.0fs ago — cooling down, proceeding with stale token",
+                    caller,
+                    elapsed,
+                )
+                return
+            _LOGGER.debug(
+                "ensure_token_valid[%s]: token near expiry (expires_in=%s, now=%.0f, fp=%s) — refreshing",
+                caller,
+                self.expires_in,
+                time.time(),
+                _token_fingerprint(self._login_info.access_token if self._login_info else None),
+            )
+            try:
+                response = await self._refresh_login_locked()
+            except (TimeoutError, ClientError, OSError) as exc:
+                # Transient network/server failure — the endpoint call may still
+                # succeed (or fail with its own error); do not block it here.
+                self._refresh_failed_at = time.monotonic()
+                _LOGGER.warning(
+                    "ensure_token_valid[%s]: refresh failed (%s) — cooling down %.0fs",
+                    caller,
+                    exc,
+                    _REFRESH_FAILURE_COOLDOWN,
+                )
+                return
+            if response.code != 0:
+                self._refresh_failed_at = time.monotonic()
+                _LOGGER.warning(
+                    "ensure_token_valid[%s]: refresh rejected (code=%s) — cooling down %.0fs",
+                    caller,
+                    response.code,
+                    _REFRESH_FAILURE_COOLDOWN,
+                )
+            else:
+                self._refresh_failed_at = None
 
     async def handle_expiry(self, resp: Response) -> Response:
         """Re-login and return a fresh response if the given response indicates an expired token (401)."""
@@ -619,7 +678,7 @@ class MammotionHTTP:
         return Response(code=200, msg="success")
 
     @refresh_token_decorator
-    async def confirm_share(self, batch_id: str, record_ids: list[int], agree: int = 1) -> Response[dict]:
+    async def confirm_share(self, batch_id: str, record_ids: list[int], agree: int = 1) -> Response[dict | bool]:
         """Accept or reject share invitations for a single batch.
 
         agree=1 accepts, agree=0 rejects.  record_ids are the integer values of
@@ -638,7 +697,7 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 resp_dict = await resp.json()
-                return response_factory(Response[dict], resp_dict)
+                return response_factory(Response[dict | bool], resp_dict)
 
         return Response(code=200, msg="success")
 
@@ -759,13 +818,38 @@ class MammotionHTTP:
         self.expires_in = 0.0
         self.jwt_info = JWTTokenInfo("", "")
 
+    async def _fire_login_refreshed(self) -> None:
+        """Notify the on_login_refreshed listener that the login session rotated.
+
+        Listener exceptions are swallowed — persistence problems must never fail
+        the refresh that just succeeded.
+        """
+        if self.on_login_refreshed is not None:
+            with suppress(Exception):
+                await self.on_login_refreshed()
+
     async def refresh_login(self) -> Response[LoginResponseData]:
-        """Attempt a token refresh, falling back to a full re-login if the token has already expired."""
+        """Refresh the access token, falling back to a full re-login ONLY on explicit rejection.
+
+        Serialized behind the shared refresh lock with :meth:`ensure_token_valid`
+        and :meth:`refresh_token_v2`.
+
+        Raises:
+            ConnectionError: (propagated from :meth:`refresh_token_v2`) when
+                oauth2/token is unavailable or throttling — callers must back off;
+                a server outage must never escalate into password re-logins.
+
+        """
+        async with self._refresh_lock:
+            return await self._refresh_login_locked()
+
+    async def _refresh_login_locked(self) -> Response[LoginResponseData]:
+        """Body of :meth:`refresh_login`; caller holds ``_refresh_lock``."""
         if self._login_info is not None:
-            res = await self.refresh_token_v2()
+            res = await self._refresh_token_v2_locked()
             if res.code == 0:
                 return res
-            _LOGGER.debug("refresh_login: refresh_token_v2 failed (code=%s) — falling back to full login_v2", res.code)
+            _LOGGER.debug("refresh_login: refresh token rejected (code=%s) — falling back to full login_v2", res.code)
         return await self.login_v2(self.account, self._password)  # type: ignore
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
@@ -810,7 +894,18 @@ class MammotionHTTP:
         return login_response
 
     async def refresh_token_v2(self) -> Response[LoginResponseData]:
-        """Refresh token v2."""
+        """Refresh the access token via grant_type=refresh_token; serialized behind the shared refresh lock.
+
+        Raises:
+            ConnectionError: On 408/429/5xx or a non-JSON body — the server is
+                unavailable or throttling, not rejecting the refresh token.
+
+        """
+        async with self._refresh_lock:
+            return await self._refresh_token_v2_locked()
+
+    async def _refresh_token_v2_locked(self) -> Response[LoginResponseData]:
+        """Body of :meth:`refresh_token_v2`; caller holds ``_refresh_lock``."""
 
         timestamp = int(time.time() * 1000)
 
@@ -842,7 +937,17 @@ class MammotionHTTP:
                     **refresh_request,
                 },
             )
-            data = await resp.json()
+            if resp.status in (408, 429) or resp.status >= 500:
+                # Server unavailable or throttling — this is NOT a refresh-token
+                # rejection; raise a transient error so callers back off instead
+                # of falling back to a password login (login_v2).
+                msg = f"oauth2/token refresh returned HTTP {resp.status}"
+                raise ConnectionError(msg)
+            try:
+                data = await resp.json()
+            except ContentTypeError as exc:
+                msg = f"oauth2/token refresh returned non-JSON body (status={resp.status})"
+                raise ConnectionError(msg) from exc
         refresh_response = response_factory(Response[LoginResponseData], data)
         if refresh_response is None or refresh_response.data is None:
             _LOGGER.debug("refresh_token_v2: empty/failed response (status=%s, code=%s)", resp.status, data.get("code"))
@@ -860,6 +965,7 @@ class MammotionHTTP:
         self.response = refresh_response
         self.msg = refresh_response.msg
         self.code = refresh_response.code
+        await self._fire_login_refreshed()
         return refresh_response
 
     async def login_v2(self, account: str, password: str) -> Response[LoginResponseData]:
@@ -900,6 +1006,12 @@ class MammotionHTTP:
                     **login_request,
                 },
             )
+            if resp.status in (408, 429) or resp.status >= 500:
+                # Server unavailable or throttling — not a credential rejection;
+                # raise a transient error so callers back off and retry rather
+                # than treating the outage as an auth failure.
+                msg = f"oauth2/token login returned HTTP {resp.status}"
+                raise ConnectionError(msg)
             if resp.status != 200:
                 return Response.from_dict({"code": resp.status, "msg": "Login failed"})
             data = await resp.json()
@@ -916,6 +1028,7 @@ class MammotionHTTP:
         self.response = login_response
         self.msg = login_response.msg
         self.code = login_response.code
+        await self._fire_login_refreshed()
         # TODO catch errors from mismatch user / password elsewhere
         # Assuming the data format matches the expected structure
         return login_response

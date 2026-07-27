@@ -1764,3 +1764,71 @@ async def test_remove_device_disconnects_shared_cloud_transport_for_last_device(
     shared.disconnect.assert_awaited()
     assert client._device_registry.get_by_name("Luba-B") is None
     assert not session.device_ids
+
+
+# ---------------------------------------------------------------------------
+# _full_relogin — failure cooldown (oauth2/token hammering guard)
+# ---------------------------------------------------------------------------
+
+import time  # noqa: E402
+
+from pymammotion.transport.base import LoginFailedError  # noqa: E402
+
+
+def _make_relogin_session(login_code: int = 0) -> AccountSession:
+    """AccountSession with a mock http whose login_v2 returns the given code."""
+    http = MagicMock()
+    http.logout = AsyncMock()
+    http.login_v2 = AsyncMock(return_value=MagicMock(code=login_code, msg="bad" if login_code else "ok"))
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.mammotion_http = http
+    return session
+
+
+async def test_full_relogin_in_cooldown_fails_fast_without_login() -> None:
+    """Within the cooldown window, _full_relogin must not fire a password grant."""
+    client = MammotionClient()
+    session = _make_relogin_session()
+    session.relogin_failed_at = time.monotonic()
+
+    with pytest.raises(LoginFailedError, match="cooldown"):
+        await client._full_relogin(session)
+
+    session.mammotion_http.login_v2.assert_not_awaited()
+
+
+async def test_full_relogin_failure_arms_cooldown() -> None:
+    """A failed re-login must arm the cooldown so the next attempt fails fast."""
+    client = MammotionClient()
+    session = _make_relogin_session(login_code=1)
+
+    with pytest.raises(LoginFailedError):
+        await client._full_relogin(session)
+    assert session.relogin_failed_at is not None
+
+    with pytest.raises(LoginFailedError, match="cooldown"):
+        await client._full_relogin(session)
+    assert session.mammotion_http.login_v2.await_count == 1
+
+
+async def test_full_relogin_success_clears_cooldown() -> None:
+    client = MammotionClient()
+    session = _make_relogin_session(login_code=0)
+    session.relogin_failed_at = time.monotonic() - 31.0  # expired cooldown
+
+    await client._full_relogin(session)
+
+    assert session.relogin_failed_at is None
+    session.mammotion_http.login_v2.assert_awaited_once()
+
+
+async def test_full_relogin_transient_error_does_not_arm_cooldown() -> None:
+    """A network blip during re-login must not block the next attempt."""
+    client = MammotionClient()
+    session = _make_relogin_session()
+    session.mammotion_http.login_v2 = AsyncMock(side_effect=TimeoutError("net down"))
+
+    with pytest.raises(TimeoutError):
+        await client._full_relogin(session)
+
+    assert session.relogin_failed_at is None

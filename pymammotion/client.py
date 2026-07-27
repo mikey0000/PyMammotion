@@ -151,6 +151,12 @@ _logger = logging.getLogger(__name__)
 _FATAL_AUTH_CIRCUIT_MAX = 3
 _FATAL_AUTH_CIRCUIT_WINDOW_SEC = 300
 
+# After a failed full re-login, further _full_relogin calls for the same account
+# fail fast for this many seconds.  Each full re-login is a password grant against
+# oauth2/token — without this, every queued command failing on the same broken
+# credentials fires its own login_v2.
+_RELOGIN_COOLDOWN_SEC = 30.0
+
 
 def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash: int) -> bool:
     """Return True if a MowPathSaga should be triggered.
@@ -641,6 +647,13 @@ class MammotionClient:
         if session.mammotion_http is None:
             msg = "No HTTP client available for re-login"
             raise LoginFailedError(session.email, msg)
+        if session.relogin_failed_at is not None:
+            elapsed = time.monotonic() - session.relogin_failed_at
+            if elapsed < _RELOGIN_COOLDOWN_SEC:
+                # Fail fast without touching oauth2/token — a re-login just failed;
+                # retrying it for every queued command hammers the auth server.
+                msg = f"re-login failed {elapsed:.0f}s ago — in cooldown ({_RELOGIN_COOLDOWN_SEC - elapsed:.0f}s remaining)"
+                raise LoginFailedError(session.email, msg)
 
         # In-use MQTT transports to cycle (exclude the triggering one; skip any
         # already given-up — they are not "in use" and connect() would refuse).
@@ -684,16 +697,21 @@ class MammotionClient:
                 _logger.debug("Restarting %s after account re-login", tt.value)
                 await self._reapply_creds_and_reconnect(session, tt, t)
         except LoginFailedError:
+            session.relogin_failed_at = time.monotonic()
             raise
         except Exception as exc:
             # DNS / connection / timeout — the network is down, not the
             # credentials.  Let the original exception propagate so the caller
             # (MQTT transport, send-retry chain) treats it as a transient
             # condition and backs off, rather than logging an "unrecoverable
-            # auth error" and surfacing it to the user.
+            # auth error" and surfacing it to the user.  Transient failures do
+            # not arm the re-login cooldown — the next attempt may succeed.
             if is_transient_network_error(exc):
                 raise
+            session.relogin_failed_at = time.monotonic()
             raise LoginFailedError(session.email, str(exc)) from exc
+        else:
+            session.relogin_failed_at = None
 
     async def _send_with_auth_retry(
         self, send_fn: Callable[[], Awaitable[None]], session: AccountSession | None = None

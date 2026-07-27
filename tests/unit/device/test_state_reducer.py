@@ -828,3 +828,133 @@ def test_mammotion_coordinate_zero_is_left_unset() -> None:
 
     assert updated.location.device.latitude == 12.0
     assert updated.location.device.longitude == 34.0
+
+
+# ===========================================================================
+# PoolStateReducer — fw info, net envelope, devStatus extras, error clamp.
+# ===========================================================================
+from pymammotion.proto import (
+    DeviceFwInfo,
+    DevNet,
+    DevStatueT,
+    DrvWifiMsg,
+    ModFwInfo,
+    ReportInfoT,
+    SysSetDateTime,
+    SystemUpdateBufMsg,
+    WifiIotStatusReport,
+)
+
+
+def test_pool_fw_info_populates_device_firmwares() -> None:
+    msg = LubaMsg(
+        sys=MctlSys(
+            toapp_dev_fw_info=DeviceFwInfo(
+                result=1,
+                version="1.15.2.1047",
+                mod=[
+                    ModFwInfo(type=63, identify="63-PAWG4", version="1.2.0.281"),
+                    ModFwInfo(type=65, identify="65-PACG4", version="1.2.0.273"),
+                    ModFwInfo(type=67, identify="67-PESP", version="0.0.0.299"),
+                    ModFwInfo(type=61, identify="61-PAMH5", version="5.1.2.2159"),
+                    ModFwInfo(type=62, identify="62-PMH5BT", version="5.1.2.2131"),
+                ],
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    fw = result.device_firmwares
+    assert fw.device_version == "1.15.2.1047"
+    assert fw.wheel_hub_motor == "1.2.0.281"
+    assert fw.water_pump == "1.2.0.273"
+    assert fw.communication == "0.0.0.299"
+    assert fw.main_controller == "5.1.2.2159"
+    assert fw.main_controller_bt == "5.1.2.2131"
+
+
+def test_pool_fw_info_result_zero_ignored() -> None:
+    msg = LubaMsg(sys=MctlSys(toapp_dev_fw_info=DeviceFwInfo(result=0, version="9.9.9")))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.device_firmwares.device_version == ""
+
+
+def test_pool_wifi_iot_status_updates_connectivity() -> None:
+    msg = LubaMsg(
+        net=DevNet(
+            toapp_wifi_iot_status=WifiIotStatusReport(
+                wifi_connected=True, iot_connected=True, productkey="a15Cq8FbCh1", devicename="Spino-E1abc"
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.wifi_connected is True
+    assert result.pool_state.iot_connected is True
+    assert result.product_key == "a15Cq8FbCh1"
+
+
+def test_pool_wifi_iot_status_empty_productkey_not_clobbered() -> None:
+    device = PoolCleanerDevice(name="Spino-E1abc", product_key="seeded")
+    msg = LubaMsg(net=DevNet(toapp_wifi_iot_status=WifiIotStatusReport(wifi_connected=True, iot_connected=False)))
+    result = PoolStateReducer().apply(device, msg)
+    assert result.product_key == "seeded"
+    assert result.pool_state.iot_connected is False
+
+
+def test_pool_wifi_msg_updates_network_info_but_never_password() -> None:
+    msg = LubaMsg(
+        net=DevNet(
+            toapp_WifiMsg=DrvWifiMsg(
+                status1=True,
+                status2=True,
+                ip="192.168.20.174",
+                msgssid="IOT",
+                password="battery-easeful-dental",
+                rssi=-38,
+                wifi_enable=True,
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.wifi_ssid == "IOT"
+    assert result.ip == "192.168.20.174"
+    assert result.wifi_enabled is True
+    assert result.pool_state.wifi_rssi == -38
+    assert "battery-easeful-dental" not in str(result.to_dict())
+
+
+def test_pool_dev_status_captures_rssi_and_connectivity() -> None:
+    msg = LubaMsg(
+        sys=MctlSys(
+            report_info=ReportInfoT(
+                dev_status=DevStatueT(
+                    sys_status=1,
+                    bat_val=70,
+                    model=100,
+                    ble_rssi=-48,
+                    wifi_rssi=-43,
+                    wifi_connect_status=1,
+                    iot_connect_status=1,
+                )
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.battery == 70
+    assert result.pool_state.wifi_rssi == -43
+    assert result.pool_state.ble_rssi == -48
+    assert result.pool_state.wifi_connected is True
+    assert result.pool_state.iot_connected is True
+
+
+def test_pool_error_count_negative_clamped_to_zero() -> None:
+    data = [2, 43, -1] + [0] * 40
+    msg = LubaMsg(sys=MctlSys(system_update_buf=SystemUpdateBufMsg(update_buf_data=data)))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.error_count == 0
+    assert result.pool_state.error_log == []
+
+
+def test_pool_todev_data_time_is_silent_noop() -> None:
+    msg = LubaMsg(sys=MctlSys(todev_data_time=SysSetDateTime(year=234, month=7, date=20)))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.online is True

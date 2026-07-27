@@ -928,8 +928,10 @@ async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_en
     assert transport._stop_event.is_set()
     # Targeted refresh was called first
     session.token_manager.refresh_aliyun_credentials.assert_awaited()
-    # login_v2 called twice: once from on_auth_failure, once from on_fatal_auth_error
-    assert session.mammotion_http.login_v2.await_count == 2
+    # login_v2 called ONCE (from on_auth_failure).  The second _full_relogin from
+    # on_fatal_auth_error fails fast in the re-login cooldown window instead of
+    # firing another password grant at oauth2/token.
+    assert session.mammotion_http.login_v2.await_count == 1
 
 
 @pytest.mark.asyncio

@@ -95,6 +95,7 @@ class WallMaterial(UnknownTolerantIntEnum):
     GLASS = 0
     CERAMICS = 1
     SAND_STONE = 2
+    VINYL = 3
 
 
 class PoolBottomType(UnknownTolerantIntEnum):
@@ -195,6 +196,10 @@ class PoolState(DataClassORJSONMixin):
     work_mode: SpinoWorkMode = SpinoWorkMode.AUTO
     battery: int = 0
     """Battery percentage (0-100). Mirrors ``dev_statue_t.bat_val``."""
+    wifi_rssi: int = 0
+    ble_rssi: int = 0
+    wifi_connected: bool = False
+    iot_connected: bool = False
 
     # --- Cleaning session timing -------------------------------------------
     # Used by the home-screen "work time" string. The app computes the
