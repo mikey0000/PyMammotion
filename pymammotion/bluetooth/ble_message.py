@@ -378,6 +378,7 @@ class BleMessage:
             )
             # Set the value for mReadSequence manually
             self.mReadSequence.set(sequence)
+            self.clear_notification()
 
         # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
         pkt_type = int(response[0])  # toInt
@@ -414,6 +415,7 @@ class BleMessage:
                         f"expect checksum: {respChecksum1}, {respChecksum2}\n"
                         f"received checksum: {calcChecksum1}, {calcChecksum2}"
                     )
+                    self.clear_notification()
                     return -4
 
             data_offset = 2 if frameCtrlData.hasFrag() else 0
@@ -422,6 +424,7 @@ class BleMessage:
             return 1 if frameCtrlData.hasFrag() else 0
         except Exception as e:
             _LOGGER.debug(e)
+            self.clear_notification()
             return -100
 
     async def parseBlufiNotifyData(self, return_bytes: bool = False) -> bytes | None:
