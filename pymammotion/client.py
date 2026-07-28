@@ -97,7 +97,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
-from pymammotion.utility.constant import WorkMode
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES, WorkMode
 from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.svg import chunk_svg_messages
 
@@ -341,13 +341,19 @@ class MammotionClient:
             # to pick up those new obstacle hashes — we just skip the area-name
             # step (step 1) because area names don't change during mowing and the
             # device may not respond to that query while busy.
+            #
+            # ``map_sync_while_mowing_enabled=False`` skips these mid-job syncs
+            # entirely (MQTT quota). Manual ``start_map_sync`` is unaffected.
             device_snapshot = cast(MowerDevice, handle.snapshot.raw)
             device_type = DeviceType.value_of_str(device_name)
-            is_mowing = device_snapshot.report_data.dev.sys_status in (
-                WorkMode.MODE_WORKING,
-                WorkMode.MODE_PAUSE,
-                WorkMode.MODE_RETURNING,
-            )
+            is_mowing = device_snapshot.report_data.dev.sys_status in MOWING_ACTIVE_MODES
+            if is_mowing and not handle.map_sync_while_mowing_enabled:
+                _logger.debug(
+                    "Device %s bol_hash changed to %d while mowing — map_sync_while_mowing disabled, skipping",
+                    device_name,
+                    bol_hash,
+                )
+                return
             incremental = (
                 device_type.is_support_dynamics_line(device_snapshot.device_firmwares.main_controller) and is_mowing
             )
@@ -2806,6 +2812,17 @@ class MammotionClient:
         handle = self._device_registry.get(device_id)
         if handle is not None:
             handle.set_mow_path_fetch_enabled(value=enabled)
+
+    def set_map_sync_while_mowing_enabled(self, device_id: str, *, enabled: bool) -> None:
+        """Toggle auto map sync on bol_hash changes while the device is mowing.
+
+        When False, mid-job obstacle/map hash updates do not enqueue MapFetchSaga.
+        Manual ``start_map_sync`` calls are never gated.  ``device_id`` may be a
+        registry id or a device name (HA passes the name).
+        """
+        handle = self._device_registry.get(device_id) or self._device_registry.get_by_name(device_id)
+        if handle is not None:
+            handle.set_map_sync_while_mowing_enabled(value=enabled)
 
     # ------------------------------------------------------------------
     # Properties

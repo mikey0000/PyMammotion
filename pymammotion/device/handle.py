@@ -213,6 +213,9 @@ class DeviceHandle:
         self._sent_bus: EventBus[bytes] = EventBus()
         self._prefer_ble: bool = prefer_ble
         self._mow_path_fetch_enabled: bool = True
+        #: When False, auto map sync on ``bol_hash`` changes is skipped while mowing
+        #: (WORKING / PAUSE / RETURNING) to avoid burning the MQTT send quota.
+        self._map_sync_while_mowing_enabled: bool = True
         # Pick a reducer matching the device kind. PoolCleanerDevice instances
         # get a PoolStateReducer (currently a stub); everything else gets the
         # full mower reducer. Decided once at construction so the per-message
@@ -1712,6 +1715,15 @@ class DeviceHandle:
     def set_mow_path_fetch_enabled(self, *, value: bool) -> None:
         """Gate MowPathSaga fetches over MQTT. BLE fetches are never gated."""
         self._mow_path_fetch_enabled = value
+
+    @property
+    def map_sync_while_mowing_enabled(self) -> bool:
+        """True if auto map sync is allowed while the device is mowing/returning."""
+        return self._map_sync_while_mowing_enabled
+
+    def set_map_sync_while_mowing_enabled(self, *, value: bool) -> None:
+        """Gate bol_hash-triggered map sync during active mowing sessions."""
+        self._map_sync_while_mowing_enabled = value
 
     @property
     def ble_stream_active(self) -> bool:
