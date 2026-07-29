@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+_DISCONNECT_TIMEOUT_SECONDS = 2.0
+
 
 @dataclass(frozen=True)
 class BLETransportConfig:
@@ -291,17 +293,19 @@ class BLETransport(Transport):
                 self._record_connect_failure(exc)
                 raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
 
-            self._message = BleMessage(self._client)
-
-            # BlueZ may retain a stale notify subscription from a previous ungraceful
-            # disconnect.  Release it proactively so start_notify doesn't get
-            # [org.bluez.Error.NotPermitted] Notify acquired.
-            with contextlib.suppress(Exception):
-                await self._client.stop_notify(UUID_NOTIFICATION_CHARACTERISTIC)
             try:
-                await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
-            except BleakError as exc:
-                if "Notify acquired" in str(exc):
+                self._message = BleMessage(self._client)
+
+                # BlueZ may retain a stale notify subscription from a previous ungraceful
+                # disconnect.  Release it proactively so start_notify doesn't get
+                # [org.bluez.Error.NotPermitted] Notify acquired.
+                with contextlib.suppress(Exception):
+                    await self._client.stop_notify(UUID_NOTIFICATION_CHARACTERISTIC)
+                try:
+                    await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
+                except BleakError as exc:
+                    if "Notify acquired" not in str(exc):
+                        raise
                     # BlueZ reports the channel is already open — our previous
                     # connection's subscription is still live.  Notifications will
                     # continue to arrive, so there is nothing to do here.
@@ -309,26 +313,31 @@ class BLETransport(Transport):
                         "BLETransport: notify already acquired for %s — reusing existing subscription",
                         self._config.device_id,
                     )
-                else:
-                    # Tear the link down: is_connected reads the live client, so leaving
-                    # it connected here would wedge the transport into a state where
-                    # writes succeed but responses never arrive (no notify subscription).
-                    with contextlib.suppress(Exception):
-                        await self._client.disconnect()
-                    self._client = None
-                    self._message = None
+
+                await self._notify_availability(TransportAvailability.CONNECTED)
+                _logger.debug("BLETransport connected to %s", self._config.device_id)
+
+                # Successful connect resets the failure tracker.
+                self._consecutive_failures = 0
+
+                # One-shot sync on connect — subsequent periodic syncs are driven by
+                # DeviceHandle._keep_alive_loop (20 s).
+                await self._ble_sync()
+            except BaseException as exc:
+                # Once establish_connection returns, every setup failure must release
+                # the proxy/adapter slot.  Catch BaseException deliberately so task
+                # cancellation cannot strand a live client.
+                await self._teardown_client(self._client)
+                self._client = None
+                self._message = None
+                with contextlib.suppress(BaseException):
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
-                    self._record_connect_failure()
-                    raise BLEUnavailableError(f"BLE start_notify failed for {self._config.device_id!r}: {exc}") from exc
-            await self._notify_availability(TransportAvailability.CONNECTED)
-            _logger.debug("BLETransport connected to %s", self._config.device_id)
-
-            # Successful connect resets the failure tracker.
-            self._consecutive_failures = 0
-
-            # One-shot sync on connect — subsequent periodic syncs are driven by
-            # DeviceHandle._keep_alive_loop (20 s).
-            await self._ble_sync()
+                self._record_connect_failure(exc if isinstance(exc, BleakError) else None)
+                if isinstance(exc, BleakError):
+                    raise BLEUnavailableError(
+                        f"BLE post-connect setup failed for {self._config.device_id!r}: {exc}"
+                    ) from exc
+                raise
 
     def _record_connect_failure(self, exc: BleakError | None = None) -> None:
         """Increment the failure counter; clear device and start cooldown at threshold.
@@ -406,14 +415,27 @@ class BLETransport(Transport):
 
     async def disconnect(self) -> None:
         """Gracefully disconnect the BLE client."""
-        if self._client is not None and self._client.is_connected:
-            try:
-                await self._client.disconnect()
-            except BleakError as exc:
-                _logger.warning("BLETransport[%s]: failed to disconnect: %s", self._config.device_id, exc)
+        client = self._client
         self._client = None
         self._message = None
+        await self._teardown_client(client)
         await self._notify_availability(TransportAvailability.DISCONNECTED)
+
+    async def _teardown_client(self, client: BleakClientWithServiceCache | None) -> None:
+        """Best-effort bounded teardown for every client reference.
+
+        ``is_connected`` is not a reliable teardown gate: backends can report
+        false while still holding a proxy or adapter connection slot.  Cleanup
+        errors are logged and suppressed so a caller handling another failure
+        can preserve and re-raise its original exception.
+        """
+        if client is None:
+            return
+        try:
+            async with asyncio.timeout(_DISCONNECT_TIMEOUT_SECONDS):
+                await client.disconnect()
+        except BaseException as exc:  # noqa: BLE001 - cleanup must not replace an in-flight failure
+            _logger.warning("BLETransport[%s]: failed to disconnect during teardown: %s", self._config.device_id, exc)
 
     async def _write_payload(self, payload: bytes) -> None:
         """Write *payload* over GATT. Raises TransportError on failure.
@@ -436,14 +458,16 @@ class BLETransport(Transport):
             try:
                 await self._message.post_custom_data_bytes(payload)
             except (TimeoutError, BleakError, OSError) as exc:
-                # Clear client refs immediately so is_connected returns False
-                # before _on_disconnect_async runs — prevents the ble_loop from
-                # retrying against a known-dead connection (GATT error 133 etc.).
+                # Release the live link before dropping the reference.  Otherwise
+                # the proxy/adapter slot remains occupied even though this transport
+                # advertises itself as disconnected.
+                await self._teardown_client(self._client)
                 self._client = None
                 self._message = None
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
                 raise TransportError(f"BLE send failed for {self._config.device_id!r}: {exc}") from exc
             if not self._client.is_connected:
+                await self._teardown_client(self._client)
                 self._client = None
                 self._message = None
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
@@ -453,7 +477,7 @@ class BLETransport(Transport):
 
     async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
         """Frame and write payload via the BleMessage codec."""
-        _logger.debug("Sending BLE payload: %s, %s iot_id", payload, iot_id)
+        _logger.debug("Sending BLE payload: %s, %s iot_id, %s firmware", payload, iot_id, firmware_version)
         self._last_send_monotonic = time.monotonic()
         await self._write_payload(payload)
 

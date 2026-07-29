@@ -13,6 +13,10 @@ from pymammotion.transport.base import NoBLEAddressKnownError, TransportAvailabi
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 
 
+class TimeoutAPIError(TimeoutError):
+    """Stand-in for a BLE proxy API timeout raised outside bleak."""
+
+
 @pytest.fixture
 def config() -> BLETransportConfig:
     return BLETransportConfig(device_id="test-device-001", ble_address="AA:BB:CC:DD:EE:FF")
@@ -135,6 +139,18 @@ async def test_disconnect_resets_is_connected(config: BLETransportConfig) -> Non
     assert fake_msg.post_custom_data_bytes.await_count == 1
 
 
+async def test_disconnect_attempts_teardown_when_client_reports_disconnected(config: BLETransportConfig) -> None:
+    """A false is_connected value must not suppress backend resource cleanup."""
+    transport = BLETransport(config)
+    fake_client = _make_fake_client(connected=False)
+    transport._client = fake_client  # noqa: SLF001
+
+    await transport.disconnect()
+
+    fake_client.disconnect.assert_awaited_once()
+    assert transport._client is None  # noqa: SLF001
+
+
 # ---------------------------------------------------------------------------
 # send() routes through BleMessage.post_custom_data_bytes
 # ---------------------------------------------------------------------------
@@ -204,6 +220,39 @@ async def test_send_propagates_bleak_error_and_marks_disconnected(config: BLETra
 
     assert transport.availability is TransportAvailability.DISCONNECTED
     assert TransportAvailability.DISCONNECTED in listener_states
+
+
+async def test_send_timeout_disconnects_live_client_before_dropping_reference(
+    config: BLETransportConfig,
+) -> None:
+    """A timed-out write must release its live client before clearing it."""
+    from pymammotion.transport.base import TransportError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+
+    fake_client = _make_fake_client()
+    fake_msg = _make_fake_ble_message()
+
+    async def _disconnect() -> None:
+        assert transport._client is fake_client  # noqa: SLF001
+        fake_client.is_connected = False
+
+    fake_client.disconnect.side_effect = _disconnect
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
+    ):
+        await transport.connect()
+        fake_msg.post_custom_data_bytes.reset_mock()
+        fake_msg.post_custom_data_bytes.side_effect = TimeoutError("write timed out")
+
+        with pytest.raises(TransportError, match="write timed out"):
+            await transport.send(b"\xDE\xAD\xBE\xEF")
+
+    fake_client.disconnect.assert_awaited_once()
+    assert transport._client is None  # noqa: SLF001
 
 
 async def test_send_raises_when_client_disconnected_during_write(config: BLETransportConfig) -> None:
@@ -521,6 +570,85 @@ async def test_successful_connect_resets_failure_counter(config: BLETransportCon
         await transport.connect()
 
     assert transport._consecutive_failures == 0  # noqa: SLF001
+
+
+@pytest.mark.parametrize("setup_error", [TimeoutAPIError("notify timed out"), RuntimeError("proxy failed")])
+async def test_start_notify_non_bleak_failure_releases_client_and_preserves_exception(
+    config: BLETransportConfig,
+    setup_error: Exception,
+) -> None:
+    """Non-Bleak setup failures must disconnect and escape unchanged."""
+    transport = BLETransport(replace(config, connect_failure_threshold=3))
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    fake_client = _make_fake_client()
+    fake_client.start_notify.side_effect = setup_error
+
+    with patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)):
+        with pytest.raises(type(setup_error), match=str(setup_error)):
+            await transport.connect()
+
+    fake_client.disconnect.assert_awaited_once()
+    assert transport._client is None  # noqa: SLF001
+    assert transport._message is None  # noqa: SLF001
+
+
+async def test_start_notify_cancellation_releases_client_and_propagates(
+    config: BLETransportConfig,
+) -> None:
+    """Cancellation during post-connect setup must not leak the live client."""
+    transport = BLETransport(replace(config, connect_failure_threshold=3))
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    fake_client = _make_fake_client()
+    fake_client.start_notify.side_effect = asyncio.CancelledError
+
+    with patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)):
+        with pytest.raises(asyncio.CancelledError):
+            await transport.connect()
+
+    fake_client.disconnect.assert_awaited_once()
+    assert transport._client is None  # noqa: SLF001
+    assert transport._message is None  # noqa: SLF001
+
+
+async def test_setup_cleanup_failure_does_not_replace_original_exception(
+    config: BLETransportConfig,
+) -> None:
+    """A teardown error must not mask the setup failure that triggered it."""
+    transport = BLETransport(replace(config, connect_failure_threshold=3))
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    fake_client = _make_fake_client()
+    original = TimeoutAPIError("notify timed out")
+    fake_client.start_notify.side_effect = original
+    fake_client.disconnect.side_effect = RuntimeError("cleanup failed")
+
+    with patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)):
+        with pytest.raises(TimeoutAPIError, match="notify timed out") as raised:
+            await transport.connect()
+
+    assert raised.value is original
+    fake_client.disconnect.assert_awaited_once()
+
+
+async def test_repeated_setup_failures_balance_connections_and_disconnects(
+    config: BLETransportConfig,
+) -> None:
+    """Every established client must be disconnected across repeated setup failures."""
+    attempts = 3
+    transport = BLETransport(replace(config, connect_failure_threshold=attempts + 1))
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
+    clients = [_make_fake_client() for _ in range(attempts)]
+    for client in clients:
+        client.start_notify.side_effect = TimeoutError("notify timed out")
+
+    establish = AsyncMock(side_effect=clients)
+    with patch("pymammotion.transport.ble.establish_connection", new=establish):
+        for _ in range(attempts):
+            with pytest.raises(TimeoutError, match="notify timed out"):
+                await transport.connect()
+
+    assert establish.await_count == attempts
+    assert sum(client.disconnect.await_count for client in clients) == attempts
+    assert all(client.disconnect.await_count == 1 for client in clients)
 
 
 # ---------------------------------------------------------------------------
