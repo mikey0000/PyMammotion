@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-import betterproto2
-
 from pymammotion.data.model.hash_list import CommDataCouple, EdgePoints
 from pymammotion.messaging.saga import Saga
 
@@ -76,9 +74,9 @@ class EdgeMappingSaga(Saga):
             while True:
                 frame_msg = await self._next_frame(frame_queue, "toapp_edge_points")
 
-                _, nav_val = betterproto2.which_one_of(frame_msg, "LubaSubMsg")
-                assert nav_val is not None
-                edge_msg = nav_val.toapp_edge_points
+                edge_frame = self.extract_nav_frame(frame_msg, "toapp_edge_points")
+                assert edge_frame is not None  # the collector already filtered on this field
+                edge_msg = edge_frame[1]
                 hash_key: int = edge_msg.hash
 
                 # Accumulate into collected EdgePoints

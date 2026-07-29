@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import contextlib
 import hashlib
 import hmac
 import itertools
@@ -24,6 +23,9 @@ from alibabacloud_tea_util.models import RuntimeOptions
 
 from pymammotion.aliyun.client import Client
 from pymammotion.aliyun.exceptions import (
+    DEVICE_OFFLINE_CODES,
+    DEVICE_UNBOUND_CODES,
+    GATEWAY_TIMEOUT_CODES,
     AuthRefreshException,
     CloudSetupError,
     DeviceOfflineException,
@@ -629,10 +631,11 @@ class CloudIOTGateway:
             response_body_dict = self.parse_json_response(response_body_str)
 
             if response_body_dict.get("code") == 2401:
-                # Best-effort: a network failure inside sign_out must not mask the
-                # 2401 — TokenManager keys its recovery path off SessionExpiredError.
-                with contextlib.suppress(Exception):
-                    await self.sign_out()
+                # Do NOT sign out here.  TokenManager recovers from a 2401 by
+                # rebuilding the IoT session from the still-valid HTTP login
+                # (connect_iot); invalidating the session first only removes state
+                # that recovery might have reused, and destroys a possibly-working
+                # session before we know the replacement can be established.
                 raise SessionExpiredError(
                     TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
                 )
@@ -947,11 +950,11 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code") or 0) != 200:
-            if response_body_dict.get("code") == 6205:
-                logger.debug("Device offline (6205): %s", iot_id)
+            if response_body_dict.get("code") in DEVICE_OFFLINE_CODES:
+                logger.debug("Device offline (%s): %s", response_body_dict.get("code"), iot_id)
                 raise DeviceOfflineException(response_body_dict.get("code"), iot_id)
-            if response_body_dict.get("code") == 29004:
-                logger.warning("Device unbound from Aliyun (29004): %s", iot_id)
+            if response_body_dict.get("code") in DEVICE_UNBOUND_CODES:
+                logger.warning("Device unbound from Aliyun (%s): %s", response_body_dict.get("code"), iot_id)
                 raise DeviceUnboundException(response_body_dict.get("code"), iot_id)
             # 29003 and 460 are expected auth-expiry codes handled by the caller — log at debug.
             # Everything else is unexpected and logged at warning.
@@ -969,7 +972,7 @@ class CloudIOTGateway:
             if response_body_dict.get("code") == 22000:
                 logger.error(response.body)
                 raise FailedRequestException(iot_id)
-            if response_body_dict.get("code") == 20056:
+            if response_body_dict.get("code") in GATEWAY_TIMEOUT_CODES:
                 logger.debug("Gateway timeout.")
                 raise GatewayTimeoutException(response_body_dict.get("code"), iot_id)
 

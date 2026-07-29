@@ -36,10 +36,6 @@ class AccountSession:
     aliyun_transport: AliyunMQTTTransport | None = None
     mammotion_transport: MQTTTransport | None = None
     device_ids: set[str] = field(default_factory=set)
-    #: Monotonic timestamp of the last failed full re-login for this account.
-    #: MammotionClient._full_relogin fails fast within its cooldown window so a
-    #: burst of failing commands cannot fire a password login per command.
-    relogin_failed_at: float | None = None
 
 
 class AccountRegistry:

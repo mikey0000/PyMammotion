@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from pymammotion.data.model.hash_list import AreaHashNameList, HashList
 from pymammotion.messaging.saga import Saga
+from pymammotion.messaging.transfers import ack_stream
 from pymammotion.transport.base import CommandTimeoutError
 
 if TYPE_CHECKING:
@@ -62,7 +63,7 @@ class MapFetchSaga(Saga):
         command_builder: Any,  # Navigation instance — typed as Any to avoid tight coupling
         send_command: Callable[[bytes], Awaitable[None]],
         get_map: Callable[[], HashList],
-        get_bol_hash: Callable[[], int] | None = None,
+        get_bol_hash: Callable[[], int | None] | None = None,
         sync_type: int = 3,
         skip_area_names: bool = False,
     ) -> None:
@@ -75,8 +76,11 @@ class MapFetchSaga(Saga):
 
         *get_bol_hash* returns the device's most recently reported ``bol_hash``
         (``report_data.locations[0].bol_hash``), used for the start-of-run
-        staleness check.  Defaults to a getter that returns 0 (no check) so
-        callers/tests that don't supply it behave as before.
+        staleness check.  It must return ``None`` — not 0 — when the device has
+        not reported one yet: 0 is a real value meaning "no areas", and returning
+        it for "unknown" makes the check wipe a good cached manifest on every run
+        that starts before the first report frame.  Defaults to a getter that
+        returns ``None`` (no check).
 
         *skip_area_names* suppresses step 1 (``get_area_name_list``) without
         implying the full Luba-1 profile.  Use this for incremental updates
@@ -90,7 +94,7 @@ class MapFetchSaga(Saga):
         self._command_builder = command_builder
         self._send_command = send_command
         self._get_map = get_map
-        self._get_bol_hash = get_bol_hash or (lambda: 0)
+        self._get_bol_hash = get_bol_hash or (lambda: None)
         self._sync_type = sync_type  # 2 = BLE, 3 = IoT/MQTT
 
         # Result — set on success, None until then
@@ -111,18 +115,26 @@ class MapFetchSaga(Saga):
         _logger.debug("MapFetchSaga[%s]: sending todev_ble_sync(%d)", self._device_name, self._sync_type)
         await self._send_command(self._command_builder.send_todev_ble_sync(sync_type=self._sync_type))
 
+    async def progress(self) -> Any:
+        """Areas still missing data — falls as the fetch advances.
+
+        Drives the base class's attempt-budget refresh, replacing the manual
+        ``_reset_attempt_counter`` this saga used to set at the same point.
+        """
+        return len(self._get_map().find_incomplete_hashes(0))
+
     async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute all saga steps.  Uses device.map (via get_map) as the source of truth."""
         self.result = None
-        self._reset_attempt_counter = False
 
         # Start-of-run staleness check: if the device's reported bol_hash no longer
         # matches our stored root manifest, the map was edited device-side since we
         # last synced.  invalidate_maps() only wipes root_hash_lists when the hashes
         # actually mismatch, so an in-sync map (or a mid-fetch resume) is left intact
         # and only a genuinely stale manifest is dropped — forcing steps 2-3 to
-        # rebuild it to match the device's CURRENT boundary list.  Guard on a known
-        # (non-zero) bol_hash so a device that hasn't reported one yet is never wiped.
+        # rebuild it to match the device's CURRENT boundary list.  A device that
+        # hasn't reported a bol_hash yet yields None and is never wiped; a reported
+        # 0 ("no areas") is a real mismatch and does wipe.
         # This is the manual-"sync maps" safety net: the report-driven invalidate in
         # MowingDevice already handles the watcher-triggered path.
         self._get_map().invalidate_maps(self._get_bol_hash())
@@ -173,32 +185,25 @@ class MapFetchSaga(Saga):
         # collector would accept one as the root list — ending this loop early
         # and completing the saga with an empty/stale map.
         with self._collect_frames(broker, "toapp_gethash_ack", lambda v: v.sub_cmd == 0) as hash_frame_queue:
-            # Re-sync immediately before the root-list request: the area-name step above can
-            # take several seconds, staling the run's initial sync, and an unsynced device
-            # returns no toapp_gethash_ack.
-            await self._send_ble_sync()
             cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=0)
             await self._send_command(cmd)
 
-            # Ack-driven loop: every frame received from the device is
-            # acked via get_hash_response, which tells the device to send
-            # the next one.  We never call get_hash_response proactively.
-            while True:
-                response = await self._next_frame(hash_frame_queue, "toapp_gethash_ack")
-
-                _hash_frame = self.extract_nav_frame(response, "toapp_gethash_ack")
-                if _hash_frame is None:
-                    raise CommandTimeoutError("toapp_gethash_ack", 1)
-                hash_ack = _hash_frame[1]
-
-                # Ack this frame (device interprets as "send me the next one").
-                ack_cmd = self._command_builder.get_hash_response(
-                    total_frame=hash_ack.total_frame, current_frame=hash_ack.current_frame
+            # Every frame is acked via get_hash_response, which is what tells the
+            # device to send the next one.  get_hash_response is never sent
+            # proactively — only in response to a frame.
+            async def _ack(hash_ack: Any) -> None:
+                await self._send_command(
+                    self._command_builder.get_hash_response(
+                        total_frame=hash_ack.total_frame, current_frame=hash_ack.current_frame
+                    )
                 )
-                await self._send_command(ack_cmd)
 
-                if hash_ack.current_frame >= hash_ack.total_frame:
-                    break
+            await ack_stream(
+                hash_frame_queue,
+                field="toapp_gethash_ack",
+                ack=_ack,
+                timeout=self.step_timeout,
+            )
 
         _logger.debug(
             "MapFetchSaga[%s]: hash list complete — %d hash IDs to fetch",
@@ -306,7 +311,6 @@ class MapFetchSaga(Saga):
                 new_missing = [h for h in self._get_map().find_incomplete_hashes(0) if h not in addressed_hashes]
                 if len(new_missing) < len(missing_hashes):
                     no_progress = 0
-                    self._reset_attempt_counter = True  # genuine map progress — refresh attempt budget
                 else:
                     no_progress += 1
                     if no_progress >= _no_progress_limit:

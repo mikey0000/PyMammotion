@@ -19,6 +19,48 @@ Flags:
                             --ble-address.  Needs the 'extras' deps:
                                 uv sync --group extras
     --esphome-password PASS Password for the ESPHome proxy (default: empty).
+    --fresh-login           Ignore the saved token cache and do a full password login.
+
+Credential persistence:
+    examples/dev_credentials.json   email + password (for the initial / recovery login)
+    examples/dev_token_cache.json   the MammotionClient.to_cache() credential cache
+
+    On start the console restores from the token cache when present — the same
+    to_cache()/restore_credentials() round-trip Home Assistant does against its
+    config entry — and only falls back to a password login if that fails.  Every
+    credential rotation is written straight back via on_credentials_updated, so
+    the file always holds the live refresh token.
+
+    That is what makes the auth helpers below meaningful: a restored session runs
+    against tokens minted in an *earlier process*, so refresh, expiry and re-auth
+    behave as they do for a user whose HA has just restarted — instead of always
+    testing against a login that happened seconds ago.
+
+    Both files contain live credentials; they are gitignored, keep them local.
+
+Manual auth testing:
+    tokens()                        Expiries for every credential + terminal auth flags
+    expire(kind, seconds_left=60)   Age a *local* expiry clock ('access' | 'mqtt' |
+                                    'aliyun' | 'all').  The token stays valid
+                                    server-side; this only trips our proactive-refresh
+                                    thresholds so the next call really refreshes.
+    await refresh(kind)             Force a refresh ('http' | 'mqtt' | 'aliyun' |
+                                    'invoke') and report whether the token rotated.
+    break_refresh_token()           Corrupt the refresh token, so the next refresh is
+                                    genuinely rejected — drives the terminal
+                                    reauth_required path a host turns into a prompt.
+    await relogin()                 Full password login; the user-facing recovery.
+    save_cache() / clear_cache()    Persist / drop the token cache.
+
+    Typical loop — prove a restart resumes without a password:
+        1. run with --fresh-login, then quit
+        2. run again (no flag) → "Session restored from cache — no password was sent"
+    Prove proactive refresh works:
+        expire('access'); await refresh('http')   → "access token rotated"
+    Prove the terminal path works:
+        break_refresh_token(); await refresh('http')
+        → ReLoginRequiredError, and tokens() shows reauth_required set
+        → await relogin() to recover
 
 Output files (written to examples/dev_output/):
     state_{device_name}.json        Full device state (mower or RTK), updated on every
@@ -35,6 +77,9 @@ Available in the IPython REPL:
     sync_tasks(name)                Fetch all scheduled task plans (blocking)
     fetch_rtk(name)                 Fetch LoRa version for an RTK base station
     dump(name)                      Force-write state_{name}.json right now
+    load_state(name)                Seed the device model from that dump.  Manual, never
+                                    automatic — makes the saga resume / stale-map paths
+                                    reachable without racing a live fetch.
     listen(on=True)                 Stop/resume MQTT polling on all devices
     console                         DevConsole instance
     loop                            The main asyncio event loop
@@ -45,12 +90,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 import json
 import logging
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Any, Protocol
 
 import IPython
@@ -103,6 +150,7 @@ OUTPUT_DIR = Path(__file__).parent / "dev_output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 CREDENTIALS_FILE = Path(__file__).parent / "dev_credentials.json"
+TOKEN_CACHE_FILE = Path(__file__).parent / "dev_token_cache.json"
 
 
 def _load_credentials() -> tuple[str, str]:
@@ -126,6 +174,85 @@ def _save_credentials(email: str, password: str) -> None:
     except Exception:
         _LOGGER.warning("Could not save credentials to %s", CREDENTIALS_FILE)
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Token cache — the same to_cache()/restore_credentials() round-trip Home
+# Assistant performs against its config entry.
+#
+# Persisting this is what makes manual auth testing real: a restored session
+# starts from tokens minted in an *earlier* process, so refresh, expiry and
+# re-auth paths run exactly as they do for a user whose HA has been restarted —
+# rather than always exercising a login that just happened seconds ago.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _jsonify_cache(cache: dict[str, Any]) -> dict[str, Any]:
+    """Convert ``to_cache()`` output into plain JSON-safe structures.
+
+    ``to_cache()`` returns live mashumaro models; ``restore_credentials()`` accepts
+    either those or their dict form, so writing the dict form round-trips cleanly.
+
+    Must recurse **through** ``to_dict()`` output, not just call it once.
+    ``Response`` is ``Generic[DataT]`` with ``data: DataT | None``, so an
+    unparameterised instance carries no type information for that field and
+    ``Response.to_dict()`` hands back a dict whose ``data`` is still a live
+    ``LoginResponseData``.  A single-level conversion left that object in place,
+    and it then serialised as its ``repr`` — which ``restore_credentials`` rejects
+    with ``InvalidFieldValue: Field "data" ... has invalid value
+    "LoginResponseData(access_token=...)"``.
+    """
+
+    def _conv(value: Any) -> Any:
+        if hasattr(value, "to_dict"):
+            # Recurse: to_dict() may leave nested models untouched (see above).
+            return _conv(value.to_dict())
+        if isinstance(value, dict):
+            return {k: _conv(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_conv(v) for v in value]
+        return value
+
+    return {k: _conv(v) for k, v in cache.items()}
+
+
+def _save_token_cache(mammotion: MammotionClient) -> bool:
+    """Write the client's current credential cache to disk.  Returns True on success."""
+    try:
+        cache = mammotion.to_cache()
+    except Exception:
+        _LOGGER.warning("Could not build token cache", exc_info=True)
+        return False
+    if not cache:
+        _LOGGER.debug("Token cache is empty (no cloud session) — not writing")
+        return False
+    try:
+        # No ``default=str``: a value _jsonify_cache failed to convert must raise
+        # here rather than be written as its repr.  That fallback is what turned a
+        # missed nested model into a cache file that only failed later, on restore.
+        TOKEN_CACHE_FILE.write_text(json.dumps(_jsonify_cache(cache), indent=2), encoding="utf-8")
+    except Exception:
+        _LOGGER.warning("Could not write token cache to %s", TOKEN_CACHE_FILE, exc_info=True)
+        return False
+    _LOGGER.debug("Token cache saved → %s", TOKEN_CACHE_FILE)
+    return True
+
+
+def _load_token_cache() -> dict[str, Any]:
+    """Read the persisted credential cache, or return {} when absent/unreadable."""
+    if not TOKEN_CACHE_FILE.exists():
+        return {}
+    try:
+        data = json.loads(TOKEN_CACHE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        _LOGGER.warning("Token cache at %s is unreadable — ignoring", TOKEN_CACHE_FILE, exc_info=True)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _clear_token_cache() -> None:
+    """Delete the persisted credential cache so the next start does a full login."""
+    TOKEN_CACHE_FILE.unlink(missing_ok=True)
+
 _rich_console = Console()
 _LOGGER = logging.getLogger(__name__)
 
@@ -134,13 +261,23 @@ def _setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
-    # Rich handler — INFO+ to terminal
+    # Rich handler — INFO+ to terminal.
+    #
+    # Millisecond timestamps on every line, deliberately.  Rich's defaults are
+    # log_time_format="[%x %X]" (whole seconds) and omit_repeated_times=True, which
+    # blanks the timestamp for consecutive lines in the same second.  Together those
+    # make every request/response pair look like it takes either 0 s or exactly 1 s,
+    # because a 40 ms reply that happens to straddle a second boundary renders as a
+    # full second of apparent latency.  That is a display artefact, not real latency —
+    # and it is actively misleading when timing the ack-driven saga loops.
     rich = RichHandler(
         console=_rich_console,
         rich_tracebacks=True,
         show_time=True,
         show_path=False,
         markup=True,
+        log_time_format="%H:%M:%S.%f",
+        omit_repeated_times=False,
     )
     rich.setLevel(logging.INFO)
     root.addHandler(rich)
@@ -173,6 +310,9 @@ def _setup_logging() -> None:
 class DevConsole:
     """Wires per-device callbacks and provides REPL helpers."""
 
+    #: Minimum gap between automatic per-frame state dumps, per device.
+    _DUMP_MIN_INTERVAL: float = 1.0
+
     def __init__(
         self,
         mammotion: MammotionClient,
@@ -190,6 +330,8 @@ class DevConsole:
         if external_mqtt is not None:
             external_mqtt.dev_console = self
         # Strong references to all callbacks and subscriptions — must outlive the connection
+        #: Coalescing state for _dump_throttled — see its docstring.
+        self._last_dump_at: dict[str, float] = {}
         self._notification_cbs: dict[str, tuple[Callable[..., Awaitable[None]], Subscription]] = {}
         self._sent_cbs: dict[str, tuple[Callable[..., Awaitable[None]], Subscription]] = {}
 
@@ -215,6 +357,85 @@ class DevConsole:
         except Exception:
             _LOGGER.exception("dump: failed to write state for %s", name)
             _LOGGER.debug("dump: raw snapshot for %s: %r", name, handle.snapshot.raw)
+
+    def load_state(self, name: str) -> bool:
+        """Seed a device's model from its last ``state_{name}.json`` dump.
+
+        The inverse of :meth:`dump`, and deliberately **manual** — nothing loads
+        state at startup.  Its purpose is to make the resume and staleness paths
+        reachable on demand, because they only engage when the model *already*
+        holds partial or stale map data:
+
+        * ``MapFetchSaga`` resuming via ``find_incomplete_hashes`` — seed a map
+          with some areas missing frames, then ``sync_map()``.
+        * The ``progress()`` attempt-budget refresh — needs banked work to refresh
+          against.
+        * ``HashList.invalidate_maps`` reconciling a stale manifest against the
+          device's reported ``bol_hash`` — seed a map the device no longer has.
+
+        Without this the only way to reach them is to interrupt a live fetch
+        mid-run and immediately re-run, which is fiddly and non-deterministic.
+
+        Uses the library's own ``DeviceHandle.restore_device`` — the same entry
+        point HA uses to reload saved device state — rather than assigning
+        ``snapshot.raw``, which would not stick because snapshots are immutable.
+        Note that restoring also resets availability to a fresh
+        ``DeviceAvailability``, clearing flags like ``mqtt_reported_offline``.
+
+        A stale file is a live footgun as much as a test fixture: loading a map
+        the device no longer has is exactly the staleness case, so the next sync
+        may legitimately wipe what you just loaded.  That is the point, but it is
+        worth knowing before blaming the saga.
+
+        Returns True when state was loaded.
+        """
+        handle = self.mammotion.device_registry.get_by_name(name)
+        if handle is None:
+            _LOGGER.warning(
+                "load_state: device %r not found. Available: %s",
+                name,
+                [h.device_name for h in self.mammotion.device_registry.all_devices],
+            )
+            return False
+        path = self._state_path(name)
+        if not path.exists():
+            _LOGGER.warning("load_state: no dump at %s — run dump(%r) first", path, name)
+            return False
+        try:
+            # Rebuild as the same concrete type the handle already holds, so mower /
+            # RTK / Spino models all work without the caller naming the class.
+            model_cls = type(handle.snapshot.raw)
+            device = model_cls.from_json(path.read_text(encoding="utf-8"))
+        except Exception:
+            _LOGGER.exception("load_state: failed to parse %s", path)
+            return False
+
+        handle.restore_device(device)
+        _rich_console.print(
+            f"[green]Loaded[/green] {model_cls.__name__} for [bold]{name}[/bold] from {path}\n"
+            f"  [dim]availability was reset; a stale map may be wiped by the next sync's "
+            f"bol_hash check[/dim]"
+        )
+        return True
+
+    def _dump_throttled(self, name: str) -> None:
+        """Coalesced, best-effort state dump for the per-frame callbacks.
+
+        ``dump()`` serialises the whole MowingDevice and writes it synchronously —
+        >100 KB for a mapped mower.  Doing that on *every* received frame, on the
+        event loop, is enough to delay a saga's frame-ack past the mower's ~1 s
+        retransmit timer: the device then re-sends the frame and the run crawls.
+        That makes the console an observer effect — the instrument slows the thing
+        it is measuring.
+
+        So coalesce to at most one write per ``_DUMP_MIN_INTERVAL``.  Interactive
+        ``dump()`` / ``dump_all()`` stay immediate and unthrottled.
+        """
+        now = time.monotonic()
+        if now - self._last_dump_at.get(name, 0.0) < self._DUMP_MIN_INTERVAL:
+            return
+        self._last_dump_at[name] = now
+        self.dump(name)
 
     # ── Callback factory ──────────────────────────────────────────────────────
 
@@ -257,7 +478,7 @@ class DevConsole:
 
         async def _on_message(msg: Any) -> None:
             if self.always_dump:
-                self.dump(device_name)
+                self._dump_throttled(device_name)
             if self.external_mqtt is not None and self.external_mqtt.connected:
                 await self.external_mqtt._publish_device_to_external_mqtt(device_name)
             _LOGGER.info(
@@ -272,8 +493,6 @@ class DevConsole:
 
     def log_mqtt_credentials(self) -> None:
         """Log all MQTT-related credentials for active cloud connections."""
-        import time
-
         _rich_console.rule("[bold yellow]MQTT Credentials[/bold yellow]")
 
         for acct_session in self.mammotion.account_registry.all_sessions:
@@ -372,6 +591,215 @@ class DevConsole:
 
         _rich_console.rule()
 
+    # ── Auth / token-refresh testing ──────────────────────────────────────────
+    #
+    # These drive the real refresh paths against the real server.  The expire_*
+    # helpers only move *local* expiry clocks — the tokens stay server-side valid —
+    # so they reproduce "our clock says this is about to expire" without waiting
+    # hours.  break_refresh_token() is the one that produces a genuinely rejected
+    # credential, for exercising the terminal re-auth path.
+
+    @property
+    def _session(self) -> Any:
+        """The first non-BLE account session, or None."""
+        for acct in self.mammotion.account_registry.all_sessions:
+            if acct.account_id != BLE_ONLY_ACCOUNT:
+                return acct
+        return None
+
+    def save_cache(self) -> bool:
+        """Persist the current credential cache to dev_token_cache.json."""
+        ok = _save_token_cache(self.mammotion)
+        if ok:
+            _rich_console.print(f"[green]Token cache saved →[/green] {TOKEN_CACHE_FILE}")
+        else:
+            _rich_console.print("[yellow]Nothing saved — no cloud session or cache empty[/yellow]")
+        return ok
+
+    def clear_cache(self) -> None:
+        """Delete dev_token_cache.json so the next start performs a full login."""
+        _clear_token_cache()
+        _rich_console.print(f"[yellow]Token cache cleared:[/yellow] {TOKEN_CACHE_FILE}")
+
+    def tokens(self) -> None:
+        """Print every credential's expiry and the account's terminal auth flags."""
+        _rich_console.rule("[bold yellow]Token state[/bold yellow]")
+        session = self._session
+        if session is None:
+            _rich_console.print("[dim]No cloud session.[/dim]")
+            _rich_console.rule()
+            return
+
+        def _rel(ts: float) -> str:
+            delta = int(ts - time.time())
+            if delta <= 0:
+                return f"[red]EXPIRED {-delta}s ago[/red]"
+            colour = "red" if delta < 300 else "yellow" if delta < 3600 else "green"
+            return f"[{colour}]{delta // 3600}h {(delta % 3600) // 60}m {delta % 60}s[/{colour}]"
+
+        http = session.mammotion_http
+        tm = session.token_manager
+
+        if http is not None:
+            _rich_console.print("[bold]HTTP OAuth[/bold]")
+            _rich_console.print(f"  expires_in    : {http.expires_in:.0f}  ({_rel(http.expires_in)})")
+            _rich_console.print("  refresh @     : < 300s remaining (ensure_token_valid threshold)")
+            if http.login_info is not None:
+                _rich_console.print(f"  access_token  : …{http.login_info.access_token[-24:]}")
+                _rich_console.print(f"  refresh_token : …{http.login_info.refresh_token[-24:]}")
+
+        if tm is not None:
+            mqtt = tm._mqtt_creds  # noqa: SLF001
+            if mqtt is not None:
+                _rich_console.print("\n[bold]Mammotion MQTT JWT[/bold]")
+                _rich_console.print(f"  expires_at    : {mqtt.expires_at:.0f}  ({_rel(mqtt.expires_at)})")
+                _rich_console.print("  refresh @     : < 1800s remaining")
+            aliyun = tm._aliyun_creds  # noqa: SLF001
+            if aliyun is not None:
+                _rich_console.print("\n[bold]Aliyun IoT session[/bold]")
+                _rich_console.print(
+                    f"  iot_token     : {aliyun.iot_token_expires_at:.0f}  ({_rel(aliyun.iot_token_expires_at)})"
+                )
+                _rich_console.print(
+                    f"  refresh_token : {aliyun.refresh_token_expires_at:.0f} "
+                    f" ({_rel(aliyun.refresh_token_expires_at)})"
+                )
+                _rich_console.print("  refresh @     : < 3600s remaining")
+
+            nxt = tm.seconds_until_next_refresh
+            running = tm._scheduler_task is not None and not tm._scheduler_task.done()  # noqa: SLF001
+            _rich_console.print("\n[bold]Scheduled refresh[/bold]  (clock-driven; runs with no devices online)")
+            _rich_console.print(f"  running       : {'[green]yes[/green]' if running else '[red]no[/red]'}")
+            _rich_console.print(f"  next check in : {int(nxt) // 60}m {int(nxt) % 60}s")
+
+            _rich_console.print("\n[bold]Terminal flags[/bold]  (set → that path fails fast, no network)")
+            for label, value in (
+                ("reauth_required  (account)", tm.reauth_required),
+                ("aliyun_unavailable       ", tm.aliyun_unavailable),
+                ("mqtt_unavailable         ", tm.mqtt_unavailable),
+            ):
+                shown = f"[red]{value}[/red]" if value else "[green]clear[/green]"
+                _rich_console.print(f"  {label}: {shown}")
+
+        _rich_console.print(f"\n[dim]cache file: {TOKEN_CACHE_FILE} " f"({'present' if TOKEN_CACHE_FILE.exists() else 'absent'})[/dim]")
+        _rich_console.rule()
+
+    def expire(self, kind: str = "access", seconds_left: float = 60.0) -> None:
+        """Move a credential's *local* expiry clock so the next use refreshes it.
+
+        The token stays valid server-side — this only makes our code believe it is
+        about to expire, which is what the proactive-refresh thresholds key off.
+
+        Args:
+            kind: ``access`` (HTTP OAuth), ``mqtt`` (Mammotion JWT), ``aliyun``
+                  (IoT session), or ``all``.
+            seconds_left: How much life to leave.  Defaults inside every refresh
+                  threshold, so any subsequent call triggers a real refresh.
+
+        """
+        session = self._session
+        if session is None:
+            _rich_console.print("[red]No cloud session.[/red]")
+            return
+        tm = session.token_manager
+        target = time.time() + seconds_left
+        kinds = ("access", "mqtt", "aliyun") if kind == "all" else (kind,)
+
+        for k in kinds:
+            if k == "access" and session.mammotion_http is not None:
+                session.mammotion_http.expires_in = target
+                if tm is not None and tm._http_creds is not None:  # noqa: SLF001
+                    tm._http_creds = replace(tm._http_creds, expires_at=target)  # noqa: SLF001
+                _rich_console.print(f"[yellow]HTTP access token[/yellow] now expires in {seconds_left:.0f}s")
+            elif k == "mqtt" and tm is not None and tm._mqtt_creds is not None:  # noqa: SLF001
+                tm._mqtt_creds = replace(tm._mqtt_creds, expires_at=target)  # noqa: SLF001
+                _rich_console.print(f"[yellow]Mammotion MQTT JWT[/yellow] now expires in {seconds_left:.0f}s")
+            elif k == "aliyun" and tm is not None and tm._aliyun_creds is not None:  # noqa: SLF001
+                tm._aliyun_creds = replace(tm._aliyun_creds, iot_token_expires_at=target)  # noqa: SLF001
+                if session.cloud_client is not None:
+                    # check_or_refresh_session gates on issued_at + iotTokenExpire, not on
+                    # the TokenManager snapshot, so age the gateway's clock too.
+                    data = session.cloud_client.session_by_authcode_response
+                    expire_s = data.data.iotTokenExpire if data is not None and data.data is not None else 0
+                    session.cloud_client._iot_token_issued_at = int(target - expire_s)  # noqa: SLF001
+                _rich_console.print(f"[yellow]Aliyun iotToken[/yellow] now expires in {seconds_left:.0f}s")
+            else:
+                _rich_console.print(f"[dim]skip '{k}' — not initialised on this account[/dim]")
+
+    def break_refresh_token(self) -> None:
+        """Corrupt the HTTP refresh token to exercise the terminal re-auth path.
+
+        The next refresh is rejected by the server, which sets
+        ``TokenManager.reauth_required`` and raises ReLoginRequiredError — the
+        signal a host turns into a "please re-authenticate" prompt.  Recover with
+        ``relogin()``.
+        """
+        session = self._session
+        if session is None or session.mammotion_http is None or session.mammotion_http.login_info is None:
+            _rich_console.print("[red]No cloud session.[/red]")
+            return
+        session.mammotion_http.login_info.refresh_token = "dev-console-invalid-refresh-token"  # noqa: S105 - deliberately invalid
+        _rich_console.print(
+            "[red]Refresh token corrupted.[/red]  Trigger a refresh (e.g. "
+            "[cyan]expire('access'); await refresh('http')[/cyan]) to watch the terminal path."
+        )
+
+    async def refresh(self, kind: str = "http") -> None:
+        """Force a credential refresh now and report what happened.
+
+        Args:
+            kind: ``http`` (OAuth access token), ``mqtt`` (Mammotion JWT),
+                  ``aliyun`` (IoT session), or ``invoke`` (the reactive
+                  post-401 path, including its stale-token dedup check).
+
+        """
+        session = self._session
+        if session is None or session.token_manager is None:
+            _rich_console.print("[red]No cloud session / token manager.[/red]")
+            return
+        tm = session.token_manager
+        actions: dict[str, Any] = {
+            "http": tm.refresh_http,
+            "mqtt": tm.refresh_mqtt_credentials,
+            "aliyun": tm.refresh_aliyun_credentials,
+            "invoke": tm.refresh_invoke_token,
+        }
+        action = actions.get(kind)
+        if action is None:
+            _rich_console.print(f"[red]Unknown kind '{kind}'[/red] — one of {list(actions)}")
+            return
+
+        before = session.mammotion_http.login_info.access_token if session.mammotion_http.login_info else None
+        try:
+            await action()
+        except Exception as exc:  # noqa: BLE001 - this is a diagnostic, report every outcome
+            _rich_console.print(f"[red]{type(exc).__name__}[/red]: {exc}")
+        else:
+            _rich_console.print(f"[green]{kind} refresh OK[/green]")
+        after = session.mammotion_http.login_info.access_token if session.mammotion_http.login_info else None
+        if before != after:
+            _rich_console.print("  access token [cyan]rotated[/cyan]")
+        else:
+            _rich_console.print("  access token [dim]unchanged[/dim]")
+        self.save_cache()
+
+    async def relogin(self) -> None:
+        """Do a full password login, replacing the session, and re-save the cache.
+
+        The recovery a user performs by reconfiguring the integration.  This is the
+        only path in the library allowed to send a password.
+        """
+        email, password = _load_credentials()
+        if not email or not password:
+            _rich_console.print(f"[red]No saved credentials in {CREDENTIALS_FILE}[/red]")
+            return
+        _rich_console.print(f"Logging in as [bold]{email}[/bold] …")
+        await self.mammotion.login_and_initiate_cloud(email, password)
+        self.hook_all_devices()
+        self.hook_all_rtk_devices()
+        _rich_console.print("[green]Re-login complete[/green]")
+        self.save_cache()
+
     # ── Device wiring ─────────────────────────────────────────────────────────
 
     def _make_sent_cb(self, device_name: str) -> Callable[[bytes], Awaitable[None]]:
@@ -426,7 +854,7 @@ class DevConsole:
 
         async def _on_state_changed(snapshot: DeviceSnapshot) -> None:
             if self.always_dump:
-                self.dump(device_name)
+                self._dump_throttled(device_name)
             if self.external_mqtt is not None and self.external_mqtt.connected:
                 await self.external_mqtt._publish_device_to_external_mqtt(device_name)
             _LOGGER.info(
@@ -982,9 +1410,37 @@ async def _main(args: argparse.Namespace) -> None:
         )
         _save_credentials(email, password)
 
-        _LOGGER.info("Logging in as [bold]%s[/bold] …", email)
-        await mammotion.login_and_initiate_cloud(email, password)
+        # Persist every rotation the moment it happens — exactly how HA wires this.
+        # Without it a refresh rotates the server-side refresh token while the file
+        # keeps the dead one, so the *next* start begins with a failed refresh.
+        # That bug is only reproducible across processes, which is the whole point
+        # of caching here.
+        async def _on_credentials_updated() -> None:
+            _save_token_cache(mammotion)
+
+        mammotion.on_credentials_updated = _on_credentials_updated
+
+        cached = {} if args.fresh_login else _load_token_cache()
+        restored = False
+        if cached:
+            _LOGGER.info(
+                "Restoring cached session for [bold]%s[/bold] (%d keys) …",
+                email,
+                len(cached),
+            )
+            try:
+                await mammotion.restore_credentials(email, password, cached)
+                restored = True
+                _LOGGER.info("Session restored from cache — no password was sent")
+            except Exception:
+                _LOGGER.warning("Cache restore failed — falling back to a full login", exc_info=True)
+
+        if not restored:
+            _LOGGER.info("Logging in as [bold]%s[/bold] …", email)
+            await mammotion.login_and_initiate_cloud(email, password)
+
         _LOGGER.info("Login complete — waiting for MQTT …")
+        _save_token_cache(mammotion)
 
         await asyncio.sleep(3)
 
@@ -1020,9 +1476,17 @@ async def _main(args: argparse.Namespace) -> None:
         "sync_tasks": dev.sync_tasks,
         "fetch_rtk": dev.fetch_rtk,
         "dump": dev.dump,
+        "load_state": dev.load_state,
         "dump_all": dev.dump_all,
         "status": dev.status,
         "creds": dev.log_mqtt_credentials,
+        "tokens": dev.tokens,
+        "expire": dev.expire,
+        "refresh": dev.refresh,
+        "relogin": dev.relogin,
+        "break_refresh_token": dev.break_refresh_token,
+        "save_cache": dev.save_cache,
+        "clear_cache": dev.clear_cache,
         "debug": dev.debug,
         "listen": dev.listen,
         "console": dev,
@@ -1042,13 +1506,22 @@ async def _main(args: argparse.Namespace) -> None:
         "  [cyan]sync_tasks(name)[/cyan]                                    — fetch all scheduled task plans\n"
         "  [cyan]fetch_rtk(name)[/cyan]                                     — fetch LoRa version for an RTK base station\n"
         "  [cyan]dump(name)[/cyan]                                          — write state_{name}.json\n"
+        "  [cyan]load_state(name)[/cyan]                                    — seed the model from that dump (resume testing)\n"
         "  [cyan]dump_all()[/cyan]                                          — write state JSON for all devices\n"
         "  [cyan]status()[/cyan]                                            — show connection status\n"
         "  [cyan]creds()[/cyan]                                             — print all MQTT credentials\n"
         "  [cyan]debug(on=True)[/cyan]                                      — toggle DEBUG logging on terminal\n"
         "  [cyan]listen(on=True)[/cyan]                                     — stop/resume MQTT polling on all devices\n"
         f"  [cyan]loop[/cyan]                                                — main asyncio event loop\n"
+        "\n[bold]Auth / token testing[/bold]\n"
+        "  [cyan]tokens()[/cyan]                                            — expiries + terminal auth flags\n"
+        "  [cyan]expire(kind='access'|'mqtt'|'aliyun'|'all', seconds_left=60)[/cyan] — age a local expiry clock\n"
+        "  [cyan]await refresh('http'|'mqtt'|'aliyun'|'invoke')[/cyan]       — force a refresh, report rotation\n"
+        "  [cyan]break_refresh_token()[/cyan]                               — corrupt it to test the re-auth path\n"
+        "  [cyan]await relogin()[/cyan]                                     — full password login (recovery)\n"
+        "  [cyan]save_cache()[/cyan] / [cyan]clear_cache()[/cyan]                          — persist / drop the token cache\n"
         f"\n  Output → [dim]{OUTPUT_DIR}[/dim]\n"
+        f"  Token cache → [dim]{TOKEN_CACHE_FILE}[/dim]\n"
     )
 
     def _start_repl() -> None:
@@ -1095,6 +1568,15 @@ if __name__ == "__main__":
         metavar="PASS",
         default=None,
         help="API password for the ESPHome proxy (default: empty).",
+    )
+    parser.add_argument(
+        "--fresh-login",
+        action="store_true",
+        help=(
+            "Ignore dev_token_cache.json and perform a full password login. "
+            "Use to mint a brand-new session; omit it to resume the cached one and "
+            "exercise the refresh/expiry paths a real restart hits."
+        ),
     )
     _args = parser.parse_args()
     try:

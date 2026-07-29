@@ -126,10 +126,21 @@ def _make_subscribe_ctx() -> tuple[Any, list[Any]]:
 
 
 def _which_one_of_for_hash(obj: Any, group: str) -> tuple[str, Any]:
-    """Fake betterproto2.which_one_of that routes hash-frame messages correctly."""
+    """Fake betterproto2.which_one_of that routes hash-frame messages correctly.
+
+    MagicMock responses make every attribute truthy, so the leaf a message carries
+    cannot be inferred — hence the explicit discriminators below.  Tests needing a
+    leaf this stub doesn't guess can set ``nav._leaf_name = "<field>"`` on their
+    response; sagas verify the leaf name now (``extract_nav_frame``), so returning
+    a plausible-but-wrong name is no longer harmless.
+    """
     if group == "LubaSubMsg":
         return ("nav", obj.nav)
-    # "SubNavMsg" — detect area-name responses by hashnames being a real list.
+    # "SubNavMsg"
+    marker = getattr(obj, "_leaf_name", None)
+    if isinstance(marker, str):
+        return (marker, getattr(obj, marker))
+    # detect area-name responses by hashnames being a real list.
     if isinstance(getattr(getattr(obj, "toapp_all_hash_name", None), "hashnames", None), list):
         return ("toapp_all_hash_name", obj.toapp_all_hash_name)
     return ("toapp_gethash_ack", obj.toapp_gethash_ack)
@@ -405,8 +416,14 @@ async def test_plan_saga_iterates_all_indices_when_total_plan_num_is_3() -> None
     assert set(saga.result.keys()) == {"plan-aaa", "plan-bbb", "plan-ccc"}
 
 
-async def test_plan_saga_retries_on_timeout() -> None:
-    """When first attempt times out, saga must restart and succeed on second attempt."""
+async def test_saga_retry_loop_restarts_after_a_step_timeout() -> None:
+    """The base Saga retry loop must restart a run whose step timed out.
+
+    PlanFetchSaga is only the vehicle here — it now ships ``max_attempts = 1`` to
+    match the APK's single-shot request policy, so the retry count is overridden
+    below.  The machinery under test is Saga._retry_loop, still used by every saga
+    that keeps ``max_attempts > 1`` (map, common-data, svg, edge).
+    """
     broker = AsyncMock(spec=DeviceMessageBroker)
     builder = _make_command_builder()
 
@@ -436,10 +453,37 @@ async def test_plan_saga_retries_on_timeout() -> None:
         with patch("asyncio.sleep", new_callable=AsyncMock):
             saga = PlanFetchSaga(command_builder=builder, send_command=send_command)
             saga.step_timeout = 0.01
+            saga.max_attempts = 2  # exercise the retry loop, not the saga's own policy
             await saga.execute(broker)
 
     assert saga.result == {}
     assert builder.read_plan.call_count == 2  # called once per attempt
+
+
+async def test_plan_saga_does_not_retry_by_default() -> None:
+    """PlanFetchSaga is single-shot: one 10 s attempt, then fail — as the APK does.
+
+    ``withTimeoutOrNull`` in the app gives up rather than retrying, so a dead fetch
+    surfaces in ~10 s instead of being multiplied by a retry count.
+    """
+    broker = AsyncMock(spec=DeviceMessageBroker)
+    builder = _make_command_builder()
+    subscribe_side_effect, _ = _make_subscribe_ctx()
+    broker.subscribe_unsolicited.side_effect = subscribe_side_effect
+
+    async def send_command(_cmd: bytes) -> None:
+        pass  # never responds — every attempt times out
+
+    assert PlanFetchSaga.max_attempts == 1
+    assert PlanFetchSaga.step_timeout == 10.0
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        saga = PlanFetchSaga(command_builder=builder, send_command=send_command)
+        saga.step_timeout = 0.01
+        with pytest.raises(SagaFailedError):
+            await saga.execute(broker)
+
+    assert builder.read_plan.call_count == 1  # exactly one attempt
 
 
 # ---------------------------------------------------------------------------
@@ -758,6 +802,9 @@ async def test_mow_path_saga_preserves_current_mow_path_across_runs() -> None:
 
     builder = _make_command_builder()
     send_command = AsyncMock()
+    # send_and_wait(expected_field="bidire_reqconver_path") only resolves on that
+    # field, so the stubbed response must present it.
+    broker.send_and_wait.return_value.nav._leaf_name = "bidire_reqconver_path"
 
     with patch("betterproto2.which_one_of", side_effect=_which_one_of_for_hash):
         with patch("asyncio.sleep", new_callable=AsyncMock):

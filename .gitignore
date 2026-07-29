@@ -240,3 +240,5 @@ scripts.txt
 examples/dev_output/
 tests/dev_output/
 examples/dev_credentials.json
+# Live OAuth/MQTT tokens written by the dev console — never commit
+examples/dev_token_cache.json

@@ -1,4 +1,4 @@
-"""Tests for MammotionClient._send_with_auth_retry credential refresh cascade."""
+"""Tests for MammotionClient._send_with_auth_retry: one targeted refresh, one retry, then propagate."""
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -9,7 +9,6 @@ from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import (
     AuthError,
-    LoginFailedError,
     ReLoginRequiredError,
     SessionExpiredError,
     TransportType,
@@ -33,7 +32,6 @@ def _make_session(*, has_token_manager: bool = True) -> AccountSession:
         tm = AsyncMock()
         tm.refresh_aliyun_credentials = AsyncMock()
         tm.refresh_mqtt_credentials = AsyncMock()
-        tm.force_refresh = AsyncMock()
         session.token_manager = tm
     return session
 
@@ -65,7 +63,6 @@ async def test_send_succeeds_no_retry() -> None:
     send_fn.assert_awaited_once()
     session.token_manager.refresh_aliyun_credentials.assert_not_awaited()
     session.token_manager.refresh_mqtt_credentials.assert_not_awaited()
-    session.token_manager.force_refresh.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +79,6 @@ async def test_aliyun_session_expired_targeted_refresh_succeeds() -> None:
 
     assert send_fn.await_count == 2
     session.token_manager.refresh_aliyun_credentials.assert_awaited_once()
-    session.token_manager.force_refresh.assert_not_awaited()
 
 
 async def test_mammotion_session_expired_targeted_refresh_succeeds() -> None:
@@ -95,159 +91,98 @@ async def test_mammotion_session_expired_targeted_refresh_succeeds() -> None:
     assert send_fn.await_count == 2
     session.token_manager.refresh_mqtt_credentials.assert_awaited_once()
     session.token_manager.refresh_aliyun_credentials.assert_not_awaited()
-    session.token_manager.force_refresh.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
-# SessionExpiredError — targeted refresh fails, force_refresh succeeds
+# Targeted refresh is the ONLY recovery — no escalation ladder
 # ---------------------------------------------------------------------------
 
 
-async def test_targeted_refresh_fails_force_refresh_succeeds() -> None:
-    """Targeted refresh doesn't fix it → force_refresh → third attempt succeeds."""
-    client, session = _make_client()
-    send_fn = AsyncMock(
-        side_effect=[
-            SessionExpiredError(TransportType.CLOUD_ALIYUN),
-            SessionExpiredError(TransportType.CLOUD_ALIYUN),
-            None,
-        ]
-    )
+async def test_targeted_refresh_fails_propagates_without_escalating() -> None:
+    """One targeted refresh, one retry, then the error propagates.
 
-    await client._send_with_auth_retry(send_fn, session)
-
-    assert send_fn.await_count == 3
-    session.token_manager.refresh_aliyun_credentials.assert_awaited_once()
-    session.token_manager.force_refresh.assert_awaited_once()
-
-
-async def test_targeted_refresh_fails_with_auth_error_then_force_refresh() -> None:
-    """Retry after targeted refresh raises AuthError → falls back to force_refresh."""
-    client, session = _make_client()
-    send_fn = AsyncMock(
-        side_effect=[
-            SessionExpiredError(TransportType.CLOUD_MAMMOTION),
-            AuthError("still broken"),
-            None,
-        ]
-    )
-
-    await client._send_with_auth_retry(send_fn, session)
-
-    assert send_fn.await_count == 3
-    session.token_manager.refresh_mqtt_credentials.assert_awaited_once()
-    session.token_manager.force_refresh.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# SessionExpiredError — all retries fail → propagate
-# ---------------------------------------------------------------------------
-
-
-async def test_all_retries_fail_propagates_exception() -> None:
-    """When all three attempts fail, the final exception propagates."""
+    The old cascade retried up to four times, escalating to an account-wide
+    refresh and then a password re-login.  Each rung fired more auth traffic for a
+    credential that had already been rejected once.
+    """
     client, session = _make_client()
     final_error = SessionExpiredError(TransportType.CLOUD_ALIYUN, "still dead")
-    send_fn = AsyncMock(
-        side_effect=[
-            SessionExpiredError(TransportType.CLOUD_ALIYUN),
-            SessionExpiredError(TransportType.CLOUD_ALIYUN),
-            final_error,
-        ]
-    )
+    send_fn = AsyncMock(side_effect=[SessionExpiredError(TransportType.CLOUD_ALIYUN), final_error])
 
     with pytest.raises(SessionExpiredError, match="still dead"):
         await client._send_with_auth_retry(send_fn, session)
 
-    assert send_fn.await_count == 3
-
-
-# ---------------------------------------------------------------------------
-# Plain AuthError — goes straight to force_refresh
-# ---------------------------------------------------------------------------
-
-
-async def test_auth_error_force_refresh_succeeds() -> None:
-    """Plain AuthError (e.g. from mqtt.py) → force_refresh → retry succeeds."""
-    client, session = _make_client()
-    send_fn = AsyncMock(side_effect=[AuthError("mqtt rejected"), None])
-
-    await client._send_with_auth_retry(send_fn, session)
-
     assert send_fn.await_count == 2
-    session.token_manager.force_refresh.assert_awaited_once()
+    session.token_manager.refresh_aliyun_credentials.assert_awaited_once()
+
+
+async def test_plain_auth_error_propagates_without_refresh() -> None:
+    """A transport-agnostic AuthError has no transport to target, so it propagates.
+
+    The transports already run their own scoped recovery (MQTTTransport refreshes
+    the invoke token; the Aliyun transport refreshes its IoT session).  Retrying
+    here as well just duplicated that work with an account-wide refresh.
+    """
+    client, session = _make_client()
+    send_fn = AsyncMock(side_effect=AuthError("mqtt rejected"))
+
+    with pytest.raises(AuthError, match="mqtt rejected"):
+        await client._send_with_auth_retry(send_fn, session)
+
+    send_fn.assert_awaited_once()
     session.token_manager.refresh_aliyun_credentials.assert_not_awaited()
     session.token_manager.refresh_mqtt_credentials.assert_not_awaited()
 
 
-async def test_auth_error_force_refresh_fails_propagates() -> None:
-    """Plain AuthError → force_refresh → retry also fails → propagates."""
+async def test_relogin_required_reaches_the_host() -> None:
+    """ReLoginRequiredError must propagate so the host can prompt for re-auth."""
     client, session = _make_client()
-    send_fn = AsyncMock(side_effect=[AuthError("first"), AuthError("second")])
+    session.mammotion_http.login_v2 = AsyncMock()
+    send_fn = AsyncMock(side_effect=ReLoginRequiredError("user@example.com", "refresh token expired"))
 
-    with pytest.raises(AuthError, match="second"):
+    with pytest.raises(ReLoginRequiredError):
         await client._send_with_auth_retry(send_fn, session)
 
-    assert send_fn.await_count == 2
-    session.token_manager.force_refresh.assert_awaited_once()
+    session.mammotion_http.login_v2.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
-# ReLoginRequiredError triggers _full_relogin
-# ---------------------------------------------------------------------------
-
-
-async def test_relogin_required_from_force_refresh_triggers_full_relogin() -> None:
-    """force_refresh raises ReLoginRequiredError → _full_relogin is attempted."""
-    client, session = _make_client()
-    session.token_manager.force_refresh = AsyncMock(
-        side_effect=[ReLoginRequiredError("user@example.com", "refresh token expired"), None]
-    )
-    login_resp = MagicMock()
-    login_resp.code = 0
-    session.mammotion_http.login_v2 = AsyncMock(return_value=login_resp)
-    send_fn = AsyncMock(side_effect=[AuthError("expired"), None])
-
-    await client._send_with_auth_retry(send_fn, session)
-
-    assert send_fn.await_count == 2
-    session.mammotion_http.login_v2.assert_awaited_once()
-    assert session.token_manager.force_refresh.await_count == 2
-
-
-async def test_full_relogin_fails_raises_login_failed_error() -> None:
-    """If _full_relogin also fails, LoginFailedError propagates to the caller."""
-    client, session = _make_client()
-    session.token_manager.force_refresh = AsyncMock(
-        side_effect=ReLoginRequiredError("user@example.com", "refresh token expired")
-    )
-    login_resp = MagicMock()
-    login_resp.code = 500
-    login_resp.msg = "server error"
-    session.mammotion_http.login_v2 = AsyncMock(return_value=login_resp)
-    send_fn = AsyncMock(side_effect=AuthError("expired"))
-
-    with pytest.raises(LoginFailedError, match="server error"):
-        await client._send_with_auth_retry(send_fn, session)
-
-    send_fn.assert_awaited_once()
-
-
-async def test_relogin_required_from_targeted_refresh_triggers_full_relogin() -> None:
-    """Targeted refresh raises ReLoginRequiredError → _full_relogin is attempted."""
+async def test_relogin_required_from_targeted_refresh_reaches_the_host() -> None:
+    """A refresh that reports "re-auth required" must not be answered with a password."""
     client, session = _make_client()
     session.token_manager.refresh_aliyun_credentials = AsyncMock(
         side_effect=ReLoginRequiredError("user@example.com", "session gone")
     )
-    login_resp = MagicMock()
-    login_resp.code = 0
-    session.mammotion_http.login_v2 = AsyncMock(return_value=login_resp)
-    send_fn = AsyncMock(side_effect=[SessionExpiredError(TransportType.CLOUD_ALIYUN), None])
+    session.mammotion_http.login_v2 = AsyncMock()
+    send_fn = AsyncMock(side_effect=SessionExpiredError(TransportType.CLOUD_ALIYUN))
 
-    await client._send_with_auth_retry(send_fn, session)
+    with pytest.raises(ReLoginRequiredError):
+        await client._send_with_auth_retry(send_fn, session)
 
-    assert send_fn.await_count == 2
-    session.mammotion_http.login_v2.assert_awaited_once()
+    session.mammotion_http.login_v2.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        SessionExpiredError(TransportType.CLOUD_ALIYUN, "expired"),
+        SessionExpiredError(TransportType.CLOUD_MAMMOTION, "expired"),
+        AuthError("rejected"),
+        ReLoginRequiredError("user@example.com", "dead"),
+    ],
+    ids=["aliyun-expired", "mammotion-expired", "auth-error", "relogin-required"],
+)
+async def test_no_send_failure_ever_triggers_a_password_login(error: Exception) -> None:
+    """The core invariant, swept across every auth failure the send path can raise."""
+    client, session = _make_client()
+    session.mammotion_http.login_v2 = AsyncMock()
+    session.mammotion_http.logout = AsyncMock()
+    send_fn = AsyncMock(side_effect=error)
+
+    with pytest.raises(Exception):  # noqa: B017 - the type varies; the assertion below is the point
+        await client._send_with_auth_retry(send_fn, session)
+
+    session.mammotion_http.login_v2.assert_not_awaited()
+    session.mammotion_http.logout.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -265,14 +200,15 @@ async def test_no_token_manager_session_expired_retries_without_refresh() -> Non
     assert send_fn.await_count == 2
 
 
-async def test_no_token_manager_auth_error_retries_without_refresh() -> None:
-    """Without a token manager, AuthError path retries without refresh."""
+async def test_no_token_manager_auth_error_propagates() -> None:
+    """Without a token manager there is nothing to refresh — the error propagates."""
     client, session = _make_client(has_token_manager=False)
-    send_fn = AsyncMock(side_effect=[AuthError("no creds"), None])
+    send_fn = AsyncMock(side_effect=AuthError("no creds"))
 
-    await client._send_with_auth_retry(send_fn, session)
+    with pytest.raises(AuthError):
+        await client._send_with_auth_retry(send_fn, session)
 
-    assert send_fn.await_count == 2
+    send_fn.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

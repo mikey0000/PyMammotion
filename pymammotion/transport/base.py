@@ -28,6 +28,24 @@ T = TypeVar("T")
 #: (see ``Transport.is_send_blocked``).
 RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
 
+#: Starting delay for an MQTT reconnect, doubling on each consecutive failure.
+#: Shared by both cloud transports.
+MQTT_RECONNECT_MIN_SEC = 1
+
+#: Ceiling for that backoff.  The two transports deliberately differ, so the
+#: values live here together rather than drifting apart in separate modules:
+#:
+#: * Aliyun (60 s) — the broker enforces a single session per identity, so a
+#:   longer gap means a longer window in which the phone app can hold the slot.
+#: * Mammotion direct (120 s) — no such contention, so back off harder and keep
+#:   reconnect traffic down.
+#:
+#: This asymmetry was previously two unrelated ``_MQTT_RECONNECT_MAX_SEC``
+#: definitions and read as an accident; if it turns out to be one, changing it is
+#: now a one-line edit in one place.
+MQTT_RECONNECT_MAX_SEC_ALIYUN = 60
+MQTT_RECONNECT_MAX_SEC_MAMMOTION = 120
+
 
 class TransportError(Exception):
     """Base exception for all transport failures."""

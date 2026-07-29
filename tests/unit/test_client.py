@@ -1772,68 +1772,111 @@ async def test_remove_device_disconnects_shared_cloud_transport_for_last_device(
 
 
 # ---------------------------------------------------------------------------
-# _full_relogin — failure cooldown (oauth2/token hammering guard)
+# No automatic re-login; transport-scoped vs account-scoped failure signalling
 # ---------------------------------------------------------------------------
 
-import time  # noqa: E402
+from pymammotion.transport.base import (  # noqa: E402
+    ReLoginRequiredError,
+    SessionExpiredError,
+    TransportError,
+    TransportType,
+)
 
-from pymammotion.transport.base import LoginFailedError  # noqa: E402
+
+def test_client_cannot_automatically_relogin() -> None:
+    """The password-grant recovery path must stay deleted.
+
+    ``_full_relogin`` logged out, then re-logged in with the stored password on any
+    auth failure.  A transient failure mid-way left the account with no login_info,
+    turning every subsequent API call into a password grant.
+    """
+    assert not hasattr(MammotionClient, "_full_relogin")
+    assert not hasattr(MammotionClient, "_reapply_creds_and_reconnect")
+    assert not hasattr(AccountSession("x"), "relogin_failed_at")
 
 
-def _make_relogin_session(login_code: int = 0) -> AccountSession:
-    """AccountSession with a mock http whose login_v2 returns the given code."""
-    http = MagicMock()
-    http.logout = AsyncMock()
-    http.login_v2 = AsyncMock(return_value=MagicMock(code=login_code, msg="bad" if login_code else "ok"))
+async def test_send_retry_refreshes_only_the_failing_transport() -> None:
+    """A dead Aliyun session must not cause the Mammotion MQTT JWT to be rotated."""
+    client = MammotionClient()
+    tm = MagicMock()
+    tm.refresh_aliyun_credentials = AsyncMock()
+    tm.refresh_mqtt_credentials = AsyncMock()
     session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
-    session.mammotion_http = http
-    return session
+    session.token_manager = tm
+
+    calls = 0
+
+    async def _send() -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise SessionExpiredError(TransportType.CLOUD_ALIYUN, "expired")
+
+    await client._send_with_auth_retry(_send, session)
+
+    assert calls == 2, "one targeted refresh then exactly one retry"
+    tm.refresh_aliyun_credentials.assert_awaited_once()
+    tm.refresh_mqtt_credentials.assert_not_awaited()
 
 
-async def test_full_relogin_in_cooldown_fails_fast_without_login() -> None:
-    """Within the cooldown window, _full_relogin must not fire a password grant."""
+async def test_send_retry_propagates_relogin_required() -> None:
+    """ReLoginRequiredError must reach the host, not be logged away.
+
+    AuthError subclasses TransportError, so the terminal signal is one misordered
+    ``except`` clause away from being swallowed into a warning.
+    """
     client = MammotionClient()
-    session = _make_relogin_session()
-    session.relogin_failed_at = time.monotonic()
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
 
-    with pytest.raises(LoginFailedError, match="cooldown"):
-        await client._full_relogin(session)
+    async def _send() -> None:
+        raise ReLoginRequiredError("u@t.com", "refresh token dead")
 
-    session.mammotion_http.login_v2.assert_not_awaited()
+    with pytest.raises(ReLoginRequiredError):
+        await client._send_with_auth_retry(_send, session)
 
 
-async def test_full_relogin_failure_arms_cooldown() -> None:
-    """A failed re-login must arm the cooldown so the next attempt fails fast."""
+async def test_send_retry_still_swallows_plain_transport_errors() -> None:
+    """Non-auth transport errors keep their existing log-and-continue behaviour."""
     client = MammotionClient()
-    session = _make_relogin_session(login_code=1)
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
 
-    with pytest.raises(LoginFailedError):
-        await client._full_relogin(session)
-    assert session.relogin_failed_at is not None
+    async def _send() -> None:
+        raise TransportError("device busy")
 
-    with pytest.raises(LoginFailedError, match="cooldown"):
-        await client._full_relogin(session)
-    assert session.mammotion_http.login_v2.await_count == 1
+    await client._send_with_auth_retry(_send, session)  # must not raise
 
 
-async def test_full_relogin_success_clears_cooldown() -> None:
+async def test_transport_failure_keeps_credentials_when_login_still_valid() -> None:
+    """A dead transport must not trigger the host's re-auth prompt on its own.
+
+    Hosts map ``on_unrecoverable_auth_error`` to "log the user out and ask them to
+    reconfigure".  That is the wrong response when the HTTP login is still good and
+    only one cloud transport has failed.
+    """
     client = MammotionClient()
-    session = _make_relogin_session(login_code=0)
-    session.relogin_failed_at = time.monotonic() - 31.0  # expired cooldown
+    tm = MagicMock()
+    tm.reauth_required = None  # the account's HTTP login is healthy
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+    client.on_unrecoverable_auth_error = AsyncMock()
 
-    await client._full_relogin(session)
+    await client._signal_transport_unrecoverable(
+        session, TransportType.CLOUD_ALIYUN, ReLoginRequiredError("u@t.com", "aliyun dead")
+    )
 
-    assert session.relogin_failed_at is None
-    session.mammotion_http.login_v2.assert_awaited_once()
+    client.on_unrecoverable_auth_error.assert_not_awaited()
 
 
-async def test_full_relogin_transient_error_does_not_arm_cooldown() -> None:
-    """A network blip during re-login must not block the next attempt."""
+async def test_dead_account_login_does_fire_unrecoverable_callback() -> None:
+    """When the HTTP login itself is dead, the host must be told to re-authenticate."""
     client = MammotionClient()
-    session = _make_relogin_session()
-    session.mammotion_http.login_v2 = AsyncMock(side_effect=TimeoutError("net down"))
+    tm = MagicMock()
+    tm.reauth_required = "refresh token rejected"
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+    client.on_unrecoverable_auth_error = AsyncMock()
 
-    with pytest.raises(TimeoutError):
-        await client._full_relogin(session)
+    exc = ReLoginRequiredError("u@t.com", "refresh token rejected")
+    await client._signal_transport_unrecoverable(session, TransportType.CLOUD_MAMMOTION, exc)
 
-    assert session.relogin_failed_at is None
+    client.on_unrecoverable_auth_error.assert_awaited_once_with("u@t.com", TransportType.CLOUD_MAMMOTION, exc)

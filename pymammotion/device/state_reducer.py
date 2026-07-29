@@ -381,9 +381,11 @@ class MowerStateReducer(StateReducer):
                 # would empty find_incomplete_hashes and stop step 4 early, leaving
                 # area geometry unfetched.  The saga handles staleness at its start.
                 if not self._is_saga_active():
-                    bol_hash = device.report_data.locations[0].bol_hash if device.report_data.locations else 0
-                    if bol_hash:
-                        device.map.invalidate_maps(bol_hash)
+                    # None when no report frame has arrived yet — invalidate_maps
+                    # treats that as "unknown" and leaves the manifest alone.  A
+                    # reported 0 is passed through: it means the device has no areas.
+                    locs = device.report_data.locations
+                    device.map.invalidate_maps(locs[0].bol_hash if locs else None)
                 if hash_names.hashnames:
                     device.map.area_name = [
                         AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames

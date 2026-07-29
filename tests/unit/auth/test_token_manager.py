@@ -37,78 +37,14 @@ def make_mqtt_creds(expires_in_seconds: float) -> MQTTCredentials:
     )
 
 
-async def test_http_token_refreshed_when_expiring_soon() -> None:
-    """get_valid_http_token() must call _refresh_http when creds expire in < 5 min."""
-    http = AsyncMock()
-    http.refresh_login = AsyncMock(
-        return_value=MagicMock(
-            data=MagicMock(access_token="new_tok", refresh_token="new_ref", expires_in=3600)
-        )
-    )
-    tm = TokenManager("acc1", http)
-    await tm.initialize(make_http_creds(180), None, None)  # expires in 3 min
-    # Patch _refresh_http to verify it's called
-    tm.refresh_http = AsyncMock()  # type: ignore[method-assign]
-    # Re-set creds to force refresh
-    tm._http_creds = make_http_creds(180)
-    await tm.get_valid_http_token()
-    tm.refresh_http.assert_awaited_once()  # type: ignore[attr-defined]
-
-
-async def test_http_token_not_refreshed_when_fresh() -> None:
-    """get_valid_http_token() must NOT call _refresh_http when token is fresh."""
-    http = AsyncMock()
-    tm = TokenManager("acc1", http)
-    await tm.initialize(make_http_creds(600), None, None)  # expires in 10 min
-    tm.refresh_http = AsyncMock()  # type: ignore[method-assign]
-    await tm.get_valid_http_token()
-    tm.refresh_http.assert_not_awaited()  # type: ignore[attr-defined]
-
-
 async def test_mqtt_creds_refreshed_when_expiring_soon() -> None:
     """get_mammotion_mqtt_credentials() must refresh when creds expire in < 30 min."""
     http = AsyncMock()
     tm = TokenManager("acc1", http)
     await tm.initialize(make_http_creds(600), None, make_mqtt_creds(900))  # expires in 15 min < 30 min
-    tm.refresh_mqtt_creds = AsyncMock()  # type: ignore[method-assign]
+    tm._refresh_mqtt = AsyncMock()  # type: ignore[method-assign]
     await tm.get_mammotion_mqtt_credentials()
-    tm.refresh_mqtt_creds.assert_awaited_once()  # type: ignore[attr-defined]
-
-
-async def test_concurrent_refresh_called_once() -> None:
-    """Concurrent calls to get_valid_http_token() must only trigger one refresh."""
-    http = AsyncMock()
-    tm = TokenManager("acc1", http)
-    await tm.initialize(make_http_creds(100), None, None)  # will refresh (< 300 s)
-
-    refresh_count = 0
-
-    async def counting_refresh() -> None:
-        nonlocal refresh_count
-        refresh_count += 1
-        await asyncio.sleep(0.01)
-        tm._http_creds = make_http_creds(3600)
-
-    tm.refresh_http = counting_refresh  # type: ignore[method-assign]
-    await asyncio.gather(
-        tm.get_valid_http_token(),
-        tm.get_valid_http_token(),
-    )
-    assert refresh_count == 1
-
-
-async def test_force_refresh_raises_relogin_on_auth_failure() -> None:
-    """force_refresh() must propagate ReLoginRequiredError from _refresh_http."""
-    http = AsyncMock()
-    tm = TokenManager("acc1", http)
-    await tm.initialize(make_http_creds(100), None, None)
-
-    async def failing_refresh() -> None:
-        raise ReLoginRequiredError("acc1", "401")
-
-    tm.refresh_http = failing_refresh  # type: ignore[method-assign]
-    with pytest.raises(ReLoginRequiredError):
-        await tm.force_refresh()
+    tm._refresh_mqtt.assert_awaited_once()  # type: ignore[attr-defined]
 
 
 async def test_relogin_error_has_account_id() -> None:
@@ -132,40 +68,9 @@ async def test_mqtt_creds_not_refreshed_when_fresh() -> None:
     http = AsyncMock()
     tm = TokenManager("acc1", http)
     await tm.initialize(make_http_creds(600), None, make_mqtt_creds(7200))  # expires in 2 hours
-    tm.refresh_mqtt_creds = AsyncMock()  # type: ignore[method-assign]
+    tm._refresh_mqtt = AsyncMock()  # type: ignore[method-assign]
     await tm.get_mammotion_mqtt_credentials()
-    tm.refresh_mqtt_creds.assert_not_awaited()  # type: ignore[attr-defined]
-
-
-async def test_get_valid_http_token_does_not_block_on_in_flight_refresh() -> None:
-    """Fast path: if creds are still valid, the getter must not wait on the lock.
-
-    Regression: TokenManager._lock used to be acquired unconditionally, so a
-    slow in-flight refresh of one credential type stalled every other caller
-    that already had a usable token.
-    """
-    http = AsyncMock()
-    tm = TokenManager("acc1", http)
-    await tm.initialize(make_http_creds(3600), None, None)  # valid for 1 hour
-
-    # Hold the lock from another coroutine for a long time.
-    lock_held = asyncio.Event()
-    release = asyncio.Event()
-
-    async def hold_lock() -> None:
-        async with tm._lock:  # noqa: SLF001
-            lock_held.set()
-            await release.wait()
-
-    holder = asyncio.create_task(hold_lock())
-    await lock_held.wait()
-
-    # Fast path must complete without acquiring the lock.
-    token = await asyncio.wait_for(tm.get_valid_http_token(), timeout=0.5)
-    assert token == "tok"
-
-    release.set()
-    await holder
+    tm._refresh_mqtt.assert_not_awaited()  # type: ignore[attr-defined]
 
 
 async def test_get_aliyun_credentials_does_not_block_on_in_flight_refresh() -> None:
@@ -328,13 +233,13 @@ def _make_http_mock(
     refresh_token: str = "refresh-new",
     expires_in: float = 3600.0,
 ) -> AsyncMock:
-    """Return a MammotionHTTP mock whose refresh_login returns valid data."""
+    """Return a MammotionHTTP mock whose refresh_token_v2 returns valid data."""
     http = AsyncMock()
     data = MagicMock()
     data.access_token = access_token
     data.refresh_token = refresh_token
     data.expires_in = expires_in
-    http.refresh_login.return_value = MagicMock(data=data)
+    http.refresh_token_v2.return_value = MagicMock(code=0, data=data)
     return http
 
 
@@ -346,12 +251,12 @@ def _make_mqtt_http_mock(
 ) -> AsyncMock:
     """Return a MammotionHTTP mock whose get_mqtt_credentials returns valid data."""
     http = AsyncMock()
-    # refresh_login used by refresh_http
+    # refresh_token_v2 used by refresh_http
     http_data = MagicMock()
     http_data.access_token = "access-new"
     http_data.refresh_token = "refresh-new"
     http_data.expires_in = 3600.0
-    http.refresh_login.return_value = MagicMock(data=http_data)
+    http.refresh_token_v2.return_value = MagicMock(code=0, data=http_data)
 
     # get_mqtt_credentials
     mqtt_data = MagicMock()
@@ -366,58 +271,6 @@ def _make_mqtt_http_mock(
 # ---------------------------------------------------------------------------
 # TokenManager — HTTP token refresh
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_valid_http_token_refreshes_when_near_expiry() -> None:
-    """Credentials expiring within 5 minutes must trigger a proactive refresh."""
-    http = _make_http_mock(access_token="access-new")
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    await tm.initialize(http_creds=_expiring_http_creds(seconds_left=100), aliyun_creds=None, mqtt_creds=None)
-
-    token = await tm.get_valid_http_token()
-
-    assert token == "access-new"
-    http.refresh_login.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_get_valid_http_token_no_refresh_when_valid() -> None:
-    """A freshly issued token (well within 5-minute window) must NOT trigger a refresh."""
-    http = _make_http_mock()
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    await tm.initialize(http_creds=_fresh_http_creds(ttl=3600), aliyun_creds=None, mqtt_creds=None)
-
-    token = await tm.get_valid_http_token()
-
-    assert token == "access-old"
-    http.refresh_login.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_get_valid_http_token_raises_on_api_failure() -> None:
-    """When refresh_login raises, get_valid_http_token must raise ReLoginRequiredError."""
-    http = AsyncMock()
-    http.refresh_login.side_effect = RuntimeError("network error")
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    await tm.initialize(http_creds=None, aliyun_creds=None, mqtt_creds=None)
-
-    with pytest.raises(ReLoginRequiredError) as exc_info:
-        await tm.get_valid_http_token()
-
-    assert exc_info.value.account_id == "user@example.com"
-
-
-@pytest.mark.asyncio
-async def test_get_valid_http_token_raises_when_data_is_none() -> None:
-    """When refresh_login returns data=None, ReLoginRequiredError must be raised."""
-    http = AsyncMock()
-    http.refresh_login.return_value = MagicMock(data=None)
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    await tm.initialize(http_creds=None, aliyun_creds=None, mqtt_creds=None)
-
-    with pytest.raises(ReLoginRequiredError):
-        await tm.get_valid_http_token()
 
 
 # ---------------------------------------------------------------------------
@@ -547,31 +400,51 @@ def _make_strict_http_mock(*, refresh_code: int = 0, jwt: str = "jwt-strict") ->
 
 
 @pytest.mark.asyncio
-async def test_refresh_mqtt_credentials_strict_uses_refresh_token_not_login() -> None:
-    """The strict path must use refresh_token_v2 and never call refresh_login/login_v2."""
+async def test_refresh_mqtt_credentials_never_calls_login_v2() -> None:
+    """Renewing the MQTT JWT must never mint a session from the stored password."""
     http = _make_strict_http_mock(jwt="jwt-strict")
     tm = TokenManager(account_id="user@example.com", mammotion_http=http)
     await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
 
-    creds = await tm.refresh_mqtt_credentials_strict()
+    creds = await tm.refresh_mqtt_credentials()
 
     assert creds.jwt == "jwt-strict"
-    http.refresh_token_v2.assert_awaited_once()
-    http.refresh_login.assert_not_called()
     http.login_v2.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_refresh_mqtt_credentials_strict_raises_when_refresh_token_dead() -> None:
-    """If refresh_token_v2 returns a non-zero code, give up (ReLoginRequiredError) — no login_v2."""
+async def test_refresh_mqtt_credentials_retries_once_via_refresh_token() -> None:
+    """A refused JWT endpoint triggers ONE forced access-token renewal, then a retry.
+
+    Covers the server-side revocation our local expiry clock cannot see: the first
+    fetch comes back empty, so the access token is renewed via refresh_token_v2 (not
+    a password login) and the fetch is retried.
+    """
+    http = _make_strict_http_mock(jwt="jwt-after-retry")
+    empty, good = MagicMock(data=None), http.get_mqtt_credentials.return_value
+    http.get_mqtt_credentials = AsyncMock(side_effect=[empty, good])
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
+
+    creds = await tm.refresh_mqtt_credentials()
+
+    assert creds.jwt == "jwt-after-retry"
+    http.refresh_token_v2.assert_awaited_once()
+    http.login_v2.assert_not_called()
+    assert http.get_mqtt_credentials.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_refresh_mqtt_credentials_raises_when_refresh_token_dead() -> None:
+    """A rejected refresh token during the retry is terminal — and never a login_v2."""
     http = _make_strict_http_mock(refresh_code=401)
+    http.get_mqtt_credentials = AsyncMock(return_value=MagicMock(data=None))
     tm = TokenManager(account_id="user@example.com", mammotion_http=http)
     await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
 
     with pytest.raises(ReLoginRequiredError):
-        await tm.refresh_mqtt_credentials_strict()
+        await tm.refresh_mqtt_credentials()
     http.login_v2.assert_not_called()
-    http.get_mqtt_credentials.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -583,7 +456,7 @@ async def test_refresh_mqtt_credentials_strict_raises_when_jwt_endpoint_empty() 
     await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
 
     with pytest.raises(ReLoginRequiredError):
-        await tm.refresh_mqtt_credentials_strict()
+        await tm.refresh_mqtt_credentials()
     http.login_v2.assert_not_called()
 
 
@@ -595,10 +468,10 @@ async def test_force_refresh_invoke_token_strict_uses_refresh_token_only() -> No
     tm = TokenManager(account_id="user@example.com", mammotion_http=http)
     await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
 
-    await tm.force_refresh_invoke_token(allow_relogin=False)
+    await tm.refresh_invoke_token()
 
     http.refresh_token_v2.assert_awaited_once()
-    http.refresh_login.assert_not_called()
+    http.refresh_token_v2.assert_awaited_once()
     http.login_v2.assert_not_called()
     http.fetch_authorization_token.assert_awaited_once()
 
@@ -608,85 +481,9 @@ async def test_force_refresh_invoke_token_strict_uses_refresh_token_only() -> No
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_force_refresh_refreshes_all_active_credentials() -> None:
-    """force_refresh() must refresh HTTP and MQTT credentials when both are initialised."""
-    http = _make_mqtt_http_mock(jwt="jwt-forced")
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    await tm.initialize(
-        http_creds=_fresh_http_creds(),
-        aliyun_creds=None,
-        mqtt_creds=_fresh_mqtt_creds(),
-    )
-
-    await tm.force_refresh()
-
-    http.refresh_login.assert_awaited_once()
-    http.get_mqtt_credentials.assert_awaited_once()
-
-    new_creds = await tm.get_mammotion_mqtt_credentials()
-    assert new_creds.jwt == "jwt-forced"
-
-
-@pytest.mark.asyncio
-async def test_force_refresh_skips_uninitialised_mqtt_credentials() -> None:
-    """force_refresh() must not call get_mqtt_credentials if MQTT was never initialised."""
-    http = _make_http_mock()
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
-
-    await tm.force_refresh()
-
-    http.refresh_login.assert_awaited_once()
-    http.get_mqtt_credentials.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_force_refresh_raises_re_login_required_on_failure() -> None:
-    """force_refresh() must propagate ReLoginRequiredError when the HTTP refresh fails."""
-    http = AsyncMock()
-    http.refresh_login.side_effect = RuntimeError("server error")
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    await tm.initialize(http_creds=_fresh_http_creds(), aliyun_creds=None, mqtt_creds=None)
-
-    with pytest.raises(ReLoginRequiredError):
-        await tm.force_refresh()
-
-
 # ---------------------------------------------------------------------------
 # TokenManager — mutex / concurrency safety
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_concurrent_calls_trigger_single_refresh() -> None:
-    """Two concurrent calls to get_valid_http_token must result in exactly one refresh."""
-    refresh_count = 0
-
-    async def slow_refresh() -> MagicMock:
-        nonlocal refresh_count
-        await asyncio.sleep(0.05)  # simulate latency
-        refresh_count += 1
-        data = MagicMock()
-        data.access_token = f"access-{refresh_count}"
-        data.refresh_token = "refresh-new"
-        data.expires_in = 3600.0
-        return MagicMock(data=data)
-
-    http = AsyncMock()
-    http.refresh_login.side_effect = slow_refresh
-    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
-    # Start with expired credentials so both calls want to refresh
-    await tm.initialize(http_creds=None, aliyun_creds=None, mqtt_creds=None)
-
-    results = await asyncio.gather(
-        tm.get_valid_http_token(),
-        tm.get_valid_http_token(),
-    )
-
-    # The lock serialises the calls — exactly one refresh happens, both return the same token
-    assert refresh_count == 1
-    assert results[0] == results[1]
 
 
 @pytest.mark.asyncio
@@ -730,7 +527,7 @@ async def test_refresh_mqtt_credentials_serialises_with_other_refresh_paths() ->
         return MagicMock(data=d)
 
     http = AsyncMock()
-    http.refresh_login.side_effect = tracked_refresh
+    http.refresh_token_v2.side_effect = tracked_refresh
     http.get_mqtt_credentials.side_effect = tracked_mqtt
 
     tm = TokenManager(account_id="acc", mammotion_http=http)
@@ -739,7 +536,7 @@ async def test_refresh_mqtt_credentials_serialises_with_other_refresh_paths() ->
     # Fire three concurrent refresh paths that all touch the HTTP client.
     await asyncio.gather(
         tm.refresh_mqtt_credentials(),
-        tm.force_refresh(),
+        tm.refresh_mqtt_credentials(),
         tm.refresh_mqtt_credentials(),
     )
 
@@ -773,7 +570,7 @@ async def test_broker_subscriptions_survive_token_refresh() -> None:
             aliyun_creds=None,
             mqtt_creds=_fresh_mqtt_creds(),
         )
-        await tm.force_refresh()
+        await tm.refresh_mqtt_credentials()
 
         # Deliver an unsolicited message (no pending future → goes to event bus)
         sentinel = object()
@@ -828,7 +625,7 @@ async def test_multiple_subscriptions_all_receive_after_token_refresh() -> None:
         http = _make_http_mock()
         tm = TokenManager(account_id="user@example.com", mammotion_http=http)
         await tm.initialize(http_creds=_expiring_http_creds(100), aliyun_creds=None, mqtt_creds=None)
-        await tm.force_refresh()
+        await tm.refresh_mqtt_credentials()
 
         sentinel = object()
         await broker._event_bus.emit(sentinel)  # noqa: SLF001
@@ -1154,7 +951,7 @@ def test_classifier_rejects_unrelated_exceptions() -> None:
 def token_manager() -> TokenManager:
     """Minimal TokenManager — only the HTTP client is exercised here."""
     http = MagicMock()
-    http.refresh_login = AsyncMock()
+    http.refresh_token_v2 = AsyncMock(return_value=MagicMock(code=0))
     tm = TokenManager(account_id="user@test", mammotion_http=http)
     return tm
 
@@ -1167,7 +964,7 @@ def test_refresh_http_propagates_dns_failure(token_manager: TokenManager) -> Non
     triggering a destructive full re-login on every network blip.
     """
     dns_err = socket.gaierror(-3, "Temporary failure in name resolution")
-    token_manager._http.refresh_login.side_effect = dns_err
+    token_manager._http.refresh_token_v2.side_effect = dns_err
 
     with pytest.raises(socket.gaierror):
         asyncio.new_event_loop().run_until_complete(token_manager.refresh_http())
@@ -1180,7 +977,7 @@ def test_refresh_http_propagates_aiohttp_connector_error(token_manager: TokenMan
         pass
 
     network_err = ClientConnectorDNSError("Cannot connect to host id.mammotion.com:443")
-    token_manager._http.refresh_login.side_effect = network_err
+    token_manager._http.refresh_token_v2.side_effect = network_err
 
     with pytest.raises(ClientConnectorDNSError):
         asyncio.new_event_loop().run_until_complete(token_manager.refresh_http())
@@ -1190,17 +987,18 @@ def test_refresh_http_wraps_genuine_auth_error(token_manager: TokenManager) -> N
     """A non-network exception (e.g. ValueError from bad response parsing)
     is still wrapped as ReLoginRequiredError — the classifier must only
     short-circuit for transient network errors."""
-    token_manager._http.refresh_login.side_effect = ValueError("malformed response")
+    token_manager._http.refresh_token_v2.side_effect = ValueError("malformed response")
 
     with pytest.raises(ReLoginRequiredError):
         asyncio.new_event_loop().run_until_complete(token_manager.refresh_http())
 
 
 def test_refresh_http_wraps_response_with_no_data(token_manager: TokenManager) -> None:
-    """The explicit 'refresh_login returned no data' path still raises ReLoginRequiredError."""
+    """The explicit 'refresh_token_v2 returned no data' path still raises ReLoginRequiredError."""
     response = MagicMock()
+    response.code = 0
     response.data = None
-    token_manager._http.refresh_login.return_value = response
+    token_manager._http.refresh_token_v2 = AsyncMock(return_value=response)
 
     with pytest.raises(ReLoginRequiredError):
         asyncio.new_event_loop().run_until_complete(token_manager.refresh_http())
@@ -1213,12 +1011,22 @@ def test_refresh_http_wraps_response_with_no_data(token_manager: TokenManager) -
 
 def test_refresh_invoke_token_propagates_dns_failure(token_manager: TokenManager) -> None:
     """refresh_invoke_token's generic-Exception path must let network errors through."""
-    token_manager._http.refresh_authorization_token = AsyncMock(
-        side_effect=socket.gaierror(-3, "dns")
-    )
+    token_manager._http.refresh_token_v2 = AsyncMock(side_effect=socket.gaierror(-3, "dns"))
+    token_manager._http.fetch_authorization_token = AsyncMock()
 
     with pytest.raises(socket.gaierror):
         asyncio.new_event_loop().run_until_complete(token_manager.refresh_invoke_token())
+
+
+def test_refresh_invoke_token_dns_failure_leaves_account_usable(token_manager: TokenManager) -> None:
+    """A network blip must not strand the account behind a re-auth prompt."""
+    token_manager._http.refresh_token_v2 = AsyncMock(side_effect=socket.gaierror(-3, "dns"))
+    token_manager._http.fetch_authorization_token = AsyncMock()
+
+    with pytest.raises(socket.gaierror):
+        asyncio.new_event_loop().run_until_complete(token_manager.refresh_invoke_token())
+
+    assert token_manager.reauth_required is None
 
 
 def test_refresh_invoke_token_wraps_non_network_error(token_manager: TokenManager) -> None:
@@ -1232,53 +1040,6 @@ def test_refresh_invoke_token_wraps_non_network_error(token_manager: TokenManage
 # ---------------------------------------------------------------------------
 # force_refresh — failure cooldown (oauth2/token hammering guard)
 # ---------------------------------------------------------------------------
-
-
-async def test_force_refresh_failure_arms_cooldown() -> None:
-    """A ReLoginRequiredError from force_refresh must fail fast on the next call."""
-    tm = TokenManager("acc", AsyncMock())
-    tm.refresh_http = AsyncMock(side_effect=ReLoginRequiredError("acc", "dead"))  # type: ignore[method-assign]
-
-    with pytest.raises(ReLoginRequiredError):
-        await tm.force_refresh()
-    with pytest.raises(ReLoginRequiredError, match="cooldown"):
-        await tm.force_refresh()
-
-    assert tm.refresh_http.await_count == 1  # type: ignore[attr-defined]
-
-
-async def test_force_refresh_cooldown_expiry_allows_retry() -> None:
-    tm = TokenManager("acc", AsyncMock())
-    tm.refresh_http = AsyncMock(side_effect=ReLoginRequiredError("acc", "dead"))  # type: ignore[method-assign]
-
-    with pytest.raises(ReLoginRequiredError):
-        await tm.force_refresh()
-    tm._force_refresh_failed_at = time.monotonic() - (tm._FORCE_REFRESH_COOLDOWN + 1.0)
-    with pytest.raises(ReLoginRequiredError, match="dead"):
-        await tm.force_refresh()
-
-    assert tm.refresh_http.await_count == 2  # type: ignore[attr-defined]
-
-
-async def test_force_refresh_success_clears_cooldown() -> None:
-    tm = TokenManager("acc", AsyncMock())
-    tm.refresh_http = AsyncMock()  # type: ignore[method-assign]
-    tm._force_refresh_failed_at = time.monotonic() - (tm._FORCE_REFRESH_COOLDOWN + 1.0)
-
-    await tm.force_refresh()
-
-    assert tm._force_refresh_failed_at is None
-
-
-async def test_force_refresh_transient_error_does_not_arm_cooldown() -> None:
-    """Network blips must not block the next force_refresh attempt."""
-    tm = TokenManager("acc", AsyncMock())
-    tm.refresh_http = AsyncMock(side_effect=TimeoutError("net"))  # type: ignore[method-assign]
-
-    with pytest.raises(TimeoutError):
-        await tm.force_refresh()
-
-    assert tm._force_refresh_failed_at is None
 
 
 # ---------------------------------------------------------------------------
@@ -1324,3 +1085,393 @@ async def test_on_http_login_refreshed_noop_without_login_info() -> None:
 
     assert tm._http_creds is None
     tm.on_credentials_updated.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Two-tier failure model: account-scoped vs transport-scoped
+#
+# A dead HTTP refresh token means nothing about the account can be renewed —
+# that is terminal and the user must re-authenticate.  A dead Aliyun IoT session
+# or Mammotion MQTT JWT, while the HTTP login is still good, must give up on that
+# ONE transport and leave the account's credentials and other transport alone.
+# ---------------------------------------------------------------------------
+
+
+def _tm_with_gateway(*, refresh_code: int = 0) -> tuple[TokenManager, AsyncMock, MagicMock]:
+    """Build a TokenManager wired to both an HTTP client and an Aliyun gateway."""
+    http = AsyncMock()
+    data = MagicMock(access_token="a", refresh_token="r", expires_in=3600.0)
+    http.refresh_token_v2.return_value = MagicMock(code=refresh_code, data=data if refresh_code == 0 else None)
+    mqtt_data = MagicMock(host="h", client_id="c", username="u", jwt="jwt-ok")
+    http.get_mqtt_credentials.return_value = MagicMock(data=mqtt_data)
+    gateway = MagicMock()
+    gateway.check_or_refresh_session = AsyncMock()
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http, cloud_gateway=gateway)
+    return tm, http, gateway
+
+
+@pytest.mark.asyncio
+async def test_rejected_http_refresh_token_is_account_terminal() -> None:
+    """A dead refresh token marks the whole account — nothing can be renewed."""
+    tm, http, _ = _tm_with_gateway(refresh_code=401)
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.refresh_http()
+
+    assert tm.reauth_required is not None
+    http.login_v2.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_account_terminal_fails_fast_without_network() -> None:
+    """Once terminal, further callers must not queue more doomed oauth2/token hits."""
+    tm, http, _ = _tm_with_gateway(refresh_code=401)
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.refresh_http()
+    first_calls = http.refresh_token_v2.await_count
+
+    for _ in range(5):
+        with pytest.raises(ReLoginRequiredError):
+            await tm.refresh_http()
+
+    assert http.refresh_token_v2.await_count == first_calls, "terminal state must not re-hit the network"
+
+
+@pytest.mark.asyncio
+async def test_dead_aliyun_session_does_not_mark_account_terminal() -> None:
+    """Aliyun dying must not cost the user their login or the Mammotion transport."""
+    tm, http, gateway = _tm_with_gateway()
+    gateway.check_or_refresh_session = AsyncMock(side_effect=RuntimeError("aliyun is down for good"))
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.refresh_aliyun_credentials()
+
+    assert tm.aliyun_unavailable is not None, "the Aliyun transport should be given up"
+    assert tm.reauth_required is None, "the HTTP login is still valid — do not force re-auth"
+    assert tm.mqtt_unavailable is None, "the Mammotion MQTT transport is unaffected"
+
+
+@pytest.mark.asyncio
+async def test_mammotion_mqtt_still_works_after_aliyun_dies() -> None:
+    """The concrete consequence: a hybrid account keeps its post-2025 devices."""
+    tm, http, gateway = _tm_with_gateway()
+    gateway.check_or_refresh_session = AsyncMock(side_effect=RuntimeError("aliyun is down for good"))
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.refresh_aliyun_credentials()
+
+    creds = await tm.refresh_mqtt_credentials()
+    assert creds.jwt == "jwt-ok"
+
+
+@pytest.mark.asyncio
+async def test_dead_mqtt_jwt_does_not_mark_account_terminal() -> None:
+    """The mirror case: MQTT dying leaves the login and Aliyun alone."""
+    tm, http, _ = _tm_with_gateway()
+    http.get_mqtt_credentials = AsyncMock(side_effect=RuntimeError("jwt endpoint is broken"))
+
+    with pytest.raises(ReLoginRequiredError):
+        await tm.refresh_mqtt_credentials()
+
+    assert tm.mqtt_unavailable is not None
+    assert tm.reauth_required is None
+    assert tm.aliyun_unavailable is None
+
+
+@pytest.mark.asyncio
+async def test_transient_network_error_marks_nothing_terminal() -> None:
+    """A blip must leave every credential type retryable."""
+    tm, http, _ = _tm_with_gateway()
+    http.refresh_token_v2.side_effect = socket.gaierror(-3, "dns")
+
+    with pytest.raises(socket.gaierror):
+        await tm.refresh_http()
+
+    assert tm.reauth_required is None
+    assert tm.aliyun_unavailable is None
+    assert tm.mqtt_unavailable is None
+
+
+@pytest.mark.asyncio
+async def test_aliyun_2401_rebuilds_session_without_password() -> None:
+    """A 2401 is recovered via the authCode chain (connect_iot), never login_v2."""
+    from pymammotion.transport.base import SessionExpiredError, TransportType
+
+    tm, http, gateway = _tm_with_gateway()
+    gateway.check_or_refresh_session = AsyncMock(
+        side_effect=SessionExpiredError(TransportType.CLOUD_ALIYUN, "2401 refreshToken invalid")
+    )
+    session_data = MagicMock(iotToken="iot-new", iotTokenExpire=7200, refreshToken="r", refreshTokenExpire=86400)
+    gateway.session_by_authcode_response = MagicMock(data=session_data)
+    gateway._iot_token_issued_at = int(time.time())
+    tm.connect_iot = AsyncMock()  # type: ignore[method-assign]
+
+    await tm.refresh_aliyun_credentials()
+
+    tm.connect_iot.assert_awaited_once()
+    http.login_v2.assert_not_called()
+    assert tm.aliyun_unavailable is None
+
+
+# ---------------------------------------------------------------------------
+# Reactive 401 refresh is deduplicated by access token
+#
+# Ported from the Android app: SpecialCodeIntercepter.refreshToken() compares the
+# failing request's Authorization header against the stored token *before*
+# refreshing, so a burst of requests that all 401 on the same dead token produces
+# one refresh, not one per request.  Each refresh rotates the refresh token
+# server-side, so the duplicates actively race each other.
+# ---------------------------------------------------------------------------
+
+
+def _tm_for_invoke() -> tuple[TokenManager, AsyncMock]:
+    http = AsyncMock()
+    http.login_info = MagicMock(access_token="tok-old")
+    http.refresh_token_v2.return_value = MagicMock(
+        code=0, data=MagicMock(access_token="tok-new", refresh_token="r", expires_in=3600.0)
+    )
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+    return tm, http
+
+
+@pytest.mark.asyncio
+async def test_refresh_invoke_token_refreshes_when_token_unchanged() -> None:
+    """The token that failed is still the live one — a real refresh is needed."""
+    tm, http = _tm_for_invoke()
+
+    await tm.refresh_invoke_token(stale_token="tok-old")
+
+    http.refresh_token_v2.assert_awaited_once()
+    http.fetch_authorization_token.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_refresh_invoke_token_skips_when_another_caller_already_refreshed() -> None:
+    """The live token has moved on — retry with it instead of rotating again."""
+    tm, http = _tm_for_invoke()
+    http.login_info = MagicMock(access_token="tok-someone-else-minted")
+
+    await tm.refresh_invoke_token(stale_token="tok-old")
+
+    http.refresh_token_v2.assert_not_awaited()
+    http.fetch_authorization_token.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_401s_produce_exactly_one_refresh() -> None:
+    """The end-to-end property: N commands failing on one dead token → one rotation."""
+    tm, http = _tm_for_invoke()
+
+    async def _rotate(*_a, **_k) -> MagicMock:
+        await asyncio.sleep(0)  # let the others pile up on the lock
+        http.login_info = MagicMock(access_token="tok-new")
+        return MagicMock(code=0, data=MagicMock(access_token="tok-new", refresh_token="r", expires_in=3600.0))
+
+    http.refresh_token_v2.side_effect = _rotate
+
+    await asyncio.gather(*(tm.refresh_invoke_token(stale_token="tok-old") for _ in range(5)))
+
+    assert http.refresh_token_v2.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_invoke_token_without_stale_token_always_refreshes() -> None:
+    """Callers that cannot say which token failed keep the old unconditional behaviour."""
+    tm, http = _tm_for_invoke()
+    http.login_info = MagicMock(access_token="something-different")
+
+    await tm.refresh_invoke_token()
+
+    http.refresh_token_v2.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Scheduled refresh
+#
+# Every other refresh path is lazy — it runs because something asked for a
+# credential.  When all of an account's devices are offline the poll loop stops
+# sending, so no HTTP call is made, ensure_token_valid never fires, and the
+# in-band Aliyun expiry check inside send_cloud_command never runs.  Without a
+# clock-driven renewal the credentials rot until the *refresh* tokens expire and
+# recovery needs the user.
+# ---------------------------------------------------------------------------
+
+
+def _tm_scheduled(
+    *, http_ttl: float = 7200.0, mqtt_ttl: float | None = None, aliyun_ttl: float | None = None
+) -> tuple[TokenManager, AsyncMock]:
+    http = AsyncMock()
+    http.expires_in = time.time() + http_ttl
+    http.login_info = MagicMock(access_token="tok", refresh_token="ref")
+    http.refresh_token_v2.return_value = MagicMock(
+        code=0, data=MagicMock(access_token="tok2", refresh_token="ref2", expires_in=7200.0)
+    )
+    mqtt_data = MagicMock(host="h", client_id="c", username="u", jwt="jwt-new")
+    http.get_mqtt_credentials.return_value = MagicMock(data=mqtt_data)
+    gateway = MagicMock()
+    gateway.check_or_refresh_session = AsyncMock()
+    tm = TokenManager("user@example.com", http, cloud_gateway=gateway if aliyun_ttl is not None else None)
+    if mqtt_ttl is not None:
+        tm._mqtt_creds = MQTTCredentials("h", "c", "u", "j", time.time() + mqtt_ttl)  # noqa: SLF001
+    if aliyun_ttl is not None:
+        tm._aliyun_creds = AliyunCredentials("iot", time.time() + aliyun_ttl, "r", time.time() + 864000)  # noqa: SLF001
+        session_data = MagicMock(iotToken="iot-new", iotTokenExpire=7200, refreshToken="r", refreshTokenExpire=86400)
+        gateway.session_by_authcode_response = MagicMock(data=session_data)
+        gateway._iot_token_issued_at = int(time.time())  # noqa: SLF001
+    return tm, http
+
+
+# ── when the next refresh is due ────────────────────────────────────────────
+
+
+def test_next_refresh_uses_http_lead_time() -> None:
+    """The HTTP token is renewed 5 minutes before it expires."""
+    tm, _ = _tm_scheduled(http_ttl=3600.0)
+    assert 3600 - 300 - 2 < tm.seconds_until_next_refresh <= 3600 - 300
+
+
+def test_next_refresh_picks_the_earliest_credential() -> None:
+    """Whichever expires soonest sets the wake-up, not the first one checked."""
+    tm, _ = _tm_scheduled(http_ttl=86400.0, mqtt_ttl=3600.0)  # mqtt lead is 1800
+    assert 3600 - 1800 - 2 < tm.seconds_until_next_refresh <= 3600 - 1800
+
+
+def test_next_refresh_is_zero_when_already_due() -> None:
+    tm, _ = _tm_scheduled(http_ttl=60.0)  # inside the 300s lead
+    assert tm.seconds_until_next_refresh == 0.0
+
+
+def test_next_refresh_is_capped() -> None:
+    """A far-future expiry still re-checks hourly, so later credentials get picked up."""
+    tm, _ = _tm_scheduled(http_ttl=86400.0 * 30)
+    assert tm.seconds_until_next_refresh == 3600.0
+
+
+def test_next_refresh_survives_unusable_expiry() -> None:
+    """A malformed expiry must not kill the background task."""
+    tm, http = _tm_scheduled()
+    http.expires_in = "not a number"
+    assert tm.seconds_until_next_refresh == 3600.0
+
+
+# ── what gets refreshed ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_due_http_token_is_refreshed_with_no_api_traffic() -> None:
+    """The case this exists for: nothing is being sent, yet the token still renews."""
+    tm, http = _tm_scheduled(http_ttl=60.0)
+
+    assert await tm._refresh_due_credentials() is True  # noqa: SLF001
+
+    http.refresh_token_v2.assert_awaited_once()
+    http.login_v2.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_nothing_refreshed_when_nothing_is_due() -> None:
+    tm, http = _tm_scheduled(http_ttl=7200.0, mqtt_ttl=86400.0)
+
+    await tm._refresh_due_credentials()  # noqa: SLF001
+
+    http.refresh_token_v2.assert_not_awaited()
+    http.get_mqtt_credentials.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_only_the_due_credential_is_refreshed() -> None:
+    """A due MQTT JWT must not drag the healthy HTTP token into a rotation."""
+    tm, http = _tm_scheduled(http_ttl=86400.0, mqtt_ttl=60.0)
+
+    await tm._refresh_due_credentials()  # noqa: SLF001
+
+    http.get_mqtt_credentials.assert_awaited_once()
+    http.refresh_token_v2.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_http_is_refreshed_before_the_credentials_derived_from_it() -> None:
+    """Both due: the JWT is minted with the access token, so HTTP must go first."""
+    tm, http = _tm_scheduled(http_ttl=60.0, mqtt_ttl=60.0)
+    order: list[str] = []
+    http.refresh_token_v2.side_effect = lambda *a, **k: (
+        order.append("http"),
+        MagicMock(code=0, data=MagicMock(access_token="t", refresh_token="r", expires_in=7200.0)),
+    )[1]
+    http.get_mqtt_credentials.side_effect = lambda *a, **k: (
+        order.append("mqtt"),
+        MagicMock(data=MagicMock(host="h", client_id="c", username="u", jwt="j")),
+    )[1]
+
+    await tm._refresh_due_credentials()  # noqa: SLF001
+
+    assert order == ["http", "mqtt"]
+
+
+@pytest.mark.asyncio
+async def test_transport_scoped_failure_does_not_stop_other_refreshes() -> None:
+    """A dead MQTT JWT must not prevent the Aliyun session from being renewed."""
+    tm, http = _tm_scheduled(http_ttl=86400.0, mqtt_ttl=60.0, aliyun_ttl=60.0)
+    http.get_mqtt_credentials = AsyncMock(return_value=MagicMock(data=None))
+
+    assert await tm._refresh_due_credentials() is False  # noqa: SLF001
+
+    assert tm.mqtt_unavailable is not None
+    assert tm.reauth_required is None
+    tm._cloud_gateway.check_or_refresh_session.assert_awaited()  # noqa: SLF001
+
+
+# ── the loop ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_scheduler_renews_a_due_token_then_sleeps() -> None:
+    """End-to-end: start the loop with a due token and watch it renew, unprompted."""
+    tm, http = _tm_scheduled(http_ttl=60.0)
+
+    def _advance(*_a, **_k) -> MagicMock:
+        http.expires_in = time.time() + 7200
+        return MagicMock(code=0, data=MagicMock(access_token="t2", refresh_token="r2", expires_in=7200.0))
+
+    http.refresh_token_v2.side_effect = _advance
+
+    tm.start_refresh_scheduler()
+    for _ in range(20):  # let the loop run until it settles into its sleep
+        await asyncio.sleep(0)
+        if http.refresh_token_v2.await_count:
+            break
+    await tm.stop_refresh_scheduler()
+
+    http.refresh_token_v2.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_stops_once_the_account_needs_reauth() -> None:
+    """A dead refresh token is terminal — no point waking up again."""
+    tm, http = _tm_scheduled(http_ttl=60.0)
+    http.refresh_token_v2.return_value = MagicMock(code=401, data=None)
+
+    tm.start_refresh_scheduler()
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if tm._scheduler_task.done():  # noqa: SLF001
+            break
+
+    assert tm.reauth_required is not None
+    assert tm._scheduler_task.done()  # noqa: SLF001
+    await tm.stop_refresh_scheduler()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_is_idempotent_and_cancellable() -> None:
+    tm, _ = _tm_scheduled(http_ttl=7200.0)
+
+    tm.start_refresh_scheduler()
+    first = tm._scheduler_task  # noqa: SLF001
+    tm.start_refresh_scheduler()
+    assert tm._scheduler_task is first, "second start must not spawn a rival task"  # noqa: SLF001
+
+    await tm.stop_refresh_scheduler()
+    assert first.done()
+    await tm.stop_refresh_scheduler()  # stopping twice is safe

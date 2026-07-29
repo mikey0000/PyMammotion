@@ -9,6 +9,7 @@ import betterproto2
 
 from pymammotion.data.model.hash_list import Plan
 from pymammotion.messaging.saga import Saga
+from pymammotion.messaging.transfers import indexed_fetch
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -32,8 +33,11 @@ class PlanFetchSaga(Saga):
     """
 
     name = "plan_fetch"
-    max_attempts = 3
-    step_timeout = 2.0
+    #: One 10 s shot, matching the APK's uniform request timeout (CommandManager
+    #: safeFetchCallbackFun default 10000L, no retry).  2 s was under a cloud
+    #: round-trip plus the device's ~1 s frame retransmit.
+    max_attempts = 1
+    step_timeout = 10.0
 
     def __init__(
         self,
@@ -50,35 +54,18 @@ class PlanFetchSaga(Saga):
         self.result = {}
 
         with self._collect_frames(broker, "todev_planjob_set") as plan_queue:
-            # Request first plan (index 0)
-            cmd = self._command_builder.read_plan(sub_cmd=2, plan_index=0)
-            await self._send_command(cmd)
 
-            response = await self._next_frame(plan_queue, "todev_planjob_set")
+            async def _request(index: int) -> None:
+                await self._send_command(self._command_builder.read_plan(sub_cmd=2, plan_index=index))
 
-            _, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
-            assert leaf_val is not None
-            plan = Plan.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE))
-
-            total = plan.total_plan_num
-            if total == 0:
-                _logger.debug("PlanFetchSaga: device has no stored plans")
-                return
-
-            if plan.plan_id:
-                self.result[plan.plan_id] = plan
-
-            # Collect remaining plans one index at a time
-            for next_index in range(1, total):
-                _logger.debug("PlanFetchSaga: requesting plan %d/%d", next_index + 1, total)
-                cmd = self._command_builder.read_plan(sub_cmd=2, plan_index=next_index)
-                await self._send_command(cmd)
-
-                response = await self._next_frame(plan_queue, "todev_planjob_set")
-
-                _, leaf_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
-                assert leaf_val is not None
-                plan = Plan.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE))
+            async for wire in indexed_fetch(
+                plan_queue,
+                field="todev_planjob_set",
+                request=_request,
+                total_of=lambda f: Plan.from_dict(f.to_dict(casing=betterproto2.Casing.SNAKE)).total_plan_num,
+                timeout=self.step_timeout,
+            ):
+                plan = Plan.from_dict(wire.to_dict(casing=betterproto2.Casing.SNAKE))
                 if plan.plan_id:
                     self.result[plan.plan_id] = plan
 

@@ -76,7 +76,7 @@ def _make_gateway(initial_token: str = "iot-token-initial", *, age: int = 0) -> 
 
 
 def _make_token_manager(gw: CloudIOTGateway) -> TokenManager:
-    """TokenManager wired to ``gw`` with the HTTP refresh stubbed (force_refresh calls it first)."""
+    """TokenManager wired to ``gw`` with the HTTP refresh stubbed."""
     tm = TokenManager("acc@test.com", gw.mammotion_http, gw)
     tm.refresh_http = AsyncMock()  # type: ignore[method-assign]
     return tm
@@ -258,43 +258,25 @@ async def test_token_refreshed_callback_receives_latest_token() -> None:
 
 
 # ---------------------------------------------------------------------------
-# force_refresh permutations
+# Transport isolation: refreshing one transport must not disturb the other
 # ---------------------------------------------------------------------------
 
 
-async def test_force_refresh_aliyun_only_matches_gateway() -> None:
-    """force_refresh(CLOUD_ALIYUN) refreshes the Aliyun session and stays consistent."""
-    gw = _make_gateway("iot-token-initial")
-    tm = _make_token_manager(gw)
-    backend = _AliyunBackend()
+async def test_refresh_mqtt_leaves_aliyun_token_untouched() -> None:
+    """Renewing the Mammotion MQTT JWT must NOT change the Aliyun token on either side.
 
-    with backend.patch():
-        await tm.force_refresh(TransportType.CLOUD_ALIYUN)
-
-    tm.refresh_http.assert_awaited_once()  # type: ignore[attr-defined]
-    _assert_consistent(tm, gw, expected=backend.latest)
-
-
-async def test_force_refresh_all_matches_gateway() -> None:
-    """force_refresh(None) refreshes Aliyun (no MQTT creds present) and stays consistent."""
-    gw = _make_gateway("iot-token-initial")
-    tm = _make_token_manager(gw)
-    backend = _AliyunBackend()
-
-    with backend.patch():
-        await tm.force_refresh(None)
-
-    _assert_consistent(tm, gw, expected=backend.latest)
-
-
-async def test_force_refresh_mammotion_leaves_aliyun_token_untouched() -> None:
-    """force_refresh(CLOUD_MAMMOTION) must NOT change the Aliyun token on either side."""
+    The two transports have independent credential chains; touching one while
+    recovering the other is how a single dead transport used to take down a whole
+    hybrid account.
+    """
     gw = _make_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     tm._aliyun_creds = _fresh_creds("iot-token-initial")  # noqa: SLF001
     gw.check_or_refresh_session = AsyncMock()  # type: ignore[method-assign] — spy: must NOT fire
+    mqtt_data = MagicMock(host="h", client_id="c", username="u", jwt="jwt-new")
+    tm._http.get_mqtt_credentials = AsyncMock(return_value=MagicMock(data=mqtt_data))  # noqa: SLF001
 
-    await tm.force_refresh(TransportType.CLOUD_MAMMOTION)
+    await tm.refresh_mqtt_credentials()
 
     gw.check_or_refresh_session.assert_not_awaited()
     assert gw.session_by_authcode_response.data.iotToken == "iot-token-initial"  # type: ignore[union-attr]
@@ -418,7 +400,7 @@ async def test_refresh_with_none_session_data_raises_and_keeps_creds() -> None:
 
 @pytest.mark.parametrize(
     "trigger",
-    ["get", "refresh_aliyun_credentials", "force_refresh_aliyun", "force_refresh_all"],
+    ["get", "refresh_aliyun_credentials"],
 )
 async def test_token_invariant_holds_for_every_entrypoint(trigger: str) -> None:
     """Whichever way a refresh is triggered, the gateway and TokenManager end up consistent."""
@@ -429,11 +411,7 @@ async def test_token_invariant_holds_for_every_entrypoint(trigger: str) -> None:
     with backend.patch():
         if trigger == "get":
             await tm.get_aliyun_credentials()
-        elif trigger == "refresh_aliyun_credentials":
-            await tm.refresh_aliyun_credentials()
-        elif trigger == "force_refresh_aliyun":
-            await tm.force_refresh(TransportType.CLOUD_ALIYUN)
         else:
-            await tm.force_refresh(None)
+            await tm.refresh_aliyun_credentials()
 
     _assert_consistent(tm, gw, expected=backend.latest)
