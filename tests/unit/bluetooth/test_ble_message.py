@@ -19,6 +19,14 @@ CUSTOM_DATA_TYPE = (19 << 2) | 1  # getTypeValue(1, 19) — pkgType=data, subTyp
 HEADER_LEN = 4
 
 
+def _inbound_frame(payload: bytes, sequence: int, *, fragmented: bool = False, checksum: bool = False) -> bytes:
+    """Build a raw inbound BluFi frame for parser recovery tests."""
+    frame_control = FrameCtrlData.getFrameCTRLValue(False, checksum, 1, False, fragmented)
+    data = len(payload).to_bytes(2, "little") + payload if fragmented else payload
+    frame = bytes([CUSTOM_DATA_TYPE, frame_control, sequence, len(data)]) + data
+    return frame + b"\x00\x00" if checksum else frame
+
+
 def _make_sender() -> tuple[BleMessage, list[bytes]]:
     """Build a BleMessage whose GATT writes are captured instead of sent."""
     client = MagicMock()
@@ -124,3 +132,36 @@ async def test_256_byte_payload_splits_into_two_frames() -> None:
     assert not FrameCtrlData(last[1]).hasFrag()
     assert last[3] == 256 - FRAG_CONTENT_LEN
     assert await _reassemble(frames) == payload
+
+
+async def test_sequence_gap_discards_partial_buffer_before_next_complete_frame() -> None:
+    """A lost fragment must not prefix stale bytes to the next report."""
+    receiver = BleMessage(MagicMock())
+
+    assert receiver.parseNotification(_inbound_frame(b"stale", 0, fragmented=True)) == 1
+    assert receiver.parseNotification(_inbound_frame(b"fresh", 2)) == 0
+
+    assert await receiver.parseBlufiNotifyData(return_bytes=True) == b"fresh"
+
+
+async def test_checksum_failure_discards_partial_buffer_and_recovers() -> None:
+    """A corrupt fragment must abandon the entire accumulated message."""
+    receiver = BleMessage(MagicMock())
+
+    assert receiver.parseNotification(_inbound_frame(b"stale", 0, fragmented=True)) == 1
+    assert receiver.parseNotification(_inbound_frame(b"corrupt", 1, checksum=True)) == -4
+    assert receiver.parseNotification(_inbound_frame(b"fresh", 2)) == 0
+
+    assert await receiver.parseBlufiNotifyData(return_bytes=True) == b"fresh"
+
+
+async def test_parse_exception_discards_partial_buffer_and_recovers() -> None:
+    """An exception while appending data must not poison the next frame."""
+    receiver = BleMessage(MagicMock())
+
+    assert receiver.parseNotification(_inbound_frame(b"stale", 0, fragmented=True)) == 1
+    receiver.notification.addData = MagicMock(side_effect=RuntimeError("append failed"))
+    assert receiver.parseNotification(_inbound_frame(b"corrupt", 1)) == -100
+    assert receiver.parseNotification(_inbound_frame(b"fresh", 2)) == 0
+
+    assert await receiver.parseBlufiNotifyData(return_bytes=True) == b"fresh"

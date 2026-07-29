@@ -330,12 +330,10 @@ class BleMessage:
         try:
             jSONObject["cmd"] = cmd
             jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
-            jSONObject2: dict[str, int] = {}
-            for key, value in hash_map.items():
-                jSONObject2[key] = value
+            jSONObject2 = dict(hash_map)
             jSONObject["params"] = jSONObject2
             return json.dumps(jSONObject)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - command serialization must fail closed
             _LOGGER.debug("Failed to build JSON command string: %s", e)
             return ""
 
@@ -378,6 +376,10 @@ class BleMessage:
             )
             # Set the value for mReadSequence manually
             self.mReadSequence.set(sequence)
+            # A missing packet makes any accumulated fragments incomplete.
+            # Reset before accepting this packet so the next completed message
+            # cannot contain bytes retained from the abandoned one.
+            self.clear_notification()
 
         # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
         pkt_type = int(response[0])  # toInt
@@ -414,14 +416,16 @@ class BleMessage:
                         f"expect checksum: {respChecksum1}, {respChecksum2}\n"
                         f"received checksum: {calcChecksum1}, {calcChecksum2}"
                     )
+                    self.clear_notification()
                     return -4
 
             data_offset = 2 if frameCtrlData.hasFrag() else 0
 
             self.notification.addData(dataBytes, data_offset)
             return 1 if frameCtrlData.hasFrag() else 0
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - malformed frames are rejected and reset
             _LOGGER.debug(e)
+            self.clear_notification()
             return -100
 
     async def parseBlufiNotifyData(self, return_bytes: bool = False) -> bytes | None:
@@ -484,7 +488,7 @@ class BleMessage:
             jSONObject["cmd"] = cmd
             jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
             return json.dumps(jSONObject)
-        except Exception:
+        except Exception:  # noqa: BLE001 - legacy JSON command builder fails closed
             return ""
 
     def current_milli_time(self) -> int:
@@ -497,16 +501,16 @@ class BleMessage:
     def _getSubType(self, typeValue: int) -> int:
         return (typeValue & 252) >> 2
 
-    def getTypeValue(self, type: int, subtype: int) -> int:
+    def getTypeValue(self, package_type: int, subtype: int) -> int:
         """Encode a BluFi packet type byte from the package type and subtype values."""
-        return (subtype << 2) | type
+        return (subtype << 2) | package_type
 
     def receiveAck(self, expectAck: int) -> bool:
         """Block until an ACK is received and return True if it matches the expected sequence number."""
         try:
             ack = self.mAck.get()
             return ack == expectAck
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - ACK queue failures mean no acknowledgement
             _LOGGER.debug(err)
             return False
 
@@ -535,7 +539,7 @@ class BleMessage:
             await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - any write failure requires connection reset
             _LOGGER.debug(err)
             # we might be constantly connected and in a bad state
             self.mSendSequence = AtomicInteger(-1)
@@ -605,7 +609,7 @@ class BleMessage:
 
     def getPostBytes(
         self,
-        type: int,
+        packet_type: int,
         encrypt: bool,
         checksum: bool,
         require_ack: bool,
@@ -617,7 +621,7 @@ class BleMessage:
         byteOS = BytesIO()
         dataLength = 0 if data is None else len(data)
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
-        byteOS.write(type.to_bytes(1, sys.byteorder))
+        byteOS.write(packet_type.to_bytes(1, sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
         byteOS.write(sequence.to_bytes(1, sys.byteorder))
         byteOS.write(dataLength.to_bytes(1, sys.byteorder))
