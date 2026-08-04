@@ -830,6 +830,41 @@ def test_mammotion_coordinate_zero_is_left_unset() -> None:
     assert updated.location.device.longitude == 34.0
 
 
+def test_mammotion_partial_push_does_not_clobber_status() -> None:
+    """A partial flat-property push (omitted deviceState/battery/knifeHeight -> 0)
+    must NOT overwrite the good values already held from the full protobuf report.
+
+    Post-2025 "Mammotion" devices interleave the flat-property push with the
+    protobuf report; without this guard the pushes that omit these fields arrive
+    as 0 and blank out sys_status / battery / blade height every other update.
+    """
+    from pymammotion.data.mqtt.mammotion_properties import DeviceProperties
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
+
+    reducer = MowerStateReducer()
+    device = _make_device()
+    device.report_data.dev.sys_status = 13   # MODE_WORKING
+    device.report_data.dev.battery_val = 82
+    device.report_data.work.knife_height = 50
+
+    # Empty push: every value defaults to 0 -> must be treated as "absent".
+    empty = MammotionPropertiesMessage(id="1", version="1.0", sys={}, params=DeviceProperties())
+    updated = reducer.apply_mammotion_properties(device, empty)
+    assert updated.report_data.dev.sys_status == 13
+    assert updated.report_data.dev.battery_val == 82
+    assert updated.report_data.work.knife_height == 50
+
+    # Real push: non-zero values still update.
+    real = MammotionPropertiesMessage(
+        id="2", version="1.0", sys={},
+        params=DeviceProperties(device_state=14, battery_percentage=79, knife_height=60),
+    )
+    updated = reducer.apply_mammotion_properties(device, real)
+    assert updated.report_data.dev.sys_status == 14
+    assert updated.report_data.dev.battery_val == 79
+    assert updated.report_data.work.knife_height == 60
+
+
 # ===========================================================================
 # PoolStateReducer — fw info, net envelope, devStatus extras, error clamp.
 # ===========================================================================

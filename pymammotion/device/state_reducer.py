@@ -778,9 +778,18 @@ class MowerStateReducer(StateReducer):
         device.report_data = copy.deepcopy(current.report_data)
         p = properties.params
 
-        device.report_data.dev.battery_val = p.battery_percentage
-        device.report_data.dev.sys_status = p.device_state
-        device.report_data.work.knife_height = p.knife_height
+        # Guard against partial property pushes: a flat-property message that omits
+        # these fields delivers them as 0, which would otherwise clobber the good
+        # values from the full protobuf report. Mirrors the guarding already used
+        # for every other field below (and for coordinates). sys_status 0 ==
+        # MODE_NOT_ACTIVE is never a real running state; a genuine power-off is
+        # MODE_POWER_OFF, so treating 0 as "absent" is safe.
+        if p.battery_percentage:
+            device.report_data.dev.battery_val = p.battery_percentage
+        if p.device_state:
+            device.report_data.dev.sys_status = p.device_state
+        if p.knife_height:
+            device.report_data.work.knife_height = p.knife_height
         if p.device_version:
             device.device_firmwares.device_version = p.device_version
         if p.lora_general_config:
