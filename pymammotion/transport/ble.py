@@ -225,8 +225,9 @@ class BLETransport(Transport):
         bluetooth integration to push BLEDevices instead.
 
         Raises:
-            BLEUnavailableError: in cooldown, scan failure, or
-                ``establish_connection`` raised ``BleakError``.
+            BLEUnavailableError: in cooldown, scan failure, or when
+                ``establish_connection``, ``start_notify`` or the initial sync
+                raised ``BleakError``.
             NoBLEAddressKnownError: no BLEDevice cached and self-managed scan
                 disabled (or address is missing for the scan).
 
@@ -328,7 +329,24 @@ class BLETransport(Transport):
 
             # One-shot sync on connect — subsequent periodic syncs are driven by
             # DeviceHandle._keep_alive_loop (20 s).
-            await self._ble_sync()
+            try:
+                await self._ble_sync()
+            except (BleakError, TimeoutError, OSError) as exc:
+                # The link came up but the very first write failed, so the transport
+                # is not actually usable.  Mirror the start_notify path: tear the
+                # link down, count the failure (this drives the cooldown) and raise a
+                # TransportError.  Without this the raw BleakError escapes and breaks
+                # this method's documented contract, so callers that catch only
+                # TransportError abort instead of falling back to MQTT.
+                with contextlib.suppress(Exception):
+                    await self._client.disconnect()
+                self._client = None
+                self._message = None
+                await self._notify_availability(TransportAvailability.DISCONNECTED)
+                self._record_connect_failure(exc if isinstance(exc, BleakError) else None)
+                raise BLEUnavailableError(
+                    f"BLE sync after connect failed for {self._config.device_id!r}: {exc}"
+                ) from exc
 
     def _record_connect_failure(self, exc: BleakError | None = None) -> None:
         """Increment the failure counter; clear device and start cooldown at threshold.
