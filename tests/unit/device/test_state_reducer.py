@@ -619,9 +619,10 @@ def test_partial_property_post_model_fields_only() -> None:
     assert p.int_mod == "SPINO E1"
     assert p.ext_mod == "SPINO E1"
 
-    # Absent fields default rather than raising; absent nested objects are None.
-    assert p.device_state == 0
-    assert p.battery_percentage == 0
+    # Absent fields decode as None (numeric) / "" (string) rather than raising;
+    # None lets consumers distinguish "not reported" from a genuine 0.
+    assert p.device_state is None
+    assert p.battery_percentage is None
     assert p.device_version == ""
     assert p.network_info is None
     assert p.coordinate is None
@@ -641,7 +642,7 @@ def test_partial_property_post_firmware_only() -> None:
     assert [fw.c for fw in p.device_version_info.fw_info] == ["63-PAWG4", "65-PACG4"]
 
     # Everything else defaults / is None.
-    assert p.battery_percentage == 0
+    assert p.battery_percentage is None
     assert p.network_info is None
     assert p.coordinate is None
 
@@ -649,7 +650,7 @@ def test_partial_property_post_firmware_only() -> None:
 def test_device_properties_accepts_empty_params() -> None:
     """A property/post with no params at all still decodes (every field optional)."""
     p = DeviceProperties.from_dict({})
-    assert p.device_state == 0
+    assert p.device_state is None
     assert p.network_info is None
 
 
@@ -830,13 +831,15 @@ def test_mammotion_coordinate_zero_is_left_unset() -> None:
     assert updated.location.device.longitude == 34.0
 
 
-def test_mammotion_partial_push_does_not_clobber_status() -> None:
-    """A partial flat-property push (omitted deviceState/battery/knifeHeight -> 0)
-    must NOT overwrite the good values already held from the full protobuf report.
+def test_mammotion_partial_push_uses_presence_not_truthiness() -> None:
+    """A partial flat-property push must key on field PRESENCE (None == absent),
+    not truthiness — an omitted field is left untouched, but a genuine 0 is applied.
 
     Post-2025 "Mammotion" devices interleave the flat-property push with the
-    protobuf report; without this guard the pushes that omit these fields arrive
-    as 0 and blank out sys_status / battery / blade height every other update.
+    protobuf report; without this an omitted field arrives as 0 and blanks out
+    sys_status / battery / blade height every other update. Using truthiness would
+    fix that but wrongly drop a real 0 (e.g. 0% battery), so the fields are Optional
+    and guarded with ``is not None``.
     """
     from pymammotion.data.mqtt.mammotion_properties import DeviceProperties
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
@@ -847,16 +850,24 @@ def test_mammotion_partial_push_does_not_clobber_status() -> None:
     device.report_data.dev.battery_val = 82
     device.report_data.work.knife_height = 50
 
-    # Empty push: every value defaults to 0 -> must be treated as "absent".
+    # Absent fields (None) must be left untouched.
     empty = MammotionPropertiesMessage(id="1", version="1.0", sys={}, params=DeviceProperties())
     updated = reducer.apply_mammotion_properties(device, empty)
     assert updated.report_data.dev.sys_status == 13
     assert updated.report_data.dev.battery_val == 82
     assert updated.report_data.work.knife_height == 50
 
-    # Real push: non-zero values still update.
+    # A genuine 0% battery IS present and must be applied (not treated as absent).
+    zero = MammotionPropertiesMessage(
+        id="2", version="1.0", sys={}, params=DeviceProperties(battery_percentage=0)
+    )
+    updated = reducer.apply_mammotion_properties(device, zero)
+    assert updated.report_data.dev.battery_val == 0
+    assert updated.report_data.dev.sys_status == 13  # still untouched (absent)
+
+    # Non-zero values still update.
     real = MammotionPropertiesMessage(
-        id="2", version="1.0", sys={},
+        id="3", version="1.0", sys={},
         params=DeviceProperties(device_state=14, battery_percentage=79, knife_height=60),
     )
     updated = reducer.apply_mammotion_properties(device, real)
