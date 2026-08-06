@@ -778,12 +778,6 @@ class MowerStateReducer(StateReducer):
         device.report_data = copy.deepcopy(current.report_data)
         p = properties.params
 
-        # Guard against partial property pushes: a device posts as few as one or
-        # two fields at a time, and an omitted field must NOT clobber the good
-        # value already applied from the full protobuf report. These fields are
-        # now Optional (None == absent), so we key on PRESENCE rather than
-        # truthiness — a genuine 0 (0% battery, deviceState 0 == MODE_NOT_ACTIVE)
-        # is still applied.
         if p.battery_percentage is not None:
             device.report_data.dev.battery_val = p.battery_percentage
         if p.device_state is not None:
