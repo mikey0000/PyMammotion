@@ -778,9 +778,12 @@ class MowerStateReducer(StateReducer):
         device.report_data = copy.deepcopy(current.report_data)
         p = properties.params
 
-        device.report_data.dev.battery_val = p.battery_percentage
-        device.report_data.dev.sys_status = p.device_state
-        device.report_data.work.knife_height = p.knife_height
+        if p.battery_percentage is not None:
+            device.report_data.dev.battery_val = p.battery_percentage
+        if p.device_state is not None:
+            device.report_data.dev.sys_status = p.device_state
+        if p.knife_height is not None:
+            device.report_data.work.knife_height = p.knife_height
         if p.device_version:
             device.device_firmwares.device_version = p.device_version
         if p.lora_general_config:
