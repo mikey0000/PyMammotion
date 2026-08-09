@@ -260,10 +260,13 @@ class DeviceProperties(DataClassORJSONMixin):
     individual field may be absent from any given message.
     """
 
-    device_state: Annotated[int, Alias("deviceState")] = 0
-    battery_percentage: Annotated[int, Alias("batteryPercentage")] = 0
+    # None (not 0) when the field is absent from this partial post, so consumers
+    # can distinguish "not reported" from a genuine value of 0 (e.g. 0% battery,
+    # or deviceState 0 == MODE_NOT_ACTIVE). Mirrors the nested-object fields below.
+    device_state: Annotated[int | None, Alias("deviceState")] = None
+    battery_percentage: Annotated[int | None, Alias("batteryPercentage")] = None
     device_version: Annotated[str, Alias("deviceVersion")] = ""
-    knife_height: Annotated[int, Alias("knifeHeight")] = 0
+    knife_height: Annotated[int | None, Alias("knifeHeight")] = None
     lora_general_config: Annotated[str, Alias("loraGeneralConfig")] = ""
     ext_mod: Annotated[str, Alias("extMod")] = ""
     int_mod: Annotated[str, Alias("intMod")] = ""
