@@ -53,6 +53,7 @@ from mashumaro import MissingField
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.exceptions import CloudSetupError
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
@@ -128,6 +129,8 @@ _ONE_SHOT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_CUTTER_INFO,
     RptInfoType.RIT_RTK,
 ]
+
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -139,6 +142,36 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.status import ThingStatusMessage
 
 _logger = logging.getLogger(__name__)
+
+
+def _cached_aliyun_device_data_is_empty(cached_data: dict[str, Any]) -> bool:
+    """Return True when cached Aliyun device_data explicitly contains no devices."""
+    device_data = cached_data.get("device_data")
+    if device_data is None:
+        return False
+
+    data = device_data.get("data") if isinstance(device_data, dict) else getattr(device_data, "data", None)
+    devices = data.get("data") if isinstance(data, dict) else getattr(data, "data", None)
+    if devices is None:
+        return False
+    return len(devices) == 0
+
+
+def _cached_mammotion_records_include_shared(cached_data: dict[str, Any]) -> bool:
+    """Return True when cached Mammotion records include shared devices."""
+    records_raw = cached_data.get("mammotion_device_records")
+    if records_raw is None:
+        return False
+
+    try:
+        records = (
+            DeviceRecords.from_dict(records_raw).records
+            if isinstance(records_raw, dict)
+            else getattr(records_raw, "records", [])
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    return any(getattr(record, "owned", 1) == 0 and getattr(record, "iot_id", "") for record in records)
 
 
 def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash: int) -> bool:
@@ -1032,8 +1065,9 @@ class MammotionClient:
                 await mammotion_http.confirm_share(batch_id, record_ids)
 
         device_page_resp = await mammotion_http.get_user_device_page()
-        aliyun_devices = device_list_resp.data
+        owned_devices = device_list_owned_resp.data or []
         mammotion_records = (device_page_resp.data.records if device_page_resp.data else []) or []
+        shared_records = [record for record in mammotion_records if record.owned == 0 and record.iot_id]
 
         # Build an authoritative device_name→iot_id map from /device-server/v1/device/list.
         # This endpoint returns the canonical Mammotion iot_id for every owned device and
@@ -1050,45 +1084,107 @@ class MammotionClient:
             mammotion_http=mammotion_http,
         )
         acct_session.user_account = self._extract_user_account(mammotion_http)
+        aliyun_known_ids: set[str] = set()
 
-        if aliyun_devices:
+        if owned_devices or shared_records:
             cloud_client = CloudIOTGateway(mammotion_http)
-            await self._connect_iot(cloud_client)
-            shared_notice = await cloud_client.get_shared_notice_list()
-            if shared_notice.data and shared_notice.data.data:
-                pending = [d.record_id for d in shared_notice.data.data if d.status == -1]
-                if pending:
-                    await cloud_client.confirm_share(pending)
-
-            if cloud_client.aep_response is None or cloud_client.region_response is None:
-                msg = "Aliyun setup incomplete — aep_response or region_response missing"
-                raise RuntimeError(msg)
-            if cloud_client.session_by_authcode_response.data is None:  # type: ignore
-                msg = "Aliyun setup incomplete — session_by_authcode_response.data missing"
-                raise RuntimeError(msg)
-
-            acct_session.cloud_client = cloud_client
-            acct_session.token_manager = TokenManager(account, mammotion_http, cloud_client)
-            acct_session.token_manager.on_credentials_updated = self._on_credentials_updated
-            al_transport = self._setup_aliyun_transport(cloud_client, acct_session)
-            acct_session.aliyun_transport = al_transport
-            ua = acct_session.user_account
-            for device in cloud_client.devices_by_account_response.data.data:  # type: ignore
-                if device.device_name:
-                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                    await self._register_aliyun_device(
-                        device.device_name,
-                        iot_id,
-                        al_transport,
-                        ua,
-                        device.product_key,
-                        token_manager=acct_session.token_manager,
+            try:
+                await self._connect_iot(cloud_client, list_devices_by_account=bool(owned_devices))
+            except CloudSetupError:
+                if owned_devices:
+                    raise
+                _logger.debug("Aliyun setup failed for shared-only account %s", account, exc_info=True)
+            else:
+                try:
+                    shared_notice = await cloud_client.get_shared_notice_list()
+                except CloudSetupError:
+                    if owned_devices:
+                        raise
+                    _logger.debug(
+                        "Aliyun shared-notice lookup failed for shared-only account %s",
+                        account,
+                        exc_info=True,
                     )
-                    acct_session.device_ids.add(device.device_name)
-            await al_transport.connect()
+                else:
+                    if shared_notice.data and shared_notice.data.data:
+                        pending = [d.record_id for d in shared_notice.data.data if d.status == -1]
+                        if pending:
+                            await cloud_client.confirm_share(pending)
+
+                if cloud_client.aep_response is None or cloud_client.region_response is None:
+                    msg = "Aliyun setup incomplete — aep_response or region_response missing"
+                    raise RuntimeError(msg)
+                if cloud_client.session_by_authcode_response.data is None:  # type: ignore
+                    msg = "Aliyun setup incomplete — session_by_authcode_response.data missing"
+                    raise RuntimeError(msg)
+
+                acct_session.cloud_client = cloud_client
+                acct_session.token_manager = TokenManager(account, mammotion_http, cloud_client)
+                acct_session.token_manager.on_credentials_updated = self._on_credentials_updated
+                al_transport = self._setup_aliyun_transport(cloud_client, acct_session)
+                acct_session.aliyun_transport = al_transport
+                ua = acct_session.user_account
+                known_ids: set[str] = set()
+                aliyun_account_devices = []
+                if (
+                    cloud_client.devices_by_account_response is not None
+                    and cloud_client.devices_by_account_response.data
+                ):
+                    aliyun_account_devices = list(cloud_client.devices_by_account_response.data.data)  # type: ignore
+
+                aliyun_devices = list(aliyun_account_devices)
+                discovered_names = {device.device_name for device in aliyun_devices if device.device_name}
+                for record in shared_records:
+                    if record.device_name in discovered_names:
+                        continue
+                    try:
+                        shared_device_resp = await cloud_client.list_binding_by_dev(record.iot_id)
+                    except CloudSetupError:
+                        _logger.debug(
+                            "Shared device %s (iot_id=%s) is not available through Aliyun binding",
+                            record.device_name,
+                            record.iot_id,
+                            exc_info=True,
+                        )
+                        continue
+                    if shared_device_resp.data:
+                        for device in shared_device_resp.data.data:
+                            if device.device_name and device.device_name not in discovered_names:
+                                aliyun_devices.append(device)
+                                discovered_names.add(device.device_name)
+
+                for device in aliyun_devices:
+                    if device.device_name:
+                        iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                        await self._register_aliyun_device(
+                            device.device_name,
+                            iot_id,
+                            al_transport,
+                            ua,
+                            device.product_key,
+                            token_manager=acct_session.token_manager,
+                        )
+                        known_ids.add(device.device_name)
+
+                if aliyun_devices:
+                    cloud_client.cache_devices_by_account(aliyun_devices)
+
+                if known_ids:
+                    acct_session.device_ids.update(known_ids)
+                    aliyun_known_ids.update(known_ids)
+                    await al_transport.connect()
+                else:
+                    _logger.info("No Aliyun devices found for account %s - skipping Aliyun MQTT connection", account)
+                    acct_session.aliyun_transport = None
 
         if mammotion_records:
-            await self._bootstrap_mammotion_mqtt(account, mammotion_http, acct_session, owned_iot_id_map)
+            await self._bootstrap_mammotion_mqtt(
+                account,
+                mammotion_http,
+                acct_session,
+                owned_iot_id_map,
+                skip_ids=aliyun_known_ids,
+            )
 
         await self._account_registry.register(acct_session)
         self._start_token_refresh(acct_session)
@@ -1160,9 +1256,21 @@ class MammotionClient:
         else:
             acct_session.password = password
 
-        if "aep_data" in cached_data:
+        if "aep_data" in cached_data and not _cached_aliyun_device_data_is_empty(cached_data):
             await self._restore_aliyun(
                 account, password, cached_data, acct_session, check_for_new_devices=check_for_new_devices
+            )
+        elif "aep_data" in cached_data:
+            if _cached_mammotion_records_include_shared(cached_data):
+                _logger.info(
+                    "Cached Aliyun device_data is empty for account %s but shared records exist; doing fresh login",
+                    account,
+                )
+                await self.login_and_initiate_cloud(account, password, session=session)
+                return
+            _logger.info(
+                "Skipping cached Aliyun restore for account %s because cached device_data is empty",
+                account,
             )
 
         if "mammotion_mqtt" in cached_data and "mammotion_device_records" in cached_data:
@@ -1771,18 +1879,20 @@ class MammotionClient:
                     exc_info=True,
                 )
 
+        if discovery_failed:
+            # The device-list call errored (e.g. 401 iotToken rejected), so cached
+            # device_data may be stale.  Do not connect Aliyun MQTT using an
+            # unconfirmed list; Mammotion MQTT restore/bootstrap can still proceed.
+            _logger.warning(
+                "Aliyun device discovery failed for account %s — device list unconfirmed; "
+                "skipping Aliyun MQTT connection this cycle (will retry next refresh)",
+                account,
+            )
+            acct_session.aliyun_transport = None
+            return
+
         if not known_ids:
-            if discovery_failed:
-                # The device-list call errored (e.g. 401 iotToken rejected) — we
-                # could NOT confirm the device list, so "no devices" is unproven.
-                # Skip the MQTT connection this cycle; the next refresh retries.
-                _logger.warning(
-                    "Aliyun device discovery failed for account %s — device list unconfirmed; "
-                    "skipping Aliyun MQTT connection this cycle (will retry next refresh)",
-                    account,
-                )
-            else:
-                _logger.info("No Aliyun devices found for account %s — skipping Aliyun MQTT connection", account)
+            _logger.info("No Aliyun devices found for account %s — skipping Aliyun MQTT connection", account)
             acct_session.aliyun_transport = None
             return
 
@@ -1889,7 +1999,7 @@ class MammotionClient:
 
             ua = acct_session.user_account
             for record in cached_records.records:
-                if record.device_name:
+                if record.device_name and record.device_name not in acct_session.device_ids:
                     iot_id_override = owned_iot_id_map.get(record.device_name, "")
                     await self._register_mammotion_device(
                         record, transport, ua, iot_id_override, token_manager=acct_session.token_manager
@@ -1967,7 +2077,7 @@ class MammotionClient:
                 acct_session.device_ids.add(record.device_name)
 
     @staticmethod
-    async def _connect_iot(cloud_client: CloudIOTGateway) -> None:
+    async def _connect_iot(cloud_client: CloudIOTGateway, *, list_devices_by_account: bool = True) -> None:
         """Run the Aliyun IoT gateway setup sequence (region, AEP, session, devices)."""
         mammotion_http = cloud_client.mammotion_http
         login_info = mammotion_http.login_info
@@ -1981,7 +2091,8 @@ class MammotionClient:
         await cloud_client.login_by_oauth(country_code)
         await cloud_client.aep_handle()
         await cloud_client.session_by_auth_code()
-        await cloud_client.list_binding_by_account()
+        if list_devices_by_account:
+            await cloud_client.list_binding_by_account()
 
     def _handle_for_iot_id(self, iot_id: str, caller: str) -> DeviceHandle | None:
         """Look up a DeviceHandle by iot_id, logging if not found."""
@@ -2201,6 +2312,11 @@ class MammotionClient:
         await handle.enqueue_saga(saga, on_complete=_on_complete)
 
     async def check_and_get_mow_path(self, device_name: str) -> None:
+        """Check if mow path is valid and get mow path.
+
+        :param device_name:
+        :return:
+        """
         if handle := self._device_registry.get_by_name(device_name):
             device = cast(MowerDevice, handle.snapshot.raw)
             work = device.report_data.work

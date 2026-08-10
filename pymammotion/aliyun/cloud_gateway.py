@@ -37,7 +37,12 @@ from pymammotion.aliyun.exceptions import (
 )
 from pymammotion.aliyun.model.aep_response import AepResponse
 from pymammotion.aliyun.model.connect_response import ConnectResponse
-from pymammotion.aliyun.model.dev_by_account_response import ListingDevAccountResponse, ShareNoticeListResponse
+from pymammotion.aliyun.model.dev_by_account_response import (
+    Data,
+    Device,
+    ListingDevAccountResponse,
+    ShareNoticeListResponse,
+)
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
@@ -1090,6 +1095,14 @@ class CloudIOTGateway:
     def devices_by_account_response(self) -> ListingDevAccountResponse | None:
         """Return the cached device listing response for the current account."""
         return self._devices_by_account_response
+
+    def cache_devices_by_account(self, devices: list[Device]) -> None:
+        """Replace the cached device listing with an already-discovered device list."""
+        self._devices_by_account_response = ListingDevAccountResponse(
+            code=200,
+            data=Data(total=len(devices), data=devices, pageNo=1, pageSize=max(len(devices), 1)),
+            id=(self._devices_by_account_response.id if self._devices_by_account_response is not None else None),
+        )
 
     def set_http(self, mammotion_http: MammotionHTTP) -> None:
         """Replace the underlying MammotionHTTP instance used for authentication."""
