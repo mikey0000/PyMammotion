@@ -109,6 +109,42 @@ async def test_connect_succeeds_with_ble_device(config: BLETransportConfig) -> N
 
 
 # ---------------------------------------------------------------------------
+# connect() converts a failing initial sync into BLEUnavailableError
+# ---------------------------------------------------------------------------
+
+
+async def test_connect_wraps_bleak_error_from_initial_sync(config: BLETransportConfig) -> None:
+    """A BleakError from the post-connect sync must surface as BLEUnavailableError.
+
+    connect() documents that it only raises TransportError subclasses.  The final
+    _ble_sync() used to be unguarded, so a GATT write failure escaped as a raw
+    BleakError and callers catching TransportError aborted instead of falling back.
+    """
+    from bleak.exc import BleakError
+
+    from pymammotion.transport.base import BLEUnavailableError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+
+    fake_client = _make_fake_client()
+    fake_msg = _make_fake_ble_message()
+    fake_msg.post_custom_data_bytes = AsyncMock(side_effect=BleakError("GATT Error: Unlikely error"))
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=AsyncMock(return_value=fake_client)),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
+    ):
+        with pytest.raises(BLEUnavailableError):
+            await transport.connect()
+
+    # The half-open link must be torn down, not left looking connected.
+    assert transport.is_connected is False
+    assert transport.availability is TransportAvailability.DISCONNECTED
+    fake_client.disconnect.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
 # disconnect() sends final sync, clears client and message
 # ---------------------------------------------------------------------------
 
@@ -367,7 +403,7 @@ def test_is_usable_true_when_rssi_above_threshold(transport: BLETransport) -> No
 
 def test_is_usable_false_when_rssi_below_threshold(transport: BLETransport) -> None:
     """An RSSI weaker than config.min_rssi marks the transport unusable."""
-    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-90)
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-95)
     assert transport.is_usable is False
 
 
@@ -380,9 +416,9 @@ def test_is_usable_true_when_rssi_unknown(transport: BLETransport) -> None:
 
 def test_set_ble_device_without_rssi_keeps_last_known(transport: BLETransport) -> None:
     """A refresh that omits RSSI leaves the previously reported value intact."""
-    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-90)
+    transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"), rssi=-95)
     transport.set_ble_device(_ble_device_with_address("AA:BB:CC:DD:EE:FF"))
-    assert transport._last_rssi == -90  # noqa: SLF001
+    assert transport._last_rssi == -95  # noqa: SLF001
     assert transport.is_usable is False
 
 

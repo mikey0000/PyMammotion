@@ -23,6 +23,23 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 from pymammotion.utility.enum_base import UnknownTolerantIntEnum
 
 
+class MapTrans(IntEnum):
+    """Transfer status carried in ``MapInfo.tag`` for pool map/line packets.
+
+    Both ``app_get_map_cmd`` and ``app_get_line_cmd`` device responses stream
+    points in one or more ``AppDownlinkCmdT`` frames.  ``tag`` indicates
+    whether more frames will follow:
+
+    * ``completed`` (0)  — last (or only) packet; accumulation is done.
+    * ``transmitting`` (1) — more frames coming; append and wait.
+    * ``failed`` (2) — device error; discard accumulated data.
+    """
+
+    completed = 0
+    transmitting = 1
+    failed = 2
+
+
 class SpinoSysStatus(UnknownTolerantIntEnum):
     """Top-level system state reported in ``dev_statue_t.sys_status`` (int32).
 
@@ -78,6 +95,7 @@ class WallMaterial(UnknownTolerantIntEnum):
     GLASS = 0
     CERAMICS = 1
     SAND_STONE = 2
+    VINYL = 3
 
 
 class PoolBottomType(UnknownTolerantIntEnum):
@@ -178,6 +196,10 @@ class PoolState(DataClassORJSONMixin):
     work_mode: SpinoWorkMode = SpinoWorkMode.AUTO
     battery: int = 0
     """Battery percentage (0-100). Mirrors ``dev_statue_t.bat_val``."""
+    wifi_rssi: int = 0
+    ble_rssi: int = 0
+    wifi_connected: bool = False
+    iot_connected: bool = False
 
     # --- Cleaning session timing -------------------------------------------
     # Used by the home-screen "work time" string. The app computes the

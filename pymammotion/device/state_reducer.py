@@ -34,6 +34,7 @@ from pymammotion.data.model.hash_list import (
     SvgMessage,
 )
 from pymammotion.data.model.pool_state import (
+    MapTrans,
     PoolBottomType,
     PoolPlan,
     PoolPoint,
@@ -48,6 +49,7 @@ from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import OTAProgressItems
 from pymammotion.proto import (
     AppDownlinkCmdT,
+    AppDownlinkCmdTypeE,
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
@@ -59,6 +61,7 @@ from pymammotion.proto import (
     DrvKnifeChangeReport,
     DrvSrSpeed,
     DrvUpgradeReport,
+    DrvWifiMsg,
     Getlamprsp,
     GetMnetInfoRsp,
     GetNetworkInfoRsp,
@@ -271,8 +274,12 @@ class MowerStateReducer(StateReducer):
                 # Granular dispatch — most net handlers only touch one field.
                 net_msg_name = betterproto2.which_one_of(message.net, "NetSubType")[0]  # type: ignore
                 match net_msg_name:
-                    case "toapp_wifi_iot_status" | "toapp_networkinfo_rsp":
+                    case "toapp_wifi_iot_status":
                         device.mower_state = copy.deepcopy(current.mower_state)
+                    case "toapp_networkinfo_rsp":
+                        # Writes mower_state fields AND report_data.connect.wifi_rssi.
+                        device.mower_state = copy.deepcopy(current.mower_state)
+                        device.report_data = copy.deepcopy(current.report_data)
                     case "toapp_devinfo_resp":
                         # Writes both mower_state.swversion and device_firmwares.device_version.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -374,9 +381,11 @@ class MowerStateReducer(StateReducer):
                 # would empty find_incomplete_hashes and stop step 4 early, leaving
                 # area geometry unfetched.  The saga handles staleness at its start.
                 if not self._is_saga_active():
-                    bol_hash = device.report_data.locations[0].bol_hash if device.report_data.locations else 0
-                    if bol_hash:
-                        device.map.invalidate_maps(bol_hash)
+                    # None when no report frame has arrived yet — invalidate_maps
+                    # treats that as "unknown" and leaves the manifest alone.  A
+                    # reported 0 is passed through: it means the device has no areas.
+                    locs = device.report_data.locations
+                    device.map.invalidate_maps(locs[0].bol_hash if locs else None)
                 if hash_names.hashnames:
                     device.map.area_name = [
                         AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames
@@ -579,6 +588,12 @@ class MowerStateReducer(StateReducer):
             case "toapp_networkinfo_rsp":
                 get_network_info_resp: GetNetworkInfoRsp = net_msg[1]  # type: ignore
                 device.mower_state.wifi_mac = get_network_info_resp.wifi_mac
+                device.mower_state.wifi_ssid = get_network_info_resp.wifi_ssid
+                device.report_data.connect.wifi_rssi = get_network_info_resp.wifi_rssi
+                device.mower_state.ip = get_network_info_resp.ip
+                device.mower_state.mask = get_network_info_resp.mask
+                device.mower_state.gateway = get_network_info_resp.gateway
+
             case "toapp_upgrade_report":
                 upgrade_report: DrvUpgradeReport = net_msg[1]  # type: ignore
                 device.events.ota_progress.devname = upgrade_report.devname
@@ -763,9 +778,12 @@ class MowerStateReducer(StateReducer):
         device.report_data = copy.deepcopy(current.report_data)
         p = properties.params
 
-        device.report_data.dev.battery_val = p.battery_percentage
-        device.report_data.dev.sys_status = p.device_state
-        device.report_data.work.knife_height = p.knife_height
+        if p.battery_percentage is not None:
+            device.report_data.dev.battery_val = p.battery_percentage
+        if p.device_state is not None:
+            device.report_data.dev.sys_status = p.device_state
+        if p.knife_height is not None:
+            device.report_data.work.knife_height = p.knife_height
         if p.device_version:
             device.device_firmwares.device_version = p.device_version
         if p.lora_general_config:
@@ -888,11 +906,14 @@ class PoolStateReducer(StateReducer):
       speed) and the device's ack responses that carry pool ``map_info`` /
       ``line_info`` geometry rendered by ``SwimmingMapActivity``.
 
-    Other LubaMsg sub-message groups (``nav``, ``driver``, ``base``) are
-    not used by Spino in any path the app reads, so they are intentionally
-    no-ops here. Net / mul / ota will be added once their Spino usage is
-    confirmed against captured traffic — leaving them out is safer than
-    reusing mower dispatch on a device that has no ``mower_state``.
+    - ``sys.toapp_dev_fw_info`` → firmware version + module versions.
+    - ``net.toapp_wifi_iot_status`` / ``net.toapp_WifiMsg`` → connectivity,
+      product key, SSID/IP.  The Wi-Fi password carried by ``toapp_WifiMsg``
+      is never stored.
+
+    Other LubaMsg sub-message groups (``nav``, ``driver``, ``base``, ``mul``,
+    ``ota``) are not used by Spino in any path the app reads, so they are
+    intentionally no-ops here.
     """
 
     def apply(self, current: PoolCleanerDevice, message: LubaMsg) -> PoolCleanerDevice:  # type: ignore
@@ -909,8 +930,12 @@ class PoolStateReducer(StateReducer):
             if message.ctrl is not None and message.ctrl.plan_job_set is not None:
                 self._update_plan_job_set(device, message.ctrl.plan_job_set)
             return device
+        if sub_msg_type == "net":
+            device.pool_state = copy.deepcopy(current.pool_state)
+            self._update_net(device, message)
+            return device
         if sub_msg_type != "sys":
-            # Only the sys + ctrl envelopes carry Spino payloads we currently model.
+            # Only the sys + ctrl + net envelopes carry Spino payloads we currently model.
             return device
 
         sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")  # type: ignore
@@ -928,6 +953,11 @@ class PoolStateReducer(StateReducer):
             case "system_update_buf":
                 device.pool_state = copy.deepcopy(current.pool_state)
                 self._update_system_update_buf(device, sys_msg[1])  # type: ignore
+            case "toapp_dev_fw_info":
+                device.device_firmwares = copy.deepcopy(current.device_firmwares)
+                self._update_fw_info(device, sys_msg[1])  # type: ignore
+            case "todev_data_time":
+                pass  # device RTC broadcast — nothing to model
             case _:
                 _logger.debug(
                     "PoolStateReducer: ignoring unhandled sys sub-message %r for %s",
@@ -948,6 +978,10 @@ class PoolStateReducer(StateReducer):
         device.pool_state.sys_status = SpinoSysStatus(status.sys_status)
         device.pool_state.work_mode = SpinoWorkMode(status.work_mode)
         device.pool_state.battery = status.bat_val
+        device.pool_state.wifi_rssi = status.wifi_rssi
+        device.pool_state.ble_rssi = status.ble_rssi
+        device.pool_state.wifi_connected = bool(status.wifi_connect_status)
+        device.pool_state.iot_connected = bool(status.iot_connect_status)
 
     def _update_toggle(self, device: PoolCleanerDevice, cmd: SysCommCmd) -> None:
         """Apply a ``SysCommCmd`` (``allpowerfullRW``) read/ack to a pool toggle.
@@ -967,7 +1001,18 @@ class PoolStateReducer(StateReducer):
         setattr(device.pool_state, toggle.name, bool(cmd.context))
 
     def _update_app_downlink_cmd(self, device: PoolCleanerDevice, cmd: AppDownlinkCmdT) -> None:
-        """Apply an incoming ``AppDownlinkCmdT`` (settings ack or map data) to *device*."""
+        """Apply an incoming ``AppDownlinkCmdT`` (settings ack or map data) to *device*.
+
+        **Map/line geometry** — the device always populates ``map_info`` (field 6)
+        regardless of whether the command was ``app_get_map_cmd`` (3) or
+        ``app_get_line_cmd`` (4).  The ``cmd`` field is the authoritative
+        discriminant (APK source: ``MACarDataManager``, case 23).
+
+        Multi-packet transfers use ``pack_index`` (1-based) and ``pack_num``
+        alongside ``MapTrans.tag`` (1=transmitting / 0=completed / 2=failed).
+        ``pack_index == 1`` signals the start of a new transfer and resets the
+        accumulation buffer so stale data from a previous failed fetch is discarded.
+        """
         # Settings — only update fields the device actually populated.  WallMaterial
         # / PoolBottomType are UnknownTolerantIntEnum (unknown → UNKNOWN, logged once).
         if cmd.wall_material is not None:
@@ -977,26 +1022,51 @@ class PoolStateReducer(StateReducer):
         if cmd.floor_speed is not None:
             device.pool_state.floor_speed = cmd.floor_speed
 
-        # Pool geometry — boundary outline (tag=0) and cleaning path (tag=1).
-        # MapInfo is sent in packets (pack_index / pack_num); the simplest
-        # correct behaviour is to wait for the final packet and replace the
-        # whole list. Until we see what real traffic looks like, treat each
-        # incoming MapInfo as a complete payload — the proto allows
-        # total_points to indicate the full length per packet.
-        for map_info in (cmd.map_info, cmd.line_info):
-            if map_info is None:
-                continue
-            points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
-            if map_info.tag == 0:
-                device.pool_map.boundary = points
-            elif map_info.tag == 1:
-                device.pool_map.cleaning_path = points
-            else:
-                _logger.debug(
-                    "PoolStateReducer: unknown MapInfo tag=%d for %s",
-                    map_info.tag,
-                    device.name,
-                )
+        # Pool geometry — the device uses map_info (field 6) for BOTH map and line
+        # responses.  line_info (field 7) is never populated in observed traffic.
+        map_info = cmd.map_info
+        if map_info is None or not map_info.points:
+            return
+
+        is_map = cmd.cmd == AppDownlinkCmdTypeE.app_get_map_cmd
+        is_line = cmd.cmd == AppDownlinkCmdTypeE.app_get_line_cmd
+        if not (is_map or is_line):
+            return
+
+        new_points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
+        tag = map_info.tag  # MapTrans raw int: 0=completed, 1=transmitting, 2=failed
+
+        if tag == MapTrans.failed:
+            _logger.warning(
+                "PoolStateReducer: %s map/line fetch failed (MapTrans.failed) for %s",
+                "boundary" if is_map else "route",
+                device.name,
+            )
+            return
+
+        # pack_index==1 means the first (or only) packet of a new transfer.
+        # Reset to avoid accumulating leftover points from a previous fetch.
+        existing = device.pool_map.boundary if is_map else device.pool_map.cleaning_path
+        if map_info.pack_index == 1:
+            accumulated = new_points
+        else:
+            accumulated = list(existing) + new_points
+
+        if is_map:
+            device.pool_map.boundary = accumulated
+        else:
+            device.pool_map.cleaning_path = accumulated
+
+        _logger.debug(
+            "PoolStateReducer: %s %s packet %d/%d (%d pts, total=%d) for %s",
+            "boundary" if is_map else "route",
+            "completed" if tag == MapTrans.completed else "transmitting",
+            map_info.pack_index,
+            map_info.pack_num,
+            len(new_points),
+            map_info.total_points,
+            device.name,
+        )
 
     def _update_system_update_buf(self, device: PoolCleanerDevice, buf: SystemUpdateBufMsg) -> None:
         """Parse a ``systemUpdateBuf`` message and apply it to *device*.
@@ -1024,7 +1094,7 @@ class PoolStateReducer(StateReducer):
                 device.name,
             )
             return
-        device.pool_state.error_count = int(data[2])
+        device.pool_state.error_count = max(0, int(data[2]))
         entries: list[SpinoErrorEntry] = []
         i = 3
         while i + 1 < len(data):
@@ -1034,6 +1104,37 @@ class PoolStateReducer(StateReducer):
                 entries.append(SpinoErrorEntry(code=code, timestamp=stamp))
             i += 2
         device.pool_state.error_log = entries
+
+    def _update_fw_info(self, device: PoolCleanerDevice, fw_info: DeviceFwInfo) -> None:
+        """Apply a ``toapp_dev_fw_info`` response to *device*."""
+        if fw_info.result == 0:
+            return
+        device.device_firmwares.device_version = fw_info.version
+        device.update_device_firmwares(fw_info)
+
+    def _update_net(self, device: PoolCleanerDevice, message: LubaMsg) -> None:
+        """Apply net sub-messages (connectivity info) to *device*."""
+        net_msg = betterproto2.which_one_of(message.net, "NetSubType")  # type: ignore
+        match net_msg[0]:
+            case "toapp_wifi_iot_status":
+                wifi_iot: WifiIotStatusReport = net_msg[1]  # type: ignore
+                device.pool_state.wifi_connected = wifi_iot.wifi_connected
+                device.pool_state.iot_connected = wifi_iot.iot_connected
+                if wifi_iot.productkey:
+                    device.product_key = wifi_iot.productkey
+            case "toapp_WifiMsg":
+                # Never store wifi.password — plaintext Wi-Fi credentials on the wire.
+                wifi: DrvWifiMsg = net_msg[1]  # type: ignore
+                device.wifi_ssid = wifi.msgssid
+                device.ip = wifi.ip
+                device.wifi_enabled = wifi.wifi_enable
+                device.pool_state.wifi_rssi = wifi.rssi
+            case _:
+                _logger.debug(
+                    "PoolStateReducer: ignoring net sub-message %r for %s",
+                    net_msg[0],
+                    device.name,
+                )
 
     def _update_plan_job_set(self, device: PoolCleanerDevice, wire: PlanJobSet) -> None:
         """Upsert a Spino plan into ``device.plans`` from a wire ``PlanJobSet``.
@@ -1252,6 +1353,10 @@ class RTKStateReducer(StateReducer):
         if dev_ver_info := items.deviceVersionInfo:
             try:
                 blob = json.loads(dev_ver_info.value)  # type: ignore
+                # dataclasses.replace() is shallow — copy device_firmwares before the
+                # in-place writes below or the previous snapshot is mutated too (and
+                # the identity-based diff never reports the change).
+                device.device_firmwares = copy.deepcopy(current.device_firmwares)
                 if dev_ver := blob.get("devVer"):
                     device.device_version = str(dev_ver)
                     device.device_firmwares.device_version = str(dev_ver)

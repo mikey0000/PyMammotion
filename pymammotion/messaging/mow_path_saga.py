@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -12,6 +11,7 @@ import betterproto2
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.hash_list import HashList, MowPath
 from pymammotion.messaging.saga import Saga
+from pymammotion.messaging.transfers import ack_stream
 from pymammotion.transport.base import CommandTimeoutError, SagaFailedError
 
 if TYPE_CHECKING:
@@ -45,7 +45,16 @@ class MowPathSaga(Saga):
 
     name = "mow_path_fetch"
     max_attempts = 1
-    step_timeout = 1.0
+    #: Matches the Android app's per-frame watchdog for the same fetch
+    #: (HashDataManager.handlerType_12333, armed at 3000 ms after each
+    #: getRegionalData and cancelled on every received frame).
+    #:
+    #: Must stay comfortably *above* the device's own ~1 s frame-retransmit
+    #: interval.  At 1.0 s this raced it exactly: the device re-sends an unacked
+    #: frame after 1.000 s, so the saga could time out at the very moment the
+    #: retransmit was in flight and abandon a run that was about to succeed —
+    #: and with ``max_attempts = 1`` there is no retry to cover for it.
+    step_timeout = 3.0
 
     def __init__(
         self,
@@ -89,6 +98,18 @@ class MowPathSaga(Saga):
             route_info  # persists across retries to skip step 2 if already fetched
         )
 
+    async def progress(self) -> Any:
+        """Route resolution plus banked cover-path frames.
+
+        Drives the base class's attempt-budget refresh.  Replaces both the manual
+        ``_reset_attempt_counter`` and the ``_budget_reset_granted`` one-shot that
+        guarded it: a value derived from state only changes when the fetch really
+        advances, so it cannot refresh the budget on every run the way a flag set
+        inside ``_run`` did.
+        """
+        frames = sum(len(f) for f in self._get_map().current_mow_path.values())
+        return (self._route_val is not None, frames)
+
     async def _send_ble_sync(self) -> None:
         """Keep the device in its synced/responsive state before a major fetch request.
 
@@ -116,50 +137,36 @@ class MowPathSaga(Saga):
         # Step 1: Request the line hash list (sub_cmd=3), collect all frames,
         # send get_hash_response acks for each.
         # ------------------------------------------------------------------
-        _current_frame = 1
-        _total_frame = 0
         with self._collect_frames(broker, "toapp_gethash_ack", lambda v: v.sub_cmd == 3) as hash_ack_queue:
             _logger.debug("MowPathSaga: requesting line hash list (sub_cmd=3)")
             cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=3)
             await self._send_command(cmd)
 
-            while True:
-                try:
-                    ack_response = await asyncio.wait_for(hash_ack_queue.get(), timeout=self.step_timeout)
-                except TimeoutError:
-                    if _total_frame == 0:
-                        # Device gave no response at all — no active breakpoint lines.
-                        # Treat as empty and fall through to the zone_hashs fallback
-                        # at the sub_cmd=3 check below.
-                        _logger.warning(
-                            "collecting mow path [%s]: no response to line hash list request (sub_cmd=3)"
-                            " — treating as empty and continuing",
-                            self._device_name,
-                        )
-                        break
-                    _logger.warning(
-                        "collecting mow path [%s]: line hash list interrupted at frame %d/%d",
-                        self._device_name,
-                        _current_frame,
-                        _total_frame,
-                    )
-                    raise CommandTimeoutError("toapp_gethash_ack(sub_cmd=3)", 1) from None
-
-                ack = ack_response.nav.toapp_gethash_ack
-                _current_frame = ack.current_frame
-                _total_frame = ack.total_frame
-                _logger.debug("MowPathSaga: line hash frame %d/%d", _current_frame, _total_frame)
-
+            async def _ack(ack: Any) -> None:
                 # Acknowledge every frame, including the last one.
-                ack_cmd = self._command_builder.get_hash_response(
-                    total_frame=ack.total_frame, current_frame=ack.current_frame
+                await self._send_command(
+                    self._command_builder.get_hash_response(
+                        total_frame=ack.total_frame, current_frame=ack.current_frame
+                    )
                 )
-                await self._send_command(ack_cmd)
 
-                if ack.current_frame == ack.total_frame:
-                    # Step 1 fully complete — earned a fresh attempt budget for the rest of the saga.
-                    self._reset_attempt_counter = True
-                    break
+            # allow_empty: no response at all means the device has no active
+            # breakpoint lines — a legitimate empty answer, not a failure.  We then
+            # fall through to the zone_hashs fallback at the sub_cmd=3 check below.
+            # Silence *mid*-stream still raises, since that is a real interruption.
+            line_frames = await ack_stream(
+                hash_ack_queue,
+                field="toapp_gethash_ack(sub_cmd=3)",
+                ack=_ack,
+                timeout=self.step_timeout,
+                allow_empty=True,
+            )
+            if not line_frames:
+                _logger.debug(
+                    "collecting mow path [%s]: no response to line hash list request (sub_cmd=3)"
+                    " — treating as empty and continuing",
+                    self._device_name,
+                )
 
         # ------------------------------------------------------------------
         # Step 2: Get route information (skip if already cached from a prior attempt).
@@ -178,8 +185,9 @@ class MowPathSaga(Saga):
                     expected_field="bidire_reqconver_path",
                     send_timeout=self.step_timeout,
                 )
-                _, self._route_val = betterproto2.which_one_of(response.nav, "SubNavMsg")
-                assert self._route_val is not None
+                route_frame = self.extract_nav_frame(response, "bidire_reqconver_path")
+                assert route_frame is not None  # send_and_wait already matched this field
+                self._route_val = route_frame[1]
                 _logger.debug(
                     "MowPathSaga: route confirmed — sub_cmd=%d  path_hash=%d",
                     self._route_val.sub_cmd,
@@ -269,9 +277,9 @@ class MowPathSaga(Saga):
                 while True:
                     frame_response = await self._next_frame(path_queue, "cover_path_upload")
 
-                    _, path_val = betterproto2.which_one_of(frame_response.nav, "SubNavMsg")
-                    assert path_val is not None
-                    mow_path = MowPath.from_dict(path_val.to_dict(casing=betterproto2.Casing.SNAKE))
+                    path_frame = self.extract_nav_frame(frame_response, "cover_path_upload")
+                    assert path_frame is not None  # the collector already filtered on this field
+                    mow_path = MowPath.from_dict(path_frame[1].to_dict(casing=betterproto2.Casing.SNAKE))
 
                     if mow_path.transaction_id not in current_run_tx_ids:
                         _logger.debug(
@@ -294,9 +302,6 @@ class MowPathSaga(Saga):
                     new_missing = _missing_frame_count()
                     if new_missing < prev_missing:
                         no_progress = 0
-                        # Genuine forward progress — refresh the attempt budget so a long
-                        # multi-batch fetch isn't penalised for an earlier interruption.
-                        self._reset_attempt_counter = True
                     else:
                         no_progress += 1
                         if no_progress >= _NO_PROGRESS_LIMIT:

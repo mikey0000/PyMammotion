@@ -11,7 +11,6 @@ Differences from MQTTTransport (Mammotion direct MQTT):
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
 from dataclasses import dataclass
 import hashlib
@@ -27,8 +26,12 @@ import aiomqtt
 from Tea.exceptions import UnretryableException
 
 from pymammotion.aliyun.exceptions import DeviceUnboundException
+from pymammotion.data.mqtt.event import ThingEventMessage
+from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import (
+    MQTT_RECONNECT_MAX_SEC_ALIYUN,
+    MQTT_RECONNECT_MIN_SEC,
     AccountInUseError,
     ReLoginRequiredError,
     SessionExpiredError,
@@ -38,6 +41,7 @@ from pymammotion.transport.base import (
     TransportRateLimitedError,
     TransportType,
 )
+from pymammotion.transport.envelope import unwrap_envelope
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -52,8 +56,9 @@ _MQTT_PORT = 8883
 _MQTT_KEEPALIVE = 60
 _MQTT_MAX_INFLIGHT = 20
 _MQTT_MAX_QUEUED = 40
-_MQTT_RECONNECT_MIN_SEC = 1
-_MQTT_RECONNECT_MAX_SEC = 60
+#: Consecutive credential-refresh reconnect cycles allowed (without a single received
+#: message in between) before an rc-4/5 / bind_reply-2043 rejection is treated as fatal.
+_MAX_AUTH_REFRESH_CYCLES = 3
 
 #: Messages with ``params.time`` older than this threshold (in milliseconds)
 #: relative to the current wall clock are considered stale and dropped.  Aliyun
@@ -154,7 +159,8 @@ class AliyunMQTTTransport(Transport):
     the timestamp-embedded signature remains fresh.
     """
 
-    on_message: Callable[[bytes], Awaitable[None]] | None = None
+    # NOTE: on_message is deliberately NOT redeclared here — a class attribute would
+    # shadow the base Transport.on_message property and defeat its receive-timestamping.
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
     on_fatal_auth_error: Callable[[ReLoginRequiredError], Awaitable[None]] | None = None
 
@@ -366,7 +372,12 @@ class AliyunMQTTTransport(Transport):
 
     async def _run(self) -> None:
         """Run the main Aliyun MQTT connection loop, reconnecting with exponential backoff."""
-        backoff = _MQTT_RECONNECT_MIN_SEC
+        backoff = MQTT_RECONNECT_MIN_SEC
+        #: Consecutive credential-refresh reconnect cycles without receiving a single
+        #: message.  Bounds the rc-4/5 and bind_reply-2043 refresh loops: a refresh that
+        #: "succeeds" but is rejected by the broker again must not retry forever with
+        #: zero backoff — that hammers Aliyun (historically: account blocks).
+        auth_refresh_cycles = 0
 
         _tls_context = await self.get_ssl_context()
 
@@ -388,7 +399,7 @@ class AliyunMQTTTransport(Transport):
                     max_queued_incoming_messages=_MQTT_MAX_QUEUED,
                 ) as client:
                     self._client = client
-                    backoff = _MQTT_RECONNECT_MIN_SEC  # reset on successful connect
+                    backoff = MQTT_RECONNECT_MIN_SEC  # reset on successful connect
                     await self._notify_availability(TransportAvailability.CONNECTED)
 
                     for topic in self._effective_subscribe_topics():
@@ -412,6 +423,8 @@ class AliyunMQTTTransport(Transport):
                     async for message in client.messages:
                         if self._stop_event.is_set():
                             break
+                        self._mark_received()
+                        auth_refresh_cycles = 0  # broker accepted us — refresh budget resets
                         topic = str(message.topic)
                         raw = bytes(message.payload)
                         if topic.endswith("/thing/status"):
@@ -444,10 +457,13 @@ class AliyunMQTTTransport(Transport):
                 rc = exc.rc
                 if rc in (4, 5):
                     _logger.error("Aliyun MQTT auth refused (rc=%s): %s — attempting credential refresh", rc, exc)
-                    if self.on_auth_failure is not None:
+                    if self.on_auth_failure is not None and auth_refresh_cycles < _MAX_AUTH_REFRESH_CYCLES:
                         try:
                             if await self.on_auth_failure():
+                                auth_refresh_cycles += 1
                                 _logger.info("Aliyun credentials refreshed after auth failure — retrying")
+                                await asyncio.sleep(backoff)
+                                backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_ALIYUN)
                                 continue
                         except ReLoginRequiredError as relogin_exc:
                             await self._handle_fatal_auth_error(relogin_exc)
@@ -464,10 +480,13 @@ class AliyunMQTTTransport(Transport):
                 raise
             except SessionExpiredError as exc:
                 _logger.warning("Aliyun bind token expired — attempting credential refresh: %s", exc)
-                if self.on_auth_failure is not None:
+                if self.on_auth_failure is not None and auth_refresh_cycles < _MAX_AUTH_REFRESH_CYCLES:
                     try:
                         if await self.on_auth_failure():
+                            auth_refresh_cycles += 1
                             _logger.info("Aliyun credentials refreshed after bind token expiry — reconnecting")
+                            await asyncio.sleep(backoff)
+                            backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_ALIYUN)
                             continue
                     except ReLoginRequiredError as relogin_exc:
                         await self._handle_fatal_auth_error(relogin_exc)
@@ -485,6 +504,11 @@ class AliyunMQTTTransport(Transport):
                 # Covers DNS failure (socket.gaierror), ENETUNREACHABLE, connection timeout,
                 # and other network-layer errors that aiomqtt does not always wrap.
                 _logger.warning("Aliyun MQTT network error: %s — retry in %ds", exc, backoff)
+            except Exception:
+                # Catch-all mirroring MQTTTransport._run: an unexpected error escaping a
+                # message callback (state pipeline, malformed frame) must not silently
+                # kill the receive loop and leave the transport dead until restart.
+                _logger.exception("AliyunMQTTTransport: unexpected error in _run — retry in %ds", backoff)
             finally:
                 self._client = None
                 if self._availability is not TransportAvailability.DISCONNECTED:
@@ -495,7 +519,7 @@ class AliyunMQTTTransport(Transport):
                     await asyncio.sleep(backoff)
                 except asyncio.CancelledError:
                     break
-                backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
+                backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_ALIYUN)
 
     # ------------------------------------------------------------------
     # Device status dispatch
@@ -510,12 +534,16 @@ class AliyunMQTTTransport(Transport):
         """
         if self.on_device_status is None:
             return
+        # Parse inside the guard, dispatch outside it — see MQTTTransport for why:
+        # anything the callback raises must reach _run, which owns the exception
+        # taxonomy, rather than being logged at DEBUG and dropped here.
         try:
             msg = ThingStatusMessage.from_json(raw)
-            if msg.params.iot_id:
-                await self.on_device_status(msg.params.iot_id, msg)
-        except Exception:
+        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
             _logger.debug("AliyunMQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
+            return
+        if msg.params.iot_id:
+            await self.on_device_status(msg.params.iot_id, msg)
 
     def _handle_bind_reply(self, raw: bytes) -> int:
         """Check the account bind reply and log an error if it failed."""
@@ -560,9 +588,7 @@ class AliyunMQTTTransport(Transport):
         # thing/events carry ``params.time``; thing/properties only carry
         # ``generateTime``/``gmtCreate`` — fall back so both are filtered.
         params = parsed.get("params", {})
-        envelope_time_ms: int = int(
-            params.get("time") or params.get("generateTime") or params.get("gmtCreate") or 0
-        )
+        envelope_time_ms: int = int(params.get("time") or params.get("generateTime") or params.get("gmtCreate") or 0)
         if envelope_time_ms > 0:
             now_ms = int(time.time() * 1000)
             age_ms = now_ms - envelope_time_ms
@@ -577,83 +603,28 @@ class AliyunMQTTTransport(Transport):
 
         if topic.endswith("/thing/events") and self.on_device_event is not None:
             try:
-                from pymammotion.data.mqtt.event import ThingEventMessage
-
                 event = ThingEventMessage.from_dicts(parsed)
-                await self.on_device_event(event_iot_id, event)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
                 _logger.debug("AliyunMQTTTransport: failed to parse thing/events on %s", topic, exc_info=True)
+                return
+            await self.on_device_event(event_iot_id, event)
         elif topic.endswith("/thing/properties") and self.on_device_properties is not None:
             try:
-                from pymammotion.data.mqtt.properties import ThingPropertiesMessage
-
                 props = ThingPropertiesMessage.from_dict(parsed)
-                await self.on_device_properties(event_iot_id, props)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
                 _logger.debug("AliyunMQTTTransport: failed to parse thing/properties on %s", topic, exc_info=True)
+                return
+            await self.on_device_properties(event_iot_id, props)
 
     # ------------------------------------------------------------------
     # Envelope unwrapping
     # ------------------------------------------------------------------
 
-    def _unwrap_envelope(self, topic: str, raw: bytes) -> tuple[bytes, str] | None:
-        """Extract the base64-encoded protobuf payload and iot_id from an Aliyun IoT envelope.
+    @staticmethod
+    def _unwrap_envelope(topic: str, raw: bytes) -> tuple[bytes, str] | None:
+        """Extract ``(payload, iot_id)`` from the broker envelope.
 
-        The Aliyun broker wraps device messages in a JSON envelope of the form::
-
-            {
-              "method": "thing.events",
-              "params": {
-                "iotId": "<device iot_id>",
-                "identifier": "device_protobuf_msg_event",
-                "value": {"content": "<base64-encoded protobuf>"},
-                ...
-              },
-              ...
-            }
-
-        For Mammotion direct-MQTT events the path is::
-
-            {
-              "params": {"iotId": "<device iot_id>", "content": "<base64-encoded protobuf>"},
-              ...
-            }
-
-        Both shapes are attempted.  If neither matches, the message is logged
-        and *None* is returned so the caller can skip it.
-
-        Args:
-            topic: The MQTT topic the message arrived on (used for logging).
-            raw: Raw bytes of the JSON envelope.
-
-        Returns:
-            ``(decoded_bytes, iot_id)`` tuple, or *None* if unwrapping fails.
-            ``iot_id`` may be an empty string if the field is absent.
-
+        Delegates to :func:`pymammotion.transport.envelope.unwrap_envelope`, which
+        both transports share — the shapes and decoding are identical.
         """
-        try:
-            parsed = json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            _logger.debug("Non-JSON payload on topic %s, skipping", topic)
-            return None
-
-        iot_id: str = parsed.get("params", {}).get("iotId", "")
-
-        # Aliyun thing.events shape: params.value.content
-        try:
-            content: str | None = parsed["params"]["value"]["content"]
-            if content:
-                return base64.b64decode(content), iot_id
-        except (KeyError, TypeError):
-            pass
-
-        # Mammotion direct-MQTT event shape: params.content
-        try:
-            content = parsed["params"]["content"]
-            if content:
-                return base64.b64decode(content), iot_id
-        except (KeyError, TypeError):
-            pass
-
-        _logger.debug("No base64 content field found in envelope on topic %s", topic)
-        return None
+        return unwrap_envelope(topic, raw)

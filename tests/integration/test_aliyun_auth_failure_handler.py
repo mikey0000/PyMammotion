@@ -154,45 +154,75 @@ def _relogin_session() -> tuple[MammotionClient, AccountSession, MagicMock, Magi
     http = MagicMock()
     http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
     http.logout = AsyncMock()
-    # These back refresh_token_v2 — they must NOT be reached on the Aliyun path.
-    http.refresh_login = AsyncMock()
     http.refresh_token_v2 = AsyncMock()
 
     tm = MagicMock()
     tm.refresh_aliyun_credentials = AsyncMock()
-    tm.connect_iot = AsyncMock()  # full Aliyun IoT re-establish used by an Aliyun-triggered re-login
-    tm.force_refresh = AsyncMock()
-    tm.refresh_http = AsyncMock()  # calls refresh_login/refresh_token_v2 in the real TM
+    tm.refresh_mqtt_credentials = AsyncMock()
+    tm.connect_iot = AsyncMock()
+    tm.refresh_http = AsyncMock()
 
     session = AccountSession(account_id="a@b.com", email="a@b.com", password="pw")
     session.mammotion_http = http
     session.token_manager = tm
+    # Register directly — AccountRegistry.register() is async and the lock is not
+    # contended here.
+    client._account_registry._sessions[session.account_id] = session
     return client, session, http, tm
 
 
-async def test_full_relogin_aliyun_refreshes_only_aliyun_not_token_v2() -> None:
-    """transport_type=CLOUD_ALIYUN → refresh_aliyun_credentials only; no refresh_token_v2, no MQTT JWT."""
+async def test_refresh_login_routes_to_aliyun_only_for_aliyun_accounts() -> None:
+    """An Aliyun-only account refreshes the IoT session and nothing else."""
     client, session, http, tm = _relogin_session()
+    session.cloud_client = MagicMock()  # has Aliyun
+    session.mammotion_transport = None  # no Mammotion MQTT
 
-    await client._full_relogin(session, transport_type=TransportType.CLOUD_ALIYUN)
+    await client.refresh_login("a@b.com")
 
-    # A fresh login happened, then ONLY the Aliyun session was re-established via the full
-    # IoT flow (connect_iot: session_by_auth_code etc.).
-    http.login_v2.assert_awaited_once()
-    tm.connect_iot.assert_awaited_once()
-    # The Mammotion/HTTP token chain (refresh_token_v2) and the MQTT JWT must be untouched.
-    tm.force_refresh.assert_not_awaited()
-    tm.refresh_http.assert_not_awaited()
-    http.refresh_login.assert_not_awaited()
-    http.refresh_token_v2.assert_not_awaited()
+    tm.refresh_aliyun_credentials.assert_awaited_once()
+    tm.refresh_mqtt_credentials.assert_not_awaited()
+    http.login_v2.assert_not_awaited()
 
 
-async def test_full_relogin_generic_refreshes_all_credentials() -> None:
-    """transport_type=None (send-retry path) → full rotation via force_refresh(None)."""
+async def test_refresh_login_routes_to_mqtt_only_for_mammotion_accounts() -> None:
+    """A post-2025 account must NOT be sent down the Aliyun path.
+
+    ``refresh_login`` used to call ``refresh_aliyun_credentials`` unconditionally,
+    so every Mammotion-direct account got
+    ``ReLoginRequiredError("No Aliyun cloud gateway configured")`` from the host's
+    generic recovery call — an error about a transport the account does not have.
+    """
     client, session, http, tm = _relogin_session()
+    session.cloud_client = None  # no Aliyun
+    session.mammotion_transport = MagicMock()  # has Mammotion MQTT
 
-    await client._full_relogin(session, transport_type=None)
+    await client.refresh_login("a@b.com")
 
-    http.login_v2.assert_awaited_once()
-    tm.force_refresh.assert_awaited_once_with(transport_type=None)
+    tm.refresh_mqtt_credentials.assert_awaited_once()
     tm.refresh_aliyun_credentials.assert_not_awaited()
+    http.login_v2.assert_not_awaited()
+
+
+async def test_refresh_login_refreshes_both_for_hybrid_accounts() -> None:
+    """A hybrid account refreshes both chains, still without any password login."""
+    client, session, http, tm = _relogin_session()
+    session.cloud_client = MagicMock()
+    session.mammotion_transport = MagicMock()
+
+    await client.refresh_login("a@b.com")
+
+    tm.refresh_aliyun_credentials.assert_awaited_once()
+    tm.refresh_mqtt_credentials.assert_awaited_once()
+    http.login_v2.assert_not_awaited()
+
+
+async def test_refresh_login_one_transport_failing_does_not_skip_the_other() -> None:
+    """A hybrid account whose Aliyun chain is dead must still refresh Mammotion MQTT."""
+    client, session, http, tm = _relogin_session()
+    session.cloud_client = MagicMock()
+    session.mammotion_transport = MagicMock()
+    tm.refresh_aliyun_credentials = AsyncMock(side_effect=ReLoginRequiredError("a@b.com", "aliyun dead"))
+
+    await client.refresh_login("a@b.com")  # must not raise — one chain succeeded
+
+    tm.refresh_mqtt_credentials.assert_awaited_once()

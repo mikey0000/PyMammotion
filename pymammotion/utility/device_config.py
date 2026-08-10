@@ -2311,7 +2311,7 @@ class DeviceConfig:
         }
 
     def get_device_config(self, int_mod_or_key: str) -> dict[str, Any] | None:
-        """Look up device configuration by internal model code
+        """Look up device configuration by internal model code.
 
         Args:
             int_mod (str): Internal model code
@@ -2326,7 +2326,7 @@ class DeviceConfig:
         return None
 
     def get_external_model(self, int_mod: str) -> str | None:
-        """Get external model name for given internal model code
+        """Get external model name for given internal model code.
 
         Args:
             int_mod (str): Internal model code
@@ -2339,7 +2339,7 @@ class DeviceConfig:
         return config.get("extMod") if config else None
 
     def get_working_parameters(self, int_mod_or_key: str) -> DeviceLimits | None:
-        """Get working parameters for given internal model code
+        """Get working parameters for given internal model code.
 
         Args:
             int_mod (str): Internal model code

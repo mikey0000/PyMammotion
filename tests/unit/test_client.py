@@ -298,7 +298,7 @@ async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
     mock_device = _make_device_with_rtk(lat=0.5, lon=0.5)
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    with patch("pymammotion.messaging.mow_path_saga.MowPathSaga") as MockSaga:
+    with patch("pymammotion.client.MowPathSaga") as MockSaga:
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "mow_path_fetch"
         mock_saga_instance.max_attempts = 1
@@ -466,6 +466,8 @@ def _make_connected_transport(transport_type: TransportType) -> MagicMock:
     t.transport_type = transport_type
     t.is_connected = True
     t.is_rate_limited = False
+    t.is_send_blocked = MagicMock(return_value=False)
+    t.seconds_until_send_available = MagicMock(return_value=0.0)
     t.is_usable = True  # default: ready to attempt sends; tests flip to False to exercise gates
     t.send = AsyncMock()
     t.send_heartbeat = AsyncMock()
@@ -693,79 +695,71 @@ async def test_set_scheduled_updates_noop_for_unknown_device() -> None:
 
 
 # ---------------------------------------------------------------------------
-# User-command stamping: send_command_* stamps handle._last_user_command_monotonic
+# User-command recording: send_command_* wakes the poll loop via _rearm_event
 # ---------------------------------------------------------------------------
 
 
 async def test_send_command_with_args_stamps_user_command_on_handle() -> None:
-    """send_command_with_args must call handle.record_user_command() (updates _last_user_command_monotonic)."""
-    import time
-
+    """send_command_with_args must call handle.record_user_command() (sets _rearm_event)."""
     client = MammotionClient()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-TS")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    # Force an old timestamp so we can verify it changes.
-    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
-    before = time.monotonic()
     await client.send_command_with_args("Luba-TS", "start_job")
-    after = time.monotonic()
 
-    assert before <= handle._last_user_command_monotonic <= after  # noqa: SLF001
+    assert handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_send_command_and_wait_stamps_user_command_on_handle() -> None:
     """send_command_and_wait must call handle.record_user_command() before waiting for response."""
-    import time
-
     client = MammotionClient()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-TS2")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
     with pytest.raises(Exception):  # noqa: BLE001
         await client.send_command_and_wait("Luba-TS2", "start_job", "some_field", send_timeout=0.01)
 
-    assert time.monotonic() - handle._last_user_command_monotonic < 5.0  # noqa: SLF001
+    assert handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_internal_subscription_does_not_stamp_user_command() -> None:
-    """Internal subscription sends must NOT update _last_user_command_monotonic.
+    """Internal subscription sends must NOT call record_user_command (no _rearm_event set).
 
-    If _send_one_shot_report stamped the timestamp, the poll loop would
-    never enter long-idle mode.
+    If _send_one_shot_report woke the poll loop, it would never enter
+    long-idle mode.
     """
     handle = make_handle("dev1", "Luba-NoStamp")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     await handle.add_transport(mqtt)
 
-    handle._last_user_command_monotonic = 0.0  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
     await handle._send_one_shot_report()  # noqa: SLF001
 
-    assert handle._last_user_command_monotonic == 0.0  # noqa: SLF001
+    assert not handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_send_command_with_args_record_cmd_false_does_not_stamp() -> None:
-    """send_command_with_args with _record_cmd=False must not update the user-command timestamp."""
+    """send_command_with_args with _record_cmd=False must not call record_user_command."""
     client = MammotionClient()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     handle = make_handle("dev1", "Luba-NR")
     await handle.add_transport(mqtt)
     await client._device_registry.register(handle)
 
-    sentinel = 0.0
-    handle._last_user_command_monotonic = sentinel  # noqa: SLF001
+    handle._rearm_event.clear()  # noqa: SLF001
 
     await client.send_command_with_args("Luba-NR", "start_job", _record_cmd=False)
 
-    assert handle._last_user_command_monotonic == sentinel  # noqa: SLF001
+    assert not handle._rearm_event.is_set()  # noqa: SLF001
 
 
 async def test_send_command_with_args_prefer_ble_uses_mqtt_while_ble_connect_pending() -> None:
@@ -906,6 +900,7 @@ async def test_poll_loop_rate_limited_no_ble_backs_off() -> None:
     handle = make_handle("dev1", "Luba-RL3")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     # The loop now backs off only until sends are available again; a full cloud ban still
     # caps at _RATE_LIMITED_BACKOFF.
     mqtt.seconds_until_send_available = MagicMock(return_value=_RATE_LIMITED_BACKOFF)
@@ -935,6 +930,7 @@ async def test_poll_loop_rate_limited_backoff_shortens_to_window_release() -> No
     handle = make_handle("dev1", "Luba-RL4")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     mqtt.seconds_until_send_available = MagicMock(return_value=300.0)  # window clears in 5 min
     await handle.add_transport(mqtt)
 
@@ -964,6 +960,7 @@ async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
     handle = make_handle("dev1", "Luba-RLBLE")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
+    mqtt.is_send_blocked = MagicMock(return_value=True)
     ble = _make_connected_transport(TransportType.BLE)
     # Suppress the auto-start of BLE keepalive + polling loops so they don't race
     # with the MQTT loop under test (the polling loop would set _ble_stream_active
@@ -1669,7 +1666,9 @@ async def test_device_unbound_removed_when_on_no_cloud() -> None:
     removed = AsyncMock()
     client.on_device_removed = removed
 
-    await client._on_device_unbound(handle)
+    # Collapse the multi-minute migration retry backoff so the test runs instantly.
+    with patch("pymammotion.client._UNBOUND_MIGRATION_DELAYS", (0.0, 0.0)):
+        await client._on_device_unbound(handle)
 
     assert client._device_registry.get_by_name("Luba-GONE") is None
     assert "iot-gone" not in client._iot_id_to_device_id
@@ -1720,3 +1719,164 @@ async def test_fetch_stream_subscription_returns_empty_after_retry_exhausted() -
 
     assert result.data is None
     assert http.get_stream_subscription.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# remove_device: account-shared cloud transport survives unless last device
+# ---------------------------------------------------------------------------
+
+
+async def _make_two_device_session() -> tuple[MammotionClient, DeviceHandle, DeviceHandle, MagicMock, AccountSession]:
+    client = MammotionClient()
+    shared = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+
+    handle_a = make_handle("dev-a", "Luba-A")
+    handle_b = make_handle("dev-b", "Luba-B")
+    await handle_a.add_transport(shared)
+    await handle_b.add_transport(shared)
+    await client._device_registry.register(handle_a)
+    await client._device_registry.register(handle_b)
+
+    session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
+    session.aliyun_transport = shared
+    session.device_ids.update({"Luba-A", "Luba-B"})
+    await client._account_registry.register(session)
+    return client, handle_a, handle_b, shared, session
+
+
+async def test_remove_device_keeps_shared_cloud_transport_for_remaining_devices() -> None:
+    """Removing one of two devices must NOT disconnect the account-shared cloud
+    transport — the surviving device still depends on it."""
+    client, handle_a, handle_b, shared, session = await _make_two_device_session()
+
+    await client.remove_device("Luba-A")
+
+    shared.disconnect.assert_not_awaited()
+    assert client._device_registry.get_by_name("Luba-A") is None
+    assert client._device_registry.get_by_name("Luba-B") is handle_b
+    assert handle_b.get_transport(TransportType.CLOUD_ALIYUN) is shared
+    assert "Luba-A" not in session.device_ids
+    await handle_b.stop()
+
+
+async def test_remove_device_disconnects_shared_cloud_transport_for_last_device() -> None:
+    """Removing the LAST device on the account may tear the shared cloud transport down."""
+    client, handle_a, handle_b, shared, session = await _make_two_device_session()
+
+    await client.remove_device("Luba-A")
+    await client.remove_device("Luba-B")
+
+    shared.disconnect.assert_awaited()
+    assert client._device_registry.get_by_name("Luba-B") is None
+    assert not session.device_ids
+
+
+# ---------------------------------------------------------------------------
+# No automatic re-login; transport-scoped vs account-scoped failure signalling
+# ---------------------------------------------------------------------------
+
+from pymammotion.transport.base import (  # noqa: E402
+    ReLoginRequiredError,
+    SessionExpiredError,
+    TransportError,
+    TransportType,
+)
+
+
+def test_client_cannot_automatically_relogin() -> None:
+    """The password-grant recovery path must stay deleted.
+
+    ``_full_relogin`` logged out, then re-logged in with the stored password on any
+    auth failure.  A transient failure mid-way left the account with no login_info,
+    turning every subsequent API call into a password grant.
+    """
+    assert not hasattr(MammotionClient, "_full_relogin")
+    assert not hasattr(MammotionClient, "_reapply_creds_and_reconnect")
+    assert not hasattr(AccountSession("x"), "relogin_failed_at")
+
+
+async def test_send_retry_refreshes_only_the_failing_transport() -> None:
+    """A dead Aliyun session must not cause the Mammotion MQTT JWT to be rotated."""
+    client = MammotionClient()
+    tm = MagicMock()
+    tm.refresh_aliyun_credentials = AsyncMock()
+    tm.refresh_mqtt_credentials = AsyncMock()
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+
+    calls = 0
+
+    async def _send() -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise SessionExpiredError(TransportType.CLOUD_ALIYUN, "expired")
+
+    await client._send_with_auth_retry(_send, session)
+
+    assert calls == 2, "one targeted refresh then exactly one retry"
+    tm.refresh_aliyun_credentials.assert_awaited_once()
+    tm.refresh_mqtt_credentials.assert_not_awaited()
+
+
+async def test_send_retry_propagates_relogin_required() -> None:
+    """ReLoginRequiredError must reach the host, not be logged away.
+
+    AuthError subclasses TransportError, so the terminal signal is one misordered
+    ``except`` clause away from being swallowed into a warning.
+    """
+    client = MammotionClient()
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+
+    async def _send() -> None:
+        raise ReLoginRequiredError("u@t.com", "refresh token dead")
+
+    with pytest.raises(ReLoginRequiredError):
+        await client._send_with_auth_retry(_send, session)
+
+
+async def test_send_retry_still_swallows_plain_transport_errors() -> None:
+    """Non-auth transport errors keep their existing log-and-continue behaviour."""
+    client = MammotionClient()
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+
+    async def _send() -> None:
+        raise TransportError("device busy")
+
+    await client._send_with_auth_retry(_send, session)  # must not raise
+
+
+async def test_transport_failure_keeps_credentials_when_login_still_valid() -> None:
+    """A dead transport must not trigger the host's re-auth prompt on its own.
+
+    Hosts map ``on_unrecoverable_auth_error`` to "log the user out and ask them to
+    reconfigure".  That is the wrong response when the HTTP login is still good and
+    only one cloud transport has failed.
+    """
+    client = MammotionClient()
+    tm = MagicMock()
+    tm.reauth_required = None  # the account's HTTP login is healthy
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+    client.on_unrecoverable_auth_error = AsyncMock()
+
+    await client._signal_transport_unrecoverable(
+        session, TransportType.CLOUD_ALIYUN, ReLoginRequiredError("u@t.com", "aliyun dead")
+    )
+
+    client.on_unrecoverable_auth_error.assert_not_awaited()
+
+
+async def test_dead_account_login_does_fire_unrecoverable_callback() -> None:
+    """When the HTTP login itself is dead, the host must be told to re-authenticate."""
+    client = MammotionClient()
+    tm = MagicMock()
+    tm.reauth_required = "refresh token rejected"
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+    client.on_unrecoverable_auth_error = AsyncMock()
+
+    exc = ReLoginRequiredError("u@t.com", "refresh token rejected")
+    await client._signal_transport_unrecoverable(session, TransportType.CLOUD_MAMMOTION, exc)
+
+    client.on_unrecoverable_auth_error.assert_awaited_once_with("u@t.com", TransportType.CLOUD_MAMMOTION, exc)

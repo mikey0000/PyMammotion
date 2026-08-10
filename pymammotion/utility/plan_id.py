@@ -12,9 +12,12 @@ device kinds (Spino) can reuse it with a localised prefix later.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 import random
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _RANDOM_DIGITS = 8
 """Number of trailing random digits appended to the timestamp."""

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 import math
-from typing import Any
+from typing import Any, ClassVar
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 import orjson
@@ -60,6 +60,46 @@ class Device(DataClassORJSONMixin):
         device_firmwares = getattr(self, "device_firmwares", None)
         if device_firmwares is not None and check.current_version:
             device_firmwares.device_version = check.current_version
+
+    #: Module ``type`` → DeviceFirmwares field(s), covering mower, RTK (10x),
+    #: dual-driver Yuka (20x), and Spino pool cleaner (6x) modules.
+    _MOD_TYPE_TO_FW_FIELDS: ClassVar[dict[int, tuple[str, ...]]] = {
+        1: ("main_controller",),
+        3: ("left_motor_driver",),
+        4: ("right_motor_driver",),
+        5: ("rtk_rover_station",),
+        7: ("bms",),
+        8: ("main_controller_bt",),
+        9: ("left_motor_driver_bt",),
+        10: ("right_motor_driver_bt",),
+        11: ("bsp",),
+        12: ("middleware",),
+        14: ("lora_module",),
+        16: ("lte_module",),
+        17: ("lidar",),
+        61: ("main_controller",),  # Spino PAMH5
+        62: ("main_controller_bt",),  # Spino PMH5BT
+        63: ("wheel_hub_motor",),
+        65: ("water_pump",),
+        67: ("communication",),
+        72: ("communication",),
+        101: ("main_controller",),  # RTK main board
+        102: ("rtk_version",),
+        103: ("lora_version",),
+        201: ("left_motor_driver", "right_motor_driver"),
+        202: ("left_motor_driver_bt", "right_motor_driver_bt"),
+        203: ("cutter_driver",),
+        204: ("cutter_driver_bt",),
+    }
+
+    def update_device_firmwares(self, fw_info: DeviceFwInfo) -> None:
+        """Set firmware versions on all parts of the robot, pool cleaner, or RTK."""
+        fw = getattr(self, "device_firmwares", None)
+        if fw is None:
+            return
+        for mod in fw_info.mod:
+            for field_name in self._MOD_TYPE_TO_FW_FIELDS.get(mod.type, ()):
+                setattr(fw, field_name, mod.version)
 
 
 @dataclass
@@ -248,54 +288,6 @@ class MowerDevice(Device):
         status = checker.check(self)
         return status.missing
 
-    def update_device_firmwares(self, fw_info: DeviceFwInfo) -> None:
-        """Set firmware versions on all parts of the robot or RTK."""
-        for mod in fw_info.mod:
-            match mod.type:
-                case 1:
-                    self.device_firmwares.main_controller = mod.version
-                case 3:
-                    self.device_firmwares.left_motor_driver = mod.version
-                case 4:
-                    self.device_firmwares.right_motor_driver = mod.version
-                case 5:
-                    self.device_firmwares.rtk_rover_station = mod.version
-                case 7:
-                    self.device_firmwares.bms = mod.version
-                case 8:
-                    self.device_firmwares.main_controller_bt = mod.version
-                case 9:
-                    self.device_firmwares.left_motor_driver_bt = mod.version
-                case 10:
-                    self.device_firmwares.right_motor_driver_bt = mod.version
-                case 11:
-                    self.device_firmwares.bsp = mod.version
-                case 12:
-                    self.device_firmwares.middleware = mod.version
-                case 14:
-                    self.device_firmwares.lora_module = mod.version
-                case 16:
-                    self.device_firmwares.lte_module = mod.version
-                case 17:
-                    self.device_firmwares.lidar = mod.version
-                case 101:
-                    # RTK main board
-                    self.device_firmwares.main_controller = mod.version
-                case 102:
-                    self.device_firmwares.rtk_version = mod.version
-                case 103:
-                    self.device_firmwares.lora_version = mod.version
-                case 201:
-                    self.device_firmwares.left_motor_driver = mod.version
-                    self.device_firmwares.right_motor_driver = mod.version
-                case 202:
-                    self.device_firmwares.left_motor_driver_bt = mod.version
-                    self.device_firmwares.right_motor_driver_bt = mod.version
-                case 203:
-                    self.device_firmwares.cutter_driver = mod.version
-                case 204:
-                    self.device_firmwares.cutter_driver_bt = mod.version
-
 
 @dataclass
 class PoolCleanerDevice(Device):
@@ -304,11 +296,15 @@ class PoolCleanerDevice(Device):
     Carries only the state the Mammotion Android app actually surfaces in
     its pool-cleaner fragments + settings screens (see ``pool_state.py``
     for the field-by-field rationale). Internal-only proto fields (pump
-    status, RSSI, wheel state, …) are intentionally omitted until they
-    show up in the UI or there is a concrete consumer for them.
+    status, wheel state, …) are intentionally omitted until they show up
+    in the UI or there is a concrete consumer for them.
     """
 
     iot_id: str = ""
+    product_key: str = ""
+    wifi_ssid: str = ""
+    ip: str = ""
+    wifi_enabled: bool = True
     pool_state: PoolState = field(default_factory=PoolState)
     pool_map: PoolMap = field(default_factory=PoolMap)
     plans: dict[int, PoolPlan] = field(default_factory=dict)

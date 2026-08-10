@@ -47,6 +47,7 @@ import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlparse
 
 from mashumaro import MissingField
 
@@ -56,7 +57,8 @@ from pymammotion.aliyun.exceptions import CloudSetupError
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
 from pymammotion.data.model import GenerateRouteInformation
-from pymammotion.data.model.device import MowerDevice, RTKBaseStationDevice
+from pymammotion.data.model.device import MowerDevice, MowingDevice, RTKBaseStationDevice, create_device
+from pymammotion.data.model.hash_list import PathType
 from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
@@ -72,7 +74,13 @@ from pymammotion.http.model.http import (
 )
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.messaging.command_queue import Priority
+from pymammotion.messaging.common_data_saga import CommonDataSaga
+from pymammotion.messaging.edge_saga import EdgeMappingSaga
 from pymammotion.messaging.map_saga import MapFetchSaga
+from pymammotion.messaging.mow_path_saga import MowPathSaga
+from pymammotion.messaging.plan_saga import PlanFetchSaga
+from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
+from pymammotion.messaging.svg_saga import SvgSendSaga
 from pymammotion.proto import RptAct, RptInfoType
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import (
@@ -82,15 +90,14 @@ from pymammotion.transport.base import (
     ReLoginRequiredError,
     SessionExpiredError,
     Subscription,
-    Transport,
     TransportError,
     TransportType,
-    is_transient_network_error,
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from pymammotion.utility.constant import WorkMode
 from pymammotion.utility.device_type import DeviceType
+from pymammotion.utility.svg import chunk_svg_messages
 
 #: Channels for the continuous subscription (matches HA-Luba async_request_iot_sync_continuous).
 _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
@@ -103,6 +110,10 @@ _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_CONNECT,
 ]
 #: Full channel list used by the one-shot request_iot_sync.
+#: Seconds to wait before each Aliyun→Mammotion unbound-migration attempt (first is
+#: immediate).  The cloud-side migration after a firmware update can take minutes.
+_UNBOUND_MIGRATION_DELAYS: tuple[float, ...] = (0.0, 30.0, 60.0, 120.0, 180.0)
+
 _ONE_SHOT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
     RptInfoType.RIT_DEV_LOCAL,
@@ -159,21 +170,11 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
     from bleak import BLEDevice
 
-    from pymammotion.data.model.device import MowingDevice
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
 
 _logger = logging.getLogger(__name__)
-
-# Aliyun re-login circuit breaker: cap how often the Aliyun transport may trigger
-# a fatal-auth recovery cycle.  If the recovery itself produces credentials that
-# are still rejected (revoked refreshToken, server-side block, clock skew, …) the
-# transport will keep failing — without this cap, the recovery path loops forever,
-# spamming logs and hammering the auth endpoints.  (Mammotion MQTT does NOT
-# re-login — it refreshes credentials once and then gives up.)
-_FATAL_AUTH_CIRCUIT_MAX = 3
-_FATAL_AUTH_CIRCUIT_WINDOW_SEC = 300
 
 
 def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash: int) -> bool:
@@ -259,13 +260,34 @@ class MammotionClient:
             if self._stopped:
                 return
             self._stopped = True
+        for session in self._account_registry.all_sessions:
+            if session.token_manager is not None:
+                # Cancel before the handles go: the scheduler is a bare asyncio task
+                # and would otherwise keep renewing tokens for a client that is gone.
+                await session.token_manager.stop_refresh_scheduler()
         for handle in self._device_registry.all_devices:
             await handle.stop()
 
     async def remove_device(self, name: str) -> None:
-        """Stop and remove the named device from the registry."""
-        if handle := self._device_registry.get_by_name(name):
-            await self._device_registry.unregister(handle.device_id)
+        """Stop and remove the named device from the registry.
+
+        Account-shared cloud transports (Aliyun / Mammotion MQTT) are detached —
+        NOT disconnected — while other devices on the same account remain, since
+        ``handle.stop()`` disconnects every transport still attached and would
+        otherwise tear down cloud connectivity for every surviving mower.  Only
+        the account's last device takes the shared transport down with it.
+        """
+        handle = self._device_registry.get_by_name(name)
+        if handle is None:
+            return
+        self.teardown_device_watchers(name)
+        self._iot_id_to_device_id.pop(handle.iot_id, None)
+        if (session := self._get_session_for_device(name)) is not None:
+            session.device_ids.discard(name)
+            if session.device_ids:
+                for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                    handle.detach_transport(transport_type)
+        await self._device_registry.unregister(handle.device_id)
 
     # ------------------------------------------------------------------
     # Device state watchers
@@ -405,6 +427,11 @@ class MammotionClient:
             _on_init_cfg_hash_changed,
         )
 
+        # Cancel any previous watchers first: a plain overwrite leaves the old
+        # Subscriptions live on the handle's state bus, double-firing every
+        # map/plan sync trigger after a re-setup.
+        for old_sub in self._watcher_subscriptions.pop(device_name, []):
+            old_sub.cancel()
         self._watcher_subscriptions[device_name] = [
             sub,
             progress_sub,
@@ -535,8 +562,6 @@ class MammotionClient:
 
         Skips RTK base stations and swimming-pool (Spino/S1/E1) devices.
         """
-        from pymammotion.utility.device_type import DeviceType
-
         for handle in self._device_registry.all_devices:
             name = handle.device_name
             if DeviceType.is_rtk(name) or DeviceType.is_swimming_pool(name):
@@ -569,42 +594,20 @@ class MammotionClient:
         elif transport_type == TransportType.CLOUD_MAMMOTION:
             await session.token_manager.refresh_mqtt_credentials()
 
-    def _account_mqtt_transports(self, session: AccountSession) -> dict[TransportType, Transport]:
-        """Return the account's live MQTT transports keyed by type (BLE excluded)."""
-        pairs = (
-            (TransportType.CLOUD_ALIYUN, session.aliyun_transport),
-            (TransportType.CLOUD_MAMMOTION, session.mammotion_transport),
-        )
-        return {tt: t for tt, t in pairs if t is not None}
-
-    async def _reapply_creds_and_reconnect(
-        self, session: AccountSession, transport_type: TransportType, transport: Transport
-    ) -> None:
-        """Re-apply freshly-refreshed credentials to *transport* and reconnect it.
-
-        Used after an account-wide re-login to bring a torn-down MQTT transport
-        back up with the new session's credentials.
-        """
-        tm = session.token_manager
-        if tm is not None:
-            if transport_type == TransportType.CLOUD_ALIYUN and isinstance(transport, AliyunMQTTTransport):
-                creds = await tm.get_aliyun_credentials()
-                transport.update_iot_token(creds.iot_token)
-            elif transport_type == TransportType.CLOUD_MAMMOTION and isinstance(transport, MQTTTransport):
-                mqtt_creds = await tm.get_mammotion_mqtt_credentials()
-                transport.update_credentials(mqtt_creds)
-        transport.clear_auth_failed()
-        await transport.connect()
-
     async def _signal_transport_unrecoverable(
         self, session: AccountSession, transport_type: TransportType, exc: Exception
     ) -> None:
         """Signal that *transport_type* has permanently failed auth for *session*.
 
-        Fires the per-device error bus for every one of the account's mowers that
-        uses this transport (so the host can mark exactly those unavailable / needing
-        re-auth) and the global ``on_unrecoverable_auth_error`` callback with full
-        ``(account_id, transport_type, exc)`` context.
+        Always fires the per-device error bus for the account's mowers that use this
+        transport, so the host marks exactly those unavailable.
+
+        The global ``on_unrecoverable_auth_error`` callback is fired **only** when the
+        account's HTTP login is itself dead (``TokenManager.reauth_required``).  Hosts
+        treat that callback as "prompt the user to re-authenticate", which is the wrong
+        response to a transport-scoped failure: if the login token is still valid and
+        the login APIs are still working, one dead cloud transport must not cost the
+        user their stored credentials or take down the account's *other* transport.
         """
         affected = [
             handle
@@ -612,143 +615,48 @@ class MammotionClient:
             if (handle := self._device_registry.get(device_id)) is not None
             and handle.get_transport(transport_type) is not None
         ]
+        account_dead = session.token_manager is not None and session.token_manager.reauth_required is not None
         _logger.warning(
-            "%s permanently unavailable for account %s — %d mower(s) affected",
+            "%s permanently unavailable for account %s — %d mower(s) affected (account login %s)",
             transport_type.value,
             session.account_id,
             len(affected),
+            "also dead — re-authentication required" if account_dead else "still valid — credentials retained",
         )
         for handle in affected:
             with contextlib.suppress(Exception):
                 await handle.notify_critical_error(exc)
-        if self.on_unrecoverable_auth_error is not None:
+        if account_dead and self.on_unrecoverable_auth_error is not None:
             with contextlib.suppress(Exception):
                 await self.on_unrecoverable_auth_error(session.account_id, transport_type, exc)
-
-    async def _full_relogin(self, session: AccountSession | None, transport_type: TransportType | None = None) -> None:
-        """Re-login an account and cycle all of its MQTT connections.
-
-        A full ``login_v2`` invalidates the session every MQTT transport's
-        credentials derive from, so we tear down all of the account's in-use MQTT
-        connections *before* re-logging in and restart them afterward with fresh
-        credentials.
-
-        *transport_type* names the **triggering** transport — it is excluded from
-        the teardown because it is mid-``_run`` / already recovering via its own
-        caller (disconnecting it here would cancel the task we're running on).
-        ``None`` (the send-retry path, not inside any ``_run``) excludes nothing.
-
-        Raises LoginFailedError if the re-login itself fails.
-        """
-        if session is None or not session.email or not session.password:
-            msg = "No stored credentials available for re-login"
-            raise LoginFailedError("", msg)
-        if session.mammotion_http is None:
-            msg = "No HTTP client available for re-login"
-            raise LoginFailedError(session.email, msg)
-
-        # In-use MQTT transports to cycle (exclude the triggering one; skip any
-        # already given-up — they are not "in use" and connect() would refuse).
-        to_restart = {
-            tt: t
-            for tt, t in self._account_mqtt_transports(session).items()
-            if tt != transport_type and t.is_connected and not t.is_unrecoverable_auth_failure
-        }
-        try:
-            # Tear down the account's other MQTT connections before re-login —
-            # the session they are bound to is about to be invalidated.
-            for tt, t in to_restart.items():
-                _logger.debug("Tearing down %s before account re-login", tt.value)
-                await t.disconnect()
-
-            try:
-                await session.mammotion_http.logout()
-            except Exception as logout_exc:  # noqa: BLE001 - best-effort logout before re-login
-                _logger.debug("Logout before re-login failed (continuing): %s", logout_exc)
-            login_resp = await session.mammotion_http.login_v2(session.email, session.password)
-            if login_resp.code != 0:
-                raise LoginFailedError(session.email, login_resp.msg)
-            # Re-establish credentials for the triggering transport off the fresh login.
-            #
-            # Aliyun is its own auth chain: its IoT session is derived from the login's
-            # authCode via check_or_refresh_session/connect_iot.  Refresh ONLY Aliyun for an
-            # Aliyun-triggered re-login — calling force_refresh() here would also run
-            # refresh_http (refresh_token_v2) and rotate the Mammotion-direct MQTT JWT, neither
-            # of which the Aliyun path needs (and login_v2 already minted fresh HTTP creds).
-            #
-            # For the generic send-retry path (transport_type is None) a full re-login really
-            # does rotate everything, so refresh all credential types.
-            if session.token_manager is not None:
-                if transport_type == TransportType.CLOUD_ALIYUN:
-                    await session.token_manager.connect_iot()
-                else:
-                    await session.token_manager.force_refresh(transport_type=None)
-
-            # Restart the transports we tore down, with fresh credentials.
-            for tt, t in to_restart.items():
-                _logger.debug("Restarting %s after account re-login", tt.value)
-                await self._reapply_creds_and_reconnect(session, tt, t)
-        except LoginFailedError:
-            raise
-        except Exception as exc:
-            # DNS / connection / timeout — the network is down, not the
-            # credentials.  Let the original exception propagate so the caller
-            # (MQTT transport, send-retry chain) treats it as a transient
-            # condition and backs off, rather than logging an "unrecoverable
-            # auth error" and surfacing it to the user.
-            if is_transient_network_error(exc):
-                raise
-            raise LoginFailedError(session.email, str(exc)) from exc
 
     async def _send_with_auth_retry(
         self, send_fn: Callable[[], Awaitable[None]], session: AccountSession | None = None
     ) -> None:
-        """Call *send_fn*; on auth failure, refresh credentials and retry.
+        """Call *send_fn*; on an auth failure refresh that transport's credentials once and retry.
 
-        Cascade:
-          1. SessionExpiredError → targeted refresh for the failing transport → retry.
-          2. Still fails → force_refresh (all credentials) → retry.
-          3. force_refresh raises ReLoginRequiredError → full re-login with stored credentials → retry.
-          4. Re-login fails → LoginFailedError propagates to the caller.
+        There is exactly one recovery attempt and it is scoped to the transport that
+        failed, so a dead Aliyun session never causes the Mammotion MQTT credentials
+        (or the HTTP login) to be touched, and vice versa.
+
+        If the refresh is itself rejected the error propagates: ``ReLoginRequiredError``
+        reaches the host, which prompts the user to re-authenticate.  Nothing here
+        re-logins with a stored password — that would bypass the prompt and, during a
+        server-side outage, fire a password grant per queued command.
         """
-        tm = session.token_manager if session else None
         try:
             await send_fn()
         except SessionExpiredError as exc:
-            _logger.debug("Session expired on %s — refreshing targeted credentials", exc.transport_type.value)
-            try:
-                await self._refresh_for_transport(exc.transport_type, session)
-                await send_fn()
-            except ReLoginRequiredError:
-                _logger.debug("Targeted refresh requires re-login — attempting full re-login")
-                await self._full_relogin(session)
-                await send_fn()
-            except (SessionExpiredError, AuthError):
-                _logger.debug("Targeted refresh failed — attempting full credential refresh")
-                try:
-                    if tm is not None:
-                        await tm.force_refresh()
-                    await send_fn()
-                except ReLoginRequiredError:
-                    _logger.debug("Full refresh requires re-login — attempting full re-login")
-                    await self._full_relogin(session)
-                    await send_fn()
-        except ReLoginRequiredError:
-            _logger.debug("Auth requires re-login — attempting full re-login")
-            await self._full_relogin(session)
+            _logger.debug("Session expired on %s — refreshing that transport's credentials", exc.transport_type.value)
+            await self._refresh_for_transport(exc.transport_type, session)
             await send_fn()
-        except AuthError:
-            _logger.debug("Auth error — attempting full credential refresh")
-            try:
-                if tm is not None:
-                    await tm.force_refresh()
-                await send_fn()
-            except ReLoginRequiredError:
-                _logger.debug("Full refresh requires re-login — attempting full re-login")
-                await self._full_relogin(session)
-                await send_fn()
         except NoTransportAvailableError:
             raise  # let send_command_with_args retry when transport reconnects
+        except AuthError:
+            # AuthError subclasses TransportError, so this clause MUST precede the
+            # TransportError catch below — otherwise ReLoginRequiredError would be
+            # swallowed into a log line and the host would never prompt for re-auth.
+            raise
         except TransportError as ex:
             _logger.warning(ex)
 
@@ -775,8 +683,6 @@ class MammotionClient:
                          checks every registered mower device.
 
         """
-        from pymammotion.data.model.device import MowingDevice
-
         handles = (
             [self._device_registry.get_by_name(device_name)] if device_name else list(self._device_registry.all_devices)
         )
@@ -1103,6 +1009,8 @@ class MammotionClient:
             except Exception:  # noqa: BLE001
                 _logger.warning("cloud sign_out failed — proceeding with login anyway", exc_info=True)
             session.cloud_client = None
+        if session.token_manager is not None:
+            await session.token_manager.stop_refresh_scheduler()
         session.token_manager = None
         await self._account_registry.unregister(session.account_id)
 
@@ -1282,6 +1190,7 @@ class MammotionClient:
             )
 
         await self._account_registry.register(acct_session)
+        self._start_token_refresh(acct_session)
 
     def to_cache(self) -> dict[str, Any]:
         """Serialize current cloud credentials to a cache dictionary.
@@ -1308,8 +1217,7 @@ class MammotionClient:
                 raw["mammotion_jwt_info"] = session.mammotion_http.jwt_info
             if session.mammotion_http.device_records.records:
                 raw["mammotion_device_records"] = session.mammotion_http.device_records
-            return raw
-        return {}
+        return raw
 
     async def restore_credentials(
         self,
@@ -1397,6 +1305,30 @@ class MammotionClient:
             except Exception:  # noqa: BLE001
                 _logger.warning("restore_credentials: Mammotion MQTT bootstrap failed", exc_info=True)
 
+        self._start_token_refresh(acct_session)
+
+    @staticmethod
+    def _start_token_refresh(session: AccountSession) -> None:
+        """Begin clock-driven credential renewal for *session*.
+
+        Called from the two public entry points (login and cache restore) rather than
+        at each ``TokenManager`` construction site, so every path that establishes a
+        cloud session gets it exactly once.
+
+        This is what keeps an account alive when all of its devices are offline: with
+        nothing to send, no HTTP call is made, so none of the lazy refresh paths ever
+        fire and the credentials would rot until the refresh tokens themselves
+        expired.
+        """
+        if session.token_manager is None:
+            return
+        session.token_manager.start_refresh_scheduler()
+        _logger.debug(
+            "Token refresh scheduler started for %s — next check in %.0fs",
+            session.account_id,
+            session.token_manager.seconds_until_next_refresh,
+        )
+
     @property
     def token_manager(self) -> TokenManager | None:
         """Return the active TokenManager, or None if no cloud session."""
@@ -1404,13 +1336,50 @@ class MammotionClient:
         return session.token_manager if session else None
 
     async def refresh_login(self, account: str) -> None:
-        """Refresh authentication credentials for the given account."""
+        """Refresh whichever cloud credentials *account* actually has.
+
+        Routed by what the account is wired for, not by assumption: an Aliyun IoT
+        session is refreshed only when the account has an Aliyun gateway, and the
+        Mammotion MQTT JWT only when it has a Mammotion transport.  A hybrid
+        account refreshes both; each is attempted independently so a failure on one
+        does not skip the other.
+
+        Previously this unconditionally refreshed Aliyun, which raised
+        ``ReLoginRequiredError("No Aliyun cloud gateway configured")`` for every
+        post-2025 (Mammotion-direct) account — the exact accounts for which it was
+        the host's generic recovery call.
+
+        Raises:
+            ReLoginRequiredError: If every credential type the account has fails to
+                refresh.  Re-authentication is required only when the account's HTTP
+                login is itself dead — check ``TokenManager.reauth_required``.
+
+        """
         session = self._account_registry.get(account) or self._get_default_session()
-        if session is not None and session.token_manager is not None:
-            await session.token_manager.refresh_aliyun_credentials()
-            _logger.info("refresh_login: credentials refreshed for account=%s", account)
-        else:
+        if session is None or (token_manager := session.token_manager) is None:
             _logger.warning("refresh_login: no token manager available for account=%s", account)
+            return
+
+        refreshers: list[tuple[str, Callable[[], Awaitable[object]]]] = []
+        if session.cloud_client is not None:
+            refreshers.append(("aliyun", token_manager.refresh_aliyun_credentials))
+        if session.mammotion_transport is not None:
+            refreshers.append(("mammotion-mqtt", token_manager.refresh_mqtt_credentials))
+        if not refreshers:
+            _logger.debug("refresh_login: account=%s has no cloud transports to refresh", account)
+            return
+
+        failures: list[Exception] = []
+        for name, refresh in refreshers:
+            try:
+                await refresh()
+            except Exception as exc:  # noqa: BLE001 - each transport is independent
+                _logger.warning("refresh_login: %s refresh failed for account=%s: %s", name, account, exc)
+                failures.append(exc)
+            else:
+                _logger.info("refresh_login: %s credentials refreshed for account=%s", name, account)
+        if len(failures) == len(refreshers):
+            raise failures[0]
 
     # ------------------------------------------------------------------
     # Cloud — private helpers
@@ -1455,8 +1424,6 @@ class MammotionClient:
         stays in ``_register_mammotion_device`` and is performed before this
         helper is called.
         """
-        from pymammotion.data.model.device import create_device
-
         handle = DeviceHandle(
             device_id=device_name,
             device_name=device_name,
@@ -1495,17 +1462,17 @@ class MammotionClient:
         token_manager = acct_session.token_manager
 
         async def _on_aliyun_auth_failure() -> bool:
-            """Handle a 2043/460 bind rejection.
+            """Handle a 2043/460 bind rejection by refreshing the Aliyun session once.
 
-            Strategy:
-            1. Try a targeted Aliyun credential refresh (check_or_refresh_session).
-               This is sufficient when the iotToken simply expired or Aliyun returned
-               460 "iotToken blank" — the refreshToken is still valid.
-            2. Only if that raises ReLoginRequiredError (refreshToken also exhausted /
-               account blocked after repeated failures) do we escalate to a full
-               email/password re-login.  Skipping straight to _full_relogin on every
-               2043/460 fires unnecessary login_v2 calls that hammer Aliyun further
-               and extend any account block.
+            ``refresh_aliyun_credentials`` covers both recoverable cases: an expired
+            iotToken, and a 2401 rejection of the IoT refreshToken (which it rebuilds
+            from the existing HTTP login's authCode chain — no password involved).
+
+            If that fails, the Aliyun session is unrenewable.  We do NOT escalate to
+            an email/password re-login: it hammers Aliyun while the account is very
+            likely already blocked, and it would tear down a perfectly good HTTP
+            login and Mammotion MQTT transport to fix a problem confined to Aliyun.
+            Returning False gives up on this transport alone.
             """
             if token_manager is None:
                 return False
@@ -1513,67 +1480,30 @@ class MammotionClient:
             try:
                 await token_manager.refresh_aliyun_credentials()
                 creds = await token_manager.get_aliyun_credentials()
-                transport.update_iot_token(creds.iot_token)
-                _logger.info("Aliyun IoT token refreshed via targeted credential refresh")
-                return True
-            except ReLoginRequiredError:
-                # refreshToken exhausted (2401 repeatedly) — escalate to full re-login.
-                _logger.warning("Aliyun refreshToken exhausted — escalating to full re-login")
-            try:
-                # Exclude the Aliyun transport from the account-wide teardown — it
-                # is mid-_run awaiting this callback and returns True to retry the
-                # bind in place; disconnecting it here would cancel our own task.
-                await self._full_relogin(acct_session, transport_type=TransportType.CLOUD_ALIYUN)
-                creds = await token_manager.get_aliyun_credentials()
-                transport.update_iot_token(creds.iot_token)
-                _logger.info("Aliyun IoT token refreshed after full re-login")
-                return True
-            except Exception as exc:
-                _logger.exception("Full re-login failed after Aliyun bind token expiry")
-                raise ReLoginRequiredError(
-                    acct_session.email if acct_session else "",
-                    f"Full re-login failed after Aliyun bind rejection: {exc}",
-                ) from exc
+            except Exception:
+                _logger.exception("Aliyun credential refresh failed — giving up on the Aliyun transport")
+                return False
+            transport.update_iot_token(creds.iot_token)
+            _logger.info("Aliyun IoT token refreshed via targeted credential refresh")
+            return True
 
         transport.on_auth_failure = _on_aliyun_auth_failure
 
-        # When on_auth_failure itself fails (full re-login exhausted), the
-        # transport raises ReLoginRequiredError and fires this callback.
-        # Mirror the Mammotion MQTT pattern: attempt a final full re-login
-        # and reconnect so the integration can recover without user action.
-        # Circuit-break: too many fatal_auth events in a short window means
-        # the refreshToken itself is revoked — stop reconnecting and tell HA.
-        aliyun_fatal_auth_history: list[float] = []
-
         async def _on_aliyun_fatal_auth(exc: ReLoginRequiredError) -> None:
-            now = time.monotonic()
-            aliyun_fatal_auth_history[:] = [
-                t for t in aliyun_fatal_auth_history if now - t < _FATAL_AUTH_CIRCUIT_WINDOW_SEC
-            ]
-            aliyun_fatal_auth_history.append(now)
-            if len(aliyun_fatal_auth_history) > _FATAL_AUTH_CIRCUIT_MAX:
-                _logger.error(
-                    "Aliyun transport: %d fatal-auth events in %ds — circuit-breaker tripped; "
-                    "user must re-authenticate",
-                    len(aliyun_fatal_auth_history),
-                    _FATAL_AUTH_CIRCUIT_WINDOW_SEC,
-                )
-                transport.mark_unrecoverable_auth_failure()
-                await self._signal_transport_unrecoverable(acct_session, TransportType.CLOUD_ALIYUN, exc)
-                return
+            """Give up on the Aliyun transport; leave the rest of the account alone.
 
-            _logger.warning("Aliyun transport fatal auth error — attempting final re-login: %s", exc)
-            try:
-                await self._full_relogin(acct_session, transport_type=TransportType.CLOUD_ALIYUN)
-                if token_manager is not None:
-                    creds = await token_manager.get_aliyun_credentials()
-                    transport.update_iot_token(creds.iot_token)
-                transport.clear_auth_failed()
-                asyncio.get_running_loop().call_soon(lambda: asyncio.ensure_future(transport.connect()))
-                _logger.info("Aliyun transport reconnect scheduled after final re-login")
-            except Exception as relogin_exc:
-                _logger.exception("Final re-login failed for Aliyun transport — user must re-authenticate")
-                await self._signal_transport_unrecoverable(acct_session, TransportType.CLOUD_ALIYUN, relogin_exc)
+            The refresh above already exhausted every recovery that does not require
+            the user.  Retrying on a timer cannot help — a rejected IoT refreshToken
+            does not become valid by waiting — which is why the previous
+            re-login-and-circuit-break cycle is gone.
+
+            Scope matters here: only this transport's mowers are signalled.  The HTTP
+            session, its cached credentials, and any Mammotion MQTT transport on the
+            same account stay up.
+            """
+            _logger.error("Aliyun transport auth unrecoverable for account %s: %s", acct_session.account_id, exc)
+            transport.mark_unrecoverable_auth_failure()
+            await self._signal_transport_unrecoverable(acct_session, TransportType.CLOUD_ALIYUN, exc)
 
         transport.on_fatal_auth_error = _on_aliyun_fatal_auth
 
@@ -1591,8 +1521,6 @@ class MammotionClient:
         token_manager: TokenManager,
     ) -> MQTTTransport:
         """Build a MQTTTransport from MQTTConnection credentials."""
-        from urllib.parse import urlparse
-
         parsed = urlparse(mqtt_creds.host if "://" in mqtt_creds.host else "tcp://" + mqtt_creds.host)
         use_ssl = parsed.scheme in ("mqtts", "ssl")
         config = MQTTTransportConfig(
@@ -1614,7 +1542,7 @@ class MammotionClient:
 
         async def _refresh_creds(force: bool) -> MQTTCredentials:
             if force:
-                return await token_manager.refresh_mqtt_credentials_strict()
+                return await token_manager.refresh_mqtt_credentials()
             return await token_manager.get_mammotion_mqtt_credentials()
 
         # Invariant: the transport and its TokenManager MUST share one MammotionHTTP.
@@ -1759,42 +1687,87 @@ class MammotionClient:
         device_name = handle.device_name
         session = self._get_session_for_device(device_name)
         try:
-            if session is None or session.mammotion_http is None:
-                _logger.warning("Device '%s' unbound but no Mammotion session to re-discover — removing", device_name)
-                await self._remove_unbound_device(handle, session)
-                return
-
-            mammotion_http = session.mammotion_http
-            device_list_resp = await mammotion_http.get_user_device_list()
-            owned_iot_id_map = {
-                d.device_name: d.iot_id for d in (device_list_resp.data or []) if d.device_name and d.iot_id
-            }
-            page_resp = await mammotion_http.get_user_device_page()
-            records = (page_resp.data.records if page_resp.data else []) or []
-            record = next((r for r in records if r.device_name == device_name), None)
-            if record is None:
-                _logger.warning("Device '%s' unbound and not on Mammotion MQTT either — removing", device_name)
-                await self._remove_unbound_device(handle, session)
-                return
-
-            transport = await self._ensure_mammotion_transport(session.account_id, mammotion_http, session)
-            if transport is None:
-                _logger.error("Device '%s' unbound: could not set up Mammotion transport — left detached", device_name)
-                return
-
-            iot_id = owned_iot_id_map.get(device_name) or record.iot_id
-            await self._subscribe_mammotion_topics(transport, record.product_key, device_name, iot_id)
-            if iot_id != handle.iot_id:
-                self._iot_id_to_device_id.pop(handle.iot_id, None)
-                handle.iot_id = iot_id
-            self._iot_id_to_device_id[iot_id] = device_name
-            session.device_ids.add(device_name)
-            await handle.add_transport(transport)
-            _logger.info("Device '%s' migrated from Aliyun to Mammotion MQTT (iot_id=%s)", device_name, iot_id)
-        except Exception:
-            _logger.exception("Device '%s' unbound: migration failed", device_name)
+            # The Aliyun→Mammotion cloud migration after a firmware update is NOT
+            # instantaneous: the 29004 unbind lands before the device is listed on
+            # the Mammotion side.  A one-shot check here removed devices mid-flight
+            # (issue #819) or left them permanently transport-less (#808), so retry
+            # over several minutes before concluding the device is really gone.
+            for attempt, delay in enumerate(_UNBOUND_MIGRATION_DELAYS, start=1):
+                if attempt > 1:
+                    await asyncio.sleep(delay)
+                last_attempt = attempt == len(_UNBOUND_MIGRATION_DELAYS)
+                try:
+                    if await self._try_migrate_unbound(handle, session, final_attempt=last_attempt):
+                        return
+                except Exception:
+                    _logger.exception(
+                        "Device '%s' unbound: migration attempt %d/%d failed",
+                        device_name,
+                        attempt,
+                        len(_UNBOUND_MIGRATION_DELAYS),
+                    )
         finally:
             handle.reset_unbound_migration()
+
+    async def _try_migrate_unbound(
+        self, handle: DeviceHandle, session: AccountSession | None, *, final_attempt: bool
+    ) -> bool:
+        """One Aliyun→Mammotion migration attempt.  Returns True when settled (migrated,
+        removed, or deliberately left BLE-only) — False means "retry later".
+
+        Removal only happens on the *final* attempt, and never while the handle still
+        has a usable BLE transport (a BLE-only device keeps working without any cloud).
+        """
+        device_name = handle.device_name
+
+        def _keep_or_remove(reason: str) -> bool:
+            if not final_attempt:
+                _logger.debug("Device '%s' unbound: %s — will retry", device_name, reason)
+                return False
+            if handle.get_transport(TransportType.BLE) is not None:
+                _logger.warning("Device '%s' unbound: %s — keeping as BLE-only", device_name, reason)
+                return True
+            return False  # caller removes below
+
+        if session is None or session.mammotion_http is None:
+            settled = _keep_or_remove("no Mammotion session to re-discover")
+            if settled or not final_attempt:
+                return settled
+            _logger.warning("Device '%s' unbound but no Mammotion session to re-discover — removing", device_name)
+            await self._remove_unbound_device(handle, session)
+            return True
+
+        mammotion_http = session.mammotion_http
+        device_list_resp = await mammotion_http.get_user_device_list()
+        owned_iot_id_map = {
+            d.device_name: d.iot_id for d in (device_list_resp.data or []) if d.device_name and d.iot_id
+        }
+        page_resp = await mammotion_http.get_user_device_page()
+        records = (page_resp.data.records if page_resp.data else []) or []
+        record = next((r for r in records if r.device_name == device_name), None)
+        if record is None:
+            settled = _keep_or_remove("not on Mammotion MQTT yet")
+            if settled or not final_attempt:
+                return settled
+            _logger.warning("Device '%s' unbound and not on Mammotion MQTT either — removing", device_name)
+            await self._remove_unbound_device(handle, session)
+            return True
+
+        transport = await self._ensure_mammotion_transport(session.account_id, mammotion_http, session)
+        if transport is None:
+            _logger.error("Device '%s' unbound: could not set up Mammotion transport — will retry", device_name)
+            return False
+
+        iot_id = owned_iot_id_map.get(device_name) or record.iot_id
+        await self._subscribe_mammotion_topics(transport, record.product_key, device_name, iot_id)
+        if iot_id != handle.iot_id:
+            self._iot_id_to_device_id.pop(handle.iot_id, None)
+            handle.iot_id = iot_id
+        self._iot_id_to_device_id[iot_id] = device_name
+        session.device_ids.add(device_name)
+        await handle.add_transport(transport)
+        _logger.info("Device '%s' migrated from Aliyun to Mammotion MQTT (iot_id=%s)", device_name, iot_id)
+        return True
 
     async def _remove_unbound_device(self, handle: DeviceHandle, session: AccountSession | None) -> None:
         """Fully remove a device that is unbound from all clouds.
@@ -2210,8 +2183,11 @@ class MammotionClient:
                 command_builder=commands,
                 send_command=handle.send_raw,
                 get_map=lambda: cast(MowerDevice, handle.snapshot.raw).map,
+                # None — not 0 — when no report frame has arrived yet: 0 is a real
+                # bol_hash meaning "no areas", so returning it here would make the
+                # saga wipe a good cached manifest on every pre-report sync.
                 get_bol_hash=lambda: (
-                    locs[0].bol_hash if (locs := cast(MowerDevice, handle.snapshot.raw).report_data.locations) else 0
+                    locs[0].bol_hash if (locs := cast(MowerDevice, handle.snapshot.raw).report_data.locations) else None
                 ),
                 sync_type=2 if handle.is_transport_connected(TransportType.BLE) else 3,
                 skip_area_names=skip_area_names,
@@ -2255,15 +2231,22 @@ class MammotionClient:
         applies to ``device.map.plan`` automatically.  The saga also clears
         ``device.map.plans_stale`` once complete.
         """
-        from pymammotion.messaging.plan_saga import PlanFetchSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("start_plan_sync: device '%s' not registered", device_name)
             return
         _logger.debug("start_plan_sync [%s]: enqueuing PlanFetchSaga", device_name)
         saga = PlanFetchSaga(command_builder=handle.commands, send_command=handle.send_raw)
-        await handle.enqueue_saga(saga)
+
+        async def _on_plan_complete() -> None:
+            # The saga walks every plan index and the reducer applies each
+            # todev_planjob_set frame to device.map.plan; once complete the
+            # stored set is authoritative, so clear the stale flag that the
+            # reducer raised on all_plan_task.
+            if device := self.get_device_by_name(device_name):
+                device.map.plans_stale = False
+
+        await handle.enqueue_saga(saga, on_complete=_on_plan_complete)
 
     async def start_spino_plan_sync(self, device_name: str) -> None:
         """Enqueue a :class:`SpinoPlanFetchSaga` to fetch all Spino cleaning plans.
@@ -2272,8 +2255,6 @@ class MammotionClient:
         arrive as ``LubaMsg.ctrl.plan_job_set`` frames which the
         :class:`PoolStateReducer` applies to ``device.plans`` automatically.
         """
-        from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("start_spino_plan_sync: device '%s' not registered", device_name)
@@ -2319,9 +2300,6 @@ class MammotionClient:
                          ``None`` if the saga did not return a hash (e.g. DELETE).
 
         """
-        from pymammotion.messaging.svg_saga import SvgSendSaga
-        from pymammotion.utility.svg import chunk_svg_messages
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("send_svg: device '%s' not registered", device_name)
@@ -2376,8 +2354,6 @@ class MammotionClient:
                            the device started working externally).
 
         """
-        from pymammotion.messaging.mow_path_saga import MowPathSaga
-
         if handle := self._device_registry.get_by_name(device_name):
             # MQTT-only gate: skip when mow_path_fetch_enabled is False AND BLE
             # isn't actively connected (so this would go over MQTT).  BLE-routed
@@ -2424,9 +2400,6 @@ class MammotionClient:
             device_name: Registered device name.
 
         """
-        from pymammotion.data.model.hash_list import PathType
-        from pymammotion.messaging.common_data_saga import CommonDataSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("get_dynamics_line: device '%s' not registered", device_name)
@@ -2465,8 +2438,6 @@ class MammotionClient:
                          when the device is already mapping.
 
         """
-        from pymammotion.messaging.edge_saga import EdgeMappingSaga
-
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             _logger.warning("start_edge_mapping: device '%s' not registered", device_name)
@@ -2573,10 +2544,6 @@ class MammotionClient:
         The returned Device objects have all required fields populated from the
         record; fields not present in DeviceRecord are set to sensible defaults.
         """
-        import time
-
-        from pymammotion.aliyun.model.dev_by_account_response import Device
-
         result: list[Any] = []
         for rec in records:
             try:
@@ -2653,8 +2620,6 @@ class MammotionClient:
         the video stream — mirroring the APK's ``getVideoResp`` logic.
         New-firmware devices start streaming without a device-side command.
         """
-        from pymammotion.utility.device_type import DeviceType
-
         http = self.mammotion_http
         if http is None:
             return None
@@ -2680,8 +2645,6 @@ class MammotionClient:
         the APK's refresh path (STUN-timeout, ``on_p2p_lost``) which re-runs
         the same flow as the initial join without a preceding leave command.
         """
-        from pymammotion.utility.device_type import DeviceType
-
         http = self.mammotion_http
         if http is None:
             return None

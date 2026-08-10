@@ -8,10 +8,9 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 
-import betterproto2
-
 from pymammotion.aliyun.exceptions import GatewayTimeoutException
 from pymammotion.data.model.region_data import RegionData
+from pymammotion.messaging import transfers
 from pymammotion.transport.base import CommandTimeoutError, SagaFailedError, SagaInterruptedError
 
 if TYPE_CHECKING:
@@ -34,9 +33,9 @@ class Saga(ABC):
     - Set class-level `name`
     - Implement `_run(broker)` — partial state may be preserved between runs for resume
 
-    Subclasses may set `self._reset_attempt_counter = True` inside `_run()` when they
-    successfully resume from a previously interrupted frame, signalling that the attempt
-    counter should be reset so the resumed run gets a fresh set of max_attempts.
+    Subclasses that can bank partial work should override `progress()` to report it.
+    Any advance resets the attempt budget, so `max_attempts` caps *consecutive
+    fruitless* attempts rather than total runs — see `_retry_loop`.
 
     ``total_timeout`` is a hard wall-clock limit on the entire execute() call.  If the
     saga has not completed within that many seconds (across all attempts and resets),
@@ -44,37 +43,39 @@ class Saga(ABC):
     """
 
     name: str = "unnamed_saga"
+    #: Consecutive attempts allowed without any progress.  Progress resets this.
     max_attempts: int = 3
     step_timeout: float = 15.0
     total_timeout: float = 300.0  # 5-minute hard limit across all attempts
     device_name: str = ""
-    _reset_attempt_counter: bool = False
+
+    @staticmethod
+    def extract_frame(
+        msg: Any,
+        expected: str | tuple[str, ...] | frozenset[str],
+        *,
+        envelope: str = "nav",
+    ) -> tuple[str, Any] | None:
+        """Return ``(frame_name, frame_value)`` for a matching frame, else ``None``.
+
+        Delegates to :func:`pymammotion.messaging.transfers.extract_frame` so the
+        transfer helpers and the sagas share one implementation; exposed here
+        because call sites read better as ``self.extract_frame(...)``.
+        """
+        return transfers.extract_frame(msg, expected, envelope=envelope)
 
     @staticmethod
     def extract_nav_frame(
         msg: Any,
         expected: str | tuple[str, ...] | frozenset[str],
     ) -> tuple[str, Any] | None:
-        """Return ``(frame_name, frame_value)`` if *msg* is a nav LubaSubMsg whose
-        SubNavMsg frame is in *expected* — else ``None``.
+        """Return ``(frame_name, frame_value)`` for a matching ``nav`` frame, else ``None``.
 
-        Sagas use this in unsolicited-message collectors to ignore everything
-        that isn't the field they're waiting for.  Returns ``None`` on any
-        unpacking failure (malformed frame, missing oneof) so callers don't
-        need a try/except.
+        Thin alias for :meth:`extract_frame` with the default envelope; kept
+        because most sagas only ever speak ``nav`` and reading ``extract_nav_frame``
+        at the call site is clearer than passing the default explicitly.
         """
-        try:
-            sub_name, sub_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-            if sub_name != "nav":
-                return None
-            assert sub_val is not None
-            frame_name, frame_val = betterproto2.which_one_of(sub_val, "SubNavMsg")
-        except Exception:  # noqa: BLE001 — protobuf malformed frames are noise, not failures
-            return None
-        expected_set = (expected,) if isinstance(expected, str) else expected
-        if frame_name in expected_set:
-            return frame_name, frame_val
-        return None
+        return transfers.extract_frame(msg, expected)
 
     @contextlib.contextmanager
     def _collect_frames(
@@ -82,19 +83,30 @@ class Saga(ABC):
         broker: DeviceMessageBroker,
         field: str | tuple[str, ...],
         predicate: Callable[[Any], bool] | None = None,
+        *,
+        envelope: str = "nav",
     ) -> Iterator[asyncio.Queue[Any]]:
-        """Subscribe to unsolicited nav frames matching *field* and queue them.
+        """Subscribe to unsolicited frames matching *field* and queue them.
 
-        Yields an ``asyncio.Queue`` fed with every message whose SubNavMsg frame
-        is in *field* and, when *predicate* is given, whose frame value satisfies
-        it.  Subscribing before the caller's first send avoids the race where the
-        device replies before a handler is registered; the subscription is removed
-        on context exit (RAII).
+        Yields an ``asyncio.Queue`` fed with every message whose *envelope* leaf is
+        in *field* and, when *predicate* is given, whose frame value satisfies it.
+        Subscribing before the caller's first send avoids the race where the device
+        replies before a handler is registered; the subscription is removed on
+        context exit (RAII).
+
+        *envelope* selects the ``LubaSubMsg`` member — ``"nav"`` for mower traffic,
+        ``"ctrl"`` for Spino.  Both leaf shapes are handled by
+        :meth:`extract_frame`, so a device speaking a different envelope needs an
+        entry in :data:`transfers.LEAF_GROUPS`, not a subclass override of this method.
         """
+        if envelope not in transfers.LEAF_GROUPS:
+            msg = f"unknown envelope {envelope!r} — add it to transfers.LEAF_GROUPS"
+            raise ValueError(msg)
+
         queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def _collect(msg: Any) -> None:
-            frame = self.extract_nav_frame(msg, field)
+            frame = self.extract_frame(msg, field, envelope=envelope)
             if frame is not None and (predicate is None or predicate(frame[1])):
                 queue.put_nowait(msg)
 
@@ -134,8 +146,8 @@ class Saga(ABC):
 
         Partial state (e.g. partially-fetched frames) may be preserved between calls
         to allow resuming from the interrupted frame rather than restarting from scratch.
-        Set self._reset_attempt_counter = True when a successful resume probe indicates
-        the device is still responsive at the interrupted frame.
+        Report that banked work from :meth:`progress` so an interrupted-but-advancing
+        run earns another attempt.
         """
 
     async def execute(self, broker: DeviceMessageBroker) -> None:
@@ -156,39 +168,63 @@ class Saga(ABC):
             )
             raise SagaFailedError(self.name, self.max_attempts) from None
 
+    async def progress(self) -> Any:
+        """Return an opaque marker of how much work this saga has banked.
+
+        Compared (by inequality) between attempts: any change means the last run
+        advanced before it was interrupted, so it earns a fresh attempt budget.
+        Return ``None`` — the default — for sagas with nothing meaningful to
+        measure; they simply cap out at :attr:`max_attempts`.
+
+        This replaces the manual ``_reset_attempt_counter`` flag that map- and
+        mow-path fetches used to set by hand.  Deriving it from state rather than
+        having ``_run`` announce it removes the failure mode that forced
+        MowPathSaga's one-shot ``_budget_reset_granted`` guard: a flag set on
+        every run made ``max_attempts`` meaningless, whereas a value that stops
+        changing when the device stalls does not.
+        """
+        return None
+
     async def _retry_loop(self, broker: DeviceMessageBroker) -> None:
-        """Inner retry loop — runs until success or max_attempts exhausted.
+        """Re-enter ``_run`` while it keeps making progress; give up when it stops.
+
+        Whole-run restart is the wrong granularity for this protocol: the device
+        retransmits unacked frames, so an interruption at frame 47 of 50 is a blip,
+        not a reason to discard 46 banked frames.  Attempts are therefore only
+        counted while :meth:`progress` is *not* advancing.
 
         ``GatewayTimeoutException`` is handled here as an interruption rather than
         propagated.  If we let it escape, ``DeviceCommandQueue._process`` would
-        catch it and replay the entire saga work-item up to 3× — multiplying
-        every cloud invoke the saga has already made.  The saga subclasses know
-        how to resume from device state, so it's strictly cheaper to let our own
-        retry/resume logic handle it.
+        catch it and replay the entire saga work-item up to 3x — multiplying every
+        cloud invoke the saga has already made.
+
+        ``total_timeout`` (enforced by :meth:`execute`) is the backstop that bounds
+        a saga whose progress advances indefinitely.
         """
         attempt = 0
+        last_progress = await self.progress()
         while True:
             attempt += 1
-            self._reset_attempt_counter = False
             try:
                 await self._run(broker)
             except (SagaInterruptedError, CommandTimeoutError, GatewayTimeoutException) as exc:
-                if self._reset_attempt_counter:
-                    # The subclass successfully resumed from a partial frame — give it a
-                    # fresh set of attempts so the resumed run is not penalised for the
-                    # prior interruption.
+                current = await self.progress()
+                if current is not None and current != last_progress:
                     _logger.debug(
-                        "Saga '%s'[%s] resumed from partial state — resetting attempt counter",
+                        "Saga '%s'[%s] advanced before interruption (%s -> %s) — refreshing budget",
                         self.name,
                         self.device_name,
+                        last_progress,
+                        current,
                     )
+                    last_progress = current
                     attempt = 0
                     await asyncio.sleep(0.5)
                     continue
                 if attempt >= self.max_attempts:
                     raise SagaFailedError(self.name, self.max_attempts) from exc
                 _logger.warning(
-                    "Saga '%s'[%s] interrupted on attempt %d/%d: %s. Restarting in 0.5s.",
+                    "Saga '%s'[%s] interrupted with no progress on attempt %d/%d: %s. Restarting in 0.5s.",
                     self.name,
                     self.device_name,
                     attempt,

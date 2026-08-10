@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.transport.base import TransportError, TransportType
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from tests.unit.transport._fakes import (
+    FakeMessage as _FakeMessage,
+    FakeMQTTClient as _FakeMQTTClient,
+    NetworkErrorClient as _NetworkErrorClient,
+)
 
 
 @pytest.fixture
@@ -53,17 +60,8 @@ def test_is_connected_initially_false(transport: MQTTTransport) -> None:
 
 
 # ---------------------------------------------------------------------------
-# update_jwt / update_credentials — full credential rotation
+# update_credentials — full credential rotation
 # ---------------------------------------------------------------------------
-
-
-def test_update_jwt_replaces_only_password(transport: MQTTTransport) -> None:
-    """update_jwt swaps the password and leaves client_id/username intact."""
-    transport.update_jwt("new-jwt")
-    cfg = transport._config
-    assert cfg.password == "new-jwt"
-    assert cfg.client_id == "test-client"
-    assert cfg.username == "user"
 
 
 def test_update_credentials_rotates_client_id_username_and_jwt(transport: MQTTTransport) -> None:
@@ -124,48 +122,6 @@ async def test_refresh_credentials_applies_full_rotated_set(
 # ---------------------------------------------------------------------------
 # connect() / disconnect() — mock the aiomqtt.Client context manager
 # ---------------------------------------------------------------------------
-
-
-class _FakeMessage:
-    def __init__(self, topic: str, payload: bytes) -> None:
-        self.topic = topic
-        self.payload = payload
-
-
-class _FakeAsyncMessages:
-    """Async iterator that yields one message then blocks until cancelled."""
-
-    def __init__(self, messages: list[_FakeMessage]) -> None:
-        self._messages = iter(messages)
-
-    def __aiter__(self) -> "_FakeAsyncMessages":
-        return self
-
-    async def __anext__(self) -> _FakeMessage:
-        try:
-            return next(self._messages)
-        except StopIteration:
-            await asyncio.sleep(3600)
-            raise StopAsyncIteration
-
-
-class _FakeMQTTClient:
-    """Minimal stand-in for aiomqtt.Client."""
-
-    def __init__(self, messages: list[_FakeMessage] | None = None) -> None:
-        self._messages_list: list[_FakeMessage] = messages or []
-        self.publish = AsyncMock()
-        self.subscribe = AsyncMock()
-
-    @property
-    def messages(self) -> _FakeAsyncMessages:
-        return _FakeAsyncMessages(self._messages_list)
-
-    async def __aenter__(self) -> "_FakeMQTTClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
 
 
 @pytest.mark.asyncio
@@ -292,19 +248,6 @@ async def test_on_message_callback_called(config: MQTTTransportConfig, mammotion
 # ---------------------------------------------------------------------------
 
 
-class _NetworkErrorClient:
-    """Client whose __aenter__ raises a bare OSError."""
-
-    def __init__(self, exc: OSError) -> None:
-        self._exc = exc
-
-    async def __aenter__(self) -> "_NetworkErrorClient":
-        raise self._exc
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
-
-
 @pytest.mark.asyncio
 async def test_oserror_retries_without_counting_as_auth_failure(
     config: MQTTTransportConfig, mammotion_http: MagicMock
@@ -324,8 +267,8 @@ async def test_oserror_retries_without_counting_as_auth_failure(
 
     # Zero-out backoff so retries happen immediately; real asyncio.sleep(0) yields the event loop.
     with (
-        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0),
-        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0),
+        patch("pymammotion.transport.mqtt.MQTT_RECONNECT_MIN_SEC", 0),
+        patch("pymammotion.transport.mqtt.MQTT_RECONNECT_MAX_SEC_MAMMOTION", 0),
         patch("aiomqtt.Client", side_effect=_client_factory),
     ):
         await transport.connect()
@@ -359,8 +302,8 @@ async def test_dns_error_retries_without_counting_as_auth_failure(
         return _FakeMQTTClient()
 
     with (
-        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MIN_SEC", 0),
-        patch("pymammotion.transport.mqtt._MQTT_RECONNECT_MAX_SEC", 0),
+        patch("pymammotion.transport.mqtt.MQTT_RECONNECT_MIN_SEC", 0),
+        patch("pymammotion.transport.mqtt.MQTT_RECONNECT_MAX_SEC_MAMMOTION", 0),
         patch("aiomqtt.Client", side_effect=_client_factory),
     ):
         await transport.connect()
@@ -397,3 +340,118 @@ async def test_send_without_token_manager_raises_transport_error() -> None:
         await transport.send(b"payload", iot_id="iot-123")
     assert not isinstance(exc_info.value, AssertionError)
     assert "token manager" in str(exc_info.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Cloud error-code classification
+#
+# The code sets live in pymammotion.aliyun.exceptions so both cloud send paths
+# share one table; these tests pin the behaviour the table drives here.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("code", [6205, 6221, 50103, 50104])
+async def test_send_raises_device_offline_for_every_offline_code(
+    config: MQTTTransportConfig, mammotion_http: MagicMock, code: int
+) -> None:
+    """Every known "device not reachable" code must surface as DeviceOfflineException.
+
+    6221 (APK BindCode.DEVICE_OFFLINE) was previously unhandled and fell through
+    to a generic TransportError, which the queue treats as an unexpected failure
+    rather than an expected offline device.
+    """
+    from pymammotion.aliyun.exceptions import DeviceOfflineException
+
+    mammotion_http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=code))
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+
+    with pytest.raises(DeviceOfflineException):
+        await transport.send(b"\x00", iot_id="iot-1")
+
+
+async def test_send_raises_gateway_timeout_for_20056(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    from pymammotion.aliyun.exceptions import GatewayTimeoutException
+
+    mammotion_http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=20056))
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+
+    with pytest.raises(GatewayTimeoutException):
+        await transport.send(b"\x00", iot_id="iot-1")
+
+
+async def test_send_raises_transport_error_for_unknown_code(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """An unclassified failure must not be mistaken for an offline device."""
+    mammotion_http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=99999))
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+
+    with pytest.raises(TransportError):
+        await transport.send(b"\x00", iot_id="iot-1")
+
+
+# ---------------------------------------------------------------------------
+# Dispatch must not swallow what the downstream callback raises
+#
+# The parse and the callback used to sit inside one broad `except Exception`, so
+# anything a handler raised — SessionExpiredError, AuthError — was logged at DEBUG
+# and dropped.  `_run` already has the exception taxonomy (auth handling, backoff,
+# a catch-all); the dispatch helper must not second-guess it.
+# ---------------------------------------------------------------------------
+
+
+async def test_status_dispatch_propagates_callback_exceptions(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """An auth error raised by the status handler must reach _run, not be buried."""
+    from pymammotion.transport.base import SessionExpiredError
+
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+    transport.on_device_status = AsyncMock(
+        side_effect=SessionExpiredError(TransportType.CLOUD_MAMMOTION, "token expired")
+    )
+
+    raw = json.dumps(
+        {
+            "action": "online",
+            "productKey": "pk",
+            "deviceName": "Yuka-X",
+            "iotId": "iot-1",
+            "gmtCreate": 1779395099943,
+        }
+    ).encode()
+    with pytest.raises(SessionExpiredError):
+        await transport._dispatch_device_status("/x/thing/status", raw)
+
+
+async def test_status_dispatch_still_swallows_malformed_payloads(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """A bad payload is noise — it must not escape and tear down the connection."""
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+    transport.on_device_status = AsyncMock()
+
+    await transport._dispatch_device_status("/x/thing/status", b"{not json")
+    await transport._dispatch_device_status("/x/thing/status", json.dumps({"unexpected": 1}).encode())
+    transport.on_device_status.assert_not_awaited()
+
+
+async def test_properties_dispatch_propagates_callback_exceptions(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    from pymammotion.transport.base import SessionExpiredError
+
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+    transport.on_device_properties = AsyncMock(
+        side_effect=SessionExpiredError(TransportType.CLOUD_MAMMOTION, "token expired")
+    )
+    # ThingPropertiesMessage.Params requires a dozen aliased Aliyun fields; building
+    # one by hand would test mashumaro, not the dispatch.  Stub the parse so the test
+    # isolates what it is actually about — a successfully-parsed message whose
+    # callback raises.
+    parsed = MagicMock()
+    parsed.params.iot_id = "iot-1"
+    with patch.object(ThingPropertiesMessage, "from_json", return_value=parsed), pytest.raises(SessionExpiredError):
+        await transport._dispatch_device_properties("/x/thing/properties", b"{}")

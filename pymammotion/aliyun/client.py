@@ -2,22 +2,16 @@ import asyncio
 import time
 import uuid
 
+from alibabacloud_apigateway_util.client import Client as APIGatewayUtilClient
+from alibabacloud_tea_util.client import Client as UtilClient
 from Tea.exceptions import UnretryableException
 from Tea.request import TeaRequest
 
 from pymammotion.aliyun.tea.core import TeaCore
 
-try:
-    from typing import Dict
-except ImportError:
-    pass
-
-from alibabacloud_apigateway_util.client import Client as APIGatewayUtilClient
-from alibabacloud_tea_util.client import Client as UtilClient
-
 
 class Client:
-    """test"""
+    """test."""
 
     _app_key: str | None = None
     _app_secret: str | None = None
@@ -44,7 +38,7 @@ class Client:
         self._max_idle_conns = config.max_idle_conns
 
     async def async_do_request(self, pathname: str, protocol: str, method: str, header: dict[str, str], body, runtime):
-        """Send request
+        """Send request.
 
         @type pathname: str
         @param pathname: the url path
@@ -128,11 +122,11 @@ class Client:
                 _request.headers["x-ca-signature"] = APIGatewayUtilClient.get_signature(_request, self._app_secret)
                 _request.headers["ca_version"] = "1"
                 _last_request = _request
-                try:
-                    _response = await TeaCore.async_do_action(_request, _runtime)
-                    return _response
-                except asyncio.CancelledError:
-                    pass
+                return await TeaCore.async_do_action(_request, _runtime)
+            except asyncio.CancelledError:
+                # Never swallow cancellation: eating it here re-sends the request
+                # (autoretry) or masks the cancel as UnretryableException.
+                raise
             except Exception as e:
                 if TeaCore.is_retryable(e):
                     _last_exception = e
@@ -141,7 +135,7 @@ class Client:
         raise UnretryableException(_last_request, _last_exception)  # type: ignore
 
     def get_user_agent(self) -> str:
-        """Get user agent
+        """Get user agent.
 
         @rtype: str
         @return: user agent

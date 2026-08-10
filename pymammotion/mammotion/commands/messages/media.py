@@ -39,7 +39,7 @@ class MessageMedia(AbstractMessage, ABC):
         return luba_msg.SerializeToString()
 
     def set_car_volume(self, volume: int):
-        """Set the car volume. 0 - 100"""
+        """Set the car volume. 0 - 100."""
         return self.send_order_msg_media(SocMul(set_audio=MulSetAudio(at_switch=volume)))
 
     def set_car_voice_language(self, language_type: MulLanguage | None):
@@ -58,7 +58,7 @@ class MessageMedia(AbstractMessage, ABC):
     def get_car_light(self, ids: int):
         """Get mower light settings.
         1126 for manual
-        1123 for night time settings
+        1123 for night time settings.
         """
         return self.send_order_msg_media(SocMul(get_lamp=GetHeadlamp(get_ids=ids)))
 

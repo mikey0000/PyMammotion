@@ -260,7 +260,7 @@ def _draw_geojson_feature(draw: ImageDraw.ImageDraw, feature: dict[str, Any], pr
             polygon = [project((float(coord[0]), float(coord[1]))) for coord in ring if len(coord) >= 2]
             if len(polygon) >= 3:
                 draw.polygon(polygon, fill=fill, outline=stroke)
-                draw.line(polygon + [polygon[0]], fill=stroke, width=3, joint="curve")
+                draw.line([*polygon, polygon[0]], fill=stroke, width=3, joint="curve")
         if name and type_name == "area" and rings:
             # Use only the outer ring for centroid — holes would pull it off-centre.
             _draw_label(draw, str(name), _centroid(_coordinate_points(rings[0])), project)
@@ -271,7 +271,7 @@ def _draw_geojson_feature(draw: ImageDraw.ImageDraw, feature: dict[str, Any], pr
                 polygon = [project((float(coord[0]), float(coord[1]))) for coord in ring if len(coord) >= 2]
                 if len(polygon) >= 3:
                     draw.polygon(polygon, fill=fill, outline=stroke)
-                    draw.line(polygon + [polygon[0]], fill=stroke, width=3, joint="curve")
+                    draw.line([*polygon, polygon[0]], fill=stroke, width=3, joint="curve")
                 if i == 0:
                     all_outer_pts.extend(_coordinate_points(ring))
         if name and type_name == "area":

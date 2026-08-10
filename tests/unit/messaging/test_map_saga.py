@@ -526,9 +526,15 @@ class TestAreaNameFallbackAfterSync:
 # ---------------------------------------------------------------------------
 
 
-async def test_saga_syncs_immediately_before_root_list_and_per_hash() -> None:
-    """send_todev_ble_sync must be the call immediately before get_all_boundary_hash_list
-    and immediately before the first synchronize_hash_data."""
+async def test_saga_syncs_before_root_list_and_immediately_before_per_hash() -> None:
+    """The run opens with a sync, and sends another immediately before the per-hash fetch.
+
+    The root-list request no longer carries its own sync immediately in front of it;
+    it is covered by the top-of-run sync (and, over MQTT, by the handle-level 7 s
+    re-sync gate in ``_send_marked``).  The per-hash step keeps its dedicated sync
+    because the device stops serving common-data frames when it falls out of the
+    synced state.
+    """
     broker = DeviceMessageBroker()
     cb = _make_command_builder()
 
@@ -557,12 +563,12 @@ async def test_saga_syncs_immediately_before_root_list_and_per_hash() -> None:
     names = [c[0] for c in cb.mock_calls if c[0]]
 
     root_idx = names.index("get_all_boundary_hash_list")
-    assert names[root_idx - 1] == "send_todev_ble_sync", f"no sync right before root list: {names[: root_idx + 1]}"
+    assert "send_todev_ble_sync" in names[:root_idx], f"no sync before root list: {names[: root_idx + 1]}"
 
     sh_idx = names.index("synchronize_hash_data")
     assert names[sh_idx - 1] == "send_todev_ble_sync", f"no sync right before per-hash: {names[: sh_idx + 1]}"
 
-    # At least: top-of-run + before-root-list + before-per-hash.
-    assert names.count("send_todev_ble_sync") >= 3
+    # At least: top-of-run + before-per-hash.
+    assert names.count("send_todev_ble_sync") >= 2
     # The BLE sync_type is forwarded to the command builder.
     cb.send_todev_ble_sync.assert_called_with(sync_type=2)

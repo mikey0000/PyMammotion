@@ -225,10 +225,9 @@ class DeviceHandle:
         self._readiness_checker: ReadinessChecker | None = readiness_checker
         self._stopping: bool = False
         self._keep_alive_task: asyncio.Task[None] | None = None
-        #: monotonic timestamp of the last user-initiated command (updated via
-        #: ``record_user_command``; heartbeats and internal sends do NOT update
-        #: this).  Used to wake the poll loop early via ``_rearm_event``.
-        self._last_user_command_monotonic: float = time.monotonic()
+        #: Strong reference to the in-flight report-stream stop task (see
+        #: ``_fire_report_stream_stop``).
+        self._report_stream_stop_task: asyncio.Task[None] | None = None
         #: Monotonic timestamp of the last ``todev_ble_sync(3)`` we sent per MQTT
         #: transport.  Read by ``_send_marked`` to keep the device synced on a fixed
         #: cadence (``_MQTT_SYNC_INTERVAL``) independent of command traffic — see the
@@ -427,12 +426,17 @@ class DeviceHandle:
         is read by :meth:`_keep_alive_loop` to skip heartbeat sends when the
         transport has seen activity within the keep-alive window.
 
-        Raises TransportRateLimitedError immediately if the transport is currently
-        rate-limited — without touching the network — so all callers (commands,
-        sagas, heartbeats) are blocked uniformly while the 12-hour ban is active.
+        Raises TransportRateLimitedError immediately if a send is currently
+        blocked — without touching the network — so all callers (commands,
+        sagas, heartbeats) are gated uniformly.  Uses the same
+        ``is_send_blocked`` predicate as ``transport.send()`` itself, so this
+        pre-check can never block a send the transport would have allowed
+        (devices on quota-free firmware are exempt at both layers).
         BLE transports are never rate-limited and are always allowed through.
         """
-        if transport.transport_type != TransportType.BLE and transport.is_rate_limited:
+        version = self.firmware_version
+
+        if transport.transport_type != TransportType.BLE and transport.is_send_blocked(version):
             raise TransportRateLimitedError(
                 f"Transport {transport.transport_type.value} is rate-limited — send blocked"
             )
@@ -448,12 +452,6 @@ class DeviceHandle:
             since_sync = time.monotonic() - self._last_mqtt_sync_monotonic.get(transport.transport_type, 0.0)
             if since_sync > _MQTT_SYNC_INTERVAL:
                 await self._send_mqtt_sync(transport, since_sync=since_sync)
-
-        version = self.snapshot.raw.update_check.current_version
-
-        # TODO do this by device type
-        if version == "1.0.0.0" and hasattr(cast(MowerDevice, self.snapshot.raw), "mower_state"):
-            version = cast(MowerDevice, self.snapshot.raw).mower_state.swversion
 
         await transport.send(payload, iot_id=self.iot_id, firmware_version=version)
         if not self._stopping:
@@ -656,13 +654,18 @@ class DeviceHandle:
             await self._status_bus.emit(msg)
 
         online = msg.params.status.value is StatusType.CONNECTED
+        was_offline = self._availability.mqtt_reported_offline
 
-        if self._availability.mqtt_reported_offline:
-            if online and not self._stopping and time.monotonic() - self._last_report_at > self._REPORT_STALE_THRESHOLD:
+        if was_offline and online:
+            if not self._stopping and time.monotonic() - self._last_report_at > self._REPORT_STALE_THRESHOLD:
                 await self.request_report_cfg(dedup_key="report_cfg_on_status")
 
-            if cloud_transport := self.cloud_transport():
-                self.update_availability(cloud_transport, self._availability.mqtt, mqtt_reported_offline=not online)
+        # Keep the offline gate in sync with thing/status in BOTH directions: an
+        # "offline" status must set mqtt_reported_offline (so nothing fires MQTT at a
+        # dead device), and an "online" status must clear it even before the first
+        # protobuf frame re-arms it via on_raw_message.
+        if was_offline is not (not online) and (cloud_transport := self.cloud_transport()):
+            self.update_availability(cloud_transport, self._availability.mqtt, mqtt_reported_offline=not online)
 
     async def request_report_cfg(self, *, dedup_key: str = "report_cfg") -> None:
         """Enqueue a get_report_cfg command in the background."""
@@ -743,89 +746,6 @@ class DeviceHandle:
         if not self._stopping:
             await self._state_changed_bus.emit(snapshot)
             await self._properties_bus.emit(properties)
-
-    async def send_command(
-        self,
-        command: bytes,
-        expected_field: str,
-        *,
-        priority: Priority = Priority.NORMAL,
-        skip_if_saga_active: bool = False,
-    ) -> None:
-        """Enqueue a command for execution via broker.send_and_wait.
-
-        Does NOT return the response — responses update device state via on_message.
-        The queue handles priority and saga blocking.
-        """
-        if skip_if_saga_active and self.queue.is_saga_active:
-            _logger.debug("send_command '%s': saga active — skipping field=%s", self.device_name, expected_field)
-            return
-
-        async def _do_send(cmd: bytes, field: str) -> None:
-            self._last_user_command_monotonic = time.monotonic()
-            _logger.debug(
-                "_do_send '%s': field=%s transports=%s",
-                self.device_name,
-                field,
-                {k.value: v.is_connected for k, v in self._transports.items()},
-            )
-            if self._prefer_ble:
-                ble = self._transports.get(TransportType.BLE)
-                if ble is not None and not ble.is_connected and ble.is_usable:
-                    _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
-                    self.schedule_ble_connection(cast(BLETransport, ble))
-            try:
-                transport = self.active_transport()
-            except NoTransportAvailableError:
-                # Restart any dead MQTT task so future commands have a transport.
-                # The fixed connect() is a no-op if the task is still running (retry-sleep).
-                for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-                    mqtt_t = self._transports.get(t_type)
-                    if mqtt_t is not None:
-                        if not mqtt_t.is_connected:
-                            _logger.warning(
-                                "DeviceHandle[%s]: %s not connected on send — restarting loop",
-                                self.device_name,
-                                t_type.value,
-                            )
-                            await mqtt_t.connect()
-                ble = self._transports.get(TransportType.BLE)
-                if ble is not None and not ble.is_connected and ble.is_usable:
-                    _logger.debug("BLE disconnected for '%s' — reconnecting before send", self.device_name)
-                    await ble.connect()
-                    transport = self.active_transport()
-                else:
-                    raise
-            _logger.debug(
-                "_do_send '%s': sending field=%s via %s", self.device_name, field, transport.transport_type.value
-            )
-            try:
-                await self.broker.send_and_wait(
-                    send_fn=lambda: self._send_marked(transport, cmd),
-                    expected_field=field,
-                )
-            except DeviceOfflineException:
-                ble = self._on_device_offline(transport)
-                if ble is None:
-                    raise
-                await self.broker.send_and_wait(
-                    send_fn=lambda: self._send_marked(ble, cmd),
-                    expected_field=field,
-                )
-            except DeviceUnboundException:
-                unbound_ble = await self._on_device_unbound(transport)
-                if unbound_ble is None:
-                    raise
-                await self.broker.send_and_wait(
-                    send_fn=lambda t=unbound_ble: self._send_marked(t, cmd),
-                    expected_field=field,
-                )
-
-        await self.queue.enqueue(
-            lambda: _do_send(command, expected_field),
-            priority=priority,
-            skip_if_saga_active=False,
-        )
 
     def _on_device_offline(self, transport: Transport) -> Transport | None:
         """Mark the device offline on *transport* and pick a BLE fallback.
@@ -963,6 +883,22 @@ class DeviceHandle:
     def snapshot(self) -> DeviceSnapshot:
         """The latest immutable device state snapshot."""
         return self.state_machine.current
+
+    @property
+    def firmware_version(self) -> str:
+        """Device firmware version for rate-limit / cadence decisions.
+
+        Falls back to ``mower_state.swversion`` while the update-check frame
+        still holds its "1.0.0.0" placeholder, so every consumer (the send
+        gate, the poll-cadence table, the rate-limit backoff) sees the same
+        version and can never disagree about the firmware exemption.
+        """
+        version = self.snapshot.raw.update_check.current_version
+
+        # TODO do this by device type
+        if version == "1.0.0.0" and hasattr(cast(MowerDevice, self.snapshot.raw), "mower_state"):
+            version = cast(MowerDevice, self.snapshot.raw).mower_state.swversion
+        return version
 
     def restore_device(self, device: Device) -> None:
         """Restore previously saved device state (e.g. from HA storage)."""
@@ -1173,13 +1109,12 @@ class DeviceHandle:
         self._transports.clear()
 
     def record_user_command(self) -> None:
-        """Stamp the user-command timestamp and wake the poll loop for early re-evaluation.
+        """Wake the poll loop for early re-evaluation.
 
         Call this whenever a user-initiated command is dispatched so that
         ``_rearm_event`` interrupts any in-progress sleep and the loop
         can re-evaluate immediately.
         """
-        self._last_user_command_monotonic = time.monotonic()
         self._rearm_event.set()
 
     def device_mode(self) -> _DeviceMode:
@@ -1308,7 +1243,8 @@ class DeviceHandle:
             return
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._send_report_stream_stop())
+            # Hold a strong reference so the stop task can't be GC'd before running.
+            self._report_stream_stop_task = loop.create_task(self._send_report_stream_stop())
         except RuntimeError:
             pass
 
@@ -1513,12 +1449,6 @@ class DeviceHandle:
         """Return the registered transport of the given type, or None."""
         return self._transports.get(transport_type)
 
-    def _has_usable_mqtt(self) -> bool:
-        """True when an MQTT transport is registered and the cloud hasn't reported the device offline."""
-        if self._availability.mqtt_reported_offline:
-            return False
-        return any(tt is not TransportType.BLE for tt in self._transports)
-
     @property
     def is_stopping(self) -> bool:
         """True once stop() has been called; new emits should be suppressed."""
@@ -1696,7 +1626,11 @@ class DeviceHandle:
         try:
             await self._send_marked(transport, payload)
         except TransportRateLimitedError:
-            _logger.debug("send_raw '%s': transport rate-limited — send blocked", self.device_name)
+            _logger.warning(
+                "send_raw '%s': transport rate-limited — send blocked (%.0fs until sends resume)",
+                self.device_name,
+                transport.seconds_until_send_available(),
+            )
         except TooManyRequestsException:
             _logger.warning("send_raw '%s': rate limited by cloud — blocking MQTT sends for 12h", self.device_name)
             transport.set_rate_limited()
@@ -1713,15 +1647,10 @@ class DeviceHandle:
         except TransportError:
             if transport.transport_type is not TransportType.BLE:
                 raise
-            mqtt: Transport | None = None
-            for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-                t = self._transports.get(transport_type)
-                if t is not None:
-                    mqtt = t
-                    break
-            if mqtt is None:
+            mqtt = self._pick_cloud_transport()
+            if mqtt is None or not self._cloud_transport_usable(mqtt):
                 _logger.warning(
-                    "Device '%s' BLE send failed and no MQTT transport available — giving up",
+                    "Device '%s' BLE send failed and no usable MQTT transport available — giving up",
                     self.device_name,
                 )
                 raise
@@ -1842,13 +1771,19 @@ class DeviceHandle:
         return True
 
     def cloud_transport(self) -> TransportType | None:
-        mqtt = None
+        mqtt = self._pick_cloud_transport()
+        return mqtt.transport_type if mqtt is not None else None
+
+    def _pick_cloud_transport(self) -> Transport | None:
+        """Return the registered cloud transport (Aliyun preferred), or None."""
         for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-            t = self._transports.get(transport_type)
-            if t is not None:
-                mqtt = transport_type
-                break
-        return mqtt
+            if (t := self._transports.get(transport_type)) is not None:
+                return t
+        return None
+
+    def _cloud_transport_usable(self, mqtt: Transport) -> bool:
+        """The one MQTT-sendable gate: transport usable and not reported offline by the cloud."""
+        return mqtt.is_usable and not self._availability.mqtt_reported_offline
 
     def active_transport(self, *, prefer_ble: bool | None = None) -> Transport:
         """Return the best transport to send on *right now*.
@@ -1887,13 +1822,8 @@ class DeviceHandle:
         ble_usable = ble is not None and ble.is_usable
 
         mqtt_reported_offline = self._availability.mqtt_reported_offline
-        mqtt: Transport | None = None
-        for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-            t = self._transports.get(transport_type)
-            if t is not None:
-                mqtt = t
-                break
-        mqtt_usable = mqtt is not None and not mqtt_reported_offline and mqtt.is_usable
+        mqtt = self._pick_cloud_transport()
+        mqtt_usable = mqtt is not None and self._cloud_transport_usable(mqtt)
 
         def _log_selection(path: str, *args: Any) -> None:
             """Log only when the (path, prefer_ble, ble_usable, mqtt_usable) tuple changes.

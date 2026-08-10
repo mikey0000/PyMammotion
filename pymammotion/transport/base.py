@@ -11,6 +11,8 @@ import socket
 import time
 from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
+from packaging.version import InvalidVersion, Version
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -20,6 +22,29 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+#: Firmware version at which devices migrated to the Mammotion MQTT broker.
+#: Devices on this version or newer are not subject to the cloud send quota
+#: (see ``Transport.is_send_blocked``).
+RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
+
+#: Starting delay for an MQTT reconnect, doubling on each consecutive failure.
+#: Shared by both cloud transports.
+MQTT_RECONNECT_MIN_SEC = 1
+
+#: Ceiling for that backoff.  The two transports deliberately differ, so the
+#: values live here together rather than drifting apart in separate modules:
+#:
+#: * Aliyun (60 s) — the broker enforces a single session per identity, so a
+#:   longer gap means a longer window in which the phone app can hold the slot.
+#: * Mammotion direct (120 s) — no such contention, so back off harder and keep
+#:   reconnect traffic down.
+#:
+#: This asymmetry was previously two unrelated ``_MQTT_RECONNECT_MAX_SEC``
+#: definitions and read as an accident; if it turns out to be one, changing it is
+#: now a one-line edit in one place.
+MQTT_RECONNECT_MAX_SEC_ALIYUN = 60
+MQTT_RECONNECT_MAX_SEC_MAMMOTION = 120
 
 
 class TransportError(Exception):
@@ -311,6 +336,16 @@ class Transport(ABC):
         """Monotonic timestamp of the last inbound message (0.0 if none yet)."""
         return self._last_received_monotonic
 
+    def _mark_received(self) -> None:
+        """Stamp inbound activity for receive paths that bypass the on_message wrapper.
+
+        The MQTT transports deliver most traffic via on_device_message / the topic
+        dispatchers, which never pass through the on_message property setter's
+        timestamping wrapper — they must call this per inbound message so
+        last_received_monotonic (used for poll-staleness cadence) stays honest.
+        """
+        self._last_received_monotonic = time.monotonic()
+
     @property
     def last_send_monotonic(self) -> float:
         """Monotonic timestamp of the last outbound send (0.0 if never sent)."""
@@ -375,10 +410,40 @@ class Transport(ABC):
         * **Self-imposed quota** — the rolling send window currently holds ``>= _SEND_LIMIT``
           sends.  This is computed live, so it releases the moment enough of the oldest sends
           age out of the window — no fixed wait once back under the limit.
+
+        Callers gating an actual send should use :meth:`is_send_blocked` instead, which
+        also applies the firmware exemption — devices on
+        ``RATE_LIMIT_REMOVED_VERSION``+ firmware have migrated to the Mammotion MQTT
+        broker and have no cloud send quota.
         """
         if time.monotonic() < self._rate_limited_until:
             return True
         return self.sends_in_window() >= self._SEND_LIMIT
+
+    @staticmethod
+    def _version_is_rate_limited(firmware_version: str) -> bool:
+        """True when *firmware_version* predates the migration to the Mammotion MQTT broker.
+
+        An unknown/unparseable version (e.g. "" before the first update-check frame)
+        is treated as pre-migration so the rate-limit gate stays engaged rather than
+        letting Version("") raise InvalidVersion out of the send path.
+        """
+        try:
+            return Version(firmware_version) < RATE_LIMIT_REMOVED_VERSION
+        except InvalidVersion:
+            return True
+
+    def is_send_blocked(self, firmware_version: str) -> bool:
+        """Return True when an outbound send must be refused for a device on *firmware_version*.
+
+        The single source of truth for the rate-limit gate: combines
+        :attr:`is_rate_limited` with the firmware exemption
+        (``RATE_LIMIT_REMOVED_VERSION``).  Every send path — ``send()`` itself and
+        any caller that pre-checks before touching the network — must use this
+        predicate rather than ``is_rate_limited`` directly, so the gates can never
+        disagree about whether a send is allowed.
+        """
+        return self.is_rate_limited and self._version_is_rate_limited(firmware_version)
 
     def seconds_until_send_available(self) -> float:
         """Seconds until a send would be allowed again (``0.0`` if allowed right now).

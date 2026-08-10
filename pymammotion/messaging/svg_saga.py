@@ -5,9 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-import betterproto2
-
 from pymammotion.messaging.saga import Saga
+from pymammotion.transport import TransportError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -83,11 +82,11 @@ class SvgSendSaga(Saga):
 
                 msg = await self._next_frame(frame_queue, "toapp_svg_msg", chunk.current_frame)
 
-                _, nav_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                if nav_val is None:
+                frame = self.extract_nav_frame(msg, "toapp_svg_msg")
+                if frame is None:
                     raise ValueError(f"Unexpected message type in SVG response: {msg}")
 
-                ack = nav_val.toapp_svg_msg
+                ack = frame[1]
 
                 _logger.debug(
                     "SvgSendSaga[%s]: frame %d/%d ack result=%d hash=%d",
@@ -97,6 +96,12 @@ class SvgSendSaga(Saga):
                     ack.result,
                     ack.data_hash,
                 )
+
+                if ack.result != 0:
+                    # Device rejected the frame — abort instead of streaming the
+                    # remaining chunks and reporting success with a bogus data_hash.
+                    msg = f"SvgSendSaga: device rejected frame {ack.current_frame}/{ack.total_frame} (result={ack.result})"
+                    raise TransportError(msg)
 
                 if i == len(self._chunks) - 1:
                     self.result_hash = ack.data_hash

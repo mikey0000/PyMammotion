@@ -39,6 +39,8 @@ def _make_transport(transport_type: TransportType, *, connected: bool = True) ->
     transport.transport_type = transport_type
     transport.is_connected = connected
     transport.is_rate_limited = False
+    transport.is_send_blocked = MagicMock(return_value=False)
+    transport.seconds_until_send_available = MagicMock(return_value=0.0)
     transport.last_send_monotonic = 0.0  # 0.0 = never sent (matches Transport base default)
     transport.send = AsyncMock()
     transport.send_heartbeat = AsyncMock()
@@ -64,12 +66,6 @@ def _make_handle(
     )
 
 
-def _make_mock_response(field_name: str) -> MagicMock:
-    """Return a MagicMock that looks like a LubaMsg with the given payload field set."""
-    msg = MagicMock()
-    return msg
-
-
 def _make_command_builder() -> MagicMock:
     """Return a mock command builder returning dummy bytes for every method."""
     builder = MagicMock()
@@ -84,10 +80,15 @@ def _make_hash_list_ack_response(
     current_frame: int = 1,
     data_couple: list[int] | None = None,
 ) -> MagicMock:
-    """Return a MagicMock resembling a LubaMsg with toapp_gethash_ack populated."""
+    """Return a MagicMock resembling a LubaMsg with toapp_gethash_ack populated.
+
+    ``sub_cmd`` is 0 to match the root hash list request
+    (``get_all_boundary_hash_list(sub_cmd=0)``); MapFetchSaga filters the
+    ``toapp_gethash_ack`` stream to ``sub_cmd == 0``.
+    """
     ack = MagicMock()
     ack.pver = 1
-    ack.sub_cmd = 1
+    ack.sub_cmd = 0
     ack.total_frame = total_frame
     ack.current_frame = current_frame
     ack.data_hash = 0
@@ -129,33 +130,20 @@ def _make_area_name_response(names: list[tuple[int, str]]) -> MagicMock:
 
 
 async def test_happy_path_mqtt_command_round_trip() -> None:
-    """send_command resolves successfully when broker.on_message delivers the expected field."""
+    """send_raw sends the payload over the sole (MQTT) transport."""
     mqtt_transport = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
     handle = _make_handle(mqtt_transport=mqtt_transport)
-
-    broker = handle.broker
-    mock_response = _make_mock_response("toapp_gethash_ack")
 
     # Capture the bytes sent so we can verify send() was called
     sent_payloads: list[bytes] = []
 
     async def fake_send(payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:
         sent_payloads.append(payload)
-        # Simulate the device responding after a small delay
-        async def _deliver() -> None:
-            await asyncio.sleep(0.05)
-            await broker.on_message(mock_response)
-
-        asyncio.get_running_loop().create_task(_deliver())
 
     mqtt_transport.send.side_effect = fake_send
 
-    handle.queue.start()
     try:
-        with patch("betterproto2.which_one_of", return_value=("toapp_gethash_ack", MagicMock())):
-            await handle.send_command(b"\x01\x02\x03", "toapp_gethash_ack", priority=Priority.NORMAL)
-            # Give the queue processor time to execute the enqueued work
-            await asyncio.sleep(0.3)
+        await handle.send_raw(b"\x01\x02\x03")
     finally:
         await handle.stop()
 
@@ -210,23 +198,8 @@ async def test_ble_preferred_when_connected() -> None:
     handle = _make_handle(mqtt_transport=mqtt_transport)
     await handle.add_transport(ble_transport)
 
-    broker = handle.broker
-    mock_response = _make_mock_response("toapp_gethash_ack")
-
-    async def ble_fake_send(payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:  # noqa: ARG001
-        async def _deliver() -> None:
-            await asyncio.sleep(0.05)
-            await broker.on_message(mock_response)
-
-        asyncio.get_running_loop().create_task(_deliver())
-
-    ble_transport.send.side_effect = ble_fake_send
-
-    handle.queue.start()
     try:
-        with patch("betterproto2.which_one_of", return_value=("toapp_gethash_ack", MagicMock())):
-            await handle.send_command(b"\xca\xfe", "toapp_gethash_ack", priority=Priority.NORMAL)
-            await asyncio.sleep(0.3)
+        await handle.send_raw(b"\xca\xfe")
     finally:
         await handle.stop()
 
@@ -250,23 +223,8 @@ async def test_ble_used_when_prefer_ble_set() -> None:
     await handle.add_transport(mqtt_transport)
     await handle.add_transport(ble_transport)
 
-    broker = handle.broker
-    mock_response = _make_mock_response("toapp_gethash_ack")
-
-    async def ble_fake_send(payload: bytes) -> None:
-        async def _deliver() -> None:
-            await asyncio.sleep(0.05)
-            await broker.on_message(mock_response)
-
-        asyncio.get_running_loop().create_task(_deliver())
-
-    ble_transport.send.side_effect = ble_fake_send
-
-    handle.queue.start()
     try:
-        with patch("betterproto2.which_one_of", return_value=("toapp_gethash_ack", MagicMock())):
-            await handle.send_command(b"\xca\xfe", "toapp_gethash_ack", priority=Priority.NORMAL)
-            await asyncio.sleep(0.3)
+        await handle.send_raw(b"\xca\xfe", prefer_ble=True)
     finally:
         await handle.stop()
 

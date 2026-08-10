@@ -12,7 +12,6 @@ from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
 from pymammotion.data.model.hash_list import Plan
 from pymammotion.data.model.pool_state import PoolPlan
-from pymammotion.proto import RptAct, RptInfoType
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, TransportType
 from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.device_type import DeviceType
@@ -29,19 +28,17 @@ logger = getLogger(__name__)
 class HomeAssistantMowerApi:
     """API for interacting with Mammotion Mowers for Home Assistant."""
 
-    def __init__(self, session: ClientSession | None = None) -> None:
+    def __init__(self, ha_version: str, session: ClientSession | None = None) -> None:
         self._device_config = DeviceConfig()
         self._plan_lock = asyncio.Lock()
         self.update_failures = 0
-        self._mammotion = MammotionClient()
+        self._mammotion = MammotionClient(ha_version)
         self._session = session
         self._last_call_times: dict[str, dict[str, datetime]] = {}
         self._call_intervals = {
             "check_maps": timedelta(minutes=5),
             "read_plan": timedelta(minutes=30),
-            "read_settings": timedelta(minutes=5),
-            "get_errors": timedelta(minutes=1),
-            "get_report_cfg": timedelta(seconds=5),
+            "get_report_cfg": timedelta(hours=1),
             "get_maintenance": timedelta(minutes=30),
             "device_version_upgrade": timedelta(hours=24),
             "device_info": timedelta(hours=24),
@@ -95,14 +92,14 @@ class HomeAssistantMowerApi:
             self._mark_api_called("check_maps", device_name)
 
         if self._should_call_api("read_plan", device_name):
-            if len(device.map.plan) == 0 or list(device.map.plan.values())[0].total_plan_num != len(device.map.plan):
-                await self.async_send_command(device_name, "read_plan", sub_cmd=2, plan_index=0)
+            if len(device.map.plan) == 0 or device.map.plans_stale:
+                await self._mammotion.start_plan_sync(device_name)
                 self._mark_api_called("read_plan", device_name)
 
-        if self._should_call_api("get_errors", device_name):
-            await self.async_send_command(device_name, "get_error_code")
-            await self.async_send_command(device_name, "get_error_timestamp")
-            self._mark_api_called("get_errors", device_name)
+        # if self._should_call_api("get_errors", device_name):
+        #     await self.async_send_command(device_name, "get_error_code")
+        #     await self.async_send_command(device_name, "get_error_timestamp")
+        #     self._mark_api_called("get_errors", device_name)
 
         if self._should_call_api("get_report_cfg", device_name):
             await self.async_send_command(device_name, "get_report_cfg")
@@ -144,14 +141,13 @@ class HomeAssistantMowerApi:
             return True
 
     async def set_scheduled_updates(self, device_name: str, enabled: bool) -> None:
-        """Disconnect all transports for the named device when scheduled updates are disabled."""
-        handle = self._mammotion.mower(device_name)
-        if handle is None:
-            return
-        if not enabled:
-            for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION, TransportType.BLE):
-                if handle.is_transport_connected(transport_type):
-                    await handle.disconnect_transport(transport_type)
+        """Connect or disconnect all transports for the named device.
+
+        Delegates to :meth:`MammotionClient.set_scheduled_updates`, which
+        reconnects (BLE via ``is_usable`` + cloud) on enable and disconnects
+        on disable — the activity loop restarts/exits accordingly.
+        """
+        await self._mammotion.set_scheduled_updates(device_name, enabled=enabled)
 
     def is_online(self, device_name: str) -> bool:
         """Return True if the named device currently has an active connection."""
@@ -319,29 +315,17 @@ class HomeAssistantMowerApi:
         await self.async_send_command(device_name, "job_do_not_disturb", sub_cmd=1, trigger=0)
 
     async def send_command_and_update(self, device_name: str, command_str: str, **kwargs: Any) -> None:
-        """Send command and update."""
+        """Send a command then fire a single one-shot report to refresh state."""
         await self.async_send_command(device_name, command_str, **kwargs)
-        await self.async_request_iot_sync(device_name)
+        await self._mammotion.request_iot_sync(device_name)
 
     async def async_request_iot_sync(self, device_name: str, stop: bool = False) -> None:
-        """Sync specific info from device."""
-        await self.async_send_command(
-            device_name,
-            "request_iot_sys",
-            rpt_act=RptAct.RPT_STOP if stop else RptAct.RPT_START,
-            rpt_info_type=[
-                RptInfoType.RIT_DEV_STA,
-                RptInfoType.RIT_DEV_LOCAL,
-                RptInfoType.RIT_WORK,
-                RptInfoType.RIT_MAINTAIN,
-                RptInfoType.RIT_BASESTATION_INFO,
-                RptInfoType.RIT_VIO,
-            ],
-            timeout=10000,
-            period=3000,
-            no_change_period=4000,
-            count=0,
-        )
+        """Start (or stop) the continuous device report stream.
+
+        Delegates to :meth:`MammotionClient.request_iot_sync_continuous`, which
+        owns the canonical channel list (``_CONTINUOUS_STREAM_CHANNELS``).
+        """
+        await self._mammotion.request_iot_sync_continuous(device_name, stop=stop)
 
     def generate_route_information(
         self, device_name: str, operation_settings: OperationSettings

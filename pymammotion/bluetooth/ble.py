@@ -25,11 +25,10 @@ class MammotionBLE:
             # TODO: do something with incoming data
             _logger.debug("BLE scan found device: %s", device)
             _logger.debug("Advertising data: %s", advertising_data)
-            if advertising_data.local_name and (
-                "Luba-" in advertising_data.local_name or "Yuka-" in advertising_data.local_name
-            ):
-                return True
-            return False
+            return bool(
+                advertising_data.local_name
+                and ("Luba-" in advertising_data.local_name or "Yuka-" in advertising_data.local_name)
+            )
 
         device = await scanner.find_device_by_filter(scanCallback)
         if device is not None:

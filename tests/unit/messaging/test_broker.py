@@ -99,23 +99,19 @@ async def test_pending_cleared_after_timeout() -> None:
 
 
 async def test_close_cancels_pending_futures() -> None:
+    """close() cancels pending futures; the waiter sees CancelledError (not a retry/timeout)."""
     broker = DeviceMessageBroker()
 
     async def send_fn() -> None:
         pass
 
-    loop = asyncio.get_running_loop()
-    future: asyncio.Future[object] = loop.create_future()
-    from pymammotion.messaging.broker import PendingRequest
-    import time
-
-    broker._pending["test_field"] = PendingRequest(
-        expected_field="test_field",
-        future=future,
-        sent_at=time.monotonic(),
-        resend=send_fn,
-    )
+    waiter = asyncio.create_task(broker.send_and_wait(send_fn, "test_field", send_timeout=30.0, retries=2))
+    # Let the waiter register its pending future and start waiting.
+    while "test_field" not in broker._pending:
+        await asyncio.sleep(0)
 
     await broker.close()
-    assert future.cancelled()
+
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
     assert len(broker._pending) == 0

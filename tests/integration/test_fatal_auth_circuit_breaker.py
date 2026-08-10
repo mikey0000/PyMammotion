@@ -1,16 +1,14 @@
-"""Tests for auth give-up + account-wide re-login behaviour.
+"""Tests for auth give-up behaviour — no transport ever re-logins.
 
-Mammotion direct-MQTT (``CLOUD_MAMMOTION``) never re-logins: the transport
-refreshes credentials in full once and, if the broker still rejects, gives up.
-"Give up" marks that account's Mammotion transport unrecoverable (gating exactly
-its mowers via ``active_transport``/``is_usable``) and signals them — fires each
-affected device's error bus and the enriched ``on_unrecoverable_auth_error``
-callback ``(account_id, transport_type, exc)`` — so the host can prompt re-auth
-for just those mowers.
+A cloud transport refreshes its credentials once and, if the broker still
+rejects, gives up.  "Give up" marks that account's transport unrecoverable
+(gating exactly its mowers via ``active_transport``/``is_usable``) and fires each
+affected device's error bus, so the host can mark just those mowers unavailable.
 
-Also covers the account-wide re-login (Aliyun / send-retry path): a full
-``login_v2`` tears down all of the account's in-use MQTT connections and restarts
-them with fresh credentials.
+The global ``on_unrecoverable_auth_error`` callback — which hosts map to "prompt
+the user to re-authenticate" — fires only when the account's HTTP login is itself
+dead.  A transport-scoped failure must leave the login, the cached credentials,
+and the account's other transport intact.
 """
 
 from __future__ import annotations
@@ -35,13 +33,13 @@ def _make_session() -> AccountSession:
     session.mammotion_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
     tm = MagicMock()
     tm.account_id = "acc"
-    tm.force_refresh = AsyncMock()
+    tm.reauth_required = None  # the account's HTTP login is healthy unless a test says otherwise
     tm.refresh_aliyun_credentials = AsyncMock()  # Aliyun targeted refresh
     tm.connect_iot = AsyncMock()  # Aliyun-triggered re-login re-establishes via the full IoT flow
     _creds = MQTTCredentials(
         host="tcp://mqtt.example:1883", client_id="cid", username="u", jwt="fresh-jwt", expires_at=0.0
     )
-    tm.refresh_mqtt_credentials_strict = AsyncMock(return_value=_creds)
+    tm.refresh_mqtt_credentials = AsyncMock(return_value=_creds)
     tm.get_mammotion_mqtt_credentials = AsyncMock(return_value=_creds)
     session.token_manager = tm
     return session
@@ -66,27 +64,28 @@ def _make_device(*, has_transport: TransportType | None) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_mammotion_fatal_auth_gives_up_without_relogin() -> None:
-    """On Mammotion fatal auth the handler must NOT re-login: it marks the transport
-    unrecoverable and fires the enriched callback. No login_v2 / _full_relogin.
+    """On fatal auth the handler must NOT re-login: it marks the transport
+    unrecoverable and fires the enriched callback.  No login_v2, no logout.
     """
     client = MammotionClient()
     client.on_unrecoverable_auth_error = AsyncMock()
     session = _make_session()
 
-    with patch.object(client, "_full_relogin", new=AsyncMock()) as mock_relogin:
-        transport = client._setup_mammotion_transport(
-            _make_mqtt_creds(), session.mammotion_http, session, session.token_manager
-        )
-        handler = transport.on_fatal_auth_error
-        assert handler is not None
+    session.token_manager.reauth_required = "refresh token rejected"  # account login is dead too
+    transport = client._setup_mammotion_transport(
+        _make_mqtt_creds(), session.mammotion_http, session, session.token_manager
+    )
+    handler = transport.on_fatal_auth_error
+    assert handler is not None
 
-        trigger = ReLoginRequiredError("acc", "broker still rejecting after full refresh")
-        await handler(trigger)
+    trigger = ReLoginRequiredError("acc", "broker still rejecting after full refresh")
+    await handler(trigger)
 
-        mock_relogin.assert_not_awaited()
-        assert transport.is_unrecoverable_auth_failure
-        assert not transport.is_usable
-        client.on_unrecoverable_auth_error.assert_awaited_once_with("acc", TransportType.CLOUD_MAMMOTION, trigger)
+    session.mammotion_http.login_v2.assert_not_awaited()
+    session.mammotion_http.logout.assert_not_awaited()
+    assert transport.is_unrecoverable_auth_failure
+    assert not transport.is_usable
+    client.on_unrecoverable_auth_error.assert_awaited_once_with("acc", TransportType.CLOUD_MAMMOTION, trigger)
 
 
 @pytest.mark.asyncio
@@ -118,6 +117,7 @@ async def test_give_up_signals_only_mowers_on_that_transport() -> None:
     client = MammotionClient()
     client.on_unrecoverable_auth_error = AsyncMock()
     session = _make_session()
+    session.token_manager.reauth_required = "refresh token rejected"  # account login is dead too
     session.device_ids = {"on_mammotion", "ble_only"}
 
     on_mammotion = _make_device(has_transport=TransportType.CLOUD_MAMMOTION)
@@ -138,81 +138,56 @@ async def test_give_up_signals_only_mowers_on_that_transport() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Account-wide re-login: tear down + restart in-use MQTT transports
+# A dead transport must not cost the account its login
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_full_relogin_refreshes_all_credentials() -> None:
-    """A full re-login rotates every token the account holds — force_refresh(None)."""
-    client = MammotionClient()
-    session = _make_session()
+async def test_transport_give_up_does_not_prompt_reauth_when_login_healthy() -> None:
+    """The regression this whole design exists for.
 
-    await client._full_relogin(session)
-
-    session.mammotion_http.login_v2.assert_awaited_once()
-    session.token_manager.force_refresh.assert_awaited_once_with(transport_type=None)
-
-
-@pytest.mark.asyncio
-async def test_full_relogin_cycles_other_in_use_mqtt_transports() -> None:
-    """Re-login tears down the account's in-use MQTT transports (except the triggering
-    one) before login_v2 and restarts them with fresh creds afterward.
+    One cloud transport dying used to tear down the entire config entry — the
+    host's ``on_unrecoverable_auth_error`` handler signs the user out and asks
+    them to reconfigure.  While the HTTP login and refresh token are still valid
+    that is pure collateral damage: the account's *other* transport and every
+    HTTP-backed feature were working fine.
     """
     client = MammotionClient()
+    client.on_unrecoverable_auth_error = AsyncMock()
     session = _make_session()
+    session.token_manager.reauth_required = None  # login still valid
 
-    mammotion = MagicMock(spec=MQTTTransport)
-    mammotion.is_connected = True
-    mammotion.is_unrecoverable_auth_failure = False
-    mammotion.disconnect = AsyncMock()
-    mammotion.connect = AsyncMock()
-    mammotion.update_credentials = MagicMock()
-    mammotion.clear_auth_failed = MagicMock()
-    session.mammotion_transport = mammotion
+    transport = client._setup_mammotion_transport(
+        _make_mqtt_creds(), session.mammotion_http, session, session.token_manager
+    )
+    await transport.on_fatal_auth_error(ReLoginRequiredError("acc", "broker rejected"))
 
-    # Triggering transport (CLOUD_ALIYUN) is excluded from teardown.
-    await client._full_relogin(session, transport_type=TransportType.CLOUD_ALIYUN)
-
-    mammotion.disconnect.assert_awaited_once()
-    session.mammotion_http.login_v2.assert_awaited_once()
-    mammotion.update_credentials.assert_called_once()
-    mammotion.connect.assert_awaited_once()
+    # The transport is given up...
+    assert transport.is_unrecoverable_auth_failure
+    # ...but the account keeps its session and the user is not asked to reconfigure.
+    client.on_unrecoverable_auth_error.assert_not_awaited()
+    session.mammotion_http.logout.assert_not_awaited()
+    session.mammotion_http.login_v2.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_full_relogin_excludes_triggering_transport_from_teardown() -> None:
-    """The triggering transport must not be torn down (it self-recovers via its caller)."""
+async def test_transport_give_up_still_signals_affected_devices() -> None:
+    """Scoped, not silent: the transport's own mowers are still marked unavailable."""
     client = MammotionClient()
+    client.on_unrecoverable_auth_error = AsyncMock()
     session = _make_session()
+    session.token_manager.reauth_required = None
+    session.device_ids = {"on_mammotion"}
+    on_mammotion = _make_device(has_transport=TransportType.CLOUD_MAMMOTION)
+    client._device_registry.get = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda did: {"on_mammotion": on_mammotion}.get(did)
+    )
 
-    mammotion = MagicMock(spec=MQTTTransport)
-    mammotion.is_connected = True
-    mammotion.is_unrecoverable_auth_failure = False
-    mammotion.disconnect = AsyncMock()
-    mammotion.connect = AsyncMock()
-    session.mammotion_transport = mammotion
+    transport = client._setup_mammotion_transport(
+        _make_mqtt_creds(), session.mammotion_http, session, session.token_manager
+    )
+    trigger = ReLoginRequiredError("acc", "broker rejected")
+    await transport.on_fatal_auth_error(trigger)
 
-    await client._full_relogin(session, transport_type=TransportType.CLOUD_MAMMOTION)
-
-    mammotion.disconnect.assert_not_awaited()
-    mammotion.connect.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_full_relogin_skips_given_up_transports() -> None:
-    """A transport already marked unrecoverable is not 'in use' — don't revive it."""
-    client = MammotionClient()
-    session = _make_session()
-
-    mammotion = MagicMock(spec=MQTTTransport)
-    mammotion.is_connected = True
-    mammotion.is_unrecoverable_auth_failure = True  # already gave up
-    mammotion.disconnect = AsyncMock()
-    mammotion.connect = AsyncMock()
-    session.mammotion_transport = mammotion
-
-    await client._full_relogin(session)
-
-    mammotion.disconnect.assert_not_awaited()
-    mammotion.connect.assert_not_awaited()
+    on_mammotion.notify_critical_error.assert_awaited_once_with(trigger)
+    client.on_unrecoverable_auth_error.assert_not_awaited()

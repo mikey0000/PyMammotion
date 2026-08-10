@@ -161,81 +161,17 @@ class MessageSystem(AbstractMessage, ABC):
         logger.debug(f"Send tool test command: subCmd={sub_cmd}, param_id:{param_id}, param_value={param_value}")
         return self.send_order_msg_sys(build2)
 
-    def read_and_set_rtk_paring_code(self, op: int, cgf: str | None = None) -> bytes:
-        """Read or write the RTK base station LoRa pairing code configuration."""
-        logger.debug(f"Send read and write base station configuration quality op:{op}, cgf:{cgf}")
-        return self.send_order_msg_sys(MctlSys(todev_lora_cfg_req=LoraCfgReq(op=op, cfg=cgf or "")))
-
     def allpowerfull_rw(self, rw_id: int, context: int, rw: int) -> bytes:
         """Send a general-purpose bidirectional read/write command to the device by ID, context, and direction."""
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=rw_id, context=context, rw=rw))
         logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")
         return self.send_order_msg_sys(build)
 
-    # Commented out as not needed and too many refs to try fix up
-    # def factory_test_order(self, test_id: int, test_duration: int, expect: str):
-    #     new_builder = mow_to_app_qctools_info_t.Builder()
-    #     logger.debug(f"Factory tool logger.debug, expect={expect}")
-    #     if not expect:
-    #         build = new_builder.set_type_value(
-    #             test_id).set_time_of_duration(test_duration).build()
-    #     else:
-    #         try:
-    #             json_array = json.loads(expect)
-    #             z2 = True
-    #             for i in range(len(json_array)):
-    #                 new_builder2 = QCAppTestExcept.Builder()
-    #                 json_object = json_array[i]
-    #                 if "except_type" in json_object:
-    #                     string = json_object["except_type"]
-    #                     if "conditions" in json_object:
-    #                         json_array2 = json_object["conditions"]
-    #                         for i2 in range(len(json_array2)):
-    #                             json_object2 = json_array2[i2]
-    #                             new_builder3 = QCAppTestConditions.Builder()
-    #                             if "cond_type" in json_object2:
-    #                                 new_builder3.set_cond_type(
-    #                                     json_object2["cond_type"])
-    #                             else:
-    #                                 z2 = False
-    #                             if "value" in json_object2:
-    #                                 obj = json_object2["value"]
-    #                                 if string == "int":
-    #                                     new_builder3.set_int_val(int(obj))
-    #                                 elif string == "float":
-    #                                     new_builder3.set_float_val(float(obj))
-    #                                 elif string == "double":
-    #                                     new_builder3.set_double_val(float(obj))
-    #                                 elif string == "string":
-    #                                     new_builder3.set_string_val(str(obj))
-    #                                 else:
-    #                                     z2 = False
-    #                                 new_builder2.add_conditions(new_builder3)
-    #                             else:
-    #                                 z2 = False
-    #                     new_builder2.set_except_type(string)
-    #                     new_builder.add_except(new_builder2)
-    #                     new_builder2.clear()
-    #             z = z2
-    #         except json.JSONDecodeError:
-    #             z = False
-    #         if z:
-    #             build = new_builder.set_type_value(
-    #                 test_id).set_time_of_duration(test_duration).build()
-    #         else:
-    #             build = new_builder.set_type_value(
-    #                 test_id).set_time_of_duration(test_duration).build()
-    #     logger.debug(f"Factory tool logger.debug, mow_to_app_qctools_info_t={
-    #         build.except_count}, mow_to_app_qctools_info_t22={build.except_list}")
-    #     build2 = MctlSys(mow_to_app_qctools_info=build)
-    #     logger.debug(f"Send command - factory tool test command testId={
-    #         test_id}, testDuration={test_duration}", "Factory tool logger.debug222", True)
-    #     return self.send_order_msg_sys(build2)
-
     def send_sys_set_date_time(self) -> bytes:
         """Synchronize the device clock with the current local date, time, timezone, and DST settings."""
-        # TODO get HA timezone
-        calendar = datetime.datetime.now()
+        # astimezone() makes the datetime timezone-aware — a naive now() always
+        # reports utcoffset()/dst() as None, silently sending timezone 0 / DST 0.
+        calendar = datetime.datetime.now().astimezone()
         i = calendar.year
         i2 = calendar.month
         i3 = calendar.day
@@ -476,7 +412,7 @@ class MessageSystem(AbstractMessage, ABC):
         """Send a remote restart command.
         force_reset: 0 - normal restart, 1 - force restart
         Args:
-            force_reset: Force reset flag
+            force_reset: Force reset flag.
         """
         mctl_sys = MctlSys(
             to_dev_remote_reset=RemoteResetReqT(

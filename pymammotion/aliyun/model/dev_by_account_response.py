@@ -8,7 +8,7 @@ from mashumaro.types import Alias
 
 @dataclass
 class Device(DataClassORJSONMixin):
-    """Unified device model supporting both Device and ShareNotification data"""
+    """Unified device model supporting both Device and ShareNotification data."""
 
     # Core device fields (from Device model)
     gmt_modified: Annotated[int, Alias("gmtModified")]
@@ -205,7 +205,6 @@ class ShareNotification(DataClassORJSONMixin):
 
     gmt_modified: Annotated[int, Alias("gmtModified")]
     target_id: Annotated[str, Alias("targetId")]
-    description: str
     target_type: Annotated[str, Alias("targetType")]
     gmt_create: Annotated[int, Alias("gmtCreate")]
     batch_id: Annotated[str, Alias("batchId")]
@@ -217,6 +216,8 @@ class ShareNotification(DataClassORJSONMixin):
     is_receiver: Annotated[int, Alias("isReceiver")]
     initiator_alias: Annotated[str, Alias("initiatorAlias")]
     status: int
+    # Absent on pending/not-yet-accepted share records (e.g. status=6)
+    description: str | None = None
     # Absent on expired (status=3) share records
     receiver_identity_id: Annotated[str | None, Alias("receiverIdentityId")] = None
     receiver_alias: Annotated[str | None, Alias("receiverAlias")] = None

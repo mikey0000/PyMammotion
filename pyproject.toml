@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.8.8"
+version = "0.8.12"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
     { name = "jLynx" },
 ]
-requires-python = ">=3.13,<3.15"
+requires-python = ">=3.13"
 readme = "README.md"
 license = "GPL-3.0"
 dependencies = [
@@ -79,7 +79,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.8.8"
+current_version = "0.8.12"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -533,7 +533,6 @@ unresolved-import = "ignore"
 [tool.ty.src]
 exclude = [
     "pymammotion/proto/**",
-    "pymammotion/mqtt/linkkit/**",
     "tests/**",
     "scripts/**",
     "examples/**",

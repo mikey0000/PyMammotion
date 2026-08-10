@@ -619,9 +619,10 @@ def test_partial_property_post_model_fields_only() -> None:
     assert p.int_mod == "SPINO E1"
     assert p.ext_mod == "SPINO E1"
 
-    # Absent fields default rather than raising; absent nested objects are None.
-    assert p.device_state == 0
-    assert p.battery_percentage == 0
+    # Absent fields decode as None (numeric) / "" (string) rather than raising;
+    # None lets consumers distinguish "not reported" from a genuine 0.
+    assert p.device_state is None
+    assert p.battery_percentage is None
     assert p.device_version == ""
     assert p.network_info is None
     assert p.coordinate is None
@@ -641,7 +642,7 @@ def test_partial_property_post_firmware_only() -> None:
     assert [fw.c for fw in p.device_version_info.fw_info] == ["63-PAWG4", "65-PACG4"]
 
     # Everything else defaults / is None.
-    assert p.battery_percentage == 0
+    assert p.battery_percentage is None
     assert p.network_info is None
     assert p.coordinate is None
 
@@ -649,7 +650,7 @@ def test_partial_property_post_firmware_only() -> None:
 def test_device_properties_accepts_empty_params() -> None:
     """A property/post with no params at all still decodes (every field optional)."""
     p = DeviceProperties.from_dict({})
-    assert p.device_state == 0
+    assert p.device_state is None
     assert p.network_info is None
 
 
@@ -828,3 +829,178 @@ def test_mammotion_coordinate_zero_is_left_unset() -> None:
 
     assert updated.location.device.latitude == 12.0
     assert updated.location.device.longitude == 34.0
+
+
+def test_mammotion_partial_push_uses_presence_not_truthiness() -> None:
+    """A partial flat-property push must key on field PRESENCE (None == absent),
+    not truthiness — an omitted field is left untouched, but a genuine 0 is applied.
+
+    Post-2025 "Mammotion" devices interleave the flat-property push with the
+    protobuf report; without this an omitted field arrives as 0 and blanks out
+    sys_status / battery / blade height every other update. Using truthiness would
+    fix that but wrongly drop a real 0 (e.g. 0% battery), so the fields are Optional
+    and guarded with ``is not None``.
+    """
+    from pymammotion.data.mqtt.mammotion_properties import DeviceProperties
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
+
+    reducer = MowerStateReducer()
+    device = _make_device()
+    device.report_data.dev.sys_status = 13   # MODE_WORKING
+    device.report_data.dev.battery_val = 82
+    device.report_data.work.knife_height = 50
+
+    # Absent fields (None) must be left untouched.
+    empty = MammotionPropertiesMessage(id="1", version="1.0", sys={}, params=DeviceProperties())
+    updated = reducer.apply_mammotion_properties(device, empty)
+    assert updated.report_data.dev.sys_status == 13
+    assert updated.report_data.dev.battery_val == 82
+    assert updated.report_data.work.knife_height == 50
+
+    # A genuine 0% battery IS present and must be applied (not treated as absent).
+    zero = MammotionPropertiesMessage(
+        id="2", version="1.0", sys={}, params=DeviceProperties(battery_percentage=0)
+    )
+    updated = reducer.apply_mammotion_properties(device, zero)
+    assert updated.report_data.dev.battery_val == 0
+    assert updated.report_data.dev.sys_status == 13  # still untouched (absent)
+
+    # Non-zero values still update.
+    real = MammotionPropertiesMessage(
+        id="3", version="1.0", sys={},
+        params=DeviceProperties(device_state=14, battery_percentage=79, knife_height=60),
+    )
+    updated = reducer.apply_mammotion_properties(device, real)
+    assert updated.report_data.dev.sys_status == 14
+    assert updated.report_data.dev.battery_val == 79
+    assert updated.report_data.work.knife_height == 60
+
+
+# ===========================================================================
+# PoolStateReducer — fw info, net envelope, devStatus extras, error clamp.
+# ===========================================================================
+from pymammotion.proto import (
+    DeviceFwInfo,
+    DevNet,
+    DevStatueT,
+    DrvWifiMsg,
+    ModFwInfo,
+    ReportInfoT,
+    SysSetDateTime,
+    SystemUpdateBufMsg,
+    WifiIotStatusReport,
+)
+
+
+def test_pool_fw_info_populates_device_firmwares() -> None:
+    msg = LubaMsg(
+        sys=MctlSys(
+            toapp_dev_fw_info=DeviceFwInfo(
+                result=1,
+                version="1.15.2.1047",
+                mod=[
+                    ModFwInfo(type=63, identify="63-PAWG4", version="1.2.0.281"),
+                    ModFwInfo(type=65, identify="65-PACG4", version="1.2.0.273"),
+                    ModFwInfo(type=67, identify="67-PESP", version="0.0.0.299"),
+                    ModFwInfo(type=61, identify="61-PAMH5", version="5.1.2.2159"),
+                    ModFwInfo(type=62, identify="62-PMH5BT", version="5.1.2.2131"),
+                ],
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    fw = result.device_firmwares
+    assert fw.device_version == "1.15.2.1047"
+    assert fw.wheel_hub_motor == "1.2.0.281"
+    assert fw.water_pump == "1.2.0.273"
+    assert fw.communication == "0.0.0.299"
+    assert fw.main_controller == "5.1.2.2159"
+    assert fw.main_controller_bt == "5.1.2.2131"
+
+
+def test_pool_fw_info_result_zero_ignored() -> None:
+    msg = LubaMsg(sys=MctlSys(toapp_dev_fw_info=DeviceFwInfo(result=0, version="9.9.9")))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.device_firmwares.device_version == ""
+
+
+def test_pool_wifi_iot_status_updates_connectivity() -> None:
+    msg = LubaMsg(
+        net=DevNet(
+            toapp_wifi_iot_status=WifiIotStatusReport(
+                wifi_connected=True, iot_connected=True, productkey="a15Cq8FbCh1", devicename="Spino-E1abc"
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.wifi_connected is True
+    assert result.pool_state.iot_connected is True
+    assert result.product_key == "a15Cq8FbCh1"
+
+
+def test_pool_wifi_iot_status_empty_productkey_not_clobbered() -> None:
+    device = PoolCleanerDevice(name="Spino-E1abc", product_key="seeded")
+    msg = LubaMsg(net=DevNet(toapp_wifi_iot_status=WifiIotStatusReport(wifi_connected=True, iot_connected=False)))
+    result = PoolStateReducer().apply(device, msg)
+    assert result.product_key == "seeded"
+    assert result.pool_state.iot_connected is False
+
+
+def test_pool_wifi_msg_updates_network_info_but_never_password() -> None:
+    msg = LubaMsg(
+        net=DevNet(
+            toapp_WifiMsg=DrvWifiMsg(
+                status1=True,
+                status2=True,
+                ip="192.168.20.174",
+                msgssid="IOT",
+                password="battery-easeful-dental",
+                rssi=-38,
+                wifi_enable=True,
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.wifi_ssid == "IOT"
+    assert result.ip == "192.168.20.174"
+    assert result.wifi_enabled is True
+    assert result.pool_state.wifi_rssi == -38
+    assert "battery-easeful-dental" not in str(result.to_dict())
+
+
+def test_pool_dev_status_captures_rssi_and_connectivity() -> None:
+    msg = LubaMsg(
+        sys=MctlSys(
+            report_info=ReportInfoT(
+                dev_status=DevStatueT(
+                    sys_status=1,
+                    bat_val=70,
+                    model=100,
+                    ble_rssi=-48,
+                    wifi_rssi=-43,
+                    wifi_connect_status=1,
+                    iot_connect_status=1,
+                )
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.battery == 70
+    assert result.pool_state.wifi_rssi == -43
+    assert result.pool_state.ble_rssi == -48
+    assert result.pool_state.wifi_connected is True
+    assert result.pool_state.iot_connected is True
+
+
+def test_pool_error_count_negative_clamped_to_zero() -> None:
+    data = [2, 43, -1] + [0] * 40
+    msg = LubaMsg(sys=MctlSys(system_update_buf=SystemUpdateBufMsg(update_buf_data=data)))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.error_count == 0
+    assert result.pool_state.error_log == []
+
+
+def test_pool_todev_data_time_is_silent_noop() -> None:
+    msg = LubaMsg(sys=MctlSys(todev_data_time=SysSetDateTime(year=234, month=7, date=20)))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.online is True

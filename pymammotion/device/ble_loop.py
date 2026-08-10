@@ -196,8 +196,7 @@ async def ble_polling_loop(handle: DeviceHandle) -> None:
                     and time.monotonic() - handle.last_report_at > _BLE_STREAM_STALE_THRESHOLD
                 ):
                     _logger.warning(
-                        "ble_polling [%s]: no report frames for %.0fs — bouncing stream"
-                        " (RPT_STOP + fresh RPT_START)",
+                        "ble_polling [%s]: no report frames for %.0fs — bouncing stream (RPT_STOP + fresh RPT_START)",
                         handle.device_name,
                         time.monotonic() - handle.last_report_at,
                     )

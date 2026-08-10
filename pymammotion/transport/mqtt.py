@@ -15,11 +15,20 @@ from urllib.parse import urlparse
 from aiohttp import ClientConnectorDNSError
 import aiomqtt
 import jwt
-from packaging.version import Version
 
+from pymammotion.aliyun.exceptions import (
+    DEVICE_OFFLINE_CODES,
+    GATEWAY_TIMEOUT_CODES,
+    DeviceOfflineException,
+    GatewayTimeoutException,
+)
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 from pymammotion.data.mqtt.status import MammotionStatusMessage, ThingStatusMessage
+from pymammotion.http.model.http import UnauthorizedExceptionError
 from pymammotion.transport.base import (
+    MQTT_RECONNECT_MAX_SEC_MAMMOTION,
+    MQTT_RECONNECT_MIN_SEC,
+    RATE_LIMIT_REMOVED_VERSION,  # noqa: F401 — re-exported for backwards compatibility
     AuthError,
     NoTransportAvailableError,
     ReLoginRequiredError,
@@ -29,6 +38,7 @@ from pymammotion.transport.base import (
     TransportRateLimitedError,
     TransportType,
 )
+from pymammotion.transport.envelope import unwrap_envelope
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -37,10 +47,6 @@ if TYPE_CHECKING:
     from pymammotion.http.http import MammotionHTTP
 
 _logger = logging.getLogger(__name__)
-
-_MQTT_RECONNECT_MIN_SEC = 1
-_MQTT_RECONNECT_MAX_SEC = 120
-RATE_LIMIT_REMOVED_VERSION = Version("1.30.25.1")
 
 
 def _jwt_claims_summary(token: str | None) -> str:
@@ -100,7 +106,8 @@ class MQTTTransport(Transport):
     set by the broker layer.
     """
 
-    on_message: Callable[[bytes], Awaitable[None]] | None = None
+    # NOTE: on_message is deliberately NOT redeclared here — a class attribute would
+    # shadow the base Transport.on_message property and defeat its receive-timestamping.
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
     #: Fired for ``/thing/event/{identifier}/post`` messages on the Mammotion MQTT.
     #: Called with (iot_id, identifier) — the identifier is the event name extracted
@@ -132,9 +139,10 @@ class MQTTTransport(Transport):
                            Returns the full set — not just the JWT — because a fresh
                            login can rotate the client_id/username the broker binds the
                            JWT to.  Specific to Mammotion direct-MQTT (post-2025 devices).
-            token_manager: Optional TokenManager used by send() to refresh the HTTP
-                           bearer token via get_valid_http_token() rather than calling
-                           refresh_login() directly.
+            token_manager: TokenManager used by send() to renew the HTTP bearer
+                           token via refresh_invoke_token() after a 401.  That path
+                           is refresh-token based; no code here may trigger a
+                           password login.
 
         """
         super().__init__()
@@ -155,20 +163,10 @@ class MQTTTransport(Transport):
     # Public topic management
     # ------------------------------------------------------------------
 
-    def update_jwt(self, new_jwt: str) -> None:
-        """Replace the MQTT password (JWT) on the current config for the next connection attempt.
-
-        Prefer :meth:`update_credentials` after a full re-login — swapping only the
-        password leaves a stale client_id/username that the broker rejects when the
-        login rotated them.
-        """
-        self._config = replace(self._config, password=new_jwt)
-        self._stop_event.clear()
-
     def update_credentials(self, creds: MQTTCredentials) -> None:
         """Replace the full MQTT credential set for the next connection attempt.
 
-        Like :meth:`update_jwt` but also rotates host/client_id/username.  A full
+        Rotates password, host, client_id, and username together.  A full
         re-login (``login_v2``) can mint a new client_id/username bound to the new
         JWT; reconnecting with only a swapped password leaves the stale
         client_id/username and the broker rejects it as "Not Authorized".
@@ -301,13 +299,15 @@ class MQTTTransport(Transport):
 
     async def _invoke(self, payload: bytes, iot_id: str) -> None:
         """Invoke the Mammotion HTTP endpoint (shared by send/send_heartbeat)."""
-        from pymammotion.aliyun.exceptions import DeviceOfflineException, GatewayTimeoutException
-        from pymammotion.http.model.http import UnauthorizedExceptionError
-
         if not iot_id:
             msg = "MQTTTransport.send() requires a non-empty iot_id"
             raise TransportError(msg)
         content = base64.b64encode(payload).decode()
+        # Note which access token this request goes out with, so a 401 can tell
+        # "the token is dead" from "someone already replaced it" — see
+        # TokenManager.refresh_invoke_token(stale_token=...).
+        login_info = self._http.login_info
+        sent_with_token = login_info.access_token if login_info is not None else None
         try:
             res = await self._http.mqtt_invoke(content, "", iot_id)
         except ClientConnectorDNSError:
@@ -316,10 +316,10 @@ class MQTTTransport(Transport):
             _logger.info("MQTTTransport.send: HTTP access token expired — refreshing invoke token (no re-login)")
             if self._token_manager is None:
                 raise TransportError("Token manager not configured for MQTT transport") from None
-            # Mammotion never re-logins (login_v2) on the send path — refresh the
-            # invoke token via the refresh token only.  If that fails, give up.
+            # Refresh the invoke token via the refresh token.  If that fails, give up:
+            # no send path may trigger a password login.
             try:
-                await self._token_manager.force_refresh_invoke_token(allow_relogin=False)
+                await self._token_manager.refresh_invoke_token(stale_token=sent_with_token)
             except (ReLoginRequiredError, AuthError) as refresh_exc:
                 await self._give_up(refresh_exc)
                 raise NoTransportAvailableError(f"Mammotion MQTT auth unrecoverable: {refresh_exc}") from refresh_exc
@@ -337,20 +337,17 @@ class MQTTTransport(Transport):
                 ) from retry_exc
         if res.code in (401, 460):
             raise AuthError(f"Access token expired (code={res.code})")
-        # 50103 / 50104 = MA_DEVICE_OFFLINE per the APK (AppConstants.java:279).
-        # APK's MAIotManager.java:232-233 groups both codes under onDeviceIotOffLine.
-        # 6205 is the legacy Aliyun "device not online" code.
-        if res.code in (6205, 50103, 50104):
+        if res.code in DEVICE_OFFLINE_CODES:
             raise DeviceOfflineException(res.code, iot_id)
-        if res.code == 20056:
+        if res.code in GATEWAY_TIMEOUT_CODES:
             raise GatewayTimeoutException(res.code, iot_id)
         if res.code not in (0, 200):
             msg = f"mqtt_invoke failed: code={res.code} msg={res.msg} iot_id={iot_id}"
             raise TransportError(msg)
 
     async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
-        """Send *payload* to the device and count it against the 24-hour quota."""
-        if self.is_rate_limited and Version(firmware_version) < RATE_LIMIT_REMOVED_VERSION:
+        """Send *payload* to the device and count it against the send quota."""
+        if self.is_send_blocked(firmware_version):
             remaining = self.seconds_until_send_available()
             msg = f"MQTTTransport rate-limited for {remaining:.0f}s more"
             raise TransportRateLimitedError(msg)
@@ -359,7 +356,7 @@ class MQTTTransport(Transport):
         self.record_send()
 
     async def send_heartbeat(self, payload: bytes, iot_id: str = "") -> None:
-        """Send a keepalive heartbeat without counting it against the 24-hour quota."""
+        """Send a keepalive heartbeat without counting it against the send quota."""
         await self._invoke(payload, iot_id)
 
     # ------------------------------------------------------------------
@@ -400,7 +397,7 @@ class MQTTTransport(Transport):
         transport unrecoverable and signals the affected mowers).  Non-auth
         disconnects reconnect with exponential backoff as usual.
         """
-        backoff = _MQTT_RECONNECT_MIN_SEC
+        backoff = MQTT_RECONNECT_MIN_SEC
         auth_force_refreshed = False
 
         while not self._stop_event.is_set():
@@ -432,7 +429,7 @@ class MQTTTransport(Transport):
                     timeout=60,
                 ) as client:
                     self._client = client
-                    backoff = _MQTT_RECONNECT_MIN_SEC
+                    backoff = MQTT_RECONNECT_MIN_SEC
                     auth_force_refreshed = False
                     await self._notify_availability(TransportAvailability.CONNECTED)
 
@@ -518,7 +515,7 @@ class MQTTTransport(Transport):
                     await asyncio.sleep(backoff)
                 except asyncio.CancelledError:
                     break
-                backoff = min(backoff * 2, _MQTT_RECONNECT_MAX_SEC)
+                backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_MAMMOTION)
 
     async def _dispatch(self, topic: str, raw: bytes) -> None:
         """Route an incoming message to the appropriate callback.
@@ -533,6 +530,7 @@ class MQTTTransport(Transport):
         Falls back to the plain ``on_message`` callback (raw bytes, no routing)
         when ``on_device_message`` is not set.
         """
+        self._mark_received()
         if topic.endswith("/thing/status"):
             await self._dispatch_device_status(topic, raw)
             return
@@ -581,15 +579,20 @@ class MQTTTransport(Transport):
         except (json.JSONDecodeError, ValueError):
             _logger.debug("MQTTTransport: non-JSON thing/status on %s: %s", topic, raw)
             return
+        # Parse inside the guard, dispatch outside it.  Anything the callback raises
+        # (SessionExpiredError, AuthError) must reach _run, which owns the exception
+        # taxonomy and the retry policy; swallowing it here logged auth failures at
+        # DEBUG and dropped them.
         try:
             if "action" in parsed:
                 msg = MammotionStatusMessage.from_dict(parsed).to_thing_status()
             else:
                 msg = ThingStatusMessage.from_dict(parsed)
-            if msg.params.iot_id:
-                await self.on_device_status(msg.params.iot_id, msg)
-        except Exception:
+        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
             _logger.debug("MQTTTransport: failed to parse thing/status on %s: %s", topic, raw, exc_info=True)
+            return
+        if msg.params.iot_id:
+            await self.on_device_status(msg.params.iot_id, msg)
 
     async def _dispatch_device_properties(self, topic: str, raw: bytes) -> None:
         """Parse a thing/properties message and notify on_device_properties."""
@@ -597,10 +600,11 @@ class MQTTTransport(Transport):
             return
         try:
             props = ThingPropertiesMessage.from_json(raw)
-            if props.params.iot_id:
-                await self.on_device_properties(props.params.iot_id, props)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
             _logger.debug("MQTTTransport: failed to parse thing/properties on %s", topic, exc_info=True)
+            return
+        if props.params.iot_id:
+            await self.on_device_properties(props.params.iot_id, props)
 
     async def _dispatch_mammotion_properties(self, topic: str, raw: bytes) -> None:
         """Parse a Mammotion MQTT flat property/post message and notify on_device_mammotion_properties."""
@@ -655,39 +659,10 @@ class MQTTTransport(Transport):
 
     @staticmethod
     def _unwrap_envelope(topic: str, raw: bytes) -> bytes | None:
-        """Extract the base64-encoded protobuf payload from a Mammotion MQTT envelope.
+        """Extract the protobuf payload from the broker envelope.
 
-        Handles two shapes::
-
-            # Mammotion direct-MQTT event shape
-            {"params": {"content": "<base64>"}}
-
-            # Mammotion thing/event shape (nested under value)
-            {"params": {"value": {"content": "<base64>"}}}
+        Delegates to the shared :func:`~pymammotion.transport.envelope.unwrap_envelope`;
+        this transport routes by topic, so the envelope's ``iotId`` is discarded.
         """
-        try:
-            parsed = json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            _logger.debug("MQTTTransport: non-JSON payload on topic %s, skipping", topic)
-            return None
-
-        params = parsed.get("params", {})
-
-        # Shape 1: params.value.content
-        try:
-            content: str | None = params["value"]["content"]
-            if content:
-                return base64.b64decode(content)
-        except (KeyError, TypeError):
-            pass
-
-        # Shape 2: params.content
-        try:
-            content = params["content"]
-            if content:
-                return base64.b64decode(content)
-        except (KeyError, TypeError):
-            pass
-
-        _logger.debug("MQTTTransport: no base64 content found on topic %s", topic)
-        return None
+        result = unwrap_envelope(topic, raw)
+        return result[0] if result is not None else None

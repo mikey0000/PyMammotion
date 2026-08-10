@@ -42,7 +42,7 @@ class MessageOta(AbstractMessage, ABC):
         """Request OTA upgrade details from the device."""
         todev_get_info_req = MctlOta(todev_get_info_req=GetInfoReq(type=InfoType.IT_OTA))
 
-        _LOGGER.debug("===Send command to get upgrade details===logType:" + str(log_type))
+        _LOGGER.debug("===Send command to get upgrade details===logType:%s", log_type)
         return self.send_order_msg_ota(todev_get_info_req)
 
     def get_device_info_new(self) -> bytes:

@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 GEOMETRY_TYPES: list[str] = ["Polygon", "Polygon", "LineString", "Point"]
 MAP_OBJECT_TYPES: list[str] = ["area", "path", "obstacle", "dump"]
 
-image_path = "/local/community/ha-mammotion-assets/dist/assets/map/"
+image_path = "/hacsfiles/ha-mammotion-assets/dist/assets/map/"
 
 RTK_IMAGE = {
     "iconImage": "map_icon_base_station_rtk.webp",
@@ -927,7 +927,7 @@ class GeojsonGenerator:
     # ``{n}`` is the 1-based index within the type.
     # It is used when the device has no user label for this hash.
     _NAME_TEMPLATES: ClassVar[dict[str, str]] = {
-        "area": "Zone {n}",
+        "area": "Area {n}",
         "path": "Path {n}",
         "obstacle": "Obstacle {n}",
         "dump": "Dump zone {n}",

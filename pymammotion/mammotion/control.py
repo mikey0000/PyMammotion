@@ -16,7 +16,7 @@ nest_asyncio.apply()
 
 
 class JoystickControl:
-    """Joystick class for controlling Luba with a joystick"""
+    """Joystick class for controlling Luba with a joystick."""
 
     angular_percent: float = 0
     linear_percent: float = 0

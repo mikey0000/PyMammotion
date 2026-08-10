@@ -78,6 +78,9 @@ class MowerInfo(DataClassORJSONMixin):
     wifi_mac: str = ""
     wifi_ssid: str = ""
     ip_address: str = ""
+    ip: int = 0
+    mask: int = 0
+    gateway: int = 0
     internal_model: str = ""  # thing/properties intMod — internal SKU (e.g. "HM020080YKMINI06")
     battery_hardware: str = ""  # thing/properties bmsHardwareVersion (e.g. "BW_BATTERY_25P_6S1P")
     lamp_info: LampInfo = field(default_factory=LampInfo)
@@ -109,4 +112,8 @@ class DeviceFirmwares(DataClassORJSONMixin):
     # RTK base station modules
     rtk_version: str = ""  # type 102
     lora_version: str = ""  # type 103 — LoRa on RTK base station
+    # Spino pool cleaner modules
+    wheel_hub_motor: str = ""  # type 63 — PAWG4
+    water_pump: str = ""  # type 65 — PACG4
+    communication: str = ""  # type 67/72 — PESP Wi-Fi module
     model_name: str = ""

@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-import betterproto2
-
 from pymammotion.data.model.hash_list import CommDataCouple, EdgePoints
 from pymammotion.messaging.saga import Saga
 
@@ -68,14 +66,17 @@ class EdgeMappingSaga(Saga):
                 _logger.debug("EdgeMappingSaga: sending along_border to start edge mapping")
                 cmd = self._command_builder.along_border()
                 await self._send_command(cmd)
+                # A retry after a mid-walk timeout must only re-attach the collector —
+                # re-sending along_border would physically restart the border walk.
+                self._skip_start = True
 
             # Collect frames — the device streams them until current_frame >= total_frame
             while True:
                 frame_msg = await self._next_frame(frame_queue, "toapp_edge_points")
 
-                _, nav_val = betterproto2.which_one_of(frame_msg, "LubaSubMsg")
-                assert nav_val is not None
-                edge_msg = nav_val.toapp_edge_points
+                edge_frame = self.extract_nav_frame(frame_msg, "toapp_edge_points")
+                assert edge_frame is not None  # the collector already filtered on this field
+                edge_msg = edge_frame[1]
                 hash_key: int = edge_msg.hash
 
                 # Accumulate into collected EdgePoints

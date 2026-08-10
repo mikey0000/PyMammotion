@@ -506,7 +506,7 @@ class MessageNavigation(AbstractMessage, ABC):
         if type == -1:
             return None
         build = MctlNav(todev_get_commondata=NavGetCommData(pver=1, action=6, type=type, hash=hash_num))
-        logger.debug(f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash}")
+        logger.debug(f"Send command--Delete boundary or obstacle or channel command type={type},hash={hash_num}")
         return self.send_order_msg_nav(build)
 
     def delete_charge_point(self) -> bytes:
@@ -602,7 +602,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def get_line_info_list(self, hash_list: list[int], transaction_id: int) -> bytes:
         """Get route information (mow path) corresponding to the specified hash list based on time.
-        e.g transaction_id = int(time.time() * 1000)
+        e.g transaction_id = int(time.time() * 1000).
         """
         logger.debug(f"Sending==========Get route command: {hash_list}")
 

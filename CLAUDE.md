@@ -19,7 +19,7 @@ uv sync
 uv run ruff check --fix pymammotion/
 uv run ruff format pymammotion/
 
-# Type checking (excludes proto/, tests/, scripts/, linkkit/ — configured in pyproject.toml [tool.ty])
+# Type checking (excludes proto/, tests/, scripts/ — configured in pyproject.toml [tool.ty])
 uv run ty check pymammotion/
 
 # Additional linting
@@ -84,8 +84,9 @@ The refactored architecture is a **layered, composable system** replacing the ea
 │  ├─ HTTP OAuth (refresh 5 min before expiry)             │
 │  ├─ Aliyun IoT token (refresh 1 h before expiry)         │
 │  └─ Mammotion MQTT JWT (refresh 30 min before expiry)    │
-│  force_refresh() re-checks all active credential types   │
-│  ReLoginRequiredError raised on unrecoverable failure    │
+│  NO automatic password login — refresh tokens only       │
+│  Terminal flags: reauth_required (account-wide) /        │
+│  aliyun_unavailable / mqtt_unavailable (transport-only)  │
 ├──────────────────────────────────────────────────────────┤
 │  HTTP + Cloud Gateway                                    │
 │  ├─ MammotionHTTP  (http/http.py)                        │
@@ -112,7 +113,24 @@ Transport.on_message(raw bytes)
 
 **Sagas** use `subscribe_unsolicited()` — registering the handler *before* sending the command to avoid the race where the device responds before the handler is registered. The RAII `Subscription` auto-unsubscribes on context exit.
 
-**TokenManager** holds a single `asyncio.Lock` to prevent concurrent refresh races. All three getters (`get_valid_http_token`, `get_aliyun_credentials`, `get_mammotion_mqtt_credentials`) check expiry under the lock and refresh proactively. `force_refresh()` is the watchdog entry point when `AuthError` is detected.
+**TokenManager** holds a single `asyncio.Lock` to prevent concurrent refresh races. Both getters (`get_aliyun_credentials`, `get_mammotion_mqtt_credentials`) check expiry under the lock and refresh proactively.
+
+**Never log in with a stored password automatically.** `login_v2` is the only password grant in the library, and only an explicit caller-initiated login may reach it — `MammotionClient.login_and_initiate_cloud`, and the cache-miss branch of `_restore_mammotion_mqtt`. Every automatic renewal uses a refresh token (`refresh_token_v2`) or, for Aliyun, the existing login's authCode chain (`connect_iot`). An automatic password login bypasses the host's re-auth prompt and, during a server-side outage, fires one password grant per queued request — the shape of the oauth2/token hammering Mammotion reported. If you add a refresh path, it must not be able to call `login_v2`; `tests/unit/http/test_token_refresh.py` asserts this against the AST.
+
+**Failures are scoped, and a rejection is terminal.** There are no retry timers or cooldowns in the auth layer: a rejected refresh token does not become valid by waiting, so retrying it only adds load.
+- **Account-scoped** — `refresh_token_v2` rejected → `TokenManager.reauth_required` is set, `ReLoginRequiredError` propagates to the host, and `MammotionClient.on_unrecoverable_auth_error` fires so the user is prompted to re-authenticate. Every later call fails fast with no network.
+- **Transport-scoped** — the Aliyun IoT session or Mammotion MQTT JWT is unrenewable while the HTTP login is still healthy → `aliyun_unavailable` / `mqtt_unavailable` is set and only that transport is given up. Its mowers are signalled via the per-device error bus, but the global callback does **not** fire: the login, the cached credentials, and the account's *other* transport must survive.
+- **Transient network errors are neither.** They propagate as their own type (`is_transient_network_error` classifies them) so callers back off, and they must never set a terminal flag — a blip would otherwise strand a working login behind a re-auth prompt the user cannot satisfy.
+
+**Recovery is one attempt, scoped to the failing transport.** `MammotionClient._send_with_auth_retry` does one targeted refresh and one retry, then propagates. Note that `AuthError` subclasses `TransportError`, so its `except AuthError: raise` clause must stay ahead of the `except TransportError` catch — otherwise the terminal signal is swallowed into a log line.
+
+**Reactive refreshes are deduplicated by access token.** `TokenManager.refresh_invoke_token(stale_token=...)` compares the token the failed request actually used against the live one and returns early if they differ — another caller already refreshed, so the caller just retries. Without this, a burst of commands that all 401 on the same dead token produces one refresh *each* (serialized by the lock), and every refresh rotates the refresh token server-side, so the later rotations race the earlier ones. Ported from the Android app's `SpecialCodeIntercepter.refreshToken`, which guards identically by comparing the request's `Authorization` header against its stored token. Any new reactive-refresh caller should pass the token it sent.
+
+**Credential renewal is clock-driven, not traffic-driven.** `TokenManager.start_refresh_scheduler()` runs one task per account that sleeps until the earliest credential is within its lead window (5 min HTTP / 30 min MQTT JWT / 1 h Aliyun — the same thresholds the lazy getters use), renews just that one, and sleeps again. It does not poll. `MammotionClient` starts it from the two public entry points (`login_and_initiate_cloud`, `restore_credentials`) and stops it in `_sign_out_session` and `stop()`.
+
+This exists because every other refresh path is lazy — it runs because something asked for a credential. When all of an account's devices are offline, `mqtt_activity_loop` skips sending (`has_usable_transport` is False), so no HTTP call is made, `ensure_token_valid` never fires, and the in-band Aliyun expiry check *inside* `send_cloud_command` never runs. Without the scheduler nothing renews anything and the credentials rot until the refresh tokens themselves expire, at which point recovery needs the user. Refresh order matters: HTTP goes first, because both the Mammotion JWT and the Aliyun session are minted using the HTTP access token.
+
+**Cloud error codes live in one table.** `pymammotion/aliyun/exceptions.py` holds `DEVICE_OFFLINE_CODES`, `DEVICE_UNBOUND_CODES`, `GATEWAY_TIMEOUT_CODES` (plus the pairing-flow codes, currently unused). Both cloud send paths — `CloudIOTGateway.send_cloud_command` and `MQTTTransport._invoke` — classify against them, so a newly-observed code is added once. Don't pattern-match a raw code inline in a send path.
 
 **Never send MQTT to an offline device.** When the cloud has reported a device offline (`DeviceAvailability.mqtt_reported_offline = True`, set by `DeviceOfflineException` and "offline" `thing/status` messages), no code path should fire an MQTT send to that device — not user commands, not periodic polls, not heartbeats, not sagas. The cloud will queue the message and either drop it or deliver it when the device returns, neither of which we want, and the broker side raises `DeviceOfflineException` again, so the round-trip is wasted. Gates that enforce this:
 - `DeviceHandle.active_transport()` raises `NoTransportAvailableError` when MQTT is the only registered transport and `mqtt_reported_offline` is True.
@@ -160,7 +178,7 @@ Key files for protocol/logic research:
 - **Python version:** 3.12+
 - **Type stubs** for missing third-party types are in `stubs/`
 - Ruff excludes `pymammotion/proto/`, `tests/`, and `scripts/` from linting
-- ty excludes `pymammotion/proto/**`, `tests/**`, `scripts/**`, `examples/**`, and `pymammotion/mqtt/linkkit/**`
+- ty excludes `pymammotion/proto/**`, `tests/**`, `scripts/**`, and `examples/**`
 - **No local imports inside function bodies** — always use top-level imports. Exception: `TYPE_CHECKING` guards for type-hint-only imports that would cause circular imports at runtime.
 - **Walrus operator (`:=`)** — prefer it wherever it removes a separate assignment line: guards (`if x := foo()`), loop conditions (`while chunk := f.read()`), and inline captures inside comprehensions or `match` arms. Only avoid it when the binding would make the expression harder to read than two lines would.
 

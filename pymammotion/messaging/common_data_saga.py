@@ -5,10 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-import betterproto2
-
 from pymammotion.data.model.hash_list import CommDataCouple
 from pymammotion.messaging.saga import Saga
+from pymammotion.messaging.transfers import ack_stream
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -88,41 +87,25 @@ class CommonDataSaga(Saga):
             cmd = self._command_builder.get_common_data(action=self._action, type=self._type, hash_num=self._hash_num)
             await self._send_command(cmd)
 
-            while True:
-                msg = await self._next_frame(frame_queue, "toapp_get_commondata_ack")
+            async def _ack(ack: Any) -> None:
+                # Per-frame echo — mirrors APK HashDataManager.updateDynamicsLine
+                # (HashDataManager.java:1608) and setRegionalData (:1219), which both
+                # call getRegionalData(bean) on every incoming frame including the
+                # final one.  The device waits for it before sending the next frame.
+                await self._send_command(self._command_builder.get_regional_data(regional_data=self._region_data(ack)))
 
-                _, nav_val = betterproto2.which_one_of(msg, "LubaSubMsg")
-                assert nav_val is not None
-                ack = nav_val.toapp_get_commondata_ack
+            received = await ack_stream(
+                frame_queue,
+                field="toapp_get_commondata_ack",
+                ack=_ack,
+                timeout=self.step_timeout,
+            )
 
-                # Per-frame ack — mirrors APK HashDataManager.updateDynamicsLine
-                # (HashDataManager.java:1608) and setRegionalData (:1219), which
-                # both call getRegionalData(bean) on every incoming frame
-                # including the final one.  The device waits for this echo
-                # (sub_cmd=2, action/type/hash/total/current echoed) before
-                # sending the next frame; without it, multi-frame responses
-                # stall after frame 1.
-                ack_cmd = self._command_builder.get_regional_data(regional_data=self._region_data(ack))
-                await self._send_command(ack_cmd)
-
-                total_frame = ack.total_frame
-                frames[ack.current_frame] = [CommDataCouple(x=p.x, y=p.y) for p in ack.data_couple]
-
-                _logger.debug(
-                    "CommonDataSaga(action=%d type=%d): frame %d/%d  points=%d",
-                    self._action,
-                    self._type,
-                    ack.current_frame,
-                    total_frame,
-                    len(frames[ack.current_frame]),
-                )
-
-                if len(frames) >= total_frame:
-                    break
-
-        # Assemble frames in ascending order
-        for i in range(1, (total_frame or 0) + 1):
-            self.result.extend(frames.get(i, []))
+        # ack_stream only returns once every frame has arrived, so a plain sorted
+        # walk is complete — no need to probe for gaps.
+        total_frame = next(iter(received.values())).total_frame if received else 0
+        for num in sorted(received):
+            self.result.extend(CommDataCouple(x=p.x, y=p.y) for p in received[num].data_couple)
 
         _logger.debug(
             "CommonDataSaga(action=%d type=%d): complete — %d total points across %d frame(s)",

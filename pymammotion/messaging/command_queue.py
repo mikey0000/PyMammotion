@@ -17,13 +17,7 @@ from pymammotion.aliyun.exceptions import (
     TooManyRequestsException,
 )
 from pymammotion.transport import TransportError
-from pymammotion.transport.base import (
-    AuthError,
-    NoTransportAvailableError,
-    ReLoginRequiredError,
-    SagaFailedError,
-    TransportRateLimitedError,
-)
+from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError, TransportRateLimitedError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -37,7 +31,11 @@ _logger = logging.getLogger(__name__)
 class Priority(IntEnum):
     """Command execution priority. Lower value = higher priority."""
 
-    EMERGENCY = 0  # estop, return-to-dock — never skipped, bypasses saga block
+    # NOTE: EMERGENCY items skip the TTL and transport gates, but the processor is
+    # strictly sequential — an item enqueued while an EXCLUSIVE saga is mid-flight
+    # still waits for that saga's work() to return.  True e-stop preemption needs a
+    # direct send path, not this queue.
+    EMERGENCY = 0  # estop, return-to-dock — never dropped, skips TTL/transport gates
     EXCLUSIVE = 1  # sagas (map/plan fetch) — holds processor until complete
     NORMAL = 2  # regular HA commands — waits for exclusive slot
     BACKGROUND = 3  # low-urgency polling — waits for exclusive slot
@@ -198,8 +196,6 @@ class DeviceCommandQueue:
                     # GatewayTimeoutException and DeviceOfflineException are
                     # expected operational errors handled by the _process retry
                     # loop — logging them here as "unhandled" is misleading noise.
-                    from pymammotion.aliyun.exceptions import GatewayTimeoutException
-
                     if not isinstance(
                         exc, (GatewayTimeoutException, DeviceOfflineException, NoTransportAvailableError)
                     ):
@@ -240,8 +236,12 @@ class DeviceCommandQueue:
                 # Drop commands that have waited longer than _COMMAND_TTL without being
                 # dispatched.  Checked here — before any lock/gate waits — so stale
                 # commands don't execute after a long reconnect or saga pause.
-                # EMERGENCY items (e-stop, return-to-dock) are exempt.
-                if item.priority > Priority.EMERGENCY:
+                # EMERGENCY items (e-stop, return-to-dock) are exempt, and so are
+                # EXCLUSIVE sagas: a queued map/plan sync routinely waits out a
+                # multi-minute saga ahead of it, and silently dropping it means
+                # on_complete never fires and nothing upstream learns the sync
+                # didn't happen.
+                if item.priority > Priority.EXCLUSIVE:
                     age = time.monotonic() - item.enqueued_at
                     if age > _COMMAND_TTL:
                         _logger.debug(
@@ -296,10 +296,10 @@ class DeviceCommandQueue:
                 # caller-side gate needed; just don't pollute the log.
                 if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException, DeviceUnboundException)):
                     _logger.debug("DeviceCommandQueue[%s]: %s", self._device_name, exc)
-                elif isinstance(exc, ReLoginRequiredError) or isinstance(
+                elif isinstance(
                     exc,
                     (
-                        AuthError,
+                        AuthError,  # includes ReLoginRequiredError
                         SagaFailedError,
                         TooManyRequestsException,
                         TransportRateLimitedError,

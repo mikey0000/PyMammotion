@@ -138,7 +138,7 @@ def _stale_root_map() -> HashList:
     return hl
 
 
-async def _run_saga_start_only(hl: HashList, bol_hash: int) -> None:
+async def _run_saga_start_only(hl: HashList, bol_hash: int | None) -> None:
     """Run MapFetchSaga._run far enough to execute the start-of-run check, then abort.
 
     The first send (send_todev_ble_sync) is made to raise so the run unwinds right
@@ -177,7 +177,24 @@ async def test_saga_start_keeps_root_when_bol_hash_matches() -> None:
 
 
 async def test_saga_start_keeps_root_when_bol_hash_unknown() -> None:
-    """A device that hasn't reported a bol_hash (0) must not trigger a wipe."""
+    """A device that hasn't reported a bol_hash yet (None) must not trigger a wipe.
+
+    This is the common startup path — a sync that runs before the first
+    toapp_report_data arrives.  Wiping here would force a full re-fetch on every
+    such run and defeat incremental resume.
+    """
+    hl = _stale_root_map()
+    await _run_saga_start_only(hl, bol_hash=None)
+    assert hl.hashlist == [OLD_HASH]
+
+
+async def test_saga_start_wipes_root_when_device_reports_zero_areas() -> None:
+    """A *reported* bol_hash of 0 means "no areas" and must wipe.
+
+    computed_bol_hash() returns 0 for an empty list, so this is what the device
+    sends once every area has been deleted.  Conflating it with "not reported
+    yet" left the deleted areas cached forever.
+    """
     hl = _stale_root_map()
     await _run_saga_start_only(hl, bol_hash=0)
-    assert hl.hashlist == [OLD_HASH]
+    assert hl.root_hash_lists == []

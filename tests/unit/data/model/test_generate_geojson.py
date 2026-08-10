@@ -1132,3 +1132,59 @@ def test_map_object_stats_degenerate_closed_segment_has_zero_area() -> None:
 
     assert length == pytest.approx(10.0)
     assert area == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Empty area name fallback — "Zone N" template
+#
+# When the device reports area names as "" (empty string) the generator must
+# fall back to "Zone 1", "Zone 2" … rather than emitting empty titles.
+# This is the case for the real Luba-LD463652 config entry where both area
+# entries have name="".
+# ---------------------------------------------------------------------------
+
+
+def test_empty_area_name_falls_back_to_zone_template() -> None:
+    """Areas with name='' must be titled "Zone N", not "" or a raw hash string.
+
+    Guards the ``_build_feature_name`` path where ``area_names.get(hash_key)``
+    returns ``""`` (empty string, which is falsy) and the template fallback
+    "Zone {n}" must activate.
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(latitude=fixture["dock"]["latitude"], longitude=fixture["dock"]["longitude"], rotation=fixture["dock"]["rotation"])
+
+    # Two distinct hashes — sorted ascending so hash_a → Zone 1, hash_b → Zone 2
+    hash_a = 1_451_834_635_207_421_727
+    hash_b = 1_573_709_403_299_361_829
+    assert hash_a < hash_b  # confirms the expected sort order
+
+    coords = [(0.0, 0.0), (5.0, 0.0), (10.0, 0.0), (10.0, 5.0), (0.0, 5.0)]
+
+    hash_list = HashList()
+    _install_frame(hash_list.area, _make_frame(0, hash_a, coords))
+    _install_frame(hash_list.area, _make_frame(0, hash_b, coords))
+
+    # Both area_name entries have empty string names — mirrors the real device data
+    hash_list.area_name = [
+        AreaHashNameList(name="", hash=hash_a),
+        AreaHashNameList(name="", hash=hash_b),
+    ]
+
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    area_features = [f for f in result["features"] if f["properties"].get("type_name") == "area"]
+    assert len(area_features) == 2, f"Expected 2 area features, got {len(area_features)}"
+
+    titles = sorted(f["properties"]["title"] for f in area_features)
+    assert titles == ["Area 1", "Area 2"], (
+        f"Expected ['Area 1', 'Area 2'] but got {titles}; "
+        "empty area names must fall back to the Area N template"
+    )
+    # Name and title must match and both be non-empty
+    for feat in area_features:
+        props = feat["properties"]
+        assert props["title"], f"title is empty for area feature with hash {props.get('hash')}"
+        assert props["Name"] == props["title"]

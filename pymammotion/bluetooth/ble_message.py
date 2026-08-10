@@ -18,6 +18,15 @@ from pymammotion.utility.constant.device_constant import BleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
 
+# The BluFi header's data-length field is a single byte, so a frame's data
+# section (including any fragmentation length prefix) can hold at most 255
+# bytes.  Fragmented frames prepend a 2-byte little-endian "remaining content
+# length" prefix that the inbound parser strips (see ``parseNotification``
+# ``data_offset = 2``), leaving this much room for actual payload per fragment.
+MAX_DATA_LEN = 255
+FRAG_LENGTH_PREFIX_LEN = 2
+FRAG_CONTENT_LEN = MAX_DATA_LEN - FRAG_LENGTH_PREFIX_LEN
+
 CRC_TB = [
     0x0000,
     0x1021,
@@ -279,7 +288,7 @@ CRC_TB = [
 
 
 class BleMessage:
-    """Class for sending and recieving messages from Luba"""
+    """Class for sending and recieving messages from Luba."""
 
     AES_TRANSFORMATION = "AES/CFB/NoPadding"
     DEFAULT_PACKAGE_LENGTH = 20
@@ -337,33 +346,6 @@ class BleMessage:
     # async def get_device_info(self):
     #     await self.postCustomData(self.getJsonString(bleOrderCmd.getDeviceInfo))
 
-    async def requestDeviceStatus(self) -> None:
-        """Request the current device status from the BLE device."""
-        request = False
-        type = self.getTypeValue(0, 5)
-        try:
-            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
-            # _LOGGER.debug(request)
-        except Exception as err:
-            # Log.w(TAG, "post requestDeviceStatus interrupted")
-            request = False
-            _LOGGER.error(err)
-
-        # if not request:
-        #     onStatusResponse(BlufiCallback.CODE_WRITE_DATA_FAILED, null)
-
-    async def requestDeviceVersion(self) -> None:
-        """Request the firmware version information from the BLE device."""
-        request = False
-        type = self.getTypeValue(0, 7)
-        try:
-            request = await self.post(BleMessage.mEncrypted, BleMessage.mChecksum, False, type, None)
-            # _LOGGER.debug(request)
-        except Exception as err:
-            # Log.w(TAG, "post requestDeviceStatus interrupted")
-            request = False
-            _LOGGER.error(err)
-
     async def gatt_write(self, data: bytes) -> None:
         """Write raw bytes to the GATT write characteristic with response."""
         await self.client.write_gatt_char(UUID_WRITE_CHARACTERISTIC, data, True)
@@ -396,6 +378,7 @@ class BleMessage:
             )
             # Set the value for mReadSequence manually
             self.mReadSequence.set(sequence)
+            self.clear_notification()
 
         # LogUtil.m7773e(self.mGatt.getDevice().getName() + "打印丢包率", self.mReadSequence_2 + "/" + self.mReadSequence_1);
         pkt_type = int(response[0])  # toInt
@@ -432,6 +415,7 @@ class BleMessage:
                         f"expect checksum: {respChecksum1}, {respChecksum2}\n"
                         f"received checksum: {calcChecksum1}, {calcChecksum2}"
                     )
+                    self.clear_notification()
                     return -4
 
             data_offset = 2 if frameCtrlData.hasFrag() else 0
@@ -440,6 +424,7 @@ class BleMessage:
             return 1 if frameCtrlData.hasFrag() else 0
         except Exception as e:
             _LOGGER.debug(e)
+            self.clear_notification()
             return -100
 
     async def parseBlufiNotifyData(self, return_bytes: bool = False) -> bytes | None:
@@ -550,7 +535,7 @@ class BleMessage:
         data = data_str.encode()
         type_val = self.getTypeValue(1, 19)
         try:
-            suc = await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
+            await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
         except Exception as err:
@@ -589,35 +574,35 @@ class BleMessage:
         type_of: int,
         data: bytes,
     ) -> bool:
-        """Split data into MTU-sized chunks and write each chunk as a BLE packet, handling fragmentation."""
-        chunk_size = 517  # self.client.mtu_size - 3
+        """Split data into BluFi frames and write each one as a BLE packet, handling fragmentation.
 
-        chunks = list()
-        for i in range(0, len(data), chunk_size):
-            if i + chunk_size > len(data):
-                chunks.append(data[i : len(data)])
+        The data-length field in the BluFi header is one byte, so each frame's
+        data section is capped at ``MAX_DATA_LEN``.  When the payload does not
+        fit in a single frame, every fragment except the last carries the FRAG
+        frame-control bit plus a 2-byte little-endian prefix holding the total
+        remaining content length (this fragment's content included) — exactly
+        what ``parseNotification`` strips before reassembly.  Each fragment
+        consumes its own send sequence number.
+        """
+        total_length = len(data)
+        offset = 0
+        while offset < total_length:
+            remaining = total_length - offset
+            if frag := remaining > MAX_DATA_LEN:
+                chunk = remaining.to_bytes(FRAG_LENGTH_PREFIX_LEN, "little") + data[offset : offset + FRAG_CONTENT_LEN]
+                offset += FRAG_CONTENT_LEN
             else:
-                chunks.append(data[i : i + chunk_size])
-        for index, chunk in enumerate(chunks):
-            frag = index != len(chunks) - 1
+                chunk = data[offset:]
+                offset = total_length
             sequence = self.generate_send_sequence()
             postBytes = self.getPostBytes(type_of, encrypt, checksum, require_ack, frag, sequence, chunk)
-            # _LOGGER.debug("sequence")
-            # _LOGGER.debug(sequence)
             await self.gatt_write(postBytes)
 
-            if not frag:
-                return not require_ack or self.receiveAck(sequence)
-
             if require_ack and not self.receiveAck(sequence):
                 return False
 
-            _LOGGER.debug("sleeping 0.01")
-            await sleep(0.01)
-            if require_ack and not self.receiveAck(sequence):
-                return False
-
-            return True
+            if frag:
+                await sleep(0.01)
 
         return True
 
@@ -633,7 +618,7 @@ class BleMessage:
     ) -> bytes:
         """Assemble a BluFi packet header with optional payload into a byte buffer ready for GATT write."""
         byteOS = BytesIO()
-        dataLength = 0 if data == None else len(data)
+        dataLength = 0 if data is None else len(data)
         frameCtrl = FrameCtrlData.getFrameCTRLValue(encrypt, checksum, 0, require_ack, hasFrag)
         byteOS.write(type.to_bytes(1, sys.byteorder))
         byteOS.write(frameCtrl.to_bytes(1, sys.byteorder))
