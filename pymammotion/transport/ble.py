@@ -225,8 +225,9 @@ class BLETransport(Transport):
         bluetooth integration to push BLEDevices instead.
 
         Raises:
-            BLEUnavailableError: in cooldown, scan failure, or
-                ``establish_connection`` raised ``BleakError``.
+            BLEUnavailableError: in cooldown, scan failure, or when
+                ``establish_connection``, ``start_notify`` or the initial sync
+                raised ``BleakError``.
             NoBLEAddressKnownError: no BLEDevice cached and self-managed scan
                 disabled (or address is missing for the scan).
 
@@ -298,10 +299,14 @@ class BLETransport(Transport):
             # [org.bluez.Error.NotPermitted] Notify acquired.
             with contextlib.suppress(Exception):
                 await self._client.stop_notify(UUID_NOTIFICATION_CHARACTERISTIC)
+            # Both steps below run against an established link, and both leave the
+            # transport unusable when they fail, so they share one teardown path.
             try:
-                await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
-            except BleakError as exc:
-                if "Notify acquired" in str(exc):
+                try:
+                    await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
+                except BleakError as exc:
+                    if "Notify acquired" not in str(exc):
+                        raise
                     # BlueZ reports the channel is already open — our previous
                     # connection's subscription is still live.  Notifications will
                     # continue to arrive, so there is nothing to do here.
@@ -309,26 +314,34 @@ class BLETransport(Transport):
                         "BLETransport: notify already acquired for %s — reusing existing subscription",
                         self._config.device_id,
                     )
-                else:
-                    # Tear the link down: is_connected reads the live client, so leaving
-                    # it connected here would wedge the transport into a state where
-                    # writes succeed but responses never arrive (no notify subscription).
-                    with contextlib.suppress(Exception):
-                        await self._client.disconnect()
-                    self._client = None
-                    self._message = None
-                    await self._notify_availability(TransportAvailability.DISCONNECTED)
-                    self._record_connect_failure()
-                    raise BLEUnavailableError(f"BLE start_notify failed for {self._config.device_id!r}: {exc}") from exc
-            await self._notify_availability(TransportAvailability.CONNECTED)
-            _logger.debug("BLETransport connected to %s", self._config.device_id)
 
-            # Successful connect resets the failure tracker.
-            self._consecutive_failures = 0
+                await self._notify_availability(TransportAvailability.CONNECTED)
+                _logger.debug("BLETransport connected to %s", self._config.device_id)
 
-            # One-shot sync on connect — subsequent periodic syncs are driven by
-            # DeviceHandle._keep_alive_loop (20 s).
-            await self._ble_sync()
+                # Successful connect resets the failure tracker.
+                self._consecutive_failures = 0
+
+                # One-shot sync on connect — subsequent periodic syncs are driven by
+                # DeviceHandle._keep_alive_loop (20 s).
+                await self._ble_sync()
+            except (BleakError, TimeoutError, OSError) as exc:
+                # The link came up but notify or the very first write failed, so the
+                # transport is not actually usable.  is_connected reads the live client,
+                # so leaving it connected would wedge the transport into a state where
+                # writes succeed but responses never arrive.  Tear the link down, count
+                # the failure (this drives the cooldown) and raise a TransportError:
+                # a raw BleakError escaping here would break this method's documented
+                # contract, so callers that catch only TransportError abort instead of
+                # falling back to MQTT.
+                with contextlib.suppress(Exception):
+                    await self._client.disconnect()
+                self._client = None
+                self._message = None
+                await self._notify_availability(TransportAvailability.DISCONNECTED)
+                self._record_connect_failure(exc if isinstance(exc, BleakError) else None)
+                raise BLEUnavailableError(
+                    f"BLE setup after connect failed for {self._config.device_id!r}: {exc}"
+                ) from exc
 
     def _record_connect_failure(self, exc: BleakError | None = None) -> None:
         """Increment the failure counter; clear device and start cooldown at threshold.
