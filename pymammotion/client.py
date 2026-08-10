@@ -54,6 +54,7 @@ from mashumaro import MissingField
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import CloudSetupError
+from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 from pymammotion.bluetooth.manager import BLETransportManager
 from pymammotion.data.model import GenerateRouteInformation
@@ -130,17 +131,26 @@ _ONE_SHOT_CHANNELS: list[RptInfoType] = [
 ]
 
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from aiohttp import ClientSession
+    from bleak import BLEDevice
+
+    from pymammotion.data.mqtt.event import ThingEventMessage
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
+    from pymammotion.data.mqtt.status import ThingStatusMessage
+
+_logger = logging.getLogger(__name__)
+
+
 def _cached_aliyun_device_data_is_empty(cached_data: dict[str, Any]) -> bool:
     """Return True when cached Aliyun device_data explicitly contains no devices."""
     device_data = cached_data.get("device_data")
     if device_data is None:
         return False
 
-    data = (
-        device_data.get("data")
-        if isinstance(device_data, dict)
-        else getattr(device_data, "data", None)
-    )
+    data = device_data.get("data") if isinstance(device_data, dict) else getattr(device_data, "data", None)
     devices = data.get("data") if isinstance(data, dict) else getattr(data, "data", None)
     if devices is None:
         return False
@@ -162,19 +172,6 @@ def _cached_mammotion_records_include_shared(cached_data: dict[str, Any]) -> boo
     except Exception:  # noqa: BLE001
         return False
     return any(getattr(record, "owned", 1) == 0 and getattr(record, "iot_id", "") for record in records)
-
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from aiohttp import ClientSession
-    from bleak import BLEDevice
-
-    from pymammotion.data.mqtt.event import ThingEventMessage
-    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
-    from pymammotion.data.mqtt.status import ThingStatusMessage
-
-_logger = logging.getLogger(__name__)
 
 
 def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash: int) -> bool:
@@ -2315,6 +2312,11 @@ class MammotionClient:
         await handle.enqueue_saga(saga, on_complete=_on_complete)
 
     async def check_and_get_mow_path(self, device_name: str) -> None:
+        """Check if mow path is valid and get mow path.
+
+        :param device_name:
+        :return:
+        """
         if handle := self._device_registry.get_by_name(device_name):
             device = cast(MowerDevice, handle.snapshot.raw)
             work = device.report_data.work
