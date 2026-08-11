@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, ContentTypeError
 import jwt
+from mashumaro.exceptions import InvalidFieldValue, MissingField
+from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.const import (
     APP_VERSION,
@@ -47,6 +49,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
 T = TypeVar("T")
+_ModelT = TypeVar("_ModelT", bound=DataClassORJSONMixin)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,6 +60,35 @@ _LOGGER = logging.getLogger(__name__)
 #: assume is bounded.  Applied at the refresh call site so the bound holds
 #: regardless of whose session we are using.
 _REFRESH_TIMEOUT_SEC = 30.0
+
+#: Exceptions a malformed credential cache can raise while being decoded.  The cache
+#: is untrusted input: it was written by a previous (possibly older) version of the
+#: library, may have been hand-edited, and may hold live models where the schema now
+#: expects dicts.  Restoring must degrade to "no usable login" rather than propagate
+#: — see :meth:`MammotionHTTP.from_cache`.
+_CACHE_DECODE_ERRORS = (InvalidFieldValue, MissingField, ValueError, TypeError, AttributeError, jwt.PyJWTError)
+
+#: ``/user/oauth/check`` codes that mean "this access token is live".  0 is the API's
+#: success code; 200 is what :meth:`MammotionHTTP.oauth_check` synthesises when the
+#: server answers with a non-JSON body.
+_OAUTH_CHECK_OK_CODES = (0, 200)
+
+
+def _decode_cached(value: Any, model: type[_ModelT]) -> _ModelT | None:
+    """Return one cached field as *model*, or ``None`` when the cache does not hold one.
+
+    A cache entry is either an already-decoded model (the cache never left memory) or
+    a plain dict (it round-tripped through JSON) — and, when the cache is corrupt, it
+    may be neither.  Passing an unrecognised value straight through would plant it in
+    a typed attribute and defer the failure to whoever reads that attribute next, so
+    anything else becomes ``None`` and the caller keeps its default.
+    """
+    if isinstance(value, model):
+        return value
+    if isinstance(value, dict):
+        with suppress(*_CACHE_DECODE_ERRORS):
+            return model.from_dict(value)
+    return None
 
 
 def _token_fingerprint(token: str | None) -> str:
@@ -214,6 +246,124 @@ class MammotionHTTP:
         else:
             async with ClientSession(timeout=self._DEFAULT_HTTP_TIMEOUT) as session:
                 yield session
+
+    @classmethod
+    def from_cache(
+        cls,
+        data: dict[str, Any],
+        account: str | None = None,
+        password: str | None = None,
+        session: ClientSession | None = None,
+        ha_version: str | None = None,
+    ) -> MammotionHTTP | None:
+        """Rebuild a login session from a previously serialized credential cache.
+
+        Pure and synchronous — it performs no I/O, so the restored session is not yet
+        known to be *accepted* by the server.  Call :meth:`validate_login` for that.
+
+        Every value may be either a plain dict (the cache came back from JSON) or an
+        already-decoded model (the cache is still the in-memory one), so each field is
+        normalised on the way in.
+
+        Returns ``None`` — never raises — when the login itself is unusable: no
+        ``mammotion_data``, an undecodable one, or one carrying no access token.  A
+        corrupt cache must fall back to a fresh login, and it used to escape as a
+        ``mashumaro`` ``InvalidFieldValue`` from the middle of the Aliyun restore
+        instead.  The optional fields degrade individually: a malformed MQTT credential
+        block costs the MQTT credentials, not the whole session.
+
+        Args:
+            data:       Cache dictionary produced by ``MammotionClient.to_cache``.
+            account:    Account (email / phone) the cache belongs to.
+            password:   Account password — stored for callers only, never used here.
+            session:    Optional :class:`aiohttp.ClientSession` to reuse.
+            ha_version: Home Assistant integration version for the ``App-Version`` header.
+
+        """
+        if (mammotion_data := data.get("mammotion_data")) is None:
+            _LOGGER.debug("from_cache: no mammotion_data in cache — cannot restore a login session")
+            return None
+
+        try:
+            response = (
+                mammotion_data
+                if isinstance(mammotion_data, Response)
+                else response_factory(Response[LoginResponseData], mammotion_data)
+            )
+            login_info = _decode_cached(response.data, LoginResponseData)
+            if login_info is None or not login_info.access_token:
+                _LOGGER.warning("from_cache: cached login response carries no access token — cannot restore")
+                return None
+            # Normalise before assigning: the ``response`` setter decodes
+            # ``response.data.access_token`` directly and would trip over a dict.
+            response.data = login_info
+
+            http = cls(account, password, session=session, ha_version=ha_version)
+            http.response = response  # derives jwt_info + expires_in from the JWT exp claim
+            http.login_info = login_info
+        except _CACHE_DECODE_ERRORS:
+            _LOGGER.warning("from_cache: cached login data could not be decoded — a fresh login is required")
+            _LOGGER.debug("from_cache: decode failure detail", exc_info=True)
+            return None
+
+        # The cached JWT wins over the one the response setter derived above: it is
+        # what the live session was actually using when the cache was written.
+        if (cached_jwt := _decode_cached(data.get("mammotion_jwt_info"), JWTTokenInfo)) is not None:
+            http.jwt_info = cached_jwt
+
+        if (cached_mqtt := _decode_cached(data.get("mammotion_mqtt"), MQTTConnection)) is not None:
+            http.mqtt_credentials = cached_mqtt
+
+        if isinstance(device_list := data.get("mammotion_device_list"), list):
+            devices = [d for raw in device_list if (d := _decode_cached(raw, DeviceInfo)) is not None]
+            if devices:
+                http.device_info = devices
+
+        if (cached_records := _decode_cached(data.get("mammotion_device_records"), DeviceRecords)) is not None:
+            http.device_records = cached_records
+
+        return http
+
+    async def validate_login(self) -> bool:
+        """Confirm the restored login session is one the server still accepts.
+
+        Two steps, cheapest first:
+
+        1. :meth:`ensure_token_valid` — a local expiry check that only spends a round
+           trip when the access token is within 5 minutes of expiry.
+        2. ``/user/oauth/check`` — the server's own verdict.  A cached token can be
+           dead well before its ``exp`` (the account logged in elsewhere, was
+           deauthorised, or the refresh token was rotated by another client), and the
+           local check cannot see that.  A rejection here buys one refresh and one
+           re-check before giving up.
+
+        Returns False when the session is genuinely unusable, so the caller can fall
+        back to a full login.  Transient network failures are deliberately NOT
+        converted to False — they propagate as their own type (``ClientError`` /
+        ``TimeoutError`` / ``ConnectionError``) so a blip cannot be mistaken for a
+        rejected login and trigger a needless password grant.
+        """
+        if self._login_info is None:
+            return False
+        try:
+            await self.ensure_token_valid(caller="validate_login")
+        except ReLoginRequiredError:
+            _LOGGER.warning("validate_login: refresh token rejected — a fresh login is required")
+            return False
+
+        try:
+            if (response := await self.oauth_check()).code in _OAUTH_CHECK_OK_CODES:
+                return True
+            _LOGGER.info("validate_login: oauth/check rejected the cached token (code=%s) — refreshing", response.code)
+            if (refreshed := await self.refresh_token_v2()).code != 0:
+                _LOGGER.warning(
+                    "validate_login: refresh rejected (code=%s) — a fresh login is required", refreshed.code
+                )
+                return False
+            return (await self.oauth_check()).code in _OAUTH_CHECK_OK_CODES
+        except (AuthError, ReLoginRequiredError, UnauthorizedExceptionError):
+            _LOGGER.warning("validate_login: cached session rejected — a fresh login is required")
+            return False
 
     @property
     def login_info(self) -> LoginResponseData | None:

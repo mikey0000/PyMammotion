@@ -13,7 +13,7 @@ from logging import getLogger
 import random
 import string
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import uuid
 
 from aiohttp import ClientSession, ConnectionTimeoutError
@@ -44,11 +44,13 @@ from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthC
 from pymammotion.aliyun.model.thing_response import ThingPropertiesResponse
 from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
-from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import DeviceInfo, DeviceRecords, LoginResponseData, Response
-from pymammotion.http.model.response_factory import response_factory
 from pymammotion.transport.base import SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
+
+if TYPE_CHECKING:
+    # The gateway no longer builds a login session — it is handed one — so this is
+    # a type-only dependency now.
+    from pymammotion.http.http import MammotionHTTP
 
 logger = getLogger(__name__)
 
@@ -1160,21 +1162,22 @@ class CloudIOTGateway:
     async def from_cache(
         cls,
         data: dict[str, Any],
-        account: str,
-        password: str,
-        ha_version: str | None = None,
+        mammotion_http: MammotionHTTP,
     ) -> CloudIOTGateway | None:
         """Reconstruct a CloudIOTGateway from a previously serialized cache dictionary.
 
-        Returns None if any required field is missing or if an error occurs during
-        reconstruction or session refresh.
+        Restores the Aliyun half of the cache only.  The HTTP login it hangs off is
+        the caller's: it has already been restored (:meth:`MammotionHTTP.from_cache`)
+        and validated, so an account has exactly one login session no matter how many
+        transports are restored from the same cache.
+
+        Returns None if any required Aliyun field is missing or if an error occurs
+        during reconstruction or session refresh — the login itself survives, and only
+        this transport is given up.
 
         Args:
             data: Cache dictionary previously produced by :meth:`to_cache`.
-            account: User account (email / username) for the MammotionHTTP instance.
-            password: User password for the MammotionHTTP instance.
-            ha_version: Optional Home Assistant integration version forwarded to
-                the inner MammotionHTTP for the ``App-Version`` header.
+            mammotion_http: The account's restored, validated login session.
 
         """
         required_keys = (
@@ -1184,7 +1187,6 @@ class CloudIOTGateway:
             "aep_data",
             "session_data",
             "device_data",
-            "mammotion_data",
         )
         if any(k not in data for k in required_keys):
             return None
@@ -1195,42 +1197,9 @@ class CloudIOTGateway:
         aep_data = data["aep_data"]
         session_data = data["session_data"]
         device_data = data["device_data"]
-        mammotion_data = data["mammotion_data"]
-        mammotion_device_list = data.get("mammotion_device_list")
-        mammotion_device_records = data.get("mammotion_device_records")
 
-        if any(
-            v is None
-            for v in [connect_data, auth_data, region_data, aep_data, session_data, device_data, mammotion_data]
-        ):
+        if any(v is None for v in [connect_data, auth_data, region_data, aep_data, session_data, device_data]):
             return None
-
-        mammotion_response_data: Response[LoginResponseData] = (
-            response_factory(Response[LoginResponseData], mammotion_data)
-            if isinstance(mammotion_data, dict)
-            else mammotion_data
-        )
-
-        mammotion_http = MammotionHTTP(account, password, ha_version=ha_version)
-        mammotion_http.response = mammotion_response_data
-        if mammotion_device_list:
-            mammotion_http.device_info = (
-                [DeviceInfo.from_dict(d) if isinstance(d, dict) else d for d in mammotion_device_list]
-                if isinstance(mammotion_device_list, list)
-                else mammotion_device_list
-            )
-        if mammotion_device_records:
-            mammotion_http.device_records = (
-                DeviceRecords.from_dict(mammotion_device_records)
-                if isinstance(mammotion_device_records, dict)
-                else mammotion_device_records
-            )
-
-        mammotion_http.login_info = (
-            LoginResponseData.from_dict(mammotion_response_data.data)
-            if isinstance(mammotion_response_data.data, dict)
-            else mammotion_response_data.data
-        )
 
         try:
             cloud_client = cls(

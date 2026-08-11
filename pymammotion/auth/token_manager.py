@@ -212,6 +212,23 @@ class TokenManager:
         """
         return self._http
 
+    @property
+    def cloud_gateway(self) -> CloudIOTGateway | None:
+        """The Aliyun gateway this manager refreshes IoT sessions on, if any."""
+        return self._cloud_gateway
+
+    def attach_cloud_gateway(self, cloud_gateway: CloudIOTGateway) -> None:
+        """Give this manager the account's Aliyun gateway.
+
+        An account has one login session and therefore one TokenManager, but its Aliyun
+        gateway may only appear later — a restore establishes the HTTP login first, and
+        a Mammotion-MQTT-only account may never have one at all.  Attaching keeps that
+        single manager (and its running refresh scheduler, terminal flags, and the
+        transports holding a reference to it) rather than replacing it with a second
+        one built around the gateway.
+        """
+        self._cloud_gateway = cloud_gateway
+
     async def initialize(
         self,
         http_creds: HTTPCredentials | None,
@@ -229,6 +246,27 @@ class TokenManager:
         self._http_creds = http_creds
         self._aliyun_creds = aliyun_creds
         self._mqtt_creds = mqtt_creds
+
+    def seed_from_http(self) -> None:
+        """Adopt the credentials the login session is already carrying.
+
+        A restored — or freshly logged-in — :class:`MammotionHTTP` arrives holding an
+        access token and, usually, MQTT credentials.  Without seeding, this manager
+        starts with empty snapshots, so the first ``get_mammotion_mqtt_credentials()``
+        spends a network round-trip re-fetching a JWT we already have, and
+        ``seconds_until_next_refresh`` is meaningless until something refreshes once.
+
+        Only fills gaps: a snapshot already held here is never downgraded to whatever
+        the http object happens to be carrying.
+        """
+        if self._http_creds is None and (login := self._http.login_info) is not None:
+            self._http_creds = HTTPCredentials(
+                access_token=login.access_token,
+                refresh_token=login.refresh_token,
+                expires_at=self._http.expires_in,
+            )
+        if self._mqtt_creds is None and (mqtt := self._http.mqtt_credentials) is not None:
+            self._set_mqtt_creds(mqtt)
 
     # ------------------------------------------------------------------
     # Terminal failure state

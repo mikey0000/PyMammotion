@@ -68,6 +68,21 @@ def _populated_mammotion_http(account: str = "user@test.com") -> MammotionHTTP:
     http.jwt_info = JWTTokenInfo(iot="iot.example.com", robot="robot.example.com")
     return http
 
+def _cached_from(http: MammotionHTTP, **extra: object) -> dict:
+    """Return the cache dict ``MammotionClient.to_cache`` would produce for *http*.
+
+    Values are left as live models — ``MammotionHTTP.from_cache`` accepts both those
+    and their JSON dict form, and the dict branch is covered separately.
+    """
+    raw: dict[str, object] = {
+        "mammotion_data": http.response,
+        "mammotion_mqtt": http.mqtt_credentials,
+        "mammotion_jwt_info": http.jwt_info,
+        "mammotion_device_records": http.device_records,
+    }
+    raw.update(extra)
+    return raw
+
 def _make_share_record(*, is_receiver: int = 1, status: int = -1, batch_id: str = "batch1", record_id: str = "1") -> MagicMock:
     """Return a MagicMock shaped like a ShareRecord."""
     r = MagicMock()
@@ -107,27 +122,130 @@ def _make_mock_http(
     http.confirm_share = AsyncMock()
     http.mqtt_credentials = mqtt_creds or MagicMock()
     http.login_info = MagicMock()
+    # restore_credentials validates the restored login before touching any transport.
+    http.validate_login = AsyncMock(return_value=True)
+    http.device_records = MagicMock(records=[])
     return http
 
 async def test_token_manager_set_after_restore_aliyun() -> None:
-    """_restore_aliyun must set token_manager on the session."""
+    """_restore_aliyun must give the session a token_manager holding the gateway."""
     client = MammotionClient()
     acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    # restore_credentials establishes the login session before dispatching to a transport.
+    http = _populated_mammotion_http()
+    http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))  # type: ignore[method-assign]
+    acct_session.mammotion_http = http
 
     mock_cloud = MagicMock()
-    mock_cloud.mammotion_http = MagicMock()
-    mock_cloud.mammotion_http.login_info = None
+    mock_cloud.mammotion_http = http
     mock_cloud.devices_by_account_response = None
 
     with (
         patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
         patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
     ):
-        await client._restore_aliyun(
-            "user@test.com", "pass", {}, acct_session, check_for_new_devices=False
-        )
+        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=False)
 
     assert acct_session.token_manager is not None
+    # The gateway is attached to the account's one manager, not used to build a second.
+    assert acct_session.token_manager.http is http
+    assert acct_session.token_manager.cloud_gateway is mock_cloud
+
+async def test_restore_aliyun_without_a_login_session_is_a_no_op() -> None:
+    """A missing login session must skip the Aliyun transport, not crash or half-wire it."""
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+
+    with patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock()) as mock_from_cache:
+        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=False)
+
+    mock_from_cache.assert_not_awaited()
+    assert acct_session.cloud_client is None
+    assert acct_session.token_manager is None
+
+async def test_unusable_aliyun_cache_is_rebuilt_from_the_http_login() -> None:
+    """An Aliyun session is minted from the HTTP login, so a bad cache costs no password.
+
+    connect_iot re-derives the whole Aliyun session from the (already validated)
+    login's authCode chain.  Falling back to a full login here would throw away a
+    healthy login to re-derive exactly the same thing from a password grant.
+    """
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    http = _populated_mammotion_http()
+    http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))  # type: ignore[method-assign]
+    acct_session.mammotion_http = http
+
+    rebuilt: list[object] = []
+
+    def _new_gateway(mammotion_http: object) -> MagicMock:
+        """Stand in for CloudIOTGateway(http) — _connect_iot fills in the responses."""
+        gateway = MagicMock()
+        gateway.mammotion_http = mammotion_http
+        gateway.devices_by_account_response = None
+        return gateway
+
+    async def _connect_iot(cloud_client: object) -> None:
+        rebuilt.append(cloud_client)
+
+    mock_gateway_cls = MagicMock(side_effect=_new_gateway)
+    mock_gateway_cls.from_cache = AsyncMock(return_value=None)
+
+    with (
+        patch("pymammotion.client.CloudIOTGateway", mock_gateway_cls),
+        patch.object(client, "_connect_iot", _connect_iot),
+        patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
+        patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
+        patch("pymammotion.http.http.MammotionHTTP.login_v2", new_callable=AsyncMock) as mock_login_v2,
+    ):
+        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=False)
+
+    mock_login.assert_not_awaited()
+    mock_login_v2.assert_not_awaited()
+    # The rebuilt gateway hangs off the account's existing login session.
+    assert len(rebuilt) == 1
+    assert rebuilt[0].mammotion_http is http  # type: ignore[attr-defined]
+    assert acct_session.cloud_client is rebuilt[0]
+    assert acct_session.token_manager is not None
+    assert acct_session.token_manager.cloud_gateway is rebuilt[0]
+
+async def test_failed_aliyun_rebuild_costs_only_that_transport() -> None:
+    """Aliyun being unreachable must not take the login or the other transport down."""
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    http = _populated_mammotion_http()
+    acct_session.mammotion_http = http
+
+    with (
+        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=None)),
+        patch.object(client, "_connect_iot", AsyncMock(side_effect=ConnectionError("aliyun down"))),
+        patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
+    ):
+        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=False)
+
+    mock_login.assert_not_awaited()
+    assert acct_session.mammotion_http is http
+    assert acct_session.aliyun_transport is None
+
+async def test_incomplete_aliyun_rebuild_skips_the_transport() -> None:
+    """A rebuild that returns without a usable session must not be wired up.
+
+    _setup_aliyun_transport dereferences aep/region/session data directly, so a
+    half-built gateway would surface as an AttributeError mid-restore.
+    """
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    acct_session.mammotion_http = _populated_mammotion_http()
+
+    with (
+        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=None)),
+        patch.object(client, "_connect_iot", AsyncMock()),  # leaves every response None
+        patch.object(client, "_setup_aliyun_transport") as mock_setup,
+    ):
+        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=False)
+
+    mock_setup.assert_not_called()
+    assert acct_session.aliyun_transport is None
 
 async def test_restore_aliyun_refreshes_session_before_device_list() -> None:
     """_restore_aliyun must check/refresh the Aliyun session before listing devices.
@@ -140,9 +258,11 @@ async def test_restore_aliyun_refreshes_session_before_device_list() -> None:
 
     order: list[str] = []
 
+    acct_session.mammotion_http = MagicMock()
+    acct_session.mammotion_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+
     mock_cloud = MagicMock()
-    mock_cloud.mammotion_http = MagicMock()
-    mock_cloud.mammotion_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+    mock_cloud.mammotion_http = acct_session.mammotion_http
     mock_cloud.devices_by_account_response = None
     mock_cloud.session_by_authcode_response = MagicMock()
     mock_cloud.session_by_authcode_response.data.iotToken = "tok"
@@ -164,9 +284,7 @@ async def test_restore_aliyun_refreshes_session_before_device_list() -> None:
         patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
         patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
     ):
-        await client._restore_aliyun(
-            "user@test.com", "pass", {}, acct_session, check_for_new_devices=True
-        )
+        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=True)
 
     assert order == ["check_or_refresh_session", "list_binding_by_account"]
     # Cold restore must FORCE the refresh — the cached token can't be trusted even when it
@@ -184,9 +302,11 @@ async def test_restore_aliyun_applies_refreshed_token_before_listing() -> None:
     client = MammotionClient()
     acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
 
+    acct_session.mammotion_http = MagicMock()
+    acct_session.mammotion_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+
     mock_cloud = MagicMock()
-    mock_cloud.mammotion_http = MagicMock()
-    mock_cloud.mammotion_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
+    mock_cloud.mammotion_http = acct_session.mammotion_http
     mock_cloud.devices_by_account_response = None
     mock_cloud.session_by_authcode_response = MagicMock()
     mock_cloud.session_by_authcode_response.data.iotToken = "stale-token"
@@ -208,9 +328,7 @@ async def test_restore_aliyun_applies_refreshed_token_before_listing() -> None:
         patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
         patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
     ):
-        await client._restore_aliyun(
-            "user@test.com", "pass", {}, acct_session, check_for_new_devices=True
-        )
+        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=True)
 
     # The device-list call ran with the refreshed token (set on the gateway), not the stale one.
     assert token_seen_by_list == ["refreshed-token"]
@@ -218,21 +336,14 @@ async def test_restore_aliyun_applies_refreshed_token_before_listing() -> None:
 
 async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
     """_restore_mammotion_mqtt must set token_manager on the session when mqtt_creds are present."""
-    from pymammotion.http.model.http import MQTTConnection
-
     client = MammotionClient()
     acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
 
-    mqtt_creds = MQTTConnection(
-        host="mqtt.example.com",
-        client_id="client-1",
-        username="user",
-        jwt="token",
-    )
-    cached_data = {
-        "mammotion_mqtt": mqtt_creds.to_dict(),
-        "mammotion_device_records": {"records": []},
-    }
+    # The login session restore_credentials would have established, hydrated from the
+    # same cache — the MQTT credentials come off it, not out of the cache dict again.
+    http = MammotionHTTP.from_cache(_cached_from(_populated_mammotion_http()), "user@test.com", "pass")
+    assert http is not None
+    acct_session.mammotion_http = http
 
     mock_transport = MagicMock()
     mock_transport.connect = AsyncMock()
@@ -240,28 +351,43 @@ async def test_token_manager_set_after_restore_mammotion_mqtt() -> None:
     with (
         patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
         patch("pymammotion.http.http.MammotionHTTP.login_v2", new_callable=AsyncMock) as mock_login,
+        patch("pymammotion.client.MammotionHTTP.get_user_device_list", new_callable=AsyncMock) as mock_list,
     ):
-        mock_login.return_value = MagicMock(code=0, data=MagicMock())
-        await client._restore_mammotion_mqtt(
-            "user@test.com", "pass", cached_data, None, acct_session
-        )
+        mock_list.return_value = MagicMock(data=[])
+        await client._restore_mammotion_mqtt("user@test.com", acct_session)
 
     assert acct_session.token_manager is not None
     # The cached MQTT credentials must actually be restored onto the http object,
     # not merely accepted.  (Catches the `data`/`cached_data` NameError regression.)
-    assert acct_session.mammotion_http is not None
-    assert acct_session.mammotion_http.mqtt_credentials is not None
-    assert acct_session.mammotion_http.mqtt_credentials.host == "mqtt.example.com"
+    assert http.mqtt_credentials is not None
+    assert http.mqtt_credentials.host == "mqtt.example.com"
+    # Restore never mints a session from a stored password.
+    mock_login.assert_not_awaited()
+
+async def test_restore_mammotion_mqtt_without_mqtt_credentials_is_a_no_op() -> None:
+    """No cached MQTT credentials → no transport, and no attempt to invent one."""
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    http = _populated_mammotion_http()
+    http.mqtt_credentials = None
+    acct_session.mammotion_http = http
+
+    with patch.object(client, "_setup_mammotion_transport") as mock_setup:
+        await client._restore_mammotion_mqtt("user@test.com", acct_session)
+
+    mock_setup.assert_not_called()
+    assert acct_session.mammotion_transport is None
 
 async def test_restore_mammotion_mqtt_reuses_existing_http_for_hybrid_account() -> None:
-    """Hybrid (Aliyun+Mammotion) account must keep ONE MammotionHTTP.
+    """Hybrid (Aliyun+Mammotion) account must keep ONE MammotionHTTP and ONE TokenManager.
 
     Regression: _restore_aliyun runs first and sets acct_session.mammotion_http (A)
     plus a TokenManager bound to A.  _restore_mammotion_mqtt used to create a *new*
     MammotionHTTP (B) for the transport while keeping the A-bound TokenManager, so a
     401-driven refresh updated A's token while mqtt_invoke kept sending B's dead
-    token — an unrecoverable 401 loop.  The transport and its TokenManager must share
-    the same instance.
+    token — an unrecoverable 401 loop.  The transport, its TokenManager and the
+    account must all share one instance, and the manager itself must not be replaced:
+    a second one would leave the first's refresh scheduler running alongside it.
     """
     from pymammotion.auth.token_manager import TokenManager
 
@@ -271,13 +397,8 @@ async def test_restore_mammotion_mqtt_reuses_existing_http_for_hybrid_account() 
     # State left by a preceding _restore_aliyun: an authenticated http (A) + bound TM.
     http_a = _populated_mammotion_http()
     acct_session.mammotion_http = http_a
-    acct_session.token_manager = TokenManager("user@test.com", http_a)
-
-    mqtt_creds = MQTTConnection(host="mqtt.example.com", client_id="client-1", username="user", jwt="token")
-    cached_data = {
-        "mammotion_mqtt": mqtt_creds.to_dict(),
-        "mammotion_device_records": {"records": []},
-    }
+    tm_a = TokenManager("user@test.com", http_a)
+    acct_session.token_manager = tm_a
 
     captured: dict[str, object] = {}
 
@@ -297,13 +418,14 @@ async def test_restore_mammotion_mqtt_reuses_existing_http_for_hybrid_account() 
     ):
         mock_list.return_value = MagicMock(data=[])
         mock_login.return_value = MagicMock(code=0, data=MagicMock())
-        await client._restore_mammotion_mqtt("user@test.com", "pass", cached_data, None, acct_session)
+        await client._restore_mammotion_mqtt("user@test.com", acct_session)
 
     # The account's http must NOT be replaced, and transport + token manager must be
     # wired to that same instance.
     assert acct_session.mammotion_http is http_a
     assert captured["http"] is http_a
-    assert captured["tm"].http is http_a  # type: ignore[attr-defined]
+    assert captured["tm"] is tm_a
+    assert acct_session.token_manager is tm_a
 
 async def test_to_cache_includes_mammotion_jwt_info() -> None:
     """to_cache() must emit mammotion_jwt_info so JWT survives a restore.
@@ -323,7 +445,7 @@ async def test_to_cache_includes_mammotion_jwt_info() -> None:
     assert raw["mammotion_jwt_info"].iot == "iot.example.com"
 
 async def test_mammotion_mqtt_cache_round_trips_mqtt_and_jwt() -> None:
-    """A full to_cache() → JSON → restore round-trip preserves MQTT creds and JWT info.
+    """A full to_cache() → JSON → from_cache round-trip preserves MQTT creds and JWT info.
 
     JSON-normalising the cache between save and restore mimics how the integration
     persists it to disk, exercising the dict-decoding branches of restore that the
@@ -347,19 +469,8 @@ async def test_mammotion_mqtt_cache_round_trips_mqtt_and_jwt() -> None:
     cached_data.setdefault("mammotion_device_records", {"records": [], "current": 0, "total": 0, "size": 0, "pages": 0})
 
     # --- restore side ------------------------------------------------------
-    client = MammotionClient()
-    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
+    http = MammotionHTTP.from_cache(cached_data, "user@test.com", "pass")
 
-    mock_transport = MagicMock()
-    mock_transport.connect = AsyncMock()
-    with (
-        patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
-        patch("pymammotion.client.MammotionHTTP.get_user_device_list", new_callable=AsyncMock) as mock_list,
-    ):
-        mock_list.return_value = MagicMock(data=[])
-        await client._restore_mammotion_mqtt("user@test.com", "pass", cached_data, None, acct_session)
-
-    http = acct_session.mammotion_http
     assert http is not None
     assert http.mqtt_credentials is not None
     assert http.mqtt_credentials.host == "mqtt.example.com"
@@ -540,12 +651,14 @@ async def test_restore_credentials_connect_called_exactly_once_when_cache_has_de
 
     mock_http = _make_mock_http(
         device_records=[cached_record, _make_device_record("Yuka-NEW")],
+        mqtt_creds=mqtt_creds,
     )
+    mock_http.device_records = MagicMock(records=[cached_record])
 
     with (
         patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
         patch.object(client, "_register_mammotion_device", AsyncMock()),
-        patch("pymammotion.client.MammotionHTTP", return_value=mock_http),
+        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=mock_http),
         patch("pymammotion.http.http.MammotionHTTP.login_v2", new_callable=AsyncMock) as mock_login,
     ):
         mock_login.return_value = MagicMock(code=0)
@@ -555,6 +668,8 @@ async def test_restore_credentials_connect_called_exactly_once_when_cache_has_de
 
     # connect() must be called exactly once — from _restore_mammotion_mqtt, not again from bootstrap
     mock_transport.connect.assert_awaited_once()
+    # A restorable, still-accepted login never falls back to a password grant.
+    mock_login.assert_not_awaited()
 
 async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None:
     """restore_credentials with no mammotion_mqtt cache must bootstrap a fresh transport.
@@ -564,10 +679,9 @@ async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None
     """
     client = MammotionClient()
 
+    mock_http = _make_mock_http(device_records=[_make_device_record("Yuka-NEW")])
     mock_cloud = MagicMock()
-    mock_cloud.mammotion_http = _make_mock_http(
-        device_records=[_make_device_record("Yuka-NEW")],
-    )
+    mock_cloud.mammotion_http = mock_http
     mock_cloud.devices_by_account_response = None
     mock_cloud.aep_response = None
 
@@ -577,6 +691,7 @@ async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None
     cached_data = {"aep_data": {"some": "data"}}
 
     with (
+        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=mock_http),
         patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
         patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
         patch.object(client, "_setup_mammotion_transport", return_value=mock_transport),
@@ -588,3 +703,179 @@ async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None
 
     # The Mammotion MQTT bootstrap must have connected the new transport once
     mock_transport.connect.assert_awaited_once()
+
+# ---------------------------------------------------------------------------
+# restore_credentials — the login comes first
+# ---------------------------------------------------------------------------
+
+async def test_unrestorable_cache_falls_back_to_a_full_login() -> None:
+    """A cache that yields no login session must go straight to a full login.
+
+    No transport restore may run first: without a validated login there is nothing
+    for a gateway or an MQTT transport to hang off.
+    """
+    client = MammotionClient()
+
+    with (
+        patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
+        patch.object(client, "_restore_aliyun", AsyncMock()) as mock_aliyun,
+        patch.object(client, "_restore_mammotion_mqtt", AsyncMock()) as mock_mammotion,
+    ):
+        await client.restore_credentials("u@x.com", "pass", {"aep_data": {"some": "data"}})
+
+    mock_login.assert_awaited_once()
+    mock_aliyun.assert_not_awaited()
+    mock_mammotion.assert_not_awaited()
+
+async def test_rejected_login_falls_back_to_a_full_login() -> None:
+    """A restorable cache the server no longer accepts is not usable either."""
+    client = MammotionClient()
+    http = _populated_mammotion_http("u@x.com")
+    http.validate_login = AsyncMock(return_value=False)  # type: ignore[method-assign]
+
+    with (
+        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=http),
+        patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
+        patch.object(client, "_restore_aliyun", AsyncMock()) as mock_aliyun,
+    ):
+        await client.restore_credentials("u@x.com", "pass", {"aep_data": {"some": "data"}})
+
+    mock_login.assert_awaited_once()
+    mock_aliyun.assert_not_awaited()
+
+async def test_hybrid_restore_shares_one_http_and_one_token_manager() -> None:
+    """Aliyun + Mammotion in one cache must produce exactly one login and one manager.
+
+    Both branches read the session restore_credentials established, and the Aliyun
+    gateway is attached to that manager rather than used to build a second one.
+    """
+    client = MammotionClient()
+    persist = AsyncMock()
+    client.on_credentials_updated = persist
+
+    http = _populated_mammotion_http("u@x.com")
+    http.validate_login = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))  # type: ignore[method-assign]
+
+    mock_cloud = MagicMock()
+    mock_cloud.mammotion_http = http
+    mock_cloud.devices_by_account_response = None
+    mock_cloud.check_or_refresh_session = AsyncMock()
+    mock_cloud.list_binding_by_account = AsyncMock(return_value=MagicMock(data=None))
+
+    mammotion_transport = MagicMock()
+    mammotion_transport.connect = AsyncMock()
+
+    cached_data = _cached_from(http, aep_data={"some": "data"})
+
+    with (
+        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=http),
+        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=mock_cloud)),
+        patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
+        patch.object(client, "_setup_mammotion_transport", return_value=mammotion_transport),
+        patch.object(client, "_start_token_refresh", MagicMock()),
+    ):
+        await client.restore_credentials("u@x.com", "pass", cached_data, check_for_new_devices=False)
+
+    acct_session = client._account_registry.get("u@x.com")
+    assert acct_session is not None
+    assert acct_session.mammotion_http is http
+    token_manager = acct_session.token_manager
+    assert token_manager is not None
+    assert token_manager.http is http
+    assert token_manager.cloud_gateway is mock_cloud
+    # The persistence callback must survive both branches — a rotation nobody stores
+    # leaves the cached refresh token dead on the next restart.
+    assert token_manager.on_credentials_updated is persist
+    # The manager adopted the credentials the restored session already carries, so the
+    # first MQTT send doesn't spend a round-trip re-fetching a JWT we have.
+    assert token_manager._mqtt_creds is not None
+    assert token_manager._mqtt_creds.host == "mqtt.example.com"
+
+async def test_restoring_twice_never_leaves_two_token_managers() -> None:
+    """A re-restore must retire the previous manager, not run a second one beside it.
+
+    Two managers for one account means two refresh schedulers rotating the same
+    refresh token concurrently, and transports still holding the retired one — so its
+    terminal flags land where the session no longer looks.
+    """
+    client = MammotionClient()
+    # Login-only cache: this is about the manager, so no transport branch should run.
+    cached_data = {"mammotion_data": _populated_mammotion_http("u@x.com").response}
+
+    first_http = _populated_mammotion_http("u@x.com")
+    first_http.validate_login = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    with (
+        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=first_http),
+        patch.object(client, "_start_token_refresh", MagicMock()),
+    ):
+        await client.restore_credentials("u@x.com", "pass", cached_data, check_for_new_devices=False)
+
+    acct_session = client._account_registry.get("u@x.com")
+    assert acct_session is not None
+    first_tm = acct_session.token_manager
+    assert first_tm is not None
+    first_tm.stop_refresh_scheduler = AsyncMock()  # type: ignore[method-assign]
+
+    # A second restore mints a new login session, so the old manager is refreshing
+    # something nothing reads any more.
+    second_http = _populated_mammotion_http("u@x.com")
+    second_http.validate_login = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    with (
+        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=second_http),
+        patch.object(client, "_start_token_refresh", MagicMock()),
+    ):
+        await client.restore_credentials("u@x.com", "pass", cached_data, check_for_new_devices=False)
+
+    second_tm = acct_session.token_manager
+    assert second_tm is not first_tm
+    assert second_tm is not None
+    assert second_tm.http is second_http
+    first_tm.stop_refresh_scheduler.assert_awaited_once()
+
+async def test_restoring_the_same_login_reuses_its_token_manager() -> None:
+    """An unchanged login session keeps its manager — scheduler, flags and all."""
+    client = MammotionClient()
+    http = _populated_mammotion_http("u@x.com")
+    http.validate_login = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    cached_data = {"mammotion_data": http.response}
+
+    with (
+        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=http),
+        patch.object(client, "_start_token_refresh", MagicMock()),
+    ):
+        await client.restore_credentials("u@x.com", "pass", cached_data, check_for_new_devices=False)
+        acct_session = client._account_registry.get("u@x.com")
+        assert acct_session is not None
+        first_tm = acct_session.token_manager
+        assert first_tm is not None
+        first_tm.stop_refresh_scheduler = AsyncMock()  # type: ignore[method-assign]
+
+        await client.restore_credentials("u@x.com", "pass", cached_data, check_for_new_devices=False)
+
+    assert acct_session.token_manager is first_tm
+    first_tm.stop_refresh_scheduler.assert_not_awaited()
+
+async def test_credentials_callback_reaches_every_account() -> None:
+    """on_credentials_updated is per-account state, not just the default session's.
+
+    Each account refreshes its own credentials, and a rotation that isn't persisted
+    leaves that account's cached refresh token dead on the next restart.
+    """
+    from pymammotion.auth.token_manager import TokenManager
+
+    client = MammotionClient()
+    sessions = []
+    for account in ("a@x.com", "b@x.com"):
+        acct_session = AccountSession(account_id=account, email=account, password="pass")
+        acct_session.mammotion_http = _populated_mammotion_http(account)
+        acct_session.token_manager = TokenManager(account, acct_session.mammotion_http)
+        await client._account_registry.register(acct_session)
+        sessions.append(acct_session)
+
+    persist = AsyncMock()
+    client.on_credentials_updated = persist
+
+    assert [s.token_manager.on_credentials_updated for s in sessions] == [persist, persist]  # type: ignore[union-attr]

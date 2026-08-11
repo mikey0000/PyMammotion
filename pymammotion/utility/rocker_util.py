@@ -1,4 +1,3 @@
-import copy
 import math
 
 
@@ -6,7 +5,6 @@ class RockerControlUtil:
     """generated source for class RockerControlUtil."""
 
     instance_ = None
-    list_ = []
     thresholdValue_1 = 30
     thresholdValue_2 = 7
     thresholdValue_3 = 15
@@ -49,7 +47,6 @@ class RockerControlUtil:
 
         """
         radians = 0.0
-        self.list_.clear()
         i = self.thresholdValue_2
         if f > 90 - i and f < i + 90:
             radians = math.radians(90.0)
@@ -75,9 +72,7 @@ class RockerControlUtil:
             else:
                 radians = math.radians(f)
         d = f2
-        self.list_.append(int(math.sin(radians) * d))
-        self.list_.append(int(d * math.cos(radians)))
-        return copy.copy(self.list_)
+        return [int(math.sin(radians) * d), int(d * math.cos(radians))]
 
     def transfrom2(self, f, f2):
         """Calculate the transformation of input angles to radians and perform
@@ -99,7 +94,6 @@ class RockerControlUtil:
 
         """
         radians = 0.0
-        self.list_.clear()
         i = self.thresholdValue_2
         if f > 90 - i and f < i + 90:
             radians = math.radians(90.0)
@@ -134,9 +128,7 @@ class RockerControlUtil:
                 else:
                     radians = math.radians(f)
         d = f2
-        self.list_.append(int(math.sin(radians) * d))
-        self.list_.append(int(d * math.cos(radians)))
-        return copy.copy(self.list_)
+        return [int(math.sin(radians) * d), int(d * math.cos(radians))]
 
     def transfrom3(self, f, f2):
         """Calculate the transformation of input angles to radians and perform
@@ -158,7 +150,6 @@ class RockerControlUtil:
 
         """
         radians = 0.0
-        self.list_.clear()
         i = self.thresholdValue_2
         if f > 90 - i and f < i + 90:
             radians = math.radians(90.0)
@@ -189,6 +180,4 @@ class RockerControlUtil:
                 else:
                     radians = math.radians(f)
         d = f2
-        self.list_.append(int(math.sin(radians) * d))
-        self.list_.append(int(d * math.cos(radians)))
-        return copy.copy(self.list_)
+        return [int(math.sin(radians) * d), int(d * math.cos(radians))]

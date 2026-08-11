@@ -62,7 +62,7 @@ class DeviceMessageBroker:
         self,
         send_fn: Callable[[], Awaitable[None]],
         expected_field: str,
-        send_timeout: float = 1.0,
+        send_timeout: float = 3.0,
         retries: int = 2,
     ) -> Any:
         """Send a command and wait for the matching protobuf response.
