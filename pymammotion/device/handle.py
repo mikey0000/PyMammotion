@@ -59,6 +59,23 @@ _T = TypeVar("_T")
 #: (heartbeats are quota-free; see ``Transport.send_heartbeat``).
 _MQTT_SYNC_INTERVAL: float = 7.0
 
+#: How long to wait for the device's first ``toapp_report_data`` frame after an
+#: RPT_START / RPT_KEEP before re-sending it.  This used to inherit
+#: ``DeviceMessageBroker.send_and_wait``'s 1 s default, which is shorter than a single
+#: cloud round-trip (``mqtt_invoke`` → cloud → device → MQTT → us is routinely 1.5-3 s).
+#: Every cloud-routed poll therefore timed out on attempt 1 and re-sent, tripling the
+#: send volume against the cloud quota for reports that were already on their way.  The
+#: APK's ``MSG_RPT_START_TIME_OUT_SECOND`` is 15 s; 5 s covers observed cloud latency
+#: with margin while still detecting a genuinely deaf device within one poll tick.
+_RPT_ACK_TIMEOUT: float = 5.0
+
+#: Skip a one-shot report poll when a ``toapp_report_data`` frame arrived within this
+#: window.  ``request_report_snapshot`` is called on every ``sys_status`` transition and
+#: after every state-changing command, and post-2025 devices interleave flat-property
+#: pushes with protobuf reports — without this gate a device that is already reporting
+#: gets polled for data it just sent.
+_REPORT_SNAPSHOT_DEBOUNCE: float = 15.0
+
 #: Channels sent in one-shot (count=1) polls AND in the BLE continuous stream.
 _REPORT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
@@ -283,6 +300,13 @@ class DeviceHandle:
         #: so repeated 29004s don't launch concurrent migrations.
         self.on_device_unbound: Callable[[DeviceHandle], Awaitable[None]] | None = None
         self._unbound_migrating: bool = False
+        #: Monotonic timestamp of the last inbound frame carrying ``sys.toapp_report_data``.
+        #: Distinct from ``_last_report_at``, which stamps *every* LubaMsg — a map frame or
+        #: a settings ack is not evidence that the report stream is alive.  Doubles as the
+        #: change token ``_wait_for_report_data`` compares against.
+        self._last_report_data_at: float = 0.0
+        #: Signalled on each such frame so waiters don't have to poll the timestamp.
+        self._report_data_event: asyncio.Event = asyncio.Event()
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
 
@@ -387,7 +411,7 @@ class DeviceHandle:
         return _handler
 
     async def _on_ble_connected(self) -> None:
-        """Called when the BLE transport transitions to CONNECTED.
+        """Start the BLE loops and request a state refresh, on transition to CONNECTED.
 
         Resets BLE failure counters, fires a one-shot ``get_report_cfg(count=1)``
         for an immediate state refresh, and starts both the BLE keep-alive
@@ -411,7 +435,7 @@ class DeviceHandle:
         async def _send_report_cfg() -> None:
             try:
                 await self.send_raw(cmd, prefer_ble=True)
-            except Exception:
+            except Exception:  # noqa: BLE001 — best-effort refresh; nothing depends on it landing
                 _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
 
         await self.queue.enqueue(_send_report_cfg, priority=Priority.BACKGROUND, skip_if_saga_active=True)
@@ -464,11 +488,10 @@ class DeviceHandle:
         advanced — a stale entry only ever causes one extra (quota-free) sync, never a
         missed one, so no caller can induce a desync.
 
-        Other paths that emit a sync as an ordinary payload (the sagas' ``_send_ble_sync``,
-        the RPT_START retry prefix) go through ``send_raw`` → ``_send_marked`` like any
-        command, so this gate re-syncs ahead of their send when the window has lapsed —
-        the device stays synced regardless of which path initiated it.  ``send_heartbeat``
-        keeps the sync off the 24-hour command quota.
+        Other paths that emit a sync as an ordinary payload (the sagas' ``_send_ble_sync``)
+        go through ``send_raw`` → ``_send_marked`` like any command, so this gate re-syncs
+        ahead of their send when the window has lapsed — the device stays synced regardless
+        of which path initiated it.  ``send_heartbeat`` keeps the sync off the send quota.
         """
         _logger.debug(
             "_send_marked [%s]: %.1fs since last %s sync — sending todev_ble_sync(3)",
@@ -479,6 +502,23 @@ class DeviceHandle:
         sync = self.commands.send_todev_ble_sync(sync_type=3)
         await transport.send_heartbeat(sync, iot_id=self.iot_id)
         self._last_mqtt_sync_monotonic[transport.transport_type] = time.monotonic()
+
+    async def _force_sync(self) -> None:
+        """Re-sync the device *now*, bypassing the ``_MQTT_SYNC_INTERVAL`` debounce.
+
+        For callers that have positive evidence the device stopped listening (an RPT_START
+        that drew no report frame) and want to nudge the link before retrying, rather than
+        waiting for the periodic gate in :meth:`_send_marked` to come due.
+
+        Routes through :meth:`_send_mqtt_sync` so the sync stays quota-free and
+        ``_last_mqtt_sync_monotonic`` keeps its single writer.  Previously this nudge was
+        emitted as an ordinary payload via ``send_raw``, which charged the cloud send quota
+        for a keep-alive — on a device that was already retrying, the quota cost of a poll
+        was three sends instead of two.
+        """
+        transport = self.active_transport()
+        since_sync = time.monotonic() - self._last_mqtt_sync_monotonic.get(transport.transport_type, 0.0)
+        await self._send_mqtt_sync(transport, since_sync=since_sync)
 
     async def _on_critical_error(self, error: Exception) -> None:
         """Propagate critical errors to the error bus."""
@@ -548,7 +588,7 @@ class DeviceHandle:
             luba_msg = LubaMsg().parse(payload)
         except UnicodeDecodeError:
             return
-        except Exception:
+        except Exception:  # noqa: BLE001 — any decode failure means "not a frame we can use"
             _logger.info("Failed to parse incoming bytes as LubaMsg (%d bytes)", len(payload))
             return
 
@@ -568,6 +608,13 @@ class DeviceHandle:
         except (ValueError, KeyError):
             _logger.debug("← %s  <unparseable protobuf — unknown enum value>", self.device_name)
         self._last_report_at = time.monotonic()
+
+        # Stamp report-stream liveness separately from general inbound traffic: this is
+        # what proves an RPT_START actually started the stream (see _wait_for_report_data)
+        # and what the one-shot poll debounces against.
+        if (sys_msg := luba_msg.sys) is not None and sys_msg.toapp_report_data is not None:
+            self._last_report_data_at = self._last_report_at
+            self._report_data_event.set()
 
         if self._availability.mqtt_reported_offline and transport_type != TransportType.BLE:
             self.update_availability(transport_type, self._availability.mqtt, mqtt_reported_offline=False)
@@ -590,20 +637,21 @@ class DeviceHandle:
         # transport's receive task; natural traffic supplies a clean frame next.
         try:
             updated_device = self._reducer.apply(self.state_machine.current.raw, luba_msg)
-        except (InvalidFieldValue, MissingField, TypeError) as exc:
+        except (InvalidFieldValue, MissingField, TypeError):
             # mashumaro raises InvalidFieldValue (a ValueError) when a field coerces to the
             # wrong type and MissingField (a LookupError) when a required one is absent; an
             # unwrapped TypeError can also surface from the underlying coercion.  Catch those
             # by name (note: MissingField is NOT a KeyError, so a bare LookupError catch would
             # be the only structural alternative) and drop the frame.  Log the exception
             # message and the raw bytes (hex) so the offending field/value can be investigated.
-            _logger.error(
-                "← %s  dropping frame: malformed report data failed deserialization (%d bytes): %s | raw=%s",
+            # logging.exception already renders the exception and its traceback, so the
+            # message carries only what that leaves out: which device, and the raw bytes
+            # to replay against the offending field.
+            _logger.exception(
+                "← %s  dropping frame: malformed report data failed deserialization (%d bytes) | raw=%s",
                 self.device_name,
                 len(payload),
-                exc,
                 payload.hex(),
-                exc_info=True,
             )
             return
 
@@ -674,7 +722,7 @@ class DeviceHandle:
         async def _send() -> None:
             try:
                 await self.send_raw(cmd)
-            except Exception:
+            except Exception:  # noqa: BLE001 — best-effort refresh; nothing depends on it landing
                 _logger.debug("request_report_cfg [%s]: failed", self.device_name, exc_info=True)
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True, dedup_key=dedup_key)
@@ -709,7 +757,7 @@ class DeviceHandle:
             try:
                 raw_bytes = base64.b64decode(event.params.value.content)
                 await self.on_raw_message(raw_bytes)
-            except Exception:
+            except Exception:  # noqa: BLE001 — a frame we cannot decode is one we drop
                 _logger.debug("on_device_event: failed to decode protobuf content", exc_info=True)
         else:
             if self._availability.mqtt_reported_offline:
@@ -1141,7 +1189,7 @@ class DeviceHandle:
             return _DeviceMode.IDLE
 
     def in_no_request_mode(self) -> bool:
-        """True when the device is in a mode where polling sends are unwelcome.
+        """Return True when the device is in a mode where polling sends are unwelcome.
 
         Public — the BLE polling loop consults this to skip count=1 polls in
         modes that don't want to receive them.
@@ -1185,13 +1233,78 @@ class DeviceHandle:
         """Monotonic timestamp of the last received LubaMsg (0.0 if none yet)."""
         return self._last_report_at
 
+    @property
+    def last_report_data_at(self) -> float:
+        """Monotonic timestamp of the last ``toapp_report_data`` frame (0.0 if none yet).
+
+        Narrower than :attr:`last_report_at` — only frames that actually carry device
+        telemetry count, so callers can tell "the report stream is alive" apart from
+        "some frame arrived".
+        """
+        return self._last_report_data_at
+
+    async def _wait_for_report_data(self, ack_timeout: float, *, since: float) -> bool:
+        """Return True once ``_last_report_data_at`` moves off *since*, within *ack_timeout*.
+
+        *since* must be read **before** the triggering command is sent, not after: over
+        BLE, and on a device already streaming, the frame can land while the send is still
+        awaiting.  Sampling it here instead would miss exactly those frames and burn a
+        retry on a stream that is working.
+
+        Verification is done against the inbound report stream rather than by holding a
+        ``toapp_report_data`` entry in the broker's pending table.  ``toapp_report_data``
+        is a *stream* field, not a request ack — the device pushes it on its own cadence —
+        so using it as a correlation key had three costs:
+
+        * the broker treats a matched frame as solicited and does **not** emit it to the
+          event bus, so an ordinary stream frame was swallowed from every unsolicited
+          subscriber that happened to overlap a poll;
+        * only one waiter can hold the key, so the poll loop, an HA-initiated snapshot and
+          the BLE stream verifier raced each other into ``ConcurrentRequestError``;
+        * a frame that landed just *before* the send did not count, even though it proves
+          the stream is alive just as well as one that lands just after.
+
+        Watching ``_last_report_data_at`` advance has none of those: it observes the same
+        evidence without consuming it, and any number of callers can wait at once.
+        """
+        deadline = time.monotonic() + ack_timeout
+        while True:
+            if self._last_report_data_at != since:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            self._report_data_event.clear()
+            # Re-check after the clear: a frame that landed between the test above and the
+            # clear would otherwise have had its set() erased and we'd wait the full window
+            # for a frame that already arrived.
+            if self._last_report_data_at != since:
+                return True
+            try:
+                await asyncio.wait_for(self._report_data_event.wait(), timeout=remaining)
+            except TimeoutError:
+                return False
+
     async def request_report_snapshot(self) -> None:
         """Fire a one-shot count=1 report — no-op while BLE continuous stream is active.
 
         Used by HA after state-changing commands and in the sys_status watcher.
-        Safe to call at any time; skips silently if BLE is already streaming fresher data.
+        Safe to call at any time; skips silently if BLE is already streaming fresher data,
+        or if the device reported within ``_REPORT_SNAPSHOT_DEBOUNCE`` seconds — polling a
+        device for telemetry it just sent costs a cloud-quota send and returns what we
+        already have.
         """
         if self._ble_stream_active:
+            return
+        if self._last_report_data_at and (age := time.monotonic() - self._last_report_data_at) < (
+            _REPORT_SNAPSHOT_DEBOUNCE
+        ):
+            _logger.debug(
+                "request_report_snapshot [%s]: report data is %.1fs old (< %.0fs) — skipping poll",
+                self.device_name,
+                age,
+                _REPORT_SNAPSHOT_DEBOUNCE,
+            )
             return
         await self._send_one_shot_report()
 
@@ -1250,60 +1363,56 @@ class DeviceHandle:
         self,
         cmd_bytes: bytes,
         transport_send: Callable[[bytes], Awaitable[None]],
+        sync_fn: Callable[[], Awaitable[None]] | None = None,
     ) -> bool:
-        """Send an ``RPT_START`` and wait for the first ``toapp_report_data`` ack.
+        """Send a report-config command and wait for the device's report stream to tick.
 
-        Uses ``broker.send_and_wait`` with its default budget (1 s × 2
-        attempts).  On the broker's retry attempt, prefixes a
-        ``send_todev_ble_sync(sync_type=2)`` to nudge the link before
-        re-issuing the RPT_START.
+        Two attempts, ``_RPT_ACK_TIMEOUT`` seconds each.  Before the retry, *sync_fn*
+        nudges the link — the device drops out of its synced state after ~10 s and then
+        silently ignores commands, which is the most common reason a first RPT_START draws
+        nothing.  *sync_fn* defaults to :meth:`_force_sync` (quota-free); the BLE caller
+        passes its own so the nudge stays pinned to the BLE transport.
 
-        Returns ``True`` if the device responded with a ``toapp_report_data``
-        frame, ``False`` on final timeout.  ``ConcurrentRequestError`` is
-        treated as "another verified RPT_START is in flight on this broker"
-        — its future will resolve via the same field, so we fall back to a
-        plain send and return False without raising.
+        Returns ``True`` once a ``toapp_report_data`` frame arrives, ``False`` if neither
+        attempt produced one.
 
-        Scope: this only covers the *initial* RPT_START.  The post-start
-        case (RPT_KEEPs land but reports stop arriving) is handled by the
-        stale watchdog in ``ble_polling_loop``.
+        Verification watches :meth:`_wait_for_report_data` rather than registering a
+        ``toapp_report_data`` request on the broker — see that method for why a stream
+        field makes a poor correlation key.  A consequence worth knowing: a report frame
+        already in flight when we send now counts as success, so a device that is happily
+        streaming no longer gets a redundant second RPT_START just because its frame landed
+        a few hundred milliseconds on the wrong side of our send.
+
+        Scope: this only covers the *initial* RPT_START.  The post-start case (RPT_KEEPs
+        land but reports stop arriving) is handled by the stale watchdog in
+        ``ble_polling_loop``.
         """
-        sync_bytes = self.commands.send_todev_ble_sync(sync_type=3)
-        attempts = [0]
+        nudge = self._force_sync if sync_fn is None else sync_fn
 
-        async def _send() -> None:
-            attempts[0] += 1
-            if attempts[0] > 1:
+        for attempt in (1, 2):
+            if attempt > 1:
                 try:
-                    _logger.debug("RPT_START [%s]: retry-prefix sending todev_ble_sync(3)", self.device_name)
-                    await transport_send(sync_bytes)
+                    _logger.debug("RPT_START [%s]: no report yet — re-syncing before retry", self.device_name)
+                    await nudge()
                 except Exception:  # noqa: BLE001
                     _logger.debug(
-                        "RPT_START [%s]: retry-prefix ble_sync send failed",
+                        "RPT_START [%s]: retry-prefix sync failed",
                         self.device_name,
                         exc_info=True,
                     )
+            # Sample before the send — see _wait_for_report_data on why sampling after
+            # would drop a frame that lands while transport_send is still awaiting.
+            before = self._last_report_data_at
             await transport_send(cmd_bytes)
+            if await self._wait_for_report_data(_RPT_ACK_TIMEOUT, since=before):
+                return True
 
-        try:
-            await self.broker.send_and_wait(_send, expected_field="toapp_report_data")
-            return True
-        except CommandTimeoutError:
-            _logger.debug(
-                "RPT_START [%s]: no toapp_report_data ack — next poll tick will retry",
-                self.device_name,
-            )
-            return False
-        except ConcurrentRequestError:
-            try:
-                await transport_send(cmd_bytes)
-            except Exception:  # noqa: BLE001
-                _logger.debug(
-                    "RPT_START [%s]: concurrent-fallback send failed",
-                    self.device_name,
-                    exc_info=True,
-                )
-            return False
+        _logger.debug(
+            "RPT_START [%s]: no toapp_report_data within %.0fs x2 — next poll tick will retry",
+            self.device_name,
+            _RPT_ACK_TIMEOUT,
+        )
+        return False
 
     async def _send_report_stream_start(self, duration_ms: int) -> None:
         """Enqueue RPT_START count=0 via best transport."""
@@ -1330,7 +1439,10 @@ class DeviceHandle:
         )
 
         async def _send() -> None:
-            await self.broker.send_and_wait(lambda: self.send_raw(cmd_bytes), expected_field="toapp_report_data")
+            # Same verification contract as RPT_START — a KEEP is only meaningful if the
+            # stream it refreshes is actually producing frames — so it shares the helper
+            # rather than holding the broker's toapp_report_data key on its own.
+            await self._send_rpt_start_verified(cmd_bytes, self.send_raw)
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
@@ -1420,8 +1532,14 @@ class DeviceHandle:
             async def _ble_send(payload: bytes) -> None:
                 await ble.send_heartbeat(payload, iot_id=self.iot_id)
 
+            async def _ble_sync() -> None:
+                # Pin the retry nudge to BLE.  The default _force_sync resolves
+                # active_transport(), which would happily route it over MQTT — pointless
+                # here, since it's this BLE link we're trying to wake.
+                await _ble_send(self.commands.send_todev_ble_sync(sync_type=3))
+
             if act is RptAct.RPT_START:
-                if await self._send_rpt_start_verified(cmd_bytes, _ble_send):
+                if await self._send_rpt_start_verified(cmd_bytes, _ble_send, _ble_sync):
                     self._ble_stream_active = True
                 return
             try:
@@ -1769,6 +1887,12 @@ class DeviceHandle:
         return True
 
     def cloud_transport(self) -> TransportType | None:
+        """Return the type of the registered cloud transport (Aliyun preferred), or None.
+
+        The type rather than the transport itself, for callers that only need to name
+        it — updating availability, say.  Use :meth:`_pick_cloud_transport` internally
+        when you need the object.
+        """
         mqtt = self._pick_cloud_transport()
         return mqtt.transport_type if mqtt is not None else None
 
@@ -1780,7 +1904,11 @@ class DeviceHandle:
         return None
 
     def _cloud_transport_usable(self, mqtt: Transport) -> bool:
-        """The one MQTT-sendable gate: transport usable and not reported offline by the cloud."""
+        """Return True when MQTT may be sent on — the one gate for that question.
+
+        Usable transport *and* not reported offline by the cloud.  Don't re-derive
+        either half at a call site.
+        """
         return mqtt.is_usable and not self._availability.mqtt_reported_offline
 
     def active_transport(self, *, prefer_ble: bool | None = None) -> Transport:

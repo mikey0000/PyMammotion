@@ -459,12 +459,14 @@ async def test_on_raw_message_drops_frame_with_malformed_report_data(caplog: pyt
     assert emitted == []
     error_records = [r for r in caplog.records if r.levelno == logging.ERROR and "dropping frame" in r.getMessage()]
     assert error_records, "expected an ERROR log for the dropped frame"
-    rendered = error_records[0].getMessage()
-    # The exception message (offending field + bad value) and the raw bytes must be logged
-    # so the bad data can be investigated.
-    assert 'Field "bp_pos_y"' in rendered
-    assert "invalid value [114, 30]" in rendered
-    assert payload.hex() in rendered
+    # The raw bytes belong in the message — they are what the traceback cannot supply.
+    assert payload.hex() in error_records[0].getMessage()
+    # The offending field and bad value must still reach the log; logger.exception puts
+    # them in the attached traceback rather than the message, so assert on the rendered
+    # output as an operator would actually read it.
+    assert error_records[0].exc_info is not None
+    assert 'Field "bp_pos_y"' in caplog.text
+    assert "invalid value [114, 30]" in caplog.text
 
 
 # ---------------------------------------------------------------------------
