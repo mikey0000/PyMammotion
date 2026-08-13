@@ -61,7 +61,7 @@ from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection
+from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection, UnauthorizedExceptionError
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.messaging.common_data_saga import CommonDataSaga
 from pymammotion.messaging.edge_saga import EdgeMappingSaga
@@ -84,7 +84,7 @@ from pymammotion.transport.base import (
 )
 from pymammotion.transport.ble import BLETransport, BLETransportConfig
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
-from pymammotion.utility.constant import WorkMode, MOWING_ACTIVE_MODES
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES, WorkMode
 from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.svg import chunk_svg_messages
 
@@ -128,6 +128,8 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.status import ThingStatusMessage
 
 _logger = logging.getLogger(__name__)
+
+_AUTH_REJECTED = (UnauthorizedExceptionError, ReLoginRequiredError, AuthError)
 
 
 def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash: int) -> bool:
@@ -533,9 +535,19 @@ class MammotionClient:
         return self._account_registry.find_by_device(device_name)
 
     def _get_default_session(self) -> AccountSession | None:
-        """Return the first registered session (convenience for single-account setups)."""
-        sessions = self._account_registry.all_sessions
-        return sessions[0] if sessions else None
+        """Return the first registered cloud session (convenience for single-account setups).
+
+        The BLE-only session is skipped.  It is a placeholder holding device ids with
+        no login, no cloud client and no token manager, and it is registered by the
+        first BLE device discovery — so on a BLE+cloud setup it can easily be
+        ``all_sessions[0]``.  Returning it made every caller here look like it had no
+        credentials: ``to_cache()`` in particular returned ``{}``, so saving silently
+        wrote nothing and the on-disk cache kept whatever an earlier run had left.
+        """
+        for session in self._account_registry.all_sessions:
+            if session.account_id != BLE_ONLY_ACCOUNT:
+                return session
+        return None
 
     # ------------------------------------------------------------------
     # Auth-retry helper
@@ -945,8 +957,21 @@ class MammotionClient:
     # Cloud / MQTT — public entry points
     # ------------------------------------------------------------------
 
-    async def _sign_out_session(self, session: AccountSession) -> None:
-        """Disconnect transports and sign out a single account session."""
+    async def _sign_out_session(self, session: AccountSession, *, revoke: bool = True) -> None:
+        """Disconnect transports and drop a single account session.
+
+        Args:
+            revoke: When True, also end the session server-side (HTTP logout +
+                Aliyun sign-out).  Pass False when the session is being *replaced*
+                by a fresh login.  A new login supersedes the old session on the
+                server anyway, so revoking first buys nothing and opens a window in
+                which the credentials still sitting in the host's cache are already
+                dead: if the login — or the save that follows it — then fails, the
+                account is stranded holding tokens that can only ever answer 401 and
+                40102 "Refresh token has expired", recoverable solely by a manual
+                re-login.
+
+        """
         if session.aliyun_transport is not None:
             await session.aliyun_transport.disconnect()
             session.aliyun_transport = None
@@ -954,39 +979,43 @@ class MammotionClient:
             await session.mammotion_transport.disconnect()
             session.mammotion_transport = None
         if session.mammotion_http is not None:
-            try:
-                await session.mammotion_http.logout()
-            except Exception:  # noqa: BLE001
-                _logger.warning("HTTP logout failed — proceeding with login anyway", exc_info=True)
+            if revoke:
+                try:
+                    await session.mammotion_http.logout()
+                except Exception:  # noqa: BLE001
+                    _logger.warning("HTTP logout failed — proceeding anyway", exc_info=True)
             session.mammotion_http = None
         if session.cloud_client is not None:
-            try:
-                await session.cloud_client.sign_out()
-            except Exception:  # noqa: BLE001
-                _logger.warning("cloud sign_out failed — proceeding with login anyway", exc_info=True)
+            if revoke:
+                try:
+                    await session.cloud_client.sign_out()
+                except Exception:  # noqa: BLE001
+                    _logger.warning("cloud sign_out failed — proceeding anyway", exc_info=True)
             session.cloud_client = None
         if session.token_manager is not None:
             await session.token_manager.stop_refresh_scheduler()
         session.token_manager = None
         await self._account_registry.unregister(session.account_id)
 
-    async def _sign_out_existing_session(self, account_id: str | None = None) -> None:
+    async def _sign_out_existing_session(self, account_id: str | None = None, *, revoke: bool = True) -> None:
         """Disconnect active transports and sign out cloud session(s).
 
         Args:
             account_id: Sign out only this account.  When ``None``, sign out
                         all cloud sessions (BLE-only sessions are preserved).
+            revoke:     Whether to end the session server-side — see
+                        :meth:`_sign_out_session`.
 
         """
         if account_id is not None:
             session = self._account_registry.get(account_id)
             if session is not None:
-                await self._sign_out_session(session)
+                await self._sign_out_session(session, revoke=revoke)
         else:
             for session in self._account_registry.all_sessions:
                 if session.account_id == BLE_ONLY_ACCOUNT:
                     continue
-                await self._sign_out_session(session)
+                await self._sign_out_session(session, revoke=revoke)
         self._stopped = False
 
     async def login_and_initiate_cloud(
@@ -1007,7 +1036,10 @@ class MammotionClient:
             session:  Optional :class:`aiohttp.ClientSession` to reuse.
 
         """
-        await self._sign_out_existing_session(account)
+        # Tear the old session down locally but do NOT revoke it: login_v2 below
+        # supersedes it server-side regardless, and revoking first would kill the
+        # credentials the host still has cached before their replacement exists.
+        await self._sign_out_existing_session(account, revoke=False)
         mammotion_http = MammotionHTTP(session=session, ha_version=self._ha_version)
         login_resp = await mammotion_http.login_v2(account, password)
         if login_resp.code != 0:
@@ -1170,19 +1202,42 @@ class MammotionClient:
         mammotion_http = MammotionHTTP.from_cache(
             cached_data, account, password, session=session, ha_version=self._ha_version
         )
-        if mammotion_http is None or not await mammotion_http.validate_login():
-            # Either the cache could not produce a login session, or the server no
-            # longer accepts the one it produced.  Neither is recoverable from the
-            # cache, so fall back to a full login — the one sanctioned password grant.
+        # Two distinct outcomes, and which one happened decides what the user should do:
+        # a cache carrying no login at all is a first run or a wiped/rolled-back store,
+        # while a rejected one means the session was invalidated server-side.  Neither
+        # is recoverable from the cache, so both fall back to a full login — the one
+        # sanctioned password grant.
+        if mammotion_http is None:
             _logger.warning(
-                "restore_credentials: cached login for %s is unusable — falling back to a full login", account
+                "restore_credentials: falling back to a full login for %s — no usable login session in the cached "
+                "data (mammotion_data %s; cached keys: %s)",
+                account,
+                "present but undecodable" if "mammotion_data" in cached_data else "missing",
+                sorted(cached_data),
             )
             await self.login_and_initiate_cloud(account, password, session)
             return
 
+        # Attach the session and its TokenManager BEFORE validating.  Validation can
+        # rotate the tokens (ensure_token_valid refreshes near expiry), and the server
+        # invalidates the old refresh token the moment a rotation succeeds — so a
+        # rotation that isn't persisted strands the account: the cache keeps replaying a
+        # spent refresh token and every later attempt comes back 40102 "Refresh token
+        # has expired" on credentials that look perfectly fresh.  Only TokenManager wires
+        # MammotionHTTP.on_login_refreshed to the host's persistence callback, so it has
+        # to exist before the first refresh can happen.
         acct_session.mammotion_http = mammotion_http
         acct_session.user_account = self._extract_user_account(mammotion_http)
         await self._ensure_token_manager(acct_session, mammotion_http)
+
+        if not await mammotion_http.validate_login():
+            _logger.warning(
+                "restore_credentials: falling back to a full login for %s — the server no longer accepts the "
+                "cached login",
+                account,
+            )
+            await self.login_and_initiate_cloud(account, password, session)
+            return
 
         if "aep_data" in cached_data:
             await self._restore_aliyun(account, cached_data, acct_session, check_for_new_devices=check_for_new_devices)
@@ -1202,6 +1257,11 @@ class MammotionClient:
                     owned_iot_id_map = {
                         d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id
                     }
+                except _AUTH_REJECTED:
+                    # A rejected session is not a "couldn't fetch the map" problem —
+                    # swallowing it here would let the restore finish and report
+                    # success on a login the server has already invalidated.
+                    raise
                 except Exception:  # noqa: BLE001
                     _logger.warning(
                         "restore_credentials: failed to fetch iot_id map for Mammotion bootstrap", exc_info=True
@@ -1213,6 +1273,8 @@ class MammotionClient:
                     owned_iot_id_map,
                     skip_ids=set(acct_session.device_ids),
                 )
+            except _AUTH_REJECTED:
+                raise
             except Exception:  # noqa: BLE001
                 _logger.warning("restore_credentials: Mammotion MQTT bootstrap failed", exc_info=True)
 
@@ -1795,6 +1857,8 @@ class MammotionClient:
         try:
             owned_resp = await cloud_client.mammotion_http.get_user_device_list()
             owned_iot_id_map = {d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id}
+        except _AUTH_REJECTED:
+            raise
         except Exception:  # noqa: BLE001
             _logger.warning("restore_credentials: failed to fetch device iot_id map (Aliyun restore)", exc_info=True)
 
@@ -1908,6 +1972,8 @@ class MammotionClient:
                 owned_iot_id_map = {
                     d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id
                 }
+            except _AUTH_REJECTED:
+                raise
             except Exception:  # noqa: BLE001
                 _logger.warning(
                     "restore_credentials: failed to fetch device iot_id map (Mammotion restore)", exc_info=True

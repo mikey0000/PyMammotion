@@ -6,9 +6,12 @@ Two halves, deliberately separate:
   I/O.  A cache is untrusted input (written by an older version, hand-edited,
   truncated, or still holding live models), so it must degrade to ``None`` rather
   than raise from the middle of a restore.
-- ``MammotionHTTP.validate_login`` is the network half: a local expiry check, then
-  the server's own verdict, with exactly one refresh if that verdict is a rejection.
-  Transient failures must stay transient — they are not a rejected login.
+- ``MammotionHTTP.validate_login`` decides whether the restored session is usable.
+  It is a local expiry check that only reaches the network when the token is inside
+  the refresh lead window; a rejected refresh is the one thing that marks the cached
+  login unusable.  There is deliberately no server-side "is this token live" probe:
+  ``/user/oauth/check`` answered 404 on live accounts, so every restore refreshed —
+  spending the cached refresh token — and then fell back to a full login anyway.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from pymammotion.http.model.http import (
     LoginResponseUserInformation,
     MQTTConnection,
     Response,
+    UnauthorizedExceptionError,
 )
 from pymammotion.transport.base import ReLoginRequiredError
 
@@ -226,64 +230,28 @@ def _restored() -> MammotionHTTP:
     return http
 
 
-async def test_fresh_token_accepted_by_the_server_needs_no_refresh() -> None:
-    """The common case: one oauth/check, no token exchange."""
+async def test_a_warm_cache_validates_without_spending_a_refresh() -> None:
+    """A token nowhere near expiry is accepted as-is — no rotation, one probe.
+
+    Every rotation invalidates the previous refresh token server-side, so a restore
+    that refreshes when it did not have to is not merely wasteful: if that rotation
+    is ever lost, the cached token is dead for good.
+    """
     http = _restored()
-    http.oauth_check = AsyncMock(return_value=Response(code=0, msg="ok", data=None))  # type: ignore[method-assign]
-    http.refresh_token_v2 = AsyncMock()  # type: ignore[method-assign]
+    http.get_user_device_list = AsyncMock(return_value=Response(code=0, msg="ok", data=[]))  # type: ignore[method-assign]
 
-    assert await http.validate_login() is True
-    http.oauth_check.assert_awaited_once()
-    http.refresh_token_v2.assert_not_awaited()
+    with patch.object(MammotionHTTP, "_refresh_token_v2_locked", new_callable=AsyncMock) as mock_refresh:
+        assert await http.validate_login() is True
+
+    mock_refresh.assert_not_awaited()
+    http.get_user_device_list.assert_awaited_once()
 
 
-async def test_non_json_check_response_counts_as_valid() -> None:
-    """oauth_check synthesises code=200 when the server answers with a non-JSON body."""
+async def test_near_expiry_token_is_refreshed() -> None:
+    """Inside the 5-minute lead window, validation renews before handing the login on."""
     http = _restored()
-    http.oauth_check = AsyncMock(return_value=Response(code=200, msg="success", data=None))  # type: ignore[method-assign]
-
-    assert await http.validate_login() is True
-
-
-async def test_rejected_token_is_refreshed_once_and_rechecked() -> None:
-    """A token dead before its exp (logged in elsewhere) buys one refresh."""
-    http = _restored()
-    http.oauth_check = AsyncMock(  # type: ignore[method-assign]
-        side_effect=[Response(code=401, msg="unauthorized", data=None), Response(code=0, msg="ok", data=None)]
-    )
-    http.refresh_token_v2 = AsyncMock(return_value=Response(code=0, msg="ok", data=_login_data()))  # type: ignore[method-assign]
-
-    assert await http.validate_login() is True
-    http.refresh_token_v2.assert_awaited_once()
-    assert http.oauth_check.await_count == 2
-
-
-async def test_rejected_refresh_gives_up() -> None:
-    """A refresh token the server rejects is terminal — no second attempt."""
-    http = _restored()
-    http.oauth_check = AsyncMock(return_value=Response(code=401, msg="unauthorized", data=None))  # type: ignore[method-assign]
-    http.refresh_token_v2 = AsyncMock(return_value=Response(code=1001, msg="nope", data=None))  # type: ignore[method-assign]
-
-    assert await http.validate_login() is False
-    http.refresh_token_v2.assert_awaited_once()
-    http.oauth_check.assert_awaited_once()
-
-
-async def test_still_rejected_after_a_successful_refresh_gives_up() -> None:
-    """A fresh token the server still refuses means the account needs re-authenticating."""
-    http = _restored()
-    http.oauth_check = AsyncMock(return_value=Response(code=401, msg="unauthorized", data=None))  # type: ignore[method-assign]
-    http.refresh_token_v2 = AsyncMock(return_value=Response(code=0, msg="ok", data=_login_data()))  # type: ignore[method-assign]
-
-    assert await http.validate_login() is False
-    assert http.oauth_check.await_count == 2
-
-
-async def test_near_expiry_token_is_refreshed_before_the_check() -> None:
-    """ensure_token_valid runs first, so the check never spends a known-stale token."""
-    http = _restored()
-    http.expires_in = time.time() + 60  # inside the 5-minute lead window
-    http.oauth_check = AsyncMock(return_value=Response(code=0, msg="ok", data=None))  # type: ignore[method-assign]
+    http.expires_in = time.time() + 60
+    http.get_user_device_list = AsyncMock(return_value=Response(code=0, msg="ok", data=[]))  # type: ignore[method-assign]
 
     with patch.object(MammotionHTTP, "_refresh_token_v2_locked", new_callable=AsyncMock) as mock_refresh:
         mock_refresh.return_value = Response(code=0, msg="ok", data=_login_data())
@@ -292,37 +260,47 @@ async def test_near_expiry_token_is_refreshed_before_the_check() -> None:
     mock_refresh.assert_awaited_once()
 
 
+async def test_a_revoked_session_is_detected_even_though_the_token_looks_fresh() -> None:
+    """The case a local expiry check cannot see: logged out, or signed in elsewhere.
+
+    The token's own exp is weeks away, so without a real call the restore reports
+    success and the user gets an integration that fails on its first command.
+    """
+    http = _restored()
+    http.get_user_device_list = AsyncMock(side_effect=UnauthorizedExceptionError("Access Token expired"))  # type: ignore[method-assign]
+
+    assert await http.validate_login() is False
+
+
+async def test_probe_transient_failure_does_not_condemn_the_login() -> None:
+    """A network blip must not be reported as a rejected session.
+
+    Returning False here would send the caller to a password grant for a login that
+    is probably still perfectly good.
+    """
+    http = _restored()
+    http.get_user_device_list = AsyncMock(side_effect=ClientError("boom"))  # type: ignore[method-assign]
+
+    with pytest.raises(ClientError):
+        await http.validate_login()
+
+
 async def test_dead_refresh_token_reports_invalid() -> None:
     """ReLoginRequiredError from the proactive refresh means the cache is spent."""
     http = _restored()
-    http.oauth_check = AsyncMock()  # type: ignore[method-assign]
     with patch.object(
         MammotionHTTP, "ensure_token_valid", AsyncMock(side_effect=ReLoginRequiredError("user@test.com", "dead"))
     ):
         assert await http.validate_login() is False
 
-    http.oauth_check.assert_not_awaited()
-
 
 async def test_no_login_session_is_invalid() -> None:
     """Nothing to validate, and nothing to refresh."""
     http = MammotionHTTP("user@test.com", "pw")
-    http.oauth_check = AsyncMock()  # type: ignore[method-assign]
 
-    assert await http.validate_login() is False
-    http.oauth_check.assert_not_awaited()
+    with patch.object(MammotionHTTP, "ensure_token_valid", new_callable=AsyncMock) as mock_ensure:
+        assert await http.validate_login() is False
+
+    mock_ensure.assert_not_awaited()
 
 
-@pytest.mark.parametrize("exc", [ClientError("boom"), TimeoutError(), ConnectionError("down")])
-async def test_transient_failures_propagate_rather_than_reporting_invalid(exc: Exception) -> None:
-    """A network blip must not be reclassified as a rejected login.
-
-    Reporting False here would send the caller straight to a password grant — the
-    exact hammering shape the auth layer exists to prevent — for a login that is
-    probably still perfectly good.
-    """
-    http = _restored()
-    http.oauth_check = AsyncMock(side_effect=exc)  # type: ignore[method-assign]
-
-    with pytest.raises(type(exc)):
-        await http.validate_login()

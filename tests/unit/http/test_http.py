@@ -10,12 +10,13 @@ loop the broker rejections were supposed to break out of.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import JWTTokenInfo, MQTTConnection
+from pymammotion.http.model.http import JWTTokenInfo, MQTTConnection, UnauthorizedExceptionError
 
 
 def _make_http_with_session() -> MammotionHTTP:
@@ -62,3 +63,56 @@ async def test_logout_is_a_noop_when_already_logged_out() -> None:
     # No login_info means no server-side logout call; cached creds are untouched.
     assert http.mqtt_credentials is not None
     assert http.mqtt_credentials.jwt == "kept"
+
+
+def _make_http_with_get(status: int, json_data: dict) -> MammotionHTTP:
+    """Build a MammotionHTTP whose _client_session GETs return a canned response."""
+    http = MammotionHTTP()
+    http.login_info = MagicMock(access_token="tok", refresh_token="ref")  # type: ignore[assignment]
+    http.expires_in = time.time() + 86400  # far from expiry: no refresh in the way
+    resp = MagicMock()
+    resp.status = status
+    resp.headers = {"Content-Type": "application/json"}
+    resp.json = AsyncMock(return_value=json_data)
+    mock_session = MagicMock()
+    mock_session.get = AsyncMock(return_value=resp)
+
+    @asynccontextmanager
+    async def _fake_session() -> object:  # type: ignore[misc]
+        yield mock_session
+
+    http._client_session = _fake_session  # type: ignore[method-assign]
+    return http
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (401, {"code": 401, "msg": "unauthorized"}),  # 401 as the HTTP status
+        (200, {"code": 401, "msg": "unauthorized"}),  # 401 as an in-body code
+    ],
+)
+@pytest.mark.asyncio
+async def test_get_user_device_list_raises_on_401(status: int, body: dict) -> None:
+    """A rejected token must raise, not come back as Response(code=401).
+
+    Returned as a value it was indistinguishable from "no devices" to every caller,
+    so a revoked session restored silently and only failed on the first command.
+    The server reports 401 both ways, hence both cases.
+    """
+    http = _make_http_with_get(status, body)
+
+    with pytest.raises(UnauthorizedExceptionError):
+        await http.get_user_device_list()
+
+
+@pytest.mark.asyncio
+async def test_get_user_device_list_returns_devices_on_success() -> None:
+    """The success path still decodes and caches the list."""
+    http = _make_http_with_get(200, {"code": 0, "msg": "ok", "data": [{"deviceName": "Luba-1", "iotId": "iot-1"}]})
+
+    response = await http.get_user_device_list()
+
+    assert response.code == 0
+    assert [d.device_name for d in (response.data or [])] == ["Luba-1"]
+    assert [d.device_name for d in http.device_info] == ["Luba-1"]

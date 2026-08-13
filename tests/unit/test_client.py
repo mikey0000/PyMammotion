@@ -1880,3 +1880,23 @@ async def test_dead_account_login_does_fire_unrecoverable_callback() -> None:
     await client._signal_transport_unrecoverable(session, TransportType.CLOUD_MAMMOTION, exc)
 
     client.on_unrecoverable_auth_error.assert_awaited_once_with("u@t.com", TransportType.CLOUD_MAMMOTION, exc)
+
+
+async def test_default_session_skips_the_ble_only_placeholder() -> None:
+    """A BLE-only session must never stand in for the account's cloud session.
+
+    It is registered by the first BLE discovery and holds no login, so when it
+    sorted first every _get_default_session() caller behaved as if the account had
+    no credentials — most damagingly to_cache(), which returned {} and made saving
+    a silent no-op while the real session sat one slot further along.
+    """
+    from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountSession
+    from pymammotion.client import MammotionClient
+
+    client = MammotionClient()
+    await client._account_registry.register(AccountSession(account_id=BLE_ONLY_ACCOUNT))
+    cloud = AccountSession(account_id="u@x.com", email="u@x.com", password="pw")
+    await client._account_registry.register(cloud)
+
+    assert client._account_registry.all_sessions[0].account_id == BLE_ONLY_ACCOUNT
+    assert client._get_default_session() is cloud

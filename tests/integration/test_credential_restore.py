@@ -743,6 +743,43 @@ async def test_rejected_login_falls_back_to_a_full_login() -> None:
     mock_login.assert_awaited_once()
     mock_aliyun.assert_not_awaited()
 
+async def test_a_rotation_during_validation_is_persisted() -> None:
+    """A refresh performed while validating the cached login must reach the host.
+
+    Regression for the 40102 loop.  The server invalidates the previous refresh token
+    the instant a rotation succeeds, so a rotation nobody persists leaves the cache
+    replaying a spent token: every later run gets "Refresh token has expired" on
+    credentials whose own `exp` is weeks away.  Only TokenManager wires
+    MammotionHTTP.on_login_refreshed to the persistence callback, so it must be in
+    place before validate_login can trigger a refresh — not after.
+    """
+    client = MammotionClient()
+    persisted: list[str] = []
+
+    async def _persist() -> None:
+        http = client._account_registry.get("u@x.com").mammotion_http  # type: ignore[union-attr]
+        persisted.append(http.login_info.refresh_token)  # type: ignore[union-attr]
+
+    client.on_credentials_updated = _persist
+
+    http = _populated_mammotion_http("u@x.com")
+
+    async def _validate() -> bool:
+        # Stand in for the refresh ensure_token_valid performs near expiry: rotate the
+        # tokens exactly as _refresh_token_v2_locked does, hook included.
+        http.login_info.refresh_token = "rotated-rt"  # type: ignore[union-attr]
+        await http._fire_login_refreshed()
+        return True
+
+    http.validate_login = _validate  # type: ignore[method-assign]
+
+    with patch("pymammotion.client.MammotionHTTP.from_cache", return_value=http):
+        await client.restore_credentials(
+            "u@x.com", "pass", {"mammotion_data": http.response}, check_for_new_devices=False
+        )
+
+    assert persisted == ["rotated-rt"]
+
 async def test_hybrid_restore_shares_one_http_and_one_token_manager() -> None:
     """Aliyun + Mammotion in one cache must produce exactly one login and one manager.
 
@@ -879,3 +916,39 @@ async def test_credentials_callback_reaches_every_account() -> None:
     client.on_credentials_updated = persist
 
     assert [s.token_manager.on_credentials_updated for s in sessions] == [persist, persist]  # type: ignore[union-attr]
+
+async def test_relogin_does_not_revoke_the_session_it_is_replacing() -> None:
+    """A re-login must not end the old session server-side before minting its replacement.
+
+    login_v2 supersedes the previous session anyway, so calling logout first only
+    creates a window where the host's cached credentials are already dead.  If the
+    login (or the save that follows) then fails, the cache can only ever answer 401
+    and 40102 "Refresh token has expired" — recoverable only by a manual re-login.
+    """
+    client = MammotionClient()
+    acct_session = AccountSession(account_id="u@x.com", email="u@x.com", password="pass")
+    old_http = _populated_mammotion_http("u@x.com")
+    old_http.logout = AsyncMock()  # type: ignore[method-assign]
+    acct_session.mammotion_http = old_http
+    old_cloud = MagicMock()
+    old_cloud.sign_out = AsyncMock()
+    acct_session.cloud_client = old_cloud
+    await client._account_registry.register(acct_session)
+
+    new_http = _make_mock_http()
+    new_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
+    # No Aliyun devices and no Mammotion records: this test is about the teardown,
+    # not about what gets registered afterwards.
+    new_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=None))
+    new_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
+
+    with (
+        patch("pymammotion.client.MammotionHTTP", return_value=new_http),
+        patch.object(client, "_start_token_refresh", MagicMock()),
+    ):
+        await client.login_and_initiate_cloud("u@x.com", "pass")
+
+    old_http.logout.assert_not_awaited()
+    old_cloud.sign_out.assert_not_awaited()
+    # The replacement is still what the account ends up with.
+    assert client._account_registry.get("u@x.com").mammotion_http is new_http  # type: ignore[union-attr]

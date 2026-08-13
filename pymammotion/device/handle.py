@@ -34,8 +34,6 @@ from pymammotion.state.device_state import (
 )
 from pymammotion.transport.base import (
     BLEUnavailableError,
-    CommandTimeoutError,
-    ConcurrentRequestError,
     EventBus,
     NoTransportAvailableError,
     Subscription,

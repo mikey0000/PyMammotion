@@ -68,11 +68,6 @@ _REFRESH_TIMEOUT_SEC = 30.0
 #: — see :meth:`MammotionHTTP.from_cache`.
 _CACHE_DECODE_ERRORS = (InvalidFieldValue, MissingField, ValueError, TypeError, AttributeError, jwt.PyJWTError)
 
-#: ``/user/oauth/check`` codes that mean "this access token is live".  0 is the API's
-#: success code; 200 is what :meth:`MammotionHTTP.oauth_check` synthesises when the
-#: server answers with a non-JSON body.
-_OAUTH_CHECK_OK_CODES = (0, 200)
-
 
 def _decode_cached(value: Any, model: type[_ModelT]) -> _ModelT | None:
     """Return one cached field as *model*, or ``None`` when the cache does not hold one.
@@ -331,11 +326,17 @@ class MammotionHTTP:
 
         1. :meth:`ensure_token_valid` — a local expiry check that only spends a round
            trip when the access token is within 5 minutes of expiry.
-        2. ``/user/oauth/check`` — the server's own verdict.  A cached token can be
-           dead well before its ``exp`` (the account logged in elsewhere, was
-           deauthorised, or the refresh token was rotated by another client), and the
-           local check cannot see that.  A rejection here buys one refresh and one
-           re-check before giving up.
+        2. :meth:`get_user_device_list` — the server's own verdict.  A cached token
+           can be dead long before its ``exp``: the account was logged out, signed in
+           elsewhere, or had its session rotated by another client.  None of that is
+           visible locally, so without a real call a revoked session restores as
+           healthy and only fails on the first command the user issues.
+
+        The probe is the device-list endpoint rather than a dedicated "is this token
+        live" one because it is known to exist and answer — ``/user/oauth/check``
+        returns 404 on live accounts, and treating that as a rejection made every
+        restore refresh (spending the cached refresh token) and then re-login anyway.
+        The caller needs this list moments later regardless, so it costs nothing.
 
         Returns False when the session is genuinely unusable, so the caller can fall
         back to a full login.  Transient network failures are deliberately NOT
@@ -344,26 +345,22 @@ class MammotionHTTP:
         rejected login and trigger a needless password grant.
         """
         if self._login_info is None:
+            _LOGGER.warning("validate_login: no login session to validate — a fresh login is required")
             return False
         try:
             await self.ensure_token_valid(caller="validate_login")
-        except ReLoginRequiredError:
-            _LOGGER.warning("validate_login: refresh token rejected — a fresh login is required")
+        except ReLoginRequiredError as exc:
+            _LOGGER.warning("validate_login: refresh token rejected (%s) — a fresh login is required", exc)
             return False
 
         try:
-            if (response := await self.oauth_check()).code in _OAUTH_CHECK_OK_CODES:
-                return True
-            _LOGGER.info("validate_login: oauth/check rejected the cached token (code=%s) — refreshing", response.code)
-            if (refreshed := await self.refresh_token_v2()).code != 0:
-                _LOGGER.warning(
-                    "validate_login: refresh rejected (code=%s) — a fresh login is required", refreshed.code
-                )
-                return False
-            return (await self.oauth_check()).code in _OAUTH_CHECK_OK_CODES
-        except (AuthError, ReLoginRequiredError, UnauthorizedExceptionError):
-            _LOGGER.warning("validate_login: cached session rejected — a fresh login is required")
+            await self.get_user_device_list()
+        except (UnauthorizedExceptionError, AuthError, ReLoginRequiredError) as exc:
+            # ensure_token_valid has already renewed a near-expiry token, so a
+            # rejection here is the session itself, not the clock.
+            _LOGGER.warning("validate_login: server rejected the cached session (%s) — a fresh login is required", exc)
             return False
+        return True
 
     @property
     def login_info(self) -> LoginResponseData | None:
@@ -521,26 +518,6 @@ class MammotionHTTP:
                 return codes
 
         return {}
-
-    async def oauth_check(self) -> Response:
-        """Check if token is valid.
-
-        Returns 401 if token is invalid. We then need to re-authenticate, can try to refresh token first
-        """
-        async with self._client_session() as session:
-            resp = await session.post(
-                f"{MAMMOTION_DOMAIN}/user-server/v1/user/oauth/check",
-                headers={
-                    **self._headers,
-                    "Authorization": f"Bearer {self._require_login_info.access_token}",
-                    "Content-Type": "application/json",
-                },
-            )
-            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
-                data = await resp.json()
-                return Response.from_dict(data)
-
-        return Response(code=200, msg="success")
 
     @refresh_token_decorator
     async def refresh_authorization_token(self) -> Response:
@@ -777,7 +754,17 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_user_device_list(self) -> Response[list[DeviceInfo]]:
-        """Fetches device list for a user (owned not shared, shared returns nothing)."""
+        """Fetch the user's owned devices (shared devices are not returned).
+
+        Raises:
+            UnauthorizedExceptionError: The server rejected the access token.  The
+                decorator above has already renewed it if it was near expiry, so a
+                401 here means the session was invalidated server-side — the token's
+                own ``exp`` cannot show that.  Raising (rather than handing back a
+                ``Response(code=401)`` nobody inspects) is what lets callers tell a
+                dead login from an empty device list.
+
+        """
         async with self._client_session() as session:
             resp = await session.get(
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/device/list",
@@ -789,8 +776,18 @@ class MammotionHTTP:
                     "Client-Type": "1",
                 },
             )
-            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
-                resp_dict = await resp.json()
+            resp_dict = (
+                await resp.json() if (resp.headers.get("Content-Type") or "").startswith("application/json") else {}
+            )
+            # A 401 arrives either as the HTTP status or as an in-body code — same
+            # dual check mqtt_invoke makes, and for the same reason.
+            if resp.status == 401 or resp_dict.get("code") == 401:
+                _LOGGER.debug(
+                    "get_user_device_list: 401 with access_token fp=%s",
+                    _token_fingerprint(self._login_info.access_token if self._login_info else None),
+                )
+                raise UnauthorizedExceptionError("Access Token expired")
+            if resp_dict:
                 response = response_factory(Response[list[DeviceInfo]], resp_dict)
                 self.device_info = response.data if response.data else self.device_info
                 return response
@@ -1055,14 +1052,15 @@ class MammotionHTTP:
                 f"{MAMMOTION_DOMAIN}/oauth2/token",
                 headers={
                     **self._headers,
-                    # NOTE: the Android app sends Ma-Signature + Ma-App-Key here, the
-                    # same pair it uses for login_v2 — "Ma-Iot-*" belongs to the other
-                    # token system (api-iot-region.mammotion.com), not to
-                    # id.mammotion.com/oauth2/token.  This mismatch is left as-is
-                    # because refresh works in the field, so the server evidently does
-                    # not enforce the header; see the note on login_v2.  If refreshes
-                    # ever start failing signature validation, align these first.
-                    "Ma-Iot-Signature": oauth_signature,
+                    # Same trio as login_v2, and for the same reason: this is the
+                    # id.mammotion.com/oauth2/token host, where Ma-App-Key names the
+                    # OAuth2 client whose secret keys Ma-Signature.  The Android app
+                    # sends exactly these three on both the password grant and the
+                    # refresh (SpecialCodeIntercepter.getRefreshTokenRequest).
+                    # "Ma-Iot-*" belongs to the other token system
+                    # (api-iot-region.mammotion.com) and was never right here.
+                    "Ma-App-Key": MAMMOTION_OAUTH2_CLIENT_ID,
+                    "Ma-Signature": oauth_signature,
                     "Ma-Timestamp": str(timestamp),
                     "Client-Id": self.client_id,
                     "Client-Type": "1",
@@ -1083,9 +1081,19 @@ class MammotionHTTP:
                 msg = f"oauth2/token refresh returned non-JSON body (status={resp.status})"
                 raise ConnectionError(msg) from exc
         refresh_response = response_factory(Response[LoginResponseData], data)
-        if refresh_response is None or refresh_response.data is None:
-            _LOGGER.debug("refresh_token_v2: empty/failed response (status=%s, code=%s)", resp.status, data.get("code"))
-            return Response.from_dict({"code": resp.status, "msg": "Refresh login token failed"})
+        if refresh_response.data is None:
+            # Return the API's own code and message.  Substituting the HTTP status here
+            # discarded the only useful part of the answer: this endpoint reports
+            # failures as 200 + a body code, so callers and logs saw "code=200" for what
+            # was actually e.g. 40102 "Refresh token has expired" — which is the one
+            # thing that tells you the token was superseded rather than merely refused.
+            _LOGGER.warning(
+                "refresh_token_v2: refresh rejected (status=%s, code=%s, msg=%s)",
+                resp.status,
+                refresh_response.code,
+                refresh_response.msg,
+            )
+            return refresh_response
         _LOGGER.debug(
             "refresh_token_v2: OK — access_token %s -> %s",
             _token_fingerprint(self._login_info.access_token if self._login_info else None),
@@ -1109,14 +1117,17 @@ class MammotionHTTP:
         call it (see :meth:`ensure_token_valid`).
 
         On request signing: the ``Ma-App-Key`` / ``Ma-Signature`` / ``Ma-Timestamp``
-        trio below matches the Android app for this host (id.mammotion.com).
-        :meth:`refresh_token_v2` hits the same host and endpoint but sends
-        ``Ma-Iot-Signature`` and no app key — a divergence from the app, left in
-        place because refresh demonstrably works in the field.  Two things follow
-        from that: the server does not appear to enforce these headers strictly,
-        and the signature payload's JSON key order (which differs from the app's
-        here too) evidently does not have to match either.  Worth remembering
-        before attributing an auth failure to the signature.
+        trio below matches the Android app for this host (id.mammotion.com), where
+        ``Ma-App-Key`` names the OAuth2 client whose secret keys the signature.
+        :meth:`refresh_token_v2` now sends the same three, as the app does on both
+        grants.
+
+        Note the server does not appear to enforce any of it strictly: refresh
+        worked for a long time while sending ``Ma-Iot-Signature`` (a header
+        belonging to the *other* token system) and no app key at all, and this
+        request's signature payload orders its JSON keys differently from the
+        app's.  Worth remembering before attributing an auth failure to the
+        signature — it is rarely the cause.
         """
         self.account = account
         self._password = password
