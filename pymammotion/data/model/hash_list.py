@@ -415,6 +415,10 @@ class HashList(DataClassORJSONMixin):
     generated_mow_path_geojson: dict[str, Any] = field(default_factory=dict)
     last_ub_path_hash: int = 0
     plans_stale: bool = False
+    #: Set once a PlanFetchSaga completes, so an empty ``plan`` can be told apart
+    #: from one never fetched.  Re-fetches are driven by ``plans_stale`` and by
+    #: ``init_cfg_hash`` changes from there, not by a timer.
+    plans_fetched: bool = False
     edge_points: dict[int, EdgePoints] = field(default_factory=dict)  # hash → EdgePoints
     dynamics_line: list[CommDataCouple] = field(default_factory=list)
     """Assembled live mow-progress path from the latest type=18 fetch.

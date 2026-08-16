@@ -1,9 +1,11 @@
 """Tests for MammotionClient.setup_device_watchers auto-trigger logic."""
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from pymammotion.client import MammotionClient
+from pymammotion.homeassistant.mower_api import HomeAssistantMowerApi
 
 
 # ---------------------------------------------------------------------------
@@ -197,3 +199,158 @@ async def test_on_saga_end_sets_rearm_event() -> None:
     await handle.queue.on_saga_end()
 
     assert handle._rearm_event.is_set()  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# _map_sync_needed — when a MapFetchSaga is worth enqueuing
+# ---------------------------------------------------------------------------
+
+
+def _make_api() -> HomeAssistantMowerApi:
+    """Return an api instance with no client work done in __init__."""
+    api = HomeAssistantMowerApi.__new__(HomeAssistantMowerApi)
+    api._last_call_times = {}
+    api._call_intervals = {"check_maps": timedelta(minutes=5), "read_plan": timedelta(minutes=30)}
+    return api
+
+
+def _make_device(*, root_hash_lists: list | None = None, area: dict | None = None, missing: list | None = None):
+    """Return a device whose map reports the given completeness."""
+    device = MagicMock()
+    device.map.root_hash_lists = root_hash_lists if root_hash_lists is not None else []
+    device.map.area = area if area is not None else {}
+    device.map.missing_hashlist.return_value = missing if missing is not None else []
+    return device
+
+
+def _make_handle(*, usable: bool = True) -> MagicMock:
+    handle = MagicMock()
+    handle.has_usable_transport = usable
+    return handle
+
+
+def test_map_sync_not_needed_when_map_complete() -> None:
+    """A fully fetched map is never re-synced on a timer.
+
+    bol_hash watching re-syncs when the device edits its map, so the periodic
+    refetch only costs cloud round-trips.
+    """
+    api = _make_api()
+    device = _make_device(root_hash_lists=[MagicMock()], area={1: MagicMock()})
+
+    assert api._map_sync_needed("Yuka-Test", device, _make_handle()) is False
+
+    # Still false long after the check_maps interval would have elapsed.
+    api._last_call_times["Yuka-Test"] = {"check_maps": datetime.now(UTC) - timedelta(hours=2)}
+    assert api._map_sync_needed("Yuka-Test", device, _make_handle()) is False
+
+
+def test_map_sync_not_needed_when_device_unreachable() -> None:
+    """An offline device must not queue a saga that dies on NoTransportAvailableError."""
+    api = _make_api()
+    device = _make_device()
+
+    assert api._map_sync_needed("Luba-Test", device, _make_handle(usable=False)) is False
+
+
+def test_map_sync_resumes_once_device_reachable() -> None:
+    """Skipping while unreachable must not consume the retry window."""
+    api = _make_api()
+    device = _make_device()
+
+    assert api._map_sync_needed("Luba-Test", device, _make_handle(usable=False)) is False
+    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is True
+
+
+def test_map_sync_needed_when_map_empty() -> None:
+    """A device we hold no map for syncs on the first poll."""
+    api = _make_api()
+
+    assert api._map_sync_needed("Luba-Test", _make_device(), _make_handle()) is True
+
+
+def test_map_sync_incomplete_retry_is_interval_paced() -> None:
+    """An incomplete map retries at the check_maps interval, not every poll."""
+    api = _make_api()
+    device = _make_device(root_hash_lists=[MagicMock()], area={1: MagicMock()}, missing=[42])
+
+    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is True
+    api._mark_api_called("check_maps", "Luba-Test")
+    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is False
+
+    api._last_call_times["Luba-Test"]["check_maps"] = datetime.now(UTC) - timedelta(minutes=6)
+    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is True
+
+
+def test_map_sync_not_needed_for_device_with_no_areas() -> None:
+    """A received manifest with no areas in it counts as complete."""
+    api = _make_api()
+    device = _make_device(root_hash_lists=[MagicMock()])
+
+    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is False
+
+
+# ---------------------------------------------------------------------------
+# _plan_sync_needed — when a PlanFetchSaga is worth enqueuing
+# ---------------------------------------------------------------------------
+
+
+def _make_plan_device(*, fetched: bool = False, stale: bool = False, plan: dict | None = None):
+    """Return a device whose map reports the given plan state."""
+    device = MagicMock()
+    device.map.plans_fetched = fetched
+    device.map.plans_stale = stale
+    device.map.plan = plan if plan is not None else {}
+    return device
+
+
+def test_plan_sync_not_needed_once_fetched() -> None:
+    """Fetched plans are not re-read on a timer.
+
+    init_cfg_hash watching and plans_stale cover re-fetches.
+    """
+    api = _make_api()
+    device = _make_plan_device(fetched=True, plan={"a": MagicMock()})
+
+    assert api._plan_sync_needed("Yuka-Test", device, _make_handle()) is False
+
+    api._last_call_times["Yuka-Test"] = {"read_plan": datetime.now(UTC) - timedelta(hours=4)}
+    assert api._plan_sync_needed("Yuka-Test", device, _make_handle()) is False
+
+
+def test_plan_sync_not_needed_for_device_with_no_schedules() -> None:
+    """An empty plan set that we fetched successfully is not chased forever."""
+    api = _make_api()
+    device = _make_plan_device(fetched=True)
+
+    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is False
+
+
+def test_plan_sync_needed_when_stale() -> None:
+    """The device reporting plan IDs we don't hold re-triggers a fetch."""
+    api = _make_api()
+    device = _make_plan_device(fetched=True, stale=True, plan={"a": MagicMock()})
+
+    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+
+
+def test_plan_sync_not_needed_when_device_unreachable() -> None:
+    """An offline device must not queue a plan saga that cannot be sent."""
+    api = _make_api()
+    device = _make_plan_device()
+
+    assert api._plan_sync_needed("Luba-Test", device, _make_handle(usable=False)) is False
+    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+
+
+def test_plan_sync_retry_is_interval_paced() -> None:
+    """A failed fetch retries at the read_plan interval, not every poll."""
+    api = _make_api()
+    device = _make_plan_device()
+
+    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+    api._mark_api_called("read_plan", "Luba-Test")
+    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is False
+
+    api._last_call_times["Luba-Test"]["read_plan"] = datetime.now(UTC) - timedelta(minutes=31)
+    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True

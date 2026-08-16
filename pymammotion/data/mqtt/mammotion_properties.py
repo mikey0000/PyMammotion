@@ -226,7 +226,7 @@ class DeviceOtherInfo(DataClassORJSONMixin):
     task_count: int
     task_hash: str
     systemio_boot_time: Annotated[str, Alias("systemioBootTime")]
-    dds_no_gdc: int
+    dds_no_gdc: int = 0
     tilt_degree: str = ""
     vslam_vio: str = ""
     ins_fusion: str = ""

@@ -457,7 +457,11 @@ class MammotionClient:
             await handle.request_report_snapshot()
 
     async def request_reports(self, device_name: str, *, count: int = 1, timeout: int = 1000) -> None:
-        """Fire a one-shot count=count report, skipped if the BLE stream is already active."""
+        """Fire a one-shot count=count report, skipped if the BLE stream is already active.
+
+        ``timeout`` is the device-side ``request_iot_sys`` report window in ms — a wire
+        field, not an asyncio deadline.
+        """
         if handle := self._device_registry.get_by_name(device_name):
             await handle.request_reports(count=count, timeout=timeout)
 
@@ -1423,9 +1427,9 @@ class MammotionClient:
         user_account: int,
         token_manager: TokenManager | None,
     ) -> None:
-        """Create a DeviceHandle, register it, start it, subscribe token-manager,
-        and track the iot_id → device_name mapping.
+        """Create, register and start a DeviceHandle for a cloud transport.
 
+        Subscribes the token-manager and tracks the iot_id → device_name mapping.
         Shared by Aliyun and Mammotion device registration; the
         topic-subscription / device-registration step that's Mammotion-specific
         stays in ``_register_mammotion_device`` and is performed before this
@@ -1717,8 +1721,10 @@ class MammotionClient:
     async def _try_migrate_unbound(
         self, handle: DeviceHandle, session: AccountSession | None, *, final_attempt: bool
     ) -> bool:
-        """One Aliyun→Mammotion migration attempt.  Returns True when settled (migrated,
-        removed, or deliberately left BLE-only) — False means "retry later".
+        """Run one Aliyun→Mammotion migration attempt.
+
+        Returns True when settled (migrated, removed, or deliberately left BLE-only)
+        — False means "retry later".
 
         Removal only happens on the *final* attempt, and never while the handle still
         has a usable BLE transport (a BLE-only device keeps working without any cloud).
@@ -2220,9 +2226,12 @@ class MammotionClient:
             # The saga walks every plan index and the reducer applies each
             # todev_planjob_set frame to device.map.plan; once complete the
             # stored set is authoritative, so clear the stale flag that the
-            # reducer raised on all_plan_task.
+            # reducer raised on all_plan_task.  plans_fetched records that this
+            # happened at all, so a device that simply has no schedules stored
+            # isn't re-asked on every interval.
             if device := self.get_device_by_name(device_name):
                 device.map.plans_stale = False
+                device.map.plans_fetched = True
 
         await handle.enqueue_saga(saga, on_complete=_on_plan_complete)
 
@@ -2293,6 +2302,7 @@ class MammotionClient:
         await handle.enqueue_saga(saga, on_complete=_on_complete)
 
     async def check_and_get_mow_path(self, device_name: str) -> None:
+        """Fetch the cover path for the current route unless a valid one is already cached."""
         if handle := self._device_registry.get_by_name(device_name):
             device = cast(MowerDevice, handle.snapshot.raw)
             work = device.report_data.work

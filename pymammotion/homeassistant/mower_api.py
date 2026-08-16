@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from logging import getLogger
 from typing import TYPE_CHECKING, Any
 
 from pymammotion.client import MammotionClient
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
-from pymammotion.data.model.hash_list import Plan
-from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, TransportType
 from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.device_type import DeviceType
@@ -21,6 +19,9 @@ if TYPE_CHECKING:
 
     from pymammotion.data.model.device import MowingDevice
     from pymammotion.data.model.device_limits import DeviceLimits
+    from pymammotion.data.model.hash_list import Plan
+    from pymammotion.data.model.pool_state import PoolPlan
+    from pymammotion.device.handle import DeviceHandle
 
 logger = getLogger(__name__)
 
@@ -36,6 +37,7 @@ class HomeAssistantMowerApi:
         self._session = session
         self._last_call_times: dict[str, dict[str, datetime]] = {}
         self._call_intervals = {
+            # Retry pacing for data we don't hold yet, not a refresh of what we do.
             "check_maps": timedelta(minutes=5),
             "read_plan": timedelta(minutes=30),
             "get_report_cfg": timedelta(hours=1),
@@ -49,26 +51,59 @@ class HomeAssistantMowerApi:
         """Return the underlying MammotionClient instance."""
         return self._mammotion
 
-    def _should_call_api(self, api_name: str, device_name: str, device: MowingDevice | None = None) -> bool:
-        """Check if API should be called based on time or criteria."""
+    def _should_call_api(self, api_name: str, device_name: str) -> bool:
+        """Check if API should be called based on the configured interval."""
         device_times = self._last_call_times.get(device_name, {})
         if api_name not in device_times:
             return True
 
         last_call = device_times[api_name]
         interval = self._call_intervals.get(api_name, timedelta(seconds=10))
+        return datetime.now(UTC) - last_call >= interval
 
-        if api_name == "check_maps" and device:
-            if len(device.map.area) == 0 or device.map.missing_hashlist():
-                return True
+    def _map_sync_needed(self, device_name: str, device: MowingDevice, handle: DeviceHandle | None) -> bool:
+        """Whether a MapFetchSaga is worth enqueuing on this poll.
 
-        return datetime.now() - last_call >= interval
+        A map we already hold in full is never re-fetched on a timer:
+        ``_on_bol_hash_changed`` syncs when the device actually edits its map DB,
+        so a periodic refetch only burns cloud round-trips.  ``root_hash_lists``
+        is the manifest the device sent us, so a device with genuinely no areas
+        still counts as complete once it has arrived.
+
+        An incomplete map is retried at the ``check_maps`` interval rather than
+        every poll, and not at all while the device is unreachable — otherwise an
+        offline mower queues a saga a minute that dies on
+        ``NoTransportAvailableError`` before its first command leaves the queue.
+        """
+        if (device.map.root_hash_lists or device.map.area) and not device.map.missing_hashlist():
+            return False
+        if handle is not None and not handle.has_usable_transport:
+            return False
+        return self._should_call_api("check_maps", device_name)
+
+    def _plan_sync_needed(self, device_name: str, device: MowingDevice, handle: DeviceHandle | None) -> bool:
+        """Whether a PlanFetchSaga is worth enqueuing on this poll.
+
+        Plans we have already fetched are not re-read on a timer: the reducer
+        raises ``plans_stale`` when an ``all_plan_task`` frame names plan IDs we
+        don't hold, and ``_on_init_cfg_hash_changed`` syncs when the device edits
+        its schedule config.  ``plans_fetched`` is what separates "this mower has
+        no schedules" from "we have never asked" — without it an empty plan set
+        is chased forever.
+
+        Reachability and retry pacing follow :meth:`_map_sync_needed`.
+        """
+        if device.map.plans_fetched and not device.map.plans_stale:
+            return False
+        if handle is not None and not handle.has_usable_transport:
+            return False
+        return self._should_call_api("read_plan", device_name)
 
     def _mark_api_called(self, api_name: str, device_name: str) -> None:
         """Mark an API as called with the current timestamp."""
         if device_name not in self._last_call_times:
             self._last_call_times[device_name] = {}
-        self._last_call_times[device_name][api_name] = datetime.now()
+        self._last_call_times[device_name][api_name] = datetime.now(UTC)
 
     def device_limits(self, device_name: str) -> DeviceLimits:
         """Return the operational limits for the named device, falling back to defaults if not found."""
@@ -87,14 +122,13 @@ class HomeAssistantMowerApi:
         if handle is not None and handle.has_queued_commands():
             return device
 
-        if self._should_call_api("check_maps", device_name, device):
+        if self._map_sync_needed(device_name, device, handle):
             await self._mammotion.start_map_sync(device_name)
             self._mark_api_called("check_maps", device_name)
 
-        if self._should_call_api("read_plan", device_name):
-            if len(device.map.plan) == 0 or device.map.plans_stale:
-                await self._mammotion.start_plan_sync(device_name)
-                self._mark_api_called("read_plan", device_name)
+        if self._plan_sync_needed(device_name, device, handle):
+            await self._mammotion.start_plan_sync(device_name)
+            self._mark_api_called("read_plan", device_name)
 
         # if self._should_call_api("get_errors", device_name):
         #     await self.async_send_command(device_name, "get_error_code")
