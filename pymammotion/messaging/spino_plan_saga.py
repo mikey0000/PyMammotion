@@ -20,12 +20,12 @@ from typing import TYPE_CHECKING, Any
 
 from pymammotion.messaging.saga import Saga
 from pymammotion.messaging.transfers import indexed_fetch
-from pymammotion.proto import PlanJobSet
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from pymammotion.messaging.broker import DeviceMessageBroker
+    from pymammotion.proto import PlanJobSet
 
 _logger = logging.getLogger(__name__)
 

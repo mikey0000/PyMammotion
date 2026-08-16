@@ -438,7 +438,7 @@ class MessageNavigation(AbstractMessage, ABC):
         return self.send_order_msg_nav(build)
 
     def get_common_data(self, *, action: int, type: int, sub_cmd: int = 1, hash_num: int = 0) -> bytes:
-        """Generic NavGetCommData request used by CommonDataSaga.
+        """Build the generic NavGetCommData request used by CommonDataSaga.
 
         Sends a ``todev_get_commondata`` message with the given ``action`` and
         ``type``.  An optional ``hash_num`` is included when the request targets
@@ -602,6 +602,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     def get_line_info_list(self, hash_list: list[int], transaction_id: int) -> bytes:
         """Get route information (mow path) corresponding to the specified hash list based on time.
+
         e.g transaction_id = int(time.time() * 1000).
         """
         logger.debug(f"Sending==========Get route command: {hash_list}")

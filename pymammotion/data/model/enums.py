@@ -61,7 +61,7 @@ class RTKStatus(Enum):
         """Return the RTKStatus enum member corresponding to the given integer value."""
         if value == 0:
             return RTKStatus.NONE
-        if value == 1 or value == 2:
+        if value in (1, 2):
             return RTKStatus.SINGLE
         if value == 4:
             return RTKStatus.FIX

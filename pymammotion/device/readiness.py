@@ -46,10 +46,12 @@ class ReadinessChecker(ABC):
 class NoReadinessChecker(ReadinessChecker):
     """No-op readiness checker that always reports the device as ready."""
 
-    def check(self, device: MowingDevice) -> ReadinessStatus:
+    def check(self, device: MowingDevice) -> ReadinessStatus:  # noqa: ARG002 — ReadinessChecker signature
+        """Report the device as ready unconditionally."""
         return ReadinessStatus(is_ready=True)
 
-    def commands_to_fetch_missing(self, device: MowingDevice) -> list[str]:
+    def commands_to_fetch_missing(self, device: MowingDevice) -> list[str]:  # noqa: ARG002 — ReadinessChecker signature
+        """Return no commands — there is nothing this checker needs fetched."""
         return []
 
 
@@ -141,7 +143,7 @@ class SpinoReadinessChecker(ReadinessChecker):
             missing.append("device_name")
         return ReadinessStatus(is_ready=len(missing) == 0, missing=missing)
 
-    def commands_to_fetch_missing(self, device: PoolCleanerDevice) -> list[str]:  # type: ignore
+    def commands_to_fetch_missing(self, device: PoolCleanerDevice) -> list[str]:  # type: ignore  # noqa: ARG002 — ReadinessChecker signature
         """No fetchable commands for the stub Spino device — return empty."""
         return []
 

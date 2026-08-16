@@ -410,9 +410,10 @@ class MessageSystem(AbstractMessage, ABC):
 
     def remote_restart(self, force_reset: int = 1) -> bytes:
         """Send a remote restart command.
-        force_reset: 0 - normal restart, 1 - force restart
+
         Args:
-            force_reset: Force reset flag.
+            force_reset: 0 for a normal restart, 1 to force one.
+
         """
         mctl_sys = MctlSys(
             to_dev_remote_reset=RemoteResetReqT(
@@ -676,7 +677,7 @@ class MessageSystem(AbstractMessage, ABC):
         )
 
     def _send_spino_plan(self, plan: PoolPlan, cmd: int) -> bytes:
-        """Internal: build a full-plan SpinoCtrl frame with the given ``cmd``."""
+        """Build a full-plan SpinoCtrl frame with the given ``cmd``."""
         wire = self._pool_plan_to_proto(plan, cmd)
         return self.send_order_spino_ctrl(SpinoCtrl(plan_job_set=wire))
 

@@ -80,8 +80,6 @@ class CommonDataSaga(Saga):
     async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute the saga.  Clears partial state at the start of each attempt."""
         self.result = []
-        frames: dict[int, list[CommDataCouple]] = {}
-        total_frame: int | None = None
 
         with self._collect_frames(broker, "toapp_get_commondata_ack", lambda v: v.type == self._type) as frame_queue:
             cmd = self._command_builder.get_common_data(action=self._action, type=self._type, hash_num=self._hash_num)

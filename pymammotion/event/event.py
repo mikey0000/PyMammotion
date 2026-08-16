@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from types import MethodType
-from typing import Any
+from typing import Any, Self
 import weakref
 
 
@@ -28,7 +28,7 @@ class Event:
     def __init__(self) -> None:
         self.__eventhandlers: list[weakref.ReferenceType | _StrongRef] = []
 
-    def __iadd__(self, handler: Callable) -> "Event":
+    def __iadd__(self, handler: Callable) -> Self:
         if isinstance(handler, MethodType):
             # Instance method: weak reference so the Event doesn't prevent GC
             # of the owning object.
@@ -40,7 +40,7 @@ class Event:
         self.__eventhandlers.append(ref)
         return self
 
-    def __isub__(self, handler: Callable) -> "Event":
+    def __isub__(self, handler: Callable) -> Self:
         # Use != rather than `is not`: bound methods are never the same object
         # across two attribute accesses (each creates a fresh MethodType), so
         # identity comparison would silently fail to remove them.  __eq__ on

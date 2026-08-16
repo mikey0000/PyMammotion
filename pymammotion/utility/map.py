@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import logging
 import math
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 
 from pymammotion.data.model.location import LocationPoint
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 _logger = logging.getLogger(__name__)
 

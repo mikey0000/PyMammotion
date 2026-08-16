@@ -125,7 +125,7 @@ class DeviceRecord(DataClassORJSONMixin):
 
     """
     {'identityId': '819056836211638272', 'iotId': 'ZsJiVCEqPo8RliUdK8cF000000', 'productKey': 'ATyVu9QkAdX', 'deviceName': 'Luba-VPNRXLU2', 'owned': 0, 'bindTime': 1780498106000, 'createTime': '2026-06-03T14:48:26'}
-    
+
     """
 
     identity_id: Annotated[str, Alias("identityId")]

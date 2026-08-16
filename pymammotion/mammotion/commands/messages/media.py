@@ -57,8 +57,8 @@ class MessageMedia(AbstractMessage, ABC):
 
     def get_car_light(self, ids: int):
         """Get mower light settings.
-        1126 for manual
-        1123 for night time settings.
+
+        1126 for manual, 1123 for night time settings.
         """
         return self.send_order_msg_media(SocMul(get_lamp=GetHeadlamp(get_ids=ids)))
 

@@ -82,7 +82,7 @@ class JoystickControl:
     def run_controller(self) -> None:
         """Start the joystick event manager and the periodic movement worker thread."""
         self.mngr.start()
-        assert self.worker is not None
+        assert self.worker is not None  # noqa: S101 — narrowing for the type checker
         self.worker.start()
 
     def handle_key_received(self, key) -> None:

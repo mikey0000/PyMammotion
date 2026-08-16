@@ -34,6 +34,7 @@ class OperationSettings(DataClassORJSONMixin):
 
 
 def create_path_order(operation_mode: OperationSettings, device_name: str) -> str:
+    """Encode the operation settings into the 8-byte ``path_order`` string the device expects."""
     # TODO add scheduling logic from getReserved() WorkSettingViewModel.java
     bArr = bytearray(8)
     bArr[0] = operation_mode.border_mode
@@ -59,6 +60,7 @@ def create_path_order(operation_mode: OperationSettings, device_name: str) -> st
 
 
 def calculate_yuka_mode(operation_mode: OperationSettings) -> int:
+    """Map the mow/dump/edge toggles onto the single Yuka job-mode code."""
     if operation_mode.is_mow and operation_mode.is_dump and operation_mode.is_edge:
         return 14
     if operation_mode.is_mow and operation_mode.is_dump and not operation_mode.is_edge:

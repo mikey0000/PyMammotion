@@ -75,7 +75,7 @@ class EdgeMappingSaga(Saga):
                 frame_msg = await self._next_frame(frame_queue, "toapp_edge_points")
 
                 edge_frame = self.extract_nav_frame(frame_msg, "toapp_edge_points")
-                assert edge_frame is not None  # the collector already filtered on this field
+                assert edge_frame is not None  # noqa: S101 — the collector already filtered on this field
                 edge_msg = edge_frame[1]
                 hash_key: int = edge_msg.hash
 

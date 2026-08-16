@@ -53,7 +53,7 @@ class TeaCore:
         logger.debug("%s%s", request_base, TeaCore._prepare_http_debug(request, ">"))
 
         # logger the response
-        response_base = f"\n< HTTP/1.1 {response.status_code} {(status_codes._codes.get(response.status_code) or ('unknown',))[0].upper()}"
+        response_base = f"\n< HTTP/1.1 {response.status_code} {(status_codes._codes.get(response.status_code) or ('unknown',))[0].upper()}"  # noqa: SLF001 — requests exposes the code table only privately
         logger.debug("%s%s", response_base, TeaCore._prepare_http_debug(response, "<"))
 
     @staticmethod
@@ -229,7 +229,7 @@ class TeaCore:
         return resp.content.decode("utf-8")
 
     @staticmethod
-    def allow_retry(dic, retry_times, now=None) -> bool:
+    def allow_retry(dic, retry_times, now=None) -> bool:  # noqa: ARG004 — Tea SDK signature
         """Return True if another retry attempt is permitted according to the retry policy dictionary."""
         if retry_times == 0:
             return True
@@ -266,7 +266,7 @@ class TeaCore:
 
     @staticmethod
     def sleep(t) -> None:
-        """Synchronously sleep for t seconds."""
+        """Block the calling thread for ``t`` seconds."""
         time.sleep(t)
 
     @staticmethod
@@ -280,7 +280,7 @@ class TeaCore:
         return body
 
     @staticmethod
-    def merge(*dic_list) -> dict:
+    def merge(*dic_list: Any) -> dict:
         """Merge multiple dicts and TeaModel instances into a single flattened dictionary."""
         dic_result = {}
         for item in dic_list:
@@ -303,8 +303,8 @@ class TeaCore:
         if isinstance(model, TeaModel):
             try:
                 return model.from_map(dic)
-            except Exception:
-                model._map = dic
+            except Exception:  # noqa: BLE001 — any mapping failure falls back to the raw dict
+                model._map = dic  # noqa: SLF001 — TeaModel's documented raw-payload escape hatch
                 return model
         else:
             return model

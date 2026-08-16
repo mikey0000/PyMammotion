@@ -16,7 +16,7 @@ class Base64EncodedProtobuf(SerializableType):
     def __init__(self, proto: str) -> None:
         self.proto = proto
 
-    def _serialize(self):
+    def _serialize(self) -> str:
         return self.proto
 
     @classmethod
@@ -220,11 +220,7 @@ class ThingEventMessage(DataClassORJSONMixin):
             params_obj = DeviceLogProgressEventParams.from_dict(params_dict)
         elif identifier == "device_config_req_event":
             params_obj = payload.get("params", {})
-        elif (
-            identifier == "device_notification_event"
-            or identifier == "device_warning_code_event"
-            or identifier == "device_information_event"
-        ):
+        elif identifier in ("device_notification_event", "device_warning_code_event", "device_information_event"):
             params_obj = DeviceNotificationEventParams.from_dict(params_dict)
         else:
             raise ValueError(f"Unknown identifier: {identifier} {params_dict}")

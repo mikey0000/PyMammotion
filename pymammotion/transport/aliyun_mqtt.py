@@ -272,7 +272,7 @@ class AliyunMQTTTransport(Transport):
             self.record_error()
             raise
 
-    async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:
+    async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:  # noqa: ARG002 — Transport.send signature
         """Send *payload* to the device and count it against the 24-hour quota."""
         if self.is_rate_limited:
             remaining = self.seconds_until_send_available()
@@ -361,6 +361,7 @@ class AliyunMQTTTransport(Transport):
 
     @staticmethod
     async def get_ssl_context() -> ssl.SSLContext:
+        """Build the TLS context for the Aliyun broker with the pinned CA bundle loaded."""
         loop = asyncio.get_running_loop()
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.options |= ssl.OP_IGNORE_UNEXPECTED_EOF
@@ -370,7 +371,7 @@ class AliyunMQTTTransport(Transport):
         await loop.run_in_executor(None, context.load_verify_locations, _CA_CERT_FILE)
         return context
 
-    async def _run(self) -> None:
+    async def _run(self) -> None:  # noqa: C901
         """Run the main Aliyun MQTT connection loop, reconnecting with exponential backoff."""
         backoff = MQTT_RECONNECT_MIN_SEC
         #: Consecutive credential-refresh reconnect cycles without receiving a single
@@ -468,7 +469,7 @@ class AliyunMQTTTransport(Transport):
                         except ReLoginRequiredError as relogin_exc:
                             await self._handle_fatal_auth_error(relogin_exc)
                             raise
-                        except Exception:
+                        except Exception:  # noqa: BLE001 — a host callback must not break reconnect
                             _logger.warning("on_auth_failure callback failed", exc_info=True)
                     fatal = ReLoginRequiredError("", f"Aliyun MQTT auth exhausted (rc={rc})")
                     await self._handle_fatal_auth_error(fatal)
@@ -491,7 +492,7 @@ class AliyunMQTTTransport(Transport):
                     except ReLoginRequiredError as relogin_exc:
                         await self._handle_fatal_auth_error(relogin_exc)
                         raise
-                    except Exception:
+                    except Exception:  # noqa: BLE001 — a host callback must not break reconnect
                         _logger.warning("on_auth_failure callback failed", exc_info=True)
                 fatal = ReLoginRequiredError("", f"Aliyun bind token unrecoverable: {exc}")
                 await self._handle_fatal_auth_error(fatal)

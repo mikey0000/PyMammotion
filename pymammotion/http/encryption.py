@@ -121,14 +121,12 @@ class EncryptionUtils:
             # Perform encryption
             return self.encrypt(text, self.AES_PASW, self.IV)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — any crypto failure is reported as None
             _LOGGER.error(f"Encryption failed: {e!s}")
             return None
 
     def encrypt_by_public_key(self) -> str | None:
         """Encrypt data using RSA public key.
-
-        Args:
 
         Returns:
             Optional[str]: Base64 encoded encrypted data or None if encryption fails
@@ -154,7 +152,7 @@ class EncryptionUtils:
 
             return encrypted_str
 
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 — any crypto failure is reported as None
             _LOGGER.error("Encryption failed: %s", str(err))
             return None
 
@@ -199,7 +197,8 @@ class EncryptionUtils:
 
     @staticmethod
     def get_aes_key() -> str:
-        """Generate a random AES key of 16 characters using alphanumeric characters.
+        """Generate a random 16-character alphanumeric AES key.
+
         Matches Java implementation behavior.
 
         Returns:
@@ -210,7 +209,8 @@ class EncryptionUtils:
 
     @staticmethod
     def get_iv() -> str:
-        """Generate a random initialization vector of 16 digits.
+        """Generate a random 16-digit initialization vector.
+
         Matches Java implementation behavior.
 
         Returns:

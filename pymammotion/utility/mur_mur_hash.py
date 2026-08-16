@@ -127,9 +127,7 @@ class MurMurHashUtil:
 
     @staticmethod
     def hash_unsigned(data: str | bytes) -> int:
-        """Get unsigned hash value
-        Can accept bytes or string.
-        """
+        """Get the unsigned hash value of a string or bytes."""
         if isinstance(data, str):
             hash_val = MurMurHashUtil.hash_string(data)
         else:
@@ -139,7 +137,8 @@ class MurMurHashUtil:
 
     @staticmethod
     def long_to_bytes(value: int) -> bytes:
-        """Convert long to bytes exactly as Java does:
+        """Convert a long to bytes exactly as Java does.
+
         1. Pack as big-endian (ByteBuffer default)
         2. Reverse all bytes.
         """

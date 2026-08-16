@@ -44,20 +44,24 @@ class GeoBounds:
 
     @property
     def width(self) -> float:
+        """Return the longitude span in degrees."""
         return self.max_lon - self.min_lon
 
     @property
     def height(self) -> float:
+        """Return the latitude span in degrees."""
         return self.max_lat - self.min_lat
 
     @property
     def center(self) -> tuple[float, float]:
+        """Return the (lon, lat) midpoint of the bounds."""
         return (
             (self.min_lon + self.max_lon) / 2,
             (self.min_lat + self.max_lat) / 2,
         )
 
     def expanded(self) -> GeoBounds:
+        """Return a copy padded by 8% of each span, with a 3 m floor."""
         center_lat = self.center[1]
         pad_lat = max(self.height * 0.08, _meters_to_lat_degrees(3.0))
         pad_lon = max(self.width * 0.08, _meters_to_lon_degrees(3.0, center_lat))
@@ -218,12 +222,12 @@ def _load_osm_tile(zoom: int, tile_x: int, tile_y: int, tile_cache_dir: str | No
             except OSError:
                 cache_path.unlink(missing_ok=True)
 
-    request = Request(
+    request = Request(  # noqa: S310 — OSM_TILE_URL is a fixed https endpoint
         OSM_TILE_URL.format(z=zoom, x=tile_x, y=tile_y),
         headers={"User-Agent": OSM_USER_AGENT},
     )
     try:
-        with urlopen(request, timeout=5) as response:
+        with urlopen(request, timeout=5) as response:  # noqa: S310 — OSM_TILE_URL is a fixed https endpoint
             tile_bytes = response.read()
     except (HTTPError, OSError, TimeoutError, URLError):
         return None

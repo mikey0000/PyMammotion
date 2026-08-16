@@ -10,12 +10,11 @@ class RockerControlUtil:
     thresholdValue_3 = 15
 
     def __init__(self) -> None:
-        """Generated source for method __init__."""
+        """Create an empty rocker utility instance."""
 
     @classmethod
     def getInstance(cls):
-        """Return the instance of RockerControlUtil if it exists, otherwise create
-        a new instance.
+        """Return the shared RockerControlUtil instance, creating it on first use.
 
         This method checks if an instance of RockerControlUtil exists. If not,
         it creates a new instance and returns it.
@@ -75,8 +74,7 @@ class RockerControlUtil:
         return [int(math.sin(radians) * d), int(d * math.cos(radians))]
 
     def transfrom2(self, f, f2):
-        """Calculate the transformation of input angles to radians and perform
-        trigonometric calculations.
+        """Convert an input angle to radians and run the trigonometric transform.
 
         This method takes two input parameters, an angle 'f' and a value 'f2',
         and calculates the corresponding radians based on the angle. It then
@@ -131,8 +129,7 @@ class RockerControlUtil:
         return [int(math.sin(radians) * d), int(d * math.cos(radians))]
 
     def transfrom3(self, f, f2):
-        """Calculate the transformation of input angles to radians and perform
-        trigonometric calculations.
+        """Convert an input angle to radians and run the threshold-aware transform.
 
         This method calculates the transformation of input angles to radians
         based on certain threshold values. It then performs trigonometric

@@ -10,7 +10,7 @@ import itertools
 import json
 from json.decoder import JSONDecodeError
 from logging import getLogger
-import random
+import secrets
 import string
 import time
 from typing import TYPE_CHECKING, Any
@@ -149,7 +149,7 @@ class CloudIOTGateway:
     def generate_random_string(length: int) -> str:
         """Generate a random string of specified length."""
         characters = string.ascii_letters + string.digits
-        return "".join(random.choice(characters) for _ in range(length))
+        return "".join(secrets.choice(characters) for _ in range(length))
 
     @staticmethod
     def generate_hardware_string(length: int, seed: str = "") -> str:
@@ -161,7 +161,7 @@ class CloudIOTGateway:
         identity unique; sharing one identity across accounts triggers Aliyun's
         single-connection-per-device eviction and an endless reconnect loop.
         """
-        hashed_uuid = hashlib.sha1(f"{uuid.getnode()}{seed}".encode()).hexdigest()
+        hashed_uuid = hashlib.sha1(f"{uuid.getnode()}{seed}".encode(), usedforsecurity=False).hexdigest()
         return "".join(itertools.islice(itertools.cycle(hashed_uuid), length))
 
     @staticmethod
@@ -856,7 +856,7 @@ class CloudIOTGateway:
         return ShareNoticeListResponse.from_dict(response_body_dict)
 
     async def send_cloud_command(self, iot_id: str, command: bytes) -> str:
-        """Sends a cloud command to a specified IoT device.
+        """Send a cloud command to a specified IoT device.
 
         This function checks if the IoT token is expired and attempts to refresh it if
         possible. It then constructs a request using the provided command and sends it

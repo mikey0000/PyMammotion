@@ -403,7 +403,9 @@ class Transport(ABC):
 
     @property
     def is_rate_limited(self) -> bool:
-        """True when a send is currently blocked, from either of two independent sources:
+        """Report whether a send is currently blocked.
+
+        Blocking comes from either of two independent sources:
 
         * **Cloud-imposed ban** — the cloud returned 429; ``set_rate_limited()`` set a fixed
           ``_RATE_LIMIT_DURATION`` timer that has not yet expired.
@@ -422,7 +424,7 @@ class Transport(ABC):
 
     @staticmethod
     def _version_is_rate_limited(firmware_version: str) -> bool:
-        """True when *firmware_version* predates the migration to the Mammotion MQTT broker.
+        """Report whether *firmware_version* predates the migration to the Mammotion MQTT broker.
 
         An unknown/unparseable version (e.g. "" before the first update-check frame)
         is treated as pre-migration so the rate-limit gate stays engaged rather than

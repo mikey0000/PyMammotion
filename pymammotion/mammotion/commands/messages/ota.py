@@ -46,9 +46,9 @@ class MessageOta(AbstractMessage, ABC):
         return self.send_order_msg_ota(todev_get_info_req)
 
     def get_device_info_new(self) -> bytes:
-        """New device call for OTA upgrade information."""
+        """Request OTA upgrade information using the newer device call."""
         todev_get_info_req = MctlOta(todev_get_info_req=GetInfoReq(type=InfoType.IT_BASE))
-        _LOGGER.debug("Send to get OTA upgrade information", "Get device information")
+        _LOGGER.debug("Send command to get device information")
         return self.send_order_msg_ota(todev_get_info_req)
 
     # === Swimming pool device OTA (Spino) ===

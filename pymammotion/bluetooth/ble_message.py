@@ -9,7 +9,7 @@ from typing import Any
 
 from bleak import BleakClient
 
-from pymammotion.aliyun.tmp_constant import tmp_constant
+from pymammotion.aliyun.tmp_constant import TmpConstant
 from pymammotion.bluetooth.const import UUID_WRITE_CHARACTERISTIC
 from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
@@ -329,13 +329,10 @@ class BleMessage:
         jSONObject: dict[str, Any] = {}
         try:
             jSONObject["cmd"] = cmd
-            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
-            jSONObject2: dict[str, int] = {}
-            for key, value in hash_map.items():
-                jSONObject2[key] = value
-            jSONObject["params"] = jSONObject2
+            jSONObject[TmpConstant.REQUEST_ID] = int(time.time())
+            jSONObject["params"] = dict(hash_map)
             return json.dumps(jSONObject)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — a command we cannot encode is skipped, not fatal
             _LOGGER.debug("Failed to build JSON command string: %s", e)
             return ""
 
@@ -422,7 +419,7 @@ class BleMessage:
 
             self.notification.addData(dataBytes, data_offset)
             return 1 if frameCtrlData.hasFrag() else 0
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — a malformed notification resets the buffer
             _LOGGER.debug(e)
             self.clear_notification()
             return -100
@@ -485,9 +482,9 @@ class BleMessage:
         jSONObject = {}
         try:
             jSONObject["cmd"] = cmd
-            jSONObject[tmp_constant.REQUEST_ID] = int(time.time())
+            jSONObject[TmpConstant.REQUEST_ID] = int(time.time())
             return json.dumps(jSONObject)
-        except Exception:
+        except Exception:  # noqa: BLE001 — a command we cannot encode is skipped, not fatal
             return ""
 
     def current_milli_time(self) -> int:
@@ -509,7 +506,7 @@ class BleMessage:
         try:
             ack = self.mAck.get()
             return ack == expectAck
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 — a failed ack read is reported as a mismatch
             _LOGGER.debug(err)
             return False
 
@@ -538,7 +535,7 @@ class BleMessage:
             await self.post(self.mEncrypted, self.mChecksum, self.mRequireAck, type_val, data)
             # int status = suc ? 0 : BlufiCallback.CODE_WRITE_DATA_FAILED
             # onPostCustomDataResult(status, data)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 — any post failure resets the sequence and continues
             _LOGGER.debug(err)
             # we might be constantly connected and in a bad state
             self.mSendSequence = AtomicInteger(-1)

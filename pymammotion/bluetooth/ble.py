@@ -55,11 +55,11 @@ class MammotionBLE:
         return False
 
     async def notification_handler(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
-        """Simple notification handler which prints the data received."""
+        """Forward an inbound GATT notification to the BLE event handler."""
         await self._bleEvt.BleNotification(data)
 
     def service_changed_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
-        """Simple notification handler which prints the data received."""
+        """Log a service-changed notification from the device."""
         _logger.debug("Service changed %s: %s", characteristic.description, data)
         _logger.debug("Service changed decoded: %s", data.decode("utf-8"))
         # BlufiNotifyData
@@ -72,5 +72,5 @@ class MammotionBLE:
             await self.client.start_notify(SERVICE_CHANGED_CHARACTERISTIC, self.service_changed_handler)
 
     def get_client(self) -> BleakClient:
-        """Returns the ble client."""
+        """Return the underlying bleak client."""
         return self.client

@@ -186,7 +186,7 @@ class MowPathSaga(Saga):
                     send_timeout=self.step_timeout,
                 )
                 route_frame = self.extract_nav_frame(response, "bidire_reqconver_path")
-                assert route_frame is not None  # send_and_wait already matched this field
+                assert route_frame is not None  # noqa: S101 — send_and_wait already matched this field
                 self._route_val = route_frame[1]
                 _logger.debug(
                     "MowPathSaga: route confirmed — sub_cmd=%d  path_hash=%d",
@@ -278,7 +278,7 @@ class MowPathSaga(Saga):
                     frame_response = await self._next_frame(path_queue, "cover_path_upload")
 
                     path_frame = self.extract_nav_frame(frame_response, "cover_path_upload")
-                    assert path_frame is not None  # the collector already filtered on this field
+                    assert path_frame is not None  # noqa: S101 — the collector already filtered on this field
                     mow_path = MowPath.from_dict(path_frame[1].to_dict(casing=betterproto2.Casing.SNAKE))
 
                     if mow_path.transaction_id not in current_run_tx_ids:

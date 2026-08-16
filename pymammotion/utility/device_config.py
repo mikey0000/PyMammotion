@@ -2610,7 +2610,7 @@ class DeviceConfig:
 
     @staticmethod
     def get_best_default(product_key: str) -> DeviceLimits:
-        """Basic fallback if device is offline."""
+        """Return the best-guess limits for a product key, used while the device is offline."""
 
         if DeviceType.contain_luba_product_key(product_key):
             return DeviceLimits.from_dict(default_luba_config)

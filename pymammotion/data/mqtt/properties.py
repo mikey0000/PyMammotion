@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -132,25 +132,25 @@ class OTAProgressItems(DataClassORJSONMixin):
     properties: str
 
 
-ItemTypes = Union[
-    BatteryPercentageItems,
-    BMSHardwareVersionItems,
-    CoordinateItems,
-    DeviceStateItems,
-    DeviceVersionItems,
-    DeviceVersionInfoItems,
-    ESP32VersionItems,
-    LeftMotorBootVersionItems,
-    LeftMotorVersionItems,
-    MCBootVersionItems,
-    NetworkInfoItems,
-    RightMotorBootVersionItems,
-    RightMotorVersionItems,
-    RTKVersionItems,
-    StationRTKVersionItems,
-    STM32H7VersionItems,
-    OTAProgressItems,
-]
+ItemTypes = (
+    BatteryPercentageItems
+    | BMSHardwareVersionItems
+    | CoordinateItems
+    | DeviceStateItems
+    | DeviceVersionItems
+    | DeviceVersionInfoItems
+    | ESP32VersionItems
+    | LeftMotorBootVersionItems
+    | LeftMotorVersionItems
+    | MCBootVersionItems
+    | NetworkInfoItems
+    | RightMotorBootVersionItems
+    | RightMotorVersionItems
+    | RTKVersionItems
+    | StationRTKVersionItems
+    | STM32H7VersionItems
+    | OTAProgressItems
+)
 
 
 @dataclass

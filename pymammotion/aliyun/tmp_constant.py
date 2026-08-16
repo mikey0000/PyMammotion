@@ -1,4 +1,4 @@
-class tmp_constant:
+class TmpConstant:
     """Namespace of Aliyun IoT protocol constants used across the linkkit/cloud stack."""
 
     ALGECC = "ecc"

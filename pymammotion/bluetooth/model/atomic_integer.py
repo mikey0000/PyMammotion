@@ -46,7 +46,7 @@ class AtomicInteger:
             return False
 
     def __str__(self) -> str:
-        """Returns string representation of the atomic integer."""
+        """Return the string representation of the atomic integer."""
         return str(self.get())
 
     def __repr__(self) -> str:

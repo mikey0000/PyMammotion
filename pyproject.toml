@@ -406,7 +406,7 @@ markers = [
 
 [tool.ruff]
 required-version = ">=0.4.3"
-exclude = ['pymammotion/proto/*', 'tests/*', "scripts"]
+exclude = ['pymammotion/proto/*', 'tests/*', "scripts", "examples", ".claude"]
 line-length = 120
 
 [tool.ruff.lint]
@@ -477,6 +477,12 @@ ignore = [
     "N803", # invalid argument name
     "N806", # non-lowercase variable in function
     "N815", # mixed-case variable in class scope
+    "A002", # builtin-shadowing argument (`type`, `hash` are protobuf field names)
+
+    # Public names that can't change without breaking HA-Luba and every other
+    # consumer pinned to the published API.
+    "A005", # module shadows a stdlib module (`pymammotion.http`)
+    "N818", # exception name without an `Error` suffix (`DeviceOfflineException`, …)
 
     # Docstring presence / cosmetic style. Per #6 discussion: D102 and D103
     # remain enforced (docstrings required on every function and method);
@@ -496,6 +502,13 @@ ignore = [
     "ANN204", # missing return type for special method
     "ANN205", # missing return type for static method
     "ANN206", # missing return type for classmethod
+
+    # Deadlines are passed as `timeout` parameters throughout the transport and
+    # saga layers (`wait_until_connected`, `ack_stream`, `indexed_fetch`, …), and
+    # some `timeout` args are wire fields rather than asyncio deadlines at all
+    # (`request_iot_sys`).  Wrapping every caller in `asyncio.timeout` instead
+    # would change public API for no behavioural gain.
+    "ASYNC109", # async function definition with a `timeout` parameter
 
     # Style preferences with no safety value.
     "G004",   # logging f-string (modern Python; equivalent perf)

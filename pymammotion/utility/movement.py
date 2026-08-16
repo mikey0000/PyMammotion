@@ -2,6 +2,7 @@ from .rocker_util import RockerControlUtil
 
 
 def transform_both_speeds(linear: float, angular: float, linear_percent: float, angular_percent: float):
+    """Convert joystick angle/percent pairs into the device's linear and angular speed values."""
     transfrom3 = RockerControlUtil.getInstance().transfrom3(linear, linear_percent)
     transform4 = RockerControlUtil.getInstance().transfrom3(angular, angular_percent)
 
@@ -12,6 +13,7 @@ def transform_both_speeds(linear: float, angular: float, linear_percent: float, 
 
 
 def get_percent(percent: float):
+    """Apply the 15% joystick dead zone, returning 0 below it."""
     if percent <= 15.0:
         return 0.0
 

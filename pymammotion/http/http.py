@@ -10,7 +10,7 @@ import hmac
 from http import HTTPStatus
 import json
 import logging
-import random
+import secrets
 import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -166,10 +166,11 @@ def create_oauth_signature(
 
     # Create MD5 hash of client secret
     try:
-        md5_hash = hashlib.md5(client_secret.encode("utf-8")).digest()
+        # MD5 is fixed by the Mammotion oauth signature scheme; the server rejects anything else.
+        md5_hash = hashlib.md5(client_secret.encode("utf-8")).digest()  # noqa: S324
         # Convert to hex string
         hashed_secret = md5_hash.hex()
-    except Exception:
+    except Exception:  # noqa: BLE001 — an unsignable secret yields an empty hash, rejected upstream
         hashed_secret = ""
 
     # Sign with HMAC-SHA256
@@ -222,7 +223,7 @@ class MammotionHTTP:
         # Add this method to generate a 10-digit random number
         def get_10_random() -> str:
             """Generate a 10-digit random number as a string."""
-            return "".join([str(random.randint(0, 9)) for _ in range(7)])
+            return "".join([str(secrets.randbelow(10)) for _ in range(7)])
 
         # Replace the line in the __init__ method with:
         self.client_id = f"{int(time.time() * 1000)}_{get_10_random()}_1"
@@ -499,7 +500,7 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_all_error_codes(self) -> dict[str, ErrorInfo]:
-        """Retrieves and parses all error codes from the MAMMOTION API."""
+        """Retrieve and parse all error codes from the MAMMOTION API."""
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_API_DOMAIN}/user-server/v1/code/record/export-data",
@@ -638,7 +639,7 @@ class MammotionHTTP:
     @refresh_token_decorator
     async def get_stream_subscription(self, iot_id: str, is_yuka: bool) -> Response[StreamSubscriptionResponse]:
         # Prepare the payload with cameraStates based on is_yuka flag
-        """Fetches stream subscription data for a given IoT device."""
+        """Fetch stream subscription data for a given IoT device."""
 
         payload = {"deviceId": iot_id, "mode": 0, "cameraStates": []}
 
@@ -707,7 +708,7 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
-        """Checks device firmware versions for a list of IoT IDs."""
+        """Check device firmware versions for a list of IoT IDs."""
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/devices/version/check",
@@ -734,7 +735,7 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def start_ota_upgrade(self, iot_id: str, version: str) -> Response[str]:
-        """Initiates an OTA upgrade for a device."""
+        """Initiate an OTA upgrade for a device."""
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/ota/device/upgrade",
@@ -759,7 +760,7 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_rtk_devices(self) -> Response[list[RTK]]:
-        """Fetches stream subscription data from agora.io for a given IoT device."""
+        """Fetch stream subscription data from agora.io for a given IoT device."""
         async with self._client_session() as session:
             resp = await session.get(
                 f"{MAMMOTION_API_DOMAIN}/device-server/v1/rtk/devices",
@@ -825,7 +826,7 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_user_shared_device_page(self) -> Response[ShareRecords]:
-        """Fetches pending share invitations for the current user."""
+        """Fetch pending share invitations for the current user."""
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_API_DOMAIN}/user-server/v1/share/device/page",
@@ -877,7 +878,7 @@ class MammotionHTTP:
 
     @refresh_token_decorator
     async def get_user_device_page(self) -> Response[DeviceRecords]:
-        """Fetches device list for a user, is either new API or for newer devices."""
+        """Fetch the device list for a user, from either the new API or the newer-device API."""
         async with self._client_session() as session:
             resp = await session.post(
                 f"{self.jwt_info.iot}/v1/user/device/page",
@@ -949,7 +950,7 @@ class MammotionHTTP:
                     "User-Agent": "okhttp/4.9.3",
                     "Client-Id": self.client_id,
                     "Client-Type": "1",
-                    "Request-Id": "".join([str(random.randint(0, 9)) for _ in range(21)]),
+                    "Request-Id": "".join([str(secrets.randbelow(10)) for _ in range(21)]),
                     "Accept-Language": "en-US",
                     "L-T-Z": f"{int(time.time())}/0/0",
                 },
@@ -1003,7 +1004,7 @@ class MammotionHTTP:
                 await self.on_login_refreshed()
 
     async def login(self, account: str, password: str) -> Response[LoginResponseData]:
-        """Logs in to the service using provided account and password."""
+        """Log in to the service using the provided account and password."""
         self.account = account
         self._password = password
         async with self._client_session() as session:
@@ -1078,7 +1079,7 @@ class MammotionHTTP:
             login_req=refresh_request,
             client_id=MAMMOTION_OAUTH2_CLIENT_ID,
             client_secret=MAMMOTION_OAUTH2_CLIENT_SECRET,
-            token_endpoint="/oauth2/token",
+            token_endpoint="/oauth2/token",  # noqa: S106 — a URL path, not a credential
             timestamp=timestamp,
         )
 
@@ -1181,7 +1182,7 @@ class MammotionHTTP:
             login_req=login_request,
             client_id=MAMMOTION_OAUTH2_CLIENT_ID,
             client_secret=MAMMOTION_OAUTH2_CLIENT_SECRET,
-            token_endpoint="/oauth2/token",
+            token_endpoint="/oauth2/token",  # noqa: S106 — a URL path, not a credential
             timestamp=timestamp,
         )
 

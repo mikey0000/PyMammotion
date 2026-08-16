@@ -206,7 +206,7 @@ class MQTTTransport(Transport):
             if self._client is not None:
                 try:
                     await self._client.subscribe(topic)
-                except Exception:
+                except Exception:  # noqa: BLE001 — reconnect re-subscribes, so a live failure is noise
                     _logger.debug("add_topic: live subscribe failed (will retry on reconnect)", exc_info=True)
 
     def register_device(self, product_key: str, device_name: str, iot_id: str) -> None:
@@ -412,7 +412,7 @@ class MQTTTransport(Transport):
                 await self._give_up(rle)
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
                 return
-            except Exception:
+            except Exception:  # noqa: BLE001 — only ReLoginRequiredError is terminal here
                 _logger.warning("Pre-connect credential refresh failed (transient?)", exc_info=True)
 
             try:
@@ -464,7 +464,7 @@ class MQTTTransport(Transport):
                             )
                             await self._give_up(rle)
                             return
-                        except Exception:
+                        except Exception:  # noqa: BLE001 — only ReLoginRequiredError is terminal here
                             # Transient refresh failure (network) — back off and
                             # retry without giving up.
                             _logger.warning("Forced credential refresh failed (transient?)", exc_info=True)
@@ -621,7 +621,7 @@ class MQTTTransport(Transport):
         try:
             msg = MammotionPropertiesMessage.from_json(raw)
             await self.on_device_mammotion_properties(iot_id, msg)
-        except Exception:
+        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
             _logger.debug("MQTTTransport: failed to parse property/post on %s: %s", topic, raw, exc_info=True)
 
     async def _dispatch_mammotion_event(self, topic: str, raw: bytes) -> None:

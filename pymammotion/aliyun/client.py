@@ -131,7 +131,7 @@ class Client:
                 if TeaCore.is_retryable(e):
                     _last_exception = e
                     continue
-                raise e
+                raise
         raise UnretryableException(_last_request, _last_exception)  # type: ignore
 
     def get_user_agent(self) -> str:

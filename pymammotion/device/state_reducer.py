@@ -153,7 +153,7 @@ class MowerStateReducer(StateReducer):
     monolithic StateReducer.
     """
 
-    def apply(self, current: MowingDevice, message: LubaMsg) -> MowingDevice:  # type: ignore
+    def apply(self, current: MowingDevice, message: LubaMsg) -> MowingDevice:  # type: ignore  # noqa: C901
         """Apply a decoded LubaMsg to the current state, return updated state.
 
         Uses selective deep-copying: only the sub-trees that a given message type
@@ -243,10 +243,7 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case (
-                        "bidire_comm_cmd"
-                        | "todev_time_ctrl_light"
-                        | "toapp_lora_cfg_rsp"
-                        | "device_product_type_info"
+                        "bidire_comm_cmd" | "todev_time_ctrl_light" | "toapp_lora_cfg_rsp" | "device_product_type_info"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -351,7 +348,7 @@ class MowerStateReducer(StateReducer):
             area_names.append(AreaHashNameList(name=name, hash=hash_id))
         return area_names
 
-    def _update_nav_data(self, device: MowingDevice, message: LubaMsg) -> None:
+    def _update_nav_data(self, device: MowingDevice, message: LubaMsg) -> None:  # noqa: C901
         """Update navigation data fields on *device* in-place."""
         # Pool cleaners (Spino) reuse the LubaMsg envelope but do not have a
         # GNSS RTK origin or a lat/lon dock. Generating GeoJSON from a (0,0)
@@ -690,7 +687,7 @@ class MowerStateReducer(StateReducer):
                     device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
                     device.mower_state.lamp_info.night_light = lamp_resp.lamp_ctrl == LampCtrlSta.power_ctrl_on
 
-    def apply_properties(self, current: MowingDevice, properties: ThingPropertiesMessage) -> MowingDevice:  # type: ignore
+    def apply_properties(self, current: MowingDevice, properties: ThingPropertiesMessage) -> MowingDevice:  # type: ignore  # noqa: C901
         """Extract mower state from a thing/properties JSON push.
 
         Mirrors the mapping in :meth:`MowerDevice.update_device_firmwares` for

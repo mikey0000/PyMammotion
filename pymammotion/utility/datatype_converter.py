@@ -8,8 +8,7 @@ class DatatypeConverter:
 
     @staticmethod
     def init_encode_map():
-        """Initialize the encode map for DatatypeConverter if it is not already
-        initialized.
+        """Initialize the encode map for DatatypeConverter if not already initialized.
 
         This function initializes the encode map for DatatypeConverter by
         creating a list of 64 elements and populating it with characters for

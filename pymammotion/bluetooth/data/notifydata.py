@@ -4,7 +4,7 @@ from io import BytesIO
 
 
 class BlufiNotifyData:
-    """generated source for class BlufiNotifyData."""
+    """Accumulator for a fragmented BluFi notification frame."""
 
     def __init__(self) -> None:
         self.mDataOS = BytesIO()
@@ -14,49 +14,49 @@ class BlufiNotifyData:
         self.mTypeValue = 0
 
     def getType(self):
-        """Generated source for method getType."""
+        """Return the BluFi frame type value."""
         return self.mTypeValue
 
     #  JADX INFO: Access modifiers changed from: package-private
     def setType(self, i) -> None:
-        """Generated source for method setType."""
+        """Set the BluFi frame type value."""
         self.mTypeValue = i
 
     #  JADX INFO: Access modifiers changed from: package-private
     def getPkgType(self):
-        """Generated source for method getPkgType."""
+        """Return the BluFi package type."""
         return self.mPkgType
 
     #  JADX INFO: Access modifiers changed from: package-private
     def setPkgType(self, i) -> None:
-        """Generated source for method setPkgType."""
+        """Set the BluFi package type."""
         self.mPkgType = i
 
     #  JADX INFO: Access modifiers changed from: package-private
     def getSubType(self):
-        """Generated source for method getSubType."""
+        """Return the BluFi frame subtype."""
         return self.mSubType
 
     #  JADX INFO: Access modifiers changed from: package-private
     def setSubType(self, i) -> None:
-        """Generated source for method setSubType."""
+        """Set the BluFi frame subtype."""
         self.mSubType = i
 
     def getFrameCtrl(self):
-        """Generated source for method getFrameCtrl."""
+        """Return the BluFi frame-control byte."""
         return self.mFrameCtrlValue
 
     #  JADX INFO: Access modifiers changed from: package-private
     def setFrameCtrl(self, i) -> None:
-        """Generated source for method setFrameCtrl."""
+        """Set the BluFi frame-control byte."""
         self.mFrameCtrlValue = i
 
     #  JADX INFO: Access modifiers changed from: package-private
     def addData(self, bArr, i) -> None:
-        """Generated source for method addData."""
+        """Append the payload of a fragment, skipping the first ``i`` header bytes."""
         self.mDataOS.write(bArr[i:])
 
     #  JADX INFO: Access modifiers changed from: package-private
     def getDataArray(self) -> bytes:
-        """Generated source for method getDataArray."""
+        """Return the reassembled payload accumulated from all fragments."""
         return self.mDataOS.getvalue()

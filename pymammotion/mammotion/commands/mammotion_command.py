@@ -33,21 +33,19 @@ class MammotionCommand(
 
     def read_write_device(self, rw_id: int, context: int, rw: int) -> bytes:
         """Dispatch a read/write device command, routing to the X3 adapter for Luba Pro devices."""
-        if (
-            rw_id == 6 or rw_id == 3 or rw_id == 7 or rw_id == 8 or rw_id == 10 or rw_id == 11
-        ) and DeviceType.is_luba_pro(self.get_device_name()):
+        if rw_id in (3, 6, 7, 8, 10, 11) and DeviceType.is_luba_pro(self.get_device_name()):
             return self.allpowerfull_rw_adapter_x3(rw_id, context, rw)
         return self.allpowerfull_rw(rw_id, context, rw)
 
     def traverse_mode(self, context: int) -> bytes:
-        """Sets the traversal mode back to charger."""
+        """Set the traversal mode back to charger."""
         # setReChargeMode
         # 0 direct
         # 1 follow the perimeter
         return self.read_write_device(7, context, 1)
 
     def turning_mode(self, context: int) -> bytes:
-        """Sets the traversal mode back to charger."""
+        """Set the traversal mode back to charger."""
         # setTurnAroundMode
         # 0 zero turn
         # 1 multipoint turn
