@@ -159,9 +159,9 @@ Device variants (25+): `pymammotion/utility/device_type.py` — `DeviceType.has_
 
 ## APK Reference Source
 
-Decompiled APK source (Mammotion 2.2.4.13) is available at:
+Decompiled APK source (Mammotion 2.3.18.21) is available at:
 ```
-/home/michael/Downloads/Mammotion_2.2.4.13_APKPure/com.agilexrobotics/java_src/com/agilexrobotics/
+/home/michael/Downloads/Mammotion_2.3.18.21/com.agilexrobotics/java_src/com/agilexrobotics/
 ```
 
 Decompiled APK source (Mammotion 2.3.8.201) is available at:
@@ -213,3 +213,10 @@ Before adding code, look for what's already there. The architecture is layered a
 **When proposing changes, lead with the audit.** "Where does this concern live today? Can the existing site cover the new requirement?" If the answer is yes, extend the existing site. If no, explain why a new site is needed and where it sits in the architecture before writing.
 
 **When fixing bugs, fix the root, not the symptom.** If a check is missing in three places, the right fix is usually one centralized check (a property, a helper, a base-class method), not three copies. The `has_usable_transport` consolidation is the canonical example: one property replaced loose offline gates scattered across `send_command_with_args`, `_mqtt_activity_loop`, and the queue's warning bucket.
+
+## Good practices
+
+- When validation guarantees a dict key exists, prefer direct key access (`data["key"]`) instead of `.get("key")` so contract violations are surfaced instead of silently masked.
+- Keep comments concise. Prefer one short line stating the non-obvious constraint, or no comment at all.
+- Do not add comments that just restate the code on the following line(s) (e.g. `# Check if initialized` above `if self.initialized:`). Comments should only explain why (non-obvious constraints, surprising behavior, or workarounds), never what. Never add comments that justify a change by referencing what the code looked like before. Comments in tests that explain why a function call or assertion is made are ok.
+- Do not add section or divider comments (e.g. `# --- XYZ Triggers ---`) inside or outside of functions, since those can easily become stale and be misleading.

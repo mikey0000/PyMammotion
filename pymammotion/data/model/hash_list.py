@@ -569,10 +569,14 @@ class HashList(DataClassORJSONMixin):
         # O(A²) next()/comprehension-per-area pattern.
         area_name_list: list[AreaHashNameList] = [AreaHashNameList(name=a.name, hash=a.hash) for a in self.area_name]
         by_hash: dict[int, AreaHashNameList] = {a.hash: a for a in area_name_list}
+        # Only a name belonging to a live area reserves its number.  ``update_hash_lists``
+        # deliberately keeps orphaned ``area_name`` entries (hash no longer in ``self.area``),
+        # so any map edit leaves the pre-edit fallback names behind — counting those would
+        # renumber every surviving area past them ("Area 1-3" → "Area 4-6").
         used_numbers: set[int] = {
             int(a.name.split()[-1])
             for a in area_name_list
-            if a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
+            if a.hash in self.area and a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
         }
         next_n = 1
 

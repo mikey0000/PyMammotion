@@ -7,6 +7,7 @@ import csv
 from functools import wraps
 import hashlib
 import hmac
+from http import HTTPStatus
 import json
 import logging
 import random
@@ -510,6 +511,9 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to fetch error codes. Status code: %s, %s", resp.status, data)
+                    return {}
                 reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
                 codes = {}
                 for row in reader:
@@ -586,9 +590,12 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
                 _LOGGER.debug("pair_devices_mqtt response: %s", data)
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to pair devices. Status code: %s, %s", resp.status, data)
+                    return Response(code=resp.status, msg="pair devices failed")
                 return Response.from_dict(data)
 
-        return Response(code=200, msg="success")
+        return Response(code=resp.status, msg="success")
 
     @refresh_token_decorator
     async def unpair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
@@ -602,9 +609,12 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
                 _LOGGER.debug("unpair_devices_mqtt response: %s", data)
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to unpair devices. Status code: %s, %s", resp.status, data)
+                    return Response(code=resp.status, msg="unpair devices failed")
                 return Response.from_dict(data)
 
-        return Response(code=200, msg="success")
+        return Response(code=resp.status, msg="success")
 
     @refresh_token_decorator
     async def net_rtk_enable(self, device_id: str) -> Response:
@@ -618,9 +628,12 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
                 _LOGGER.debug("net_rtk_enable response: %s", data)
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to enable net RTK. Status code: %s, %s", resp.status, data)
+                    return Response(code=resp.status, msg="net rtk enable failed")
                 return Response.from_dict(data)
 
-        return Response(code=200, msg="success")
+        return Response(code=resp.status, msg="success")
 
     @refresh_token_decorator
     async def get_stream_subscription(self, iot_id: str, is_yuka: bool) -> Response[StreamSubscriptionResponse]:
@@ -685,9 +698,12 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to fetch video resource. Status code: %s, %s", resp.status, data)
+                    return Response(code=resp.status, msg="get video resource failed")
                 return response_factory(Response[VideoResourceResponse], data)
 
-        return Response(code=200, msg="success")
+        return Response(code=resp.status, msg="success")
 
     @refresh_token_decorator
     async def get_device_ota_firmware(self, iot_ids: list[str]) -> Response[list[CheckDeviceVersion]]:
@@ -707,8 +723,12 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
+
                 # TODO catch errors from mismatch like token expire etc
-                return response_factory(Response[list[CheckDeviceVersion]], data)
+                if resp.status == HTTPStatus.OK.value:
+                    return response_factory(Response[list[CheckDeviceVersion]], data)
+                _LOGGER.warning("Failed to fetch OTA firmware info. Status code: %s, %s", resp.status, data)
+                return Response(code=resp.status, msg="get ota firmware failed", data=[])
 
         return Response(code=200, msg="success", data=[])
 
@@ -730,6 +750,9 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
                 # TODO catch errors from mismatch like token expire etc
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to start OTA upgrade. Status code: %s, %s", resp.status, data)
+                    return Response(code=resp.status, msg="start ota upgrade failed")
                 return response_factory(Response[str], data)
 
         return Response(code=200, msg="success")
@@ -748,7 +771,10 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 data = await resp.json()
-                return response_factory(Response[list[RTK]], data)
+                if resp.status == HTTPStatus.OK.value:
+                    return response_factory(Response[list[RTK]], data)
+                _LOGGER.warning("Failed to fetch RTK devices. Status code: %s, %s", resp.status, data)
+                return Response(code=resp.status, msg="get rtk devices failed", data=[])
 
         return Response(code=200, msg="success", data=[])
 
@@ -787,6 +813,9 @@ class MammotionHTTP:
                     _token_fingerprint(self._login_info.access_token if self._login_info else None),
                 )
                 raise UnauthorizedExceptionError("Access Token expired")
+            if resp.status != HTTPStatus.OK.value:
+                _LOGGER.warning("Failed to fetch user device list. Status code: %s, %s", resp.status, resp_dict)
+                return Response(code=resp.status, msg="get device list failed", data=[])
             if resp_dict:
                 response = response_factory(Response[list[DeviceInfo]], resp_dict)
                 self.device_info = response.data if response.data else self.device_info
@@ -810,6 +839,9 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 resp_dict = await resp.json()
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to fetch shared devices. Status code: %s, %s", resp.status, resp_dict)
+                    return Response(code=resp.status, msg="get shared device page failed")
                 response = response_factory(Response[ShareRecords], resp_dict)
                 self.devices_shared_info = response.data if response.data else self.devices_shared_info
                 return response
@@ -836,6 +868,9 @@ class MammotionHTTP:
             )
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 resp_dict = await resp.json()
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to confirm share. Status code: %s, %s", resp.status, resp_dict)
+                    return Response(code=resp.status, msg="confirm share failed")
                 return response_factory(Response[dict | bool], resp_dict)
 
         return Response(code=200, msg="success")

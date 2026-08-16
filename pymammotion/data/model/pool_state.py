@@ -68,15 +68,27 @@ class SpinoSysStatus(UnknownTolerantIntEnum):
 class SpinoWorkMode(UnknownTolerantIntEnum):
     """Cleaning mode reported in ``dev_statue_t.work_mode`` and sent to start a job.
 
-    Values mirror the ``SwimmingSPWorkModule`` / ``SwimmingWorkModule`` Java
-    enums (1-6; -1 = unknown). ``RECHARGE`` (0) is the proto ``APP_WORK.IDLE``
-    value: starting a job with module ``0`` (``startPC210SwimmingConmand(.., 0,
-    ..)``) is how the app's RECHARGE button sends the cleaner back to charge.
-    ``CUSTOM`` (6) is SP-variant only.
+    Values 1-6 mirror the ``SwimmingSPWorkModule`` / ``SwimmingWorkModule`` Java
+    enums; -1 is their ``UKNOWN_WORK`` sentinel.
+
+    ``0`` means different things per direction, so it has two names for one value:
+
+    * **Reported** — no mode is active.  Neither Java enum defines a 0 member, so
+      ``valueof(0)`` falls through to ``UKNOWN_WORK`` and the app's
+      ``refreshMode()`` re-enables every mode button with none selected — i.e.
+      the cleaner is idle, not "recharging".  A docked Spino sends ``work_mode``
+      unset (proto3 default 0) on most heartbeats, so this is the common case.
+    * **Commanded** — ``APP_WORK.IDLE``: starting a job with module ``0``
+      (``startPC210SwimmingConmand(.., 0, ..)``) is how the app's RECHARGE button
+      sends the cleaner back to charge.
+
+    ``OFF`` is declared first so a reported 0 resolves to it; ``RECHARGE`` is an
+    alias kept for readability at command sites.
     """
 
     UNKNOWN = -1
-    RECHARGE = 0  # APP_WORK.IDLE — start with module 0 triggers return-to-charge
+    OFF = 0
+    RECHARGE = 0  # alias of OFF — APP_WORK.IDLE, sent to trigger return-to-charge
     AUTO = 1  # "ALL"
     FLOOR = 2  # "FLOOR"
     WALL = 3  # "WALL"
@@ -193,9 +205,14 @@ class PoolState(DataClassORJSONMixin):
 
     # --- Runtime status (DevStatueT) ---------------------------------------
     sys_status: SpinoSysStatus = SpinoSysStatus.IDLE
-    work_mode: SpinoWorkMode = SpinoWorkMode.AUTO
+    work_mode: SpinoWorkMode = SpinoWorkMode.OFF
     battery: int = 0
     """Battery percentage (0-100). Mirrors ``dev_statue_t.bat_val``."""
+    charging: bool = False
+    """True while the cleaner draws charge. Mirrors ``dev_statue_t.charge_status``,
+    which the app treats as a flag (``charge_status != 0`` → charging battery icon
+    and the charging bubble), not as the mower-style 0/1/2 code.  Independent of
+    :attr:`sys_status` — a Spino reports ``CHARGING`` only while actively docking."""
     wifi_rssi: int = 0
     ble_rssi: int = 0
     wifi_connected: bool = False

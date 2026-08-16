@@ -14,6 +14,8 @@ generate_geojson.py); saga/state-reducer flows live in their own modules.
 
 from __future__ import annotations
 
+import json
+
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     FrameList,
@@ -247,10 +249,14 @@ class TestAreaNameHashesNotInArea:
 
 
 class TestGapFillNumbering:
+    """Only names held by a live area reserve their number, so every "Area N"
+    used here belongs to a hash that is also present in ``self.area``.
+    """
+
     def test_gap_filled_when_area_1_and_area_3_present(self) -> None:
         """When 'Area 1' and 'Area 3' exist, next unnamed gets 'Area 2'."""
         hl = _make_hash_list(
-            area={10: _make_empty_frame_list()},
+            area={1: _make_empty_frame_list(), 3: _make_empty_frame_list(), 10: _make_empty_frame_list()},
             area_name=[
                 AreaHashNameList(name="Area 1", hash=1),
                 AreaHashNameList(name="Area 3", hash=3),
@@ -262,7 +268,7 @@ class TestGapFillNumbering:
 
     def test_next_after_1_and_2_is_3(self) -> None:
         hl = _make_hash_list(
-            area={10: _make_empty_frame_list()},
+            area={1: _make_empty_frame_list(), 2: _make_empty_frame_list(), 10: _make_empty_frame_list()},
             area_name=[
                 AreaHashNameList(name="Area 1", hash=1),
                 AreaHashNameList(name="Area 2", hash=2),
@@ -276,6 +282,7 @@ class TestGapFillNumbering:
         """Two unnamed areas fill the two lowest available gaps."""
         hl = _make_hash_list(
             area={
+                2: _make_empty_frame_list(),
                 10: _make_empty_frame_list(),
                 20: _make_empty_frame_list(),
             },
@@ -628,3 +635,194 @@ class TestComputedAreasAfterEdit:
         by_hash = {a.hash: a.name for a in hl.computed_areas}
         assert by_hash == {999: "Backyard part 1"}
         assert 111 not in by_hash
+
+
+# ---------------------------------------------------------------------------
+# computed_areas — orphaned area_name entries must not reserve auto-numbers
+# ---------------------------------------------------------------------------
+
+
+class TestOrphanAreaNamesDoNotReserveNumbers:
+    """``update_hash_lists`` deliberately keeps ``area_name`` entries whose hash
+    is no longer in ``self.area``.  Those orphans are display-harmless, but they
+    must not consume "Area N" numbers: a device that re-hashes its areas (any
+    map edit) leaves the old fallback names behind, and every surviving area
+    would then be renumbered past them.
+    """
+
+    # Real hashes + fallback names from a Luba 3 whose three areas displayed as
+    # "Area 4/5/6" after the device re-hashed them.
+    _STALE_NAMES = (
+        ("area 1", 507072516911571140),
+        ("area 2", 1231479802544112924),
+        ("area 3", 2094378125895869177),
+    )
+
+    def _rehashed(self) -> HashList:
+        """Persisted names for the pre-edit hashes; area holds the post-edit ones."""
+        return _make_hash_list(
+            area={111: _make_empty_frame_list(), 222: _make_empty_frame_list(), 333: _make_empty_frame_list()},
+            area_name=[AreaHashNameList(name=n, hash=h) for n, h in self._STALE_NAMES],
+        )
+
+    def test_live_areas_numbered_from_one(self) -> None:
+        live = {a.hash: a.name for a in self._rehashed().computed_areas if a.hash in {111, 222, 333}}
+        assert live == {111: "Area 1", 222: "Area 2", 333: "Area 3"}
+
+    def test_orphan_names_still_returned(self) -> None:
+        """Orphans stay in the result — dropping them races with an in-flight fetch."""
+        by_hash = {a.hash: a.name for a in self._rehashed().computed_areas}
+        for name, hash_id in self._STALE_NAMES:
+            assert by_hash[hash_id] == name
+
+    def test_single_orphan_does_not_shift_the_only_area(self) -> None:
+        hl = _make_hash_list(
+            area={222: _make_empty_frame_list()},
+            area_name=[AreaHashNameList(name="Area 1", hash=111)],
+        )
+        assert {a.hash: a.name for a in hl.computed_areas} == {111: "Area 1", 222: "Area 1"}
+
+    def test_live_names_still_reserve_their_numbers(self) -> None:
+        """A live "Area 1" must still block the number for its unnamed siblings."""
+        hl = _make_hash_list(
+            area={10: _make_empty_frame_list(), 20: _make_empty_frame_list()},
+            area_name=[AreaHashNameList(name="Area 1", hash=10)],
+        )
+        assert {a.hash: a.name for a in hl.computed_areas} == {10: "Area 1", 20: "Area 2"}
+
+    def test_survives_a_storage_round_trip(self) -> None:
+        """The orphans reach computed_areas via the HA store, so restore them first."""
+        restored = HashList.from_dict(json.loads(json.dumps(self._rehashed().to_dict())))
+        live = {a.hash: a.name for a in restored.computed_areas if a.hash in {111, 222, 333}}
+        assert live == {111: "Area 1", 222: "Area 2", 333: "Area 3"}
+
+
+# ---------------------------------------------------------------------------
+# Restore path — hash-keyed dicts must come back keyed by int, never str
+# ---------------------------------------------------------------------------
+
+
+class TestRestoredHashKeysAreInts:
+    """JSON object keys are always strings, so a persisted map round-trips its
+    ``dict[int, ...]`` keys through str.  ``from_dict`` must coerce them back:
+    every consumer (``computed_areas``, ``update_hash_lists``, geojson) looks up
+    by int hash, and a str key silently misses every one of them.
+    """
+
+    _NESTED = ("unknown_type_frames", "current_mow_path")
+
+    def _round_tripped(self) -> HashList:
+        hl = _make_hash_list(
+            area={507072516911571140: _make_empty_frame_list()},
+            area_name=[AreaHashNameList(name="Front", hash=507072516911571140)],
+        )
+        hl.path = {222: _make_empty_frame_list()}
+        hl.obstacle = {333: _make_empty_frame_list()}
+        hl.unknown_type_frames = {23: {444: _make_empty_frame_list()}}
+        return HashList.from_dict(json.loads(json.dumps(hl.to_dict())))
+
+    def test_area_keys_are_ints(self) -> None:
+        restored = self._round_tripped()
+        assert list(restored.area) == [507072516911571140]
+        assert all(type(k) is int for k in restored.area)
+
+    def test_every_hash_keyed_dict_is_int_keyed(self) -> None:
+        restored = self._round_tripped()
+        for name in ("area", "path", "obstacle", *self._NESTED):
+            keys = getattr(restored, name)
+            assert all(type(k) is int for k in keys), f"{name} restored with non-int keys"
+
+    def test_nested_hash_keys_are_ints(self) -> None:
+        restored = self._round_tripped()
+        for name in self._NESTED:
+            for bucket in getattr(restored, name).values():
+                assert all(type(k) is int for k in bucket), f"{name} inner keys not int"
+
+    def test_names_survive_the_round_trip(self) -> None:
+        assert {a.hash: a.name for a in self._round_tripped().computed_areas} == {507072516911571140: "Front"}
+
+
+# ---------------------------------------------------------------------------
+# computed_areas — real Luba 3 snapshot (three areas, device sent no names)
+# ---------------------------------------------------------------------------
+
+
+def _multi_frame_list(hash_id: int, paternal_b: int, frames: int) -> FrameList:
+    """An area FrameList as stored on the wire: N frames, all with an empty name."""
+    return FrameList(
+        total_frame=frames,
+        sub_cmd=0,
+        data=[
+            NavGetCommData(
+                pver=1,
+                sub_cmd=0,
+                action=8,
+                type=PathType.AREA,
+                hash=hash_id,
+                paternal_hash_b=paternal_b,
+                total_frame=frames,
+                current_frame=n,
+                name_time=NavNameTime(name="", create_time=1772067827, modify_time=1786069144),
+            )
+            for n in range(1, frames + 1)
+        ],
+    )
+
+
+class TestLuba3SnapshotAreaNames:
+    """A Luba 3 that returns an empty ``hashnames`` list, so the state reducer
+    fills ``area_name`` with its lowercase ``area N`` fallbacks keyed by sorted
+    hash.  Every area frame carries an empty ``name_time.name``.
+
+    ``computed_areas`` must hand back those three names unchanged: no
+    auto-numbering, no extra entries, no renumbering to "Area 4/5/6".
+    """
+
+    # (hash, paternal_hash_b, frame count) in the device's own area dict order.
+    _AREAS = (
+        (2094378125895869177, 1, 2),
+        (1231479802544112924, 2, 1),
+        (507072516911571140, 3, 2),
+    )
+    # area_name as the reducer builds it: sorted(area.keys()), numbered from 1.
+    _NAMES = (
+        ("area 1", 507072516911571140),
+        ("area 2", 1231479802544112924),
+        ("area 3", 2094378125895869177),
+    )
+
+    def _snapshot(self) -> HashList:
+        return _make_hash_list(
+            area={h: _multi_frame_list(h, pat_b, frames) for h, pat_b, frames in self._AREAS},
+            area_name=[AreaHashNameList(name=n, hash=h) for n, h in self._NAMES],
+        )
+
+    def test_device_names_are_returned_unchanged(self) -> None:
+        assert {a.hash: a.name for a in self._snapshot().computed_areas} == dict((h, n) for n, h in self._NAMES)
+
+    def test_no_area_is_auto_numbered(self) -> None:
+        """A capitalised "Area N" would mean an area failed its area_name lookup."""
+        names = [a.name for a in self._snapshot().computed_areas]
+        assert not [n for n in names if n.startswith("Area ")], names
+
+    def test_one_entry_per_area(self) -> None:
+        """Multi-frame areas must not yield a second, auto-named entry."""
+        result = self._snapshot().computed_areas
+        assert len(result) == 3
+        assert len({a.hash for a in result}) == 3
+
+    def test_area_dict_order_does_not_affect_names(self) -> None:
+        """area iterates in arrival order, area_name in sorted order — names must still pair up."""
+        hl = self._snapshot()
+        assert list(hl.area) != [h for _, h in self._NAMES]
+        assert {a.hash: a.name for a in hl.computed_areas}[507072516911571140] == "area 1"
+
+    def test_empty_frame_names_do_not_override_device_names(self) -> None:
+        """Every frame's name_time.name is "" — that must not blank the area_name entry."""
+        hl = self._snapshot()
+        assert all(hl.area[h].name == "" for h, _, _ in self._AREAS)
+        assert all(a.name for a in hl.computed_areas)
+
+    def test_survives_a_storage_round_trip(self) -> None:
+        restored = HashList.from_dict(json.loads(json.dumps(self._snapshot().to_dict())))
+        assert {a.hash: a.name for a in restored.computed_areas} == dict((h, n) for n, h in self._NAMES)

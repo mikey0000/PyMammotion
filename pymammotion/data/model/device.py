@@ -1,7 +1,9 @@
 """Device model hierarchy: Device base + MowerDevice (and future PoolCleanerDevice)."""
 
+import dataclasses
 from dataclasses import dataclass, field
 import math
+import time
 from typing import Any, ClassVar
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -12,7 +14,7 @@ from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorking
 from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.data.model.enums import TaskAreaStatus
 from pymammotion.data.model.errors import DeviceErrors
-from pymammotion.data.model.events import Events
+from pymammotion.data.model.events import OTA_RESULT_SUCCESS, Events, OTAProgress
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.pool_state import PoolMap, PoolPlan, PoolState
 from pymammotion.data.model.report_info import BaseScore, ReportData, WorkSessionResult
@@ -21,7 +23,14 @@ from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.http.model.http import CheckDeviceVersion
-from pymammotion.proto import DeviceFwInfo, MowToAppInfoT, ReportInfoData, SystemTardStateTunnelMsg, SystemUpdateBufMsg
+from pymammotion.proto import (
+    DeviceFwInfo,
+    DrvUpgradeReport,
+    MowToAppInfoT,
+    ReportInfoData,
+    SystemTardStateTunnelMsg,
+    SystemUpdateBufMsg,
+)
 from pymammotion.utility.constant import MOWING_ACTIVE_MODES
 from pymammotion.utility.constant.device_constant import WorkMode
 from pymammotion.utility.conversions import parse_double
@@ -29,6 +38,11 @@ from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.map import CoordinateConverter
 
 _device_config = DeviceConfig()
+
+#: How long a device-pushed OTA frame keeps precedence over the cloud version poll.
+#: Mirrors the APK's 25 s upgrade-report timeout (``MACarDataManager`` handler message
+#: 1003), widened to tolerate a BLE stall mid-upgrade without handing back prematurely.
+_OTA_PUSH_STALE_AFTER: float = 60.0
 
 
 @dataclass
@@ -47,6 +61,33 @@ class Device(DataClassORJSONMixin):
     mqtt_properties: ThingPropertiesMessage | None = None
     status_properties: ThingStatusMessage | None = None
     device_event: ThingEventMessage | None = None
+    #: Monotonic timestamp of the last device-pushed ``toapp_upgrade_report``
+    #: (0.0 = never).  Only meaningful within one process — see
+    #: :meth:`has_live_ota_push`.
+    ota_progress_at: float = 0.0
+
+    def has_live_ota_push(self) -> bool:
+        """Return True when a device-pushed OTA frame is recent enough to still be trusted.
+
+        OTA progress reaches us two ways: the cloud's ``checkDeviceVersion`` poll, and —
+        only while BLE is connected — the device's own ``toapp_upgrade_report`` stream.
+        The BLE stream is far fresher (multiple frames per second vs. a slow poll), so
+        while it is flowing it must win; but it stops dead when the device reboots to
+        install, and something has to let the cloud take back over.
+
+        ``_OTA_PUSH_STALE_AFTER`` bounds that hand-back.  The APK does the same thing with
+        a 25 s timer (``MACarDataManager`` re-arms ``handler`` message 1003 for 25 000 ms
+        on every upgrade frame); this window is deliberately more generous.
+
+        A negative age means the stamp came from a previous process (monotonic clocks
+        reset on restart, and the field round-trips through HA's store), so it is treated
+        as stale — the cloud wins, which is the safe direction: a stuck "upgrading" state
+        cannot be cleared by anything else.
+        """
+        if not self.ota_progress_at:
+            return False
+        age = time.monotonic() - self.ota_progress_at
+        return 0.0 <= age < _OTA_PUSH_STALE_AFTER
 
     def apply_version_check(self, check: CheckDeviceVersion) -> None:
         """Store the OTA version-check result and seed the current firmware version.
@@ -55,11 +96,90 @@ class Device(DataClassORJSONMixin):
         Mirror it into ``device_firmwares.device_version`` (when the subclass
         tracks firmware) so consumers have a version before any protobuf report
         arrives; the state reducer refreshes it from telemetry once reports flow.
+
+        The cloud poll lags a BLE-observed upgrade badly — captured mid-upgrade it
+        returns ``isupgrading=False, progress=0`` while the device is streaming 25% — so
+        a poll that claims *nothing is happening* must not erase live push progress.  A
+        poll that agrees an upgrade is running is taken as-is: it is the authority
+        whenever BLE isn't connected, and the only source for everything else in the
+        check (release notes, upgradeable, the available version).
         """
-        self.update_check = check
+        if check.isupgrading or not self.has_live_ota_push() or not self.update_check.isupgrading:
+            self.update_check = check
+        else:
+            # Keep the live push's verdict, take everything else from the cloud.
+            # replace() rather than mutating `check` — the caller owns that object.
+            self.update_check = dataclasses.replace(
+                check,
+                isupgrading=True,
+                progress=self.update_check.progress,
+            )
         device_firmwares = getattr(self, "device_firmwares", None)
         if device_firmwares is not None and check.current_version:
             device_firmwares.device_version = check.current_version
+
+    def apply_ota_progress(self, report: DrvUpgradeReport) -> None:
+        """Fold a device-pushed ``toapp_upgrade_report`` into the OTA state.
+
+        The device streams live upgrade progress over protobuf, but the cloud's
+        ``checkDeviceVersion`` poll — which is what consumers read — only refreshes on its
+        own slow cadence and reports ``isupgrading=False, progress=0`` for the whole run.
+        Mirroring the push into ``update_check`` means there is still exactly *one* place
+        to ask "is this device upgrading, and how far along": consumers keep reading
+        ``update_check`` and get live values regardless of which path delivered them.
+
+        ``events.ota_progress`` keeps the full frame (stage message, otaid, recv_cnt) for
+        subclasses that track it; ``update_check`` carries only what a progress display
+        needs.
+
+        Progress is clamped monotonic within one ``otaid``: the device interleaves report
+        copies across delivery paths, so an older frame can arrive after a newer one and
+        would otherwise make a progress bar jump backwards.  A new ``otaid`` is a new job
+        and resets the floor.  Mirrors the APK's ``if (currProgress > progress) return;``
+        guard in ``FirmwareUpdateKTView.setProgress``.
+        """
+        self.ota_progress_at = time.monotonic()
+        events = getattr(self, "events", None)
+        previous: OTAProgress | None = events.ota_progress if events is not None else None
+
+        progress = report.progress
+        if (
+            previous is not None
+            and previous.otaid == report.otaid
+            and report.result != OTA_RESULT_SUCCESS
+            and progress < previous.progress
+        ):
+            progress = previous.progress
+
+        if events is not None:
+            events.ota_progress = OTAProgress(
+                devname=report.devname,
+                otaid=report.otaid,
+                version=report.version,
+                progress=progress,
+                result=report.result,
+                message=report.message,
+                recv_cnt=report.recv_cnt,
+            )
+
+        status = OTAProgress(progress=progress, result=report.result)
+        if status.is_complete:
+            # Completion frames carry the progress counter of whatever sub-component
+            # finished last, not 100 — pin it so a display doesn't rest at e.g. 27%.
+            self.update_check.progress = 100
+            self.update_check.isupgrading = False
+            self.update_check.upgradeable = False
+            if report.version:
+                self.update_check.current_version = report.version
+                device_firmwares = getattr(self, "device_firmwares", None)
+                if device_firmwares is not None:
+                    device_firmwares.device_version = report.version
+        elif status.is_failed:
+            self.update_check.progress = progress
+            self.update_check.isupgrading = False
+        else:
+            self.update_check.progress = progress
+            self.update_check.isupgrading = True
 
     #: Module ``type`` → DeviceFirmwares field(s), covering mower, RTK (10x),
     #: dual-driver Yuka (20x), and Spino pool cleaner (6x) modules.

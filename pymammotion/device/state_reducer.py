@@ -85,6 +85,7 @@ from pymammotion.proto import (
     ReportInfoData,
     ReportInfoT,
     ResponseBasestationInfoT,
+    ResponseSetModeT,
     SvgMessageAckT,
     SysCommCmd,
     SystemUpdateBufMsg,
@@ -285,7 +286,11 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case "toapp_upgrade_report":
+                        # apply_ota_progress mutates events + update_check, and
+                        # device_firmwares on the completion frame.
                         device.events = copy.deepcopy(current.events)
+                        device.update_check = copy.deepcopy(current.update_check)
+                        device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case "toapp_mnet_info_rsp":
                         device.report_data = copy.deepcopy(current.report_data)
                     case _:
@@ -313,6 +318,38 @@ class MowerStateReducer(StateReducer):
     # Private helpers — mirror MowerStateManager._update_*_data() logic
     # without the callback invocations.
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fallback_area_names(device: MowingDevice) -> list[AreaHashNameList]:
+        """Name every area in ``device.map.area`` when the device sent no hash names.
+
+        Prefers the frame's ``name_time.name``, then any label the area already
+        carries, and only then mints ``area N`` from the lowest free number.
+
+        A minted label must be stable for the life of the area: consumers bake it
+        into a durable identity (Home Assistant derives the area switch's entity_id
+        from it, fixed at registration).  Numbering by position in
+        ``sorted(map.area)`` renumbered every area above a newly-arrived hash, so
+        areas present during a map sync ended up permanently labelled from "area 4"
+        once the transient extras were pruned.
+        """
+        named = {a.hash: a.name for a in device.map.area_name if a.name}
+        used = {
+            int(name.split()[-1])
+            for name in named.values()
+            if name.lower().startswith("area ") and name.split()[-1].isdigit()
+        }
+        next_n = 1
+        area_names: list[AreaHashNameList] = []
+        for hash_id in sorted(device.map.area.keys()):
+            name = named.get(hash_id) or device.map.area[hash_id].name
+            if not name:
+                while next_n in used:
+                    next_n += 1
+                used.add(next_n)
+                name = f"area {next_n}"
+            area_names.append(AreaHashNameList(name=name, hash=hash_id))
+        return area_names
 
     def _update_nav_data(self, device: MowingDevice, message: LubaMsg) -> None:
         """Update navigation data fields on *device* in-place."""
@@ -391,12 +428,7 @@ class MowerStateReducer(StateReducer):
                         AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames
                     ]
                 elif device.map.area:
-                    # Device returned no names — prefer name_time.name from the area
-                    # frames if present, falling back to numbered labels.
-                    device.map.area_name = [
-                        AreaHashNameList(name=device.map.area[h].name or f"area {i + 1}", hash=h)
-                        for i, h in enumerate(sorted(device.map.area.keys()))
-                    ]
+                    device.map.area_name = self._fallback_area_names(device)
                 # else: no areas fetched yet — leave area_name alone; HashList.update()
                 # will generate fallback names as each area chunk arrives.
             case "toapp_map_name_msg":
@@ -596,13 +628,9 @@ class MowerStateReducer(StateReducer):
 
             case "toapp_upgrade_report":
                 upgrade_report: DrvUpgradeReport = net_msg[1]  # type: ignore
-                device.events.ota_progress.devname = upgrade_report.devname
-                device.events.ota_progress.otaid = upgrade_report.otaid
-                device.events.ota_progress.version = upgrade_report.version
-                device.events.ota_progress.progress = upgrade_report.progress
-                device.events.ota_progress.result = upgrade_report.result
-                device.events.ota_progress.message = upgrade_report.message
-                device.events.ota_progress.recv_cnt = upgrade_report.recv_cnt
+                # Folds into both events.ota_progress (full frame) and update_check
+                # (what progress displays read) — see Device.apply_ota_progress.
+                device.apply_ota_progress(upgrade_report)
             case "toapp_mnet_info_rsp":
                 mnet_info_rsp: GetMnetInfoRsp = net_msg[1]  # type: ignore
                 if mnet_info_rsp.mnet is not None:
@@ -901,6 +929,8 @@ class PoolStateReducer(StateReducer):
     - ``sys.report_info`` → :class:`ReportInfoT` → :class:`DevStatueT` —
       runtime status (sys_status, work_mode, battery, …) shown on the home
       screen.
+    - ``sys.response_set_mode`` → :class:`ResponseSetModeT` — ack for
+      ``set_work_mode``, and the only source of the session start/end times.
     - ``sys.app_downlink_cmd`` → :class:`AppDownlinkCmdT` — both the
       outgoing user-settings commands (wall material, bottom type, floor
       speed) and the device's ack responses that carry pool ``map_info`` /
@@ -943,6 +973,9 @@ class PoolStateReducer(StateReducer):
             case "report_info":
                 device.pool_state = copy.deepcopy(current.pool_state)
                 self._update_report_info(device, sys_msg[1])  # type: ignore
+            case "response_set_mode":
+                device.pool_state = copy.deepcopy(current.pool_state)
+                self._update_response_set_mode(device, sys_msg[1])  # type: ignore
             case "app_downlink_cmd":
                 device.pool_state = copy.deepcopy(current.pool_state)
                 device.pool_map = copy.deepcopy(current.pool_map)
@@ -978,10 +1011,30 @@ class PoolStateReducer(StateReducer):
         device.pool_state.sys_status = SpinoSysStatus(status.sys_status)
         device.pool_state.work_mode = SpinoWorkMode(status.work_mode)
         device.pool_state.battery = status.bat_val
+        device.pool_state.charging = bool(status.charge_status)
         device.pool_state.wifi_rssi = status.wifi_rssi
         device.pool_state.ble_rssi = status.ble_rssi
         device.pool_state.wifi_connected = bool(status.wifi_connect_status)
         device.pool_state.iot_connected = bool(status.iot_connect_status)
+
+    def _update_response_set_mode(self, device: PoolCleanerDevice, resp: ResponseSetModeT) -> None:
+        """Apply the device's ack for a ``set_work_mode`` command.
+
+        The Spino answers every mode switch with ``response_set_mode`` (msgattr
+        ``MSG_ATTR_RESP``) ~200-300 ms ahead of the matching ``report_info``, and it
+        is the only message that carries the cleaning-session timestamps.
+
+        ``statue`` is a message discriminant rather than a result code — the APK
+        reuses ``response_set_mode`` in the app→device direction with ``statue=2``
+        to request job history (``requestSwimmingJobHistory``), so only the ack
+        form (0) is applied here.  ``cur_work_mode`` is what the device actually
+        switched to; ``set_work_mode`` merely echoes the request.
+        """
+        if resp.statue != 0:
+            return
+        device.pool_state.work_mode = SpinoWorkMode(resp.cur_work_mode)
+        device.pool_state.start_work_time = resp.start_work_time
+        device.pool_state.end_work_time = resp.end_work_time
 
     def _update_toggle(self, device: PoolCleanerDevice, cmd: SysCommCmd) -> None:
         """Apply a ``SysCommCmd`` (``allpowerfullRW``) read/ack to a pool toggle.
@@ -1264,6 +1317,20 @@ class RTKStateReducer(StateReducer):
                 device.ip = net_info.ip
                 device.mask = net_info.mask
                 device.gateway = net_info.gateway
+            case "toapp_upgrade_report":
+                # Base stations stream the same OTA progress frames as mowers, and have
+                # their own update entity.  RTKBaseStationDevice has no `events`, so
+                # apply_ota_progress updates update_check only — which is all a progress
+                # display reads.
+                #
+                # apply() builds `device` with a shallow dataclasses.replace, so unlike
+                # this reducer's other cases (which assign scalars) we must copy the
+                # nested models before mutating them in place — otherwise the write lands
+                # on the previous snapshot too.
+                rtk_upgrade_report: DrvUpgradeReport = net_msg[1]  # type: ignore
+                device.update_check = copy.deepcopy(device.update_check)
+                device.device_firmwares = copy.deepcopy(device.device_firmwares)
+                device.apply_ota_progress(rtk_upgrade_report)
             case _:
                 _logger.debug(
                     "RTKStateReducer: ignoring net sub-message %r for %s",

@@ -753,9 +753,13 @@ class TestStateReducerAreaNameFallback:
         assert by_hash == {111: "area 1", 222: "area 2"}
 
     def test_mixed_named_and_unnamed_areas(self) -> None:
+        """A real name reserves no number, so the unnamed area takes the lowest free
+        one — matching HashList.computed_areas' gap-fill rather than numbering by
+        position, which would make the label depend on how many areas precede it.
+        """
         result = self._apply_empty(_device_with_named_areas({111: "Voor", 222: ""}))
         by_hash = {a.hash: a.name for a in result.map.area_name}
-        assert by_hash == {111: "Voor", 222: "area 2"}
+        assert by_hash == {111: "Voor", 222: "area 1"}
 
     def test_explicit_hashnames_win_over_name_time(self) -> None:
         device = _device_with_named_areas({111: "Voor"})
@@ -763,6 +767,39 @@ class TestStateReducerAreaNameFallback:
             device, LubaMsg(nav=MctlNav(toapp_all_hash_name=_AGAHN(hashnames=[_AHName(hash=111, name="Front Lawn")])))
         )
         assert {a.hash: a.name for a in result.map.area_name}[111] == "Front Lawn"
+
+    def test_existing_numbers_survive_a_new_area_arriving(self) -> None:
+        """A fallback label is baked into the HA entity_id at registration, so an
+        area that already has one must keep it.  Numbering by position in
+        sorted(map.area) renumbers every area above a newly-arrived hash.
+        """
+        device = _device_with_named_areas({111: "", 222: ""})
+        device = self._apply_empty(device)
+        assert {a.hash: a.name for a in device.map.area_name} == {111: "area 1", 222: "area 2"}
+
+        # A third area arrives whose hash sorts BELOW the other two.
+        device.map.area[10] = _FL(data=[_area_frame_named(10, "")])
+        device = self._apply_empty(device)
+        by_hash = {a.hash: a.name for a in device.map.area_name}
+        assert by_hash[111] == "area 1", "existing area was renumbered"
+        assert by_hash[222] == "area 2", "existing area was renumbered"
+        assert by_hash[10] == "area 3", "new area must take the lowest free number"
+
+    def test_transient_areas_do_not_shift_the_real_ones(self) -> None:
+        """Real hashes from a Luba 3 that displayed as area 4/5/6: three extra
+        hashes arrived mid-fetch, were numbered ahead of the real areas, then
+        pruned — leaving the real areas permanently labelled from 4.
+        """
+        real = [507072516911571140, 1231479802544112924, 2094378125895869177]
+        device = _device_with_named_areas(dict.fromkeys(real, ""))
+        device = self._apply_empty(device)
+        assert [a.name for a in device.map.area_name] == ["area 1", "area 2", "area 3"]
+
+        for extra in (101, 202, 303):  # sort below every real hash
+            device.map.area[extra] = _FL(data=[_area_frame_named(extra, "")])
+        device = self._apply_empty(device)
+        by_hash = {a.hash: a.name for a in device.map.area_name}
+        assert [by_hash[h] for h in real] == ["area 1", "area 2", "area 3"]
 
     def test_name_does_not_flip_on_repeated_empty_hash_name(self) -> None:
         device = _device_with_named_areas({111: "Voor", 222: "Achter"})
@@ -879,6 +916,7 @@ def test_mammotion_partial_push_uses_presence_not_truthiness() -> None:
 # ===========================================================================
 # PoolStateReducer — fw info, net envelope, devStatus extras, error clamp.
 # ===========================================================================
+from pymammotion.data.model.pool_state import SpinoSysStatus, SpinoWorkMode
 from pymammotion.proto import (
     DeviceFwInfo,
     DevNet,
@@ -886,6 +924,7 @@ from pymammotion.proto import (
     DrvWifiMsg,
     ModFwInfo,
     ReportInfoT,
+    ResponseSetModeT,
     SysSetDateTime,
     SystemUpdateBufMsg,
     WifiIotStatusReport,
@@ -990,6 +1029,27 @@ def test_pool_dev_status_captures_rssi_and_connectivity() -> None:
     assert result.pool_state.ble_rssi == -48
     assert result.pool_state.wifi_connected is True
     assert result.pool_state.iot_connected is True
+    assert result.pool_state.charging is False
+
+
+def test_pool_dev_status_charge_status_sets_charging() -> None:
+    # A docked Spino reports chargeStatus=1 while sys_status is still PREPARE (1),
+    # so charging is not derivable from sys_status alone.
+    msg = LubaMsg(sys=MctlSys(report_info=ReportInfoT(dev_status=DevStatueT(sys_status=1, charge_status=1))))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.charging is True
+    assert result.pool_state.sys_status is SpinoSysStatus.PREPARE
+
+
+def test_pool_dev_status_omitted_work_mode_reports_off() -> None:
+    # Heartbeat frames leave work_mode unset (proto3 default 0) once no job is
+    # running — that is "no mode active", not the RECHARGE command value.
+    device = PoolCleanerDevice(name="Spino-E1abc")
+    device.pool_state.work_mode = SpinoWorkMode.ECO
+    msg = LubaMsg(sys=MctlSys(report_info=ReportInfoT(dev_status=DevStatueT(sys_status=1, bat_val=68))))
+    result = PoolStateReducer().apply(device, msg)
+    assert result.pool_state.work_mode is SpinoWorkMode.OFF
+    assert result.pool_state.work_mode.name == "OFF"
 
 
 def test_pool_error_count_negative_clamped_to_zero() -> None:
@@ -998,6 +1058,43 @@ def test_pool_error_count_negative_clamped_to_zero() -> None:
     result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
     assert result.pool_state.error_count == 0
     assert result.pool_state.error_log == []
+
+
+def test_pool_response_set_mode_applies_mode_and_session_times() -> None:
+    # Frame captured from a Spino-E1 mode switch (WALL) over the cloud transport.
+    msg = LubaMsg(
+        sys=MctlSys(
+            response_set_mode=ResponseSetModeT(
+                set_work_mode=3,
+                cur_work_mode=3,
+                start_work_time=1786694053,
+                end_work_time=1786694153,
+                cur_work_time=1,
+            )
+        )
+    )
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.work_mode is SpinoWorkMode.WALL
+    assert result.pool_state.start_work_time == 1786694053
+    assert result.pool_state.end_work_time == 1786694153
+
+
+def test_pool_response_set_mode_history_request_echo_ignored() -> None:
+    # statue=2 is the job-history request form, not a mode ack — it must not
+    # reset the work mode or the session times.
+    device = PoolCleanerDevice(name="Spino-E1abc")
+    device.pool_state.work_mode = SpinoWorkMode.WALL
+    device.pool_state.start_work_time = 1786694053
+    msg = LubaMsg(sys=MctlSys(response_set_mode=ResponseSetModeT(statue=2)))
+    result = PoolStateReducer().apply(device, msg)
+    assert result.pool_state.work_mode is SpinoWorkMode.WALL
+    assert result.pool_state.start_work_time == 1786694053
+
+
+def test_pool_response_set_mode_unknown_mode_tolerated() -> None:
+    msg = LubaMsg(sys=MctlSys(response_set_mode=ResponseSetModeT(set_work_mode=99, cur_work_mode=99)))
+    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
+    assert result.pool_state.work_mode is SpinoWorkMode.UNKNOWN
 
 
 def test_pool_todev_data_time_is_silent_noop() -> None:
