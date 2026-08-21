@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from examples.scenarios import scenario_map_fetch
 from pymammotion.client import MammotionClient
+
+scenario_map_fetch = pytest.importorskip("examples.scenarios").scenario_map_fetch
 
 
 @pytest.mark.live

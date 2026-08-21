@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from examples.scenarios import scenario_mow_path, scenario_mow_path_skip_planning
 from pymammotion.client import MammotionClient
+
+_scenarios = pytest.importorskip("examples.scenarios")
+scenario_mow_path = _scenarios.scenario_mow_path
+scenario_mow_path_skip_planning = _scenarios.scenario_mow_path_skip_planning
 
 
 @pytest.mark.live
