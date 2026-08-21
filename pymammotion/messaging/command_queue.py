@@ -193,11 +193,14 @@ class DeviceCommandQueue:
                     raise
                 except Exception as exc:
                     saga_exception = exc
-                    # GatewayTimeoutException and DeviceOfflineException are
-                    # expected operational errors handled by the _process retry
-                    # loop — logging them here as "unhandled" is misleading noise.
+                    # GatewayTimeoutException, DeviceOfflineException and SagaFailedError
+                    # are expected operational errors already logged (at WARNING) by the
+                    # _process retry loop / on_critical_error path — logging them here as
+                    # "unhandled" is misleading noise and duplicates that WARNING with a
+                    # full ERROR-level traceback for something that isn't a real bug.
                     if not isinstance(
-                        exc, (GatewayTimeoutException, DeviceOfflineException, NoTransportAvailableError)
+                        exc,
+                        (GatewayTimeoutException, DeviceOfflineException, NoTransportAvailableError, SagaFailedError),
                     ):
                         _logger.exception("Saga '%s' raised an unhandled exception", saga.name)
                     raise
