@@ -116,3 +116,49 @@ async def test_get_user_device_list_returns_devices_on_success() -> None:
     assert response.code == 0
     assert [d.device_name for d in (response.data or [])] == ["Luba-1"]
     assert [d.device_name for d in http.device_info] == ["Luba-1"]
+
+
+def _make_http_posting(status: int, body: dict, content_type: str = "application/json") -> MammotionHTTP:
+    """Build a MammotionHTTP whose _client_session POSTs return a canned response."""
+    http = MammotionHTTP()
+    http.login_info = MagicMock(access_token="tok")  # type: ignore[assignment]
+    http.expires_in = time.time() + 3600
+    http.jwt_info = JWTTokenInfo(iot="https://iot.example", robot="https://robot.example")
+    resp = MagicMock(status=status, headers={"Content-Type": content_type})
+    resp.json = AsyncMock(return_value=body)
+    mock_session = MagicMock()
+    mock_session.post = AsyncMock(return_value=resp)
+
+    @asynccontextmanager
+    async def _fake_session() -> object:  # type: ignore[misc]
+        yield mock_session
+
+    http._client_session = _fake_session  # type: ignore[method-assign]
+    return http
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (401, {}),
+        (460, {}),
+        (200, {"code": 401, "msg": "expired"}),
+        (200, {"code": 460, "msg": "expired"}),
+        (500, {"code": 460, "msg": "expired"}),
+    ],
+)
+async def test_mqtt_invoke_raises_on_every_dead_token_shape(status: int, body: dict) -> None:
+    """A dead token must never come back as a plain Response — under any HTTP status."""
+    http = _make_http_posting(status, body)
+    with pytest.raises(UnauthorizedExceptionError):
+        await http.mqtt_invoke("payload", "", "iot-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [408, 429, 500, 503])
+async def test_get_mqtt_credentials_raises_connection_error_on_server_fault(status: int) -> None:
+    """5xx/throttling is a server fault, not a token verdict — it must not read as ``data is None``."""
+    http = _make_http_posting(status, {})
+    with pytest.raises(ConnectionError):
+        await http.get_mqtt_credentials()

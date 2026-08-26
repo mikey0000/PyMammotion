@@ -115,3 +115,78 @@ async def test_close_cancels_pending_futures() -> None:
     with pytest.raises(asyncio.CancelledError):
         await waiter
     assert len(broker._pending) == 0
+
+
+# ---------------------------------------------------------------------------
+# Subscriptions are independent of credential refreshes
+# (moved from tests/unit/auth/test_token_manager.py — the broker is the layer
+# under test; the TokenManager is just concurrent noise)
+# ---------------------------------------------------------------------------
+
+
+async def test_broker_subscriptions_survive_token_refresh() -> None:
+    """Unsolicited subscriptions on DeviceMessageBroker must keep working after a
+    credential refresh — the two are completely independent layers.
+    """
+    from pymammotion.auth.token_manager import TokenManager
+    from tests.unit.auth._helpers import make_http_creds, make_http_mock, make_mqtt_creds
+
+    broker = DeviceMessageBroker()
+    received: list[object] = []
+
+    async def _handler(msg: object) -> None:
+        received.append(msg)
+
+    with broker.subscribe_unsolicited(_handler):
+        # Simulate a token refresh happening while the subscription is live
+        http = make_http_mock(refresh_code=0, mqtt_jwt="jwt-new")
+        tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+        await tm.initialize(
+            http_creds=make_http_creds(100),
+            aliyun_creds=None,
+            mqtt_creds=make_mqtt_creds(86400),
+        )
+        await tm.refresh_mqtt_credentials()
+
+        # Deliver an unsolicited message (no pending future → goes to event bus)
+        sentinel = object()
+        await broker._event_bus.emit(sentinel)  # noqa: SLF001
+
+    assert len(received) == 1
+    assert received[0] is sentinel
+
+
+async def test_multiple_subscriptions_all_receive_after_token_refresh() -> None:
+    """All active subscriptions must receive events after a token refresh."""
+    from pymammotion.auth.token_manager import TokenManager
+    from tests.unit.auth._helpers import make_http_creds, make_http_mock
+
+    broker = DeviceMessageBroker()
+    calls_a: list[object] = []
+    calls_b: list[object] = []
+
+    async def handler_a(msg: object) -> None:
+        calls_a.append(msg)
+
+    async def handler_b(msg: object) -> None:
+        calls_b.append(msg)
+
+    sub_a = broker.subscribe_unsolicited(handler_a)
+    sub_b = broker.subscribe_unsolicited(handler_b)
+
+    try:
+        http = make_http_mock(refresh_code=0, mqtt_jwt="jwt-new")
+        tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+        await tm.initialize(http_creds=make_http_creds(100), aliyun_creds=None, mqtt_creds=None)
+        await tm.refresh_mqtt_credentials()
+
+        sentinel = object()
+        await broker._event_bus.emit(sentinel)  # noqa: SLF001
+
+        assert len(calls_a) == 1
+        assert calls_a[0] is sentinel
+        assert len(calls_b) == 1
+        assert calls_b[0] is sentinel
+    finally:
+        sub_a.cancel()
+        sub_b.cancel()

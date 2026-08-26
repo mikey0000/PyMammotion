@@ -19,6 +19,7 @@ from pymammotion.http.model.http import (
     Response,
 )
 from pymammotion.transport.base import TransportType
+from tests.unit._helpers import make_mock_mowing_device, make_mock_transport
 
 
 # ---------------------------------------------------------------------------
@@ -28,20 +29,8 @@ from pymammotion.transport.base import TransportType
 
 
 def make_mowing_device() -> MagicMock:
-    """Return a MagicMock shaped like a MowingDevice.
-
-    Explicit ``charge_state = 0`` because ``int(MagicMock())`` returns 1, which
-    would push :meth:`DeviceHandle._device_mode` into ``DOCKED_CHARGING`` and
-    surprise tests that don't otherwise care about charge state.
-    """
-    device = MagicMock()
-    device.online = True
-    device.enabled = True
-    device.report_data.dev.battery_val = 75
-    device.report_data.dev.charge_state = 0
-    device.report_data.dev.sys_status = "idle"
-    device.report_data.work.knife_height = 40
-    return device
+    """Return a MagicMock shaped like a MowingDevice."""
+    return make_mock_mowing_device()
 
 
 def make_handle(device_id: str = "dev1", device_name: str = "Luba-Test") -> DeviceHandle:
@@ -248,14 +237,7 @@ def _make_device_with_rtk(lat: float = 0.5, lon: float = 0.5) -> MagicMock:
 
 def _make_mock_transport(transport_type: TransportType = TransportType.CLOUD_ALIYUN) -> MagicMock:
     """Return a connected mock transport."""
-    t = MagicMock()
-    t.transport_type = transport_type
-    t.is_connected = True
-    t.last_send_monotonic = 0.0
-    t.send = AsyncMock()
-    t.disconnect = AsyncMock()
-    t.on_message = None
-    return t
+    return make_mock_transport(transport_type)
 
 
 async def _make_handle_with_transport(device_id: str, device_name: str) -> DeviceHandle:
@@ -358,56 +340,9 @@ def _access_token(iot: str, robot: str) -> str:
     return pyjwt.encode({"iot": iot, "robot": robot, "exp": 9999999999}, "x" * 32, algorithm="HS256")
 
 
-def _populated_mammotion_http(account: str = "user@test.com") -> MammotionHTTP:
-    """Return a MammotionHTTP populated as it would be after a successful login.
-
-    Carries a login response, MQTT credentials, and JWT info so a ``to_cache`` →
-    restore round-trip has something to preserve.  The explicit ``jwt_info``
-    intentionally differs from the access_token's claims so a round-trip can prove
-    the cached JWT (not the token-derived one) is what gets restored.
-    """
-    user_info = LoginResponseUserInformation(
-        areaCode="44", domainAbbreviation="EU", userId="u1", userAccount="123", authType="email"
-    )
-    login_data = LoginResponseData(
-        access_token=_access_token("token-iot.example.com", "token-robot.example.com"),
-        token_type="bearer",
-        refresh_token="rt",
-        expires_in=3600,
-        authorization_code="ac",
-        userInformation=user_info,
-    )
-    http = MammotionHTTP(account, "pass")
-    http.response = Response(code=0, msg="ok", data=login_data)
-    http.login_info = login_data
-    http.mqtt_credentials = MQTTConnection(
-        host="mqtt.example.com", jwt="jwt-token", client_id="client-1", username="user"
-    )
-    http.jwt_info = JWTTokenInfo(iot="iot.example.com", robot="robot.example.com")
-    return http
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # _bootstrap_mammotion_mqtt — connect() and confirm_share call-count invariants
 # ---------------------------------------------------------------------------
-
-
-def _make_share_record(*, is_receiver: int = 1, status: int = -1, batch_id: str = "batch1", record_id: str = "1") -> MagicMock:
-    """Return a MagicMock shaped like a ShareRecord."""
-    r = MagicMock()
-    r.is_receiver = is_receiver
-    r.status = status
-    r.batch_id = batch_id
-    r.record_id = record_id
-    return r
 
 
 def _make_device_record(device_name: str = "Yuka-TEST", iot_id: str = "iot-yuka", product_key: str = "pk1") -> MagicMock:
@@ -462,21 +397,7 @@ def _make_mock_http(
 
 
 def _make_connected_transport(transport_type: TransportType) -> MagicMock:
-    t = MagicMock()
-    t.transport_type = transport_type
-    t.is_connected = True
-    t.is_rate_limited = False
-    t.is_send_blocked = MagicMock(return_value=False)
-    t.seconds_until_send_available = MagicMock(return_value=0.0)
-    t.is_usable = True  # default: ready to attempt sends; tests flip to False to exercise gates
-    t.send = AsyncMock()
-    t.send_heartbeat = AsyncMock()
-    t.disconnect = AsyncMock()
-    t.on_message = None
-    t.add_availability_listener = MagicMock()
-    t.last_received_monotonic = 0.0
-    t.last_send_monotonic = 0.0
-    return t
+    return make_mock_transport(transport_type)
 
 
 async def _drain(handle: DeviceHandle) -> None:
@@ -807,21 +728,20 @@ from pymammotion.device.mqtt_loop import (  # noqa: E402
 )
 
 
-def _make_handle_for_poll(transport_type: TransportType | None) -> DeviceHandle:
+async def _make_handle_for_poll(transport_type: TransportType | None) -> DeviceHandle:
     handle = make_handle("dev1", "Luba-Poll")
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 0
     handle.snapshot.raw.report_data.dev.charge_state = 0
     if transport_type is not None:
-        t = _make_connected_transport(transport_type)
-        handle._transports[transport_type] = t  # noqa: SLF001
+        await handle.add_transport(_make_connected_transport(transport_type))
     return handle
 
 
 async def test_poll_interval_mowing_returns_fifteen_minutes() -> None:
     from pymammotion.utility.constant import WorkMode
 
-    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
     assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]  # noqa: SLF001
     assert handle.device_mode() is _DeviceMode.ACTIVE  # noqa: SLF001
@@ -830,21 +750,21 @@ async def test_poll_interval_mowing_returns_fifteen_minutes() -> None:
 async def test_poll_interval_returning_returns_fifteen_minutes() -> None:
     from pymammotion.utility.constant import WorkMode
 
-    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_RETURNING.value
     assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]  # noqa: SLF001
 
 
 async def test_poll_interval_idle_returns_fifteen_minutes() -> None:
     """sys_status=0 with no charge → IDLE (paused/lost) → 15 min for MQTT."""
-    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = 0
     assert handle.device_mode() is _DeviceMode.IDLE  # noqa: SLF001
     assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.IDLE]  # noqa: SLF001
 
 
 async def test_poll_interval_docked_charging_returns_thirty_minutes() -> None:
-    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 80
     handle.snapshot.raw.report_data.dev.charge_state = 1
@@ -853,7 +773,7 @@ async def test_poll_interval_docked_charging_returns_thirty_minutes() -> None:
 
 
 async def test_poll_interval_docked_full_returns_sixty_minutes() -> None:
-    handle = _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
+    handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 100
     handle.snapshot.raw.report_data.dev.charge_state = 1
@@ -1067,19 +987,6 @@ async def test_update_availability_restarts_loop_on_reconnect() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_send_raw_sets_rate_limited_on_too_many_requests() -> None:
-    """send_raw must call transport.set_rate_limited() when the transport raises TooManyRequestsException."""
-    from pymammotion.aliyun.exceptions import TooManyRequestsException
-
-    handle = make_handle("dev1", "Luba-RL")
-    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
-    mqtt.send = AsyncMock(side_effect=TooManyRequestsException("rate limited", "iot-id"))
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
-
-    await handle.send_raw(b"\x00")
-    mqtt.set_rate_limited.assert_called_once()
-
-
 # ---------------------------------------------------------------------------
 # BLE-connect failure → MQTT fallback (regression: ESPHome proxy out of slots)
 # ---------------------------------------------------------------------------
@@ -1103,8 +1010,8 @@ async def test_send_raw_ble_connect_failure_falls_back_to_mqtt() -> None:
 
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
 
-    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(ble)
+    await handle.add_transport(mqtt)
 
     await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
     await asyncio.sleep(0)  # let the background BLE connect run (and fail, swallowed)
@@ -1132,7 +1039,7 @@ async def test_send_raw_no_usable_transport_propagates() -> None:
     ble.is_connected = False
     ble.is_usable = False  # cooldown / no cached BLEDevice → not eligible to carry a send
     ble.connect = AsyncMock()
-    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
+    await handle.add_transport(ble)
 
     with pytest.raises(NoTransportAvailableError):
         await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
@@ -1162,8 +1069,8 @@ async def test_send_raw_no_usable_transport_mqtt_offline_propagates() -> None:
     ble.connect = AsyncMock()
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
 
-    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(ble)
+    await handle.add_transport(mqtt)
 
     with pytest.raises(NoTransportAvailableError):
         await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
@@ -1184,8 +1091,8 @@ async def test_active_transport_skips_ble_when_not_usable() -> None:
     ble.is_usable = False  # simulate cooldown / no cached BLEDevice
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
 
-    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(ble)
+    await handle.add_transport(mqtt)
 
     chosen = handle.active_transport(prefer_ble=True)
     assert chosen is mqtt  # BLE preferred but unusable → MQTT
@@ -1202,8 +1109,8 @@ async def test_send_raw_skips_ble_reconnect_when_not_usable() -> None:
     ble.connect = AsyncMock()  # would normally be invoked — assert it isn't
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
 
-    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(ble)
+    await handle.add_transport(mqtt)
 
     await handle.send_raw(b"\xCA\xFE", prefer_ble=True)
 
@@ -1867,8 +1774,8 @@ async def test_transport_failure_keeps_credentials_when_login_still_valid() -> N
     client.on_unrecoverable_auth_error.assert_not_awaited()
 
 
-async def test_dead_account_login_does_fire_unrecoverable_callback() -> None:
-    """When the HTTP login itself is dead, the host must be told to re-authenticate."""
+async def test_transport_unrecoverable_never_fires_global_callback() -> None:
+    """The global callback has exactly one home (_quiesce_account) — even with the account dead."""
     client = MammotionClient()
     tm = MagicMock()
     tm.reauth_required = "refresh token rejected"
@@ -1879,7 +1786,59 @@ async def test_dead_account_login_does_fire_unrecoverable_callback() -> None:
     exc = ReLoginRequiredError("u@t.com", "refresh token rejected")
     await client._signal_transport_unrecoverable(session, TransportType.CLOUD_MAMMOTION, exc)
 
+    client.on_unrecoverable_auth_error.assert_not_awaited()
+
+
+async def test_dead_account_login_quiesces_and_fires_unrecoverable_callback() -> None:
+    """Account death stops the scheduler, kills both cloud transports, and tells the host once."""
+    client = MammotionClient()
+    tm = MagicMock()
+    tm.stop_refresh_scheduler = AsyncMock()
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+    mammotion_transport = MagicMock()
+    mammotion_transport.disconnect = AsyncMock()
+    session.mammotion_transport = mammotion_transport
+    aliyun_transport = MagicMock()
+    aliyun_transport.disconnect = AsyncMock()
+    session.aliyun_transport = aliyun_transport
+    client.on_unrecoverable_auth_error = AsyncMock()
+
+    exc = ReLoginRequiredError("u@t.com", "refresh token rejected")
+    await client._quiesce_account(session, "refresh token rejected", exc)
+
+    tm.stop_refresh_scheduler.assert_awaited_once()
+    for transport in (mammotion_transport, aliyun_transport):
+        transport.mark_unrecoverable_auth_failure.assert_called_once()
+        transport.disconnect.assert_awaited_once()
     client.on_unrecoverable_auth_error.assert_awaited_once_with("u@t.com", TransportType.CLOUD_MAMMOTION, exc)
+
+
+async def test_token_manager_reauth_transition_triggers_quiesce() -> None:
+    """_ensure_token_manager wires on_reauth_required so the flag transition quiesces the account."""
+    from pymammotion.auth.token_manager import TokenManager
+
+    client = MammotionClient()
+    http = MagicMock()
+    http.reauth_required = None
+    http.login_info = None
+    http.mqtt_credentials = None
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    tm = await client._ensure_token_manager(session, http)
+    assert isinstance(tm, TokenManager)
+    client._quiesce_account = AsyncMock()  # type: ignore[method-assign]
+    tm.on_reauth_required = client._quiesce_account  # re-wire to observe the partial's target
+
+    err = tm._mark_reauth_required("refresh token rejected")
+    assert tm._reauth_task is not None
+    await tm._reauth_task
+
+    http.mark_reauth_required.assert_called_once_with("refresh token rejected")
+    client._quiesce_account.assert_awaited_once_with("refresh token rejected", err)
+    # Second rejection must not fire the callback again.
+    client._quiesce_account.reset_mock()
+    tm._mark_reauth_required("again")
+    client._quiesce_account.assert_not_awaited()
 
 
 async def test_default_session_skips_the_ble_only_placeholder() -> None:
@@ -1900,3 +1859,33 @@ async def test_default_session_skips_the_ble_only_placeholder() -> None:
 
     assert client._account_registry.all_sessions[0].account_id == BLE_ONLY_ACCOUNT
     assert client._get_default_session() is cloud
+
+
+async def test_reauth_required_property_mirrors_token_manager() -> None:
+    """Hosts read auth health off the client facade, not the inner TokenManager."""
+    client = MammotionClient()
+    assert client.reauth_required is None
+
+    tm = MagicMock()
+    tm.reauth_required = "refresh token rejected"
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+    await client._account_registry.register(session)
+
+    assert client.reauth_required == "refresh token rejected"
+
+
+async def test_to_cache_returns_empty_for_dead_session() -> None:
+    """A rejected session must never be serialized — restoring it would re-spend dead tokens."""
+    client = MammotionClient()
+    tm = MagicMock()
+    tm.reauth_required = "refresh token rejected"
+    session = AccountSession(account_id="u@t.com", email="u@t.com", password="pw")
+    session.token_manager = tm
+    session.mammotion_http = MagicMock()
+    await client._account_registry.register(session)
+
+    assert client.to_cache() == {}
+
+    tm.reauth_required = None
+    assert client.to_cache() != {}

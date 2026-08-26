@@ -386,6 +386,21 @@ class DeviceHandle:
                         if dl_task is not None and not dl_task.done():
                             dl_task.cancel()
                         self._ble_stream_active = False
+                        # BLE was the fallback that opened the gate on CONNECTED.  With it
+                        # gone, re-close the gate if MQTT is still mid-reconnect — otherwise
+                        # commands dispatch into a window where no transport can carry them.
+                        # DISCONNECTED is deliberately not gated: it is also the terminal
+                        # give-up state, which never emits another event to reopen the gate.
+                        if any(
+                            (t := self._transports.get(tt)) is not None
+                            and t.availability is TransportAvailability.CONNECTING
+                            for tt in (TransportType.CLOUD_MAMMOTION, TransportType.CLOUD_ALIYUN)
+                        ):
+                            _logger.debug(
+                                "DeviceHandle[%s]: BLE fallback lost while MQTT reconnecting — pausing dispatch",
+                                self.device_name,
+                            )
+                            self.queue.pause_for_reconnect()
             elif state == TransportAvailability.CONNECTING:
                 # MQTT subscription is not yet active — commands sent now would time
                 # out waiting for a response.  Gate the queue unless BLE is connected
@@ -422,7 +437,8 @@ class DeviceHandle:
         No-op for RTK base stations and Spino pool cleaners — they run no BLE
         loops and don't speak the report-cfg protocol.
         """
-        if self._skips_activity_loops:
+        # Runs as a detached task, so it can land after stop() has latched _stopping.
+        if self._skips_activity_loops or self._stopping:
             return
         _logger.debug("_on_ble_connected [%s]: starting BLE loops and requesting report", self.device_name)
         self._ble_heartbeat_failures = 0
@@ -430,6 +446,9 @@ class DeviceHandle:
         self._start_ble_loop()
         self._start_ble_polling_loop()
         self._start_dynamics_line_loop()
+        # Only the queue: restarting the MQTT activity loop here would silently undo
+        # a host's stop_polling() on every BLE reconnect.
+        self.queue.start()
         cmd = self.commands.get_report_cfg()
 
         async def _send_report_cfg() -> None:

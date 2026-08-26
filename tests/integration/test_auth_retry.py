@@ -7,6 +7,7 @@ import pytest
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
+from tests._helpers import make_bare_client
 from pymammotion.transport.base import (
     AuthError,
     ReLoginRequiredError,
@@ -38,14 +39,8 @@ def _make_session(*, has_token_manager: bool = True) -> AccountSession:
 
 def _make_client(*, has_token_manager: bool = True) -> tuple[MammotionClient, AccountSession]:
     """Return a (client, session) with the session registered in the account registry."""
-    client = MammotionClient.__new__(MammotionClient)
-    from pymammotion.account.registry import AccountRegistry
-
-    client._account_registry = AccountRegistry()
     session = _make_session(has_token_manager=has_token_manager)
-    # Bypass the async lock — directly insert into the internal dict
-    client._account_registry._sessions[session.account_id] = session
-    return client, session
+    return make_bare_client(session), session
 
 
 # ---------------------------------------------------------------------------

@@ -17,24 +17,14 @@ import pytest
 from pymammotion.data.model.hash_list import HashList
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.mow_path_saga import MowPathSaga
-from pymammotion.proto import LubaMsg, MctlNav, NavGetHashListAck
+from pymammotion.proto import LubaMsg
 from pymammotion.transport.base import SagaFailedError
-from tests.unit.messaging._helpers import make_command_builder as _make_command_builder
+from tests.unit.messaging._helpers import hash_list_msg, make_command_builder as _make_command_builder
 
 
 def _hash_list_msg_sub3(hash_ids: list[int]) -> LubaMsg:
     """LubaMsg carrying a single-frame toapp_gethash_ack (sub_cmd=3)."""
-    return LubaMsg(
-        nav=MctlNav(
-            toapp_gethash_ack=NavGetHashListAck(
-                pver=1,
-                sub_cmd=3,
-                total_frame=1,
-                current_frame=1,
-                data_couple=hash_ids,
-            )
-        )
-    )
+    return hash_list_msg(hash_ids, sub_cmd=3)
 
 
 async def test_skip_planning_with_no_route_val_raises_saga_failed() -> None:

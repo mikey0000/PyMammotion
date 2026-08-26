@@ -455,3 +455,65 @@ async def test_properties_dispatch_propagates_callback_exceptions(
     parsed.params.iot_id = "iot-1"
     with patch.object(ThingPropertiesMessage, "from_json", return_value=parsed), pytest.raises(SessionExpiredError):
         await transport._dispatch_device_properties("/x/thing/properties", b"{}")
+
+
+# ---------------------------------------------------------------------------
+# _run — broker auth rejections are bounded even with transient refresh failures
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_never_gives_up_while_forced_refresh_fails_transiently(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """Broker rejections whose forced refresh keeps failing transiently must not become terminal.
+
+    An expired JWT while the HTTP API is unreachable says nothing about the login:
+    the transport backs off and retries, and only an explicit refresh rejection or
+    a post-refresh broker rejection gives up.
+    """
+    from tests.unit.transport._fakes import AuthFailMQTTClient
+
+    forced_refreshes: list[bool] = []
+
+    async def _refresher(force: bool) -> object:
+        if force:
+            forced_refreshes.append(force)
+        if len(forced_refreshes) >= 5:
+            transport._stop_event.set()
+        raise OSError("network down")
+
+    transport = MQTTTransport(config, mammotion_http, AsyncMock(), creds_refresher=_refresher)
+    fatal_calls: list[Exception] = []
+
+    async def _fatal(exc: Exception) -> None:
+        fatal_calls.append(exc)
+
+    transport.on_fatal_auth_error = _fatal
+
+    real_sleep = asyncio.sleep
+
+    async def _instant_sleep(_delay: float) -> None:
+        await real_sleep(0)
+
+    with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", return_value=AuthFailMQTTClient()):
+        await transport._run()
+
+    assert len(forced_refreshes) == 5
+    assert fatal_calls == []
+    assert transport.is_usable is True
+
+
+def test_apply_credentials_does_not_clear_stop_event(transport: MQTTTransport) -> None:
+    """A credential refresh racing _give_up must not erase the stop signal.
+
+    connect() is the only legitimate restart point — it clears the event after
+    checking the unrecoverable-auth circuit breaker.
+    """
+    from pymammotion.auth.token_manager import MQTTCredentials
+
+    transport._stop_event.set()
+    transport.update_credentials(
+        MQTTCredentials(host="plain.broker", client_id="c", username="u", jwt="j", expires_at=0.0)
+    )
+    assert transport._stop_event.is_set()

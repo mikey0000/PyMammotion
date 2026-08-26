@@ -11,9 +11,8 @@ from typing import TYPE_CHECKING
 
 import jwt
 
-from pymammotion.aliyun.exceptions import AuthRefreshException, LoginException
+from pymammotion.aliyun.exceptions import LoginException
 from pymammotion.http.model.http import MQTTConnection, UnauthorizedExceptionError
-from pymammotion.transport import AuthError
 from pymammotion.transport.base import (
     ReLoginRequiredError,
     SessionExpiredError,
@@ -191,6 +190,15 @@ class TokenManager:
         self._reauth_required: str | None = None  # account-wide: the HTTP login is dead
         self._aliyun_unavailable: str | None = None  # transport-scoped: Aliyun IoT session is dead
         self._mqtt_unavailable: str | None = None  # transport-scoped: Mammotion MQTT JWT is dead
+        #: Fired exactly once, on the None → reason transition of _reauth_required,
+        #: with (reason, error).  MammotionClient wires this to quiesce the whole
+        #: account: disconnect both cloud transports, stop the scheduler, and
+        #: notify the host — regardless of which refresh path found the rejection.
+        self.on_reauth_required: Callable[[str, Exception], Awaitable[None]] | None = None
+        # Strong ref to the detached quiesce task so it is not garbage-collected
+        # mid-flight; _mark_reauth_required runs under self._lock on arbitrary
+        # tasks, so the callback must never be awaited inline.
+        self._reauth_task: asyncio.Task[None] | None = None
         # Background task that renews credentials shortly before they expire — see
         # start_refresh_scheduler().
         self._scheduler_task: asyncio.Task[None] | None = None
@@ -309,11 +317,33 @@ class TokenManager:
         if self._reauth_required is not None:
             raise ReLoginRequiredError(self._account_id, self._reauth_required)
 
+    def _adopt_http_reauth(self) -> None:
+        """Raise if a decorated endpoint already marked the HTTP layer terminal.
+
+        ``@refresh_token_decorator`` sees a rejected refresh before this manager
+        does; adopting its verdict fires the account quiesce and keeps the two
+        layers' flags consistent instead of spending another doomed round trip.
+        """
+        if (http_reason := self._http.reauth_required) is not None:
+            raise self._mark_reauth_required(http_reason)
+
     def _mark_reauth_required(self, reason: str) -> ReLoginRequiredError:
-        """Mark the account terminally unauthenticated and build the error to raise."""
+        """Mark the account terminally unauthenticated and build the error to raise.
+
+        On the first (and only the first) call this also pushes the terminal state
+        down to :class:`MammotionHTTP` — so decorated endpoints that never touch
+        this manager stop spending oauth2/token round trips — and fires
+        :attr:`on_reauth_required` as a detached task, never inline: this method
+        runs inside refresh calls that hold ``self._lock``, and the quiesce
+        callback re-enters client code that must not run under that lock.
+        """
+        err = ReLoginRequiredError(self._account_id, reason)
         if self._reauth_required is None:
             self._reauth_required = reason
-        return ReLoginRequiredError(self._account_id, reason)
+            self._http.mark_reauth_required(reason)
+            if self.on_reauth_required is not None:
+                self._reauth_task = asyncio.ensure_future(self.on_reauth_required(reason, err))
+        return err
 
     def _mark_aliyun_unavailable(self, reason: str) -> ReLoginRequiredError:
         """Mark the Aliyun IoT session terminally unrenewable and build the error to raise.
@@ -469,11 +499,20 @@ class TokenManager:
         """Cancel the scheduled-refresh task and wait for it to unwind."""
         task = self._scheduler_task
         self._scheduler_task = None
-        if task is None or task.done():
-            return
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        # Let an in-flight quiesce finish rather than cancelling it: its tail is
+        # the host's on_unrecoverable_auth_error, which clears the dead cached
+        # credentials — cancelling mid-disconnect would skip that and let the next
+        # restart spend the rejected refresh token again.  Never await it from
+        # within itself (the quiesce path calls this method).
+        reauth_task = self._reauth_task
+        if reauth_task is not None and not reauth_task.done() and reauth_task is not asyncio.current_task():
+            self._reauth_task = None
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await reauth_task
 
     @property
     def seconds_until_next_refresh(self) -> float:
@@ -502,10 +541,18 @@ class TokenManager:
         # two disagree about whether a refresh is needed.
         if (http_exp := self._expiry(self._http.expires_in)) is not None:
             due_at.append(http_exp - _HTTP_REFRESH_LEAD)
-        if self._mqtt_creds is not None and (exp := self._expiry(self._mqtt_creds.expires_at)) is not None:
+        # Credentials behind a terminal transport flag are excluded — mirroring
+        # _refresh_due_credentials — so a given-up transport's permanently past-due
+        # expiry doesn't wake the scheduler every retry interval forever.
+        if (
+            self._mqtt_unavailable is None
+            and self._mqtt_creds is not None
+            and (exp := self._expiry(self._mqtt_creds.expires_at)) is not None
+        ):
             due_at.append(exp - _MQTT_REFRESH_LEAD)
         if (
-            self._aliyun_creds is not None
+            self._aliyun_unavailable is None
+            and self._aliyun_creds is not None
             and (exp := self._expiry(self._aliyun_creds.iot_token_expires_at)) is not None
         ):
             due_at.append(exp - _ALIYUN_REFRESH_LEAD)
@@ -673,6 +720,7 @@ class TokenManager:
 
         """
         self._raise_if_reauth_required()
+        self._adopt_http_reauth()
         try:
             response = await self._http.refresh_token_v2()
             data = response.data
@@ -753,8 +801,9 @@ class TokenManager:
             if self.on_aliyun_token_refreshed is not None:
                 self.on_aliyun_token_refreshed(session_data.iotToken)
         except ReLoginRequiredError:
+            self._adopt_http_reauth()
             raise
-        except (AuthRefreshException, LoginException) as exc:
+        except LoginException as exc:
             raise self._mark_aliyun_unavailable(str(exc)) from exc
         except Exception as exc:
             # DNS / connection / timeout failures must propagate as-is — see
@@ -813,7 +862,11 @@ class TokenManager:
         Raises:
             ReLoginRequiredError: The refresh token was rejected — the user must
                 re-authenticate.
-            AuthError: The authorization-code fetch failed for a non-network reason.
+
+        Any other failure (network outage, a 5xx from the authorization-code
+        endpoint) propagates as-is: it is a server or connectivity fault, not an
+        auth verdict, and wrapping it in AuthError previously let a benign blip
+        permanently kill the transport.
 
         """
         async with self._lock:
@@ -829,13 +882,6 @@ class TokenManager:
                 raise
             except UnauthorizedExceptionError as exc:
                 raise self._mark_reauth_required(str(exc)) from exc
-            except Exception as exc:
-                # Network outage / DNS failure isn't an auth problem — let the
-                # caller see the original exception and back off instead of
-                # treating it as an unrecoverable token error.
-                if is_transient_network_error(exc):
-                    raise
-                raise AuthError(exc) from exc
 
     def _set_mqtt_creds(self, data: MQTTConnection) -> MQTTCredentials:
         """Store MQTTConnection data into self._mqtt_creds and return it.
@@ -893,6 +939,7 @@ class TokenManager:
                     raise self._mark_mqtt_unavailable("MQTT JWT endpoint returned no data after access-token refresh")
             creds = self._set_mqtt_creds(response.data)
         except ReLoginRequiredError:
+            self._adopt_http_reauth()
             raise
         except Exception as exc:
             if is_transient_network_error(exc):

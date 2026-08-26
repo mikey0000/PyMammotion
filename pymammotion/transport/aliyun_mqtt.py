@@ -374,10 +374,11 @@ class AliyunMQTTTransport(Transport):
     async def _run(self) -> None:  # noqa: C901
         """Run the main Aliyun MQTT connection loop, reconnecting with exponential backoff."""
         backoff = MQTT_RECONNECT_MIN_SEC
-        #: Consecutive credential-refresh reconnect cycles without receiving a single
-        #: message.  Bounds the rc-4/5 and bind_reply-2043 refresh loops: a refresh that
-        #: "succeeds" but is rejected by the broker again must not retry forever with
-        #: zero backoff — that hammers Aliyun (historically: account blocks).
+        #: Consecutive credential-refresh reconnect cycles without the broker accepting
+        #: the session (an accepted bind_reply or real device traffic).  Bounds the
+        #: rc-4/5 and bind_reply-2043 refresh loops: a refresh that "succeeds" but is
+        #: rejected by the broker again must not retry forever with zero backoff —
+        #: that hammers Aliyun (historically: account blocks).
         auth_refresh_cycles = 0
 
         _tls_context = await self.get_ssl_context()
@@ -400,7 +401,9 @@ class AliyunMQTTTransport(Transport):
                     max_queued_incoming_messages=_MQTT_MAX_QUEUED,
                 ) as client:
                     self._client = client
-                    backoff = MQTT_RECONNECT_MIN_SEC  # reset on successful connect
+                    # Only the reconnect backoff resets on a handshake; the auth
+                    # refresh budget waits for the broker to accept the bind.
+                    backoff = MQTT_RECONNECT_MIN_SEC
                     await self._notify_availability(TransportAvailability.CONNECTED)
 
                     for topic in self._effective_subscribe_topics():
@@ -425,12 +428,9 @@ class AliyunMQTTTransport(Transport):
                         if self._stop_event.is_set():
                             break
                         self._mark_received()
-                        auth_refresh_cycles = 0  # broker accepted us — refresh budget resets
                         topic = str(message.topic)
                         raw = bytes(message.payload)
-                        if topic.endswith("/thing/status"):
-                            await self._dispatch_device_status(topic, raw)
-                        elif topic.endswith("/account/bind_reply"):
+                        if topic.endswith("/account/bind_reply"):
                             code = self._handle_bind_reply(raw)
                             if code == 2152:
                                 raise AccountInUseError(
@@ -443,6 +443,18 @@ class AliyunMQTTTransport(Transport):
                                     TransportType.CLOUD_ALIYUN,
                                     "Aliyun IoT token rejected by broker (bind_reply 2043) — token needs refresh",
                                 )
+                            if code == 200:
+                                auth_refresh_cycles = 0
+                            continue
+                        # A non-bind message means the broker is serving this session.
+                        # The refresh budget resets only on an accepted bind or HERE —
+                        # never on a rejecting bind_reply and never at connect time: a
+                        # TCP CONNECT succeeds even when the bind is about to be rejected,
+                        # and resetting there made _MAX_AUTH_REFRESH_CYCLES unreachable
+                        # (a ~1s refresh/reconnect loop — the account-blocking hammer).
+                        auth_refresh_cycles = 0
+                        if topic.endswith("/thing/status"):
+                            await self._dispatch_device_status(topic, raw)
                         elif topic.endswith(("/thing/events", "/thing/properties")):
                             await self._dispatch_aliyun_event(topic, raw)
                         else:

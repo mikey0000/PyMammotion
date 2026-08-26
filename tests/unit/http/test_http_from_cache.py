@@ -20,7 +20,6 @@ import time
 from unittest.mock import AsyncMock, patch
 
 from aiohttp import ClientError
-import jwt as pyjwt
 import pytest
 
 from pymammotion.http.http import MammotionHTTP
@@ -35,13 +34,14 @@ from pymammotion.http.model.http import (
     UnauthorizedExceptionError,
 )
 from pymammotion.transport.base import ReLoginRequiredError
+from tests._helpers import encode_jwt
 
 _EXP = 9999999999
 
 
 def _access_token(iot: str = "token-iot", robot: str = "token-robot", exp: int = _EXP) -> str:
     """Mint an unsigned-verifiable access token carrying the iot/robot/exp claims."""
-    return pyjwt.encode({"iot": iot, "robot": robot, "exp": exp}, "x" * 32, algorithm="HS256")
+    return encode_jwt(iot=iot, robot=robot, exp=exp)
 
 
 def _login_data(access_token: str | None = None) -> LoginResponseData:

@@ -26,22 +26,18 @@ Aliyun MQTT (AliyunMQTTTransport)
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import aiomqtt
 import pytest
 
 from pymammotion.aliyun.exceptions import CheckSessionException
 from pymammotion.account.registry import AccountSession
 from pymammotion.auth.token_manager import MQTTCredentials
 from pymammotion.client import MammotionClient
-from pymammotion.transport.base import (
-    AuthError,
-    LoginFailedError,
-    ReLoginRequiredError,
-)
+from tests._helpers import make_bare_client
+from pymammotion.transport.base import ReLoginRequiredError
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from tests.unit.transport._fakes import AuthFailMQTTClient
 
 
 # ---------------------------------------------------------------------------
@@ -71,27 +67,12 @@ def _make_client_with_session() -> tuple[MammotionClient, AccountSession]:
 
 
 def _make_client(session: AccountSession) -> MammotionClient:
-    from pymammotion.account.registry import AccountRegistry
-
-    client = MammotionClient.__new__(MammotionClient)
-    client._account_registry = AccountRegistry()
-    client._account_registry._sessions[session.account_id] = session
-    return client
+    return make_bare_client(session)
 
 
 # ---------------------------------------------------------------------------
 # Mammotion MQTT — Path 1: MQTT broker rejects credentials (rc=134)
 # ---------------------------------------------------------------------------
-
-
-class _MqttAuthFailClient:
-    """Fake aiomqtt.Client whose __aenter__ raises MqttCodeError(rc=134)."""
-
-    async def __aenter__(self) -> "_MqttAuthFailClient":
-        raise aiomqtt.MqttCodeError(134)
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
 
 
 @pytest.mark.asyncio
@@ -121,7 +102,7 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
     )
     transport.on_fatal_auth_error = _on_fatal
 
-    with patch("aiomqtt.Client", return_value=_MqttAuthFailClient()):
+    with patch("aiomqtt.Client", return_value=AuthFailMQTTClient(rc=134)):
         await transport._run()
 
     assert len(fatal_errors) == 1
@@ -160,7 +141,7 @@ async def test_mammotion_mqtt_broker_auth_failure_refreshes_once_then_gives_up()
     )
     transport.on_fatal_auth_error = _on_fatal
 
-    with patch("aiomqtt.Client", return_value=_MqttAuthFailClient()):
+    with patch("aiomqtt.Client", return_value=AuthFailMQTTClient(rc=134)):
         await transport._run()
 
     # Exactly one forced refresh happened, then we gave up (fatal fired once).
@@ -310,16 +291,3 @@ async def test_aliyun_failure_does_not_touch_mammotion_credentials() -> None:
     session.token_manager.refresh_mqtt_credentials.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_aliyun_plain_auth_error_propagates_without_relogin() -> None:
-    """A plain AuthError has no transport to target — it propagates untouched."""
-    client, session = _make_client_with_session()
-    session.mammotion_http.login_v2 = AsyncMock()
-
-    async def _send() -> None:
-        raise AuthError("aliyun rejected")
-
-    with pytest.raises(AuthError):
-        await client._send_with_auth_retry(_send, session)
-
-    session.mammotion_http.login_v2.assert_not_awaited()

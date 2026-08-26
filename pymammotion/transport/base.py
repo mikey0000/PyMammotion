@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import collections
 import contextlib
 from enum import Enum
+import json
 import logging
 import socket
 import time
@@ -107,6 +108,22 @@ class LoginFailedError(AuthError):
         super().__init__(f"Login failed for account '{account_id}': {reason}")
 
 
+#: aiohttp exception classes (or bases) that indicate the request never got a
+#: coherent answer — none of them is an auth verdict.
+_TRANSIENT_AIOHTTP_ERRORS = frozenset(
+    {
+        "ClientConnectionError",
+        "ClientConnectorError",
+        "ClientConnectorDNSError",
+        "ClientConnectorCertificateError",
+        "ClientOSError",
+        "ClientPayloadError",
+        "ServerDisconnectedError",
+        "ServerTimeoutError",
+    }
+)
+
+
 def is_transient_network_error(exc: BaseException) -> bool:
     """Return True if *exc* is a transient connectivity failure rather than an auth one.
 
@@ -122,14 +139,15 @@ def is_transient_network_error(exc: BaseException) -> bool:
       * ``socket.gaierror``                  — DNS resolution failure
       * ``ConnectionError`` / ``TimeoutError`` — generic connection failures
       * ``OSError``                          — broader socket-level errors
-      * ``aiohttp.ClientConnectorError`` and subclasses, by class name (so we
-        don't introduce a hard runtime dep on aiohttp from this module)
+      * ``json.JSONDecodeError``           — truncated / half-written body
+      * aiohttp connection, disconnect and payload errors, matched by class name
+        anywhere in the MRO (so we don't introduce a hard runtime dep on aiohttp
+        from this module)
       * The ``__cause__`` chain for any of the above (aiohttp wraps OSError)
     """
-    if isinstance(exc, (socket.gaierror, ConnectionError, TimeoutError, OSError)):
+    if isinstance(exc, (socket.gaierror, ConnectionError, TimeoutError, OSError, json.JSONDecodeError)):
         return True
-    name = type(exc).__name__
-    if name in {"ClientConnectorError", "ClientConnectorDNSError", "ClientConnectorCertificateError"}:
+    if any(cls.__name__ in _TRANSIENT_AIOHTTP_ERRORS for cls in type(exc).__mro__):
         return True
     cause = exc.__cause__
     return cause is not None and isinstance(cause, (socket.gaierror, OSError, ConnectionError, TimeoutError))
@@ -305,7 +323,7 @@ class Transport(ABC):
         #: Monotonic timestamp of the most recent outbound send (0.0 = never sent).
         self._last_send_monotonic: float = 0.0
         #: Set by mark_auth_failed() when a send fails with ReLoginRequiredError.
-        #: Cleared by clear_auth_failed() after successful credential recovery.
+        #: Terminal for this object — recovery is a rebuild from a fresh login.
         self._auth_failed: bool = False
         #: Set by mark_unrecoverable_auth_failure() when the re-login circuit
         #: breaker trips.  Unlike _auth_failed, this is a permanent state — the
@@ -531,13 +549,10 @@ class Transport(ABC):
     def mark_auth_failed(self) -> None:
         """Mark this transport as unusable due to an authentication failure.
 
-        ``is_usable`` returns False until ``clear_auth_failed()`` is called.
+        Terminal for this object: recovery is a rebuild — a fresh caller-initiated
+        login constructs new transports.
         """
         self._auth_failed = True
-
-    def clear_auth_failed(self) -> None:
-        """Clear the auth-failed flag after successful credential recovery."""
-        self._auth_failed = False
 
     def mark_unrecoverable_auth_failure(self) -> None:
         """Mark this transport as permanently failed — the re-login circuit breaker tripped.

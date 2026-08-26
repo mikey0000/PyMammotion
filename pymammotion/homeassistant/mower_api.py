@@ -38,10 +38,10 @@ class HomeAssistantMowerApi:
         self._last_call_times: dict[str, dict[str, datetime]] = {}
         self._call_intervals = {
             # Retry pacing for data we don't hold yet, not a refresh of what we do.
-            "check_maps": timedelta(minutes=5),
+            "check_maps": timedelta(hours=2),
             "read_plan": timedelta(minutes=30),
             "get_report_cfg": timedelta(hours=1),
-            "get_maintenance": timedelta(minutes=30),
+            "get_maintenance": timedelta(hours=24),
             "device_version_upgrade": timedelta(hours=24),
             "device_info": timedelta(hours=24),
         }
@@ -129,11 +129,6 @@ class HomeAssistantMowerApi:
         if self._plan_sync_needed(device_name, device, handle):
             await self._mammotion.start_plan_sync(device_name)
             self._mark_api_called("read_plan", device_name)
-
-        # if self._should_call_api("get_errors", device_name):
-        #     await self.async_send_command(device_name, "get_error_code")
-        #     await self.async_send_command(device_name, "get_error_timestamp")
-        #     self._mark_api_called("get_errors", device_name)
 
         if self._should_call_api("get_report_cfg", device_name):
             await self.async_send_command(device_name, "get_report_cfg")

@@ -9,47 +9,13 @@ import betterproto2
 from pymammotion.data.model.hash_list import HashList, NavGetCommData, NavGetHashListData
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
-from pymammotion.proto import LubaMsg, MctlNav, NavGetCommDataAck, NavGetHashListAck
-from tests.unit.messaging._helpers import make_command_builder as _make_command_builder
-
-
-def _hash_list_msg(hash_ids: list[int]) -> LubaMsg:
-    """Build a LubaMsg carrying a single-frame toapp_gethash_ack with the given hash IDs."""
-    return LubaMsg(
-        nav=MctlNav(
-            toapp_gethash_ack=NavGetHashListAck(
-                pver=1,
-                sub_cmd=0,
-                total_frame=1,
-                current_frame=1,
-                data_couple=hash_ids,
-            )
-        )
-    )
-
-
-def _comm_data_msg(
-    hash_id: int,
-    type_code: int,
-    *,
-    current_frame: int = 1,
-    total_frame: int = 1,
-    paternal_hash_a: int = 0,
-) -> LubaMsg:
-    """Build a LubaMsg carrying a single-frame toapp_get_commondata_ack."""
-    return LubaMsg(
-        nav=MctlNav(
-            toapp_get_commondata_ack=NavGetCommDataAck(
-                pver=1,
-                action=8,
-                type=type_code,
-                hash=hash_id,
-                total_frame=total_frame,
-                current_frame=current_frame,
-                paternal_hash_a=paternal_hash_a,
-            )
-        )
-    )
+from pymammotion.proto import LubaMsg
+from tests.unit.messaging._helpers import (
+    area_frame_named as _area_frame_named,
+    comm_data_frame as _comm_data_msg,
+    hash_list_msg as _hash_list_msg,
+    make_command_builder as _make_command_builder,
+)
 
 
 def _apply_msg_to_map(msg: LubaMsg, m: HashList) -> None:
@@ -467,20 +433,9 @@ async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
 
 from pymammotion.data.model.hash_list import (  # noqa: E402
     AreaHashNameList as _AHN,
-    CommDataCouple as _CDC,
     FrameList as _FL,
     HashList as _HL,
-    NavGetCommData as _NGCD,
-    NavNameTime as _NNT,
 )
-
-
-def _area_frame_named(hash_val: int, name: str) -> _NGCD:
-    return _NGCD(
-        hash=hash_val, total_frame=1, current_frame=1,
-        name_time=_NNT(name=name, create_time=1, modify_time=1),
-        data_couple=[_CDC(x=0.0, y=0.0)],
-    )
 
 
 def _fallback_area_names(current_map: _HL) -> None:

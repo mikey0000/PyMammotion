@@ -15,41 +15,18 @@ import pytest
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
-from pymammotion.aliyun.model.regions_response import RegionResponse, RegionResponseData
-from pymammotion.aliyun.model.session_by_authcode_response import (
-    SessionByAuthCodeResponse,
-    SessionOauthToken,
-)
+from pymammotion.aliyun.model.regions_response import RegionResponse
+from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
+from tests.unit.aliyun._helpers import make_gateway, make_region, make_session
 
 
 def _session(issued_in_past: int = 0, iot_token_expire: int = 86_400) -> SessionByAuthCodeResponse:
-    """Build a session response.  token_issued_at is intentionally left None (as the
-    server returns it) — the gateway tracks the real issued-at in memory."""
-    return SessionByAuthCodeResponse(
-        code=200,
-        data=SessionOauthToken(
-            identityId="identity-1",
-            refreshTokenExpire=2_592_000,
-            iotToken="iot-token",
-            iotTokenExpire=iot_token_expire,
-            refreshToken="refresh-token",
-        ),
-    )
+    """Build a session response (thin wrapper over the shared builder)."""
+    return make_session(iot_token="iot-token", iot_token_expire=iot_token_expire)
 
 
 def _region() -> RegionResponse:
-    return RegionResponse(
-        code=200,
-        data=RegionResponseData(
-            shortRegionId="EU",
-            oaApiGatewayEndpoint="oa.example.com",
-            regionId="EU",
-            mqttEndpoint="mqtt.example.com:1883",
-            pushChannelEndpoint="push.example.com",
-            regionEnglishName="Europe",
-            apiGatewayEndpoint="api.example.com",
-        ),
-    )
+    return make_region()
 
 
 def test_to_cache_stamps_token_issued_at() -> None:
@@ -216,39 +193,14 @@ _DUMMY_IOT_ID = "test-iot-id"
 
 
 def _make_gateway() -> CloudIOTGateway:
-    """Return a CloudIOTGateway with all external dependencies mocked out."""
-    http = MagicMock()
+    """A real-constructor gateway whose token is nowhere near expiry.
 
-    # Minimal session data so token-expiry checks pass without network calls.
-    session_data = MagicMock()
-    session_data.iotTokenExpire = 999_999_999
-    session_data.refreshTokenExpire = 999_999_999
-    session_data.iotToken = "fake-iot-token"
-
-    session_resp = MagicMock()
-    session_resp.data = session_data
-
-    region_data = MagicMock()
-    region_data.apiGatewayEndpoint = "https://api.example.com"
-
-    region_resp = MagicMock()
-    region_resp.data = region_data
-
-    gw = CloudIOTGateway.__new__(CloudIOTGateway)
-    # Populate only the fields accessed by send_cloud_command.
-    gw.mammotion_http = http
-    gw._app_key = "app_key"
-    gw._app_secret = "app_secret"
-    gw.domain = "iot-api.cn-shanghai.aliyuncs.com"
-    gw.message_delay = 1
-    gw._rate_limited_until = 0.0
-    gw._rate_limit_backoff = 60.0
-    gw._session_by_authcode_response = session_resp
-    gw._region_response = region_resp
-    # Set issued_at to now so that (issued_at + expire=999_999_999) >> (now + 3600),
-    # keeping the token-expiry branch False and avoiding network calls.
-    gw._iot_token_issued_at = int(time.time())
-    return gw
+    (iotTokenExpire far in the future keeps send_cloud_command's in-band
+    token-expiry branch False, so no refresh network call fires.)
+    """
+    return make_gateway(
+        make_session(iot_token="fake-iot-token", iot_token_expire=999_999_999),
+    )
 
 
 def _make_response(status_code: int, body: bytes = b'{"code":200}') -> MagicMock:
@@ -527,3 +479,94 @@ async def test_refreshed_token_flows_into_list_binding_by_account() -> None:
     assert gateway.session_by_authcode_response.data.iotToken == "new-iot-token"  # noqa: SLF001
     # ...and list_binding_by_account sent exactly that token (not the stale cached one).
     assert captured["body"].request.iot_token == "new-iot-token"  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# check_or_refresh_session — concurrent callers produce exactly one refresh
+# (moved from tests/unit/auth/test_token_manager.py: this is gateway-level
+# locking, the TokenManager was never involved)
+# ---------------------------------------------------------------------------
+
+
+def _expired_gateway() -> CloudIOTGateway:
+    """A gateway whose iotToken expired more than an hour ago."""
+    return make_gateway(make_session(iot_token_expire=1), age=7200)
+
+
+async def test_concurrent_calls_only_refresh_once() -> None:
+    """Two concurrent callers on an expired token must produce exactly one HTTP call.
+
+    Before the fix: both coroutines called the HTTP endpoint, rotating the
+    refreshToken twice and invalidating the first caller's iotToken.
+    After the fix: the second waiter finds the token fresh and returns early.
+    """
+    import asyncio
+
+    gw = _expired_gateway()
+
+    http_call_count = 0
+    fresh_session = make_session()
+
+    async def _fake_refresh(*_args, **_kwargs) -> MagicMock:
+        nonlocal http_call_count
+        http_call_count += 1
+        await asyncio.sleep(0.02)  # simulate network latency so both enter concurrently
+        gw._session_by_authcode_response = fresh_session  # noqa: SLF001
+        gw._iot_token_issued_at = int(time.time())  # noqa: SLF001
+        resp = MagicMock()
+        resp.body = (
+            b'{"code":200,"data":{"iotToken":"new_tok","iotTokenExpire":72000,'
+            b'"refreshToken":"new_ref","refreshTokenExpire":720000,"identityId":"id"}}'
+        )
+        resp.status_message = "OK"
+        resp.headers = {}
+        resp.status_code = 200
+        return resp
+
+    with (
+        patch("pymammotion.aliyun.cloud_gateway.Client.async_do_request", side_effect=_fake_refresh),
+        patch("pymammotion.aliyun.cloud_gateway.SessionByAuthCodeResponse.from_dict", return_value=fresh_session),
+    ):
+        await asyncio.gather(
+            gw.check_or_refresh_session(force=True),
+            gw.check_or_refresh_session(force=True),
+        )
+
+    assert http_call_count == 1, (
+        f"Expected exactly 1 HTTP refresh call, got {http_call_count}. "
+        "Race condition: both concurrent callers fired a token rotation."
+    )
+
+
+async def test_second_waiter_skips_after_first_refreshes() -> None:
+    """After the first caller refreshes, the second must not make another HTTP call."""
+    import asyncio
+
+    gw = _expired_gateway()
+    http_calls: list[str] = []
+    fresh = make_session()
+
+    async def _fake_refresh(*_args, **_kwargs) -> MagicMock:
+        http_calls.append("refresh")
+        await asyncio.sleep(0.01)
+        gw._session_by_authcode_response = fresh  # noqa: SLF001
+        gw._iot_token_issued_at = int(time.time())  # noqa: SLF001
+        resp = MagicMock()
+        resp.body = (
+            b'{"code":200,"data":{"iotToken":"t","iotTokenExpire":72000,'
+            b'"refreshToken":"r","refreshTokenExpire":720000,"identityId":"i"}}'
+        )
+        resp.status_message = "OK"
+        resp.headers = {}
+        resp.status_code = 200
+        return resp
+
+    with (
+        patch("pymammotion.aliyun.cloud_gateway.Client.async_do_request", side_effect=_fake_refresh),
+        patch("pymammotion.aliyun.cloud_gateway.SessionByAuthCodeResponse.from_dict", return_value=fresh),
+    ):
+        # Run sequentially to confirm the second is a genuine no-op (not just lucky timing)
+        await gw.check_or_refresh_session()  # first: refreshes
+        await gw.check_or_refresh_session()  # second: token is now fresh → skip
+
+    assert len(http_calls) == 1

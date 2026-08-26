@@ -23,16 +23,16 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientError, ContentTypeError
-import jwt as pyjwt
 import pytest
 
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.transport.base import ReLoginRequiredError
+from tests._helpers import encode_jwt
 
 
 def _jwt(expires_in: float = 3600.0) -> str:
     """Return an unsigned-verifiable JWT with the given relative expiry."""
-    return pyjwt.encode({"exp": int(time.time() + expires_in), "iot": "", "robot": ""}, "x", algorithm="HS256")
+    return encode_jwt(exp=int(time.time() + expires_in), iot="", robot="")
 
 
 def _login_payload(access_token: str | None = None) -> dict:
@@ -321,3 +321,60 @@ def test_handle_expiry_is_gone() -> None:
     """handle_expiry re-logged in from a stored password on any 401 — it must stay removed."""
     assert not hasattr(MammotionHTTP, "handle_expiry")
     assert not hasattr(MammotionHTTP, "refresh_login")
+
+
+# ---------------------------------------------------------------------------
+# terminal memory — a rejected refresh token stops all oauth2/token traffic
+# ---------------------------------------------------------------------------
+
+
+async def test_rejected_refresh_marks_http_terminal() -> None:
+    """The rejection is remembered so later calls need no network to fail."""
+    http = _logged_in(MammotionHTTP())
+    http.expires_in = 0.0
+    http._refresh_token_v2_locked = AsyncMock(return_value=MagicMock(code=2401))  # type: ignore[method-assign]
+
+    with pytest.raises(ReLoginRequiredError):
+        await http.ensure_token_valid()
+
+    assert http.reauth_required is not None
+
+
+async def test_terminal_http_fails_fast_with_zero_network() -> None:
+    """Post-rejection, every decorated call raises immediately — no oauth2/token attempt.
+
+    Without this, each of the 15 decorated endpoints re-fired a doomed refresh per
+    call after the account went terminal (the oauth2/token hammering Mammotion
+    reported).
+    """
+    http = _logged_in(MammotionHTTP())
+    http.expires_in = 0.0
+    http._refresh_token_v2_locked = AsyncMock(return_value=MagicMock(code=2401))  # type: ignore[method-assign]
+
+    with pytest.raises(ReLoginRequiredError):
+        await http.ensure_token_valid()
+    http._refresh_token_v2_locked.reset_mock()
+
+    for _ in range(3):
+        with pytest.raises(ReLoginRequiredError):
+            await http.ensure_token_valid()
+
+    http._refresh_token_v2_locked.assert_not_awaited()
+
+
+async def test_mark_reauth_required_first_reason_wins() -> None:
+    http = MammotionHTTP()
+    http.mark_reauth_required("first")
+    http.mark_reauth_required("second")
+    assert http.reauth_required == "first"
+
+
+async def test_successful_login_v2_clears_terminal_flag() -> None:
+    """An explicit re-login is the recovery path — it must clear the terminal memory."""
+    http = _make_http(json_data=_login_payload())
+    http.mark_reauth_required("dead")
+
+    response = await http.login_v2("a@b.c", "pw")
+
+    assert response.code == 0
+    assert http.reauth_required is None

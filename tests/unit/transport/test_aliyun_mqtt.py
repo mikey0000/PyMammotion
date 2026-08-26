@@ -4,12 +4,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
+from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport, _STALE_EVENT_THRESHOLD_MS
 from pymammotion.transport.base import ReLoginRequiredError, TransportError, TransportType
+from tests._helpers import make_bare_client
 from tests.unit.transport._fakes import (
     AuthFailMQTTClient as _AuthFailMQTTClient,
     FakeMessage as _FakeMessage,
@@ -614,7 +616,12 @@ async def test_bind_reply_2043_callback_returns_true_reconnects(
 
     with patch("aiomqtt.Client", side_effect=clients):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        # Poll rather than a fixed sleep: the reconnect includes a real backoff
+        # sleep, and a fixed wait makes the assertion timing-dependent under load.
+        for _ in range(400):
+            if transport.is_connected and transport._iot_token == "refreshed-token":
+                break
+            await asyncio.sleep(0.005)
         assert transport.is_connected
         assert transport._iot_token == "refreshed-token"
         assert len(auth_failure_calls) == 1
@@ -711,9 +718,7 @@ def _make_aliyun_session(iot_token: str = "initial-tok") -> tuple:
     session.mammotion_http = AsyncMock()
     session.token_manager = AsyncMock()
 
-    client = MammotionClient.__new__(MammotionClient)
-    client._account_registry = AccountRegistry()
-    client._account_registry._sessions[session.account_id] = session
+    client = make_bare_client(session)
 
     cloud_client = _make_mock_cloud_client(iot_token)
     transport = client._setup_aliyun_transport(cloud_client, session)
@@ -926,3 +931,250 @@ async def test_send_generic_error_records_error(config: AliyunMQTTConfig) -> Non
         await transport.send(b"\x01\x02", iot_id="abc123")
 
     transport.record_error.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# bind_reply 2043 — the refresh budget must be exhaustible (account-block hammer)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bind_reply_2043_replay_is_bounded(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
+    """Repeated 2043s exhaust _MAX_AUTH_REFRESH_CYCLES even when every refresh succeeds.
+
+    The rejecting bind_reply is itself a received message; resetting the refresh
+    budget on *any* message cleared it before the 2043 was parsed, making the cap
+    unreachable — a ~1s connect/refresh/reconnect loop (the historical
+    account-blocking hammer).
+    """
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_auth_failure = AsyncMock(return_value=True)
+    fatal_calls: list[Exception] = []
+
+    async def _fatal(exc: Exception) -> None:
+        fatal_calls.append(exc)
+
+    transport.on_fatal_auth_error = _fatal
+
+    clients = [_FakeMQTTClient(messages=[_bind_reply_msg(2043)]) for _ in range(10)]
+
+    real_sleep = asyncio.sleep
+
+    async def _instant_sleep(_delay: float) -> None:
+        await real_sleep(0)
+
+    with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
+        with pytest.raises(ReLoginRequiredError):
+            await transport._run()
+
+    assert transport.on_auth_failure.await_count == 3  # _MAX_AUTH_REFRESH_CYCLES
+    assert len(fatal_calls) == 1
+    assert transport._stop_event.is_set()
+    assert transport.is_usable is False
+
+
+@pytest.mark.asyncio
+async def test_accepted_bind_reply_resets_refresh_budget(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
+    """A bind_reply the broker accepts (code 200) restores the full refresh budget."""
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_auth_failure = AsyncMock(return_value=True)
+
+    async def _fatal(_exc: Exception) -> None:
+        return None
+
+    transport.on_fatal_auth_error = _fatal
+
+    clients = [
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 1
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 2
+        _FakeMQTTClient(messages=[_bind_reply_msg(200), _bind_reply_msg(2043)]),  # accepted → reset; then cycle 1
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 2
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 3
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # budget exhausted → fatal
+    ]
+
+    real_sleep = asyncio.sleep
+
+    async def _instant_sleep(_delay: float) -> None:
+        await real_sleep(0)
+
+    with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
+        with pytest.raises(ReLoginRequiredError):
+            await transport._run()
+
+    # 5 refreshes total: the accepted bind_reply in the middle restarted the count.
+    assert transport.on_auth_failure.await_count == 5
+
+
+# ---------------------------------------------------------------------------
+# Issue #130: envelope staleness — params.time / generateTime / gmtCreate gate
+# (moved here from tests/unit/device/test_handle.py; these exercise
+# AliyunMQTTTransport._dispatch_aliyun_event, not DeviceHandle)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def staleness_transport():
+    """AliyunMQTTTransport with a mocked cloud gateway."""
+    config = AliyunMQTTConfig(
+        host="test.iot-as-mqtt.cn-shanghai.aliyuncs.com",
+        client_id_base="testpk&testdn",
+        username="testdn&testpk",
+        device_name="testdn",
+        product_key="testpk",
+        device_secret="testsecret",
+        iot_token="testtoken",
+    )
+    gateway = MagicMock()
+    t = AliyunMQTTTransport(config, gateway)
+    t.on_device_event = AsyncMock()
+    t.on_device_properties = AsyncMock()
+    return t
+
+
+def _make_event_envelope(envelope_time_ms: int, identifier: str = "device_protobuf_msg_event") -> bytes:
+    """Build a raw JSON thing/events envelope with the given params.time."""
+    sample_bytes = b'\x08\xf4\x01\x10\x01\x18\x07(\x010\x01R\x08\xba\x02\x05\x12\x03\x08\x05\x10K'
+    encoded = base64.b64encode(sample_bytes).decode("ascii")
+
+    payload = {
+        "method": "thing.events",
+        "id": "test-event-id",
+        "version": "1.0",
+        "params": {
+            "identifier": identifier,
+            "type": "info",
+            "time": envelope_time_ms,
+            "iotId": "test_iot_id",
+            "productKey": "testpk",
+            "deviceName": "testdn",
+            "gmtCreate": 1714000000000,
+            "groupIdList": [],
+            "groupId": "",
+            "categoryKey": "LawnMower",
+            "batchId": "",
+            "checkLevel": 0,
+            "namespace": "",
+            "tenantId": "",
+            "name": "",
+            "thingType": "DEVICE",
+            "tenantInstanceId": "",
+            "value": {
+                "content": encoded,
+            },
+        },
+    }
+    return json.dumps(payload).encode()
+
+
+@pytest.mark.asyncio
+async def test_fresh_event_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Events with params.time within the threshold are forwarded."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_event_envelope(now_ms - 5_000)  # 5 seconds old
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_stale_event_dropped(staleness_transport: AliyunMQTTTransport):
+    """Events older than the threshold are silently dropped."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 10_000)  # well past threshold
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_without_any_timestamp_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Events with no usable envelope timestamp (time/generateTime/gmtCreate) are not dropped."""
+    payload = json.loads(_make_event_envelope(0))
+    payload["params"]["gmtCreate"] = 0  # the helper's fixture value would trip the fallback
+    raw = json.dumps(payload).encode()
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_event_without_time_falls_back_to_gmt_create(staleness_transport: AliyunMQTTTransport):
+    """Events missing params.time are filtered via gmtCreate (stale fixture value → dropped)."""
+    raw = _make_event_envelope(0)  # helper sets gmtCreate=1714000000000 (ancient)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_not_called()
+
+
+def _make_properties_envelope(generate_time_ms: int) -> bytes:
+    """Realistic thing/properties envelope: carries generateTime/gmtCreate, NO params.time."""
+    payload = {
+        "method": "thing.properties",
+        "id": "test-props-id",
+        "version": "1.0",
+        "params": {
+            "deviceType": "LawnMower",
+            "checkFailedData": {},
+            "groupIdList": [],
+            "_tenantId": "",
+            "groupId": "",
+            "categoryKey": "LawnMower",
+            "batchId": "",
+            "gmtCreate": generate_time_ms,
+            "productKey": "testpk",
+            "generateTime": generate_time_ms,
+            "deviceName": "testdn",
+            "_traceId": "",
+            "iotId": "test_iot_id",
+            "JMSXDeliveryCount": 1,
+            "checkLevel": 0,
+            "qos": 1,
+            "requestId": "1",
+            "_categoryKey": "TmallGenie.LawnMower",
+            "namespace": "",
+            "tenantId": "",
+            "thingType": "DEVICE",
+            "items": {"batteryPercentage": {"time": generate_time_ms, "value": 80}},
+            "tenantInstanceId": "",
+        },
+    }
+    return json.dumps(payload).encode()
+
+
+@pytest.mark.asyncio
+async def test_stale_properties_dropped(staleness_transport: AliyunMQTTTransport):
+    """Stale thing/properties are dropped via generateTime (they carry no params.time)."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_properties_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 30_000)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
+
+    staleness_transport.on_device_properties.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fresh_properties_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Fresh thing/properties (recent generateTime, no params.time) are forwarded."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_properties_envelope(now_ms - 5_000)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
+
+    staleness_transport.on_device_properties.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_event_at_threshold_boundary_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Events exactly at the threshold age are forwarded (not strictly greater)."""
+    now_ms = int(time.time() * 1000)
+    # Subtract threshold minus a small margin to stay within bounds
+    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS + 1_000)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_called_once()

@@ -54,6 +54,9 @@ _ModelT = TypeVar("_ModelT", bound=DataClassORJSONMixin)
 
 _LOGGER = logging.getLogger(__name__)
 
+#: HTTP status or in-body codes by which the server reports a dead access token.
+_DEAD_TOKEN_CODES = frozenset({401, 460})
+
 #: Hard bound on how long a token refresh may run.  ``_refresh_lock`` — and, via
 #: ``TokenManager``, every other coroutine waiting on a credential — is held for
 #: the duration, and an aiohttp ``ClientSession`` supplied by the host (Home
@@ -213,6 +216,11 @@ class MammotionHTTP:
         # refresh_token_v2) so concurrent near-expiry callers produce ONE refresh
         # instead of a stampede of competing rotations.
         self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        #: Terminal memory: once the refresh token is rejected, every decorated
+        #: endpoint must fail fast with ReLoginRequiredError instead of spending
+        #: another doomed oauth2/token round trip per call.  Cleared only by a
+        #: successful login or token exchange.
+        self._reauth_required: str | None = None
         #: Fired (async) after any successful oauth2/token exchange rotates the
         #: login session.  TokenManager wires this to mirror the rotation into its
         #: credential snapshot and persist it — a rotation that isn't persisted
@@ -442,6 +450,21 @@ class MammotionHTTP:
 
         return wrapper
 
+    @property
+    def reauth_required(self) -> str | None:
+        """Reason this login is terminally dead, or ``None`` while healthy."""
+        return self._reauth_required
+
+    def mark_reauth_required(self, reason: str) -> None:
+        """Remember that the refresh token was rejected so every later call fails fast.
+
+        Idempotent; the first reason wins.  TokenManager pushes its account-wide
+        terminal state down here so endpoints that never touch the manager still
+        stop hammering oauth2/token.
+        """
+        if self._reauth_required is None:
+            self._reauth_required = reason
+
     async def ensure_token_valid(self, caller: str = "") -> None:
         """Refresh the OAuth access token if it expires within the next 5 minutes.
 
@@ -466,6 +489,8 @@ class MammotionHTTP:
                 as an auth failure.
 
         """
+        if self._reauth_required is not None:
+            raise ReLoginRequiredError(self.account or "", self._reauth_required)
         if self.expires_in >= time.time() + 300:  # 300 seconds = 5 minutes
             return
         async with self._refresh_lock:
@@ -490,9 +515,9 @@ class MammotionHTTP:
                     caller,
                     response.code,
                 )
-                raise ReLoginRequiredError(
-                    self.account or "", f"refresh token rejected by oauth2/token (code={response.code})"
-                )
+                reason = f"refresh token rejected by oauth2/token (code={response.code})"
+                self.mark_reauth_required(reason)
+                raise ReLoginRequiredError(self.account or "", reason)
 
     async def login_by_email(self, email: str, password: str) -> Response[LoginResponseData]:
         """Log in using email and password via the v2 OAuth endpoint."""
@@ -920,6 +945,8 @@ class MammotionHTTP:
                     "User-Agent": "okhttp/4.9.3",
                 },
             )
+            if resp.status in (408, 429) or resp.status >= 500:
+                raise ConnectionError(f"mqtt/auth/jwt returned HTTP {resp.status}")
             if resp.status != 200:
                 return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
@@ -956,13 +983,15 @@ class MammotionHTTP:
                 },
             )
             resp_dict = await resp.json()
-        # Check auth failure BEFORE the generic non-200 bail-out: a 401 can arrive as
-        # an HTTP status or as an in-body code, and it must surface as
-        # UnauthorizedException (which drives the force-refresh path) rather than a
-        # plain Response(code=401).
-        if resp.status == 401 or resp_dict.get("code") == 401:
+        # Check auth failure BEFORE the generic non-200 bail-out: a dead token arrives
+        # as HTTP 401/460 or as an in-body 401/460 under any status, and every shape
+        # must surface as UnauthorizedException (which drives the force-refresh path)
+        # rather than a plain Response.
+        if resp.status in _DEAD_TOKEN_CODES or resp_dict.get("code") in _DEAD_TOKEN_CODES:
             _LOGGER.debug(
-                "mqtt_invoke: 401 for iot_id=%s with access_token fp=%s",
+                "mqtt_invoke: %s/%s for iot_id=%s with access_token fp=%s",
+                resp.status,
+                resp_dict.get("code"),
                 iot_id,
                 _token_fingerprint(self._login_info.access_token if self._login_info else None),
             )
@@ -1032,6 +1061,7 @@ class MammotionHTTP:
         if login_response is None or login_response.data is None:
             _LOGGER.debug("login_v2 returned empty response: %s", login_response)
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+        self._reauth_required = None
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
         self._headers["Authorization"] = (
@@ -1135,6 +1165,7 @@ class MammotionHTTP:
             _token_fingerprint(self._login_info.access_token if self._login_info else None),
             _token_fingerprint(refresh_response.data.access_token),
         )
+        self._reauth_required = None
         self.login_info = refresh_response.data
         self.expires_in = refresh_response.data.expires_in + time.time()
         self._headers["Authorization"] = (
@@ -1215,6 +1246,7 @@ class MammotionHTTP:
         login_response = response_factory(Response[LoginResponseData], data)
         if login_response is None or login_response.data is None:
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+        self._reauth_required = None
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
         self._headers["Authorization"] = (

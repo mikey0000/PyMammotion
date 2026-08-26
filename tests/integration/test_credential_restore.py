@@ -706,42 +706,9 @@ async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None
 
 # ---------------------------------------------------------------------------
 # restore_credentials — the login comes first
+# (fallback-to-full-login itself is covered end-to-end, with traffic bounds, in
+#  tests/integration/fake_cloud/test_restore_flow.py)
 # ---------------------------------------------------------------------------
-
-async def test_unrestorable_cache_falls_back_to_a_full_login() -> None:
-    """A cache that yields no login session must go straight to a full login.
-
-    No transport restore may run first: without a validated login there is nothing
-    for a gateway or an MQTT transport to hang off.
-    """
-    client = MammotionClient()
-
-    with (
-        patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
-        patch.object(client, "_restore_aliyun", AsyncMock()) as mock_aliyun,
-        patch.object(client, "_restore_mammotion_mqtt", AsyncMock()) as mock_mammotion,
-    ):
-        await client.restore_credentials("u@x.com", "pass", {"aep_data": {"some": "data"}})
-
-    mock_login.assert_awaited_once()
-    mock_aliyun.assert_not_awaited()
-    mock_mammotion.assert_not_awaited()
-
-async def test_rejected_login_falls_back_to_a_full_login() -> None:
-    """A restorable cache the server no longer accepts is not usable either."""
-    client = MammotionClient()
-    http = _populated_mammotion_http("u@x.com")
-    http.validate_login = AsyncMock(return_value=False)  # type: ignore[method-assign]
-
-    with (
-        patch("pymammotion.client.MammotionHTTP.from_cache", return_value=http),
-        patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
-        patch.object(client, "_restore_aliyun", AsyncMock()) as mock_aliyun,
-    ):
-        await client.restore_credentials("u@x.com", "pass", {"aep_data": {"some": "data"}})
-
-    mock_login.assert_awaited_once()
-    mock_aliyun.assert_not_awaited()
 
 async def test_a_rotation_during_validation_is_persisted() -> None:
     """A refresh performed while validating the cached login must reach the host.

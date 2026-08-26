@@ -79,18 +79,6 @@ def _make_area_name_response(names: list[tuple[int, str]]) -> MagicMock:
     return msg
 
 
-def _make_plan_ack_response() -> MagicMock:
-    """Create a MagicMock resembling a LubaMsg with todev_planjob_set."""
-    planjob = MagicMock()
-
-    nav = MagicMock()
-    nav.todev_planjob_set = planjob
-
-    msg = MagicMock()
-    msg.nav = nav
-    return msg
-
-
 def _make_command_builder() -> MagicMock:
     """Create a mock command builder that returns dummy bytes for every call."""
     builder = MagicMock()

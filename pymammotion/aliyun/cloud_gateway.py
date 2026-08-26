@@ -1144,7 +1144,7 @@ class CloudIOTGateway:
             self._session_by_authcode_response.token_issued_at = self._iot_token_issued_at
 
         raw: dict[str, Any] = {
-            "connect_response": self._connect_response,
+            "connect_data": self._connect_response,
             "auth_data": self._login_by_oauth_response,
             "region_data": self._region_response,
             "aep_data": self._aep_response,
@@ -1181,17 +1181,21 @@ class CloudIOTGateway:
 
         """
         required_keys = (
-            "connect_response",
+            "connect_data",
             "auth_data",
             "region_data",
             "aep_data",
             "session_data",
             "device_data",
         )
+
+        if "connect_response" in data:
+            data["connect_data"] = data["connect_response"]
+
         if any(k not in data for k in required_keys):
             return None
 
-        connect_data = data["connect_response"]
+        connect_data = data["connect_data"]
         auth_data = data["auth_data"]
         region_data = data["region_data"]
         aep_data = data["aep_data"]

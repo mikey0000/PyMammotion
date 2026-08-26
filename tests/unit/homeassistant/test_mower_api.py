@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from pymammotion.client import MammotionClient
+from tests._helpers import make_bare_client
 from pymammotion.homeassistant.mower_api import HomeAssistantMowerApi
 
 
@@ -38,8 +39,7 @@ def _make_client_with_handle(
     ``captured_handlers[0]`` is the handler passed to ``handle.watch_field`` for
     the (ub_path_hash, path_hash) getter.
     """
-    client = MammotionClient.__new__(MammotionClient)
-    client._watcher_subscriptions = {}
+    client = make_bare_client()
 
     handle = MagicMock()
     handle.device_name = device_name

@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 
     from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
     from pymammotion.http.http import MammotionHTTP
+    from pymammotion.http.model.http import Response
 
 _logger = logging.getLogger(__name__)
 
@@ -193,7 +194,10 @@ class MQTTTransport(Transport):
         )
         if use_ssl and self._tls_context is None:
             self._tls_context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS)
-        self._stop_event.clear()
+        # Deliberately does NOT clear _stop_event: connect() is the only restart
+        # point, and it clears the event only after checking the unrecoverable-auth
+        # circuit breaker.  Clearing here let a credential refresh racing _give_up
+        # erase the stop signal and keep a given-up loop reconnecting.
 
     async def add_topic(self, topic: str) -> None:
         """Register a topic to subscribe to on next (or current) connect.
@@ -308,8 +312,12 @@ class MQTTTransport(Transport):
         # TokenManager.refresh_invoke_token(stale_token=...).
         login_info = self._http.login_info
         sent_with_token = login_info.access_token if login_info is not None else None
+
+        async def invoke_once() -> Response:
+            return await self._http.mqtt_invoke(content, "", iot_id)
+
         try:
-            res = await self._http.mqtt_invoke(content, "", iot_id)
+            res = await invoke_once()
         except ClientConnectorDNSError:
             raise TransportError("MQTTTransport.send: DNS lookup timed out") from None
         except UnauthorizedExceptionError:
@@ -323,20 +331,20 @@ class MQTTTransport(Transport):
             except (ReLoginRequiredError, AuthError) as refresh_exc:
                 await self._give_up(refresh_exc)
                 raise NoTransportAvailableError(f"Mammotion MQTT auth unrecoverable: {refresh_exc}") from refresh_exc
+            except Exception as refresh_exc:
+                # Network blip / server fault during the refresh — not an auth
+                # verdict, so the transport must survive; the queue retries later.
+                raise TransportError(f"invoke-token refresh failed: {refresh_exc}") from refresh_exc
             try:
-                res = await self._http.mqtt_invoke(content, "", iot_id)
+                res = await invoke_once()
             except UnauthorizedExceptionError as exc:
                 give_up_exc = ReLoginRequiredError(
-                    self._token_manager.account_id, f"MQTT invoke still 401 after token refresh: {exc}"
+                    self._token_manager.account_id, f"MQTT invoke still rejected after token refresh: {exc}"
                 )
                 await self._give_up(give_up_exc)
                 raise NoTransportAvailableError(f"Mammotion MQTT auth unrecoverable: {give_up_exc}") from exc
             except Exception as retry_exc:
-                raise AuthError(
-                    f"Access token expired and retry failed after credential refresh {retry_exc}"
-                ) from retry_exc
-        if res.code in (401, 460):
-            raise AuthError(f"Access token expired (code={res.code})")
+                raise TransportError(f"mqtt_invoke retry failed after credential refresh: {retry_exc}") from retry_exc
         if res.code in DEVICE_OFFLINE_CODES:
             raise DeviceOfflineException(res.code, iot_id)
         if res.code in GATEWAY_TIMEOUT_CODES:
@@ -465,8 +473,9 @@ class MQTTTransport(Transport):
                             await self._give_up(rle)
                             return
                         except Exception:  # noqa: BLE001 — only ReLoginRequiredError is terminal here
-                            # Transient refresh failure (network) — back off and
-                            # retry without giving up.
+                            # Transient refresh failure (network) — back off and retry.
+                            # Never terminal: the broker rejecting an expired JWT while
+                            # the HTTP API is down says nothing about the login.
                             _logger.warning("Forced credential refresh failed (transient?)", exc_info=True)
                         else:
                             # Retry once, immediately, with the refreshed credentials.

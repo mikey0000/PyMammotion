@@ -28,10 +28,9 @@ from pymammotion.proto import (
     MctlSys,
     NavGetCommDataAck,
     NavGetHashListAck,
-    PlanJobSet,
-    SpinoCtrl,
 )
 from pymammotion.transport.base import CommandTimeoutError, SagaFailedError
+from tests.unit.messaging._helpers import ctrl_plan_msg as _ctrl_msg
 
 
 class _NoopSaga(Saga):
@@ -48,10 +47,6 @@ class _NoopSaga(Saga):
 
 def _nav_msg(**leaf: object) -> LubaMsg:
     return LubaMsg(nav=MctlNav(**leaf))  # type: ignore[arg-type]
-
-
-def _ctrl_msg(jobid: int = 1, totalplannum: int = 1) -> LubaMsg:
-    return LubaMsg(ctrl=SpinoCtrl(plan_job_set=PlanJobSet(jobid=jobid, totalplannum=totalplannum)))
 
 
 # ---------------------------------------------------------------------------

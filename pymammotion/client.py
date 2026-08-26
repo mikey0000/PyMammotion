@@ -43,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+from functools import partial
 import json
 import logging
 import time
@@ -566,20 +567,56 @@ class MammotionClient:
         elif transport_type == TransportType.CLOUD_MAMMOTION:
             await session.token_manager.refresh_mqtt_credentials()
 
+    async def _quiesce_account(self, session: AccountSession, reason: str, exc: Exception) -> None:
+        """Shut down all cloud activity for *session* — its HTTP login is terminally dead.
+
+        Fired exactly once by ``TokenManager.on_reauth_required`` on the None → reason
+        transition of ``reauth_required``, regardless of which refresh path found the
+        rejection (scheduler, ``refresh_http``, ``refresh_invoke_token``, or a decorated
+        endpoint).  After this runs, nothing for the account touches the network: both
+        cloud transports are marked unrecoverable and disconnected (so every queue item,
+        poll tick, and saga fails fast at ``active_transport()``), the refresh scheduler
+        is stopped, and ``MammotionHTTP`` already fails fast on its own terminal flag.
+        BLE is untouched — it needs no cloud credentials.
+        """
+        _logger.warning(
+            "Account %s requires re-authentication (%s) — stopping all cloud activity for it",
+            session.account_id,
+            reason,
+        )
+        if session.token_manager is not None:
+            await session.token_manager.stop_refresh_scheduler()
+        for transport in (session.aliyun_transport, session.mammotion_transport):
+            if transport is None:
+                continue
+            # Mark before disconnecting so queued connect() callbacks refuse to
+            # resurrect the receive loop.
+            transport.mark_unrecoverable_auth_failure()
+            with contextlib.suppress(Exception):
+                await transport.disconnect()
+        affected = [
+            handle for device_id in session.device_ids if (handle := self._device_registry.get(device_id)) is not None
+        ]
+        for handle in affected:
+            with contextlib.suppress(Exception):
+                await handle.notify_critical_error(exc)
+        if self.on_unrecoverable_auth_error is not None:
+            primary = TransportType.CLOUD_ALIYUN if session.cloud_client is not None else TransportType.CLOUD_MAMMOTION
+            with contextlib.suppress(Exception):
+                await self.on_unrecoverable_auth_error(session.account_id, primary, exc)
+
     async def _signal_transport_unrecoverable(
         self, session: AccountSession, transport_type: TransportType, exc: Exception
     ) -> None:
         """Signal that *transport_type* has permanently failed auth for *session*.
 
-        Always fires the per-device error bus for the account's mowers that use this
-        transport, so the host marks exactly those unavailable.
-
-        The global ``on_unrecoverable_auth_error`` callback is fired **only** when the
-        account's HTTP login is itself dead (``TokenManager.reauth_required``).  Hosts
-        treat that callback as "prompt the user to re-authenticate", which is the wrong
-        response to a transport-scoped failure: if the login token is still valid and
-        the login APIs are still working, one dead cloud transport must not cost the
-        user their stored credentials or take down the account's *other* transport.
+        Fires the per-device error bus for the account's mowers that use this
+        transport, so the host marks exactly those unavailable.  Deliberately does
+        NOT fire the global ``on_unrecoverable_auth_error`` callback: hosts treat
+        that as "prompt the user to re-authenticate", which is the wrong response
+        to a transport-scoped failure — the login, the cached credentials, and the
+        account's other transport must survive.  Account-wide death is signalled
+        exclusively by ``_quiesce_account`` on the ``reauth_required`` transition.
         """
         affected = [
             handle
@@ -587,20 +624,15 @@ class MammotionClient:
             if (handle := self._device_registry.get(device_id)) is not None
             and handle.get_transport(transport_type) is not None
         ]
-        account_dead = session.token_manager is not None and session.token_manager.reauth_required is not None
         _logger.warning(
-            "%s permanently unavailable for account %s — %d mower(s) affected (account login %s)",
+            "%s permanently unavailable for account %s — %d mower(s) affected (account login unaffected)",
             transport_type.value,
             session.account_id,
             len(affected),
-            "also dead — re-authentication required" if account_dead else "still valid — credentials retained",
         )
         for handle in affected:
             with contextlib.suppress(Exception):
                 await handle.notify_critical_error(exc)
-        if account_dead and self.on_unrecoverable_auth_error is not None:
-            with contextlib.suppress(Exception):
-                await self.on_unrecoverable_auth_error(session.account_id, transport_type, exc)
 
     async def _send_with_auth_retry(
         self, send_fn: Callable[[], Awaitable[None]], session: AccountSession | None = None
@@ -1129,11 +1161,16 @@ class MammotionClient:
         full serialization is used (which already includes the Mammotion HTTP data).
         For a Mammotion-MQTT-only setup a minimal dict is produced instead.
 
-        Returns an empty dict when no cloud session has been established yet.
+        Returns an empty dict when no cloud session has been established yet, or
+        when the session's login is terminally dead (``reauth_required``) —
+        persisting rejected credentials would just make the next restore re-spend
+        them on doomed refresh attempts.
         """
         session = self._get_default_session()
         raw: dict[str, Any] = {}
         if session is None:
+            return {}
+        if session.token_manager is not None and session.token_manager.reauth_required is not None:
             return {}
         if session.cloud_client is not None:
             raw = session.cloud_client.to_cache()
@@ -1323,19 +1360,31 @@ class MammotionClient:
         if existing is not None:
             if existing.http is mammotion_http:
                 existing.on_credentials_updated = self._on_credentials_updated
+                existing.on_reauth_required = partial(self._quiesce_account, acct_session)
                 existing.seed_from_http()
                 return existing
             # The account's login session was replaced (a full re-login).  The old
             # manager refreshes a session nothing reads any more — retire it rather
-            # than leave its scheduler competing with the new one.
+            # than leave its scheduler competing with the new one.  Its callbacks and
+            # the transports still holding it go too: a 401 through an orphaned
+            # transport would otherwise quiesce the *new* session via the old manager.
             _logger.debug(
                 "Replacing TokenManager for %s — it holds a login session the account no longer uses",
                 acct_session.account_id,
             )
             await existing.stop_refresh_scheduler()
+            existing.on_reauth_required = None
+            existing.on_credentials_updated = None
+            if acct_session.aliyun_transport is not None:
+                await acct_session.aliyun_transport.disconnect()
+                acct_session.aliyun_transport = None
+            if acct_session.mammotion_transport is not None:
+                await acct_session.mammotion_transport.disconnect()
+                acct_session.mammotion_transport = None
 
         token_manager = TokenManager(acct_session.account_id, mammotion_http)
         token_manager.on_credentials_updated = self._on_credentials_updated
+        token_manager.on_reauth_required = partial(self._quiesce_account, acct_session)
         token_manager.seed_from_http()
         acct_session.token_manager = token_manager
         return token_manager
@@ -1345,6 +1394,47 @@ class MammotionClient:
         """Return the active TokenManager, or None if no cloud session."""
         session = self._get_default_session()
         return session.token_manager if session else None
+
+    @property
+    def reauth_required(self) -> str | None:
+        """Reason the account's login is terminally dead, or ``None`` while healthy.
+
+        The host-facing view of ``TokenManager.reauth_required``: non-None means
+        the HTTP refresh token was rejected, every cloud path for the account has
+        been quiesced, and only a fresh user-initiated login can recover.
+        """
+        token_manager = self.token_manager
+        return token_manager.reauth_required if token_manager is not None else None
+
+    async def refresh_transport_credentials(self, transport_type: TransportType, account: str | None = None) -> None:
+        """Refresh the credentials for one cloud transport of *account* (default session if omitted).
+
+        The host-facing recovery call for a ``SessionExpiredError`` that names its
+        transport — refreshing exactly the one that failed, so a dead Aliyun
+        session never touches the Mammotion MQTT credentials or vice versa.
+
+        Raises:
+            ReLoginRequiredError: The credentials cannot be renewed — account-wide
+                when :attr:`reauth_required` is set, otherwise scoped to this
+                transport.
+
+        """
+        if (session := self._session_for(account, "refresh_transport_credentials")) is None:
+            return
+        await self._refresh_for_transport(transport_type, session)
+
+    def _session_for(self, account: str | None, caller: str) -> AccountSession | None:
+        """Resolve *account* to its session, or the default session when no account is named.
+
+        A named account that is not registered is a no-op with a warning — never a
+        fallback to the default session, which would refresh another account's
+        credentials.
+        """
+        if account:
+            if (session := self._account_registry.get(account)) is None:
+                _logger.warning("%s: account=%s is not registered", caller, account)
+            return session
+        return self._get_default_session()
 
     async def refresh_login(self, account: str) -> None:
         """Refresh whichever cloud credentials *account* actually has.
@@ -1366,8 +1456,9 @@ class MammotionClient:
                 login is itself dead — check ``TokenManager.reauth_required``.
 
         """
-        session = self._account_registry.get(account) or self._get_default_session()
-        if session is None or (token_manager := session.token_manager) is None:
+        if (session := self._session_for(account, "refresh_login")) is None:
+            return
+        if (token_manager := session.token_manager) is None:
             _logger.warning("refresh_login: no token manager available for account=%s", account)
             return
 
@@ -1526,12 +1617,12 @@ class MammotionClient:
 
     def _setup_mammotion_transport(
         self,
-        mqtt_creds: MQTTConnection,
+        mqtt_creds: MQTTConnection | MQTTCredentials,
         mammotion_http: MammotionHTTP,
         acct_session: AccountSession,
         token_manager: TokenManager,
     ) -> MQTTTransport:
-        """Build a MQTTTransport from MQTTConnection credentials."""
+        """Build a MQTTTransport from a set of Mammotion MQTT broker credentials."""
         parsed = urlparse(mqtt_creds.host if "://" in mqtt_creds.host else "tcp://" + mqtt_creds.host)
         use_ssl = parsed.scheme in ("mqtts", "ssl")
         config = MQTTTransportConfig(
@@ -1672,14 +1763,13 @@ class MammotionClient:
         """
         if acct_session.mammotion_transport is not None:
             return acct_session.mammotion_transport
-        await mammotion_http.get_mqtt_credentials()
-        if mammotion_http.mqtt_credentials is None:
+        # Fetch via the TokenManager, not raw HTTP: its getter fails fast on the
+        # reauth_required / mqtt_unavailable terminal flags and shares the refresh lock.
+        token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
+        if (mqtt_creds := await token_manager.get_mammotion_mqtt_credentials()) is None:
             _logger.error("could not obtain Mammotion MQTT credentials for account %s", account)
             return None
-        token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
-        transport = self._setup_mammotion_transport(
-            mammotion_http.mqtt_credentials, mammotion_http, acct_session, token_manager
-        )
+        transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http, acct_session, token_manager)
         await transport.connect()
         acct_session.mammotion_transport = transport
         return transport

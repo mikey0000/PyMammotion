@@ -19,11 +19,8 @@ import orjson
 import pytest
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.aliyun.model.regions_response import RegionResponse, RegionResponseData
-from pymammotion.aliyun.model.session_by_authcode_response import (
-    SessionByAuthCodeResponse,
-    SessionOauthToken,
-)
+from tests.unit.aliyun._helpers import make_gateway, make_session
+from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
 from pymammotion.auth.token_manager import AliyunCredentials, TokenManager
 from pymammotion.transport.base import ReLoginRequiredError, SessionExpiredError, TransportType
 
@@ -37,42 +34,17 @@ _REFRESH_TOKEN_EXPIRE = 720_000
 
 
 def _session(iot_token: str, iot_token_expire: int = _IOT_TOKEN_EXPIRE) -> SessionByAuthCodeResponse:
-    return SessionByAuthCodeResponse(
-        code=200,
-        data=SessionOauthToken(
-            identityId="identity-1",
-            refreshTokenExpire=_REFRESH_TOKEN_EXPIRE,
-            iotToken=iot_token,
-            iotTokenExpire=iot_token_expire,
-            refreshToken="refresh-0",
-        ),
-    )
-
-
-def _region() -> RegionResponse:
-    return RegionResponse(
-        code=200,
-        data=RegionResponseData(
-            shortRegionId="EU",
-            oaApiGatewayEndpoint="oa.example.com",
-            regionId="EU",
-            mqttEndpoint="mqtt.example.com:1883",
-            pushChannelEndpoint="push.example.com",
-            regionEnglishName="Europe",
-            apiGatewayEndpoint="api.example.com",
-        ),
+    return make_session(
+        iot_token,
+        iot_token_expire,
+        refresh_token="refresh-0",
+        refresh_token_expire=_REFRESH_TOKEN_EXPIRE,
     )
 
 
 def _make_gateway(initial_token: str = "iot-token-initial", *, age: int = 0) -> CloudIOTGateway:
     """A real gateway carrying ``initial_token``, issued ``age`` seconds ago."""
-    gw = CloudIOTGateway(
-        mammotion_http=MagicMock(),
-        session_by_authcode_response=_session(initial_token),
-        region_response=_region(),
-    )
-    gw._iot_token_issued_at = int(time.time()) - age  # noqa: SLF001
-    return gw
+    return make_gateway(_session(initial_token), age=age)
 
 
 def _make_token_manager(gw: CloudIOTGateway) -> TokenManager:

@@ -1,24 +1,56 @@
-"""Verifies the sub-tree sharing contract in MowerStateReducer (#125).
+"""MowerStateReducer behavior — sub-tree sharing, report-data application, area names.
 
-Each nav sub-message's ``apply()`` case only deep-copies the sub-trees its
+The first group verifies the sub-tree sharing contract in MowerStateReducer (#125):
+each nav sub-message's ``apply()`` case only deep-copies the sub-trees its
 handler actually mutates.  Fields that are not copied must be shared by
 identity between ``current`` and the returned snapshot; copied fields must
 be distinct instances so mutations through one do not leak to the other.
+
+Also covered: ``ReportData.update()`` partial-field semantics, the area-name
+fallback (``name_time.name`` over numbered labels), and how the reducer applies
+Mammotion flat-property pushes.
 """
 
 from __future__ import annotations
 
+import gc
+import tracemalloc
+
 from pymammotion.data.model.device import MowerDevice
-from pymammotion.data.model.hash_list import AreaHashNameList
+from pymammotion.data.model.hash_list import (
+    AreaHashNameList,
+    CommDataCouple,
+    FrameList as _FL,
+    NavGetCommData,
+)
+from pymammotion.data.model.report_info import (
+    ConnectData,
+    DeviceData,
+    Maintain,
+    ReportData,
+    RTKData,
+    VisionInfo,
+    WorkData,
+)
 from pymammotion.device.state_reducer import MowerStateReducer
 from pymammotion.proto import (
+    AppGetAllAreaHashName as _AGAHN,
+    AreaHashName as _AHName,
     LubaMsg,
     MctlNav,
     NavGetAllPlanTask,
     NavReqCoverPath,
     NavSysParamMsg,
     NavUnableTimeSet,
+    ReportInfoData,
+    RptConnectStatus,
+    RptDevStatus,
+    RptMaintain,
+    RptRtk,
+    RptWork,
+    VioToAppInfoMsg,
 )
+from tests.unit.messaging._helpers import area_frame_named as _area_frame_named
 
 _ALL_FIELDS = ("map", "work", "mower_state", "non_work_hours", "work_session_result")
 
@@ -97,18 +129,9 @@ def test_bidire_reqconver_path_copies_nothing_but_rebinds_work() -> None:
     assert current.work is original_work
 
 
-
-
 # ===========================================================================
 # Demonstrates the memory allocation growth bug from #125.
 # ===========================================================================
-import gc
-import tracemalloc
-
-from pymammotion.data.model.device import MowerDevice
-from pymammotion.data.model.hash_list import CommDataCouple, NavGetCommData
-from pymammotion.device.state_reducer import MowerStateReducer
-from pymammotion.proto import LubaMsg, MctlNav, NavSysParamMsg
 
 
 def _make_device_with_large_map(points_per_frame: int = 500) -> MowerDevice:
@@ -176,16 +199,6 @@ def test_retained_snapshots_do_not_balloon_on_nav_sys_param() -> None:
 # ===========================================================================
 # Tests that ReportData.update() only mutates fields present in the proto message.
 # ===========================================================================
-from pymammotion.data.model.report_info import (
-    ConnectData,
-    DeviceData,
-    Maintain,
-    RTKData,
-    ReportData,
-    VisionInfo,
-    WorkData,
-)
-from pymammotion.proto import ReportInfoData, RptConnectStatus, RptDevStatus, RptMaintain, RptRtk, RptWork, VioToAppInfoMsg
 
 
 def _make_report_data_with_values() -> ReportData:
@@ -295,440 +308,8 @@ def test_empty_message_leaves_everything_unchanged() -> None:
 
 
 # ===========================================================================
-# Regression test for the Luba 2 AWD 3000 ``networkInfo`` property parse failure.
-# ===========================================================================
-import json
-
-from pymammotion.data.mqtt.mammotion_properties import NetworkInfo
-
-LUBA2_AWD_NETWORK_INFO = json.dumps(
-    {
-        "ssid": "REDACTED",
-        "ip": "192.168.1.1",
-        "wifi_sta_mac": "aa:bb:cc:dd:ee:01",
-        "wifi_rssi": -44,
-        "bt_mac": "aa:bb:cc:dd:ee:02",
-        "mnet_model": "L716-EU",
-        "imei": "000000000000000",
-        "fw_ver": "17016.1000.00.38.02.17",
-        "sim": "Ready",
-        "imsi": "000000000000000",
-        "mnet_rssi": -73,
-        "signal": 3,
-        "mnet_link": 1,
-        "mnet_option": "REDACTED",
-        "mnet_ip": "10.0.0.1",
-        "used_net": 1,
-        "hub_reset": 0,
-        "mnet_dis": 0,
-        "airplane_times": 0,
-        "lsusb_num": 7,
-        "mnet_rx": "181.47MB",
-        "mnet_tx": "177.76MB",
-        "mnet_uniot": 0,
-        "mnet_un_getiot": 1,
-        "apn_num": 1,
-        "apn_info": "REDACTED",
-        "apn_cid": 1,
-        "ssh_flag": "0",
-        "mileage": "272.64 km",
-        "work_time": "324 h 3 min 42 s",
-        "bat_cycles": "120 times",
-    }
-)
-
-
-def test_luba2_awd_network_info_parses() -> None:
-    """A Luba 2 AWD 3000 networkInfo payload decodes instead of being dropped."""
-    ni = NetworkInfo.from_json(LUBA2_AWD_NETWORK_INFO)
-
-    assert ni.wifi_rssi == -44
-    assert ni.mnet_rssi == -73
-    assert ni.mnet_model == "L716-EU"
-    assert ni.mileage == "272.64 km"
-    assert ni.work_time == "324 h 3 min 42 s"
-    assert ni.bat_cycles == "120 times"
-
-    assert ni.wifi_available == 0
-    assert ni.iccid == ""
-    assert ni.sim_source == ""
-    assert ni.mnet_reg == ""
-    assert ni.mnet_rsrp == ""
-    assert ni.mnet_snr == ""
-    assert ni.mnet_enable == 0
-    assert ni.wt_sec == 0
-    assert ni.b_tra is None
-    assert ni.bw_tra is None
-    assert ni.m_tra is None
-
-
-def test_wifi_only_network_info_omitting_cellular_fields_parses() -> None:
-    """A WiFi-only mower (e.g. Yuka mini) omits the whole cellular block — it must still parse.
-
-    Regression for a real Yuka-MNTXVHBE property post that raised
-    MissingField "mnet_model" and got dropped, so the device never updated state.
-    """
-    wifi_only = json.dumps(
-        {
-            "ssid": "IOT",
-            "ip": "192.168.20.45",
-            "wifi_sta_mac": "14:5d:34:31:db:f6",
-            "wifi_rssi": -56,
-            "wifi_available": 1,
-            "bt_mac": "14:5d:34:31:db:f7",
-            "mnet_enable": 0,
-            "apn_num": 0,
-            "apn_info": "",
-            "apn_cid": 0,
-            "used_net": 1,
-            "hub_reset": 0,
-            "mnet_dis": 0,
-            "airplane_times": 0,
-            "lsusb_num": 4,
-            "mnet_rx": 0,  # WiFi-only devices send an int here, not the cellular "181.47MB" string
-            "mnet_tx": 0,
-            "mnet_uniot": 0,
-            "mnet_un_getiot": 0,
-            "ssh_flag": "0",
-            "mileage": "254960",
-            "work_time": "6 h 42 min 37 s",
-            "wt_sec": 24157,
-            "bat_cycles": "0",
-        }
-    )
-
-    ni = NetworkInfo.from_json(wifi_only)
-
-    # WiFi fields present; cellular fields defaulted rather than raising MissingField.
-    assert ni.wifi_rssi == -56
-    assert ni.ssid == "IOT"
-    assert ni.mnet_model == ""
-    assert ni.imei == ""
-    assert ni.sim == ""
-    assert ni.mnet_rssi == 0
-    assert ni.mnet_rx == "0"  # int coerced to str
-    assert ni.work_time == "6 h 42 min 37 s"
-
-
-# ===========================================================================
-# Tests for PoolStateReducer applying SysCommCmd (allpowerfullRW) pool toggles.
-# ===========================================================================
-import pytest
-
-from pymammotion.data.model.device import PoolCleanerDevice
-from pymammotion.data.model.pool_state import SpinoToggle
-from pymammotion.device.state_reducer import PoolStateReducer
-from pymammotion.proto import LubaMsg, MctlSys, SysCommCmd
-
-
-def _apply(device: PoolCleanerDevice, *, toggle_id: int, value: int) -> PoolCleanerDevice:
-    msg = LubaMsg(sys=MctlSys(bidire_comm_cmd=SysCommCmd(id=toggle_id, context=value, rw=0)))
-    return PoolStateReducer().apply(device, msg)
-
-
-@pytest.mark.parametrize(
-    ("toggle", "field"),
-    [
-        (SpinoToggle.buzzer, "buzzer"),
-        (SpinoToggle.turbo_clean, "turbo_clean"),
-        (SpinoToggle.platform_cleaning, "platform_cleaning"),
-        (SpinoToggle.waterline_parking, "waterline_parking"),
-    ],
-)
-def test_toggle_on(toggle: SpinoToggle, field: str) -> None:
-    result = _apply(PoolCleanerDevice(name="Spino-E1abc"), toggle_id=int(toggle), value=1)
-    assert getattr(result.pool_state, field) is True
-
-
-def test_toggle_off_clears_previous_value() -> None:
-    device = PoolCleanerDevice(name="Spino-E1abc")
-    device.pool_state.turbo_clean = True
-    result = _apply(device, toggle_id=int(SpinoToggle.turbo_clean), value=0)
-    assert result.pool_state.turbo_clean is False
-
-
-def test_member_names_match_pool_state_fields() -> None:
-    # The reducer relies on SpinoToggle.name == the PoolState field name.
-    state = PoolCleanerDevice().pool_state
-    for toggle in SpinoToggle:
-        assert hasattr(state, toggle.name), f"PoolState missing field for {toggle.name}"
-
-
-def test_unknown_sys_comm_id_ignored() -> None:
-    # A generic/mower SysCommCmd id we don't model must not raise or alter state.
-    device = PoolCleanerDevice(name="Spino-E1abc")
-    result = _apply(device, toggle_id=6, value=1)  # 6 = a Luba-Pro RW id, not a pool toggle
-    assert result.pool_state.buzzer is False
-    assert result.pool_state.turbo_clean is False
-
-
-# ===========================================================================
-# PoolStateReducer tests for the ``LubaMsg.ctrl.plan_job_set`` path.
-# ===========================================================================
-import pytest
-
-from pymammotion.data.model.device import PoolCleanerDevice
-from pymammotion.device.state_reducer import PoolStateReducer
-from pymammotion.proto import LubaMsg, PlanJobSet, SpinoCtrl
-
-
-def _frame(**kwargs) -> LubaMsg:
-    """Build a LubaMsg envelope wrapping a single PlanJobSet."""
-    return LubaMsg(ctrl=SpinoCtrl(plan_job_set=PlanJobSet(**kwargs)))
-
-
-class TestPlanJobSetReducer:
-    def test_upserts_plan_keyed_by_jobid(self) -> None:
-        reducer = PoolStateReducer()
-        msg = _frame(cmd=4, jobid=0xABCDEF12, jobname="Daily", work_mode=1, enable=0)
-        device = reducer.apply(PoolCleanerDevice(name="Spino-Test"), msg)
-
-        assert 0xABCDEF12 in device.plans
-        plan = device.plans[0xABCDEF12]
-        assert plan.jobname == "Daily"
-        assert plan.work_mode == 1
-
-    def test_enable_field_is_inverted_at_the_boundary(self) -> None:
-        reducer = PoolStateReducer()
-        # ``enable=0`` on the wire ⇒ ``enabled=True`` in Python
-        enabled_msg = _frame(cmd=4, jobid=1, enable=0)
-        device = reducer.apply(PoolCleanerDevice(name="x"), enabled_msg)
-        assert device.plans[1].enabled is True
-
-        # ``enable=1`` ⇒ ``enabled=False``
-        disabled_msg = _frame(cmd=4, jobid=2, enable=1)
-        device = reducer.apply(device, disabled_msg)
-        assert device.plans[2].enabled is False
-
-    def test_weeks_and_submode_lists_are_copied(self) -> None:
-        reducer = PoolStateReducer()
-        msg = _frame(
-            cmd=4, jobid=42, weeks=[1, 2, 3, 4, 5], sub_mode=[2, 3], enable=0
-        )
-        device = reducer.apply(PoolCleanerDevice(name="x"), msg)
-        plan = device.plans[42]
-        assert plan.weeks == [1, 2, 3, 4, 5]
-        assert plan.sub_mode == [2, 3]
-
-    def test_plans_stale_set_when_total_exceeds_known(self) -> None:
-        reducer = PoolStateReducer()
-        msg = _frame(cmd=4, jobid=1, totalplannum=3, enable=0)
-        device = reducer.apply(PoolCleanerDevice(name="x"), msg)
-        # one plan stored, device says three exist → stale
-        assert device.plans_stale is True
-
-    def test_plans_stale_clears_when_counts_match(self) -> None:
-        reducer = PoolStateReducer()
-        device = PoolCleanerDevice(name="x")
-        device = reducer.apply(device, _frame(cmd=4, jobid=1, totalplannum=2, enable=0))
-        assert device.plans_stale is True
-        device = reducer.apply(device, _frame(cmd=4, jobid=2, totalplannum=2, enable=0))
-        assert device.plans_stale is False
-
-    def test_zero_jobid_frame_is_ignored(self) -> None:
-        # DELETE_ALL echoes / error responses can arrive with jobid=0 —
-        # storing those would clutter the plans dict.
-        reducer = PoolStateReducer()
-        msg = _frame(cmd=5, jobid=0, totalplannum=0)
-        device = reducer.apply(PoolCleanerDevice(name="x"), msg)
-        assert device.plans == {}
-
-    def test_returns_a_copy_not_a_mutation(self) -> None:
-        """Reducers MUST return a new dataclass to keep snapshot semantics."""
-        reducer = PoolStateReducer()
-        original = PoolCleanerDevice(name="x")
-        updated = reducer.apply(original, _frame(cmd=4, jobid=99, enable=0))
-        assert updated is not original
-        assert 99 not in original.plans  # original untouched
-
-
-class TestNonCtrlEnvelopes:
-    """Non-ctrl frames must not accidentally route into the plan path."""
-
-    def test_sys_frame_with_no_recognised_subtype_is_a_noop(self) -> None:
-        # Mower-style nav frame; the pool reducer ignores nav entirely.
-        from pymammotion.proto import MctlNav
-
-        reducer = PoolStateReducer()
-        device = PoolCleanerDevice(name="x")
-        # An empty MctlNav has no SubNavMsg set; reducer should not crash.
-        result = reducer.apply(device, LubaMsg(nav=MctlNav()))
-        assert result.plans == {}
-
-
-# Smoke test that PoolPlan helpers work as the reducer expects.
-def test_pool_plan_with_enabled_round_trip() -> None:
-    from pymammotion.data.model.pool_state import PoolPlan
-
-    plan = PoolPlan(jobid=1, enabled=True)
-    assert plan.with_enabled(False).enabled is False
-    assert plan.with_renamed("foo").jobname == "foo"
-
-
-if __name__ == "__main__":  # pragma: no cover
-    pytest.main([__file__, "-v"])
-
-
-# ===========================================================================
-# Regression tests for partial ``thing.event.property.post`` payloads.
-# ===========================================================================
-import json
-
-from pymammotion.data.mqtt.mammotion_properties import DeviceProperties
-from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
-
-
-SPINO_MODEL_ONLY = json.dumps(
-    {
-        "id": "14846",
-        "version": "1.0",
-        "sys": {"ack": 1},
-        "params": {"intMod": "SPINO E1", "extMod": "SPINO E1"},
-        "method": "thing.event.property.post",
-    }
-)
-
-SPINO_FW_ONLY = json.dumps(
-    {
-        "id": "14848",
-        "version": "1.0",
-        "sys": {"ack": 1},
-        "params": {
-            "deviceVersion": "1.15.2.1039",
-            "deviceVersionInfo": json.dumps(
-                {
-                    "devVer": "1.15.2.1039",
-                    "whole": 1,
-                    "fwInfo": [
-                        {"t": "63", "c": "63-PAWG4", "v": "1.2.0.275"},
-                        {"t": "65", "c": "65-PACG4", "v": "1.2.0.279"},
-                    ],
-                }
-            ),
-        },
-        "method": "thing.event.property.post",
-    }
-)
-
-
-def test_partial_property_post_model_fields_only() -> None:
-    """A property/post carrying only ``intMod`` / ``extMod`` decodes successfully."""
-    msg = MammotionPropertiesMessage.from_json(SPINO_MODEL_ONLY)
-    p = msg.params
-
-    assert p.int_mod == "SPINO E1"
-    assert p.ext_mod == "SPINO E1"
-
-    # Absent fields decode as None (numeric) / "" (string) rather than raising;
-    # None lets consumers distinguish "not reported" from a genuine 0.
-    assert p.device_state is None
-    assert p.battery_percentage is None
-    assert p.device_version == ""
-    assert p.network_info is None
-    assert p.coordinate is None
-    assert p.device_other_info is None
-    assert p.device_version_info is None
-    assert p.check_data is None
-
-
-def test_partial_property_post_firmware_only() -> None:
-    """A property/post carrying only ``deviceVersion`` / ``deviceVersionInfo`` decodes successfully."""
-    msg = MammotionPropertiesMessage.from_json(SPINO_FW_ONLY)
-    p = msg.params
-
-    assert p.device_version == "1.15.2.1039"
-    assert p.device_version_info is not None
-    assert p.device_version_info.dev_ver == "1.15.2.1039"
-    assert [fw.c for fw in p.device_version_info.fw_info] == ["63-PAWG4", "65-PACG4"]
-
-    # Everything else defaults / is None.
-    assert p.battery_percentage is None
-    assert p.network_info is None
-    assert p.coordinate is None
-
-
-def test_device_properties_accepts_empty_params() -> None:
-    """A property/post with no params at all still decodes (every field optional)."""
-    p = DeviceProperties.from_dict({})
-    assert p.device_state is None
-    assert p.network_info is None
-
-
-# ===========================================================================
-# Regression test for the Yuka Mini 2 ``thing.event.property.post`` parse failure.
-# ===========================================================================
-import json
-from pathlib import Path
-
-from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
-
-# tests/unit/device/ → repo tests/ is parents[2].
-FIXTURE = Path(__file__).parents[2] / "fixtures" / "yuka_mini2_property_post.json"
-
-
-def test_yuka_mini2_property_post_parses() -> None:
-    """The full property message decodes instead of being dropped on a missing field."""
-    raw = FIXTURE.read_bytes()
-    msg = MammotionPropertiesMessage.from_json(raw)
-    p = msg.params
-
-    # Core status that HA depends on — the data that was being thrown away.
-    assert p.battery_percentage == 31
-    assert p.device_state == 13
-    assert p.knife_height == 60
-    assert "YUKA mini 2" in p.ext_mod
-    assert p.device_version == "2.3.23.19"
-
-    # Fields this device class does not report must default, not raise.
-    assert p.left_motor_version == ""
-    assert p.right_motor_version == ""
-    assert p.rtk_version == ""
-    assert p.bms_version == ""
-    assert p.network_info.ip == ""
-    assert p.network_info.apn_num == 0
-    assert p.device_other_info.tilt_degree == ""
-
-    # Fields the device *does* report still populate (incl. the previously typo'd alias).
-    assert p.network_info.wifi_rssi == -65
-    assert p.device_other_info.iot_con_fail_min == "0"
-    assert [fw.c for fw in p.device_version_info.fw_info][:2] == [
-        "202-MNWheelfG4BT",
-        "201-MNWheelfG4",
-    ]
-
-
-def test_missing_optional_fields_does_not_raise() -> None:
-    """Stripping every now-optional key must still yield a usable message."""
-    obj = json.loads(FIXTURE.read_bytes())
-    for key in ("leftMotorVersion", "rightMotorVersion", "rtkVersion", "bmsVersion"):
-        obj["params"].pop(key, None)  # already absent for this device, asserted explicit
-    msg = MammotionPropertiesMessage.from_json(json.dumps(obj))
-    assert msg.params.battery_percentage == 31
-
-
-# ===========================================================================
 # Area-name fallback — name_time.name priority over numbered fallbacks
 # ===========================================================================
-
-from pymammotion.data.model.hash_list import (  # noqa: E402
-    AreaHashNameList as _AHN,
-    CommDataCouple as _CDC,
-    FrameList as _FL,
-    NavGetCommData as _NGCD,
-    NavNameTime as _NNT,
-)
-from pymammotion.proto import (  # noqa: E402
-    AppGetAllAreaHashName as _AGAHN,
-    AreaHashName as _AHName,
-)
-
-
-def _area_frame_named(hash_val: int, name: str) -> _NGCD:
-    return _NGCD(
-        hash=hash_val, total_frame=1, current_frame=1,
-        name_time=_NNT(name=name, create_time=1, modify_time=1),
-        data_couple=[_CDC(x=0.0, y=0.0)],
-    )
 
 
 def _device_with_named_areas(areas: dict[int, str]) -> MowerDevice:
@@ -911,193 +492,3 @@ def test_mammotion_partial_push_uses_presence_not_truthiness() -> None:
     assert updated.report_data.dev.sys_status == 14
     assert updated.report_data.dev.battery_val == 79
     assert updated.report_data.work.knife_height == 60
-
-
-# ===========================================================================
-# PoolStateReducer — fw info, net envelope, devStatus extras, error clamp.
-# ===========================================================================
-from pymammotion.data.model.pool_state import SpinoSysStatus, SpinoWorkMode
-from pymammotion.proto import (
-    DeviceFwInfo,
-    DevNet,
-    DevStatueT,
-    DrvWifiMsg,
-    ModFwInfo,
-    ReportInfoT,
-    ResponseSetModeT,
-    SysSetDateTime,
-    SystemUpdateBufMsg,
-    WifiIotStatusReport,
-)
-
-
-def test_pool_fw_info_populates_device_firmwares() -> None:
-    msg = LubaMsg(
-        sys=MctlSys(
-            toapp_dev_fw_info=DeviceFwInfo(
-                result=1,
-                version="1.15.2.1047",
-                mod=[
-                    ModFwInfo(type=63, identify="63-PAWG4", version="1.2.0.281"),
-                    ModFwInfo(type=65, identify="65-PACG4", version="1.2.0.273"),
-                    ModFwInfo(type=67, identify="67-PESP", version="0.0.0.299"),
-                    ModFwInfo(type=61, identify="61-PAMH5", version="5.1.2.2159"),
-                    ModFwInfo(type=62, identify="62-PMH5BT", version="5.1.2.2131"),
-                ],
-            )
-        )
-    )
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    fw = result.device_firmwares
-    assert fw.device_version == "1.15.2.1047"
-    assert fw.wheel_hub_motor == "1.2.0.281"
-    assert fw.water_pump == "1.2.0.273"
-    assert fw.communication == "0.0.0.299"
-    assert fw.main_controller == "5.1.2.2159"
-    assert fw.main_controller_bt == "5.1.2.2131"
-
-
-def test_pool_fw_info_result_zero_ignored() -> None:
-    msg = LubaMsg(sys=MctlSys(toapp_dev_fw_info=DeviceFwInfo(result=0, version="9.9.9")))
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.device_firmwares.device_version == ""
-
-
-def test_pool_wifi_iot_status_updates_connectivity() -> None:
-    msg = LubaMsg(
-        net=DevNet(
-            toapp_wifi_iot_status=WifiIotStatusReport(
-                wifi_connected=True, iot_connected=True, productkey="a15Cq8FbCh1", devicename="Spino-E1abc"
-            )
-        )
-    )
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.pool_state.wifi_connected is True
-    assert result.pool_state.iot_connected is True
-    assert result.product_key == "a15Cq8FbCh1"
-
-
-def test_pool_wifi_iot_status_empty_productkey_not_clobbered() -> None:
-    device = PoolCleanerDevice(name="Spino-E1abc", product_key="seeded")
-    msg = LubaMsg(net=DevNet(toapp_wifi_iot_status=WifiIotStatusReport(wifi_connected=True, iot_connected=False)))
-    result = PoolStateReducer().apply(device, msg)
-    assert result.product_key == "seeded"
-    assert result.pool_state.iot_connected is False
-
-
-def test_pool_wifi_msg_updates_network_info_but_never_password() -> None:
-    msg = LubaMsg(
-        net=DevNet(
-            toapp_WifiMsg=DrvWifiMsg(
-                status1=True,
-                status2=True,
-                ip="192.168.20.174",
-                msgssid="IOT",
-                password="battery-easeful-dental",
-                rssi=-38,
-                wifi_enable=True,
-            )
-        )
-    )
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.wifi_ssid == "IOT"
-    assert result.ip == "192.168.20.174"
-    assert result.wifi_enabled is True
-    assert result.pool_state.wifi_rssi == -38
-    assert "battery-easeful-dental" not in str(result.to_dict())
-
-
-def test_pool_dev_status_captures_rssi_and_connectivity() -> None:
-    msg = LubaMsg(
-        sys=MctlSys(
-            report_info=ReportInfoT(
-                dev_status=DevStatueT(
-                    sys_status=1,
-                    bat_val=70,
-                    model=100,
-                    ble_rssi=-48,
-                    wifi_rssi=-43,
-                    wifi_connect_status=1,
-                    iot_connect_status=1,
-                )
-            )
-        )
-    )
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.pool_state.battery == 70
-    assert result.pool_state.wifi_rssi == -43
-    assert result.pool_state.ble_rssi == -48
-    assert result.pool_state.wifi_connected is True
-    assert result.pool_state.iot_connected is True
-    assert result.pool_state.charging is False
-
-
-def test_pool_dev_status_charge_status_sets_charging() -> None:
-    # A docked Spino reports chargeStatus=1 while sys_status is still PREPARE (1),
-    # so charging is not derivable from sys_status alone.
-    msg = LubaMsg(sys=MctlSys(report_info=ReportInfoT(dev_status=DevStatueT(sys_status=1, charge_status=1))))
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.pool_state.charging is True
-    assert result.pool_state.sys_status is SpinoSysStatus.PREPARE
-
-
-def test_pool_dev_status_omitted_work_mode_reports_off() -> None:
-    # Heartbeat frames leave work_mode unset (proto3 default 0) once no job is
-    # running — that is "no mode active", not the RECHARGE command value.
-    device = PoolCleanerDevice(name="Spino-E1abc")
-    device.pool_state.work_mode = SpinoWorkMode.ECO
-    msg = LubaMsg(sys=MctlSys(report_info=ReportInfoT(dev_status=DevStatueT(sys_status=1, bat_val=68))))
-    result = PoolStateReducer().apply(device, msg)
-    assert result.pool_state.work_mode is SpinoWorkMode.OFF
-    assert result.pool_state.work_mode.name == "OFF"
-
-
-def test_pool_error_count_negative_clamped_to_zero() -> None:
-    data = [2, 43, -1] + [0] * 40
-    msg = LubaMsg(sys=MctlSys(system_update_buf=SystemUpdateBufMsg(update_buf_data=data)))
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.pool_state.error_count == 0
-    assert result.pool_state.error_log == []
-
-
-def test_pool_response_set_mode_applies_mode_and_session_times() -> None:
-    # Frame captured from a Spino-E1 mode switch (WALL) over the cloud transport.
-    msg = LubaMsg(
-        sys=MctlSys(
-            response_set_mode=ResponseSetModeT(
-                set_work_mode=3,
-                cur_work_mode=3,
-                start_work_time=1786694053,
-                end_work_time=1786694153,
-                cur_work_time=1,
-            )
-        )
-    )
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.pool_state.work_mode is SpinoWorkMode.WALL
-    assert result.pool_state.start_work_time == 1786694053
-    assert result.pool_state.end_work_time == 1786694153
-
-
-def test_pool_response_set_mode_history_request_echo_ignored() -> None:
-    # statue=2 is the job-history request form, not a mode ack — it must not
-    # reset the work mode or the session times.
-    device = PoolCleanerDevice(name="Spino-E1abc")
-    device.pool_state.work_mode = SpinoWorkMode.WALL
-    device.pool_state.start_work_time = 1786694053
-    msg = LubaMsg(sys=MctlSys(response_set_mode=ResponseSetModeT(statue=2)))
-    result = PoolStateReducer().apply(device, msg)
-    assert result.pool_state.work_mode is SpinoWorkMode.WALL
-    assert result.pool_state.start_work_time == 1786694053
-
-
-def test_pool_response_set_mode_unknown_mode_tolerated() -> None:
-    msg = LubaMsg(sys=MctlSys(response_set_mode=ResponseSetModeT(set_work_mode=99, cur_work_mode=99)))
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.pool_state.work_mode is SpinoWorkMode.UNKNOWN
-
-
-def test_pool_todev_data_time_is_silent_noop() -> None:
-    msg = LubaMsg(sys=MctlSys(todev_data_time=SysSetDateTime(year=234, month=7, date=20)))
-    result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
-    assert result.online is True
