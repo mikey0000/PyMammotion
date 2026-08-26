@@ -59,7 +59,7 @@ from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowerDevice, MowingDevice, RTKBaseStationDevice, create_device
 from pymammotion.data.model.hash_list import PathType
 from pymammotion.data.mqtt.status import StatusType
-from pymammotion.device.handle import DeviceHandle, DeviceRegistry
+from pymammotion.device.handle import DeviceHandle, DeviceKey, DeviceRegistry
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection, UnauthorizedExceptionError
@@ -124,13 +124,26 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
     from bleak import BLEDevice
 
+    from pymammotion.data.model.device import Device as DeviceModel
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
+    from pymammotion.transport.base import Transport
 
 _logger = logging.getLogger(__name__)
 
 _AUTH_REJECTED = (UnauthorizedExceptionError, ReLoginRequiredError, AuthError)
+
+
+@dataclasses.dataclass(frozen=True)
+class _CloudBinding:
+    """What a cloud registration contributes to a DeviceHandle beyond the transport."""
+
+    transport: Transport
+    iot_id: str
+    product_key: str
+    user_account: int
+    token_manager: TokenManager | None
 
 
 def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash: int) -> bool:
@@ -170,7 +183,9 @@ class MammotionClient:
         self._ble_manager: BLETransportManager = BLETransportManager()
         self._stopped: bool = False
         self._lock: asyncio.Lock = asyncio.Lock()
-        self._iot_id_to_device_id: dict[str, str] = {}
+        #: ``(account_id, iot_id)`` → registry key.  iot_ids are scoped per account on the
+        #: cloud side, so the same physical device shared to two accounts stays distinct.
+        self._iot_id_to_device_key: dict[tuple[str, str], DeviceKey] = {}
         # RAII subscriptions for state-change watchers (keyed by device_name)
         self._watcher_subscriptions: dict[str, list[Subscription]] = {}
         self._ha_version: str | None = ha_version
@@ -225,7 +240,7 @@ class MammotionClient:
         for handle in self._device_registry.all_devices:
             await handle.stop()
 
-    async def remove_device(self, name: str) -> None:
+    async def remove_device(self, name: str, account_id: str | None = None) -> None:
         """Stop and remove the named device from the registry.
 
         Account-shared cloud transports (Aliyun / Mammotion MQTT) are detached —
@@ -234,17 +249,17 @@ class MammotionClient:
         otherwise tear down cloud connectivity for every surviving mower.  Only
         the account's last device takes the shared transport down with it.
         """
-        handle = self._device_registry.get_by_name(name)
+        handle = self._device_registry.get_by_name(name, account_id)
         if handle is None:
             return
         self.teardown_device_watchers(name)
-        self._iot_id_to_device_id.pop(handle.iot_id, None)
-        if (session := self._get_session_for_device(name)) is not None:
+        self._iot_id_to_device_key.pop((handle.account_id, handle.iot_id), None)
+        if (session := self._get_session_for_handle(handle)) is not None:
             session.device_ids.discard(name)
             if session.device_ids:
                 for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
                     handle.detach_transport(transport_type)
-        await self._device_registry.unregister(handle.device_id)
+        await self._device_registry.unregister(handle.account_id, handle.device_id)
 
     # ------------------------------------------------------------------
     # Device state watchers
@@ -535,24 +550,21 @@ class MammotionClient:
     # Account session helpers
     # ------------------------------------------------------------------
 
+    def _get_session_for_handle(self, handle: DeviceHandle) -> AccountSession | None:
+        """Return the AccountSession that owns *handle*, or ``None`` for an unclaimed (BLE-only) handle."""
+        if handle.account_id == BLE_ONLY_ACCOUNT:
+            return None
+        return self._account_registry.get(handle.account_id)
+
     def _get_session_for_device(self, device_name: str) -> AccountSession | None:
         """Return the AccountSession that owns *device_name*, or None."""
-        return self._account_registry.find_by_device(device_name)
+        handle = self._device_registry.get_by_name(device_name)
+        return None if handle is None else self._get_session_for_handle(handle)
 
     def _get_default_session(self) -> AccountSession | None:
-        """Return the first registered cloud session (convenience for single-account setups).
-
-        The BLE-only session is skipped.  It is a placeholder holding device ids with
-        no login, no cloud client and no token manager, and it is registered by the
-        first BLE device discovery — so on a BLE+cloud setup it can easily be
-        ``all_sessions[0]``.  Returning it made every caller here look like it had no
-        credentials: ``to_cache()`` in particular returned ``{}``, so saving silently
-        wrote nothing and the on-disk cache kept whatever an earlier run had left.
-        """
-        for session in self._account_registry.all_sessions:
-            if session.account_id != BLE_ONLY_ACCOUNT:
-                return session
-        return None
+        """Return the first registered cloud session (convenience for single-account setups)."""
+        sessions = self._account_registry.all_sessions
+        return sessions[0] if sessions else None
 
     # ------------------------------------------------------------------
     # Auth-retry helper
@@ -594,9 +606,10 @@ class MammotionClient:
             transport.mark_unrecoverable_auth_failure()
             with contextlib.suppress(Exception):
                 await transport.disconnect()
-        affected = [
-            handle for device_id in session.device_ids if (handle := self._device_registry.get(device_id)) is not None
-        ]
+        affected = self._device_registry.for_account(session.account_id)
+        # Handles keep their registry key — a re-authentication adopts them back — but
+        # the dead cloud transports come off so active_transport() falls to BLE cleanly.
+        await self._detach_cloud_from_account(session, rekey=False)
         for handle in affected:
             with contextlib.suppress(Exception):
                 await handle.notify_critical_error(exc)
@@ -620,9 +633,8 @@ class MammotionClient:
         """
         affected = [
             handle
-            for device_id in session.device_ids
-            if (handle := self._device_registry.get(device_id)) is not None
-            and handle.get_transport(transport_type) is not None
+            for handle in self._device_registry.for_account(session.account_id)
+            if handle.get_transport(transport_type) is not None
         ]
         _logger.warning(
             "%s permanently unavailable for account %s — %d mower(s) affected (account login unaffected)",
@@ -668,9 +680,9 @@ class MammotionClient:
     # Device access
     # ------------------------------------------------------------------
 
-    def get_device_by_name(self, name: str) -> MowingDevice | None:
+    def get_device_by_name(self, name: str, account_id: str | None = None) -> MowingDevice | None:
         """Return the MowingDevice state for the named device, or None."""
-        handle = self._device_registry.get_by_name(name)
+        handle = self._device_registry.get_by_name(name, account_id)
         if handle is None:
             return None
         return handle.snapshot.raw  # type: ignore
@@ -708,17 +720,21 @@ class MammotionClient:
                 )
                 device.map.generate_geojson(rtk, device.location.dock)
 
-    def mower(self, name: str) -> DeviceHandle | None:
-        """Return the DeviceHandle for the named device, or None."""
-        return self._device_registry.get_by_name(name)
+    def mower(self, name: str, account_id: str | None = None) -> DeviceHandle | None:
+        """Return the DeviceHandle for the named device, or None.
 
-    def rtk_device(self, name: str) -> DeviceHandle | None:
+        *account_id* disambiguates a device visible to several accounts; without it the
+        unique holder is returned, else the BLE owner, else the first cloud holder.
+        """
+        return self._device_registry.get_by_name(name, account_id)
+
+    def rtk_device(self, name: str, account_id: str | None = None) -> DeviceHandle | None:
         """Return the DeviceHandle for the named RTK base station, or None."""
-        return self._device_registry.get_by_name(name)
+        return self._device_registry.get_by_name(name, account_id)
 
-    def pool_cleaner_device(self, name: str) -> DeviceHandle | None:
+    def pool_cleaner_device(self, name: str, account_id: str | None = None) -> DeviceHandle | None:
         """Return the DeviceHandle for the named Spino pool cleaner, or None."""
-        return self._device_registry.get_by_name(name)
+        return self._device_registry.get_by_name(name, account_id)
 
     async def fetch_rtk_lora_info(self, device_name: str) -> None:
         """Fetch LoRa version info for an RTK device via HTTP and apply it to device state.
@@ -827,23 +843,19 @@ class MammotionClient:
     # ------------------------------------------------------------------
 
     async def add_ble_device(self, device_id: str, ble_device: BLEDevice, rssi: int | None = None) -> None:
-        """Register an externally-discovered BLE device (hybrid MQTT+BLE mode).
+        """Record an externally-discovered BLE device and attach it to its handle (hybrid mode).
 
-        If the device handle is already registered (cloud login happened first),
-        a BLETransport is created and wired to the handle immediately.  If the
-        handle does not exist yet, the BLE device is stored in the manager so
-        that the transport can be added once the handle is registered.
+        The advertisement is cached first, so a device seen before its cloud login
+        completes is attached when the handle is created.  If a handle already exists,
+        the BLE transport is created — or, when one is live, only its cached
+        ``BLEDevice`` is refreshed; the link is never torn down to swap objects.
 
-        Pass *rssi* (dBm, from the advertisement) so the transport's
-        weak-signal gate can skip BLE when the link is too faint to connect.
+        Pass *rssi* (dBm, from the advertisement) so the transport's weak-signal
+        gate can skip BLE when the link is too faint to connect.
         """
-        self._ble_manager.register_external_ble_client(device_id, ble_device)
-        handle = self._device_registry.get(device_id)
-        if handle is not None:
-            transport = BLETransport(BLETransportConfig(device_id=device_id))
-            transport.set_ble_device(ble_device, rssi)
-            await handle.add_transport(transport)
-            _logger.debug("BLE transport added to existing handle for device %s", device_id)
+        self._ble_manager.register_external_ble_client(device_id, ble_device, rssi)
+        if (handle := self._ble_target(device_id)) is not None:
+            await self._attach_ble(handle, ble_device, rssi)
 
     async def update_ble_device(self, device_id: str, ble_device: BLEDevice, rssi: int | None = None) -> bool:
         """Update the BLE advertisement for a known device.
@@ -856,25 +868,17 @@ class MammotionClient:
         constantly; only an explicit :meth:`clear_ble_device` or a successful
         connect resets the failure tracker.
 
-        Pass *rssi* (dBm, from the advertisement) on each push so the
-        transport's weak-signal gate tracks the latest signal strength.
-
         Returns:
             ``True`` if the cached BLE address actually changed (or this is the
             first device set for this handle); ``False`` for a routine refresh
-            of the same address.  HA-side callers can short-circuit redundant
-            work (logging, downstream task creation) on False.
+            of the same address or when no handle exists yet (the advertisement
+            is cached for the handle's creation either way).
 
         """
-        handle = self._device_registry.get(device_id)
-        if handle is None:
+        self._ble_manager.update_external_ble_client(device_id, ble_device, rssi)
+        if (handle := self._ble_target(device_id)) is None:
             return False
-        ble = handle.get_transport(TransportType.BLE)
-        if not isinstance(ble, BLETransport):
-            await self.add_ble_device(device_id, ble_device, rssi)
-            return True
-        self._ble_manager.update_external_ble_client(device_id, ble_device)
-        return ble.set_ble_device(ble_device, rssi)
+        return await self._attach_ble(handle, ble_device, rssi)
 
     async def clear_ble_device(self, device_id: str) -> None:
         """Forget the cached BLEDevice on the device's BLETransport.
@@ -889,8 +893,7 @@ class MammotionClient:
         :meth:`DeviceHandle.active_transport` to skip BLE until a fresh
         advertisement arrives.  No-op if no BLE transport is wired.
         """
-        handle = self._device_registry.get(device_id)
-        if handle is None:
+        if (handle := self._device_registry.find_ble_owner(device_id)) is None:
             return
         ble = handle.get_transport(TransportType.BLE)
         if isinstance(ble, BLETransport):
@@ -906,21 +909,22 @@ class MammotionClient:
         ble_address: str | None = None,
         self_managed_scanning: bool | None = None,
     ) -> DeviceHandle:
-        """Register a BLE-only device — no HTTP login or MQTT involved.
+        """Register a device over BLE — no HTTP login or MQTT involved.
 
-        Standalone (non-HA) entry point.  Provide either a pre-discovered
-        ``BLEDevice`` (e.g. from your own ``BleakScanner`` pass) or a MAC
-        ``ble_address`` and let the transport scan for it on connect.
+        Provide either a pre-discovered ``BLEDevice`` (e.g. from your own
+        ``BleakScanner`` pass) or a MAC ``ble_address`` and let the transport scan
+        for it on connect.  The handle is started; call ``transport.connect()`` (or
+        :meth:`connect_ble`) to open the GATT connection.
 
-        Creates a :class:`DeviceHandle` with ``prefer_ble=True`` and a
-        :class:`BLETransport` already wired up.  Call ``handle.start()`` to
-        begin the command queue, then ``transport.connect()`` to open the
-        GATT connection.  When ``self_managed_scanning`` is True, the
-        transport runs a one-shot ``BleakScanner.find_device_by_address`` at
-        connect-time if no BLEDevice is cached.
+        BLE is per device, not per account.  A handle nobody has claimed is
+        registered under ``BLE_ONLY_ACCOUNT``; a later cloud login for the same
+        ``device_id`` adopts that very handle (transport, state and ``prefer_ble``
+        intact).  Conversely, if a cloud account already holds the device, the BLE
+        transport is attached to that handle — one handle owns BLE at a time.
 
         Args:
-            device_id:             Unique device identifier (e.g. ``"Luba-XXXXXX"``).
+            device_id:             Unique device identifier (e.g. ``"Luba-XXXXXX"``) —
+                                   must match the cloud device name for adoption.
             device_name:           Human-readable name shown in HA.
             initial_device:        Empty or cached ``MowingDevice`` for initial state.
             ble_device:            Optional pre-discovered bleak ``BLEDevice``.
@@ -928,12 +932,11 @@ class MammotionClient:
                                    is not supplied.  Stored in the transport
                                    config for self-managed scanning.
             self_managed_scanning: When True, the transport scans for the
-                                   device by ``ble_address`` if no BLEDevice
-                                   is cached at connect-time.  Defaults to
-                                   True when only ``ble_address`` is supplied,
-                                   False when ``ble_device`` is supplied
-                                   (HA-style — scanning owned by the caller).
-                                   Pass explicitly to override.
+                                   device by ``ble_address`` if no BLEDevice is
+                                   cached at connect-time.  Defaults to True when
+                                   only ``ble_address`` is supplied, False when
+                                   ``ble_device`` is supplied (HA-style — scanning
+                                   owned by the caller).  Pass explicitly to override.
 
         Returns:
             The registered ``DeviceHandle``.
@@ -944,50 +947,88 @@ class MammotionClient:
         """
         if ble_device is None and ble_address is None:
             raise ValueError("add_ble_only_device requires either ble_device or ble_address")
-
-        # Idempotency: if this device is already registered (e.g. a config-entry reload
-        # races with the previous teardown), reuse the existing handle rather than
-        # replacing it and orphaning the live BLE connection.
-        existing = self._device_registry.get(device_id)
-        if existing is not None:
-            _logger.info("add_ble_only_device: %s already registered — reusing handle", device_name)
-            if ble_device is not None:
-                ble_t = existing.get_transport(TransportType.BLE)
-                if ble_t is not None:
-                    cast(BLETransport, ble_t).set_ble_device(ble_device)
-                else:
-                    await self.add_ble_to_device(device_name, ble_device)
-            return existing
-
         if self_managed_scanning is None:
             self_managed_scanning = ble_device is None
 
-        transport = BLETransport(
-            BLETransportConfig(
-                device_id=device_id,
-                ble_address=ble_address,
-                self_managed_scanning=self_managed_scanning,
-            )
-        )
-        if ble_device is not None:
-            transport.set_ble_device(ble_device)
+        if (holder := self._device_registry.find_ble_owner(device_id)) is not None:
+            _logger.info("add_ble_only_device: %s already has a BLE transport — reusing handle", device_name)
+            if ble_device is not None:
+                cast(BLETransport, holder.get_transport(TransportType.BLE)).set_ble_device(ble_device)
+            return holder
 
-        handle = DeviceHandle(
+        transport = self._new_ble_transport(
+            device_id, ble_device, ble_address=ble_address, self_managed_scanning=self_managed_scanning
+        )
+        if (existing := self._device_registry.get(device_id)) is not None:
+            _logger.info(
+                "add_ble_only_device: %s is held by account %s — attaching BLE", device_name, existing.account_id
+            )
+            await existing.add_transport(transport)
+            return existing
+
+        handle = await self._ensure_device_handle(
+            acct_session=None,
             device_id=device_id,
             device_name=device_name,
             initial_device=initial_device,
-            ble_transport=transport,
+            ble=transport,
             prefer_ble=True,
         )
-        await self._device_registry.register(handle)
-        # Add to BLE-only account session
-        ble_session = self._account_registry.get(BLE_ONLY_ACCOUNT)
-        if ble_session is None:
-            ble_session = AccountSession(account_id=BLE_ONLY_ACCOUNT)
-            await self._account_registry.register(ble_session)
-        ble_session.device_ids.add(device_name)
         _logger.info("BLE-only device registered: %s (%s)", device_name, device_id)
         return handle
+
+    async def move_ble_to_account(self, device_id: str, account_id: str) -> None:
+        """Hand a device's BLE transport to *account_id*'s handle for that device.
+
+        Only one handle owns a device's BLE transport at a time, and it stays with its
+        current holder until moved explicitly here.  The link is not dropped.  An
+        unclaimed (``BLE_ONLY_ACCOUNT``) handle left with no transports is removed.
+
+        Raises:
+            KeyError: *account_id* holds no handle for *device_id*.
+
+        """
+        target = self._device_registry.get(account_id, device_id)
+        if target is None:
+            raise KeyError(f"account {account_id!r} holds no device {device_id!r}")
+        owner = self._device_registry.find_ble_owner(device_id)
+        if owner is None or owner is target:
+            return
+        await target.take_ble_from(owner)
+        if owner.account_id == BLE_ONLY_ACCOUNT and not any(owner.has_transport(t) for t in TransportType):
+            await self._device_registry.unregister(owner.account_id, owner.device_id)
+
+    def _ble_target(self, device_id: str) -> DeviceHandle | None:
+        """Return the handle that should carry *device_id*'s BLE: its current owner, else the resolved holder."""
+        return self._device_registry.find_ble_owner(device_id) or self._device_registry.get(device_id)
+
+    @staticmethod
+    def _new_ble_transport(
+        device_id: str,
+        ble_device: BLEDevice | None,
+        rssi: int | None = None,
+        *,
+        ble_address: str | None = None,
+        self_managed_scanning: bool = False,
+    ) -> BLETransport:
+        transport = BLETransport(
+            BLETransportConfig(
+                device_id=device_id, ble_address=ble_address, self_managed_scanning=self_managed_scanning
+            )
+        )
+        if ble_device is not None:
+            transport.set_ble_device(ble_device, rssi)
+        return transport
+
+    async def _attach_ble(self, handle: DeviceHandle, ble_device: BLEDevice, rssi: int | None = None) -> bool:
+        """Give *handle* a BLE transport for *ble_device*, or refresh the one it has.
+
+        Returns ``True`` when a transport was created or its address changed.
+        """
+        if (ble := handle.get_transport(TransportType.BLE)) is not None:
+            return cast(BLETransport, ble).set_ble_device(ble_device, rssi)
+        await handle.add_transport(self._new_ble_transport(handle.device_id, ble_device, rssi))
+        return True
 
     # ------------------------------------------------------------------
     # Cloud / MQTT — public entry points
@@ -1008,6 +1049,7 @@ class MammotionClient:
                 re-login.
 
         """
+        await self._detach_cloud_from_account(session, rekey=True)
         if session.aliyun_transport is not None:
             await session.aliyun_transport.disconnect()
             session.aliyun_transport = None
@@ -1038,7 +1080,8 @@ class MammotionClient:
 
         Args:
             account_id: Sign out only this account.  When ``None``, sign out
-                        all cloud sessions (BLE-only sessions are preserved).
+                        all cloud sessions.  BLE transports are never touched:
+                        a handle that owns one lives on unclaimed.
             revoke:     Whether to end the session server-side — see
                         :meth:`_sign_out_session`.
 
@@ -1049,8 +1092,6 @@ class MammotionClient:
                 await self._sign_out_session(session, revoke=revoke)
         else:
             for session in self._account_registry.all_sessions:
-                if session.account_id == BLE_ONLY_ACCOUNT:
-                    continue
                 await self._sign_out_session(session, revoke=revoke)
         self._stopped = False
 
@@ -1137,14 +1178,8 @@ class MammotionClient:
                 if device.device_name:
                     iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
                     await self._register_aliyun_device(
-                        device.device_name,
-                        iot_id,
-                        al_transport,
-                        ua,
-                        device.product_key,
-                        token_manager=acct_session.token_manager,
+                        device.device_name, iot_id, al_transport, ua, device.product_key, acct_session=acct_session
                     )
-                    acct_session.device_ids.add(device.device_name)
             await al_transport.connect()
 
         if mammotion_records:
@@ -1494,19 +1529,19 @@ class MammotionClient:
             return int(mammotion_http.login_info.userInformation.userAccount)
         return 0
 
-    def _wire_transport_callbacks(self, transport: Any) -> None:
-        """Attach the six ``_route_device_*`` callbacks to *transport*.
+    def _wire_transport_callbacks(self, transport: Any, account_id: str) -> None:
+        """Attach the six ``_route_device_*`` callbacks to *transport*, bound to its account.
 
         Sets all six unconditionally; transports that don't fire a given
         callback simply never read its attribute, so the extra assignment is
         harmless and keeps Aliyun / Mammotion wiring from drifting apart.
         """
-        transport.on_device_message = self._route_device_message
-        transport.on_device_status = self._route_device_status
-        transport.on_device_properties = self._route_device_properties
-        transport.on_device_event = self._route_device_event
-        transport.on_device_mammotion_properties = self._route_device_mammotion_properties
-        transport.on_device_notification = self._route_device_notification
+        transport.on_device_message = partial(self._route_device_message, account_id)
+        transport.on_device_status = partial(self._route_device_status, account_id)
+        transport.on_device_properties = partial(self._route_device_properties, account_id)
+        transport.on_device_event = partial(self._route_device_event, account_id)
+        transport.on_device_mammotion_properties = partial(self._route_device_mammotion_properties, account_id)
+        transport.on_device_notification = partial(self._route_device_notification, account_id)
 
     async def _register_device_on_transport(
         self,
@@ -1514,33 +1549,139 @@ class MammotionClient:
         device_name: str,
         iot_id: str,
         product_key: str,
-        transport: Any,
+        transport: Transport,
         user_account: int,
-        token_manager: TokenManager | None,
+        acct_session: AccountSession,
     ) -> None:
-        """Create, register and start a DeviceHandle for a cloud transport.
+        """Register (or adopt) the DeviceHandle for a cloud device on *acct_session*.
 
-        Subscribes the token-manager and tracks the iot_id → device_name mapping.
-        Shared by Aliyun and Mammotion device registration; the
-        topic-subscription / device-registration step that's Mammotion-specific
-        stays in ``_register_mammotion_device`` and is performed before this
-        helper is called.
+        Shared by Aliyun and Mammotion device registration; the topic-subscription
+        step that's Mammotion-specific stays in ``_register_mammotion_device``.
         """
-        handle = DeviceHandle(
+        await self._ensure_device_handle(
+            acct_session=acct_session,
             device_id=device_name,
             device_name=device_name,
             initial_device=create_device(device_name, product_key),
-            iot_id=iot_id,
-            user_account=user_account,
-            mqtt_transport=transport,
-            readiness_checker=get_readiness_checker(device_name, product_key),
+            cloud=_CloudBinding(transport, iot_id, product_key, user_account, acct_session.token_manager),
         )
-        handle.on_device_unbound = self._on_device_unbound
-        await self._device_registry.register(handle)
-        await handle.start()
-        if token_manager is not None:
-            token_manager.subscribe_handle(handle)
-        self._iot_id_to_device_id[iot_id] = device_name
+
+    async def _ensure_device_handle(
+        self,
+        *,
+        acct_session: AccountSession | None,
+        device_id: str,
+        device_name: str,
+        initial_device: DeviceModel,
+        cloud: _CloudBinding | None = None,
+        ble: BLETransport | None = None,
+        prefer_ble: bool | None = None,
+    ) -> DeviceHandle:
+        """Return the one DeviceHandle for *device_id* on *acct_session*, creating or adopting it.
+
+        The single registration path for every transport.  Lookup order: the account's
+        own handle; for a cloud account, the unclaimed (``BLE_ONLY_ACCOUNT``) handle for
+        the device, which is re-keyed onto the account — same object, BLE transport,
+        state and ``prefer_ble`` intact; otherwise a new handle.  A cloud binding then
+        attaches the transport (identical shared objects are not re-wired), fills in
+        ``iot_id`` / ``user_account`` / readiness, records the device on the session,
+        and subscribes the token manager once.  A handle created for a cloud transport
+        also picks up a BLE advertisement cached before login.  The handle is started.
+        """
+        account_id = BLE_ONLY_ACCOUNT if acct_session is None else acct_session.account_id
+        registry = self._device_registry
+        handle = registry.get(account_id, device_id)
+        if handle is None and cloud is not None and (orphan := registry.get(BLE_ONLY_ACCOUNT, device_id)) is not None:
+            await registry.rekey(orphan, account_id)
+            handle = orphan
+            _logger.info("Device %s: BLE-only handle adopted by account %s", device_name, account_id)
+        if handle is None and (by_name := registry.get_by_name(device_name, account_id)) is None and cloud is not None:
+            by_name = registry.get_by_name(device_name, BLE_ONLY_ACCOUNT)
+        if handle is None and by_name is not None:
+            _logger.warning(
+                "Device %s is registered under device_id %r, not %r — using the existing handle",
+                device_name,
+                by_name.device_id,
+                device_id,
+            )
+            if by_name.account_id != account_id:
+                await registry.rekey(by_name, account_id)
+            handle = by_name
+        created = handle is None
+        if handle is None:
+            handle = DeviceHandle(
+                device_id=device_id,
+                device_name=device_name,
+                initial_device=initial_device,
+                iot_id=cloud.iot_id if cloud is not None else "",
+                user_account=cloud.user_account if cloud is not None else 0,
+                mqtt_transport=cloud.transport if cloud is not None else None,
+                ble_transport=ble,
+                prefer_ble=(ble is not None) if prefer_ble is None else prefer_ble,
+                readiness_checker=get_readiness_checker(device_name, cloud.product_key) if cloud is not None else None,
+                account_id=account_id,
+            )
+            await registry.register(handle)
+        elif ble is not None and not handle.has_transport(TransportType.BLE):
+            await handle.add_transport(ble)
+
+        if cloud is not None:
+            if handle.iot_id != cloud.iot_id:
+                self._iot_id_to_device_key.pop((account_id, handle.iot_id), None)
+                handle.iot_id = cloud.iot_id
+            if not handle.user_account:
+                handle.user_account = cloud.user_account
+            if handle.readiness_checker is None:
+                handle.readiness_checker = get_readiness_checker(device_name, cloud.product_key)
+            handle.on_device_unbound = self._on_device_unbound
+            if not created:
+                await handle.add_transport(cloud.transport)
+            self._iot_id_to_device_key[(account_id, cloud.iot_id)] = (account_id, device_id)
+            if acct_session is not None:
+                acct_session.device_ids.add(device_name)
+            if cloud.token_manager is not None:
+                cloud.token_manager.subscribe_handle(handle)
+            if (
+                created
+                and registry.find_ble_owner(device_id) is None
+                and (entry := self._ble_manager.get_entry(device_id)) is not None
+                and entry.ble_device is not None
+            ):
+                await self._attach_ble(handle, entry.ble_device, entry.rssi)
+
+        if not handle.is_started:
+            await handle.start()
+        return handle
+
+    async def _detach_cloud_from_account(self, session: AccountSession, *, rekey: bool) -> None:
+        """Take *session*'s cloud transports off its handles without disconnecting them.
+
+        The shared transport objects are the session's to disconnect.  With *rekey*
+        a handle that owns BLE is returned to ``BLE_ONLY_ACCOUNT`` and keeps running,
+        a cloud-only handle is stopped and removed, and ``device_ids`` is cleared;
+        without it the handles keep their key so a re-authentication adopts them back.
+        """
+        for handle in self._device_registry.for_account(session.account_id):
+            for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                handle.detach_transport(transport_type)
+            self._iot_id_to_device_key.pop((session.account_id, handle.iot_id), None)
+            if not rekey:
+                continue
+            if handle.has_transport(TransportType.BLE):
+                await self._device_registry.rekey(handle, BLE_ONLY_ACCOUNT)
+            else:
+                await self._device_registry.unregister(handle.account_id, handle.device_id)
+        if rekey:
+            session.device_ids.clear()
+
+    async def _release_to_ble_only(self, handle: DeviceHandle, session: AccountSession | None) -> None:
+        """Leave *handle* running on BLE alone after its cloud binding is gone for good."""
+        for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+            handle.detach_transport(transport_type)
+        if session is not None:
+            self._iot_id_to_device_key.pop((session.account_id, handle.iot_id), None)
+            session.device_ids.discard(handle.device_name)
+        await self._device_registry.rekey(handle, BLE_ONLY_ACCOUNT)
 
     def _setup_aliyun_transport(
         self, cloud_client: CloudIOTGateway, acct_session: AccountSession
@@ -1559,7 +1700,7 @@ class MammotionClient:
             iot_token=session_data.iotToken,  # type: ignore
         )
         transport = AliyunMQTTTransport(config, cloud_client)
-        self._wire_transport_callbacks(transport)
+        self._wire_transport_callbacks(transport, acct_session.account_id)
 
         token_manager = acct_session.token_manager
 
@@ -1659,7 +1800,7 @@ class MammotionClient:
             )
 
         transport = MQTTTransport(config, mammotion_http, token_manager, creds_refresher=_refresh_creds)
-        self._wire_transport_callbacks(transport)
+        self._wire_transport_callbacks(transport, acct_session.account_id)
 
         # Mammotion MQTT never re-logins.  The transport already refreshed
         # credentials in full and retried; if the broker still rejects, we give up:
@@ -1687,7 +1828,8 @@ class MammotionClient:
         transport: AliyunMQTTTransport,
         user_account: int = 0,
         product_key: str = "",
-        token_manager: TokenManager | None = None,
+        *,
+        acct_session: AccountSession,
     ) -> None:
         """Register a single Aliyun device in the device registry."""
         await self._register_device_on_transport(
@@ -1696,7 +1838,7 @@ class MammotionClient:
             product_key=product_key,
             transport=transport,
             user_account=user_account,
-            token_manager=token_manager,
+            acct_session=acct_session,
         )
         _logger.info("Aliyun device registered: %s (iot_id=%s)", device_name, iot_id)
 
@@ -1706,7 +1848,8 @@ class MammotionClient:
         transport: MQTTTransport,
         user_account: int = 0,
         iot_id_override: str = "",
-        token_manager: TokenManager | None = None,
+        *,
+        acct_session: AccountSession,
     ) -> None:
         """Add MQTT topics and register a single Mammotion device in the device registry.
 
@@ -1729,7 +1872,7 @@ class MammotionClient:
             product_key=record.product_key,
             transport=transport,
             user_account=user_account,
-            token_manager=token_manager,
+            acct_session=acct_session,
         )
         _logger.info("Mammotion device registered: %s (iot_id=%s)", record.device_name, iot_id)
 
@@ -1784,7 +1927,7 @@ class MammotionClient:
         entirely, remove it.
         """
         device_name = handle.device_name
-        session = self._get_session_for_device(device_name)
+        session = self._get_session_for_handle(handle)
         try:
             # The Aliyun→Mammotion cloud migration after a firmware update is NOT
             # instantaneous: the 29004 unbind lands before the device is listed on
@@ -1832,6 +1975,8 @@ class MammotionClient:
 
         if session is None or session.mammotion_http is None:
             settled = _keep_or_remove("no Mammotion session to re-discover")
+            if settled:
+                await self._release_to_ble_only(handle, session)
             if settled or not final_attempt:
                 return settled
             _logger.warning("Device '%s' unbound but no Mammotion session to re-discover — removing", device_name)
@@ -1848,6 +1993,8 @@ class MammotionClient:
         record = next((r for r in records if r.device_name == device_name), None)
         if record is None:
             settled = _keep_or_remove("not on Mammotion MQTT yet")
+            if settled:
+                await self._release_to_ble_only(handle, session)
             if settled or not final_attempt:
                 return settled
             _logger.warning("Device '%s' unbound and not on Mammotion MQTT either — removing", device_name)
@@ -1861,12 +2008,13 @@ class MammotionClient:
 
         iot_id = owned_iot_id_map.get(device_name) or record.iot_id
         await self._subscribe_mammotion_topics(transport, record.product_key, device_name, iot_id)
-        if iot_id != handle.iot_id:
-            self._iot_id_to_device_id.pop(handle.iot_id, None)
-            handle.iot_id = iot_id
-        self._iot_id_to_device_id[iot_id] = device_name
-        session.device_ids.add(device_name)
-        await handle.add_transport(transport)
+        await self._ensure_device_handle(
+            acct_session=session,
+            device_id=handle.device_id,
+            device_name=device_name,
+            initial_device=create_device(device_name, record.product_key),
+            cloud=_CloudBinding(transport, iot_id, record.product_key, session.user_account, session.token_manager),
+        )
         _logger.info("Device '%s' migrated from Aliyun to Mammotion MQTT (iot_id=%s)", device_name, iot_id)
         return True
 
@@ -1880,10 +2028,9 @@ class MammotionClient:
         """
         device_name = handle.device_name
         iot_id = handle.iot_id
-        self._iot_id_to_device_id.pop(iot_id, None)
         if session is not None:
             session.device_ids.discard(device_name)
-        await self.remove_device(device_name)
+        await self.remove_device(device_name, account_id=handle.account_id)
         _logger.warning("Device '%s' unbound from all clouds — removed", device_name)
         if self.on_device_removed is not None:
             with contextlib.suppress(Exception):
@@ -1965,12 +2112,7 @@ class MammotionClient:
                 if device.device_name:
                     iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
                     await self._register_aliyun_device(
-                        device.device_name,
-                        iot_id,
-                        transport,
-                        ua,
-                        device.product_key,
-                        token_manager=acct_session.token_manager,
+                        device.device_name, iot_id, transport, ua, device.product_key, acct_session=acct_session
                     )
                     known_ids.add(device.device_name)
 
@@ -2008,7 +2150,7 @@ class MammotionClient:
                                     transport,
                                     ua,
                                     device.product_key,
-                                    token_manager=acct_session.token_manager,
+                                    acct_session=acct_session,
                                 )
                                 known_ids.add(device.device_name)
             except Exception:  # noqa: BLE001
@@ -2034,7 +2176,6 @@ class MammotionClient:
             acct_session.aliyun_transport = None
             return
 
-        acct_session.device_ids.update(known_ids)
         await transport.connect()
 
     async def _restore_mammotion_mqtt(self, account: str, acct_session: AccountSession) -> None:
@@ -2053,7 +2194,6 @@ class MammotionClient:
             return
 
         cached_records = mammotion_http.device_records
-        known_ids: set[str] = set()
 
         if mqtt_creds := mammotion_http.mqtt_credentials:
             token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
@@ -2080,11 +2220,8 @@ class MammotionClient:
                 if record.device_name:
                     iot_id_override = owned_iot_id_map.get(record.device_name, "")
                     await self._register_mammotion_device(
-                        record, transport, ua, iot_id_override, token_manager=token_manager
+                        record, transport, ua, iot_id_override, acct_session=acct_session
                     )
-                    known_ids.add(record.device_name)
-
-        acct_session.device_ids.update(known_ids)
 
     async def _bootstrap_mammotion_mqtt(
         self,
@@ -2145,14 +2282,7 @@ class MammotionClient:
         for record in mammotion_records:
             if record.device_name and record.device_name not in already_known:
                 iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                await self._register_mammotion_device(
-                    record,
-                    transport,
-                    ua,
-                    iot_id_override,
-                    token_manager=acct_session.token_manager,  # type: ignore[arg-type]
-                )
-                acct_session.device_ids.add(record.device_name)
+                await self._register_mammotion_device(record, transport, ua, iot_id_override, acct_session=acct_session)
 
     @staticmethod
     async def _connect_iot(cloud_client: CloudIOTGateway) -> None:
@@ -2171,60 +2301,58 @@ class MammotionClient:
         await cloud_client.session_by_auth_code()
         await cloud_client.list_binding_by_account()
 
-    def _handle_for_iot_id(self, iot_id: str, caller: str) -> DeviceHandle | None:
-        """Look up a DeviceHandle by iot_id, logging if not found."""
-        device_id = self._iot_id_to_device_id.get(iot_id)
-        if device_id is None:
-            _logger.debug("%s: unknown iot_id=%s, dropping", caller, iot_id)
+    def _handle_for_iot_id(self, account_id: str, iot_id: str, caller: str) -> DeviceHandle | None:
+        """Look up a DeviceHandle by (account, iot_id), logging if not found."""
+        key = self._iot_id_to_device_key.get((account_id, iot_id))
+        if key is None:
+            _logger.debug("%s: unknown iot_id=%s for account %s, dropping", caller, iot_id, account_id)
             return None
-        return self._device_registry.get(device_id)
+        return self._device_registry.get(*key)
 
-    async def _route_device_message(self, iot_id: str, payload: bytes) -> None:
+    async def _route_device_message(self, account_id: str, iot_id: str, payload: bytes) -> None:
         """Route an incoming cloud message to the correct DeviceHandle."""
-        handle = self._handle_for_iot_id(iot_id, "_route_device_message")
+        handle = self._handle_for_iot_id(account_id, iot_id, "_route_device_message")
         if handle is None:
             return
         await handle.on_raw_message(payload)
 
-    async def _route_device_status(self, iot_id: str, msg: ThingStatusMessage) -> None:
+    async def _route_device_status(self, account_id: str, iot_id: str, msg: ThingStatusMessage) -> None:
         """Update a device handle's MQTT availability and status_properties from a thing/status message."""
 
-        handle = self._handle_for_iot_id(iot_id, "_route_device_status")
+        handle = self._handle_for_iot_id(account_id, iot_id, "_route_device_status")
         if handle is None:
             return
         online = msg.params.status.value is StatusType.CONNECTED
         await handle.on_status_message(msg)
-        _logger.info(
-            "Device '%s' is now %s (thing/status)",
-            self._iot_id_to_device_id.get(iot_id),
-            "online" if online else "offline",
-        )
+        _logger.info("Device '%s' is now %s (thing/status)", handle.device_name, "online" if online else "offline")
 
-    async def _route_device_notification(self, iot_id: str, identifier: str) -> None:
+    async def _route_device_notification(self, account_id: str, iot_id: str, identifier: str) -> None:
         """Enqueue a get_report_cfg refresh when the device sends a thing/event notification."""
-        handle = self._handle_for_iot_id(iot_id, "_route_device_notification")
+        handle = self._handle_for_iot_id(account_id, iot_id, "_route_device_notification")
         if handle is None:
             return
         _logger.debug("Device notification '%s' from iot_id=%s — refreshing report cfg", identifier, iot_id)
         await handle.request_report_cfg(dedup_key="report_cfg_on_notification")
 
-    async def _route_device_event(self, iot_id: str, event: ThingEventMessage) -> None:
+    async def _route_device_event(self, account_id: str, iot_id: str, event: ThingEventMessage) -> None:
         """Forward a non-protobuf thing.events message to the correct DeviceHandle."""
-        handle = self._handle_for_iot_id(iot_id, "_route_device_event")
+        handle = self._handle_for_iot_id(account_id, iot_id, "_route_device_event")
         if handle is None:
             return
         await handle.on_device_event(event)
 
-    async def _route_device_properties(self, iot_id: str, properties: ThingPropertiesMessage) -> None:
+    async def _route_device_properties(self, account_id: str, iot_id: str, properties: ThingPropertiesMessage) -> None:
         """Forward a thing.properties message to the correct DeviceHandle."""
-        handle = self._handle_for_iot_id(iot_id, "_route_device_properties")
+        handle = self._handle_for_iot_id(account_id, iot_id, "_route_device_properties")
         if handle is None:
             return
         await handle.on_device_properties(properties)
 
-    async def _route_device_mammotion_properties(self, iot_id: str, properties: MammotionPropertiesMessage) -> None:
+    async def _route_device_mammotion_properties(
+        self, account_id: str, iot_id: str, properties: MammotionPropertiesMessage
+    ) -> None:
         """Forward a Mammotion MQTT flat property/post message to the correct DeviceHandle."""
-        handle = self._handle_for_iot_id(iot_id, "_route_device_mammotion_properties")
+        handle = self._handle_for_iot_id(account_id, iot_id, "_route_device_mammotion_properties")
         if handle is None:
             return
         await handle.on_mammotion_properties(properties)
@@ -2555,7 +2683,7 @@ class MammotionClient:
     # BLE connection
     # ------------------------------------------------------------------
 
-    async def connect_ble(self, device_name: str) -> None:
+    async def connect_ble(self, device_name: str, account_id: str | None = None) -> None:
         """Connect the BLE transport for a registered device.
 
         Works for both BLE-only devices and hybrid devices that have a BLE
@@ -2563,7 +2691,7 @@ class MammotionClient:
         is already connected — matches the rest of the public API which
         warns/returns rather than raises on unknown devices.
         """
-        handle = self._device_registry.get_by_name(device_name)
+        handle = self._device_registry.get_by_name(device_name, account_id)
         if handle is None:
             _logger.warning("connect_ble: device %r not registered", device_name)
             return
@@ -2584,6 +2712,36 @@ class MammotionClient:
         if session.cloud_client is not None:
             return session.cloud_client.mammotion_http
         return session.mammotion_http
+
+    async def wake_device(self, name: str, account_id: str | None = None) -> bool:
+        """Wake a device out of low-power sleep and re-arm its poll loop.
+
+        Sleep drops the device's broker connection, so no command reaches it and
+        ``MammotionHTTP.wake_up_device`` is the only route back.  Lives here rather
+        than on the HA facade because this is the one object holding both the handle
+        and the account's HTTP session.
+
+        Re-arming matters as much as the wake itself: the poll loop backs off for
+        ``_SLEEPING_RECHECK_INTERVAL`` while a device sleeps, so without this the
+        first look at a woken mower could be an hour away.
+
+        Returns True when the cloud accepted the request — not that the device is
+        awake yet; it reappears in its own time.
+        """
+        handle = self.mower(name, account_id)
+        if handle is None:
+            _logger.error("wake_device: device '%s' not found", name)
+            return False
+        http = self.cloud_http
+        if http is None:
+            _logger.warning("wake_device: no cloud session available for '%s'", name)
+            return False
+        response = await http.wake_up_device(handle.device_name)
+        if response.data is not True:
+            _logger.warning("wake_device: cloud refused to wake '%s': %s", name, response)
+            return False
+        handle.record_user_command()
+        return True
 
     @property
     def cloud_http(self) -> MammotionHTTP | None:
@@ -2648,29 +2806,20 @@ class MammotionClient:
                 _logger.warning("shim_devices_from_records: failed to shim record %s", rec.device_name)
         return result
 
-    async def add_ble_to_device(
-        self,
-        device_name: str,
-        ble_device: BLEDevice,
-    ) -> None:
-        """Attach (or replace) a BLE transport on an already-registered device.
+    async def add_ble_to_device(self, device_name: str, ble_device: BLEDevice, account_id: str | None = None) -> None:
+        """Attach a BLE transport to an already-registered device, or refresh the one it has.
 
         Args:
             device_name: Registered device name.
             ble_device:  The bleak ``BLEDevice`` to use for the BLE connection.
+            account_id:  Disambiguates a device several accounts hold.
 
         """
-        handle = self._device_registry.get_by_name(device_name)
+        handle = self._device_registry.get_by_name(device_name, account_id)
         if handle is None:
             _logger.warning("add_ble_to_device: device '%s' not registered", device_name)
             return
-        if handle.has_transport(TransportType.BLE) and (bleTransport := handle.get_transport(TransportType.BLE)):
-            _logger.debug("add_ble_to_device: device '%s' already has BLE transport", device_name)
-            cast(BLETransport, bleTransport).set_ble_device(ble_device)
-            return
-        transport = BLETransport(BLETransportConfig(device_id=device_name))
-        transport.set_ble_device(ble_device)
-        await handle.add_transport(transport)
+        await self._attach_ble(handle, ble_device)
 
     async def _fetch_stream_subscription(self, http: MammotionHTTP, iot_id: str, is_yuka: bool) -> Any:
         """Fetch the stream subscription token, retrying once if the response carries no data.
@@ -2751,6 +2900,7 @@ class MammotionClient:
         *,
         prefer_ble: bool = False,
         skip_if_saga_active: bool = False,
+        account_id: str | None = None,
         _record_cmd: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -2780,7 +2930,7 @@ class MammotionClient:
             AttributeError: if *key* is not a valid command.
 
         """
-        handle = self._device_registry.get_by_name(name)
+        handle = self._device_registry.get_by_name(name, account_id)
         if handle is None:
             msg = f"Device '{name}' not registered"
             raise KeyError(msg)
@@ -2796,7 +2946,7 @@ class MammotionClient:
             kwargs,
         )
         _prefer_ble = prefer_ble
-        _session = self._get_session_for_device(name)
+        _session = self._get_session_for_handle(handle)
 
         async def _do_send() -> None:
             # Single offline gate via the centralized property — covers
@@ -2831,6 +2981,7 @@ class MammotionClient:
         *,
         send_timeout: float = 5.0,
         prefer_ble: bool = True,
+        account_id: str | None = None,
         **kwargs: Any,
     ) -> Any:
         """Send a command and wait for the matching protobuf response.
@@ -2851,14 +3002,14 @@ class MammotionClient:
             :param prefer_ble:
 
         """
-        handle = self._device_registry.get_by_name(name)
+        handle = self._device_registry.get_by_name(name, account_id)
         if handle is None:
             msg = f"Device '{name}' not registered"
             raise KeyError(msg)
         handle.record_user_command()
         commands = handle.commands
         command_bytes: bytes = getattr(commands, key)(**kwargs)
-        _session = self._get_session_for_device(name)
+        _session = self._get_session_for_handle(handle)
 
         async def _send() -> None:
             await self._send_with_auth_retry(
@@ -2872,9 +3023,13 @@ class MammotionClient:
             send_timeout=send_timeout,
         )
 
-    def set_prefer_ble(self, device_id: str, *, prefer_ble: bool) -> None:
+    def set_prefer_ble(self, device_id: str, *, prefer_ble: bool, account_id: str | None = None) -> None:
         """Set transport preference for a registered device."""
-        handle = self._device_registry.get(device_id)
+        handle = (
+            self._device_registry.get(device_id)
+            if account_id is None
+            else self._device_registry.get(account_id, device_id)
+        )
         if handle is not None:
             handle.set_prefer_ble(value=prefer_ble)
 

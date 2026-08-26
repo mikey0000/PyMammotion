@@ -16,6 +16,7 @@ from pymammotion.data.model.enums import (
     SensorCheckState,
     SimCardStatus,
 )
+from pymammotion.utility.constant.device_constant import BreakPointReason
 
 if TYPE_CHECKING:
     from pymammotion.proto import ReportInfoData
@@ -494,6 +495,11 @@ class WorkData(DataClassORJSONMixin):
     def path_direction(self) -> int:
         """Mow path traversal direction flag (bits 0–7 of ``real_path_num``)."""
         return self.real_path_num & 0xFF
+
+    @property
+    def break_point_reason(self) -> BreakPointReason:
+        """Why the job stopped, decoded from ``bp_info``."""
+        return BreakPointReason(self.bp_info)
 
 
 @dataclass

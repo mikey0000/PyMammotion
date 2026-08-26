@@ -17,6 +17,7 @@ import pytest
 
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import JWTTokenInfo, MQTTConnection, UnauthorizedExceptionError
+from tests.unit._helpers import make_http_posting
 
 
 def _make_http_with_session() -> MammotionHTTP:
@@ -120,20 +121,7 @@ async def test_get_user_device_list_returns_devices_on_success() -> None:
 
 def _make_http_posting(status: int, body: dict, content_type: str = "application/json") -> MammotionHTTP:
     """Build a MammotionHTTP whose _client_session POSTs return a canned response."""
-    http = MammotionHTTP()
-    http.login_info = MagicMock(access_token="tok")  # type: ignore[assignment]
-    http.expires_in = time.time() + 3600
-    http.jwt_info = JWTTokenInfo(iot="https://iot.example", robot="https://robot.example")
-    resp = MagicMock(status=status, headers={"Content-Type": content_type})
-    resp.json = AsyncMock(return_value=body)
-    mock_session = MagicMock()
-    mock_session.post = AsyncMock(return_value=resp)
-
-    @asynccontextmanager
-    async def _fake_session() -> object:  # type: ignore[misc]
-        yield mock_session
-
-    http._client_session = _fake_session  # type: ignore[method-assign]
+    http, _session = make_http_posting(status, body, content_type)
     return http
 
 

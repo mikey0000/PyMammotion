@@ -266,9 +266,19 @@ class AppConnectType(UnknownTolerantIntEnum):
     CON_BLE_WIFI = 3
 
 
-class WorkMode(IntEnum):
-    """Numeric work-mode identifiers reported by the device status field."""
+class WorkMode(UnknownTolerantIntEnum):
+    """Numeric work-mode identifiers reported by the device status field.
 
+    Mirrors the APK's ``DeviceWorkState`` enum
+    (``device/source/device/enums/DeviceWorkState.java:5-38``, 2.3.8.201).
+    ``MODE_EDIT_BOUNDARY`` is that enum's ``MODE_SECOND_EDIT``; ``MODE_POWER_OFF``
+    has no counterpart there but is still reported by older firmware.
+
+    Wire-coerced, so unmodelled values resolve to ``UNKNOWN`` rather than raising
+    (see :class:`~pymammotion.utility.enum_base.UnknownTolerantIntEnum`).
+    """
+
+    UNKNOWN = -1
     MODE_NOT_ACTIVE = 0
     MODE_ONLINE = 1
     MODE_OFFLINE = 2
@@ -276,11 +286,13 @@ class WorkMode(IntEnum):
     MODE_DISABLE = 8
     MODE_INITIALIZATION = 10
     MODE_READY = 11
+    MODE_UNCONNECTED = 12
     MODE_WORKING = 13
     MODE_RETURNING = 14
     MODE_CHARGING = 15
     MODE_UPDATING = 16
     MODE_LOCK = 17
+    MODE_SYSTEM_ERROR = 18
     MODE_PAUSE = 19
     MODE_MANUAL_MOWING = 20
     MODE_UPDATE_SUCCESS = 22
@@ -293,18 +305,36 @@ class WorkMode(IntEnum):
     MODE_LOCATION_ERROR = 37
     MODE_BOUNDARY_JUMP = 38
     MODE_CHARGING_PAUSE = 39
+    MODE_AUTO_ERASER_DRAW = 43
+    MODE_CORRIDOR_DRAW = 44
+    #: Automatic exploration mapping (MN231 "auto mapping"), not a mow job.
+    MODE_CORRIDOR_WORKING = 45
+    MODE_CORRIDOR_PAUSE = 46
+    MODE_CORRIDOR_RETURNING = 47
+    #: Low-power sleep.  The device answers neither MQTT nor BLE until it is woken
+    #: (the app wakes it with ``POST /device-server/v1/device/wakeup``).
+    MODE_SLEEPING = 48
+    MODE_RESET_CHARGE = 50
+    MODE_BACKING_UP = 51
+    MODE_RECOVERY = 52
 
 
+#: Modes where an unsolicited poll is unwelcome: map planning/editing, anything
+#: rewriting device storage (OTA, backup, restore), and ``MODE_SLEEPING``.
 NO_REQUEST_MODES = (
     WorkMode.MODE_JOB_DRAW,
     WorkMode.MODE_OBSTACLE_DRAW,
     WorkMode.MODE_CHANNEL_DRAW,
     WorkMode.MODE_ERASER_DRAW,
+    WorkMode.MODE_AUTO_ERASER_DRAW,
+    WorkMode.MODE_CORRIDOR_DRAW,
     WorkMode.MODE_UPDATING,
     WorkMode.MODE_EDIT_BOUNDARY,
-    WorkMode.MODE_UPDATING,
     WorkMode.MODE_LOCK,
     WorkMode.MODE_MANUAL_MOWING,
+    WorkMode.MODE_SLEEPING,
+    WorkMode.MODE_BACKING_UP,
+    WorkMode.MODE_RECOVERY,
 )
 
 #: sys_status values that indicate a mowing job is active (moving, returning, or
@@ -319,6 +349,69 @@ MOWING_ACTIVE_MODES: frozenset[int] = frozenset(
         WorkMode.MODE_CHARGING_PAUSE.value,
     }
 )
+
+
+class BreakPointReason(UnknownTolerantIntEnum):
+    """Why the device recorded a mow breakpoint, reported on ``WorkData.bp_info``.
+
+    Decoded from the APK's breakpoint-flag switch
+    (``map/fragment/BaseMapFragment.java:2400-2558``, 2.3.8.201), which maps the
+    flag to the "why did mowing stop" banner shown over the map.  Several wire
+    codes share a meaning — the member value is the lowest such code and
+    :data:`_BREAK_POINT_SECONDARY_CODES` carries the rest, so
+    ``BreakPointReason(15)`` resolves to :data:`PAUSED_MANUALLY` just like
+    ``BreakPointReason(1)`` does.
+
+    ``NONE`` means no breakpoint is outstanding; the app clears the banner and
+    discards the stored breakpoint position on flag ``0``.
+    """
+
+    #: Sentinel for an unmodelled code.  Deliberately not ``-1``: the device does
+    #: send ``-1``, and the app treats it as "no breakpoint" (see ``NONE``).
+    UNKNOWN = -2
+    #: No breakpoint outstanding.
+    NONE = 0
+    PAUSED_MANUALLY = 1
+    BLADE_FAULT = 3
+    #: Wheels stuck or lifted.
+    STUCK = 4
+    OUTSIDE_BOUNDARY = 5
+    #: Waiting to regain RTK fix before resuming.
+    NEEDS_POSITIONING = 7
+    #: Waiting on the dock for enough charge to resume.
+    NEEDS_CHARGE = 8
+    BUMPER_DISCONNECTED = 9
+    LOW_BATTERY = 10
+    #: Rain detected — paused by the rain-protection setting.
+    RAIN = 11
+    POWERED_OFF = 12
+    #: Repositioning itself automatically before resuming.
+    AUTO_POSITIONING = 13
+    #: The scheduled working window ended mid-job.
+    SCHEDULE_WINDOW_ENDED = 18
+    #: Resume was requested but the job is still paused.
+    RESUME_PAUSED = 19
+
+    @classmethod
+    def _missing_(cls, value: object) -> BreakPointReason:
+        """Resolve a secondary wire code to its shared reason before falling back."""
+        if isinstance(value, int) and (reason := _BREAK_POINT_SECONDARY_CODES.get(value)) is not None:
+            return reason
+        return super()._missing_(value)
+
+
+#: Extra wire codes that mean the same thing as an existing member.  ``-1`` is
+#: reported by the device when it has never had a breakpoint.
+_BREAK_POINT_SECONDARY_CODES: dict[int, BreakPointReason] = {
+    -1: BreakPointReason.NONE,
+    2: BreakPointReason.NONE,
+    6: BreakPointReason.NONE,
+    14: BreakPointReason.LOW_BATTERY,
+    15: BreakPointReason.PAUSED_MANUALLY,
+    16: BreakPointReason.AUTO_POSITIONING,
+    20: BreakPointReason.BLADE_FAULT,
+    21: BreakPointReason.STUCK,
+}
 
 
 def device_connection(connect: ConnectData) -> str:
@@ -339,49 +432,16 @@ def device_connection(connect: ConnectData) -> str:
     return "None"
 
 
+#: sys_status value -> ``WorkMode`` member name.  Built from the enum so a new mode
+#: is added in one place, and used instead of ``WorkMode(value).name`` so an
+#: unmodelled value doesn't trip the enum's unknown-value log.  ``UNKNOWN`` is our
+#: own sentinel and never arrives on the wire.
+_WORK_MODE_NAMES: dict[int, str] = {mode.value: mode.name for mode in WorkMode if mode is not WorkMode.UNKNOWN}
+
+
 def device_mode(value: int) -> str:
-    """Return the mode corresponding to the given value.
-
-    This function takes a value and returns the corresponding mode from a
-    predefined dictionary.
-
-    Args:
-        value (int): The value for which mode needs to be determined.
-
-    Returns:
-        str: The mode corresponding to the input value. Returns "Invalid mode" if no
-            mode is found.
-
-    """
-
-    modes = {
-        0: "MODE_NOT_ACTIVE",
-        1: "MODE_ONLINE",
-        2: "MODE_OFFLINE",
-        3: "MODE_POWER_OFF",
-        8: "MODE_DISABLE",
-        10: "MODE_INITIALIZATION",
-        11: "MODE_READY",
-        12: "MODE_UNCONNECTED",
-        13: "MODE_WORKING",
-        14: "MODE_RETURNING",
-        15: "MODE_CHARGING",
-        16: "MODE_UPDATING",
-        17: "MODE_LOCK",
-        19: "MODE_PAUSE",
-        20: "MODE_MANUAL_MOWING",
-        22: "MODE_UPDATE_SUCCESS",
-        23: "MODE_OTA_UPGRADE_FAIL",
-        31: "MODE_JOB_DRAW",
-        32: "MODE_OBSTACLE_DRAW",
-        34: "MODE_CHANNEL_DRAW",
-        35: "MODE_ERASER_DRAW",
-        36: "MODE_EDIT_BOUNDARY",
-        37: "MODE_LOCATION_ERROR",
-        38: "MODE_BOUNDARY_JUMP",
-        39: "MODE_CHARGING_PAUSE",
-    }
-    return modes.get(value, "Invalid mode")
+    """Return the ``WorkMode`` name for *value*, or ``"Invalid mode"`` if unmodelled."""
+    return _WORK_MODE_NAMES.get(value, "Invalid mode")
 
 
 class PosType(UnknownTolerantIntEnum):

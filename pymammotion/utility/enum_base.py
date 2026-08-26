@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from enum import IntEnum
 import logging
+from typing import Self
 
 _logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class UnknownTolerantIntEnum(IntEnum):
     """
 
     @classmethod
-    def _missing_(cls, value: object) -> UnknownTolerantIntEnum:
+    def _missing_(cls, value: object) -> Self:
         """Return ``UNKNOWN`` for an unrecognised *value*, logging it once."""
         key = (cls.__name__, value)
         if key not in _logged_unknown:

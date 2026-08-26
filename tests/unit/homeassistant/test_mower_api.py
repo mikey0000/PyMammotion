@@ -354,3 +354,31 @@ def test_plan_sync_retry_is_interval_paced() -> None:
 
     api._last_call_times["Luba-Test"]["read_plan"] = datetime.now(UTC) - timedelta(minutes=31)
     assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+
+
+# ---------------------------------------------------------------------------
+# async_wake_up — HA-facing wake for a device in MODE_SLEEPING
+# ---------------------------------------------------------------------------
+
+
+def _api_with_wake(*, accepted: bool) -> tuple[HomeAssistantMowerApi, MagicMock]:
+    """A mower API whose client's wake_device returns *accepted*."""
+    api = _make_api()
+    client = MagicMock()
+    client.wake_device = AsyncMock(return_value=accepted)
+    api._mammotion = client
+    return api, client
+
+
+async def test_async_wake_up_delegates_to_the_client() -> None:
+    """The wake lives on MammotionClient (it owns both the handle and the session)."""
+    api, client = _api_with_wake(accepted=True)
+
+    assert await api.async_wake_up("Luba-Test") is True
+    client.wake_device.assert_awaited_once_with("Luba-Test")
+
+
+async def test_async_wake_up_passes_through_a_refusal() -> None:
+    api, _ = _api_with_wake(accepted=False)
+
+    assert await api.async_wake_up("Luba-Test") is False

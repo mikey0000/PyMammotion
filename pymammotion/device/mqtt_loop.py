@@ -28,15 +28,22 @@ _logger = logging.getLogger(__name__)
 #: Activity-loop backoff when MQTT is rate-limited and no BLE is available.
 _RATE_LIMITED_BACKOFF: float = 43200.0  # 12 hours
 
+#: A sleeping device answers nothing until it is woken over HTTP, so this is the
+#: rate at which the loop re-checks whether it woke — not a rate at which it is
+#: polled.  Long, because sleep lasts hours and every tick is a no-op.
+_SLEEPING_RECHECK_INTERVAL: float = float(os.environ.get("MAMMOTION_POLL_SLEEPING_SECS", 60 * 60))
+
 #: MQTT one-shot (count=1) poll cadence per device mode.  Tuned for cloud quotas.
 #: Each entry can be overridden at process startup via an environment variable:
 #: MAMMOTION_POLL_ACTIVE_SECS, MAMMOTION_POLL_DOCKED_CHARGING_SECS,
-#: MAMMOTION_POLL_DOCKED_FULL_SECS, MAMMOTION_POLL_IDLE_SECS
+#: MAMMOTION_POLL_DOCKED_FULL_SECS, MAMMOTION_POLL_IDLE_SECS,
+#: MAMMOTION_POLL_SLEEPING_SECS
 _MQTT_POLL_INTERVAL: dict[_DeviceMode, float] = {
     _DeviceMode.ACTIVE: float(os.environ.get("MAMMOTION_POLL_ACTIVE_SECS", 15 * 60)),
     _DeviceMode.DOCKED_CHARGING: float(os.environ.get("MAMMOTION_POLL_DOCKED_CHARGING_SECS", 30 * 60)),
     _DeviceMode.DOCKED_FULL: float(os.environ.get("MAMMOTION_POLL_DOCKED_FULL_SECS", 60 * 60)),
     _DeviceMode.IDLE: float(os.environ.get("MAMMOTION_POLL_IDLE_SECS", 15 * 60)),
+    _DeviceMode.SLEEPING: _SLEEPING_RECHECK_INTERVAL,
 }
 
 _MQTT_NEW_POLL_INTERVAL: dict[_DeviceMode, float] = {
@@ -44,19 +51,23 @@ _MQTT_NEW_POLL_INTERVAL: dict[_DeviceMode, float] = {
     _DeviceMode.DOCKED_CHARGING: float(os.environ.get("MAMMOTION_POLL_DOCKED_CHARGING_SECS", 5 * 60)),
     _DeviceMode.DOCKED_FULL: float(os.environ.get("MAMMOTION_POLL_DOCKED_FULL_SECS", 60 * 60)),
     _DeviceMode.IDLE: float(os.environ.get("MAMMOTION_POLL_IDLE_SECS", 10 * 60)),
+    _DeviceMode.SLEEPING: _SLEEPING_RECHECK_INTERVAL,
 }
 
 
-def poll_interval(handle: DeviceHandle) -> float:
+def poll_interval(handle: DeviceHandle, mode: _DeviceMode | None = None) -> float:
     """Return the MQTT one-shot poll interval based on current device mode.
 
-    See ``_MQTT_POLL_INTERVAL`` for the per-mode cadence table.
+    See ``_MQTT_POLL_INTERVAL`` for the per-mode cadence table.  Pass *mode* when
+    the caller already has it, to avoid re-deriving it from device state.
     """
 
+    if mode is None:
+        mode = handle.device_mode()
     if not Transport._version_is_rate_limited(handle.firmware_version):  # noqa: SLF001
-        return _MQTT_NEW_POLL_INTERVAL[handle.device_mode()]
+        return _MQTT_NEW_POLL_INTERVAL[mode]
 
-    return _MQTT_POLL_INTERVAL[handle.device_mode()]
+    return _MQTT_POLL_INTERVAL[mode]
 
 
 async def mqtt_activity_loop(handle: DeviceHandle) -> None:
@@ -64,12 +75,9 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
 
     Sends ``request_iot_sys(count=1)`` via the best available transport
     (BLE if connected, MQTT otherwise) once the device has been silent for
-    longer than the per-mode interval defined in ``_MQTT_POLL_INTERVAL``:
-
-    * **ACTIVE**         — 20 min (mowing/returning).
-    * **DOCKED_CHARGING** — 30 min (docked, battery < 100%).
-    * **DOCKED_FULL**    — 60 min (docked, battery 100%).
-    * **IDLE**           — 15 min (paused/locked/lost).
+    longer than the per-mode interval defined in ``_MQTT_POLL_INTERVAL`` /
+    ``_MQTT_NEW_POLL_INTERVAL`` — see those tables for the current values, and
+    ``_SLEEPING_RECHECK_INTERVAL`` for why the sleep entry is not a poll cadence.
 
     While ``handle.ble_stream_active`` is True the BLE polling loop is feeding
     a continuous count=0 stream and this loop defers entirely; the BLE
@@ -84,7 +92,8 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
     last_poll_sent_at: float = 0.0
 
     while not handle._stopping:  # noqa: SLF001
-        interval = poll_interval(handle)
+        mode = handle.device_mode()
+        interval = poll_interval(handle, mode)
 
         # While the BLE polling loop owns a continuous stream, this loop
         # has nothing useful to do — fresh state is arriving over BLE.
@@ -157,8 +166,15 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
                 await handle.sleep_or_rearm(backoff)
                 continue
 
-        if handle.queue.is_saga_active or handle.in_no_request_mode():
-            _logger.debug("poll_loop [%s]: saga active or no-request mode — deferring", handle.device_name)
+        saga_active = handle.queue.is_saga_active
+        if saga_active or handle.in_no_request_mode():
+            _logger.debug(
+                "poll_loop [%s]: deferring %.0fs (saga_active=%s, mode=%s)",
+                handle.device_name,
+                interval,
+                saga_active,
+                mode.value,
+            )
             await handle.sleep_or_rearm(interval)
             continue
 

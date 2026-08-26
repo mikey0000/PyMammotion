@@ -1445,3 +1445,132 @@ async def test_on_ble_connected_is_noop_while_stopping() -> None:
     assert handle._stopping is True  # noqa: SLF001
     assert handle.queue._task is None  # noqa: SLF001
     assert handle._keep_alive_task is None  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# Transport wiring hygiene: unwire on detach, identical-object no-op, replay on attach
+# ---------------------------------------------------------------------------
+
+
+async def test_detach_transport_removes_this_handles_availability_listener() -> None:
+    """A detached shared transport must stop driving this handle's queue gate."""
+    handle = make_handle()
+    shared = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(shared)
+    (listener,), _ = shared.add_availability_listener.call_args
+
+    detached = handle.detach_transport(TransportType.CLOUD_ALIYUN)
+
+    assert detached is shared
+    shared.remove_availability_listener.assert_called_once_with(listener)
+    shared.disconnect.assert_not_awaited()
+    assert handle.availability.mqtt is TransportAvailability.DISCONNECTED
+    assert handle.detach_transport(TransportType.CLOUD_ALIYUN) is None
+
+
+async def test_add_transport_same_object_is_a_no_op() -> None:
+    handle = make_handle()
+    shared = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(shared)
+    await handle.add_transport(shared)
+
+    assert shared.add_availability_listener.call_count == 1
+    shared.disconnect.assert_not_awaited()
+
+
+async def test_add_transport_replacing_cloud_detaches_without_disconnecting(caplog) -> None:
+    handle = make_handle()
+    old = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    new = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(old)
+
+    with caplog.at_level(logging.WARNING):
+        await handle.add_transport(new)
+
+    old.disconnect.assert_not_awaited()
+    old.remove_availability_listener.assert_called_once()
+    assert handle.get_transport(TransportType.CLOUD_ALIYUN) is new
+    assert "without disconnecting" in caplog.text
+
+
+async def test_add_transport_replacing_ble_disconnects_the_old_link() -> None:
+    handle = make_handle()
+    old = make_mock_transport(TransportType.BLE, availability=TransportAvailability.UNKNOWN)
+    new = make_mock_transport(TransportType.BLE, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(old)
+    await handle.add_transport(new)
+    old.disconnect.assert_awaited_once()
+
+
+async def test_add_transport_replays_connected_state_and_opens_the_queue_gate() -> None:
+    handle = make_handle()
+    handle.queue.pause_for_reconnect()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)  # availability CONNECTED
+
+    await handle.add_transport(mqtt)
+
+    assert handle.availability.mqtt is TransportAvailability.CONNECTED
+    assert handle.queue._transport_gate.is_set()  # noqa: SLF001
+    await handle.stop()
+
+
+async def test_first_cloud_attach_clears_a_stale_offline_latch() -> None:
+    handle = make_handle()
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+    first = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(first)
+    assert handle.availability.mqtt_reported_offline is False
+
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+    second = make_mock_transport(TransportType.CLOUD_MAMMOTION, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(second)
+    assert handle.availability.mqtt_reported_offline is True  # only the *first* cloud attach clears it
+
+
+async def test_ble_power_off_frame_does_not_latch_mqtt_offline() -> None:
+    """A power-off notice over BLE is not a cloud offline report."""
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.proto import MctlSys, MowToAppInfoT
+
+    # A real model: the reducer must accept the frame for the power-off step to run.
+    handle = DeviceHandle("dev1", "Luba-PO", MowingDevice(name="Luba-PO"))
+    msg = RealLubaMsg(sys=MctlSys(mow_to_app_info=MowToAppInfoT(type=0, cmd=0, mow_data=[1])))
+
+    await handle.on_raw_message(bytes(msg), TransportType.BLE)
+    assert handle.availability.mqtt_reported_offline is False
+
+    await handle.on_raw_message(bytes(msg), TransportType.CLOUD_ALIYUN)
+    assert handle.availability.mqtt_reported_offline is True
+
+
+async def test_take_ble_from_moves_the_transport_without_disconnecting() -> None:
+    src = make_handle("dev1", "A")
+    dst = make_handle("dev1", "A")
+    ble = make_mock_transport(TransportType.BLE, availability=TransportAvailability.UNKNOWN)
+    await src.add_transport(ble)
+
+    await dst.take_ble_from(src)
+
+    assert dst.get_transport(TransportType.BLE) is ble
+    assert not src.has_transport(TransportType.BLE)
+    ble.disconnect.assert_not_awaited()
+    assert ble.remove_availability_listener.call_count == 1
+    assert ble.add_availability_listener.call_count == 2
+
+
+async def test_stop_unwires_transports_before_disconnecting() -> None:
+    handle = make_handle()
+    t = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(t)
+    await handle.stop()
+    t.remove_availability_listener.assert_called_once()
+    t.disconnect.assert_awaited_once()
+    assert handle.is_started is False

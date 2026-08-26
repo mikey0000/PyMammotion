@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from mashumaro.exceptions import InvalidFieldValue, MissingField
 
+from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
 from pymammotion.data.model.device import MowerDevice
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
@@ -44,7 +45,7 @@ from pymammotion.transport.base import (
     TransportType,
 )
 from pymammotion.transport.ble import BLETransport
-from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
+from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES, WorkMode
 from pymammotion.utility.device_type import DeviceType
 
 _T = TypeVar("_T")
@@ -208,9 +209,13 @@ class DeviceHandle:
         debounce_interval: float = 0.0,
         max_debounce_wait: float = 2.0,
         readiness_checker: ReadinessChecker | None = None,
+        account_id: str = BLE_ONLY_ACCOUNT,
     ) -> None:
         """Initialise the device handle with optional initial transports."""
         self.device_id = device_id
+        #: Owner key in the DeviceRegistry — a cloud account id, or ``BLE_ONLY_ACCOUNT``
+        #: for a handle no account has claimed.  Written by the registry on register/rekey.
+        self.account_id = account_id
         self.device_name = device_name
         self.iot_id = iot_id
         self.user_account = user_account
@@ -219,6 +224,10 @@ class DeviceHandle:
         self.state_machine = DeviceStateMachine(device_id, initial_device)
         self._availability = DeviceAvailability()
         self._transports: dict[TransportType, Transport] = {}
+        #: The availability listener registered on each transport, so it can be removed
+        #: again when the transport is detached — a shared cloud transport must not keep
+        #: driving this handle's queue gate after another owner takes it over.
+        self._availability_handlers: dict[TransportType, Callable[[TransportAvailability], Awaitable[None]]] = {}
         self._state_changed_bus: _DebouncedBus = _DebouncedBus(debounce_interval, max_debounce_wait)
         self._status_bus: EventBus[ThingStatusMessage] = EventBus()
         self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
@@ -239,6 +248,7 @@ class DeviceHandle:
         self._shutdown_bus: EventBus[DeviceShutdownEvent] = EventBus()
         self._readiness_checker: ReadinessChecker | None = readiness_checker
         self._stopping: bool = False
+        self._started: bool = False
         self._keep_alive_task: asyncio.Task[None] | None = None
         #: Strong reference to the in-flight report-stream stop task (see
         #: ``_fire_report_stream_stop``).
@@ -331,11 +341,31 @@ class DeviceHandle:
         """Return a MammotionCommand builder for this device."""
         return MammotionCommand(self.device_name, self.user_account)
 
-    def _wire_transport(self, transport: Transport) -> None:
-        """Wire callbacks on a transport and register it."""
+    def _wire_transport(self, transport: Transport) -> Callable[[TransportAvailability], Awaitable[None]]:
+        """Wire callbacks on a transport and register it; returns the availability handler."""
         transport.on_message = self._make_message_handler(transport.transport_type)
-        transport.add_availability_listener(self._make_availability_handler(transport.transport_type))
+        handler = self._make_availability_handler(transport.transport_type)
+        transport.add_availability_listener(handler)
+        self._availability_handlers[transport.transport_type] = handler
         self._transports[transport.transport_type] = transport
+        return handler
+
+    def _unwire_transport(self, transport_type: TransportType) -> Transport | None:
+        """Forget a transport without disconnecting it; returns it, or ``None`` if absent.
+
+        Removes this handle's availability listener so the transport stops driving the
+        queue gate here.  ``on_message`` is cleared only for BLE: cloud transports route
+        per device via ``on_device_message`` and their ``on_message`` slot is shared.
+        """
+        transport = self._transports.pop(transport_type, None)
+        if transport is None:
+            return None
+        if (handler := self._availability_handlers.pop(transport_type, None)) is not None:
+            transport.remove_availability_listener(handler)
+        if transport_type is TransportType.BLE:
+            transport.on_message = None
+        self.update_availability(transport_type, TransportAvailability.DISCONNECTED)
+        return transport
 
     def _make_message_handler(self, transport_type: TransportType) -> Callable[[bytes], Awaitable[None]]:
         """Create a per-transport message callback that carries the transport type."""
@@ -561,17 +591,38 @@ class DeviceHandle:
         listener observes a transition to CONNECTED after :meth:`connect`
         succeeds.  Registration and lifecycle are kept as separate concerns.
         """
-        existing = self._transports.get(transport.transport_type)
+        transport_type = transport.transport_type
+        existing = self._transports.get(transport_type)
+        if existing is transport:
+            return
         if existing is not None:
-            _logger.debug("add_transport '%s': replacing existing %s", self.device_name, transport.transport_type.value)
-            await existing.disconnect()
-        _logger.debug("add_transport '%s': registered %s", self.device_name, transport.transport_type.value)
-        self._wire_transport(transport)
+            self._unwire_transport(transport_type)
+            if transport_type is TransportType.BLE:
+                _logger.debug("add_transport '%s': replacing existing BLE transport", self.device_name)
+                await existing.disconnect()
+            else:
+                # Cloud transports are account-shared: the session owns their lifecycle and
+                # disconnects them once every handle has let go.
+                _logger.warning(
+                    "add_transport '%s': replacing shared %s transport without disconnecting it",
+                    self.device_name,
+                    transport_type.value,
+                )
+        first_cloud = transport_type is not TransportType.BLE and self._pick_cloud_transport() is None
+        _logger.debug("add_transport '%s': registered %s", self.device_name, transport_type.value)
+        handler = self._wire_transport(transport)
+        if first_cloud and self._availability.mqtt_reported_offline:
+            # A latched offline flag with no cloud transport can only be stale (a BLE-era
+            # power-off); the transport just attached has reported nothing yet.
+            self.update_availability(transport_type, self._availability.mqtt, mqtt_reported_offline=False)
+        if transport.availability in (TransportAvailability.CONNECTING, TransportAvailability.CONNECTED):
+            # Replay the current state through the same handler a live transition would
+            # hit, so an already-connected transport opens the queue gate / starts loops.
+            await handler(transport.availability)
 
     async def remove_transport(self, transport_type: TransportType) -> None:
         """Disconnect and remove a transport by type."""
-        transport = self._transports.pop(transport_type, None)
-        if transport is not None:
+        if (transport := self._unwire_transport(transport_type)) is not None:
             await transport.disconnect()
 
     def detach_transport(self, transport_type: TransportType) -> Transport | None:
@@ -583,7 +634,17 @@ class DeviceHandle:
         disconnects and so must NOT be used for shared transports.  Returns the
         removed transport, or ``None`` if it was not registered (idempotent).
         """
-        return self._transports.pop(transport_type, None)
+        return self._unwire_transport(transport_type)
+
+    async def take_ble_from(self, other: DeviceHandle) -> None:
+        """Move *other*'s BLE transport onto this handle without dropping the link.
+
+        Only one handle may own a device's BLE transport at a time; this is the explicit
+        hand-over.  No-op when *other* has no BLE transport or is this handle.
+        """
+        if other is self or (ble := other.detach_transport(TransportType.BLE)) is None:
+            return
+        await self.add_transport(ble)
 
     async def on_raw_message(self, payload: bytes, transport_type: TransportType = TransportType.CLOUD_ALIYUN) -> None:
         """Receive raw bytes from transport, decode, update state, route to broker.
@@ -700,7 +761,8 @@ class DeviceHandle:
             info = luba_msg.sys.mow_to_app_info
             if info.type == 0 and info.cmd == 0 and info.mow_data:
                 _logger.debug("Device %s is powering off (power_type=%d)", self.device_name, info.mow_data[0])
-                self.update_availability(transport_type, self._availability.mqtt, mqtt_reported_offline=True)
+                if transport_type is not TransportType.BLE:
+                    self.update_availability(transport_type, self._availability.mqtt, mqtt_reported_offline=True)
                 await self._shutdown_bus.emit(
                     DeviceShutdownEvent(device_id=self.device_id, power_type=info.mow_data[0])
                 )
@@ -856,7 +918,6 @@ class DeviceHandle:
             ble = self._transports.get(TransportType.BLE)
             return ble if ble is not None and ble.is_connected else None
 
-        self.update_availability(transport.transport_type, TransportAvailability.DISCONNECTED)
         _logger.warning(
             "Device '%s' unbound from cloud (%s) — detaching transport and re-discovering",
             self.device_name,
@@ -1081,6 +1142,7 @@ class DeviceHandle:
         CONNECTED transition.
         """
         self._stopping = False
+        self._started = True
         self.queue.start()
         if not self._skips_activity_loops and (self._keep_alive_task is None or self._keep_alive_task.done()):
             self._keep_alive_task = asyncio.get_running_loop().create_task(mqtt_activity_loop(self))
@@ -1146,6 +1208,7 @@ class DeviceHandle:
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
         self._stopping = True
+        self._started = False
         if self._report_stream_timer is not None:
             self._report_stream_timer.cancel()
             self._report_stream_timer = None
@@ -1169,9 +1232,9 @@ class DeviceHandle:
         await self.queue.stop()
         await self.broker.close()
         await self._state_changed_bus.stop()
-        for transport in list(self._transports.values()):
-            await transport.disconnect()
-        self._transports.clear()
+        for transport_type in list(self._transports):
+            if (transport := self._unwire_transport(transport_type)) is not None:
+                await transport.disconnect()
 
     def record_user_command(self) -> None:
         """Wake the poll loop for early re-evaluation.
@@ -1192,10 +1255,16 @@ class DeviceHandle:
 
         Public because the BLE / MQTT / dynamics-line loops all consult it
         to pick their tick cadence.
+
+        SLEEPING is tested first: a sleeping device is usually still sitting on
+        its dock, so the charge-state branches below would otherwise claim it and
+        poll it on the docked cadence.
         """
         try:
             dev = self.state_machine.current.raw.report_data.dev  # type: ignore
             sys_status = dev.sys_status
+            if sys_status == WorkMode.MODE_SLEEPING:
+                return _DeviceMode.SLEEPING
             if sys_status in MOWING_ACTIVE_MODES:
                 return _DeviceMode.ACTIVE
             charge_state = int(dev.charge_state)
@@ -1206,6 +1275,20 @@ class DeviceHandle:
             return _DeviceMode.IDLE
         except (AttributeError, TypeError, ValueError):
             return _DeviceMode.IDLE
+
+    @property
+    def is_sleeping(self) -> bool:
+        """Whether the device is in low-power sleep and needs an HTTP wake to return.
+
+        Public so consumers don't have to compare against the private
+        ``_DeviceMode`` enum to answer it.  Read straight off sys_status rather
+        than via :meth:`device_mode`, so retuning the cadence buckets can't change
+        what this reports.
+        """
+        try:
+            return self.state_machine.current.raw.report_data.dev.sys_status == WorkMode.MODE_SLEEPING  # type: ignore
+        except (AttributeError, TypeError):
+            return False
 
     def in_no_request_mode(self) -> bool:
         """Return True when the device is in a mode where polling sends are unwelcome.
@@ -1579,6 +1662,20 @@ class DeviceHandle:
     def has_transport(self, transport_type: TransportType) -> bool:
         """Check if a transport of the given type is registered."""
         return transport_type in self._transports
+
+    @property
+    def is_started(self) -> bool:
+        """True between :meth:`start` and :meth:`stop`."""
+        return self._started
+
+    @property
+    def readiness_checker(self) -> ReadinessChecker | None:
+        """The device-type readiness checker, or ``None`` when none is bound yet."""
+        return self._readiness_checker
+
+    @readiness_checker.setter
+    def readiness_checker(self, checker: ReadinessChecker | None) -> None:
+        self._readiness_checker = checker
 
     def get_transport(self, transport_type: TransportType) -> Transport | None:
         """Return the registered transport of the given type, or None."""
@@ -2003,36 +2100,126 @@ class DeviceHandle:
         raise NoTransportAvailableError(msg)
 
 
+DeviceKey = tuple[str, str]
+"""``(account_id, device_id)`` — the DeviceRegistry key."""
+
+
+class DeviceAlreadyRegisteredError(RuntimeError):
+    """A different DeviceHandle already holds this (account, device) key."""
+
+
 class DeviceRegistry:
-    """Maps device_id → DeviceHandle. Thread-safe via asyncio.Lock."""
+    """Maps ``(account_id, device_id)`` → DeviceHandle.  Coroutine-safe via asyncio.Lock.
+
+    One handle per (account, device).  Handles no account has claimed live under
+    ``BLE_ONLY_ACCOUNT``; a cloud login re-keys such a handle onto the account rather
+    than creating a second one.  ``register`` never overwrites.
+    """
 
     def __init__(self) -> None:
         """Initialise an empty registry."""
-        self._devices: dict[str, DeviceHandle] = {}
+        self._devices: dict[DeviceKey, DeviceHandle] = {}
         self._lock: asyncio.Lock = asyncio.Lock()
 
-    async def register(self, handle: DeviceHandle) -> None:
-        """Register a device handle by its device_id."""
-        async with self._lock:
-            self._devices[handle.device_id] = handle
+    async def register(self, handle: DeviceHandle, account_id: str | None = None) -> None:
+        """Register *handle* under ``(account_id or handle.account_id, handle.device_id)``.
 
-    async def unregister(self, device_id: str) -> None:
-        """Stop and remove the device handle."""
+        Re-registering the same object is a no-op; a different object on an occupied key
+        raises :class:`DeviceAlreadyRegisteredError` — adopt the existing handle instead.
+        """
+        owner = handle.account_id if account_id is None else account_id
+        key = (owner, handle.device_id)
         async with self._lock:
-            handle = self._devices.pop(device_id, None)
+            existing = self._devices.get(key)
+            if existing is not None and existing is not handle:
+                raise DeviceAlreadyRegisteredError(f"device {key!r} is already registered to another handle")
+            handle.account_id = owner
+            self._devices[key] = handle
+
+    async def rekey(self, handle: DeviceHandle, account_id: str) -> None:
+        """Move *handle* to ``(account_id, handle.device_id)``; the same object throughout."""
+        old = (handle.account_id, handle.device_id)
+        new = (account_id, handle.device_id)
+        if old == new:
+            return
+        async with self._lock:
+            occupant = self._devices.get(new)
+            if occupant is not None and occupant is not handle:
+                raise DeviceAlreadyRegisteredError(f"device {new!r} is already registered to another handle")
+            if self._devices.get(old) is handle:
+                del self._devices[old]
+            handle.account_id = account_id
+            self._devices[new] = handle
+
+    async def unregister(self, account_id: str, device_id: str | None = None) -> None:
+        """Stop and remove a handle.
+
+        Two positionals address an exact key.  A single positional is the legacy
+        ``device_id``-only form and resolves via :meth:`get`.
+        """
+        async with self._lock:
+            if device_id is None:
+                handle = self._resolve(self._holders(account_id))
+                key = (handle.account_id, handle.device_id) if handle is not None else None
+            else:
+                key = (account_id, device_id)
+                handle = self._devices.get(key)
+            if key is not None:
+                self._devices.pop(key, None)
         if handle is not None:
             await handle.stop()
 
-    def get(self, device_id: str) -> DeviceHandle | None:
-        """Return the DeviceHandle for the given device_id, or None."""
-        return self._devices.get(device_id)
+    def get(self, account_id: str, device_id: str | None = None) -> DeviceHandle | None:
+        """Return the handle for ``(account_id, device_id)``, or ``None``.
 
-    def get_by_name(self, name: str) -> DeviceHandle | None:
-        """Return the first DeviceHandle with matching device_name, or None."""
-        for handle in self._devices.values():
-            if handle.device_name == name:
-                return handle
-        return None
+        With a single positional the argument is a ``device_id`` and the handle is
+        resolved across accounts (see :meth:`get_by_name` for the rule).
+        """
+        if device_id is None:
+            return self._resolve(self._holders(account_id))
+        return self._devices.get((account_id, device_id))
+
+    def get_any(self, device_id: str) -> list[DeviceHandle]:
+        """Return every handle for *device_id*, whichever account holds it."""
+        return self._holders(device_id)
+
+    def get_by_name(self, name: str, account_id: str | None = None) -> DeviceHandle | None:
+        """Return the handle named *name* — exact when *account_id* is given.
+
+        Without an account: the unique holder; if several accounts hold the device, the
+        one that owns BLE, else the first cloud holder with a warning.
+        """
+        candidates = [h for h in self._devices.values() if h.device_name == name]
+        if account_id is not None:
+            return next((h for h in candidates if h.account_id == account_id), None)
+        return self._resolve(candidates)
+
+    def find_ble_owner(self, device_id: str) -> DeviceHandle | None:
+        """Return the one handle holding *device_id*'s BLE transport, or ``None``."""
+        return next((h for h in self._holders(device_id) if h.has_transport(TransportType.BLE)), None)
+
+    def for_account(self, account_id: str) -> list[DeviceHandle]:
+        """Return the handles registered under *account_id*."""
+        return [h for (owner, _), h in self._devices.items() if owner == account_id]
+
+    def _holders(self, device_id: str) -> list[DeviceHandle]:
+        return [h for (_, dev), h in self._devices.items() if dev == device_id]
+
+    @staticmethod
+    def _resolve(candidates: list[DeviceHandle]) -> DeviceHandle | None:
+        if len(candidates) <= 1:
+            return candidates[0] if candidates else None
+        ble_owners = [h for h in candidates if h.has_transport(TransportType.BLE)]
+        if len(ble_owners) == 1:
+            return ble_owners[0]
+        chosen = next((h for h in candidates if h.account_id != BLE_ONLY_ACCOUNT), candidates[0])
+        _logger.warning(
+            "device %s is held by %d accounts — pass account_id to disambiguate (using %s)",
+            chosen.device_name,
+            len(candidates),
+            chosen.account_id,
+        )
+        return chosen
 
     @property
     def all_devices(self) -> list[DeviceHandle]:

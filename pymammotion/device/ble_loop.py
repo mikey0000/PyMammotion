@@ -63,6 +63,9 @@ _BLE_POLL_INTERVAL: dict[_DeviceMode, float | None] = {
     _DeviceMode.DOCKED_CHARGING: 1 * 60.0,
     _DeviceMode.DOCKED_FULL: 5 * 60.0,
     _DeviceMode.IDLE: 5 * 60.0,
+    # Unreachable in practice — the loop breaks as soon as BLE disconnects, and a
+    # sleeping device has dropped BLE too — but the table must be total.
+    _DeviceMode.SLEEPING: 5 * 60.0,
 }
 
 

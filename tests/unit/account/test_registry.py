@@ -143,7 +143,7 @@ async def test_find_by_device_multiple_accounts() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BLE-only account session — device_name as unique key under __ble__
+# BLE-only devices — registered under the BLE_ONLY_ACCOUNT key, never as a session
 # ---------------------------------------------------------------------------
 
 
@@ -154,25 +154,10 @@ async def test_ble_only_account_id_constant() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ble_session_device_ids_are_unique_names() -> None:
-    """device_ids in the __ble__ session uses device_name as unique identifier.
-
-    Adding the same device_name twice must not create a duplicate entry.
-    """
-    ble_session = AccountSession(account_id=BLE_ONLY_ACCOUNT)
-    ble_session.device_ids.add("Luba-VS563L6H")
-    ble_session.device_ids.add("Luba-VS563L6H")  # duplicate add
-    ble_session.device_ids.add("Yuka-AABBCCDD")
-
-    assert len(ble_session.device_ids) == 2
-    assert "Luba-VS563L6H" in ble_session.device_ids
-    assert "Yuka-AABBCCDD" in ble_session.device_ids
-
-
-@pytest.mark.asyncio
-async def test_add_ble_only_device_creates_ble_session() -> None:
-    """add_ble_only_device registers the device under the __ble__ account session."""
+async def test_add_ble_only_device_registers_no_account_session() -> None:
+    """A BLE-only device is a registry entry under the sentinel key — no AccountSession is created."""
     from pymammotion.client import MammotionClient
+    from pymammotion.transport.base import TransportType
 
     client = MammotionClient("test")
     ble_dev = _make_ble_device("CC:64:1A:49:37:95")
@@ -184,10 +169,12 @@ async def test_add_ble_only_device_creates_ble_session() -> None:
         ble_device=ble_dev,
     )
 
-    ble_session = client._account_registry.get(BLE_ONLY_ACCOUNT)
-    assert ble_session is not None
-    assert "Luba-VS563L6H" in ble_session.device_ids
-    assert handle is not None
+    assert client._account_registry.all_sessions == []
+    assert handle.account_id == BLE_ONLY_ACCOUNT
+    assert client._device_registry.get(BLE_ONLY_ACCOUNT, "Luba-VS563L6H") is handle
+    assert handle.has_transport(TransportType.BLE)
+    assert handle.is_started
+    await handle.stop()
 
 
 @pytest.mark.asyncio
@@ -214,12 +201,8 @@ async def test_add_ble_only_device_idempotent_same_client() -> None:
     )
 
     assert handle_1 is handle_2, "second call must return the existing handle"
-    # Only one entry should exist in the registry
     assert len(client._device_registry.all_devices) == 1
-    # device_name in __ble__ session must appear only once
-    ble_session = client._account_registry.get(BLE_ONLY_ACCOUNT)
-    assert ble_session is not None
-    assert list(ble_session.device_ids).count("Luba-VS563L6H") == 1
+    await handle_1.stop()
 
 
 @pytest.mark.asyncio
@@ -251,31 +234,31 @@ async def test_add_ble_only_device_idempotent_updates_ble_device() -> None:
     transport = handle.get_transport(TransportType.BLE)
     assert transport is not None
     assert transport.ble_address == ble_dev_2.address
+    await handle.stop()
 
 
 @pytest.mark.asyncio
-async def test_multiple_ble_devices_each_get_own_session_entry() -> None:
-    """Two distinct BLE-only devices are both tracked under the single __ble__ session."""
+async def test_multiple_ble_devices_each_get_own_handle() -> None:
+    """Two distinct BLE-only devices are two sentinel-keyed handles and still zero sessions."""
     from pymammotion.client import MammotionClient
 
     client = MammotionClient("test")
 
-    await client.add_ble_only_device(
+    a = await client.add_ble_only_device(
         device_id="Luba-VS563L6H",
         device_name="Luba-VS563L6H",
         initial_device=MowingDevice(name="Luba-VS563L6H"),
         ble_device=_make_ble_device("CC:64:1A:49:37:95"),
     )
-    await client.add_ble_only_device(
+    b = await client.add_ble_only_device(
         device_id="Yuka-TESTDEV1",
         device_name="Yuka-TESTDEV1",
         initial_device=MowingDevice(name="Yuka-TESTDEV1"),
         ble_device=_make_ble_device("02:00:00:12:34:57"),
     )
 
-    ble_session = client._account_registry.get(BLE_ONLY_ACCOUNT)
-    assert ble_session is not None
-    assert "Luba-VS563L6H" in ble_session.device_ids
-    assert "Yuka-TESTDEV1" in ble_session.device_ids
-    assert len(ble_session.device_ids) == 2
+    assert client._account_registry.all_sessions == []
+    assert {h.account_id for h in client._device_registry.all_devices} == {BLE_ONLY_ACCOUNT}
     assert len(client._device_registry.all_devices) == 2
+    await a.stop()
+    await b.stop()

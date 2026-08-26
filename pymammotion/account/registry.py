@@ -13,17 +13,18 @@ if TYPE_CHECKING:
     from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
     from pymammotion.transport.mqtt import MQTTTransport
 
-# Account ID used for BLE-only devices that have no cloud account.
+#: DeviceRegistry owner key for a handle no cloud account has claimed (BLE-only).
+#: A registry key only — no AccountSession is ever registered under it.
 BLE_ONLY_ACCOUNT = "__ble__"
 
 
 @dataclass
 class AccountSession:
-    """All per-account state: credentials, transports, and device ownership.
+    """All per-account cloud state: credentials, transports, and the devices bound to them.
 
-    One AccountSession per logged-in account.  BLE-only devices get a shared
-    session with ``account_id = BLE_ONLY_ACCOUNT`` and all cloud fields left
-    as ``None``.
+    One AccountSession per logged-in account.  ``device_ids`` lists the device names
+    bound to this account's cloud transports; BLE ownership is a property of the
+    DeviceHandle (``has_transport(TransportType.BLE)``), not of any session.
     """
 
     account_id: str

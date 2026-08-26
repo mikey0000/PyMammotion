@@ -19,6 +19,7 @@ from pymammotion.http.model.http import (
     Response,
 )
 from pymammotion.transport.base import TransportType
+from tests._helpers import make_bare_client
 from tests.unit._helpers import make_mock_mowing_device, make_mock_transport
 
 
@@ -140,7 +141,7 @@ async def test_add_ble_device_calls_manager() -> None:
 
     await client.add_ble_device("dev-xyz", fake_ble_device)
 
-    client._ble_manager.register_external_ble_client.assert_called_once_with("dev-xyz", fake_ble_device)
+    client._ble_manager.register_external_ble_client.assert_called_once_with("dev-xyz", fake_ble_device, None)
 
 
 # ---------------------------------------------------------------------------
@@ -397,7 +398,15 @@ def _make_mock_http(
 
 
 def _make_connected_transport(transport_type: TransportType) -> MagicMock:
-    return make_mock_transport(transport_type)
+    """A connected transport whose *availability* is UNKNOWN.
+
+    These tests exercise routing by ``is_connected`` alone.  ``add_transport`` replays a
+    CONNECTED availability through the live handler (opening the gate, starting BLE
+    loops, requesting a report), which would add sends the assertions don't expect.
+    """
+    from pymammotion.transport.base import TransportAvailability
+
+    return make_mock_transport(transport_type, availability=TransportAvailability.UNKNOWN)
 
 
 async def _drain(handle: DeviceHandle) -> None:
@@ -1056,12 +1065,6 @@ async def test_send_raw_no_usable_transport_mqtt_offline_propagates() -> None:
 
     handle = make_handle("dev1", "Luba-MQTTOff")
     handle._prefer_ble = True  # noqa: SLF001
-    # Mark MQTT as cloud-reported-offline so it's registered but unusable.
-    handle._availability = DeviceAvailability(  # noqa: SLF001
-        ble=handle._availability.ble,  # noqa: SLF001
-        mqtt=handle._availability.mqtt,  # noqa: SLF001
-        mqtt_reported_offline=True,
-    )
 
     ble = _make_connected_transport(TransportType.BLE)
     ble.is_connected = False
@@ -1071,6 +1074,13 @@ async def test_send_raw_no_usable_transport_mqtt_offline_propagates() -> None:
 
     await handle.add_transport(ble)
     await handle.add_transport(mqtt)
+    # Mark MQTT as cloud-reported-offline so it's registered but unusable.  Set after the
+    # attach: a first cloud attach deliberately clears a latched flag.
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
 
     with pytest.raises(NoTransportAvailableError):
         await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
@@ -1520,8 +1530,8 @@ async def test_device_unbound_migrates_to_mammotion() -> None:
     client = MammotionClient()
     handle = make_handle("Luba-MIG", "Luba-MIG")
     handle.iot_id = "iot-old"
-    await client._device_registry.register(handle)
-    client._iot_id_to_device_id["iot-old"] = "Luba-MIG"
+    await client._device_registry.register(handle, "user@test.com")
+    client._iot_id_to_device_key[("user@test.com", "iot-old")] = ("user@test.com", "Luba-MIG")
 
     record = _make_device_record(device_name="Luba-MIG", iot_id="iot-new", product_key="pkNEW")
     http = _make_mock_http(device_records=[record])
@@ -1545,8 +1555,8 @@ async def test_device_unbound_migrates_to_mammotion() -> None:
     assert client._device_registry.get_by_name("Luba-MIG") is handle
     assert handle.get_transport(TransportType.CLOUD_MAMMOTION) is mammotion_transport
     assert handle.iot_id == "iot-new"
-    assert client._iot_id_to_device_id.get("iot-new") == "Luba-MIG"
-    assert "iot-old" not in client._iot_id_to_device_id
+    assert client._iot_id_to_device_key.get(("user@test.com", "iot-new")) == ("user@test.com", "Luba-MIG")
+    assert ("user@test.com", "iot-old") not in client._iot_id_to_device_key
     mammotion_transport.register_device.assert_called_once()
     session.aliyun_transport.disconnect.assert_not_awaited()
     await handle.stop()
@@ -1560,8 +1570,8 @@ async def test_device_unbound_removed_when_on_no_cloud() -> None:
     client = MammotionClient()
     handle = make_handle("Luba-GONE", "Luba-GONE")
     handle.iot_id = "iot-gone"
-    await client._device_registry.register(handle)
-    client._iot_id_to_device_id["iot-gone"] = "Luba-GONE"
+    await client._device_registry.register(handle, "user@test.com")
+    client._iot_id_to_device_key[("user@test.com", "iot-gone")] = ("user@test.com", "Luba-GONE")
 
     http = _make_mock_http(device_records=[])  # not present on Mammotion either
     session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
@@ -1578,7 +1588,7 @@ async def test_device_unbound_removed_when_on_no_cloud() -> None:
         await client._on_device_unbound(handle)
 
     assert client._device_registry.get_by_name("Luba-GONE") is None
-    assert "iot-gone" not in client._iot_id_to_device_id
+    assert ("user@test.com", "iot-gone") not in client._iot_id_to_device_key
     assert "Luba-GONE" not in session.device_ids
     removed.assert_awaited_once_with("Luba-GONE", "iot-gone")
     session.aliyun_transport.disconnect.assert_not_awaited()
@@ -1641,8 +1651,8 @@ async def _make_two_device_session() -> tuple[MammotionClient, DeviceHandle, Dev
     handle_b = make_handle("dev-b", "Luba-B")
     await handle_a.add_transport(shared)
     await handle_b.add_transport(shared)
-    await client._device_registry.register(handle_a)
-    await client._device_registry.register(handle_b)
+    await client._device_registry.register(handle_a, "user@test.com")
+    await client._device_registry.register(handle_b, "user@test.com")
 
     session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
     session.aliyun_transport = shared
@@ -1841,24 +1851,27 @@ async def test_token_manager_reauth_transition_triggers_quiesce() -> None:
     client._quiesce_account.assert_not_awaited()
 
 
-async def test_default_session_skips_the_ble_only_placeholder() -> None:
-    """A BLE-only session must never stand in for the account's cloud session.
+async def test_ble_only_device_never_registers_a_session() -> None:
+    """A BLE-only device must not stand in for the account's cloud session.
 
-    It is registered by the first BLE discovery and holds no login, so when it
-    sorted first every _get_default_session() caller behaved as if the account had
-    no credentials — most damagingly to_cache(), which returned {} and made saving
-    a silent no-op while the real session sat one slot further along.
+    Previously a placeholder ``__ble__`` AccountSession was registered by the first
+    BLE discovery; when it sorted first, every _get_default_session() caller behaved
+    as if the account had no credentials (to_cache() returned {}).  BLE ownership now
+    lives on the handle, so no such session exists.
     """
-    from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountSession
+    from pymammotion.account.registry import AccountSession
     from pymammotion.client import MammotionClient
 
     client = MammotionClient()
-    await client._account_registry.register(AccountSession(account_id=BLE_ONLY_ACCOUNT))
+    handle = await client.add_ble_only_device(
+        "Luba-BLE1", "Luba-BLE1", make_mock_mowing_device(), ble_address="AA:BB:CC:DD:EE:FF"
+    )
     cloud = AccountSession(account_id="u@x.com", email="u@x.com", password="pw")
     await client._account_registry.register(cloud)
 
-    assert client._account_registry.all_sessions[0].account_id == BLE_ONLY_ACCOUNT
+    assert client._account_registry.all_sessions == [cloud]
     assert client._get_default_session() is cloud
+    await handle.stop()
 
 
 async def test_reauth_required_property_mirrors_token_manager() -> None:
@@ -1889,3 +1902,64 @@ async def test_to_cache_returns_empty_for_dead_session() -> None:
 
     tm.reauth_required = None
     assert client.to_cache() != {}
+
+
+# ---------------------------------------------------------------------------
+# wake_device — the only route back from MODE_SLEEPING
+# ---------------------------------------------------------------------------
+
+
+def _client_for_wake(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    handle: MagicMock | None,
+    http: MagicMock | None,
+    accepted: bool = True,
+) -> MammotionClient:
+    """A bare client whose mower() and cloud_http are stubbed.
+
+    ``cloud_http`` reads through to the default account session, so it is patched
+    on the class — via monkeypatch, so it is undone before the next test.
+    """
+    client = make_bare_client()
+    client.mower = MagicMock(return_value=handle)  # type: ignore[method-assign]
+    if http is not None:
+        http.wake_up_device = AsyncMock(return_value=MagicMock(data=accepted))
+    monkeypatch.setattr(MammotionClient, "cloud_http", property(lambda _self: http))
+    return client
+
+
+async def test_wake_device_posts_the_wake_and_rearms_the_poll_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-arming matters: the loop backs off an hour while a device sleeps."""
+    handle = MagicMock(device_name="Luba-Test")
+    http = MagicMock()
+    client = _client_for_wake(monkeypatch, handle=handle, http=http)
+
+    assert await client.wake_device("Luba-Test") is True
+    http.wake_up_device.assert_awaited_once_with("Luba-Test")
+    handle.record_user_command.assert_called_once()
+
+
+async def test_wake_device_does_not_rearm_when_the_cloud_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
+    handle = MagicMock(device_name="Luba-Test")
+    http = MagicMock()
+    client = _client_for_wake(monkeypatch, handle=handle, http=http, accepted=False)
+
+    assert await client.wake_device("Luba-Test") is False
+    handle.record_user_command.assert_not_called()
+
+
+async def test_wake_device_without_a_cloud_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BLE-only setups have no cloud client, so there is nothing to wake with."""
+    handle = MagicMock(device_name="Luba-Test")
+    client = _client_for_wake(monkeypatch, handle=handle, http=None)
+
+    assert await client.wake_device("Luba-Test") is False
+
+
+async def test_wake_device_unknown_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    http = MagicMock()
+    client = _client_for_wake(monkeypatch, handle=None, http=http)
+
+    assert await client.wake_device("Nope") is False
+    http.wake_up_device.assert_not_awaited()

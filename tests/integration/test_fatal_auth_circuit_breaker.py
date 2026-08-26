@@ -126,8 +126,8 @@ async def test_give_up_signals_only_mowers_on_that_transport() -> None:
 
     on_mammotion = _make_device(has_transport=TransportType.CLOUD_MAMMOTION)
     ble_only = _make_device(has_transport=TransportType.BLE)
-    client._device_registry.get = MagicMock(  # type: ignore[method-assign]
-        side_effect=lambda did: {"on_mammotion": on_mammotion, "ble_only": ble_only}.get(did)
+    client._device_registry.for_account = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda account: [on_mammotion, ble_only] if account == session.account_id else []
     )
 
     transport = client._setup_mammotion_transport(

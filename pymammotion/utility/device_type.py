@@ -106,6 +106,22 @@ def _version_less_than(version: str, target: str) -> bool:
     return current < threshold
 
 
+def _version_greater_than(version: str, target: str) -> bool:
+    """Return True if dotted ``version`` is strictly newer than dotted ``target``."""
+    return _version_less_than(version=target, target=version)
+
+
+#: Firmware above which the app shows the Smart Sleep screen (EcoSleep /
+#: LiveSleep).  See ``DeviceType.supports_smart_sleep``.
+_SMART_SLEEP_FIRMWARE = "2.3.26.0"
+
+#: Firmware above which the app replaces the on/off rain switch with the three-mode
+#: Rain Protection screen.  Unconfirmed — borrowed from ``_SMART_SLEEP_FIRMWARE``.
+#: Kept separate from it, with its own device tuple below, so confirming or
+#: correcting one capability cannot silently move the other.
+_RAIN_PROTECTION_MODES_FIRMWARE = "2.3.26.0"
+
+
 class DeviceType(Enum):
     """Enum of all supported Mammotion device types with their numeric ID, name prefix, and model string."""
 
@@ -409,6 +425,44 @@ class DeviceType(Enum):
         return True
 
     @staticmethod
+    def supports_smart_sleep(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:
+        """Whether the device exposes the Smart Sleep switches (EcoSleep / LiveSleep).
+
+        Mirrors the gate on the app's battery page, which only offers the Smart
+        Sleep entry for the HM432/HM434/HM442 product keys above firmware
+        ``2.3.26.0`` (RN bundle ``assets/index.android.bundle`` in APK
+        2.3.18.21: ``[y.HM432, y.HM434, y.HM442].includes(productKey) &&
+        compareVersion(firmwareVersion, "2.3.26.0") > 0``).
+
+        The threshold is exclusive, matching the app's ``> 0`` comparison.  An
+        empty ``firmware_version`` returns False — the switches write to device
+        storage, so guessing capability from a missing version is the wrong risk
+        to take.
+        """
+        if DeviceType.value_of_str(device_name, product_key) not in _SMART_SLEEP_DEVICES:
+            return False
+        return _version_greater_than(firmware_version, _SMART_SLEEP_FIRMWARE)
+
+    @staticmethod
+    def supports_rain_protection_modes(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:
+        """Whether the device exposes three-mode Rain Protection instead of an on/off switch.
+
+        Off / Smart / Sensor plus a resume delay, new in app 2.3.18.  **The
+        threshold and device set here are unconfirmed**: the app's entry point for
+        this screen lives in native code that is packed in the 2.3.18.21 APK, so
+        the only thing recoverable was the screen itself (RN bundle
+        ``ScreenName.RainProtection``).  Its threshold and device tuple are borrowed
+        from ``supports_smart_sleep`` — the one gate of the same vintage that *is*
+        readable — but held separately so correcting either leaves the other alone.
+
+        Devices that return False use the plain rain switch
+        (``allpowerfull_rw`` id 3), which every supported mower has.
+        """
+        if DeviceType.value_of_str(device_name, product_key) not in _RAIN_PROTECTION_MODE_DEVICES:
+            return False
+        return _version_greater_than(firmware_version, _RAIN_PROTECTION_MODES_FIRMWARE)
+
+    @staticmethod
     def is_luba_pro(device_name: str, product_key: str = "") -> bool:
         """Check if the device type is LUBA 2 or higher (non-RTK, non-swimming-pool)."""
         device_type = DeviceType.value_of_str(device_name, product_key)
@@ -628,6 +682,23 @@ class DeviceType(Enum):
             DeviceType.LUBA_MB,
         )
 
+
+# Devices the app offers the Smart Sleep screen on. The RN bundle names them by
+# product key (HM432/HM434/HM442); expressed as device types here so a mower whose
+# product key we don't know still matches on its name prefix.
+_SMART_SLEEP_DEVICES = (
+    DeviceType.LUBA_LA,
+    DeviceType.LUBA_MB,
+    DeviceType.LUBA_VA,
+)
+
+# Devices believed to offer three-mode Rain Protection. Unconfirmed, and separate
+# from _SMART_SLEEP_DEVICES on purpose — see _RAIN_PROTECTION_MODES_FIRMWARE.
+_RAIN_PROTECTION_MODE_DEVICES = (
+    DeviceType.LUBA_LA,
+    DeviceType.LUBA_MB,
+    DeviceType.LUBA_VA,
+)
 
 # Numeric id -> DeviceType, used by DeviceType.from_value. Built straight from the
 # enum members' ids (the first tuple element), so it stays 1:1 with the definitions

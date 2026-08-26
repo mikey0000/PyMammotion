@@ -106,7 +106,6 @@ from rich.logging import RichHandler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.client import MammotionClient
 from pymammotion.messaging.broker import _LUBA_SUB_GROUP
 from pymammotion.transport.base import Subscription, TransportType
@@ -496,9 +495,6 @@ class DevConsole:
         _rich_console.rule("[bold yellow]MQTT Credentials[/bold yellow]")
 
         for acct_session in self.mammotion.account_registry.all_sessions:
-            if acct_session.account_id == BLE_ONLY_ACCOUNT:
-                continue
-
             # Prefer the HTTP client embedded in the cloud gateway (Aliyun path).
             http = (
                 acct_session.cloud_client.mammotion_http
@@ -601,11 +597,9 @@ class DevConsole:
 
     @property
     def _session(self) -> Any:
-        """The first non-BLE account session, or None."""
-        for acct in self.mammotion.account_registry.all_sessions:
-            if acct.account_id != BLE_ONLY_ACCOUNT:
-                return acct
-        return None
+        """The first account session, or None."""
+        sessions = self.mammotion.account_registry.all_sessions
+        return sessions[0] if sessions else None
 
     def save_cache(self) -> bool:
         """Persist the current credential cache to dev_token_cache.json."""

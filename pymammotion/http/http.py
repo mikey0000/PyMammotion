@@ -643,6 +643,42 @@ class MammotionHTTP:
         return Response(code=resp.status, msg="success")
 
     @refresh_token_decorator
+    async def wake_up_device(self, device_name: str) -> Response[bool]:
+        """Ask the cloud to wake a device out of low-power sleep (``MODE_SLEEPING``).
+
+        A sleeping device has dropped its broker connection, so this is the only
+        way back: there is no MQTT command that reaches it.  Mirrors the app's
+        ``POST device/wakeup`` (``HomeApiService.java:130`` /
+        ``HomeStateViewModule.wakingUp`` in APK 2.3.8.201), which passes the device
+        *name* — not its iotId — and reads a bare boolean out of ``data``.
+
+        ``data is True`` means the cloud accepted the request, not that the device
+        is awake: the app then waits for the device to reappear and reports failure
+        on a timeout.  The app treats ``data is False`` as an outright failure.
+        """
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/device/wakeup",
+                json={"deviceName": device_name},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            )
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                _LOGGER.debug("wake_up_device response: %s", data)
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to wake device %s. Status code: %s, %s", device_name, resp.status, data)
+                    return Response(code=resp.status, msg="wake up device failed")
+                return response_factory(Response[bool], data)
+
+        return Response(code=resp.status, msg="success")
+
+    @refresh_token_decorator
     async def net_rtk_enable(self, device_id: str) -> Response:
         """Enable network RTK for the given device."""
         async with self._client_session() as session:

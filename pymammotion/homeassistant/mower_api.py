@@ -199,6 +199,14 @@ class HomeAssistantMowerApi:
         else:
             logger.warning("update_firmware: no cloud client available for device '%s'", device_name)
 
+    async def async_wake_up(self, device_name: str) -> bool:
+        """Wake a sleeping device and report whether the cloud accepted the request.
+
+        See :meth:`MammotionClient.wake_device` — a True return means the wake was
+        accepted, not that the device is awake yet.
+        """
+        return await self._mammotion.wake_device(device_name)
+
     async def async_start_stop_blades(self, device_name: str, start_stop: bool, blade_height: int = 60) -> None:
         """Start stop blades."""
         if DeviceType.is_luba1(device_name):

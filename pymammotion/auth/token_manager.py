@@ -204,7 +204,7 @@ class TokenManager:
         self._scheduler_task: asyncio.Task[None] | None = None
         # RAII subscriptions to device handle error buses — kept alive here so they
         # are never garbage-collected while this token manager is active.
-        self._handle_subscriptions: list[Subscription] = []
+        self._handle_subscriptions: dict[int, Subscription] = {}
         # Mirror HTTP-level token rotations (including refresh_token_decorator
         # refreshes that never pass through this manager) into our snapshot and
         # persist them — see _on_http_login_refreshed.
@@ -648,8 +648,11 @@ class TokenManager:
         """Subscribe to auth errors from *handle* and refresh credentials automatically.
 
         The subscription is stored internally and lives as long as this
-        TokenManager instance — no external lifetime management needed.
+        TokenManager instance — no external lifetime management needed.  Idempotent per
+        handle: a device adopted or re-registered on the same account subscribes once.
         """
+        if id(handle) in self._handle_subscriptions:
+            return
 
         async def _on_error(exc: Exception) -> None:
             try:
@@ -660,7 +663,7 @@ class TokenManager:
             except Exception:  # noqa: BLE001 — the error bus must never be broken by a failed refresh
                 _LOGGER.debug("token manager [%s]: reactive refresh failed", self._account_id, exc_info=True)
 
-        self._handle_subscriptions.append(handle.subscribe_errors(_on_error))
+        self._handle_subscriptions[id(handle)] = handle.subscribe_errors(_on_error)
 
     # ------------------------------------------------------------------
     # Private helpers — callers are responsible for holding self._lock.

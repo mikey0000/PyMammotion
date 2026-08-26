@@ -160,7 +160,6 @@ from rich.logging import RichHandler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.client import MammotionClient
 from pymammotion.messaging.broker import _LUBA_SUB_GROUP
 from pymammotion.transport.base import Subscription, TransportType
