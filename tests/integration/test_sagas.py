@@ -499,6 +499,10 @@ async def test_map_saga_only_acks_get_hash_response_in_response_to_frames() -> N
     ``get_hash_response(total_frame, current_frame)``.  Acking is what the
     device interprets as "send me the next one".  Mirrors
     HashDataManager.setHashList in the APK (line 1173).
+
+    The saga asks for two hash lists — sub_cmd=0 for boundaries and sub_cmd=4
+    for dumping spots — so a kick-off per list is expected; what must not
+    appear is a ``get_hash_response`` that no frame prompted.
     """
     from pymammotion.data.model.hash_list import NavGetHashListData, RootHashList
 
@@ -558,18 +562,22 @@ async def test_map_saga_only_acks_get_hash_response_in_response_to_frames() -> N
             get_map=lambda: hash_list,
         )
         saga.step_timeout = 0.1
+        saga._dump_hash_list_timeout = 0.1
         await saga.execute(broker)
 
-    # Exactly one kick-off request.
-    assert send_log.count("get_all_boundary_hash_list") == 1
+    # One kick-off request per hash list: sub_cmd=0 (boundaries), then sub_cmd=4 (dumping spots).
+    assert send_log.count("get_all_boundary_hash_list") == 2
+    assert [c.kwargs["sub_cmd"] for c in builder.get_all_boundary_hash_list.call_args_list] == [0, 4]
     # One ack per frame received — no proactive "request next" sends.
     assert send_log.count("get_hash_response") == total_frames
-    # Order: the kick-off comes first, then ack follows each frame.
+    # Order: the kick-off comes first, then an ack follows each frame, then the dump kick-off —
+    # which this device answers with nothing, so it draws no acks of its own.
     assert send_log == [
         "get_all_boundary_hash_list",
         "get_hash_response",
         "get_hash_response",
         "get_hash_response",
+        "get_all_boundary_hash_list",
     ]
     # Each ack carries the current_frame of the frame it acknowledges —
     # NOT ``next_frame - 1`` (the old proactive-request pattern).

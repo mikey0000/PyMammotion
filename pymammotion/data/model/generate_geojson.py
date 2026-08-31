@@ -124,6 +124,15 @@ PATH_STYLE = {
     "lineJoin": "round",
 }
 
+DUMP_STYLE = {
+    "color": "#14b8a6",
+    "fillColor": "#14b8a6",
+    "weight": 2,
+    "opacity": 1.0,
+    "fillOpacity": 0.8,
+    "radius": 6,
+}
+
 POINT_STYLE = {
     "color": "blue",
     "fillColor": "lightblue",
@@ -266,6 +275,7 @@ geojson_metadata = {"name": "Lawn Areas", "description": "Generated from Mammoti
 TYPE_MOWING_ZONE: int = 0
 TYPE_OBSTACLE: int = 1
 TYPE_PATH: int = 2
+TYPE_DUMP: int = 12
 TYPE_CORRIDOR_LINE: int = 19
 TYPE_CORRIDOR_POINT: int = 20
 TYPE_VIRTUAL_WALL: int = 21
@@ -1093,6 +1103,13 @@ class GeojsonGenerator:
         if type_id == TYPE_PATH and len(lonlat_coords) > 1:
             properties.update(PATH_STYLE)
             return {"type": "LineString", "coordinates": lonlat_coords}
+        if type_id == TYPE_DUMP:
+            # A grass-collection point is a single device-placed location, not an area —
+            # matches GEOMETRY_TYPES' own "Point" entry for "dump" in MAP_OBJECT_TYPES.
+            if not lonlat_coords:
+                return None
+            properties.update(DUMP_STYLE)
+            return {"type": "Point", "coordinates": lonlat_coords[0]}
         if type_id == TYPE_CORRIDOR_LINE and len(lonlat_coords) > 1:
             properties.update(CORRIDOR_LINE_STYLE)
             return {"type": "LineString", "coordinates": lonlat_coords}

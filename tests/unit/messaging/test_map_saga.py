@@ -13,13 +13,13 @@ from pymammotion.proto import LubaMsg, MctlNav, NavGetCommDataAck, NavGetHashLis
 from tests.unit.messaging._helpers import make_command_builder as _make_command_builder
 
 
-def _hash_list_msg(hash_ids: list[int]) -> LubaMsg:
+def _hash_list_msg(hash_ids: list[int], *, sub_cmd: int = 0) -> LubaMsg:
     """Build a LubaMsg carrying a single-frame toapp_gethash_ack with the given hash IDs."""
     return LubaMsg(
         nav=MctlNav(
             toapp_gethash_ack=NavGetHashListAck(
                 pver=1,
-                sub_cmd=0,
+                sub_cmd=sub_cmd,
                 total_frame=1,
                 current_frame=1,
                 data_couple=hash_ids,
@@ -125,6 +125,7 @@ async def test_saga_terminates_with_known_type() -> None:
         saga,
         messages=[
             _hash_list_msg([hash_id]),
+            _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
             _comm_data_msg(hash_id, type_code=0),  # PathType.AREA
         ],
         map_update=_map,
@@ -171,6 +172,7 @@ async def test_saga_does_not_loop_on_unknown_type() -> None:
             saga,
             messages=[
                 _hash_list_msg([hash_id]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(hash_id, type_code=26),  # unknown / unhandled type
             ],
             map_update=_map,
@@ -223,6 +225,7 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
             saga,
             messages=[
                 _hash_list_msg([area_hash, unknown_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(area_hash, type_code=0),    # PathType.AREA — stored
                 _comm_data_msg(unknown_hash, type_code=26),  # unknown — skipped
             ],
@@ -276,6 +279,7 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
             saga,
             messages=[
                 _hash_list_msg([corridor_line_hash, corridor_point_hash, virtual_wall_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(corridor_line_hash, type_code=19),   # CORRIDOR_LINE
                 _comm_data_msg(corridor_point_hash, type_code=20),  # CORRIDOR_POINT
                 _comm_data_msg(virtual_wall_hash, type_code=21),    # VIRTUAL_WALL
@@ -294,6 +298,101 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
     assert virtual_wall_hash not in saga.result.corridor_line
     # Saga should have asked for each hash exactly once.
     assert saga._command_builder.synchronize_hash_data.call_count == 3  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# I.40: sub_cmd=4 dump (grass-collection point) hash list — a second root list
+# the saga must request and fetch alongside sub_cmd=0, tolerating silence when
+# the device has no dumping spots configured.
+# ---------------------------------------------------------------------------
+
+
+async def test_saga_fetches_dump_hash_list_and_stores_type_12() -> None:
+    """A sub_cmd=4 hash list entry is requested, fetched via step 4 like any
+    other hash, and its type=12 (DUMP) comm-data frame lands in ``.dump``."""
+    broker = DeviceMessageBroker()
+
+    async def send_command(_cmd: bytes) -> None:
+        pass
+
+    _map = HashList()
+    saga = MapFetchSaga(
+        device_id="dev-dump",
+        device_name="Luba-Test",
+        is_luba1=True,  # skip area names
+        command_builder=_make_command_builder(),
+        send_command=send_command,
+        get_map=lambda: _map,
+    )
+
+    area_hash = 4000000000000000001
+    dump_hash = 4000000000000000002
+
+    await asyncio.wait_for(
+        _run_saga_with_messages(
+            broker,
+            saga,
+            messages=[
+                _hash_list_msg([area_hash], sub_cmd=0),
+                _hash_list_msg([dump_hash], sub_cmd=4),
+                _comm_data_msg(area_hash, type_code=0),  # PathType.AREA
+                _comm_data_msg(dump_hash, type_code=12),  # PathType.DUMP
+            ],
+            map_update=_map,
+        ),
+        timeout=5.0,
+    )
+
+    assert saga.result is not None
+    assert area_hash in saga.result.area
+    assert dump_hash in saga.result.dump
+    assert dump_hash not in saga.result.area
+
+    names = [c[0] for c in saga._command_builder.mock_calls if c[0]]  # noqa: SLF001
+    sub_cmd_kwargs = [c.kwargs.get("sub_cmd") for c in saga._command_builder.mock_calls if c[0] == "get_all_boundary_hash_list"]  # noqa: SLF001
+    assert 0 in sub_cmd_kwargs
+    assert 4 in sub_cmd_kwargs
+    assert names.index("get_all_boundary_hash_list") < names.index("synchronize_hash_data")
+
+
+async def test_saga_completes_when_device_has_no_dumping_spots() -> None:
+    """A device with no grass-collection points configured answers the sub_cmd=4
+    request with nothing at all — the saga must not hang or fail waiting for it,
+    and must still complete the sub_cmd=0 fetch normally."""
+    broker = DeviceMessageBroker()
+
+    async def send_command(_cmd: bytes) -> None:
+        pass
+
+    _map = HashList()
+    saga = MapFetchSaga(
+        device_id="dev-no-dump",
+        device_name="Luba-Test",
+        is_luba1=True,
+        command_builder=_make_command_builder(),
+        send_command=send_command,
+        get_map=lambda: _map,
+    )
+
+    area_hash = 4000000000000000003
+
+    # No sub_cmd=4 message is injected at all — silence, not an empty frame.
+    await asyncio.wait_for(
+        _run_saga_with_messages(
+            broker,
+            saga,
+            messages=[
+                _hash_list_msg([area_hash], sub_cmd=0),
+                _comm_data_msg(area_hash, type_code=0),
+            ],
+            map_update=_map,
+        ),
+        timeout=5.0,  # would hang/timeout-fail without allow_empty=True on the sub_cmd=4 step
+    )
+
+    assert saga.result is not None
+    assert area_hash in saga.result.area
+    assert saga.result.dump == {}
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +437,7 @@ async def test_saga_acks_unrelated_dynamics_line_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 # Dynamics-line frame arrives BEFORE the area frame — saga must
                 # ack it even though it doesn't match the current hash.
                 _comm_data_msg(0, type_code=18),
@@ -400,6 +500,7 @@ async def test_saga_advances_on_unknown_type_single_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([unknown_hash, area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(unknown_hash, type_code=99),  # never-modelled
                 _comm_data_msg(area_hash, type_code=0),
             ],
@@ -447,6 +548,7 @@ async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([no_go_hash, area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(no_go_hash, type_code=23),  # NO_GO_ZONE
                 _comm_data_msg(area_hash, type_code=0),
             ],
@@ -556,7 +658,7 @@ async def test_saga_syncs_before_root_list_and_immediately_before_per_hash() -> 
     await _run_saga_with_messages(
         broker,
         saga,
-        messages=[_hash_list_msg([hash_id]), _comm_data_msg(hash_id, type_code=0)],
+        messages=[_hash_list_msg([hash_id]), _hash_list_msg([], sub_cmd=4), _comm_data_msg(hash_id, type_code=0)],
         map_update=_map,
     )
 
