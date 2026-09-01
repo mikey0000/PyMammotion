@@ -25,9 +25,7 @@ class MapFetchSaga(Saga):
     Execution order:
       1. Area names (non-Luba1) — re-requested on every run including retries.
       2-3. Root hash list frames (all sub_cmd=0 hashes)
-      3b. Dump (grass-collection point) hash list frames (sub_cmd=4) — a device with
-          no dumping spots configured legitimately answers with nothing, so this
-          step tolerates silence rather than failing the whole fetch.
+      3. Dump spot hash list frames (sub_cmd=4), if any.
       4. Boundary/obstacle/path/dump data for every hash ID in the combined list
 
     Steps 2-4 use subscribe_unsolicited so that device-pushed frames are never
@@ -126,28 +124,14 @@ class MapFetchSaga(Saga):
         _logger.debug("MapFetchSaga[%s]: sending todev_ble_sync(%d)", self._device_name, self._sync_type)
         await self._send_command(self._command_builder.send_todev_ble_sync(sync_type=self._sync_type))
 
-    def _missing_hashes(self) -> list[int]:
-        """Hashes still needing ``synchronize_hash_data``.
-
-        Combines sub_cmd=0 (boundaries) with sub_cmd=4 (dumping spots), deduplicated
-        and order-preserving.
-        """
-        seen: set[int] = set()
-        combined: list[int] = []
-        for sub_cmd in (0, 4):
-            for hash_id in self._get_map().find_incomplete_hashes(sub_cmd):
-                if hash_id not in seen:
-                    seen.add(hash_id)
-                    combined.append(hash_id)
-        return combined
-
     async def progress(self) -> Any:
         """Areas/dump hashes still missing data — falls as the fetch advances.
 
         Drives the base class's attempt-budget refresh, replacing the manual
         ``_reset_attempt_counter`` this saga used to set at the same point.
         """
-        return len(self._missing_hashes())
+        map_state = self._get_map()
+        return len(dict.fromkeys(map_state.find_incomplete_hashes(0) + map_state.find_incomplete_hashes(4)))
 
     async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute all saga steps.  Uses device.map (via get_map) as the source of truth."""
@@ -299,11 +283,15 @@ class MapFetchSaga(Saga):
             # resume — a previous run that got interrupted mid-area will have
             # added a partial FrameList to ``device.map.area[hash]``; the saga
             # must re-send ``synchronize_hash_data`` so the device re-streams
-            # the missing frames from scratch.  ``_missing_hashes`` combines
-            # sub_cmd=0 (boundaries) with sub_cmd=4 (dumping spots) so both are
-            # fetched in this same loop — the device tells them apart by each
-            # frame's own ``type`` field, not by which request asked for it.
-            missing_hashes = self._missing_hashes()
+            # the missing frames from scratch.  sub_cmd=0 (boundaries) and
+            # sub_cmd=4 (dumping spots) are merged — order-preserving via
+            # ``dict.fromkeys`` — so both are fetched in this same loop; the
+            # device tells them apart by each frame's own ``type`` field, not
+            # by which request asked for it.
+            map_state = self._get_map()
+            missing_hashes = list(
+                dict.fromkeys(map_state.find_incomplete_hashes(0) + map_state.find_incomplete_hashes(4))
+            )
             current_hash: int | None = None
             # Saga-local tracker of hashes whose `current_frame == total_frame`
             # transaction we've observed.  Used to advance current_hash even
@@ -370,7 +358,9 @@ class MapFetchSaga(Saga):
                 # Check whether the whole hash is done.  Filter find_incomplete_hashes by
                 # addressed_hashes so a hash whose only frame had an unknown type (e.g.
                 # radar type=23) doesn't keep us pinned to the same current_hash.
-                new_missing = [h for h in self._missing_hashes() if h not in addressed_hashes]
+                map_state = self._get_map()
+                incomplete = dict.fromkeys(map_state.find_incomplete_hashes(0) + map_state.find_incomplete_hashes(4))
+                new_missing = [h for h in incomplete if h not in addressed_hashes]
                 if len(new_missing) < len(missing_hashes):
                     no_progress = 0
                 else:

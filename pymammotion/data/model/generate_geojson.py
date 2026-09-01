@@ -1104,8 +1104,6 @@ class GeojsonGenerator:
             properties.update(PATH_STYLE)
             return {"type": "LineString", "coordinates": lonlat_coords}
         if type_id == TYPE_DUMP:
-            # A grass-collection point is a single device-placed location, not an area —
-            # matches GEOMETRY_TYPES' own "Point" entry for "dump" in MAP_OBJECT_TYPES.
             if not lonlat_coords:
                 return None
             properties.update(DUMP_STYLE)
