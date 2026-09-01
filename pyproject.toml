@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.8.14"
+version = "0.9.0"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -79,7 +79,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.8.14"
+current_version = "0.9.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
@@ -87,9 +87,8 @@ tag             = true
 push            = false
 
 [tool.bumpver.file_patterns]
-"pyproject.toml" = ['current_version = "{version}"', 'version     = "{version}"']
-"src/pymammotion/__init__.py" = ["{version}"]
-"setup.cfg" = ["version = {version}"]
+"pyproject.toml" = ['current_version = "{version}"', 'version = "{version}"']
+"pymammotion/__init__.py" = ['__version__ = "{version}"']
 "README.md" = ['\[SemVer {version}\]', 'img.shields.io/static/v1.svg?label=SemVer&message={version}&color=blue']
 
 [tool.setuptools.package-data]
