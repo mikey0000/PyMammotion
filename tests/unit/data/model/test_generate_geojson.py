@@ -254,6 +254,68 @@ def _hash_list_with_extra_types() -> tuple[HashList, dict[str, int]]:
     return hash_list, hashes
 
 
+def _hash_list_with_dump_type() -> tuple[HashList, int]:
+    """Return a HashList with one type=12 (DUMP / grass-collection point) frame and its hash ID."""
+    hash_list = HashList()
+    dump_hash = 1_200_000_000_000_000_001
+    _install_frame(hash_list.dump, _make_frame(12, dump_hash, [(2.0, 3.0)]))
+    return hash_list, dump_hash
+
+
+def test_dump_type_emits_a_point_geojson_feature() -> None:
+    """PathType 12 (DUMP / grass-collection point): I.40 wired this into both the
+    ``type_mapping`` dispatch (already present) and ``_create_feature_geometry``
+    (previously missing — every dump frame was silently dropped, returning None).
+    """
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, dump_hash = _hash_list_with_dump_type()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    dump_features = [f for f in result["features"] if f["properties"].get("type_name") == "dump"]
+    assert len(dump_features) == 1
+    feature = dump_features[0]
+    assert feature["geometry"]["type"] == "Point"
+    assert len(feature["geometry"]["coordinates"]) == 2  # a single [lon, lat] pair, not nested
+    assert feature["properties"]["hash"] == dump_hash
+    assert feature["properties"]["type_id"] == 12
+
+
+def test_dump_feature_gets_meaningful_name_and_description() -> None:
+    fixture = _load_fixture()
+    rtk = LocationPoint(latitude=fixture["rtk"]["latitude"], longitude=fixture["rtk"]["longitude"])
+    dock = Dock(
+        latitude=fixture["dock"]["latitude"],
+        longitude=fixture["dock"]["longitude"],
+        rotation=fixture["dock"]["rotation"],
+    )
+
+    hash_list, _dump_hash = _hash_list_with_dump_type()
+    hash_list.generate_geojson(rtk, dock)
+    result = hash_list.generated_geojson
+
+    feature = next(f for f in result["features"] if f["properties"].get("type_name") == "dump")
+    props = feature["properties"]
+    assert props["description"] == "Clippings dump zone"
+    assert props["Name"] == props["title"] == "Dump zone 1"
+
+
+def test_dump_type_with_no_coordinates_returns_no_feature() -> None:
+    """An empty data_couple (no position at all) must be dropped, not crash on
+    an out-of-range coordinate index."""
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    geometry = GeojsonGenerator._create_feature_geometry(12, [], {})  # noqa: SLF001
+    assert geometry is None
+
+
 def test_corridor_wall_and_visual_zones_emit_geojson_features() -> None:
     """Each of the five new PathTypes (19/20/21/25/26) produces one styled feature.
 
