@@ -1,4 +1,4 @@
-"""Unit tests for pymammotion.utility.svg.chunk_svg_messages.
+"""Unit tests for pymammotion.data.model.svg.chunk_svg_messages.
 
 Edge cases covered
 ------------------
@@ -24,7 +24,7 @@ import dataclasses
 import pytest
 
 from pymammotion.data.model.hash_list import SvgMessage, SvgMessageData
-from pymammotion.utility.svg import _SVG_CHUNK_SIZE, chunk_svg_messages
+from pymammotion.data.model.svg import _SVG_CHUNK_SIZE, chunk_svg_messages
 
 
 # ---------------------------------------------------------------------------

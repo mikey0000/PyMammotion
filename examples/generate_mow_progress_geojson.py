@@ -34,7 +34,7 @@ import sys
 
 from shapely.geometry import Point
 
-from pymammotion.data.model.generate_geojson import GeojsonGenerator
+from pymammotion.data.model.generate_geojson import GeojsonGenerator, apply_mowing_geojson
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     CommDataCouple,
@@ -45,7 +45,7 @@ from pymammotion.data.model.hash_list import (
     RootHashList,
 )
 from pymammotion.data.model.location import LocationPoint
-from pymammotion.utility.map import CoordinateConverter
+from pymammotion.data.model.coordinates import CoordinateConverter
 
 # ---------------------------------------------------------------------------
 # CLI args
@@ -222,7 +222,7 @@ print(f"now_index={now_index}  →  remaining per type: "
 # Generate planned and progress GeoJSON
 # ---------------------------------------------------------------------------
 
-planned = hash_list.generate_mowing_geojson(rtk_loc)
+planned = apply_mowing_geojson(hash_list, rtk_loc)
 progress = GeojsonGenerator.generate_mow_progress_geojson(
     hash_list,
     now_index=now_index,

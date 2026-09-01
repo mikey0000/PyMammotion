@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from pymammotion.data.model.generate_geojson import (
+    apply_area_geojson,
+    apply_mow_progress_geojson,
+    apply_mowing_geojson,
+)
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     FrameList,
@@ -103,7 +108,7 @@ def test_complete_mow_path_generates_features() -> None:
     hash_list.update_mow_path(frame1)
     hash_list.update_mow_path(frame2)
 
-    result = hash_list.generate_mowing_geojson(rtk)
+    result = apply_mowing_geojson(hash_list, rtk)
 
     assert result["type"] == "FeatureCollection"
     assert len(result["features"]) > 0, "Expected at least one mow path feature when all frames are present"
@@ -120,7 +125,7 @@ def test_incomplete_mow_path_generates_no_features() -> None:
     hash_list = HashList()
     hash_list.update_mow_path(frame1)
 
-    result = hash_list.generate_mowing_geojson(rtk)
+    result = apply_mowing_geojson(hash_list, rtk)
 
     assert result["type"] == "FeatureCollection"
     assert result["features"] == [], "Expected no features when mow path frames are incomplete"
@@ -155,7 +160,7 @@ def test_complete_area_generates_features() -> None:
 
     hash_list = _build_hash_list_with_area([frame1, frame2])
 
-    hash_list.generate_geojson(rtk, dock)
+    apply_area_geojson(hash_list, rtk, dock)
     result = hash_list.generated_geojson
 
     assert result["type"] == "FeatureCollection"
@@ -174,7 +179,7 @@ def test_incomplete_area_generates_no_area_features() -> None:
 
     hash_list = _build_hash_list_with_area([frame1])
 
-    hash_list.generate_geojson(rtk, dock)
+    apply_area_geojson(hash_list, rtk, dock)
     result = hash_list.generated_geojson
 
     assert result["type"] == "FeatureCollection"
@@ -272,7 +277,7 @@ def test_corridor_wall_and_visual_zones_emit_geojson_features() -> None:
     )
 
     hash_list, _hashes = _hash_list_with_extra_types()
-    hash_list.generate_geojson(rtk, dock)
+    apply_area_geojson(hash_list, rtk, dock)
     result = hash_list.generated_geojson
 
     features_by_type = {f["properties"].get("type_name"): f for f in result["features"]}
@@ -305,7 +310,7 @@ def test_features_get_meaningful_names_and_descriptions() -> None:
     )
 
     hash_list, _hashes = _hash_list_with_extra_types()
-    hash_list.generate_geojson(rtk, dock)
+    apply_area_geojson(hash_list, rtk, dock)
     result = hash_list.generated_geojson
 
     expected_descriptions = {
@@ -351,7 +356,7 @@ def test_corridor_wall_and_visual_zone_styles_are_distinct() -> None:
     )
 
     hash_list, _hashes = _hash_list_with_extra_types()
-    hash_list.generate_geojson(rtk, dock)
+    apply_area_geojson(hash_list, rtk, dock)
     result = hash_list.generated_geojson
 
     colors = {
@@ -390,7 +395,7 @@ def test_feature_styles_use_leaflet_path_options() -> None:
     )
 
     hash_list, _hashes = _hash_list_with_extra_types()
-    hash_list.generate_geojson(rtk, dock)
+    apply_area_geojson(hash_list, rtk, dock)
     result = hash_list.generated_geojson
 
     for feat in result["features"]:
@@ -456,7 +461,7 @@ def test_yuka_mow_path_generates_geojson() -> None:
     rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
     hash_list = _build_yuka_hash_list(fixture)
 
-    result = hash_list.generate_mowing_geojson(rtk)
+    result = apply_mowing_geojson(hash_list, rtk)
 
     assert result["type"] == "FeatureCollection"
     assert result["name"] == "Mowing Lawn Areas"
@@ -472,7 +477,7 @@ def test_yuka_mow_path_geojson_has_correct_properties() -> None:
     rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
     hash_list = _build_yuka_hash_list(fixture)
 
-    result = hash_list.generate_mowing_geojson(rtk)
+    result = apply_mowing_geojson(hash_list, rtk)
 
     type_names = {f["properties"]["type_name"] for f in result["features"]}
     assert "mow_path" in type_names, "Expected a mow_path (stripe) feature"
@@ -496,7 +501,7 @@ def test_yuka_mow_path_geojson_has_linestring_coordinates() -> None:
     rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
     hash_list = _build_yuka_hash_list(fixture)
 
-    result = hash_list.generate_mowing_geojson(rtk)
+    result = apply_mowing_geojson(hash_list, rtk)
 
     # Pick the mow_path (stripe) feature specifically; border_pass uses the same transform
     feature = next(f for f in result["features"] if f["properties"]["type_name"] == "mow_path")
@@ -522,7 +527,7 @@ def test_yuka_incomplete_mow_path_empty_geojson() -> None:
     first_frame = fixture["map"]["current_mow_path"][list(fixture["map"]["current_mow_path"].keys())[0]]["1"]
     hash_list.update_mow_path(_make_mow_path(first_frame))
 
-    result = hash_list.generate_mowing_geojson(rtk)
+    result = apply_mowing_geojson(hash_list, rtk)
 
     assert result["type"] == "FeatureCollection"
     assert result["features"] == [], "Expected no features when mow path is incomplete"
@@ -536,7 +541,7 @@ def test_yuka_empty_current_mow_path_empty_geojson() -> None:
     hash_list = HashList()
     # No mow path data at all
 
-    result = hash_list.generate_mowing_geojson(rtk)
+    result = apply_mowing_geojson(hash_list, rtk)
 
     assert result["type"] == "FeatureCollection"
     assert result["features"] == []
@@ -568,7 +573,7 @@ def test_yuka_apply_mow_path_geojson_populates_device() -> None:
     assert not device.map.generated_mow_path_geojson, "generated_mow_path_geojson should be empty before apply"
 
     # This is what _on_mow_path_complete calls
-    device.map.generate_mowing_geojson(device.location.RTK)
+    apply_mowing_geojson(device.map, device.location.RTK)
 
     result = device.map.generated_mow_path_geojson
     assert result["type"] == "FeatureCollection"
@@ -726,7 +731,7 @@ def test_mow_progress_geojson_coordinates_in_expected_range() -> None:
     from shapely.geometry import Point
 
     from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
+    from pymammotion.data.model.coordinates import CoordinateConverter
 
     fixture = _load_yuka_fixture()
     rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
@@ -752,7 +757,7 @@ def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:
     from shapely.geometry import Point
 
     from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
+    from pymammotion.data.model.coordinates import CoordinateConverter
 
     fixture = _load_yuka_fixture()
     rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
@@ -762,7 +767,7 @@ def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:
     rtk_ll = conv.enu_to_lla(0, 0)
     rtk_point = Point(rtk_ll.latitude, rtk_ll.longitude)
 
-    planned = hash_list.generate_mowing_geojson(rtk)
+    planned = apply_mowing_geojson(hash_list, rtk)
     progress = GeojsonGenerator.generate_mow_progress_geojson(
         hash_list, now_index=10, rtk_location=rtk_point
     )
@@ -815,7 +820,8 @@ def test_apply_mow_progress_geojson_populates_device() -> None:
     assert not device.map.generated_mow_progress_geojson, "Should be empty before apply"
 
     work = device.report_data.work
-    device.map.apply_mow_progress_geojson(
+    apply_mow_progress_geojson(
+        device.map,
         device.location.RTK,
         work.now_index,
         work.ub_path_hash,
@@ -858,7 +864,8 @@ def test_apply_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
     device.report_data.work.real_path_num = 0  # now_index=0 → full path
 
     work = device.report_data.work
-    device.map.apply_mow_progress_geojson(
+    apply_mow_progress_geojson(
+        device.map,
         device.location.RTK,
         work.now_index,
         work.ub_path_hash,
@@ -887,7 +894,7 @@ def test_mow_progress_geojson_matches_example_script_output() -> None:
     from shapely.geometry import Point
 
     from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
+    from pymammotion.data.model.coordinates import CoordinateConverter
 
     fixture = _load_yuka_fixture()
     hash_list = _build_yuka_hash_list(fixture)
@@ -968,7 +975,7 @@ def test_mow_progress_from_start_identical_to_mow_path() -> None:
     from shapely.geometry import Point
 
     from pymammotion.data.model.generate_geojson import GeojsonGenerator
-    from pymammotion.utility.map import CoordinateConverter
+    from pymammotion.data.model.coordinates import CoordinateConverter
 
     fixture = _load_yuka_fixture()
     rtk = LocationPoint(latitude=fixture["location"]["RTK"]["latitude"], longitude=fixture["location"]["RTK"]["longitude"])
@@ -981,7 +988,7 @@ def test_mow_progress_from_start_identical_to_mow_path() -> None:
     rtk_point = Point(rtk_ll.latitude, rtk_ll.longitude)
 
     # Planned mow path — one feature per path_type, keyed by path_type int
-    planned = hash_list.generate_mowing_geojson(rtk)
+    planned = apply_mowing_geojson(hash_list, rtk)
     planned_by_type: dict[int, list] = {
         f["properties"]["path_type"]: f["geometry"]["coordinates"]
         for f in planned["features"]
@@ -1049,7 +1056,8 @@ def test_apply_mow_progress_geojson_small_radian_latitude_not_skipped(rtk_latitu
     device = _device_with_mow_path(rtk_latitude_radians)
     work = device.report_data.work
 
-    device.map.apply_mow_progress_geojson(
+    apply_mow_progress_geojson(
+        device.map,
         device.location.RTK,
         work.now_index,
         work.ub_path_hash,
@@ -1067,7 +1075,8 @@ def test_apply_mow_progress_geojson_unset_rtk_latitude_skipped() -> None:
     device = _device_with_mow_path(0.0)
     work = device.report_data.work
 
-    device.map.apply_mow_progress_geojson(
+    apply_mow_progress_geojson(
+        device.map,
         device.location.RTK,
         work.now_index,
         work.ub_path_hash,
@@ -1172,7 +1181,7 @@ def test_empty_area_name_falls_back_to_zone_template() -> None:
         AreaHashNameList(name="", hash=hash_b),
     ]
 
-    hash_list.generate_geojson(rtk, dock)
+    apply_area_geojson(hash_list, rtk, dock)
     result = hash_list.generated_geojson
 
     area_features = [f for f in result["features"] if f["properties"].get("type_name") == "area"]

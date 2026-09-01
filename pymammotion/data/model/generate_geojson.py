@@ -38,6 +38,7 @@ from typing import Any, ClassVar
 
 from shapely.geometry import Point
 
+from pymammotion.data.model.coordinates import CoordinateConverter
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     CommDataCouple,
@@ -48,6 +49,7 @@ from pymammotion.data.model.hash_list import (
     NavGetCommData,
     SvgMessage,
 )
+from pymammotion.data.model.location import Dock, LocationPoint
 
 logger = logging.getLogger(__name__)
 
@@ -1218,3 +1220,97 @@ class GeojsonGenerator:
             % 2
             == 1
         )
+
+
+# ---------------------------------------------------------------------------
+# Applying generated GeoJSON onto a HashList
+#
+# These were methods on HashList, which meant the model had to import this module
+# — and this module imports the model, so the import had to be made inside each
+# method body to dodge the cycle.  As functions here the dependency runs one way:
+# generate_geojson -> hash_list.
+# ---------------------------------------------------------------------------
+
+
+def apply_area_geojson(hash_list: HashList, rtk: LocationPoint, dock: Dock) -> None:
+    """Rebuild ``hash_list.generated_geojson`` from the cached frames."""
+    coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_real_loc = coordinator_converter.enu_to_lla(0, 0)
+
+    dock_location = coordinator_converter.enu_to_lla(dock.latitude, dock.longitude)
+    dock_rotation = coordinator_converter.get_transform_yaw_with_yaw(dock.rotation) + 180
+
+    hash_list.generated_geojson = GeojsonGenerator.generate_geojson(
+        hash_list,
+        Point(rtk_real_loc.latitude, rtk_real_loc.longitude),
+        Point(dock_location.latitude, dock_location.longitude),
+        int(dock_rotation),
+        yaw=rtk.yaw,
+    )
+    hash_list.record_geojson_state(rtk.yaw)
+
+
+def apply_mowing_geojson(hash_list: HashList, rtk: LocationPoint) -> Any:
+    """Rebuild ``hash_list.generated_mow_path_geojson`` from the cached mow-path frames."""
+    coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_real_loc = coordinator_converter.enu_to_lla(0, 0)
+
+    hash_list.generated_mow_path_geojson = GeojsonGenerator.generate_mow_path_geojson(
+        hash_list,
+        Point(rtk_real_loc.latitude, rtk_real_loc.longitude),
+        yaw=rtk.yaw,
+    )
+    return hash_list.generated_mow_path_geojson
+
+
+def apply_mow_progress_geojson(
+    hash_list: HashList,
+    rtk: LocationPoint,
+    now_index: int,
+    ub_path_hash: int,
+    path_pos_x: int,
+    path_pos_y: int,
+) -> None:
+    """Slice ``current_mow_path`` to *now_index* and store as progress GeoJSON.
+
+    No-op when RTK isn't fixed (``latitude == 0``), ``now_index`` is negative, or no
+    mow path is cached.  ``path_pos_x``/``path_pos_y`` are device-side integers
+    scaled by 1e4.
+    """
+    # "Unset" RTK is the exact-0.0 default (radians).  Compare to 0.0, NOT round(lat, 0):
+    # rounding to 0 decimals collapses everything within ~0.5 rad (~28°) of the equator to
+    # 0 and would skip real fixes.
+    if rtk.latitude == 0.0 or now_index < 0 or not hash_list.current_mow_path:
+        return
+
+    raw_x = path_pos_x / 10000.0
+    raw_y = path_pos_y / 10000.0
+    path_pos = (raw_x, raw_y) if (raw_x != 0.0 or raw_y != 0.0) else None
+
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    hash_list.generated_mow_progress_geojson = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index,
+        Point(rtk_ll.latitude, rtk_ll.longitude),
+        ub_path_hash=ub_path_hash,
+        path_pos=path_pos,
+        yaw=rtk.yaw,
+    )
+
+
+def apply_dynamics_line_geojson(hash_list: HashList, rtk: LocationPoint) -> None:
+    """Convert ``dynamics_line`` to a WGS-84 LineString GeoJSON.
+
+    No-op when RTK isn't fixed or fewer than two points have been received.
+    """
+    if rtk.latitude == 0.0 or len(hash_list.dynamics_line) < 2:
+        return
+
+    conv = CoordinateConverter(rtk.latitude, rtk.longitude)
+    rtk_ll = conv.enu_to_lla(0, 0)
+    hash_list.generated_dynamics_line_geojson = GeojsonGenerator.generate_dynamics_line_geojson(
+        hash_list.dynamics_line,
+        Point(rtk_ll.latitude, rtk_ll.longitude),
+        yaw=rtk.yaw,
+    )

@@ -19,7 +19,7 @@ import math
 import pymap3d
 import pytest
 
-from pymammotion.utility.map import CoordinateConverter
+from pymammotion.data.model.coordinates import CoordinateConverter
 
 
 # ---------------------------------------------------------------------------

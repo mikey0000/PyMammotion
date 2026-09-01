@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from pymammotion.data.model.hash_list import CommDataCouple, FrameList, HashList, NavGetCommData, SvgMessage
-from pymammotion.utility.svg import (
+from pymammotion.data.model.svg import (
     area_centroid,
     build_svg_ack,
     build_svg_delete,

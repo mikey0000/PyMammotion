@@ -10,6 +10,8 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 import orjson
 
 from pymammotion.data.model import HashList, RapidState
+from pymammotion.data.model.coordinates import CoordinateConverter
+from pymammotion.data.model.device_capabilities import DeviceConfig
 from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorkingHours, MowerInfo
 from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.data.model.enums import TaskAreaStatus
@@ -31,11 +33,10 @@ from pymammotion.proto import (
     SystemTardStateTunnelMsg,
     SystemUpdateBufMsg,
 )
-from pymammotion.utility.constant import MOWING_ACTIVE_MODES
-from pymammotion.utility.constant.device_constant import WorkMode
+from pymammotion.utility.constant.device_enums import WorkMode
+from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES
 from pymammotion.utility.conversions import parse_double
-from pymammotion.utility.device_config import DeviceConfig
-from pymammotion.utility.map import CoordinateConverter
+from pymammotion.utility.device_type import DeviceType
 
 _device_config = DeviceConfig()
 
@@ -400,14 +401,6 @@ class MowerDevice(Device):
         if toapp_mow_info.type == 3:
             self.report_data.dev.sys_status = WorkMode.MODE_POWER_OFF
 
-    def report_missing_data(self) -> list[str]:
-        """Report what data is missing for basic operation."""
-        from pymammotion.device.readiness import get_readiness_checker
-
-        checker = get_readiness_checker(self.name)
-        status = checker.check(self)
-        return status.missing
-
 
 @dataclass
 class PoolCleanerDevice(Device):
@@ -533,10 +526,6 @@ def create_device(name: str, product_key: str = "") -> "Device":
     sufficient to identify the device family (e.g. some RTK base-station
     variants whose names don't carry the "RTK" prefix).
     """
-    # Local import to avoid a circular dependency between
-    # pymammotion.data.model.device and pymammotion.utility.device_type.
-    from pymammotion.utility.device_type import DeviceType
-
     if DeviceType.is_swimming_pool(name):
         return PoolCleanerDevice(name=name)
     if DeviceType.is_rtk(name, product_key):

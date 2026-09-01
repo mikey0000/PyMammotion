@@ -11,6 +11,7 @@ import pytest
 
 from pymammotion.data.model.report_info import WorkData
 from pymammotion.utility.constant import NO_REQUEST_MODES, BreakPointReason, WorkMode, device_mode
+from pymammotion.utility.enum_base import _LOGGED_UNKNOWN_CAP, _logged_unknown, reset_unknown_value_log
 
 # Every value the APK's DeviceWorkState models, with its member name here.
 APK_WORK_STATES = {
@@ -130,3 +131,27 @@ def test_break_point_unknown_sentinel_is_not_minus_one() -> None:
 def test_work_data_exposes_the_reason() -> None:
     assert WorkData(bp_info=11).break_point_reason is BreakPointReason.RAIN
     assert WorkData().break_point_reason is BreakPointReason.NONE
+
+
+def test_unknown_value_log_state_is_bounded() -> None:
+    """The dedupe set is keyed on wire values, so it must not grow without bound.
+
+    A device (or a corrupt frame) emitting a stream of distinct unmodelled ints
+    would otherwise leak in a long-lived process.
+    """
+    reset_unknown_value_log()
+    try:
+        for value in range(_LOGGED_UNKNOWN_CAP + 250):
+            # Offset past every modelled member so each lookup is a genuine miss.
+            assert WorkMode(10_000 + value) is WorkMode.UNKNOWN
+        assert len(_logged_unknown) <= _LOGGED_UNKNOWN_CAP
+    finally:
+        reset_unknown_value_log()
+
+
+def test_reset_clears_the_log_state() -> None:
+    """Without a reset, whether a warning fires depends on test ordering."""
+    WorkMode(31337)
+    assert _logged_unknown
+    reset_unknown_value_log()
+    assert not _logged_unknown
