@@ -125,6 +125,18 @@ class MQTTCredentials:
     expires_at: float
 
 
+@dataclass(frozen=True)
+class _HandleSubscription:
+    """A device's error-bus subscription, with the handle it was taken out for.
+
+    The handle is kept so a re-registered device can be told apart from the same
+    handle subscribing twice; it is not otherwise used.
+    """
+
+    handle: DeviceHandle
+    subscription: Subscription
+
+
 class TokenManager:
     """Manages all credentials for one account with proactive refresh and mutex safety.
 
@@ -204,7 +216,7 @@ class TokenManager:
         self._scheduler_task: asyncio.Task[None] | None = None
         # RAII subscriptions to device handle error buses — kept alive here so they
         # are never garbage-collected while this token manager is active.
-        self._handle_subscriptions: dict[int, Subscription] = {}
+        self._handle_subscriptions: dict[str, _HandleSubscription] = {}
         # Mirror HTTP-level token rotations (including refresh_token_decorator
         # refreshes that never pass through this manager) into our snapshot and
         # persist them — see _on_http_login_refreshed.
@@ -647,12 +659,15 @@ class TokenManager:
     def subscribe_handle(self, handle: DeviceHandle) -> None:
         """Subscribe to auth errors from *handle* and refresh credentials automatically.
 
-        The subscription is stored internally and lives as long as this
-        TokenManager instance — no external lifetime management needed.  Idempotent per
-        handle: a device adopted or re-registered on the same account subscribes once.
+        Keyed on the handle's ``device_id``
+        One subscription per device; a new handle for a device replaces the
+        old one's.
         """
-        if id(handle) in self._handle_subscriptions:
-            return
+        key = handle.device_id
+        if (existing := self._handle_subscriptions.get(key)) is not None:
+            if existing.handle is handle:
+                return
+            existing.subscription.cancel()
 
         async def _on_error(exc: Exception) -> None:
             try:
@@ -663,7 +678,7 @@ class TokenManager:
             except Exception:  # noqa: BLE001 — the error bus must never be broken by a failed refresh
                 _LOGGER.debug("token manager [%s]: reactive refresh failed", self._account_id, exc_info=True)
 
-        self._handle_subscriptions[id(handle)] = handle.subscribe_errors(_on_error)
+        self._handle_subscriptions[key] = _HandleSubscription(handle, handle.subscribe_errors(_on_error))
 
     # ------------------------------------------------------------------
     # Private helpers — callers are responsible for holding self._lock.

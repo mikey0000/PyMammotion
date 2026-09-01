@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -137,11 +139,11 @@ async def test_add_ble_device_calls_manager() -> None:
     client = MammotionClient()
 
     fake_ble_device = MagicMock()
-    client._ble_manager.register_external_ble_client = MagicMock()  # type: ignore[method-assign]
+    client._ble._manager.register_external_ble_client = MagicMock()  # type: ignore[method-assign]
 
     await client.add_ble_device("dev-xyz", fake_ble_device)
 
-    client._ble_manager.register_external_ble_client.assert_called_once_with("dev-xyz", fake_ble_device, None)
+    client._ble._manager.register_external_ble_client.assert_called_once_with("dev-xyz", fake_ble_device, None)
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +251,12 @@ async def _make_handle_with_transport(device_id: str, device_name: str) -> Devic
 
 
 async def test_start_map_sync_generates_geojson_on_completion() -> None:
-    """start_map_sync must call device.map.generate_geojson after the MapFetchSaga succeeds."""
+    """start_map_sync must regenerate the area GeoJSON after the MapFetchSaga succeeds.
+
+    Generation lives in ``generate_geojson`` rather than on ``HashList`` (the model
+    must not import the generator that imports it), so the patch target is the name
+    the client calls.
+    """
     client = MammotionClient()
     handle = await _make_handle_with_transport("dev1", "Luba-Map")
     await client._device_registry.register(handle)
@@ -257,7 +264,10 @@ async def test_start_map_sync_generates_geojson_on_completion() -> None:
     mock_device = _make_device_with_rtk(lat=0.5, lon=0.5)
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    with patch("pymammotion.client.MapFetchSaga") as MockSaga:
+    with (
+        patch("pymammotion.client.MapFetchSaga") as MockSaga,
+        patch("pymammotion.client.apply_area_geojson") as mock_apply,
+    ):
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "map_fetch"
         mock_saga_instance.max_attempts = 1
@@ -268,12 +278,13 @@ async def test_start_map_sync_generates_geojson_on_completion() -> None:
         await client.start_map_sync("Luba-Map")
         await asyncio.sleep(0.15)
 
-    mock_device.map.generate_geojson.assert_called_once()
+    mock_apply.assert_called_once()
+    assert mock_apply.call_args.args[0] is mock_device.map
     await handle.stop()
 
 
 async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
-    """start_mow_path_saga must call device.map.generate_mowing_geojson after the saga succeeds."""
+    """start_mow_path_saga must regenerate the mow-path GeoJSON after the saga succeeds."""
     client = MammotionClient()
     handle = await _make_handle_with_transport("dev1", "Luba-Mow")
     await client._device_registry.register(handle)
@@ -281,7 +292,10 @@ async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
     mock_device = _make_device_with_rtk(lat=0.5, lon=0.5)
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    with patch("pymammotion.client.MowPathSaga") as MockSaga:
+    with (
+        patch("pymammotion.client.MowPathSaga") as MockSaga,
+        patch("pymammotion.client.apply_mowing_geojson") as mock_apply,
+    ):
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "mow_path_fetch"
         mock_saga_instance.max_attempts = 1
@@ -291,12 +305,13 @@ async def test_start_mow_path_saga_generates_geojson_on_completion() -> None:
         await client.start_mow_path_saga("Luba-Mow", zone_hashs=[1, 2])
         await asyncio.sleep(0.15)
 
-    mock_device.map.generate_mowing_geojson.assert_called_once()
+    mock_apply.assert_called_once()
+    assert mock_apply.call_args.args[0] is mock_device.map
     await handle.stop()
 
 
 async def test_start_map_sync_skips_geojson_when_rtk_zero() -> None:
-    """generate_geojson must not be called when RTK location is 0,0 (not yet received)."""
+    """The area GeoJSON must not be regenerated when RTK is 0,0 (no fix yet)."""
     client = MammotionClient()
     handle = await _make_handle_with_transport("dev1", "Luba-NoRTK")
     await client._device_registry.register(handle)
@@ -304,7 +319,10 @@ async def test_start_map_sync_skips_geojson_when_rtk_zero() -> None:
     mock_device = _make_device_with_rtk(lat=0.0, lon=0.0)  # zero = no RTK fix
     client.get_device_by_name = MagicMock(return_value=mock_device)  # type: ignore[method-assign]
 
-    with patch("pymammotion.client.MapFetchSaga") as MockSaga:
+    with (
+        patch("pymammotion.client.MapFetchSaga") as MockSaga,
+        patch("pymammotion.client.apply_area_geojson") as mock_apply,
+    ):
         mock_saga_instance = MagicMock()
         mock_saga_instance.name = "map_fetch"
         mock_saga_instance.max_attempts = 1
@@ -315,7 +333,9 @@ async def test_start_map_sync_skips_geojson_when_rtk_zero() -> None:
         await client.start_map_sync("Luba-NoRTK")
         await asyncio.sleep(0.15)
 
-    mock_device.map.generate_geojson.assert_not_called()
+    # Patched by name, not read off the device mock — an auto-created mock attribute
+    # would satisfy assert_not_called() no matter what the client did.
+    mock_apply.assert_not_called()
     await handle.stop()
 
 
@@ -663,7 +683,7 @@ async def test_send_command_and_wait_stamps_user_command_on_handle() -> None:
 async def test_internal_subscription_does_not_stamp_user_command() -> None:
     """Internal subscription sends must NOT call record_user_command (no _rearm_event set).
 
-    If _send_one_shot_report woke the poll loop, it would never enter
+    If send_one_shot_report woke the poll loop, it would never enter
     long-idle mode.
     """
     handle = make_handle("dev1", "Luba-NoStamp")
@@ -672,7 +692,7 @@ async def test_internal_subscription_does_not_stamp_user_command() -> None:
 
     handle._rearm_event.clear()  # noqa: SLF001
 
-    await handle._send_one_shot_report()  # noqa: SLF001
+    await handle.send_one_shot_report()
 
     assert not handle._rearm_event.is_set()  # noqa: SLF001
 
@@ -725,7 +745,7 @@ async def test_send_command_with_args_prefer_ble_uses_mqtt_while_ble_connect_pen
 
 
 # ---------------------------------------------------------------------------
-# handle._poll_interval() — poll interval selection tests
+# mqtt_loop.poll_interval(handle) — poll interval selection tests
 # ---------------------------------------------------------------------------
 
 from pymammotion.device.ble_loop import _BLE_POLL_INTERVAL, _KEEP_ALIVE_BLE_INTERVAL  # noqa: E402
@@ -734,6 +754,7 @@ from pymammotion.device.mqtt_loop import (  # noqa: E402
     _MQTT_POLL_INTERVAL,
     _RATE_LIMITED_BACKOFF,
     mqtt_activity_loop,
+    poll_interval,
 )
 
 
@@ -752,8 +773,8 @@ async def test_poll_interval_mowing_returns_fifteen_minutes() -> None:
 
     handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_WORKING.value
-    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]  # noqa: SLF001
-    assert handle.device_mode() is _DeviceMode.ACTIVE  # noqa: SLF001
+    assert poll_interval(handle) == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]
+    assert handle.cadence_mode() is _DeviceMode.ACTIVE  # noqa: SLF001
 
 
 async def test_poll_interval_returning_returns_fifteen_minutes() -> None:
@@ -761,15 +782,15 @@ async def test_poll_interval_returning_returns_fifteen_minutes() -> None:
 
     handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = WorkMode.MODE_RETURNING.value
-    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]  # noqa: SLF001
+    assert poll_interval(handle) == _MQTT_POLL_INTERVAL[_DeviceMode.ACTIVE]
 
 
 async def test_poll_interval_idle_returns_fifteen_minutes() -> None:
     """sys_status=0 with no charge → IDLE (paused/lost) → 15 min for MQTT."""
     handle = await _make_handle_for_poll(TransportType.CLOUD_ALIYUN)
     handle.snapshot.raw.report_data.dev.sys_status = 0
-    assert handle.device_mode() is _DeviceMode.IDLE  # noqa: SLF001
-    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.IDLE]  # noqa: SLF001
+    assert handle.cadence_mode() is _DeviceMode.IDLE  # noqa: SLF001
+    assert poll_interval(handle) == _MQTT_POLL_INTERVAL[_DeviceMode.IDLE]
 
 
 async def test_poll_interval_docked_charging_returns_thirty_minutes() -> None:
@@ -777,8 +798,8 @@ async def test_poll_interval_docked_charging_returns_thirty_minutes() -> None:
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 80
     handle.snapshot.raw.report_data.dev.charge_state = 1
-    assert handle.device_mode() is _DeviceMode.DOCKED_CHARGING  # noqa: SLF001
-    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_CHARGING]  # noqa: SLF001
+    assert handle.cadence_mode() is _DeviceMode.DOCKED_CHARGING  # noqa: SLF001
+    assert poll_interval(handle) == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_CHARGING]
 
 
 async def test_poll_interval_docked_full_returns_sixty_minutes() -> None:
@@ -786,8 +807,8 @@ async def test_poll_interval_docked_full_returns_sixty_minutes() -> None:
     handle.snapshot.raw.report_data.dev.sys_status = 0
     handle.snapshot.raw.report_data.dev.battery_val = 100
     handle.snapshot.raw.report_data.dev.charge_state = 1
-    assert handle.device_mode() is _DeviceMode.DOCKED_FULL  # noqa: SLF001
-    assert handle._poll_interval() == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_FULL]  # noqa: SLF001
+    assert handle.cadence_mode() is _DeviceMode.DOCKED_FULL  # noqa: SLF001
+    assert poll_interval(handle) == _MQTT_POLL_INTERVAL[_DeviceMode.DOCKED_FULL]
 
 
 async def test_ble_poll_interval_table_values() -> None:
@@ -817,7 +838,7 @@ async def test_poll_loop_sends_after_silence() -> None:
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(return_value=False)),
-        patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
+        patch.object(handle, "send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
@@ -846,7 +867,7 @@ async def test_poll_loop_rate_limited_no_ble_backs_off() -> None:
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_record_sleep)),
-        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+        patch.object(handle, "send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
@@ -872,7 +893,7 @@ async def test_poll_loop_rate_limited_backoff_shortens_to_window_release() -> No
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_record_sleep)),
-        patch.object(handle, "_send_one_shot_report", AsyncMock()),
+        patch.object(handle, "send_one_shot_report", AsyncMock()),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
@@ -884,7 +905,7 @@ async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
 
     The BLE polling loop is suppressed for this test (we patch its starter) so we
     isolate the MQTT loop's behaviour: the rate-limit backoff path must NOT trigger
-    when a BLE transport is registered, and the loop must call _send_one_shot_report.
+    when a BLE transport is registered, and the loop must call send_one_shot_report.
     """
     handle = make_handle("dev1", "Luba-RLBLE")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
@@ -909,7 +930,7 @@ async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(return_value=False)),
-        patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
+        patch.object(handle, "send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
         await handle.stop()
@@ -936,7 +957,7 @@ async def test_poll_loop_defers_while_ble_stream_active() -> None:
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_record_and_stop)),
-        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+        patch.object(handle, "send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
@@ -963,7 +984,7 @@ async def test_poll_loop_skips_during_saga() -> None:
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
-        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+        patch.object(handle, "send_one_shot_report", one_shot_mock),
         patch.object(type(handle.queue), "is_saga_active", new_callable=lambda: property(lambda _: True)),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
@@ -1260,7 +1281,7 @@ async def test_add_ble_only_device_with_ble_device_disables_self_managed_scannin
 
 async def test_poll_loop_never_polls_when_device_reported_offline_and_no_ble() -> None:
     """When the cloud has reported the device offline AND no BLE is registered,
-    the MQTT loop must never call _send_one_shot_report — it should only sleep.
+    the MQTT loop must never call send_one_shot_report — it should only sleep.
     """
     from pymammotion.state.device_state import DeviceAvailability
 
@@ -1288,7 +1309,7 @@ async def test_poll_loop_never_polls_when_device_reported_offline_and_no_ble() -
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
-        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+        patch.object(handle, "send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
@@ -1299,7 +1320,7 @@ async def test_poll_loop_never_polls_when_device_reported_offline_and_no_ble() -
 
 async def test_poll_loop_resumes_after_mqtt_offline_clears() -> None:
     """When mqtt_reported_offline starts True and is cleared, the next loop tick
-    proceeds to _send_one_shot_report.  Validates that the offline gate is dynamic,
+    proceeds to send_one_shot_report.  Validates that the offline gate is dynamic,
     not latched.
     """
     from pymammotion.state.device_state import DeviceAvailability
@@ -1337,7 +1358,7 @@ async def test_poll_loop_resumes_after_mqtt_offline_clears() -> None:
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_sleep_then_recover)),
-        patch.object(handle, "_send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
+        patch.object(handle, "send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
@@ -1367,7 +1388,7 @@ async def test_poll_loop_skips_when_ble_only_in_cooldown_and_no_mqtt() -> None:
 
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
-        patch.object(handle, "_send_one_shot_report", one_shot_mock),
+        patch.object(handle, "send_one_shot_report", one_shot_mock),
     ):
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
@@ -1531,7 +1552,7 @@ async def test_device_unbound_migrates_to_mammotion() -> None:
     handle = make_handle("Luba-MIG", "Luba-MIG")
     handle.iot_id = "iot-old"
     await client._device_registry.register(handle, "user@test.com")
-    client._iot_id_to_device_key[("user@test.com", "iot-old")] = ("user@test.com", "Luba-MIG")
+    client._inbound.bind("user@test.com", "iot-old", ("user@test.com", "Luba-MIG"))
 
     record = _make_device_record(device_name="Luba-MIG", iot_id="iot-new", product_key="pkNEW")
     http = _make_mock_http(device_records=[record])
@@ -1555,8 +1576,10 @@ async def test_device_unbound_migrates_to_mammotion() -> None:
     assert client._device_registry.get_by_name("Luba-MIG") is handle
     assert handle.get_transport(TransportType.CLOUD_MAMMOTION) is mammotion_transport
     assert handle.iot_id == "iot-new"
-    assert client._iot_id_to_device_key.get(("user@test.com", "iot-new")) == ("user@test.com", "Luba-MIG")
-    assert ("user@test.com", "iot-old") not in client._iot_id_to_device_key
+    # Asserted through the router: what matters is that a frame for the new iot_id
+    # reaches this handle, and one for the old id no longer reaches anything.
+    assert client._inbound.handle_for("user@test.com", "iot-new", "test") is handle
+    assert client._inbound.handle_for("user@test.com", "iot-old", "test") is None
     mammotion_transport.register_device.assert_called_once()
     session.aliyun_transport.disconnect.assert_not_awaited()
     await handle.stop()
@@ -1571,7 +1594,7 @@ async def test_device_unbound_removed_when_on_no_cloud() -> None:
     handle = make_handle("Luba-GONE", "Luba-GONE")
     handle.iot_id = "iot-gone"
     await client._device_registry.register(handle, "user@test.com")
-    client._iot_id_to_device_key[("user@test.com", "iot-gone")] = ("user@test.com", "Luba-GONE")
+    client._inbound.bind("user@test.com", "iot-gone", ("user@test.com", "Luba-GONE"))
 
     http = _make_mock_http(device_records=[])  # not present on Mammotion either
     session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
@@ -1588,7 +1611,7 @@ async def test_device_unbound_removed_when_on_no_cloud() -> None:
         await client._on_device_unbound(handle)
 
     assert client._device_registry.get_by_name("Luba-GONE") is None
-    assert ("user@test.com", "iot-gone") not in client._iot_id_to_device_key
+    assert client._inbound.handle_for("user@test.com", "iot-gone", "test") is None
     assert "Luba-GONE" not in session.device_ids
     removed.assert_awaited_once_with("Luba-GONE", "iot-gone")
     session.aliyun_transport.disconnect.assert_not_awaited()
@@ -1636,6 +1659,80 @@ async def test_fetch_stream_subscription_returns_empty_after_retry_exhausted() -
 
     assert result.data is None
     assert http.get_stream_subscription.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# get_stream_subscription / stop_stream: vi_switch discipline
+# ---------------------------------------------------------------------------
+
+
+async def _stream_client(*, new_firmware: bool) -> tuple[MammotionClient, AsyncMock]:
+    """Return a client wired for the stream-token path, plus its send-command spy.
+
+    ``new_firmware`` sets whether the device state carries ``fpv_info``, which is
+    what ``get_stream_subscription`` uses to decide if the device needs an
+    explicit ``vi_switch=1``.
+    """
+    client = make_bare_client()
+    handle = make_handle(device_name="Yuka-Test")
+    handle.snapshot.raw.report_data.dev.fpv_info = MagicMock() if new_firmware else None
+    await client._device_registry.register(handle)
+
+    client._fetch_stream_subscription = AsyncMock(return_value=MagicMock(data=MagicMock()))
+    send = AsyncMock()
+    client.send_command_with_args = send
+    return client, send
+
+
+async def test_get_stream_subscription_sends_no_leave_on_new_firmware() -> None:
+    """New-firmware devices are started by the cloud; we must send them nothing.
+
+    A stray ``vi_switch=0`` here switches the camera off with no ``vi_switch=1``
+    to undo it, which is what made the device join the Agora channel and quit.
+    """
+    client, send = await _stream_client(new_firmware=True)
+
+    with patch.object(type(client), "mammotion_http", PropertyMock(return_value=MagicMock())):
+        await client.get_stream_subscription("Yuka-Test", "iot-1")
+
+    send.assert_not_awaited()
+    client._fetch_stream_subscription.assert_awaited_once()
+
+
+async def test_get_stream_subscription_starts_old_firmware_after_token_fetch() -> None:
+    """Old firmware gets exactly one command, ``vi_switch=1``, after the token fetch."""
+    client, send = await _stream_client(new_firmware=False)
+    order: list[str] = []
+    client._fetch_stream_subscription = AsyncMock(
+        side_effect=lambda *a, **k: order.append("token") or MagicMock(data=MagicMock())
+    )
+    send.side_effect = lambda *a, **k: order.append("command")
+
+    with patch.object(type(client), "mammotion_http", PropertyMock(return_value=MagicMock())):
+        await client.get_stream_subscription("Yuka-Test", "iot-1")
+
+    send.assert_awaited_once_with("Yuka-Test", "device_agora_join_channel_with_position", enter_state=1)
+    assert order == ["token", "command"]
+
+
+async def test_refresh_stream_subscription_matches_get() -> None:
+    """The refresh path re-runs the same flow — no leave command of its own."""
+    client, send = await _stream_client(new_firmware=True)
+
+    with patch.object(type(client), "mammotion_http", PropertyMock(return_value=MagicMock())):
+        await client.refresh_stream_subscription("Yuka-Test", "iot-1")
+
+    send.assert_not_awaited()
+    client._fetch_stream_subscription.assert_awaited_once()
+
+
+async def test_stop_stream_sends_the_only_leave() -> None:
+    """stop_stream is the one place that sends ``vi_switch=0``."""
+    client, send = await _stream_client(new_firmware=True)
+
+    await client.stop_stream("Yuka-Test")
+
+    send.assert_awaited_once_with("Yuka-Test", "device_agora_join_channel_with_position", enter_state=0)
 
 
 # ---------------------------------------------------------------------------
@@ -1916,16 +2013,17 @@ def _client_for_wake(
     http: MagicMock | None,
     accepted: bool = True,
 ) -> MammotionClient:
-    """A bare client whose mower() and cloud_http are stubbed.
+    """A bare client whose mower() and owning account session are stubbed.
 
-    ``cloud_http`` reads through to the default account session, so it is patched
-    on the class — via monkeypatch, so it is undone before the next test.
+    ``wake_device`` goes through the session that owns the handle, not the default
+    ``cloud_http``, so that is what gets stubbed here.
     """
     client = make_bare_client()
     client.mower = MagicMock(return_value=handle)  # type: ignore[method-assign]
     if http is not None:
         http.wake_up_device = AsyncMock(return_value=MagicMock(data=accepted))
-    monkeypatch.setattr(MammotionClient, "cloud_http", property(lambda _self: http))
+    session = MagicMock(mammotion_http=http) if http is not None else None
+    client._get_session_for_handle = MagicMock(return_value=session)  # type: ignore[method-assign]
     return client
 
 
@@ -1963,3 +2061,123 @@ async def test_wake_device_unknown_device(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert await client.wake_device("Nope") is False
     http.wake_up_device.assert_not_awaited()
+
+
+async def test_wake_device_uses_the_handle_s_own_account_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Waking with another account's bearer token is rejected by the cloud.
+
+    ``wake_device`` honours ``account_id`` when resolving the handle, so it must
+    honour it for the HTTP session too rather than falling back to ``cloud_http``
+    (the first registered account).
+    """
+    handle = MagicMock(device_name="Luba-B")
+    owning_http = MagicMock()
+    owning_http.wake_up_device = AsyncMock(return_value=MagicMock(data=True))
+    other_http = MagicMock()
+    other_http.wake_up_device = AsyncMock(return_value=MagicMock(data=True))
+
+    client = make_bare_client()
+    client.mower = MagicMock(return_value=handle)  # type: ignore[method-assign]
+    client._get_session_for_handle = MagicMock(  # type: ignore[method-assign]
+        return_value=MagicMock(mammotion_http=owning_http)
+    )
+    monkeypatch.setattr(MammotionClient, "cloud_http", property(lambda _self: other_http))
+
+    assert await client.wake_device("Luba-B", account_id="b@example.com") is True
+    owning_http.wake_up_device.assert_awaited_once_with("Luba-B")
+    other_http.wake_up_device.assert_not_awaited()
+
+
+async def test_wake_device_without_a_session_for_the_handle(monkeypatch: pytest.MonkeyPatch) -> None:
+    handle = MagicMock(device_name="Luba-B")
+    client = make_bare_client()
+    client.mower = MagicMock(return_value=handle)  # type: ignore[method-assign]
+    client._get_session_for_handle = MagicMock(return_value=None)  # type: ignore[method-assign]
+
+    assert await client.wake_device("Luba-B") is False
+
+
+# ---------------------------------------------------------------------------
+# prefer_ble defaults defer to the handle
+#
+# `prefer_ble` no longer selects the transport (active_transport ignores it: a
+# connected BLE wins, else a usable MQTT).  All it still decides is whether a
+# *disconnected* BLE gets warmed up in the background — so a hardcoded default
+# of True silently reconnects Bluetooth a user turned off.  Both entry points
+# must default to None and defer to the handle's own preference.
+# ---------------------------------------------------------------------------
+
+
+def _handle_preferring(*, prefer_ble: bool) -> DeviceHandle:
+    return DeviceHandle(
+        device_id="dev-pb",
+        device_name="Luba-PB",
+        initial_device=make_mowing_device(),
+        prefer_ble=prefer_ble,
+    )
+
+
+async def _warms_ble(handle: DeviceHandle, send: Any) -> bool:
+    """Register *handle* on a client, run *send*, and report whether BLE was connected."""
+    mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
+    ble = _make_connected_transport(TransportType.BLE)
+    ble.is_connected = False
+    ble.connect = AsyncMock()
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
+
+    client = MammotionClient()
+    patcher = _stub_commands(handle, b"\xAB\xCD")
+    try:
+        await client._device_registry.register(handle)  # noqa: SLF001
+        with contextlib.suppress(Exception):
+            await send(client)
+        await _drain(handle)
+        await asyncio.sleep(0)  # let any background connect task run
+    finally:
+        patcher.stop()
+    return ble.connect.called
+
+
+async def test_send_command_and_wait_default_does_not_warm_ble_on_an_mqtt_handle() -> None:
+    """Regression: this defaulted to prefer_ble=True and overrode the user's setting.
+
+    ``MammotionMowerAPI`` calls it without the argument, so every device-info sweep
+    reconnected Bluetooth on a handle explicitly configured ``prefer_ble=False``.
+    """
+    handle = _handle_preferring(prefer_ble=False)
+    warmed = await _warms_ble(
+        handle,
+        lambda c: c.send_command_and_wait("Luba-PB", "get_report_cfg", "toapp_report_cfg", send_timeout=0.01),
+    )
+    assert warmed is False
+    await handle.stop()
+
+
+async def test_send_command_and_wait_default_still_warms_ble_on_a_ble_handle() -> None:
+    """Deferring must work in both directions — None means "ask the handle", not "never"."""
+    handle = _handle_preferring(prefer_ble=True)
+    warmed = await _warms_ble(
+        handle,
+        lambda c: c.send_command_and_wait("Luba-PB", "get_report_cfg", "toapp_report_cfg", send_timeout=0.01),
+    )
+    assert warmed is True
+    await handle.stop()
+
+
+async def test_send_command_with_args_default_defers_to_a_ble_handle() -> None:
+    """The other entry point had the opposite hardcoded default (False) and the same flaw."""
+    handle = _handle_preferring(prefer_ble=True)
+    warmed = await _warms_ble(handle, lambda c: c.send_command_with_args("Luba-PB", "get_report_cfg"))
+    assert warmed is True
+    await handle.stop()
+
+
+async def test_an_explicit_prefer_ble_false_still_overrides_a_ble_handle() -> None:
+    """Per-call override must still win over the handle's preference."""
+    handle = _handle_preferring(prefer_ble=True)
+    warmed = await _warms_ble(
+        handle, lambda c: c.send_command_with_args("Luba-PB", "get_report_cfg", prefer_ble=False)
+    )
+    assert warmed is False
+    await handle.stop()

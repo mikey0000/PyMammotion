@@ -10,21 +10,11 @@ import logging
 from typing import TYPE_CHECKING
 
 from pymammotion.transport.base import TransportAvailability
-from pymammotion.utility.constant.device_constant import WorkMode
 
 if TYPE_CHECKING:
     from pymammotion.data.model.device import Device
 
 _logger = logging.getLogger(__name__)
-
-_WORK_MODE_TO_ACTIVITY: dict[int, str] = {
-    WorkMode.MODE_READY: "ready",
-    WorkMode.MODE_WORKING: "mowing",
-    WorkMode.MODE_RETURNING: "returning",
-    WorkMode.MODE_PAUSE: "paused",
-    WorkMode.MODE_LOCK: "locked",
-    WorkMode.MODE_NOT_ACTIVE: "unknown",
-}
 
 
 class DeviceConnectionState(Enum):
@@ -167,8 +157,9 @@ class DeviceStateMachine:
     ) -> DeviceSnapshot:
         """Build a DeviceSnapshot from any Device subclass.
 
-        Mower-specific fields (battery, activity, blade height) are extracted
-        when present (``MowingDevice``); RTK and pool devices get neutral defaults.
+        Battery is read from ``report_data`` when present (``MowingDevice``); RTK and
+        pool devices get a neutral default.  Anything else a consumer needs is reached
+        through ``snapshot.raw``.
         """
         if availability is None:
             availability = DeviceAvailability()

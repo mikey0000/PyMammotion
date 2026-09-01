@@ -4,7 +4,7 @@ Pulled out of ``handle.py`` so the loop body — and the per-mode poll-interval
 table that drives it — can be read and tuned in isolation from the rest of the
 facade.
 
-The loop is a free coroutine that takes the owning ``DeviceHandle`` rather than
+The loop is a free coroutine that takes its host (see :class:`~pymammotion.device.loop_host.LoopHost`) rather than
 a method on it.  All state (transports, rearm event, last-send timestamps,
 ``_stopping``, …) is read directly off the handle; the loop owns nothing.
 """
@@ -18,10 +18,11 @@ from typing import TYPE_CHECKING
 
 from pymammotion.device.ble_loop import _BLE_MODE_RECHECK_INTERVAL
 from pymammotion.device.modes import _DeviceMode
-from pymammotion.transport.base import Transport, TransportType
+from pymammotion.transport.base import TransportType
+from pymammotion.transport.cloud import CloudTransport
 
 if TYPE_CHECKING:
-    from pymammotion.device.handle import DeviceHandle
+    from pymammotion.device.loop_host import LoopHost
 
 _logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ _MQTT_NEW_POLL_INTERVAL: dict[_DeviceMode, float] = {
 }
 
 
-def poll_interval(handle: DeviceHandle, mode: _DeviceMode | None = None) -> float:
+def poll_interval(handle: LoopHost, mode: _DeviceMode | None = None) -> float:
     """Return the MQTT one-shot poll interval based on current device mode.
 
     See ``_MQTT_POLL_INTERVAL`` for the per-mode cadence table.  Pass *mode* when
@@ -63,14 +64,14 @@ def poll_interval(handle: DeviceHandle, mode: _DeviceMode | None = None) -> floa
     """
 
     if mode is None:
-        mode = handle.device_mode()
-    if not Transport._version_is_rate_limited(handle.firmware_version):  # noqa: SLF001
+        mode = handle.cadence_mode()
+    if not CloudTransport.version_is_rate_limited(handle.firmware_version):
         return _MQTT_NEW_POLL_INTERVAL[mode]
 
     return _MQTT_POLL_INTERVAL[mode]
 
 
-async def mqtt_activity_loop(handle: DeviceHandle) -> None:
+async def mqtt_activity_loop(handle: LoopHost) -> None:
     """Periodic one-shot report-poll loop (MQTT-side cadence driver).
 
     Sends ``request_iot_sys(count=1)`` via the best available transport
@@ -91,8 +92,8 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
     """
     last_poll_sent_at: float = 0.0
 
-    while not handle._stopping:  # noqa: SLF001
-        mode = handle.device_mode()
+    while not handle.is_stopping:
+        mode = handle.cadence_mode()
         interval = poll_interval(handle, mode)
 
         # While the BLE polling loop owns a continuous stream, this loop
@@ -110,7 +111,7 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
             _logger.debug(
                 "poll_loop [%s]: no usable transport (mqtt_offline=%s) — backing off %.0fs",
                 handle.device_name,
-                handle._availability.mqtt_reported_offline,  # noqa: SLF001
+                handle.availability.mqtt_reported_offline,
                 interval,
             )
             await handle.sleep_or_rearm(interval)
@@ -118,39 +119,27 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
 
         # Timer: the later of "last data received" and "last poll sent".
         # Including last_poll_sent_at prevents spam when the device doesn't respond.
-        last_recv = max(
-            (t.last_received_monotonic for t in handle._transports.values()),  # noqa: SLF001
-            default=0.0,
-        )
-        last_activity = max(last_recv, last_poll_sent_at)
+        last_activity = max(handle.last_transport_activity, last_poll_sent_at)
         wait = interval - (time.monotonic() - last_activity)
 
         if wait > 0:
             if await handle.sleep_or_rearm(wait):
                 continue  # rearmed by user command — re-evaluate immediately
-            last_recv = max(
-                (t.last_received_monotonic for t in handle._transports.values()),  # noqa: SLF001
-                default=0.0,
-            )
-            last_activity = max(last_recv, last_poll_sent_at)
+            last_activity = max(handle.last_transport_activity, last_poll_sent_at)
             if time.monotonic() - last_activity < interval:
                 continue
 
-        if not handle._transports:  # noqa: SLF001
+        if not handle.has_any_transport:
             await handle.sleep_or_rearm(interval)
             continue
 
         # Back off if MQTT sends are blocked and no BLE transport is connected.
         # is_send_blocked applies the firmware exemption, so quota-free devices
         # never park the poll loop on the self-imposed send window.
-        mqtt: Transport | None = None
-        for tt in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-            t = handle._transports.get(tt)  # noqa: SLF001
-            if t is not None:
-                mqtt = t
-                break
-        if mqtt is not None and mqtt.is_send_blocked(handle.firmware_version):
-            ble = handle._transports.get(TransportType.BLE)  # noqa: SLF001
+        cloud_type = handle.cloud_transport()
+        mqtt = handle.get_transport(cloud_type) if cloud_type is not None else None
+        if isinstance(mqtt, CloudTransport) and mqtt.is_send_blocked(handle.firmware_version):
+            ble = handle.get_transport(TransportType.BLE)
             if ble is None or not ble.is_connected:
                 # Back off only until sends are actually available again (the rolling
                 # window sliding under the limit, or the cloud ban expiring) so the loop
@@ -185,4 +174,4 @@ async def mqtt_activity_loop(handle: DeviceHandle) -> None:
             interval,
         )
         last_poll_sent_at = time.monotonic()
-        await handle._send_one_shot_report()  # noqa: SLF001
+        await handle.send_one_shot_report()

@@ -1178,3 +1178,67 @@ async def test_event_at_threshold_boundary_forwarded(staleness_transport: Aliyun
     await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
 
     staleness_transport.on_device_event.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# An envelope we can't attribute must be dropped, never handed to on_message
+# ---------------------------------------------------------------------------
+
+
+def _make_envelope_without_iot_id(proto_bytes: bytes) -> bytes:
+    """A thing.events envelope with the iotId field missing."""
+    content = base64.b64encode(proto_bytes).decode()
+    return json.dumps(
+        {
+            "method": "thing.events",
+            "id": "1",
+            "version": "1.0",
+            "params": {"identifier": "device_protobuf_msg_event", "value": {"content": content}},
+        }
+    ).encode()
+
+
+async def test_unattributable_envelope_is_dropped_not_sent_to_on_message(
+    config: AliyunMQTTConfig, cloud_gateway: MagicMock
+) -> None:
+    """With per-device routing registered, a frame with no iotId goes nowhere.
+
+    The transport is account-shared, so falling back to the raw callback would feed
+    one device's frame to whichever handle happened to own that single slot.
+    """
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_device_message = AsyncMock()
+    raw_handler = AsyncMock()  # must NOT be called
+    transport.on_message = raw_handler
+
+    envelope = _make_envelope_without_iot_id(b"\x08\x01")
+    fake_client = _FakeMQTTClient(messages=[_FakeMessage("/sys/pk/dn/app/down/_thing/event/notify", envelope)])
+
+    with patch("aiomqtt.Client", return_value=fake_client):
+        await transport.connect()
+        await asyncio.sleep(0.1)
+        transport.on_device_message.assert_not_awaited()
+        raw_handler.assert_not_awaited()
+        await transport.disconnect()
+
+
+async def test_attributable_envelope_still_routes_by_iot_id(
+    config: AliyunMQTTConfig, cloud_gateway: MagicMock
+) -> None:
+    """The normal path is unchanged: iotId present -> on_device_message."""
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_device_message = AsyncMock()
+    raw_handler = AsyncMock()
+    transport.on_message = raw_handler
+
+    proto_bytes = b"\x08\x01\x12\x03foo"
+    fake_client = _FakeMQTTClient(
+        messages=[_FakeMessage("/sys/pk/dn/app/down/_thing/event/notify", _make_thing_events_envelope(proto_bytes))]
+    )
+
+    with patch("aiomqtt.Client", return_value=fake_client):
+        await transport.connect()
+        await asyncio.sleep(0.1)
+        transport.on_device_message.assert_awaited_once_with("device123", proto_bytes)
+        raw_handler.assert_not_awaited()
+        await transport.disconnect()

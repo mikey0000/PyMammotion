@@ -41,7 +41,7 @@ def _handle_with_status(sys_status: int, *, charge_state: int = 0, battery: int 
 
 def test_sleeping_status_is_its_own_mode() -> None:
     handle = _handle_with_status(WorkMode.MODE_SLEEPING)
-    assert handle.device_mode() is _DeviceMode.SLEEPING
+    assert handle.cadence_mode() is _DeviceMode.SLEEPING
     # Public surface, so HA never has to touch the private _DeviceMode enum.
     assert handle.is_sleeping is True
 
@@ -49,7 +49,7 @@ def test_sleeping_status_is_its_own_mode() -> None:
 def test_sleeping_on_the_dock_is_not_mistaken_for_charging() -> None:
     """Sleep is checked before charge state, which would otherwise claim it."""
     handle = _handle_with_status(WorkMode.MODE_SLEEPING, charge_state=1, battery=80)
-    assert handle.device_mode() is _DeviceMode.SLEEPING
+    assert handle.cadence_mode() is _DeviceMode.SLEEPING
 
 
 @pytest.mark.parametrize("status", [WorkMode.MODE_READY, WorkMode.MODE_WORKING, WorkMode.MODE_CHARGING])
@@ -90,29 +90,31 @@ def _loop_handle(*, usable: bool) -> MagicMock:
     than by freezing the clock, matching the BLE loop tests.
     """
     handle = MagicMock()
-    handle._stopping = False
+    handle.is_stopping = False
     handle.device_name = "Luba-VATEST"
     handle.ble_stream_active = False
-    handle.device_mode = MagicMock(return_value=_DeviceMode.SLEEPING)
+    handle.cadence_mode = MagicMock(return_value=_DeviceMode.SLEEPING)
     handle.in_no_request_mode = MagicMock(return_value=True)
     handle.has_usable_transport = usable
     handle.firmware_version = "9.9.9.9"
 
-    mqtt = make_mock_transport(
-        TransportType.CLOUD_MAMMOTION,
-        last_received_monotonic=time.monotonic() - (_SLEEPING_RECHECK_INTERVAL + 60),
-    )
-    handle._transports = {TransportType.CLOUD_MAMMOTION: mqtt}
+    mqtt = make_mock_transport(TransportType.CLOUD_MAMMOTION)
+    handle.has_any_transport = True
+    handle.cloud_transport = MagicMock(return_value=TransportType.CLOUD_MAMMOTION)
+    handle.get_transport = MagicMock(return_value=mqtt)
+    # Pushed well past any interval so the loop's debounce cannot be what stops
+    # the poll — the mode gates have to be.
+    handle.last_transport_activity = time.monotonic() - (_SLEEPING_RECHECK_INTERVAL + 60)
 
     handle.queue = MagicMock(is_saga_active=False)
-    handle._availability = MagicMock(mqtt_reported_offline=not usable)
-    handle._send_one_shot_report = AsyncMock()
+    handle.availability = MagicMock(mqtt_reported_offline=not usable)
+    handle.send_one_shot_report = AsyncMock()
 
     slept: list[float] = []
 
     async def _sleep_or_rearm(seconds: float) -> bool:
         slept.append(seconds)
-        handle._stopping = True
+        handle.is_stopping = True
         return False
 
     handle.sleep_or_rearm = AsyncMock(side_effect=_sleep_or_rearm)
@@ -131,7 +133,7 @@ async def test_sleeping_device_is_never_polled_and_backs_off_long(usable: bool) 
     """
     handle = _loop_handle(usable=usable)
     await asyncio.wait_for(mqtt_activity_loop(handle), timeout=1)
-    handle._send_one_shot_report.assert_not_called()
+    handle.send_one_shot_report.assert_not_called()
     assert handle.slept == [_SLEEPING_RECHECK_INTERVAL]
     # usable=True must have got as far as the mode gate; usable=False stops before it.
     assert handle.in_no_request_mode.called is usable

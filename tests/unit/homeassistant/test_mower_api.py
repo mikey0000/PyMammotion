@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from pymammotion.client import MammotionClient
+from pymammotion.device.auto_fetch import AutoFetchWatchers
 from tests._helpers import make_bare_client
 from pymammotion.homeassistant.mower_api import HomeAssistantMowerApi
 
@@ -62,6 +63,14 @@ def _make_client_with_handle(
     client.start_mow_path_saga = AsyncMock()
     client.send_command_with_args = AsyncMock()
 
+    # The watchers hold the registry and saga starters they were built with, so they
+    # have to be rebuilt after the substitutions above.
+    client._watchers = AutoFetchWatchers(
+        registry,
+        start_map_sync=client.start_map_sync,
+        start_plan_sync=client.start_plan_sync,
+        start_mow_path_saga=client.start_mow_path_saga,
+    )
     client.setup_device_watchers(device_name)
 
     return client, handle, captured_handlers

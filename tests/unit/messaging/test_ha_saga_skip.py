@@ -108,13 +108,11 @@ async def test_skip_if_saga_active_false_queues_command() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_emergency_runs_during_saga() -> None:
-    """EMERGENCY priority items must be enqueued (not dropped) and run after the current work item.
+async def test_a_saga_does_not_block_a_direct_command() -> None:
+    """The queue refuses direct priorities, so a user command cannot be parked by a saga.
 
-    EMERGENCY bypasses the skip_if_saga_active drop and the exclusive-slot wait,
-    so the item IS placed on the queue.  The single-threaded processor finishes
-    its current work task first, then picks up the EMERGENCY item — so we need
-    to release the saga before asserting execution.
+    This replaces an older test that enqueued EMERGENCY mid-saga and then had to
+    release the saga before the item ran — which was the whole problem.
     """
     q = DeviceCommandQueue()
     broker = DeviceMessageBroker()
@@ -125,26 +123,14 @@ async def test_emergency_runs_during_saga() -> None:
     await asyncio.sleep(0.05)
     assert q.is_saga_active is True
 
-    emergency_called: list[int] = []
+    async def user_work() -> None:
+        pass
 
-    async def emergency_work() -> None:
-        emergency_called.append(1)
+    with pytest.raises(ValueError, match="direct-send priority"):
+        await q.enqueue(user_work, priority=Priority.USER)
 
-    # EMERGENCY with skip_if_saga_active=True must still be enqueued (not dropped)
-    await q.enqueue(emergency_work, priority=Priority.EMERGENCY, skip_if_saga_active=True)
-    assert not q._queue.empty(), "EMERGENCY item must not have been dropped"
-
-    # Release the saga so the processor can move on to the EMERGENCY item
     saga.release()
-    await asyncio.sleep(0.15)
-    assert emergency_called == [1]
-
     await q.stop()
-
-
-# ---------------------------------------------------------------------------
-# Test 4: stop() cancels a currently-running saga task
-# ---------------------------------------------------------------------------
 
 
 async def test_stop_cancels_running_saga_task() -> None:

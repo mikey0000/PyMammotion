@@ -59,6 +59,10 @@ class Scenario:
     # --- Mammotion MQTT ------------------------------------------------
     #: Lifetime of the broker JWT (exp claim); < 1800 forces refetch every call.
     mqtt_jwt_ttl: float = 86400.0
+    #: When True the JWT endpoint answers 200 with no ``data``, which is how the
+    #: Mammotion broker credential fetch fails *without* the HTTP login being bad —
+    #: the transport-scoped case (``TokenManager.mqtt_unavailable``).
+    mqtt_jwt_returns_no_data: bool = False
     #: CONNACK return code for the Mammotion broker (0 accept, 4/5 auth reject).
     mammotion_connack_rc: int = 0
 
@@ -79,6 +83,27 @@ class Scenario:
     # ------------------------------------------------------------------
     # Token minting / validation
     # ------------------------------------------------------------------
+
+    def age_cached_access_token(self, cache: dict, remaining: float = 60.0) -> None:
+        """Rewrite *cache*'s access token so it expires in *remaining* seconds.
+
+        Use this instead of minting the original token near-expiry.  A short
+        ``access_token_ttl`` at login time leaves the client's refresh scheduler
+        permanently inside its 300 s HTTP lead window, so it refreshes as fast as the
+        loop allows for the whole of setup — which both floods the counters a test is
+        about to assert on and races anything the test does next.
+
+        The token's other claims are preserved, and it replaces the old one in
+        ``valid_access_tokens`` so the server still accepts it.
+        """
+        login = cache["mammotion_data"].data
+        claims = jwt.decode(login.access_token, options={"verify_signature": False})
+        claims["exp"] = int(time.time()) + int(remaining)
+        aged = jwt.encode(claims, JWT_KEY, algorithm="HS256")
+        self.valid_access_tokens.discard(login.access_token)
+        self.valid_access_tokens.add(aged)
+        login.access_token = aged
+        login.expires_in = int(remaining)
 
     def mint_login_data(self, base_url: str) -> dict:
         """Issue a fresh access/refresh token pair as an oauth2/token `data` blob."""
@@ -171,6 +196,7 @@ class Scenario:
         self.oauth_http_status = None
         self.access_token_ttl = 7200.0
         self.mqtt_jwt_ttl = 86400.0
+        self.mqtt_jwt_returns_no_data = False
         self.mammotion_connack_rc = 0
         self.aliyun_connack_rc = 0
         self.invoke_mode = "ok"

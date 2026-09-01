@@ -227,6 +227,9 @@ def build_app(
         scenario.count("mqtt_jwt_fetches")
         if not scenario.bearer_ok(request.headers.get("Authorization")):
             return _json({"code": 401, "msg": "unauthorized"}, status=401)
+        if scenario.mqtt_jwt_returns_no_data:
+            # 200 with no payload: the login is fine, this one transport is not.
+            return _json({"code": 0, "msg": "success"})
         return _ok(
             {
                 "host": mqtt_host_getter(),

@@ -30,18 +30,23 @@ async def test_skip_if_saga_active_drops_item() -> None:
     q._exclusive_active.set()
 
 
-async def test_emergency_never_skipped() -> None:
+@pytest.mark.parametrize("priority", [Priority.EMERGENCY, Priority.USER])
+async def test_direct_priorities_are_refused_by_the_queue(priority: Priority) -> None:
+    """These are dispatched on the caller's task; queueing one reinstates the waiting.
+
+    The queue used to accept EMERGENCY and merely exempt it from some gates, which
+    could not deliver preemption: the processor is sequential, so the item still sat
+    behind whatever work() was already running.
+    """
     q = DeviceCommandQueue()
-    q._exclusive_active.clear()  # simulate saga running
-    called = []
 
     async def work() -> None:
-        called.append(1)
+        pass
 
-    # EMERGENCY should always enqueue even when saga active
-    await q.enqueue(work, priority=Priority.EMERGENCY, skip_if_saga_active=True)
-    assert not q._queue.empty()
-    q._exclusive_active.set()
+    with pytest.raises(ValueError, match="direct-send priority"):
+        await q.enqueue(work, priority=priority)
+
+    assert q._queue.empty()
 
 
 async def test_exclusive_active_set_after_saga() -> None:

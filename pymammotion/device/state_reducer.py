@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 import betterproto2
 
 from pymammotion.data.model.device_info import DeviceFirmwares, SideLight
+from pymammotion.data.model.generate_geojson import apply_area_geojson, apply_mowing_geojson
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     CommDataCouple,
@@ -71,6 +72,8 @@ from pymammotion.proto import (
     LubaMsg,
     MulAudioCfg,
     MulSetAudio,
+    MulSetVideoAck,
+    MulVideoErrorCode,
     NavEdgePoints,
     NavGetAllPlanTask,
     NavGetCommDataAck,
@@ -93,6 +96,7 @@ from pymammotion.proto import (
     WifiIotStatusReport,
     WorkReportInfoAck,
 )
+from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -354,8 +358,6 @@ class MowerStateReducer(StateReducer):
         # GNSS RTK origin or a lat/lon dock. Generating GeoJSON from a (0,0)
         # RTK origin produces nonsense at best and can crash the geometry
         # library. Bail out until a pool-specific reducer exists.
-        from pymammotion.utility.device_type import DeviceType
-
         if DeviceType.is_swimming_pool(device.name):
             _logger.debug(
                 "StateReducer: skipping nav update for swimming-pool device %s",
@@ -376,12 +378,12 @@ class MowerStateReducer(StateReducer):
                 # handler regenerates once after all frames arrive instead of
                 # paying the O(N) cost on every frame.
                 if not self._is_saga_active() and len(device.map.missing_hashlist(0)) == 0:
-                    device.map.generate_geojson(device.location.RTK, device.location.dock)
+                    apply_area_geojson(device.map, device.location.RTK, device.location.dock)
             case "cover_path_upload":
                 mow_path: CoverPathUploadT = nav_msg[1]  # type: ignore
                 device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
                 if not self._is_saga_active() and len(device.map.find_missing_mow_path_frames()) == 0:
-                    device.map.generate_mowing_geojson(device.location.RTK)
+                    apply_mowing_geojson(device.map, device.location.RTK)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]  # type: ignore
                 device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))
@@ -522,7 +524,7 @@ class MowerStateReducer(StateReducer):
                     and device.map.area
                     and device.map.geojson_needs_regeneration(device.location.RTK)
                 ):
-                    device.map.generate_geojson(device.location.RTK, device.location.dock)
+                    apply_area_geojson(device.map, device.location.RTK, device.location.dock)
             case "toapp_report_data":
                 device.update_report_data(sys_msg[1])  # type: ignore
             case "mow_to_app_info":
@@ -572,8 +574,6 @@ class MowerStateReducer(StateReducer):
         # Unpacking driver oneof variants into mower-specific dataclasses would
         # either silently corrupt mower fields or AttributeError on missing
         # attributes — skip until a pool-specific reducer exists.
-        from pymammotion.utility.device_type import DeviceType
-
         if DeviceType.is_swimming_pool(device.name):
             _logger.debug(
                 "StateReducer: skipping driver update for swimming-pool device %s",
@@ -675,6 +675,13 @@ class MowerStateReducer(StateReducer):
                 device.mower_state.audio.volume = cfg_msg.au_switch
                 device.mower_state.audio.language = cfg_msg.au_language.name
                 device.mower_state.audio.sex = cfg_msg.sex.value
+            case "set_video_ack":
+                video_ack: MulSetVideoAck = mul_msg[1]  # type: ignore
+                if video_ack.error_code is not MulVideoErrorCode.SUCCESS:
+                    _logger.warning(
+                        "MowerStateReducer: device rejected the Agora video command (%s)",
+                        video_ack.error_code.name,
+                    )
             case "get_lamp_rsp":
                 lamp_resp: Getlamprsp = mul_msg[1]  # type: ignore
                 device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
@@ -1083,9 +1090,7 @@ class PoolStateReducer(StateReducer):
         if not (is_map or is_line):
             return
 
-        new_points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
         tag = map_info.tag  # MapTrans raw int: 0=completed, 1=transmitting, 2=failed
-
         if tag == MapTrans.failed:
             _logger.warning(
                 "PoolStateReducer: %s map/line fetch failed (MapTrans.failed) for %s",
@@ -1093,6 +1098,8 @@ class PoolStateReducer(StateReducer):
                 device.name,
             )
             return
+
+        new_points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
 
         # pack_index==1 means the first (or only) packet of a new transfer.
         # Reset to avoid accumulating leftover points from a previous fetch.
@@ -1475,10 +1482,6 @@ def get_state_reducer(device_name: str, is_saga_active: Callable[[], bool] | Non
     Picked once per device at handle construction time so the hot path
     doesn't pay an isinstance check on every incoming message.
     """
-    # Local import to avoid a circular dependency between the reducer module
-    # and the device-type helpers it consults.
-    from pymammotion.utility.device_type import DeviceType
-
     if DeviceType.is_swimming_pool(device_name):
         return PoolStateReducer(is_saga_active)
     if DeviceType.is_rtk(device_name):

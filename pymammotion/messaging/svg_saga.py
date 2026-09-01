@@ -27,7 +27,7 @@ class SvgSendSaga(Saga):
 
     Usage::
 
-        from pymammotion.utility.svg import build_svg_for_area, chunk_svg_messages
+        from pymammotion.data.model.svg import build_svg_for_area, chunk_svg_messages
 
         msg    = build_svg_for_area(area_hash, boundary, svg_data)
         chunks = chunk_svg_messages(msg)
@@ -57,7 +57,7 @@ class SvgSendSaga(Saga):
         """Initialise the saga.
 
         Args:
-            chunks:          Per-frame messages from :func:`~pymammotion.utility.svg.chunk_svg_messages`.
+            chunks:          Per-frame messages from :func:`~pymammotion.data.model.svg.chunk_svg_messages`.
             command_builder: Navigation command builder exposing ``send_svg_data(svg_message)``.
             send_command:    Async callable that transmits raw bytes to the device.
 

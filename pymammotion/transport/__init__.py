@@ -21,12 +21,14 @@ from pymammotion.transport.base import (
     TransportRateLimitedError,
     TransportType,
 )
+from pymammotion.transport.cloud import CloudTransport
 
 __all__ = [
     "AliyunMQTTConfig",
     "AliyunMQTTTransport",
     "AuthError",
     "BLEUnavailableError",
+    "CloudTransport",
     "CommandTimeoutError",
     "ConcurrentRequestError",
     "EventBus",

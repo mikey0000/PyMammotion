@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING
 
+from pymammotion.utility.device_type import DeviceType
+
 if TYPE_CHECKING:
     from pymammotion.data.model.device import MowingDevice, PoolCleanerDevice
 
@@ -150,8 +152,6 @@ class SpinoReadinessChecker(ReadinessChecker):
 
 def get_readiness_checker(device_name: str, product_key: str = "") -> ReadinessChecker:
     """Return the appropriate readiness checker for the device type."""
-    from pymammotion.utility.device_type import DeviceType
-
     if DeviceType.is_rtk(device_name, product_key):
         return NoReadinessChecker()
     if DeviceType.is_swimming_pool(device_name):

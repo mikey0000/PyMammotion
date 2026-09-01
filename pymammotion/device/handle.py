@@ -20,7 +20,7 @@ from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
 from pymammotion.device.dynamics_line_loop import dynamics_line_loop
 from pymammotion.device.modes import _DeviceMode
-from pymammotion.device.mqtt_loop import mqtt_activity_loop, poll_interval
+from pymammotion.device.mqtt_loop import mqtt_activity_loop
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
@@ -41,11 +41,12 @@ from pymammotion.transport.base import (
     Transport,
     TransportAvailability,
     TransportError,
-    TransportRateLimitedError,
     TransportType,
 )
 from pymammotion.transport.ble import BLETransport
-from pymammotion.utility.constant import MOWING_ACTIVE_MODES, NO_REQUEST_MODES, WorkMode
+from pymammotion.transport.cloud import CloudTransport
+from pymammotion.utility.constant.device_enums import WorkMode
+from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
 from pymammotion.utility.device_type import DeviceType
 
 _T = TypeVar("_T")
@@ -292,6 +293,16 @@ class DeviceHandle:
         #: cancel it and prevents the detached task from being garbage-collected mid-connect.
         self._ble_connect_task: asyncio.Task[None] | None = None
         self._ble_connect_lock: asyncio.Lock = asyncio.Lock()
+        #: Detached fire-and-forget tasks that no other slot owns.  The loop keeps only a
+        #: weak reference to a task, so one that nothing else holds can be garbage-collected
+        #: mid-flight; ``_spawn`` parks it here until it finishes.
+        self._background_tasks: set[asyncio.Future[None]] = set()
+        #: Set by ``stop_polling()`` and cleared by ``start()``.  Without it a
+        #: reconnect undoes an explicit stop: the CONNECTED edge in
+        #: ``update_availability`` spawns ``restart_keep_alive``, which restarts the
+        #: loop whenever the task slot is empty — which is exactly what stopping
+        #: leaves behind.
+        self._polling_stopped: bool = False
         #: True while the BLE continuous (count=0) report stream is active.  The MQTT
         #: activity loop checks this and skips its own poll while the stream is feeding.
         self._ble_stream_active: bool = False
@@ -342,8 +353,19 @@ class DeviceHandle:
         return MammotionCommand(self.device_name, self.user_account)
 
     def _wire_transport(self, transport: Transport) -> Callable[[TransportAvailability], Awaitable[None]]:
-        """Wire callbacks on a transport and register it; returns the availability handler."""
-        transport.on_message = self._make_message_handler(transport.transport_type)
+        """Wire callbacks on a transport and register it; returns the availability handler.
+
+        ``on_message`` is a single slot and is set for BLE only, because BLE is the
+        one per-device transport (``DeviceRegistry.find_ble_owner`` — exactly one
+        handle holds a device's BLETransport).  Cloud transports are shared across
+        every device on the account, so installing a per-device closure there would
+        mean the last handle to wire owns the slot for all of them: any frame that
+        reached the fallback would land in another device's reducer, and a detached
+        handle would stay reachable from the shared transport.  Cloud frames route by
+        iot_id through ``on_device_message`` instead (``MammotionClient._route_device_message``).
+        """
+        if transport.transport_type is TransportType.BLE:
+            transport.on_message = self._make_message_handler(transport.transport_type)
         handler = self._make_availability_handler(transport.transport_type)
         transport.add_availability_listener(handler)
         self._availability_handlers[transport.transport_type] = handler
@@ -354,8 +376,8 @@ class DeviceHandle:
         """Forget a transport without disconnecting it; returns it, or ``None`` if absent.
 
         Removes this handle's availability listener so the transport stops driving the
-        queue gate here.  ``on_message`` is cleared only for BLE: cloud transports route
-        per device via ``on_device_message`` and their ``on_message`` slot is shared.
+        queue gate here.  ``on_message`` is cleared for BLE, mirroring
+        :meth:`_wire_transport` — it is the only transport type we set it on.
         """
         transport = self._transports.pop(transport_type, None)
         if transport is None:
@@ -489,7 +511,7 @@ class DeviceHandle:
 
         await self.queue.enqueue(_send_report_cfg, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
-    async def _send_marked(self, transport: Transport, payload: bytes) -> None:
+    async def _send_marked(self, transport: Transport, payload: bytes, *, user_initiated: bool = False) -> None:
         """Send *payload* on *transport* and record the send time.
 
         Call this instead of ``transport.send()`` from any path that a
@@ -497,20 +519,22 @@ class DeviceHandle:
         is read by :meth:`_keep_alive_loop` to skip heartbeat sends when the
         transport has seen activity within the keep-alive window.
 
-        Raises TransportRateLimitedError immediately if a send is currently
-        blocked — without touching the network — so all callers (commands,
-        sagas, heartbeats) are gated uniformly.  Uses the same
-        ``is_send_blocked`` predicate as ``transport.send()`` itself, so this
-        pre-check can never block a send the transport would have allowed
-        (devices on quota-free firmware are exempt at both layers).
-        BLE transports are never rate-limited and are always allowed through.
+        Refuses a currently-blocked send immediately, without touching the network, so
+        all callers (commands, sagas, heartbeats) are gated uniformly.  The refusal
+        itself is ``CloudTransport.raise_if_send_blocked`` — the same call the send
+        verbs make — so the two layers can never disagree about whether a send is
+        allowed, nor about the message that says so.
+        BLE transports have no quota and are always allowed through.
+
+        *user_initiated* marks a command a person is waiting on: it spends past the
+        self-imposed quota but is still refused while the cloud's own 429 ban is
+        running.  Only cloud transports have a quota, so BLE keeps the plain
+        ``send()`` either way.
         """
         version = self.firmware_version
 
-        if transport.transport_type != TransportType.BLE and transport.is_send_blocked(version):
-            raise TransportRateLimitedError(
-                f"Transport {transport.transport_type.value} is rate-limited — send blocked"
-            )
+        if isinstance(transport, CloudTransport):
+            transport.raise_if_send_blocked(version, user_initiated=user_initiated)
 
         if transport.transport_type != TransportType.BLE:
             # The device drops out of its "synced" state ~10 s after the last sync and
@@ -524,7 +548,10 @@ class DeviceHandle:
             if since_sync > _MQTT_SYNC_INTERVAL:
                 await self._send_mqtt_sync(transport, since_sync=since_sync)
 
-        await transport.send(payload, iot_id=self.iot_id, firmware_version=version)
+        if user_initiated and isinstance(transport, CloudTransport):
+            await transport.send_user(payload, iot_id=self.iot_id, firmware_version=version)
+        else:
+            await transport.send(payload, iot_id=self.iot_id, firmware_version=version)
         if not self._stopping:
             await self._sent_bus.emit(payload)
 
@@ -926,7 +953,7 @@ class DeviceHandle:
         if self.on_device_unbound is not None and not self._unbound_migrating:
             self._unbound_migrating = True
             # Fire-and-forget so the send path isn't blocked by network re-discovery.
-            asyncio.ensure_future(self.on_device_unbound(self))  # noqa: RUF006
+            self._spawn(self.on_device_unbound(self))
 
         ble = self._transports.get(TransportType.BLE)
         if ble is not None and ble.is_connected:
@@ -974,7 +1001,6 @@ class DeviceHandle:
             telling us it's online again.
         """
         old_state = self._availability.connection_state
-        state_avail = availability
         # Preserve the existing flag when caller didn't specify; explicit True/False overrides.
         new_offline = (
             self._availability.mqtt_reported_offline if mqtt_reported_offline is None else mqtt_reported_offline
@@ -983,12 +1009,12 @@ class DeviceHandle:
         if transport_type == TransportType.BLE:
             self._availability = DeviceAvailability(
                 mqtt=self._availability.mqtt,
-                ble=state_avail,
+                ble=availability,
                 mqtt_reported_offline=new_offline,
             )
         else:
             self._availability = DeviceAvailability(
-                mqtt=state_avail,
+                mqtt=availability,
                 ble=self._availability.ble,
                 mqtt_reported_offline=new_offline,
             )
@@ -996,9 +1022,9 @@ class DeviceHandle:
         new_state = self._availability.connection_state
         if old_state != new_state and not self._stopping:
             snapshot, _ = self.state_machine.apply(self.state_machine.current.raw, self._availability)
-            asyncio.get_running_loop().create_task(self._state_changed_bus.emit(snapshot))
+            self._spawn(self._state_changed_bus.emit(snapshot))
             if old_state != DeviceConnectionState.CONNECTED and new_state == DeviceConnectionState.CONNECTED:
-                asyncio.get_running_loop().create_task(self.restart_keep_alive())
+                self._spawn(self.restart_keep_alive())
 
     @property
     def availability(self) -> DeviceAvailability:
@@ -1143,6 +1169,7 @@ class DeviceHandle:
         """
         self._stopping = False
         self._started = True
+        self._polling_stopped = False
         self.queue.start()
         if not self._skips_activity_loops and (self._keep_alive_task is None or self._keep_alive_task.done()):
             self._keep_alive_task = asyncio.get_running_loop().create_task(mqtt_activity_loop(self))
@@ -1185,8 +1212,13 @@ class DeviceHandle:
         self._dynamics_line_task = asyncio.get_running_loop().create_task(dynamics_line_loop(self))
 
     async def restart_keep_alive(self) -> None:
-        """Restart the MQTT activity loop if it has exited or was never started."""
-        if self._skips_activity_loops or self._stopping:
+        """Restart the MQTT activity loop if it has exited or was never started.
+
+        A host that called :meth:`stop_polling` keeps its stop: this runs on every
+        reconnect, and an empty task slot means either "the loop died" or "polling was
+        turned off", which only :attr:`_polling_stopped` distinguishes.
+        """
+        if self._skips_activity_loops or self._stopping or self._polling_stopped:
             return
         if self._keep_alive_task is None or self._keep_alive_task.done():
             _logger.debug("restart_keep_alive [%s]: restarting MQTT activity loop", self.device_name)
@@ -1197,8 +1229,10 @@ class DeviceHandle:
 
         The handle stays fully operational for receiving messages — state updates,
         saga results, and user-initiated sends all continue to work.  No outbound
-        polls are sent until ``start()`` is called again.
+        polls are sent until ``start()`` is called again; a transport reconnect does
+        not resume them.
         """
+        self._polling_stopped = True
         if self._keep_alive_task is not None and not self._keep_alive_task.done():
             self._keep_alive_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1245,36 +1279,54 @@ class DeviceHandle:
         """
         self._rearm_event.set()
 
-    def device_mode(self) -> _DeviceMode:
-        """Return the coarse device-mode bucket used for cadence selection.
+    def _reported_dev(self) -> Any | None:
+        """Return the device-status block of the latest snapshot, or None if unreported.
+
+        The three classifiers below all read this one field; the guard lives here so
+        a partially-populated snapshot is handled in one place rather than three.
+        """
+        try:
+            return self.state_machine.current.raw.report_data.dev  # type: ignore
+        except (AttributeError, TypeError):
+            return None
+
+    def _reported_sys_status(self) -> int | None:
+        """Return the last reported ``sys_status``, or None if unreported."""
+        dev = self._reported_dev()
+        return None if dev is None else dev.sys_status
+
+    def cadence_mode(self) -> _DeviceMode:
+        """Return the coarse device-mode bucket the poll loops pick their tick rate from.
 
         ACTIVE        — sys_status in ``MOWING_ACTIVE_MODES`` (mowing/returning).
         DOCKED_FULL   — on dock and battery at 100%.
         DOCKED_CHARGING — on dock but battery below 100%.
-        IDLE          — anything else (paused, locked, lost, …).
+        SLEEPING      — low-power sleep.
+        IDLE          — anything else (paused, locked, lost, …), and the fallback
+                        when nothing has been reported yet.
 
-        Public because the BLE / MQTT / dynamics-line loops all consult it
-        to pick their tick cadence.
+        Named for what it is used for, not for the field it reads: the wire-level
+        ``sys_status`` name is taken by ``utility.constant.display.device_mode``,
+        which maps the same int to a ``WorkMode`` name string.
 
-        SLEEPING is tested first: a sleeping device is usually still sitting on
-        its dock, so the charge-state branches below would otherwise claim it and
-        poll it on the docked cadence.
+        SLEEPING is tested before the charge-state branches: a sleeping device is
+        usually still sitting on its dock, so those would otherwise claim it and poll
+        it on the docked cadence.
         """
+        dev = self._reported_dev()
+        if dev is None:
+            return _DeviceMode.IDLE
         try:
-            dev = self.state_machine.current.raw.report_data.dev  # type: ignore
             sys_status = dev.sys_status
             if sys_status == WorkMode.MODE_SLEEPING:
                 return _DeviceMode.SLEEPING
             if sys_status in MOWING_ACTIVE_MODES:
                 return _DeviceMode.ACTIVE
-            charge_state = int(dev.charge_state)
-            if charge_state != 0:
-                if int(dev.battery_val) >= 100:
-                    return _DeviceMode.DOCKED_FULL
-                return _DeviceMode.DOCKED_CHARGING
-            return _DeviceMode.IDLE
+            if int(dev.charge_state) != 0:
+                return _DeviceMode.DOCKED_FULL if int(dev.battery_val) >= 100 else _DeviceMode.DOCKED_CHARGING
         except (AttributeError, TypeError, ValueError):
             return _DeviceMode.IDLE
+        return _DeviceMode.IDLE
 
     @property
     def is_sleeping(self) -> bool:
@@ -1282,24 +1334,23 @@ class DeviceHandle:
 
         Public so consumers don't have to compare against the private
         ``_DeviceMode`` enum to answer it.  Read straight off sys_status rather
-        than via :meth:`device_mode`, so retuning the cadence buckets can't change
+        than via :meth:`cadence_mode`, so retuning the cadence buckets can't change
         what this reports.
         """
-        try:
-            return self.state_machine.current.raw.report_data.dev.sys_status == WorkMode.MODE_SLEEPING  # type: ignore
-        except (AttributeError, TypeError):
-            return False
+        return self._reported_sys_status() == WorkMode.MODE_SLEEPING
+
+    def _spawn(self, awaitable: Awaitable[None]) -> None:
+        """Run *awaitable* detached, holding a reference until it completes."""
+        task = asyncio.ensure_future(awaitable)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     def in_no_request_mode(self) -> bool:
         """Return True when the device is in a mode where polling sends are unwelcome.
 
-        Public — the BLE polling loop consults this to skip count=1 polls in
-        modes that don't want to receive them.
+        Consulted by the MQTT and BLE poll loops before sending.
         """
-        try:
-            return self.state_machine.current.raw.report_data.dev.sys_status in NO_REQUEST_MODES  # type: ignore
-        except (AttributeError, TypeError):
-            return False
+        return self._reported_sys_status() in NO_REQUEST_MODES
 
     async def sleep_or_rearm(self, seconds: float) -> bool:
         """Sleep for *seconds*, returning ``True`` early if ``_rearm_event`` fires.
@@ -1317,14 +1368,6 @@ class DeviceHandle:
             return False
         self._rearm_event.clear()
         return True
-
-    def _poll_interval(self) -> float:
-        """Return the MQTT one-shot poll interval based on current device mode.
-
-        Thin wrapper kept on the handle for tests; actual cadence table lives
-        in :mod:`pymammotion.device.mqtt_loop`.
-        """
-        return poll_interval(self)
 
     # ------------------------------------------------------------------
     # Public report-cfg API (used by MammotionClient / HA via client.py)
@@ -1408,7 +1451,7 @@ class DeviceHandle:
                 _REPORT_SNAPSHOT_DEBOUNCE,
             )
             return
-        await self._send_one_shot_report()
+        await self.send_one_shot_report()
 
     async def start_report_stream(self, duration_ms: int = 300_000) -> None:
         """Start a transient report window lasting ``duration_ms`` ms.
@@ -1426,7 +1469,7 @@ class DeviceHandle:
         * The stop callback skips RPT_STOP if BLE is still streaming so the BLE
           polling loop is never interrupted mid-run.
         """
-        if self.device_mode() != _DeviceMode.ACTIVE:
+        if self.cadence_mode() != _DeviceMode.ACTIVE:
             await self.request_report_snapshot()
             return
 
@@ -1438,7 +1481,7 @@ class DeviceHandle:
 
         if not self._ble_stream_active:
             if already_streaming:
-                await self._send_report_stream_keep()
+                await self.send_report_stream_keep()
             else:
                 await self._send_report_stream_start(duration_ms)
 
@@ -1532,7 +1575,7 @@ class DeviceHandle:
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
-    async def _send_report_stream_keep(self) -> None:
+    async def send_report_stream_keep(self) -> None:
         """Enqueue RPT_KEEP to refresh an already-active continuous stream."""
         cmd_bytes = self.commands.request_iot_sys(
             rpt_act=RptAct.RPT_KEEP,
@@ -1562,7 +1605,7 @@ class DeviceHandle:
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
-    async def _send_one_shot_report(self) -> None:
+    async def send_one_shot_report(self) -> None:
         """Enqueue a one-shot ``request_iot_sys(count=1)`` data refresh.
 
         Routes via the best available transport — BLE if connected and preferred,
@@ -1599,7 +1642,7 @@ class DeviceHandle:
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
-    async def _enqueue_ble_stream_command(self, act: RptAct, count: int) -> None:
+    async def enqueue_ble_stream_command(self, act: RptAct, count: int) -> None:
         """Enqueue a BLE-pinned ``request_iot_sys`` config command.
 
         ``count=0`` (with ``RPT_START``) starts/renews the continuous stream;
@@ -1662,6 +1705,21 @@ class DeviceHandle:
     def has_transport(self, transport_type: TransportType) -> bool:
         """Check if a transport of the given type is registered."""
         return transport_type in self._transports
+
+    @property
+    def has_any_transport(self) -> bool:
+        """Whether any transport at all is registered (usable or not)."""
+        return bool(self._transports)
+
+    @property
+    def last_transport_activity(self) -> float:
+        """Monotonic stamp of the most recent inbound traffic on any transport.
+
+        Distinct from :attr:`last_report_at`, which only counts decoded LubaMsg
+        frames — this is what the poll loop debounces against, so any inbound
+        byte counts.  0.0 when nothing has arrived yet.
+        """
+        return max((t.last_received_monotonic for t in self._transports.values()), default=0.0)
 
     @property
     def is_started(self) -> bool:
@@ -1745,7 +1803,7 @@ class DeviceHandle:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         mqtt_connected_since: float | None = None
-        poll_interval = 0.5
+        connect_poll_interval = 0.5
 
         while True:
             now = loop.time()
@@ -1774,7 +1832,7 @@ class DeviceHandle:
                     timeout,
                 )
                 return False
-            await asyncio.sleep(min(poll_interval, remaining))
+            await asyncio.sleep(min(connect_poll_interval, remaining))
 
     def schedule_ble_connection(self, ble: BLETransport) -> None:
         """Kick a background BLE connect, single-flight.
@@ -1816,8 +1874,19 @@ class DeviceHandle:
                     exc_info=True,
                 )
 
-    async def send_raw(self, payload: bytes, *, prefer_ble: bool | None = None) -> None:
-        """Send raw bytes via the best available transport, with BLE fallback on offline."""
+    async def send_raw(self, payload: bytes, *, prefer_ble: bool | None = None, user_initiated: bool = False) -> None:
+        """Send raw bytes via the best available transport, with BLE fallback on offline.
+
+        Raises rather than returning when the payload could not be handed to a
+        transport — including the rate-limit refusals, which the command queue
+        classifies and logs on the queued path and which a direct command propagates
+        so the host can tell the user.  A caller that got no exception may assume the
+        bytes were sent.
+
+        *user_initiated* is forwarded to every send attempt, including the BLE and
+        cloud fallbacks below: a person is waiting on the command whichever transport
+        ends up carrying it.  See :meth:`_send_marked` for what it exempts.
+        """
         _logger.debug(
             "send_raw '%s': %d bytes prefer_ble=%s transports=%s",
             self.device_name,
@@ -1845,42 +1914,42 @@ class DeviceHandle:
                     _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
                     self.schedule_ble_connection(cast(BLETransport, ble))
         try:
-            transport = self.active_transport(prefer_ble=prefer_ble)
+            transport = self.active_transport(prefer_ble=prefer_ble, user_initiated=user_initiated)
         except NoTransportAvailableError:
             ble = self._transports.get(TransportType.BLE)
             if ble is not None and not ble.is_connected and ble.is_usable:
                 _logger.debug("BLE disconnected for '%s' — reconnecting before send", self.device_name)
                 await ble.connect()
-                transport = self.active_transport(prefer_ble=prefer_ble)
+                transport = self.active_transport(prefer_ble=prefer_ble, user_initiated=user_initiated)
             else:
                 raise
         _logger.debug("send_raw '%s': sending via %s", self.device_name, transport.transport_type.value)
         try:
-            await self._send_marked(transport, payload)
-        except TransportRateLimitedError:
-            _logger.warning(
-                "send_raw '%s': transport rate-limited — send blocked (%.0fs until sends resume)",
-                self.device_name,
-                transport.seconds_until_send_available(),
-            )
+            await self._send_marked(transport, payload, user_initiated=user_initiated)
         except TooManyRequestsException:
+            # Arm the ban, then let it through: the cloud refused this payload, so a
+            # caller that swallowed it would report success for a send that never
+            # happened.  The queue classifies it (WARNING bucket); a direct command
+            # propagates it so the host can tell the user.
             _logger.warning("send_raw '%s': rate limited by cloud — blocking MQTT sends for 12h", self.device_name)
-            transport.set_rate_limited()
+            if isinstance(transport, CloudTransport):
+                transport.set_rate_limited()
+            raise
         except DeviceOfflineException:
             ble = self._on_device_offline(transport)
             if ble is None:
                 raise
-            await self._send_marked(ble, payload)
+            await self._send_marked(ble, payload, user_initiated=user_initiated)
         except DeviceUnboundException:
             ble = await self._on_device_unbound(transport)
             if ble is None:
                 raise
-            await self._send_marked(ble, payload)
+            await self._send_marked(ble, payload, user_initiated=user_initiated)
         except TransportError:
             if transport.transport_type is not TransportType.BLE:
                 raise
             mqtt = self._pick_cloud_transport()
-            if mqtt is None or not self._cloud_transport_usable(mqtt):
+            if mqtt is None or not self._cloud_transport_usable(mqtt, user_initiated=user_initiated):
                 _logger.warning(
                     "Device '%s' BLE send failed and no usable MQTT transport available — giving up",
                     self.device_name,
@@ -1891,7 +1960,7 @@ class DeviceHandle:
                 self.device_name,
                 mqtt.transport_type.value,
             )
-            await self._send_marked(mqtt, payload)
+            await self._send_marked(mqtt, payload, user_initiated=user_initiated)
 
     # ------------------------------------------------------------------
     # Error bus
@@ -1959,7 +2028,7 @@ class DeviceHandle:
     def ble_stream_active(self, value: bool) -> None:
         """Set by the BLE polling loop.
 
-        and by ``_enqueue_ble_stream_command``
+        and by ``enqueue_ble_stream_command``
         on a verified RPT_START) to reflect whether a continuous stream is
         currently being renewed.  Exposed as a setter so loops don't need to
         reach into ``_ble_stream_active`` directly.
@@ -2019,15 +2088,34 @@ class DeviceHandle:
                 return t
         return None
 
-    def _cloud_transport_usable(self, mqtt: Transport) -> bool:
+    def _cloud_transport_usable(self, mqtt: Transport, *, user_initiated: bool = False) -> bool:
         """Return True when MQTT may be sent on — the one gate for that question.
 
         Usable transport *and* not reported offline by the cloud.  Don't re-derive
         either half at a call site.
-        """
-        return mqtt.is_usable and not self._availability.mqtt_reported_offline
 
-    def active_transport(self, *, prefer_ble: bool | None = None) -> Transport:
+        *user_initiated* drops the offline half, and only that half: a transport that is
+        unusable in its own right (terminal auth failure) stays unusable for everyone.
+
+        This is not a fire-and-forget publish into a broker queue.  A cloud send is a
+        synchronous HTTPS POST — ``CloudIOTGateway.send_cloud_command`` to
+        ``/thing/service/invoke``, or ``MQTTTransport._invoke`` to ``mqtt_invoke`` — and
+        the response says whether the device was reachable.  An offline device is
+        *rejected* with a ``DEVICE_OFFLINE_CODES`` code, which raises
+        ``DeviceOfflineException``, re-arms this flag and reaches the person who pressed
+        the button.  Nothing is left sitting in a queue to act on the mower later.
+
+        So for a user command the flag is advisory, and worth one bounded round trip to
+        test: MQTT carries the *replies*, so its state is a poor proxy for whether a
+        command can be delivered, and the flag is only ever as fresh as the last thing
+        the cloud chose to tell us.  Background traffic keeps the strict gate — nobody is
+        waiting on it, so it has no reason to spend sends probing.
+        """
+        if not mqtt.is_usable:
+            return False
+        return user_initiated or not self._availability.mqtt_reported_offline
+
+    def active_transport(self, *, prefer_ble: bool | None = None, user_initiated: bool = False) -> Transport:
         """Return the best transport to send on *right now*.
 
         Selection order (``prefer_ble`` does NOT change it — see below):
@@ -2052,6 +2140,9 @@ class DeviceHandle:
                         selection-change log de-dup key, but it no longer affects which
                         transport is returned (a connected BLE always wins; otherwise a
                         usable MQTT wins).  When None the handle's ``_prefer_ble`` is used.
+            user_initiated: Let a person's command past the ``mqtt_reported_offline``
+                        gate — see :meth:`_cloud_transport_usable`.  A connected BLE
+                        still wins, so this only ever decides MQTT-or-nothing.
 
         Raises:
             NoTransportAvailableError: if nothing usable is registered.
@@ -2065,7 +2156,7 @@ class DeviceHandle:
 
         mqtt_reported_offline = self._availability.mqtt_reported_offline
         mqtt = self._pick_cloud_transport()
-        mqtt_usable = mqtt is not None and self._cloud_transport_usable(mqtt)
+        mqtt_usable = mqtt is not None and self._cloud_transport_usable(mqtt, user_initiated=user_initiated)
 
         def _log_selection(path: str, *args: Any) -> None:
             """Log only when the (path, prefer_ble, ble_usable, mqtt_usable) tuple changes.

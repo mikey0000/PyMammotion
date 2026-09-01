@@ -18,7 +18,7 @@ async def test_restore_with_healthy_cache_skips_login(fake_cloud: FakeMammotionC
     cached = first.to_cache()
     await first.stop()
     assert cached
-    scenario.counters.clear()
+    await fake_cloud.baseline_counters()
 
     second = MammotionClient()
     try:
@@ -40,8 +40,8 @@ async def test_restore_with_revoked_bearers_falls_back_to_one_login(
     cached = first.to_cache()
     await first.stop()
 
+    await fake_cloud.baseline_counters()
     scenario.expire_session()
-    scenario.counters.clear()
 
     second = MammotionClient()
     try:
@@ -60,22 +60,26 @@ async def test_deactivated_account_restore_costs_one_refresh_and_one_login(
 ) -> None:
     """The exact loop from the field log, per attempt: one 40102 + one rejected login.
 
-    The cached access token is minted near expiry so validate_login's
-    ensure_token_valid must attempt the refresh — reproducing the log's
+    The cached access token is aged to just inside the refresh lead so
+    validate_login's ensure_token_valid must attempt the refresh — reproducing the log's
     "refresh rejected (40102) → fallback login → account deactivated" chain.
     The bound under test: ONE refresh grant and ONE password grant per restore,
     and the attempt ends in LoginFailedError (which the HA layer maps to
     ConfigEntryAuthFailed + cache clearing).
     """
     scenario = fake_cloud.scenario
-    scenario.access_token_ttl = 60.0  # < the 300 s refresh lead → refresh on validate
     first = MammotionClient()
     await first.login_and_initiate_cloud(scenario.account, scenario.password)
     cached = first.to_cache()
     await first.stop()
 
+    # Age the *cached* token rather than minting it near-expiry: a short
+    # access_token_ttl at login leaves the first client's refresh scheduler inside its
+    # 300 s lead window, spinning refreshes through the whole of setup and racing the
+    # counter assertions below.
+    await fake_cloud.baseline_counters()
+    scenario.age_cached_access_token(cached, remaining=60.0)
     scenario.deactivate_account()
-    scenario.counters.clear()
 
     second = MammotionClient()
     try:

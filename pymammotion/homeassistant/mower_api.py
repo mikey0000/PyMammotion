@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 
 from pymammotion.client import MammotionClient
 from pymammotion.data.model import GenerateRouteInformation
+from pymammotion.data.model.device_capabilities import DeviceConfig
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, TransportType
-from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:

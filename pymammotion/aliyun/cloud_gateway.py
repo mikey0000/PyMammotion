@@ -1189,13 +1189,13 @@ class CloudIOTGateway:
             "device_data",
         )
 
-        if "connect_response" in data:
-            data["connect_data"] = data["connect_response"]
+        # Older caches stored this under "connect_response".  Resolve it locally —
+        # this method is documented pure and the caller may re-persist the dict.
+        connect_data = data.get("connect_data") or data.get("connect_response")
 
-        if any(k not in data for k in required_keys):
+        if connect_data is None or any(k not in data for k in required_keys if k != "connect_data"):
             return None
 
-        connect_data = data["connect_data"]
         auth_data = data["auth_data"]
         region_data = data["region_data"]
         aep_data = data["aep_data"]

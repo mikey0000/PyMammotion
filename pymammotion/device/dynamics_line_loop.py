@@ -14,7 +14,7 @@ matters anyway (HA users watching live mow progress are typically nearby).
 
 Per-tick gates:
 
-* device is in ACTIVE mode (``DeviceHandle.device_mode``)
+* device is in ACTIVE mode (``LoopHost.cadence_mode``)
 * BLE transport is still connected
 * device type supports dynamics line (re-checked because LUBA_VA is
   firmware-gated and firmware may not be known at loop-start)
@@ -30,6 +30,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from pymammotion.data.model.device import MowerDevice
+from pymammotion.data.model.generate_geojson import apply_dynamics_line_geojson
 from pymammotion.data.model.hash_list import PathType
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.messaging.common_data_saga import CommonDataSaga
@@ -37,7 +38,7 @@ from pymammotion.transport.base import TransportType
 from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
-    from pymammotion.device.handle import DeviceHandle
+    from pymammotion.device.loop_host import LoopHost
 
 _logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ _logger = logging.getLogger(__name__)
 _DYNAMICS_LINE_POLL_INTERVAL: float = 10.0
 
 
-async def dynamics_line_loop(handle: DeviceHandle) -> None:
+async def dynamics_line_loop(handle: LoopHost) -> None:
     """Periodic dynamics-line poll loop — BLE-gated.
 
     Started from ``DeviceHandle._on_ble_connected``; cancelled from the BLE
@@ -62,23 +63,23 @@ async def dynamics_line_loop(handle: DeviceHandle) -> None:
     """
     device_type = DeviceType.value_of_str(handle.device_name)
 
-    while not handle._stopping:  # noqa: SLF001
+    while not handle.is_stopping:
         if await handle.sleep_or_rearm(_DYNAMICS_LINE_POLL_INTERVAL):
             # rearmed by a user command — re-evaluate immediately
             pass
 
-        if handle._stopping:  # noqa: SLF001
+        if handle.is_stopping:
             return
 
         # BLE-only gate.  If BLE went away without the availability handler
         # cancelling us (shouldn't happen, but defensive), exit cleanly so
         # the next _on_ble_connected can start a fresh loop.
-        ble = handle._transports.get(TransportType.BLE)  # noqa: SLF001
+        ble = handle.get_transport(TransportType.BLE)
         if ble is None or not ble.is_connected:
             _logger.debug("dynamics_line_loop [%s]: BLE not connected — loop exiting", handle.device_name)
             return
 
-        if handle.device_mode() != _DeviceMode.ACTIVE:
+        if handle.cadence_mode() != _DeviceMode.ACTIVE:
             continue
 
         if handle.queue.is_saga_active:
@@ -92,7 +93,7 @@ async def dynamics_line_loop(handle: DeviceHandle) -> None:
         await _enqueue_dynamics_line_saga(handle)
 
 
-def _main_controller_version(handle: DeviceHandle) -> str | None:
+def _main_controller_version(handle: LoopHost) -> str | None:
     """Return the device's main-controller firmware version, or None if unknown.
 
     Pulls ``device_firmwares.main_controller`` off the current state snapshot;
@@ -106,7 +107,7 @@ def _main_controller_version(handle: DeviceHandle) -> str | None:
     return fw or None
 
 
-async def _enqueue_dynamics_line_saga(handle: DeviceHandle) -> None:
+async def _enqueue_dynamics_line_saga(handle: LoopHost) -> None:
     """Enqueue a ``CommonDataSaga`` for the dynamics line and wire the update.
 
     On successful completion the assembled point list is stored on
@@ -127,7 +128,7 @@ async def _enqueue_dynamics_line_saga(handle: DeviceHandle) -> None:
         if not isinstance(raw, MowerDevice):
             return
         raw.map.update_dynamics_line(saga.result)
-        raw.map.apply_dynamics_line_geojson(raw.location.RTK)
+        apply_dynamics_line_geojson(raw.map, raw.location.RTK)
 
     try:
         await handle.enqueue_saga(saga, on_complete=_on_complete)

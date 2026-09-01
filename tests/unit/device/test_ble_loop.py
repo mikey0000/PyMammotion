@@ -35,24 +35,23 @@ from pymammotion.transport.base import TransportType
 def _make_handle() -> MagicMock:
     """Build a DeviceHandle double rigged to fire the continuous-stream branch."""
     handle = MagicMock()
-    handle._stopping = False
+    handle.is_stopping = False
     handle.device_name = "Luba-TEST"
     handle.ble_stream_active = False
     handle.last_report_at = 0.0
-    handle._rearm_event = MagicMock()
 
     ble = MagicMock()
     ble.is_connected = True
-    handle._transports = {TransportType.BLE: ble}
+    handle.get_transport = MagicMock(return_value=ble)
 
     # ACTIVE mode → continuous stream (ble_interval = None)
-    handle.device_mode = MagicMock(return_value=_DeviceMode.ACTIVE)
+    handle.cadence_mode = MagicMock(return_value=_DeviceMode.ACTIVE)
     handle.in_no_request_mode = MagicMock(return_value=False)
 
     # Async hooks the loop calls
-    handle._send_report_stream_keep = AsyncMock()
-    handle._enqueue_ble_stream_command = AsyncMock()
-    handle._send_one_shot_report = AsyncMock()
+    handle.send_report_stream_keep = AsyncMock()
+    handle.enqueue_ble_stream_command = AsyncMock()
+    handle.send_one_shot_report = AsyncMock()
 
     return handle
 
@@ -61,13 +60,13 @@ async def _run_one_tick(handle: MagicMock) -> None:
     """Drive the polling loop for exactly one iteration's worth of action.
 
     The real loop sleeps 8 s between iterations.  We replace that sleep with
-    one that bumps ``_stopping`` so the loop exits cleanly after a single tick.
+    one that trips ``is_stopping`` so the loop exits cleanly after a single tick.
     """
     _real_sleep = asyncio.sleep
 
     async def _short_sleep(_seconds: float) -> None:
         # First call comes from the loop tail — set stop so the loop exits.
-        handle._stopping = True
+        handle.is_stopping = True
         # Yield once so the loop has a chance to observe the flag.
         await _real_sleep(0)
 
@@ -82,8 +81,8 @@ async def test_first_iteration_sends_rpt_start() -> None:
 
     await _run_one_tick(handle)
 
-    handle._enqueue_ble_stream_command.assert_any_await(RptAct.RPT_START, count=0)
-    handle._send_report_stream_keep.assert_not_awaited()
+    handle.enqueue_ble_stream_command.assert_any_await(RptAct.RPT_START, count=0)
+    handle.send_report_stream_keep.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -96,9 +95,9 @@ async def test_active_stream_sends_rpt_keep_when_data_flowing() -> None:
 
     await _run_one_tick(handle)
 
-    handle._send_report_stream_keep.assert_awaited()
+    handle.send_report_stream_keep.assert_awaited()
     rpt_stop_calls = [
-        c for c in handle._enqueue_ble_stream_command.await_args_list
+        c for c in handle.enqueue_ble_stream_command.await_args_list
         if c.args and c.args[0] == RptAct.RPT_STOP
     ]
     assert rpt_stop_calls == [], "RPT_STOP should not fire on a healthy stream"
@@ -120,17 +119,17 @@ async def test_stale_stream_bounces_with_stop_then_fresh_start() -> None:
     await _run_one_tick(handle)
 
     rpt_stop_calls = [
-        c for c in handle._enqueue_ble_stream_command.await_args_list
+        c for c in handle.enqueue_ble_stream_command.await_args_list
         if c.args and c.args[0] == RptAct.RPT_STOP
     ]
     rpt_start_calls = [
-        c for c in handle._enqueue_ble_stream_command.await_args_list
+        c for c in handle.enqueue_ble_stream_command.await_args_list
         if c.args and c.args[0] == RptAct.RPT_START
     ]
     assert len(rpt_stop_calls) == 1, "stale stream must trigger exactly one RPT_STOP"
     assert len(rpt_start_calls) == 1, "stale stream must trigger a fresh RPT_START"
     # And critically — no RPT_KEEP fired this tick (we bounced instead)
-    handle._send_report_stream_keep.assert_not_awaited()
+    handle.send_report_stream_keep.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -144,9 +143,9 @@ async def test_stale_check_skipped_before_first_report() -> None:
 
     await _run_one_tick(handle)
 
-    handle._send_report_stream_keep.assert_awaited()
+    handle.send_report_stream_keep.assert_awaited()
     rpt_stop_calls = [
-        c for c in handle._enqueue_ble_stream_command.await_args_list
+        c for c in handle.enqueue_ble_stream_command.await_args_list
         if c.args and c.args[0] == RptAct.RPT_STOP
     ]
     assert rpt_stop_calls == [], "must not bounce on a never-received-report boot"
@@ -160,7 +159,7 @@ async def test_stale_check_tolerates_stop_failure() -> None:
     handle.ble_stream_active = True
     handle.last_report_at = time.monotonic() - (_BLE_STREAM_STALE_THRESHOLD + 5.0)
     # First call (RPT_STOP) raises; second call (RPT_START) succeeds
-    handle._enqueue_ble_stream_command.side_effect = [
+    handle.enqueue_ble_stream_command.side_effect = [
         RuntimeError("transient BLE write failure"),
         None,
     ]
@@ -168,6 +167,6 @@ async def test_stale_check_tolerates_stop_failure() -> None:
     await _run_one_tick(handle)
 
     # Even though RPT_STOP raised, the next branch must have sent RPT_START
-    assert handle._enqueue_ble_stream_command.await_count >= 2
-    second_call = handle._enqueue_ble_stream_command.await_args_list[1]
+    assert handle.enqueue_ble_stream_command.await_count >= 2
+    second_call = handle.enqueue_ble_stream_command.await_args_list[1]
     assert second_call.args[0] == RptAct.RPT_START

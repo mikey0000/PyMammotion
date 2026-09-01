@@ -53,18 +53,55 @@ def make_handle(
 # ---------------------------------------------------------------------------
 
 
-async def test_add_transport_sets_on_message() -> None:
-    """transport.on_message must be a callable closure after add_transport.
-
-    _wire_transport now sets a per-transport closure (not _on_raw_message directly)
-    so that the transport type is captured and forwarded to _on_raw_message.
-    """
+async def test_add_transport_sets_on_message_for_ble() -> None:
+    """BLE is per-device, so it gets the closure that carries the transport type."""
     handle = make_handle()
-    transport = make_transport(TransportType.CLOUD_ALIYUN)
+    transport = make_transport(TransportType.BLE)
 
     await handle.add_transport(transport)
 
     assert callable(transport.on_message)
+
+
+@pytest.mark.parametrize("transport_type", [TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION])
+async def test_add_transport_leaves_cloud_on_message_alone(transport_type: TransportType) -> None:
+    """Cloud transports are account-shared, so a per-device closure must not land there.
+
+    The slot is single-valued: whichever handle wired last would own it for every
+    device on the account.  Cloud frames route by iot_id via on_device_message.
+    """
+    handle = make_handle()
+    transport = make_transport(transport_type)
+    transport.on_message = None
+
+    await handle.add_transport(transport)
+
+    assert transport.on_message is None
+
+
+async def test_two_handles_sharing_a_cloud_transport_cannot_steal_the_slot() -> None:
+    """Two devices on one account share the transport object; neither may claim it."""
+    shared = make_transport(TransportType.CLOUD_ALIYUN)
+    shared.on_message = None
+    first = make_handle("dev1", "Mower One")
+    second = make_handle("dev2", "Mower Two")
+
+    await first.add_transport(shared)
+    await second.add_transport(shared)
+
+    assert shared.on_message is None
+
+
+async def test_detaching_a_cloud_transport_leaves_no_reference_to_the_handle() -> None:
+    """A detached handle must not stay reachable through the shared transport."""
+    shared = make_transport(TransportType.CLOUD_ALIYUN)
+    shared.on_message = None
+    handle = make_handle()
+    await handle.add_transport(shared)
+
+    handle.detach_transport(TransportType.CLOUD_ALIYUN)
+
+    assert shared.on_message is None
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +313,9 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
 
     call_count = 0
 
-    async def _send_marked_side_effect(transport: object, payload: bytes) -> None:  # noqa: ARG001
+    async def _send_marked_side_effect(
+        transport: object, payload: bytes, *, user_initiated: bool = False
+    ) -> None:  # noqa: ARG001
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -638,26 +677,32 @@ async def test_send_marked_passes_through_when_not_rate_limited() -> None:
 
 
 async def test_send_raw_calls_set_rate_limited_on_429() -> None:
-    """send_raw must call transport.set_rate_limited() when TooManyRequestsException is raised."""
+    """send_raw arms the ban and then propagates — the cloud refused this payload.
+
+    Swallowing it reported success for a send that never happened, which the direct
+    (Priority.USER) path cannot tolerate: it relies on an exception to tell the host.
+    """
     handle = _make_rl_handle()
     mqtt = _make_mqtt_transport()
     mqtt.send = AsyncMock(side_effect=TooManyRequestsException("rate limited", "iot-id"))
     await handle.add_transport(mqtt)
 
-    await handle.send_raw(b"\x00")
+    with pytest.raises(TooManyRequestsException):
+        await handle.send_raw(b"\x00")
 
     mqtt.set_rate_limited.assert_called_once()
 
 
-async def test_send_raw_blocked_silently_when_already_rate_limited() -> None:
-    """send_raw must silently drop the send (not call transport.send) when already rate-limited."""
+async def test_send_raw_raises_when_already_rate_limited() -> None:
+    """send_raw must not touch the transport, and must tell the caller the send didn't happen."""
     handle = _make_rl_handle()
     mqtt = _make_mqtt_transport()
     mqtt.is_rate_limited = True
     mqtt.is_send_blocked = MagicMock(return_value=True)
     await handle.add_transport(mqtt)
 
-    await handle.send_raw(b"\x00")
+    with pytest.raises(TransportRateLimitedError):
+        await handle.send_raw(b"\x00")
 
     mqtt.send.assert_not_awaited()
     # set_rate_limited must NOT be called again — the ban is already active.
@@ -706,9 +751,9 @@ async def test_send_raw_guard_does_not_call_set_rate_limited_again() -> None:
     await handle.add_transport(mqtt)
 
     # Call send_raw three times while the transport is already rate-limited.
-    await handle.send_raw(b"\x01")
-    await handle.send_raw(b"\x02")
-    await handle.send_raw(b"\x03")
+    for payload in (b"\x01", b"\x02", b"\x03"):
+        with pytest.raises(TransportRateLimitedError):
+            await handle.send_raw(payload)
 
     mqtt.set_rate_limited.assert_not_called()
     mqtt.send.assert_not_awaited()
@@ -1154,7 +1199,7 @@ async def test_add_ble_device_wires_transport_when_handle_exists() -> None:
 
     fake_ble_device = MagicMock()
 
-    with patch("pymammotion.client.BLETransport") as MockBLETransport:
+    with patch("pymammotion.device.ble_inventory.BLETransport") as MockBLETransport:
         mock_transport = MagicMock()
         mock_transport.transport_type = TransportType.BLE
         mock_transport.is_connected = False
@@ -1174,13 +1219,13 @@ async def test_add_ble_device_stores_in_manager_when_no_handle() -> None:
     client = MammotionClient()
     fake_ble_device = MagicMock()
 
-    with patch("pymammotion.client.BLETransport") as MockBLETransport:
+    with patch("pymammotion.device.ble_inventory.BLETransport") as MockBLETransport:
         await client.add_ble_device("Luba-NOPE", fake_ble_device)
         # No handle registered → BLETransport must NOT be constructed
         MockBLETransport.assert_not_called()
 
     # Device should be stored in the manager for later use
-    assert client._ble_manager._entries.get("Luba-NOPE") is not None
+    assert client._ble._manager._entries.get("Luba-NOPE") is not None
 
 
 async def test_update_ble_device_updates_live_transport() -> None:
@@ -1326,7 +1371,9 @@ async def test_device_unbound_retries_over_ble() -> None:
 
     call_count = 0
 
-    async def _side_effect(transport: object, payload: bytes) -> None:  # noqa: ARG001
+    async def _side_effect(
+        transport: object, payload: bytes, *, user_initiated: bool = False
+    ) -> None:  # noqa: ARG001
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -1394,7 +1441,7 @@ async def test_send_marked_passes_firmware_version_to_is_send_blocked() -> None:
 
     await handle._send_marked(mqtt, b"\x01")  # noqa: SLF001
 
-    mqtt.is_send_blocked.assert_called_once_with(handle.firmware_version)
+    mqtt.is_send_blocked.assert_called_once_with(handle.firmware_version, user_initiated=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1574,3 +1621,51 @@ async def test_stop_unwires_transports_before_disconnecting() -> None:
     t.remove_availability_listener.assert_called_once()
     t.disconnect.assert_awaited_once()
     assert handle.is_started is False
+
+
+# ---------------------------------------------------------------------------
+# Public accessors the poll loops use instead of reaching into _transports
+# ---------------------------------------------------------------------------
+
+
+async def test_has_any_transport_reflects_registration() -> None:
+    handle = make_handle()
+    assert handle.has_any_transport is False
+
+    await handle.add_transport(make_transport(TransportType.CLOUD_ALIYUN))
+    assert handle.has_any_transport is True
+
+
+async def test_last_transport_activity_is_the_newest_across_transports() -> None:
+    """The poll loop debounces against this, so it must be the max, not any one."""
+    handle = make_handle()
+    assert handle.last_transport_activity == 0.0
+
+    older = make_transport(TransportType.CLOUD_ALIYUN)
+    older.last_received_monotonic = 100.0
+    newer = make_transport(TransportType.BLE)
+    newer.last_received_monotonic = 500.0
+    await handle.add_transport(older)
+    await handle.add_transport(newer)
+
+    assert handle.last_transport_activity == 500.0
+
+
+async def test_spawn_holds_the_task_until_it_completes() -> None:
+    """An unreferenced task can be garbage-collected mid-flight."""
+    handle = make_handle()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _work() -> None:
+        started.set()
+        await release.wait()
+
+    handle._spawn(_work())
+    await started.wait()
+    assert len(handle._background_tasks) == 1
+
+    release.set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert not handle._background_tasks, "done tasks must be discarded"

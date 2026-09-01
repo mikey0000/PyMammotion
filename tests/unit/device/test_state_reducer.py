@@ -38,6 +38,8 @@ from pymammotion.proto import (
     AreaHashName as _AHName,
     LubaMsg,
     MctlNav,
+    MulSetVideoAck,
+    MulVideoErrorCode,
     NavGetAllPlanTask,
     NavReqCoverPath,
     NavSysParamMsg,
@@ -48,6 +50,7 @@ from pymammotion.proto import (
     RptMaintain,
     RptRtk,
     RptWork,
+    SocMul,
     VioToAppInfoMsg,
 )
 from tests.unit.messaging._helpers import area_frame_named as _area_frame_named
@@ -492,3 +495,27 @@ def test_mammotion_partial_push_uses_presence_not_truthiness() -> None:
     assert updated.report_data.dev.sys_status == 14
     assert updated.report_data.dev.battery_val == 79
     assert updated.report_data.work.knife_height == 60
+
+
+def test_set_video_ack_error_is_logged_and_changes_nothing(caplog) -> None:
+    """A rejected Agora video command is surfaced in the log, not silently dropped."""
+    reducer = MowerStateReducer()
+    current = _make_device()
+    msg = LubaMsg(mul=SocMul(set_video_ack=MulSetVideoAck(error_code=MulVideoErrorCode.CREATE_CHANNEL_FAILED)))
+
+    with caplog.at_level("WARNING", logger="pymammotion.device.state_reducer"):
+        updated = reducer.apply(current, msg)
+
+    assert "CREATE_CHANNEL_FAILED" in caplog.text
+    _assert_sharing(current, updated, copied_fields=("mower_state",))
+
+
+def test_set_video_ack_success_is_quiet(caplog) -> None:
+    """A successful ack must not produce a warning."""
+    reducer = MowerStateReducer()
+    msg = LubaMsg(mul=SocMul(set_video_ack=MulSetVideoAck(error_code=MulVideoErrorCode.SUCCESS)))
+
+    with caplog.at_level("WARNING", logger="pymammotion.device.state_reducer"):
+        reducer.apply(_make_device(), msg)
+
+    assert caplog.text == ""

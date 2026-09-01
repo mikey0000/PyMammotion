@@ -26,17 +26,18 @@ from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPr
 from pymammotion.data.mqtt.status import MammotionStatusMessage, ThingStatusMessage
 from pymammotion.http.model.http import UnauthorizedExceptionError
 from pymammotion.transport.base import (
-    MQTT_RECONNECT_MAX_SEC_MAMMOTION,
-    MQTT_RECONNECT_MIN_SEC,
-    RATE_LIMIT_REMOVED_VERSION,  # noqa: F401 — re-exported for backwards compatibility
     AuthError,
     NoTransportAvailableError,
     ReLoginRequiredError,
-    Transport,
     TransportAvailability,
     TransportError,
-    TransportRateLimitedError,
     TransportType,
+)
+from pymammotion.transport.cloud import (
+    MQTT_RECONNECT_MAX_SEC_MAMMOTION,
+    MQTT_RECONNECT_MIN_SEC,
+    RATE_LIMIT_REMOVED_VERSION,  # noqa: F401 — re-exported for backwards compatibility
+    CloudTransport,
 )
 from pymammotion.transport.envelope import unwrap_envelope
 
@@ -86,6 +87,25 @@ def _broker_identity_summary(config: MQTTTransportConfig) -> str:
     )
 
 
+def _new_tls_context() -> ssl.SSLContext:
+    """Build the TLS context used for an ``mqtts://`` broker.
+
+    One builder for both construction sites — ``__init__`` and ``update_credentials``
+    — because they disagreed: whichever ran first decided whether the link could
+    negotiate TLS 1.3 or was pinned to 1.2.  ``PROTOCOL_TLS_CLIENT`` also replaces two
+    constants deprecated since Python 3.10.
+
+    Certificate verification stays off, matching what both previous contexts did: a
+    bare ``ssl.SSLContext(...)`` defaults to ``CERT_NONE``.  Turning it on is a
+    deliberate change with its own blast radius, not a side effect of dropping a
+    deprecated constant.
+    """
+    context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
 @dataclass(frozen=True)
 class MQTTTransportConfig:
     """Frozen configuration for an MQTTTransport instance."""
@@ -99,7 +119,7 @@ class MQTTTransportConfig:
     keepalive: int = 60
 
 
-class MQTTTransport(Transport):
+class MQTTTransport(CloudTransport):
     """Concrete Transport wrapping aiomqtt for Mammotion direct MQTT.
 
     A persistent receive loop task is started on connect() and cancelled on
@@ -114,11 +134,6 @@ class MQTTTransport(Transport):
     #: Called with (iot_id, identifier) — the identifier is the event name extracted
     #: from the topic path (e.g. ``"device_notification_event"``).
     on_device_notification: Callable[[str, str], Awaitable[None]] | None = None
-
-    #: Fired when the connection loop exhausts JWT refresh attempts and gives up.
-    #: The callback receives the underlying exception.  The client should trigger
-    #: a full re-login and then call ``connect()`` again.
-    on_fatal_auth_error: Callable[[Exception], Awaitable[None]] | None = None
 
     def __init__(
         self,
@@ -151,7 +166,7 @@ class MQTTTransport(Transport):
         self._http = mammotion_http
         self._creds_refresher = creds_refresher
         self._token_manager = token_manager
-        self._tls_context: ssl.SSLContext | None = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS) if config.use_ssl else None
+        self._tls_context: ssl.SSLContext | None = _new_tls_context() if config.use_ssl else None
         self._client: aiomqtt.Client | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event = asyncio.Event()
@@ -193,7 +208,7 @@ class MQTTTransport(Transport):
             password=creds.jwt,
         )
         if use_ssl and self._tls_context is None:
-            self._tls_context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS)
+            self._tls_context = _new_tls_context()
         # Deliberately does NOT clear _stop_event: connect() is the only restart
         # point, and it clears the event only after checking the unrecoverable-auth
         # circuit breaker.  Clearing here let a credential refresh racing _give_up
@@ -355,10 +370,7 @@ class MQTTTransport(Transport):
 
     async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
         """Send *payload* to the device and count it against the send quota."""
-        if self.is_send_blocked(firmware_version):
-            remaining = self.seconds_until_send_available()
-            msg = f"MQTTTransport rate-limited for {remaining:.0f}s more"
-            raise TransportRateLimitedError(msg)
+        self.raise_if_send_blocked(firmware_version)
         _logger.debug("Sending Mammotion MQTT payload: %s, %s iot_id", payload, iot_id)
         await self._invoke(payload, iot_id)
         self.record_send()

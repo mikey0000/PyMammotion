@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 
@@ -24,6 +25,37 @@ class FakeMammotionCloud:
         ...
         await cloud.stop()
     """
+
+    async def baseline_counters(self, *, quiet_for: float = 0.05, timeout: float = 3.0) -> None:
+        """Wait for the cloud to go idle, then zero the counters.
+
+        A test that establishes a session and tears it down before asserting on
+        counters has to take its baseline *after* that setup has fully drained.
+        Clearing immediately is a race: a request already in flight — or a
+        reconnect fired on the patched 50 ms backoff — lands afterwards and shows
+        up as one extra grant or connect, which is what made
+        ``test_deactivated_account_restore_costs_one_refresh_and_one_login``
+        intermittent.
+
+        Waits until the counters stop moving for *quiet_for*, then clears.  Raises
+        on *timeout*, because counters that never settle mean something the test
+        stopped is still talking to the server.
+        """
+        deadline = asyncio.get_running_loop().time() + timeout
+        snapshot = dict(self.scenario.counters)
+        stable_since = asyncio.get_running_loop().time()
+        while True:
+            await asyncio.sleep(0.01)
+            now = asyncio.get_running_loop().time()
+            current = dict(self.scenario.counters)
+            if current != snapshot:
+                snapshot, stable_since = current, now
+            elif now - stable_since >= quiet_for:
+                self.scenario.counters.clear()
+                return
+            if now > deadline:
+                msg = f"fake cloud never went idle; counters still moving: {current}"
+                raise AssertionError(msg)
 
     def __init__(self, scenario: Scenario | None = None, http_port: int = 0) -> None:
         self.scenario = scenario or Scenario()

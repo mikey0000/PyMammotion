@@ -53,7 +53,7 @@ async def test_cloud_registration_creates_started_handle_on_the_account(client: 
     assert handle.readiness_checker is not None
     assert handle.on_device_unbound == client._on_device_unbound
     assert session.device_ids == {NAME}
-    assert client._iot_id_to_device_key[("acct", "iot-1")] == ("acct", NAME)
+    assert client._inbound.handle_for("acct", "iot-1", "test") is handle
     tm.subscribe_handle.assert_called_once_with(handle)
 
 

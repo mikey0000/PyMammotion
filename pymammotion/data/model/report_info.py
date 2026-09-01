@@ -16,7 +16,7 @@ from pymammotion.data.model.enums import (
     SensorCheckState,
     SimCardStatus,
 )
-from pymammotion.utility.constant.device_constant import BreakPointReason
+from pymammotion.utility.constant.device_enums import BreakPointReason
 
 if TYPE_CHECKING:
     from pymammotion.proto import ReportInfoData

@@ -1084,23 +1084,15 @@ class ExternalMQTTPublisher:
 
 
 
-    async def _execute_stop_stream(self, device_name: str,payload:str, cmd_data:dict) -> None:    
+    async def _execute_stop_stream(self, device_name: str,payload:str, cmd_data:dict) -> None:
+        """Tell the device to stop publishing video."""
         handle = self.dev_console.mammotion.device_registry.get_by_name(device_name)
         if handle is None:
             await self._publish_command_response(device_name, "stop_stream", "error", error="Device not found")
             return
-        
-        """Fire the Agora join-channel command over MQTT only, without waiting for an ack."""
-        command_bytes = handle.commands.device_agora_join_channel_with_position(enter_state=0)
-        mqtt_transport = handle._transports.get(TransportType.CLOUD_ALIYUN) or handle._transports.get(  # noqa: SLF001
-            TransportType.CLOUD_MAMMOTION
-        )
-        #for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-        #    mqtt_transport = handle.get_transport(transport_type)
-        if mqtt_transport is not None and mqtt_transport.is_connected:
-            await handle._send_marked(mqtt_transport, command_bytes)
-            #break
-            
+
+        await self.dev_console.mammotion.stop_stream(device_name)
+
 
     async def _execute_send(self, device_name: str, not_used :str, cmd_data: dict) -> None:
         """Execute send command."""

@@ -24,6 +24,10 @@ class StreamSubscriptionResponse(DataClassORJSONMixin):
     uid: int
     license: str | None = None
     availableTime: int | None = None
+    # AES_256_GCM2 channel encryption, present when openEncrypt is set: `key` is used
+    # verbatim, `salt` is base64 and must be decoded before use.
+    key: str | None = None
+    salt: str | None = None
 
 
 @dataclass
