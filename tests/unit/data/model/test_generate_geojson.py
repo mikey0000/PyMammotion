@@ -883,17 +883,15 @@ def test_apply_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_mow_progress_geojson_matches_example_script_output() -> None:
-    """generate_mow_progress_geojson at now_index 1, 300 and 550 must produce output
-    identical to the reference files written by examples/generate_mow_progress_geojson.py.
+def _yuka_progress_inputs() -> tuple[HashList, "Point", tuple[float, float] | None]:
+    """Rebuild the arguments ``examples/generate_mow_progress_geojson.py`` runs with.
 
-    The example script uses ub_path_hash=0 (all paths) and the path_pos decoded from
-    the fixture's report_data.work.  Both must be replicated here to get a byte-for-byte
-    match of every coordinate in the GeoJSON.
+    Two of them are not the defaults and both are needed for a coordinate-exact
+    match: ``ub_path_hash=0`` (all paths rather than one) and the ``path_pos``
+    decoded from the fixture's ``report_data.work``.
     """
     from shapely.geometry import Point
 
-    from pymammotion.data.model.generate_geojson import GeojsonGenerator
     from pymammotion.data.model.coordinates import CoordinateConverter
 
     fixture = _load_yuka_fixture()
@@ -911,52 +909,76 @@ def test_mow_progress_geojson_matches_example_script_output() -> None:
     raw_x = work.get("path_pos_x", 0)
     raw_y = work.get("path_pos_y", 0)
     path_pos = (raw_x / 10000.0, raw_y / 10000.0) if (raw_x or raw_y) else None
+    return hash_list, rtk_point, path_pos
 
-    dev_output = Path(__file__).parents[4] / "examples" / "dev_output"
 
-    for now_index in (1, 300, 550):
-        ref_file = dev_output / f"mow_progress_{now_index}.geojson"
-        with open(ref_file) as f:
-            reference = json.load(f)
+def test_mow_progress_geojson_matches_the_reference_output() -> None:
+    """At ``now_index=1`` every coordinate must match the committed reference exactly.
 
-        result = GeojsonGenerator.generate_mow_progress_geojson(
-            hash_list,
-            now_index=now_index,
-            rtk_location=rtk_point,
-            ub_path_hash=0,
-            path_pos=path_pos,
+    ``tests/fixtures/mow_progress_1.geojson`` was produced by
+    ``examples/generate_mow_progress_geojson.py`` from ``yuka_fixture.json``.  It is
+    committed rather than read out of ``examples/dev_output/``, which is gitignored —
+    the test used to pass only on a machine where that script had been run by hand,
+    and failed on a fresh clone.
+    """
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
+
+    hash_list, rtk_point, path_pos = _yuka_progress_inputs()
+    reference = _load_fixture("mow_progress_1.geojson")
+
+    result = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=1,
+        rtk_location=rtk_point,
+        ub_path_hash=0,
+        path_pos=path_pos,
+    )
+
+    assert result["type"] == reference["type"]
+    assert len(result["features"]) == len(reference["features"]), (
+        f"expected {len(reference['features'])} features, got {len(result['features'])}"
+    )
+
+    # Group by path_hash (unique per section) for an exact per-section comparison.
+    ref_by_hash = {f["properties"]["path_hash"]: f for f in reference["features"]}
+    res_by_hash = {f["properties"]["path_hash"]: f for f in result["features"]}
+    assert set(res_by_hash.keys()) == set(ref_by_hash.keys()), (
+        f"path_hash mismatch — expected {set(ref_by_hash.keys())}, got {set(res_by_hash.keys())}"
+    )
+
+    for path_hash, ref_feat in ref_by_hash.items():
+        ref_coords = ref_feat["geometry"]["coordinates"]
+        res_coords = res_by_hash[path_hash]["geometry"]["coordinates"]
+        assert len(res_coords) == len(ref_coords), (
+            f"path_hash={path_hash}: {len(res_coords)} pts != {len(ref_coords)} reference pts"
+        )
+        assert res_coords == ref_coords, (
+            f"path_hash={path_hash}: coordinates differ at index "
+            + str(next(i for i, (a, b) in enumerate(zip(res_coords, ref_coords)) if a != b))
         )
 
-        assert result["type"] == reference["type"]
-        assert len(result["features"]) == len(reference["features"]), (
-            f"now_index={now_index}: expected {len(reference['features'])} features, "
-            f"got {len(result['features'])}"
-        )
 
-        if not reference["features"]:
-            continue  # 0 features is valid when now_index exceeds all section lengths
+@pytest.mark.parametrize("now_index", [300, 550])
+def test_mow_progress_geojson_is_empty_past_the_longest_section(now_index: int) -> None:
+    """Nothing is left to draw once *now_index* exceeds every section.
 
-        # Group by path_hash (unique per section) for an exact per-section comparison.
-        ref_by_hash = {f["properties"]["path_hash"]: f for f in reference["features"]}
-        res_by_hash = {f["properties"]["path_hash"]: f for f in result["features"]}
+    The fixture's longest section is 182 points, so both of these are past the end.
+    This used to be pinned by two 77-byte reference files holding an empty
+    FeatureCollection; the assertion is the whole content, so it is written directly.
+    """
+    from pymammotion.data.model.generate_geojson import GeojsonGenerator
 
-        assert set(res_by_hash.keys()) == set(ref_by_hash.keys()), (
-            f"now_index={now_index}: path_hash mismatch — "
-            f"expected {set(ref_by_hash.keys())}, got {set(res_by_hash.keys())}"
-        )
+    hash_list, rtk_point, path_pos = _yuka_progress_inputs()
 
-        for path_hash, ref_feat in ref_by_hash.items():
-            res_feat = res_by_hash[path_hash]
-            ref_coords = ref_feat["geometry"]["coordinates"]
-            res_coords = res_feat["geometry"]["coordinates"]
-            assert len(res_coords) == len(ref_coords), (
-                f"now_index={now_index}, path_hash={path_hash}: "
-                f"{len(res_coords)} pts != {len(ref_coords)} reference pts"
-            )
-            assert res_coords == ref_coords, (
-                f"now_index={now_index}, path_hash={path_hash}: coordinates differ at index "
-                + str(next(i for i, (a, b) in enumerate(zip(res_coords, ref_coords)) if a != b))
-            )
+    result = GeojsonGenerator.generate_mow_progress_geojson(
+        hash_list,
+        now_index=now_index,
+        rtk_location=rtk_point,
+        ub_path_hash=0,
+        path_pos=path_pos,
+    )
+
+    assert result["features"] == []
 
 
 def test_mow_progress_from_start_identical_to_mow_path() -> None:
