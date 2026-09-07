@@ -36,8 +36,22 @@ uv run python tests/login_test.py
 uv run protoc -I=. --python_out=. --python_betterproto2_out=pymammotion/proto ./pymammotion/proto/*.proto
 
 # Version bump (patch/minor/major)
-./bin/bumpver update --patch
+uv run bumpver update --patch
+
+# Pre-release bump: 0.9.0 -> 0.9.1b0 -> 0.9.1b1 -> ... -> 0.9.1
+uv run bumpver update --patch --tag beta   # open a new beta series
+uv run bumpver update --tag-num            # next beta of the same series
+uv run bumpver update --tag final          # promote the beta to the release
+
+# bumpver does not touch uv.lock, which records the workspace version.
+# Re-lock after every bump or `uv sync --frozen` fails in CI.
+uv lock
 ```
+
+Releases are cut by pushing a `v<version>` tag; `release.yml` compares the tag
+against the built package after PEP 440 normalisation (so `v0.9.0-beta1` and
+`v0.9.0b1` both match a `0.9.0b1` package) and marks the GitHub release as a
+pre-release when the version is one.
 
 ## Architecture
 
