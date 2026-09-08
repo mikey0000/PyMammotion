@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 import json
 import logging
 import ssl
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from aiohttp import ClientConnectorDNSError
@@ -131,9 +131,10 @@ class MQTTTransport(CloudTransport):
     # shadow the base Transport.on_message property and defeat its receive-timestamping.
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
     #: Fired for ``/thing/event/{identifier}/post`` messages on the Mammotion MQTT.
-    #: Called with (iot_id, identifier) — the identifier is the event name extracted
-    #: from the topic path (e.g. ``"device_notification_event"``).
-    on_device_notification: Callable[[str, str], Awaitable[None]] | None = None
+    #: Called with (iot_id, identifier, value) — the identifier is the event name
+    #: extracted from the topic path (e.g. ``"device_notification_event"``) and value
+    #: is the envelope's ``params.value`` dict, or ``None`` when absent/unparseable.
+    on_device_notification: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None
 
     def __init__(
         self,
@@ -676,7 +677,24 @@ class MQTTTransport(CloudTransport):
             return
 
         if self.on_device_notification is not None:
-            await self.on_device_notification(iot_id, identifier)
+            await self.on_device_notification(iot_id, identifier, self._event_value(topic, raw))
+
+    @staticmethod
+    def _event_value(topic: str, raw: bytes) -> dict[str, Any] | None:
+        """Return the ``params.value`` dict of a thing/event envelope, or ``None``.
+
+        Never raises: a corrupt notification body must not cost the connection.
+        """
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            _logger.debug("MQTTTransport: non-JSON thing/event body on %s", topic)
+            return None
+        params = parsed.get("params") if isinstance(parsed, dict) else None
+        if not isinstance(params, dict):
+            return None
+        value = params.get("value")
+        return value if isinstance(value, dict) else None
 
     @staticmethod
     def _unwrap_envelope(topic: str, raw: bytes) -> bytes | None:

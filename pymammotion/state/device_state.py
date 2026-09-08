@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pymammotion.transport.base import TransportAvailability
 
@@ -92,6 +92,22 @@ class ConnectionStateChangedEvent:
     old_state: DeviceConnectionState
     new_state: DeviceConnectionState
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class DeviceNotification:
+    """A non-protobuf ``thing/event`` post from the device.
+
+    Covers the notification, warning-code, information, warning, business-request
+    and log-progress identifiers on both clouds.  ``value`` is the event's
+    ``params.value`` object as a plain dict (``None`` when the post carried none);
+    the notification/warning-code/information identifiers wrap their payload as a
+    JSON string under ``"data"``.
+    """
+
+    device_id: str
+    identifier: str
+    value: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

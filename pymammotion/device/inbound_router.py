@@ -14,7 +14,7 @@ rather than holding handles itself: a handle can be re-keyed between accounts
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pymammotion.data.mqtt.status import StatusType
 
@@ -64,12 +64,13 @@ class InboundRouter:
         await handle.on_status_message(msg)
         _logger.info("Device '%s' is now %s (thing/status)", handle.device_name, "online" if online else "offline")
 
-    async def route_notification(self, account_id: str, iot_id: str, identifier: str) -> None:
-        """Enqueue a get_report_cfg refresh when the device sends a thing/event notification."""
+    async def route_notification(
+        self, account_id: str, iot_id: str, identifier: str, value: dict[str, Any] | None = None
+    ) -> None:
+        """Forward a Mammotion-MQTT thing/event notification to the correct DeviceHandle."""
         if (handle := self.handle_for(account_id, iot_id, "route_notification")) is None:
             return
-        _logger.debug("Device notification '%s' from iot_id=%s — refreshing report cfg", identifier, iot_id)
-        await handle.request_report_cfg(dedup_key="report_cfg_on_notification")
+        await handle.on_device_notification(identifier, value)
 
     async def route_event(self, account_id: str, iot_id: str, event: ThingEventMessage) -> None:
         """Forward a non-protobuf thing.events message to the correct DeviceHandle."""

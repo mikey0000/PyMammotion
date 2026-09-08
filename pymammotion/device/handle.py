@@ -29,6 +29,7 @@ from pymammotion.proto import LubaMsg, MsgDevice, RptAct, RptInfoType
 from pymammotion.state.device_state import (
     DeviceAvailability,
     DeviceConnectionState,
+    DeviceNotification,
     DeviceShutdownEvent,
     DeviceSnapshot,
     DeviceStateMachine,
@@ -211,6 +212,7 @@ class DeviceHandle:
         max_debounce_wait: float = 2.0,
         readiness_checker: ReadinessChecker | None = None,
         account_id: str = BLE_ONLY_ACCOUNT,
+        product_key: str = "",
     ) -> None:
         """Initialise the device handle with optional initial transports."""
         self.device_id = device_id
@@ -218,6 +220,10 @@ class DeviceHandle:
         #: for a handle no account has claimed.  Written by the registry on register/rekey.
         self.account_id = account_id
         self.device_name = device_name
+        #: Cloud product key, when the device came from an account.  Device-family
+        #: classification needs it: several models are sold under names the
+        #: ``DeviceType`` prefix table does not cover.
+        self.product_key = product_key
         self.iot_id = iot_id
         self.user_account = user_account
         self.broker = DeviceMessageBroker()
@@ -233,6 +239,7 @@ class DeviceHandle:
         self._status_bus: EventBus[ThingStatusMessage] = EventBus()
         self._properties_bus: EventBus[ThingPropertiesMessage] = EventBus()
         self._event_bus: EventBus[ThingEventMessage] = EventBus()
+        self._notification_bus: EventBus[DeviceNotification] = EventBus()
         #: Emits the raw command bytes of every outbound payload (excludes heartbeats).
         #: Subscribers can decode to LubaMsg for tracing/debug purposes.
         self._sent_bus: EventBus[bytes] = EventBus()
@@ -243,7 +250,9 @@ class DeviceHandle:
         # full mower reducer. Decided once at construction so the per-message
         # hot path doesn't pay an isinstance check.  The saga-active callable
         # lets the reducer skip eager geojson regen during map fetches.
-        self._reducer: StateReducer = get_state_reducer(device_name, is_saga_active=lambda: self.queue.is_saga_active)
+        self._reducer: StateReducer = get_state_reducer(
+            device_name, product_key, is_saga_active=lambda: self.queue.is_saga_active
+        )
         self._error_bus: EventBus[Exception] = EventBus()
         self._map_updated_bus: EventBus[None] = EventBus()
         self._shutdown_bus: EventBus[DeviceShutdownEvent] = EventBus()
@@ -263,9 +272,9 @@ class DeviceHandle:
         #: the activity loop immediately with the short window.
         self._rearm_event: asyncio.Event = asyncio.Event()
         #: True when the device name identifies an RTK base station.
-        self._is_rtk: bool = DeviceType.is_rtk(device_name)
+        self._is_rtk: bool = DeviceType.is_rtk(device_name, product_key)
         #: True for Spino pool cleaners (PoolCleanerDevice).
-        self._is_swimming_pool: bool = DeviceType.is_swimming_pool(device_name)
+        self._is_swimming_pool: bool = DeviceType.is_swimming_pool(device_name, product_key)
         #: RTK base stations and Spino pool cleaners don't run the mower-style
         #: MQTT activity loop or the BLE keep-alive/polling loops — they neither
         #: speak the report-cfg/``send_todev_ble_sync`` protocol nor derive a
@@ -877,6 +886,42 @@ class DeviceHandle:
             if not self._stopping:
                 await self._state_changed_bus.emit(snapshot)
                 await self._event_bus.emit(event)
+                # ``params`` falls back to a bare dict for any variant mashumaro cannot match,
+                # so the identifier has to be read both ways or those events never notify.
+                params: Any = event.params
+                if isinstance(params, dict):
+                    identifier, value = params.get("identifier"), params.get("value")
+                else:
+                    identifier, value = getattr(params, "identifier", None), getattr(params, "value", None)
+                if identifier is not None:
+                    await self.on_device_notification(identifier, value)
+
+    async def on_device_notification(self, identifier: str, value: Any = None) -> None:
+        """Handle a thing/event notification (anything but a protobuf frame).
+
+        Subscribers hear about it first; the report config is then refreshed because
+        these posts typically accompany a state change the device does not otherwise push.
+        """
+        await self._emit_notification(identifier, value)
+        await self.request_report_cfg(dedup_key="report_cfg_on_notification")
+
+    async def _emit_notification(self, identifier: str, value: Any) -> None:
+        """Emit a :class:`DeviceNotification`, normalising a mashumaro value object to a dict."""
+        if self._stopping:
+            return
+        if value is not None and not isinstance(value, dict):
+            if hasattr(value, "to_dict"):
+                value = value.to_dict()
+            else:
+                _logger.debug(
+                    "Device notification '%s' from '%s': dropping value of unsupported type %s",
+                    identifier,
+                    self.device_name,
+                    type(value).__name__,
+                )
+                value = None
+        _logger.debug("Device notification '%s' from '%s': %s", identifier, self.device_name, value)
+        await self._notification_bus.emit(DeviceNotification(self.device_id, identifier, value))
 
     async def on_device_properties(self, properties: ThingPropertiesMessage) -> None:
         """Update device state with a thing.properties message.
@@ -1108,6 +1153,17 @@ class DeviceHandle:
     ) -> Subscription:
         """Subscribe to non-protobuf thing/events messages. Returns RAII Subscription handle."""
         return self._event_bus.subscribe(handler)
+
+    def subscribe_notification(
+        self,
+        handler: Callable[[DeviceNotification], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to device notifications (warning codes, information, business requests …).
+
+        Fires for every non-protobuf thing/event post from either cloud.  Returns
+        RAII Subscription handle.
+        """
+        return self._notification_bus.subscribe(handler)
 
     def subscribe_sent(
         self,
@@ -2187,7 +2243,9 @@ class DeviceHandle:
         )
         offline_suffix = " (mqtt_reported_offline=True)" if mqtt_reported_offline else ""
         msg = f"No transport available for device '{self.device_id}' [{transport_states}]{offline_suffix}"
-        _logger.debug("active_transport '%s': %s", self.device_name, msg)
+        # Same de-dup as the selection paths: a cloud-offline device is asked on every
+        # poll and every gate check, and each one logged this line unconditionally.
+        _log_selection("active_transport '%s': %s", msg)
         raise NoTransportAvailableError(msg)
 
 

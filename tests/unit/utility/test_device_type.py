@@ -6,6 +6,10 @@ from pymammotion.utility.device_type import (
     AliyunProductKey,
     DeviceType,
     LubaMEProductKey,
+    SdPxProductKey,
+    SwimmingPoolE1ProductKey,
+    SwimmingPoolProductKey,
+    SwimmingPoolSPProductKey,
 )
 
 
@@ -215,11 +219,15 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             return DeviceType.LUBA_YUKA
         if DeviceType.SWIMMINGPOOL_S1.get_name() in device_name[:8]:
             return DeviceType.SWIMMINGPOOL_S1
-        if DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8]:
+        if DeviceType.SWIMMINGPOOL_E1.get_name() in device_name[:8] or DeviceType.contain_swimming_pool_e1_product_key(
+            product_key
+        ):
             return DeviceType.SWIMMINGPOOL_E1
-        if DeviceType.SWIMMINGPOOL_SP.get_name() in device_name[:8]:
+        if DeviceType.SWIMMINGPOOL_SP.get_name() in device_name[:8] or DeviceType.contain_swimming_pool_sp_product_key(
+            product_key
+        ):
             return DeviceType.SWIMMINGPOOL_SP
-        if DeviceType.SPINO.get_name() in substring2:
+        if DeviceType.SPINO.get_name() in substring2 or DeviceType.contain_swimming_pool_product_key(product_key):
             return DeviceType.SPINO
         if DeviceType.YUKA_MN100.get_name() in substring2:
             return DeviceType.YUKA_MN100
@@ -231,7 +239,7 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             return DeviceType.LUBA_MB
         if DeviceType.CM900.get_name() in substring2:
             return DeviceType.CM900
-        if DeviceType.SD_PX.get_name() in substring2:
+        if DeviceType.SD_PX.get_name() in substring2 or DeviceType.contain_sd_px_product_key(product_key):
             return DeviceType.SD_PX
         if DeviceType.LUBA_HM.get_name() in substring2:
             return DeviceType.LUBA_HM
@@ -280,7 +288,19 @@ def test_value_of_str_name_matches_reference(device_name: str) -> None:
     assert DeviceType.value_of_str(device_name) is _reference_value_of_str(device_name)
 
 
-@pytest.mark.parametrize("product_key", [*AliyunProductKey, *LubaMEProductKey, "unknown-key", ""])
+@pytest.mark.parametrize(
+    "product_key",
+    [
+        *AliyunProductKey,
+        *LubaMEProductKey,
+        *SwimmingPoolProductKey,
+        *SwimmingPoolE1ProductKey,
+        *SwimmingPoolSPProductKey,
+        *SdPxProductKey,
+        "unknown-key",
+        "",
+    ],
+)
 def test_value_of_str_product_key_matches_reference(product_key: str) -> None:
     # empty device name forces resolution via the product key alone
     assert DeviceType.value_of_str("", product_key) is _reference_value_of_str("", product_key)
@@ -293,6 +313,32 @@ def test_value_of_str_name_and_product_key_combinations() -> None:
     for name in names:
         for key in keys:
             assert DeviceType.value_of_str(name, key) is _reference_value_of_str(name, key)
+
+
+@pytest.mark.parametrize(
+    ("product_key", "expected"),
+    [
+        (SwimmingPoolProductKey[0], DeviceType.SPINO),
+        (SwimmingPoolE1ProductKey[0], DeviceType.SWIMMINGPOOL_E1),
+        (SwimmingPoolSPProductKey[0], DeviceType.SWIMMINGPOOL_SP),
+        (SwimmingPoolSPProductKey[1], DeviceType.SWIMMINGPOOL_SP),
+        (SdPxProductKey[0], DeviceType.SD_PX),
+        (SdPxProductKey[1], DeviceType.SD_PX),
+    ],
+)
+def test_pool_product_key_identifies_the_device_without_a_name(product_key: str, expected: DeviceType) -> None:
+    """A pool device whose name the prefix table does not cover is still classified."""
+    assert DeviceType.value_of_str("", product_key) is expected
+    assert DeviceType.is_swimming_pool("", product_key) is True
+    assert DeviceType.is_rtk("", product_key) is False
+    assert DeviceType.is_luba_pro("", product_key) is False
+
+
+def test_pool_product_keys_are_all_mammotion_iot() -> None:
+    """None of the pool keys are on the Aliyun platform, so they must route to Mammotion MQTT."""
+    for key in (*SwimmingPoolProductKey, *SwimmingPoolE1ProductKey, *SwimmingPoolSPProductKey, *SdPxProductKey):
+        assert DeviceType.is_aliyun_product_key(key) is False
+        assert DeviceType.is_mammotion_iot_product_key(key) is True
 
 
 def test_rules_table_is_well_formed() -> None:

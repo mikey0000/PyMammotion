@@ -125,3 +125,21 @@ async def test_binding_follows_the_handle_the_registry_actually_holds() -> None:
     # The bug: binding a key the registry does not hold silently routes nowhere.
     router.bind(ACCOUNT, "iot-2", (ACCOUNT, "Luba-XYZ"))
     assert router.handle_for(ACCOUNT, "iot-2", "test") is None
+
+
+async def test_notification_is_forwarded_to_the_handle_with_its_value() -> None:
+    router, _, handle = await _router_with_handle()
+    handle.on_device_notification = AsyncMock()
+
+    await router.route_notification(ACCOUNT, "iot-1", "device_warning_code_event", {"data": "[]"})
+
+    handle.on_device_notification.assert_awaited_once_with("device_warning_code_event", {"data": "[]"})
+
+
+async def test_notification_for_unknown_iot_id_is_dropped() -> None:
+    router, _, handle = await _router_with_handle()
+    handle.on_device_notification = AsyncMock()
+
+    await router.route_notification(ACCOUNT, "iot-unknown", "device_warning_code_event")
+
+    handle.on_device_notification.assert_not_awaited()

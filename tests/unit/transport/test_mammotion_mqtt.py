@@ -517,3 +517,30 @@ def test_apply_credentials_does_not_clear_stop_event(transport: MQTTTransport) -
         MQTTCredentials(host="plain.broker", client_id="c", username="u", jwt="j", expires_at=0.0)
     )
     assert transport._stop_event.is_set()
+
+# ---------------------------------------------------------------------------
+# _dispatch_mammotion_event — notifications carry their params.value through
+# ---------------------------------------------------------------------------
+
+
+async def test_event_notification_passes_identifier_and_value(transport: MQTTTransport) -> None:
+    transport._device_to_iot[("pk", "dn")] = "iot-1"
+    transport.on_device_notification = AsyncMock()
+    body = json.dumps({"params": {"iotId": "iot-1", "value": {"data": '[{"c":-2801}]'}}}).encode()
+
+    await transport._dispatch_mammotion_event("/sys/pk/dn/thing/event/device_warning_code_event/post", body)
+
+    transport.on_device_notification.assert_awaited_once_with(
+        "iot-1", "device_warning_code_event", {"data": '[{"c":-2801}]'}
+    )
+
+
+async def test_event_notification_with_unparseable_body_still_fires_without_value(
+    transport: MQTTTransport,
+) -> None:
+    transport._device_to_iot[("pk", "dn")] = "iot-1"
+    transport.on_device_notification = AsyncMock()
+
+    await transport._dispatch_mammotion_event("/sys/pk/dn/thing/event/device_information_event/post", b"not json")
+
+    transport.on_device_notification.assert_awaited_once_with("iot-1", "device_information_event", None)

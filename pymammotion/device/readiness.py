@@ -154,7 +154,7 @@ def get_readiness_checker(device_name: str, product_key: str = "") -> ReadinessC
     """Return the appropriate readiness checker for the device type."""
     if DeviceType.is_rtk(device_name, product_key):
         return NoReadinessChecker()
-    if DeviceType.is_swimming_pool(device_name):
+    if DeviceType.is_swimming_pool(device_name, product_key):
         return SpinoReadinessChecker()
     if DeviceType.is_yuka(device_name) or DeviceType.is_yuka_mini(device_name):
         return YukaReadinessChecker()

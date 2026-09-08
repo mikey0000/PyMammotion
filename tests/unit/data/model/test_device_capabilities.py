@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pymammotion.data.model.device_capabilities import _DEFAULT_LIST, _INNER_LIST, DeviceConfig
 from pymammotion.data.model.device_limits import DeviceLimits
+from pymammotion.utility.device_type import AliyunProductKey, LubaProductKey
 
 
 def test_instances_share_the_tables_rather_than_rebuilding_them() -> None:
@@ -54,3 +55,15 @@ def test_lookups_do_not_mutate_the_shared_tables() -> None:
     config.get_working_parameters("a1ZU6bdGjaM")
     config.get_external_model("HM010060LBAWD10")
     assert (_DEFAULT_LIST, _INNER_LIST) == before
+
+
+def test_every_capability_product_key_is_a_known_luba_1() -> None:
+    """``_DEFAULT_LIST`` is keyed by Luba 1 product key, and both tables must list the same set.
+
+    A key here but not in ``LubaProductKey`` still resolves to UNKNOWN in
+    ``DeviceType.value_of_str`` and, worse, misses ``AliyunProductKey`` — so an Aliyun
+    Luba 1 gets pointed at the Mammotion broker.  ``a1FbaU4Bqk5`` was exactly that.
+    """
+    missing = set(_DEFAULT_LIST) - set(LubaProductKey)
+    assert not missing, f"capability keys absent from LubaProductKey: {sorted(missing)}"
+    assert set(_DEFAULT_LIST) <= set(AliyunProductKey)

@@ -15,6 +15,11 @@ LubaProductKey = [
     "a1ae1QnXZGf",
     "a1nf9kRBWoH",
     "a1ZU6bdGjaM",
+    # LubaAWD5000743.  Absent from the APK's ``DeviceProductKey.LubaProductKey`` but
+    # present in its Aliyun device-configuration form, and already carried by
+    # ``device_capabilities._DEFAULT_LIST`` — without it here the key falls through to
+    # the Mammotion-IoT default and an Aliyun Luba 1 is pointed at the wrong broker.
+    "a1FbaU4Bqk5",
 ]
 
 LubaVProductKey = ["a1iMygIwxFC", "a1LLmy1zc0j"]
@@ -52,6 +57,24 @@ LubaLAProductKey = ["CDYuKXTYrSP"]
 YukaMN100ProductKey = ["NnbeYtaEUGE"]
 
 Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m"]
+
+# Observed on a Spino-E1 (PC100).  The app carries no product key for it — its
+# ``DeviceProductKey`` table stops at the PC210 pair below and the E1 is resolved
+# by name alone — so this one comes from a live device, not the APK.
+SwimmingPoolE1ProductKey = ["a15Cq8FbCh1"]
+
+# APK ``SwimmingPoolOtaCorrelation.SWIMMING_POOL_PRODUCT_KEY``, the only other pool
+# product key the app names.  It carries no model, so it lands on the generic Spino
+# rather than a variant — enough to classify the device as a pool cleaner, which is
+# what every gate actually asks.  Re-point it if a device turns up naming its variant.
+SwimmingPoolProductKey = ["a1UvLZ3mWcW"]
+
+# APK ``DeviceProductKey.PC210ProductKey`` — the PC210 pool cleaner (Spino-SP).
+SwimmingPoolSPProductKey = ["FCtXbVnmd2C", "YBRDhT2YTvY"]
+
+# APK ``DeviceProductKey.PC210PileProductKey`` — the PC210's charging pile, which
+# ``DeviceType.valueOfStrByProductKey`` resolves to SD_PX, part of the pool family.
+SdPxProductKey = ["GJzsmaVk5za", "fEaKVY28tNz"]
 
 # Exhaustive list of all known Aliyun-platform product keys.
 # Any product key NOT in this list is assumed to be a Mammotion-IoT device.
@@ -468,7 +491,7 @@ class DeviceType(Enum):
         device_type = DeviceType.value_of_str(device_name, product_key)
         return (
             device_type.get_value() >= DeviceType.LUBA_2.get_value()
-            and not DeviceType.is_swimming_pool(device_name)
+            and not DeviceType.is_swimming_pool(device_name, product_key)
             and not DeviceType.is_rtk(device_name, product_key)
         )
 
@@ -521,9 +544,13 @@ class DeviceType(Enum):
         )
 
     @staticmethod
-    def is_swimming_pool(device_name: str) -> bool:
-        """Return True if the device name identifies a swimming-pool robot (Spino variants + SD_PX)."""
-        device_type = DeviceType.value_of_str(device_name)
+    def is_swimming_pool(device_name: str, product_key: str = "") -> bool:
+        """Return True if the device is a swimming-pool robot (Spino variants + SD_PX).
+
+        *product_key* identifies the device when the name cannot — the pool models
+        are sold under names the prefix table does not cover.
+        """
+        device_type = DeviceType.value_of_str(device_name, product_key)
         return device_type in (
             DeviceType.SPINO,
             DeviceType.SWIMMINGPOOL_S1,
@@ -642,6 +669,26 @@ class DeviceType(Enum):
         return bool(product_key) and product_key in Cm900ProductKey
 
     @staticmethod
+    def contain_swimming_pool_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Spino pool cleaner of unnamed variant."""
+        return bool(product_key) and product_key in SwimmingPoolProductKey
+
+    @staticmethod
+    def contain_swimming_pool_e1_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Spino-E1 (PC100) pool cleaner."""
+        return bool(product_key) and product_key in SwimmingPoolE1ProductKey
+
+    @staticmethod
+    def contain_swimming_pool_sp_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Spino-SP (PC210) pool cleaner."""
+        return bool(product_key) and product_key in SwimmingPoolSPProductKey
+
+    @staticmethod
+    def contain_sd_px_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a PC210 charging pile (SD_PX)."""
+        return bool(product_key) and product_key in SdPxProductKey
+
+    @staticmethod
     def is_aliyun_product_key(product_key: str) -> bool:
         """Return True if the product key belongs to a known Aliyun-platform device.
 
@@ -732,15 +779,15 @@ _VALUE_OF_STR_RULES: tuple[tuple["DeviceType", int, Callable[[str], bool] | None
     (DeviceType.LUBA_LA, 7, None),
     (DeviceType.LUBA_YUKA, 7, None),
     (DeviceType.SWIMMINGPOOL_S1, 8, None),
-    (DeviceType.SWIMMINGPOOL_E1, 8, None),
-    (DeviceType.SWIMMINGPOOL_SP, 8, None),
-    (DeviceType.SPINO, 7, None),
+    (DeviceType.SWIMMINGPOOL_E1, 8, DeviceType.contain_swimming_pool_e1_product_key),
+    (DeviceType.SWIMMINGPOOL_SP, 8, DeviceType.contain_swimming_pool_sp_product_key),
+    (DeviceType.SPINO, 7, DeviceType.contain_swimming_pool_product_key),
     (DeviceType.YUKA_MN100, 7, None),
     (DeviceType.YUKA_MN101, 7, None),
     (DeviceType.RTKNB, 7, None),
     (DeviceType.LUBA_MB, 7, None),
     (DeviceType.CM900, 7, None),
-    (DeviceType.SD_PX, 7, None),
+    (DeviceType.SD_PX, 7, DeviceType.contain_sd_px_product_key),
     (DeviceType.LUBA_HM, 7, None),
     (DeviceType.LUBA_ME, 7, DeviceType.contain_luba_me_product_key),
     (DeviceType.LUBA, 7, DeviceType.contain_luba_product_key),

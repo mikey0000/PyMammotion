@@ -253,3 +253,58 @@ def test_missing_optional_fields_does_not_raise() -> None:
         obj["params"].pop(key, None)  # already absent for this device, asserted explicit
     msg = MammotionPropertiesMessage.from_json(json.dumps(obj))
     assert msg.params.battery_percentage == 31
+
+# ===========================================================================
+# ``otaProgress`` on the Mammotion flat property post — the app reads this object
+# (MQTTService.messageArrived) and it was silently dropped here for lack of a field.
+# ===========================================================================
+
+OTA_PROGRESS_POST = json.dumps(
+    {
+        "id": "20991",
+        "version": "1.0",
+        "sys": {"ack": 1},
+        "params": {
+            "otaProgress": {
+                "otaId": "ota-42",
+                "version": "1.16.0.1101",
+                "progress": 37,
+                "result": 2,
+                "message": "",
+                "properties": "",
+            }
+        },
+        "method": "thing.event.property.post",
+    }
+)
+
+
+def test_ota_progress_object_is_parsed() -> None:
+    p = MammotionPropertiesMessage.from_json(OTA_PROGRESS_POST).params
+
+    assert p.ota_progress is not None
+    assert p.ota_progress.ota_id == "ota-42"
+    assert p.ota_progress.version == "1.16.0.1101"
+    assert p.ota_progress.progress == 37
+    assert p.ota_progress.result == 2
+
+
+def test_ota_progress_accepts_json_string_and_partial_object() -> None:
+    """Some firmware sends nested objects as JSON strings, and fields may be missing."""
+    raw = json.dumps(
+        {
+            "id": "1",
+            "version": "1.0",
+            "sys": {"ack": 1},
+            "params": {"otaProgress": json.dumps({"progress": 100, "result": 0})},
+            "method": "thing.event.property.post",
+        }
+    )
+    p = MammotionPropertiesMessage.from_json(raw).params
+
+    assert p.ota_progress is not None
+    assert (p.ota_progress.progress, p.ota_progress.result, p.ota_progress.version) == (100, 0, "")
+
+
+def test_post_without_ota_progress_leaves_field_none() -> None:
+    assert MammotionPropertiesMessage.from_json(SPINO_MODEL_ONLY).params.ota_progress is None

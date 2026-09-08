@@ -194,7 +194,7 @@ class ThingEventMessage(DataClassORJSONMixin):
         | DeviceLogProgressEventParams
         | DeviceBizReqEventParams
         | DeviceConfigurationRequestEvent
-        | dict
+        | dict[str, Any]
     )
     version: Literal["1.0"]
 

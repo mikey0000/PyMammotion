@@ -1669,3 +1669,121 @@ async def test_spawn_holds_the_task_until_it_completes() -> None:
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     assert not handle._background_tasks, "done tasks must be discarded"
+
+# ---------------------------------------------------------------------------
+# subscribe_notification — non-protobuf thing/event posts reach subscribers
+# ---------------------------------------------------------------------------
+
+
+async def test_mammotion_mqtt_notification_reaches_subscribers_then_refreshes_report_cfg() -> None:
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_device())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    await handle.on_device_notification("device_warning_code_event", {"data": "[]"})
+
+    assert received == [DeviceNotification("dev1", "device_warning_code_event", {"data": "[]"})]
+    handle.request_report_cfg.assert_awaited_once_with(dedup_key="report_cfg_on_notification")
+
+
+async def test_aliyun_event_emits_the_same_notification_with_a_dict_value() -> None:
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.mqtt.event import DeviceNotificationEventValue
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=MowingDevice())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    # The real params dataclass needs fifteen Aliyun envelope fields; only the
+    # identifier and the mashumaro value object matter to the notification path.
+    params = SimpleNamespace(
+        identifier="device_notification_event",
+        value=DeviceNotificationEventValue(data='{"localTime":1725159492000,"code":"1002"}'),
+    )
+    await handle.on_device_event(SimpleNamespace(params=params))
+
+    assert received == [
+        DeviceNotification("dev1", "device_notification_event", {"data": '{"localTime":1725159492000,"code":"1002"}'})
+    ]
+    handle.request_report_cfg.assert_awaited_once_with(dedup_key="report_cfg_on_notification")
+
+
+async def test_aliyun_event_with_untyped_dict_params_still_notifies() -> None:
+    """``ThingEventMessage.params`` falls back to a bare dict for unmodelled variants."""
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=MowingDevice())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    # Shape taken from a real device_information_event capture: no typed variant
+    # matches it, so mashumaro hands back the raw envelope dict.
+    params = {
+        "identifier": "device_information_event",
+        "type": "info",
+        "deviceName": "Luba-MTAJTZ7T",
+        "value": {"id": 0, "cmd": 1, "params": '{"set week-time":"6-10:0"}'},
+    }
+    await handle.on_device_event(SimpleNamespace(params=params))
+
+    assert received == [DeviceNotification("dev1", "device_information_event", params["value"])]
+
+
+async def test_notification_value_of_unsupported_type_is_dropped_with_a_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A value that is neither a dict nor mashumaro-convertible must not vanish silently."""
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_device())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    with caplog.at_level("DEBUG", logger="pymammotion.device.handle"):
+        await handle.on_device_notification("device_warning_code_event", ["1002"])
+
+    assert received == [DeviceNotification("dev1", "device_warning_code_event", None)]
+    assert any("unsupported type list" in r.getMessage() for r in caplog.records)
+
+
+async def test_cancelled_notification_subscription_hears_nothing() -> None:
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_device())
+    handle.request_report_cfg = AsyncMock()
+    handler = AsyncMock()
+
+    handle.subscribe_notification(handler).cancel()
+    await handle.on_device_notification("device_information_event", None)
+
+    handler.assert_not_awaited()
+
+
+def test_no_transport_available_is_logged_once_per_state(caplog: pytest.LogCaptureFixture) -> None:
+    """A cloud-offline device is asked on every poll; the answer must not flood the log."""
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_device())
+
+    with caplog.at_level("DEBUG", logger="pymammotion.device.handle"):
+        for _ in range(5):
+            with pytest.raises(NoTransportAvailableError):
+                handle.active_transport()
+
+    assert sum("No transport available" in r.message for r in caplog.records) == 1

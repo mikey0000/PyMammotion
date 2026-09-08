@@ -519,3 +519,62 @@ def test_set_video_ack_success_is_quiet(caplog) -> None:
         reducer.apply(_make_device(), msg)
 
     assert caplog.text == ""
+
+# ---------------------------------------------------------------------------
+# otaProgress on the Mammotion flat property push drives update_check
+# ---------------------------------------------------------------------------
+
+
+def _ota_props(progress: int, result: int, version: str = "1.16.0.1101"):
+    import json
+
+    from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
+
+    return MammotionPropertiesMessage.from_json(
+        json.dumps(
+            {
+                "id": "1",
+                "version": "1.0",
+                "sys": {"ack": 1},
+                "method": "thing.event.property.post",
+                "params": {"otaProgress": {"progress": progress, "result": result, "version": version}},
+            }
+        )
+    )
+
+
+def test_mammotion_ota_progress_marks_upgrade_in_progress() -> None:
+    reducer = MowerStateReducer()
+    device = _make_device()
+
+    updated = reducer.apply_mammotion_properties(device, _ota_props(progress=37, result=2))
+
+    assert updated.update_check.isupgrading is True
+    assert updated.update_check.progress == 37
+    assert updated.ota_progress_at > 0
+    # A live push must survive the stale cloud version poll that follows it.
+    assert updated.has_live_ota_push()
+
+
+def test_mammotion_ota_result_zero_completes_and_installs_version() -> None:
+    reducer = MowerStateReducer()
+    device = _make_device()
+    device.update_check.upgradeable = True
+
+    updated = reducer.apply_mammotion_properties(device, _ota_props(progress=98, result=0))
+
+    assert updated.update_check.isupgrading is False
+    assert updated.update_check.progress == 100
+    assert updated.update_check.upgradeable is False
+    assert updated.device_firmwares.device_version == "1.16.0.1101"
+
+
+def test_mammotion_ota_failure_stops_upgrading_and_keeps_progress() -> None:
+    reducer = MowerStateReducer()
+    device = _make_device()
+
+    updated = reducer.apply_mammotion_properties(device, _ota_props(progress=61, result=1))
+
+    assert updated.update_check.isupgrading is False
+    assert updated.update_check.progress == 61
+    assert updated.device_firmwares.device_version != "1.16.0.1101"

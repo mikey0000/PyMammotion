@@ -824,6 +824,7 @@ class MammotionClient(CloudAuthMixin):
                 prefer_ble=(ble is not None) if prefer_ble is None else prefer_ble,
                 readiness_checker=get_readiness_checker(device_name, cloud.product_key) if cloud is not None else None,
                 account_id=account_id,
+                product_key=cloud.product_key if cloud is not None else "",
             )
             await registry.register(handle)
         elif ble is not None and not handle.has_transport(TransportType.BLE):
@@ -835,6 +836,8 @@ class MammotionClient(CloudAuthMixin):
                 handle.iot_id = cloud.iot_id
             if not handle.user_account:
                 handle.user_account = cloud.user_account
+            if not handle.product_key:
+                handle.product_key = cloud.product_key
             if handle.readiness_checker is None:
                 handle.readiness_checker = get_readiness_checker(device_name, cloud.product_key)
             handle.on_device_unbound = self._on_device_unbound

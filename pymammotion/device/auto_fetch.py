@@ -229,6 +229,6 @@ class AutoFetchWatchers:
         """
         for handle in self._device_registry.all_devices:
             name = handle.device_name
-            if DeviceType.is_rtk(name) or DeviceType.is_swimming_pool(name):
+            if DeviceType.is_rtk(name, handle.product_key) or DeviceType.is_swimming_pool(name, handle.product_key):
                 continue
             self.setup_device_watchers(name)

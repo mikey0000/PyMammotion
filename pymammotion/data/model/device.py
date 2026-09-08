@@ -526,8 +526,11 @@ def create_device(name: str, product_key: str = "") -> "Device":
     sufficient to identify the device family (e.g. some RTK base-station
     variants whose names don't carry the "RTK" prefix).
     """
-    if DeviceType.is_swimming_pool(name):
-        return PoolCleanerDevice(name=name)
+    if DeviceType.is_swimming_pool(name, product_key):
+        pool = PoolCleanerDevice(name=name)
+        if product_key:
+            pool.product_key = product_key
+        return pool
     if DeviceType.is_rtk(name, product_key):
         rtk = RTKBaseStationDevice(name=name)
         if product_key:
