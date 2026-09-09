@@ -681,9 +681,12 @@ class MQTTTransport(CloudTransport):
 
     @staticmethod
     def _event_value(topic: str, raw: bytes) -> dict[str, Any] | None:
-        """Return the ``params.value`` dict of a thing/event envelope, or ``None``.
+        """Return the payload of a thing/event envelope, or ``None``.
 
-        Never raises: a corrupt notification body must not cost the connection.
+        The Mammotion broker puts the event fields directly under ``params`` (the app
+        reads ``params.data`` / ``params.content``); an Aliyun-shaped body nests them
+        under ``params.value``.  Routing keys (``iotId``) are dropped.  Never raises: a
+        corrupt notification body must not cost the connection.
         """
         try:
             parsed = json.loads(raw)
@@ -694,7 +697,9 @@ class MQTTTransport(CloudTransport):
         if not isinstance(params, dict):
             return None
         value = params.get("value")
-        return value if isinstance(value, dict) else None
+        if isinstance(value, dict):
+            return value
+        return {k: v for k, v in params.items() if k != "iotId"} or None
 
     @staticmethod
     def _unwrap_envelope(topic: str, raw: bytes) -> bytes | None:

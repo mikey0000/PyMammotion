@@ -31,6 +31,7 @@ def _make_fake_client(*, connected: bool = True) -> MagicMock:
     client.stop_notify = AsyncMock()
     client.disconnect = AsyncMock()
     client.write_gatt_char = AsyncMock()
+    client.clear_cache = AsyncMock(return_value=True)
     return client
 
 
@@ -678,3 +679,92 @@ class TestHandleDisconnectThreadSafety:
 
         assert not error_box, f"_handle_disconnect raised: {error_box}"
         assert transport.availability is TransportAvailability.DISCONNECTED
+
+# ---------------------------------------------------------------------------
+# connect() recovers from a stale GATT service cache instead of looping on cooldown
+# ---------------------------------------------------------------------------
+
+
+def _not_found() -> Exception:
+    from bleak.exc import BleakCharacteristicNotFoundError
+
+    return BleakCharacteristicNotFoundError("0000ff02-0000-1000-8000-00805f9b34fb")
+
+
+async def test_connect_clears_stale_service_cache_and_reconnects_once(config: BLETransportConfig) -> None:
+    """The reported Yuka loop: link up, ff02 missing, cooldown, repeat until restart.
+
+    The first miss must clear bleak's service cache and reconnect immediately; the
+    reconnect (with a fresh GATT table) succeeds and no cooldown is armed.
+    """
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+
+    stale_client = _make_fake_client()
+    stale_client.start_notify = AsyncMock(side_effect=_not_found())
+    fresh_client = _make_fake_client()
+    fake_msg = _make_fake_ble_message()
+    establish = AsyncMock(side_effect=[stale_client, fresh_client])
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=establish),
+        patch("pymammotion.transport.ble.BleMessage", return_value=fake_msg),
+    ):
+        await transport.connect()
+
+    stale_client.clear_cache.assert_awaited_once()
+    stale_client.disconnect.assert_awaited_once()
+    assert establish.await_count == 2
+    fresh_client.start_notify.assert_awaited_once()
+    assert transport.is_connected is True
+    assert transport.availability is TransportAvailability.CONNECTED
+    assert transport.is_usable  # no cooldown was armed by the cache miss
+
+
+async def test_connect_counts_a_second_missing_characteristic_as_a_real_failure(
+    config: BLETransportConfig,
+) -> None:
+    from pymammotion.transport.base import BLEUnavailableError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+
+    first, second = _make_fake_client(), _make_fake_client()
+    first.start_notify = AsyncMock(side_effect=_not_found())
+    second.start_notify = AsyncMock(side_effect=_not_found())
+    establish = AsyncMock(side_effect=[first, second])
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=establish),
+        patch("pymammotion.transport.ble.BleMessage", return_value=_make_fake_ble_message()),
+        pytest.raises(BLEUnavailableError),
+    ):
+        await transport.connect()
+
+    first.clear_cache.assert_awaited_once()
+    second.clear_cache.assert_not_awaited()  # one cache retry, then it is a failure
+    assert establish.await_count == 2
+    assert transport.is_connected is False
+    assert not transport.is_usable  # threshold is 1: the real failure arms the cooldown
+
+
+async def test_connect_does_not_clear_cache_for_unrelated_setup_errors(config: BLETransportConfig) -> None:
+    from bleak.exc import BleakError
+
+    from pymammotion.transport.base import BLEUnavailableError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+    client = _make_fake_client()
+    client.start_notify = AsyncMock(side_effect=BleakError("GATT Error: Unlikely error"))
+    establish = AsyncMock(return_value=client)
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=establish),
+        patch("pymammotion.transport.ble.BleMessage", return_value=_make_fake_ble_message()),
+        pytest.raises(BLEUnavailableError),
+    ):
+        await transport.connect()
+
+    client.clear_cache.assert_not_awaited()
+    assert establish.await_count == 1

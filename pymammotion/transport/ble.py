@@ -10,7 +10,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from bleak import BleakScanner
-from bleak.exc import BleakError
+from bleak.exc import BleakCharacteristicNotFoundError, BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, BleakOutOfConnectionSlotsError, establish_connection
 
 from pymammotion.bluetooth.ble_message import BleMessage
@@ -67,6 +67,11 @@ class BLETransportConfig:
     connect_failure_threshold: int = 1
     connect_cooldown_seconds: float = 120.0
     min_rssi: int = -90
+
+
+def _is_stale_gatt_cache(exc: BaseException) -> bool:
+    """Return True when a just-connected link reports a characteristic bleak's service cache lacks."""
+    return isinstance(exc, BleakCharacteristicNotFoundError) or "was not found" in str(exc)
 
 
 class BLETransport(Transport):
@@ -276,72 +281,94 @@ class BLETransport(Transport):
             await self._notify_availability(TransportAvailability.CONNECTING)
             _logger.debug("BLETransport connecting to %s", self._config.device_id)
 
-            try:
-                self._client = await establish_connection(
-                    BleakClientWithServiceCache,
-                    self._ble_device,
-                    self._config.device_id,
-                    self._handle_disconnect,
-                    use_services_cache=True,
-                    timeout=2,
-                    max_attempts=1,
-                    ble_device_callback=lambda: self._ble_device,  # type: ignore
-                )
-            except BleakError as exc:
-                await self._notify_availability(TransportAvailability.DISCONNECTED)
-                self._record_connect_failure(exc)
-                raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
-
-            self._message = BleMessage(self._client)
-
-            # BlueZ may retain a stale notify subscription from a previous ungraceful
-            # disconnect.  Release it proactively so start_notify doesn't get
-            # [org.bluez.Error.NotPermitted] Notify acquired.
-            with contextlib.suppress(Exception):
-                await self._client.stop_notify(UUID_NOTIFICATION_CHARACTERISTIC)
-            # Both steps below run against an established link, and both leave the
-            # transport unusable when they fail, so they share one teardown path.
-            try:
+            cache_cleared = False
+            while True:
                 try:
-                    await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
-                except BleakError as exc:
-                    if "Notify acquired" not in str(exc):
-                        raise
-                    # BlueZ reports the channel is already open — our previous
-                    # connection's subscription is still live.  Notifications will
-                    # continue to arrive, so there is nothing to do here.
-                    _logger.debug(
-                        "BLETransport: notify already acquired for %s — reusing existing subscription",
+                    self._client = await establish_connection(
+                        BleakClientWithServiceCache,
+                        self._ble_device,
                         self._config.device_id,
+                        self._handle_disconnect,
+                        use_services_cache=True,
+                        timeout=2,
+                        max_attempts=1,
+                        ble_device_callback=lambda: self._ble_device,  # type: ignore
                     )
+                except BleakError as exc:
+                    await self._notify_availability(TransportAvailability.DISCONNECTED)
+                    self._record_connect_failure(exc)
+                    raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
 
-                await self._notify_availability(TransportAvailability.CONNECTED)
-                _logger.debug("BLETransport connected to %s", self._config.device_id)
+                self._message = BleMessage(self._client)
 
-                # Successful connect resets the failure tracker.
-                self._consecutive_failures = 0
-
-                # One-shot sync on connect — subsequent periodic syncs are driven by
-                # DeviceHandle._keep_alive_loop (20 s).
-                await self._ble_sync()
-            except (BleakError, TimeoutError, OSError) as exc:
-                # The link came up but notify or the very first write failed, so the
-                # transport is not actually usable.  is_connected reads the live client,
-                # so leaving it connected would wedge the transport into a state where
-                # writes succeed but responses never arrive.  Tear the link down, count
-                # the failure (this drives the cooldown) and raise a TransportError:
-                # a raw BleakError escaping here would break this method's documented
-                # contract, so callers that catch only TransportError abort instead of
-                # falling back to MQTT.
+                # BlueZ may retain a stale notify subscription from a previous ungraceful
+                # disconnect.  Release it proactively so start_notify doesn't get
+                # [org.bluez.Error.NotPermitted] Notify acquired.
                 with contextlib.suppress(Exception):
-                    await self._client.disconnect()
-                self._client = None
-                self._message = None
-                await self._notify_availability(TransportAvailability.DISCONNECTED)
-                self._record_connect_failure(exc if isinstance(exc, BleakError) else None)
-                raise BLEUnavailableError(
-                    f"BLE setup after connect failed for {self._config.device_id!r}: {exc}"
-                ) from exc
+                    await self._client.stop_notify(UUID_NOTIFICATION_CHARACTERISTIC)
+                # Both steps below run against an established link, and both leave the
+                # transport unusable when they fail, so they share one teardown path.
+                try:
+                    try:
+                        await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
+                    except BleakError as exc:
+                        if "Notify acquired" not in str(exc):
+                            raise
+                        # BlueZ reports the channel is already open — our previous
+                        # connection's subscription is still live.  Notifications will
+                        # continue to arrive, so there is nothing to do here.
+                        _logger.debug(
+                            "BLETransport: notify already acquired for %s — reusing existing subscription",
+                            self._config.device_id,
+                        )
+
+                    await self._notify_availability(TransportAvailability.CONNECTED)
+                    _logger.debug("BLETransport connected to %s", self._config.device_id)
+
+                    # Successful connect resets the failure tracker.
+                    self._consecutive_failures = 0
+
+                    # One-shot sync on connect — subsequent periodic syncs are driven by
+                    # DeviceHandle._keep_alive_loop (20 s).
+                    await self._ble_sync()
+                    return
+                except (BleakError, TimeoutError, OSError) as exc:
+                    # The link came up but notify or the very first write failed, so the
+                    # transport is not actually usable.  is_connected reads the live client,
+                    # so leaving it connected would wedge the transport into a state where
+                    # writes succeed but responses never arrive.  Tear the link down.
+                    #
+                    # A missing characteristic on a link that just connected means the
+                    # GATT table came from a stale service cache (typical after a drop and
+                    # a reconnect through another proxy), not that the device changed.
+                    # Nothing else ever clears that cache, so without this every later
+                    # attempt would fail the same way until the process restarts.  Clear
+                    # it and reconnect once; only a second miss counts as a real failure.
+                    stale_cache = not cache_cleared and _is_stale_gatt_cache(exc)
+                    with contextlib.suppress(Exception):
+                        if stale_cache:
+                            await self._client.clear_cache()
+                        await self._client.disconnect()
+                    self._client = None
+                    self._message = None
+                    if stale_cache:
+                        cache_cleared = True
+                        _logger.info(
+                            "BLETransport[%s]: characteristic missing from cached GATT table (%s) — "
+                            "cleared the service cache, reconnecting once",
+                            self._config.device_id,
+                            exc,
+                        )
+                        continue
+                    # Count the failure (this drives the cooldown) and raise a TransportError:
+                    # a raw BleakError escaping here would break this method's documented
+                    # contract, so callers that catch only TransportError abort instead of
+                    # falling back to MQTT.
+                    await self._notify_availability(TransportAvailability.DISCONNECTED)
+                    self._record_connect_failure(exc if isinstance(exc, BleakError) else None)
+                    raise BLEUnavailableError(
+                        f"BLE setup after connect failed for {self._config.device_id!r}: {exc}"
+                    ) from exc
 
     def _record_connect_failure(self, exc: BleakError | None = None) -> None:
         """Increment the failure counter; clear device and start cooldown at threshold.
