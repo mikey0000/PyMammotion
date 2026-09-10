@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.9.0b3"
+version = "0.9.0b4"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -80,7 +80,7 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.9.0b3"
+current_version = "0.9.0b4"
 version_pattern = "MAJOR.MINOR.PATCH[PYTAGNUM]"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
