@@ -3787,6 +3787,12 @@ class NavReqCoverPath(betterproto2.Message):
 
     toward_included_angle: "int" = betterproto2.field(18, betterproto2.TYPE_INT32)
 
+    ride_boundary_distance: "float" = betterproto2.field(19, betterproto2.TYPE_FLOAT)
+
+    app_display_mode: "int" = betterproto2.field(20, betterproto2.TYPE_INT32)
+
+    auto_change_direction: "int" = betterproto2.field(21, betterproto2.TYPE_INT32)
+
 
 default_message_pool.register_message("", "NavReqCoverPath", NavReqCoverPath)
 

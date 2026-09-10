@@ -14,9 +14,7 @@ from pathlib import Path
 from pymammotion.data.mqtt.mammotion_properties import DeviceProperties, NetworkInfo
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
 
-# ===========================================================================
 # Regression test for the Luba 2 AWD 3000 ``networkInfo`` property parse failure.
-# ===========================================================================
 
 LUBA2_AWD_NETWORK_INFO = json.dumps(
     {
@@ -127,9 +125,7 @@ def test_wifi_only_network_info_omitting_cellular_fields_parses() -> None:
     assert ni.work_time == "6 h 42 min 37 s"
 
 
-# ===========================================================================
 # Regression tests for partial ``thing.event.property.post`` payloads.
-# ===========================================================================
 
 SPINO_MODEL_ONLY = json.dumps(
     {
@@ -207,9 +203,7 @@ def test_device_properties_accepts_empty_params() -> None:
     assert p.network_info is None
 
 
-# ===========================================================================
 # Regression test for the Yuka Mini 2 ``thing.event.property.post`` parse failure.
-# ===========================================================================
 
 # tests/unit/device/ → repo tests/ is parents[2].
 FIXTURE = Path(__file__).parents[2] / "fixtures" / "yuka_mini2_property_post.json"
@@ -254,10 +248,8 @@ def test_missing_optional_fields_does_not_raise() -> None:
     msg = MammotionPropertiesMessage.from_json(json.dumps(obj))
     assert msg.params.battery_percentage == 31
 
-# ===========================================================================
 # ``otaProgress`` on the Mammotion flat property post — the app reads this object
 # (MQTTService.messageArrived) and it was silently dropped here for lack of a field.
-# ===========================================================================
 
 OTA_PROGRESS_POST = json.dumps(
     {

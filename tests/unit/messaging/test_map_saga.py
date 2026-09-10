@@ -61,9 +61,7 @@ async def _run_saga_with_messages(
             await injector
 
 
-# ---------------------------------------------------------------------------
 # test 1 — known type (area=0): saga stores data and terminates normally
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_terminates_with_known_type() -> None:
@@ -100,9 +98,7 @@ async def test_saga_terminates_with_known_type() -> None:
     assert hash_id in saga.result.area
 
 
-# ---------------------------------------------------------------------------
 # test 2 — unknown type (26): saga must NOT loop forever; it should complete
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_does_not_loop_on_unknown_type() -> None:
@@ -156,9 +152,7 @@ async def test_saga_does_not_loop_on_unknown_type() -> None:
     assert synchronize_calls == 1, f"Expected 1 synchronize call, got {synchronize_calls}"
 
 
-# ---------------------------------------------------------------------------
 # test 3 — mixed: one known + one unknown type; known is stored, unknown is skipped
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_stores_known_and_skips_unknown_types() -> None:
@@ -203,9 +197,7 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
     assert saga._command_builder.synchronize_hash_data.call_count == 2  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # test 4 — virtual wall (21) + corridor line (19) + corridor point (20) are stored
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
@@ -262,9 +254,7 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
     assert saga._command_builder.synchronize_hash_data.call_count == 3  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # Regression tests for LUBA_VA log incident 2026-05-22
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_acks_unrelated_dynamics_line_frame() -> None:
@@ -427,9 +417,7 @@ async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
     assert cb.synchronize_hash_data.call_count == 2
 
 
-# ===========================================================================
 # Area-name fallback after a full sync (name_time.name preferred over "area N")
-# ===========================================================================
 
 from pymammotion.data.model.hash_list import (  # noqa: E402
     AreaHashNameList as _AHN,
@@ -471,14 +459,12 @@ class TestAreaNameFallbackAfterSync:
         assert m.area_name[0].name == "Existing"
 
 
-# ---------------------------------------------------------------------------
 # BLE-sync ordering: a sync must precede the root-list AND the per-hash request
 #
 # Regression: the device drops out of its "synced" state after a few seconds and
 # then returns no toapp_gethash_ack.  A single sync at the top of the run could be
 # stale by the time the root-list request fires (e.g. after the area-name step), so
 # we re-sync immediately before the root-list and per-hash requests.
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_syncs_before_root_list_and_immediately_before_per_hash() -> None:

@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError
+from tests._helpers import block_forever, wait_until
 
 
 def make_mock_message(field_name: str) -> MagicMock:
@@ -17,7 +18,6 @@ def make_mock_message(field_name: str) -> MagicMock:
 
 async def test_solicited_response_resolves_future() -> None:
     broker = DeviceMessageBroker()
-    received: list[object] = []
 
     async def send_fn() -> None:
         pass
@@ -25,7 +25,7 @@ async def test_solicited_response_resolves_future() -> None:
     with patch("betterproto2.which_one_of", return_value=("toapp_gethash_ack", MagicMock())):
 
         async def deliver() -> None:
-            await asyncio.sleep(0.01)
+            await wait_until(lambda: "toapp_gethash_ack" in broker._pending, message="request never registered")
             await broker.on_message(make_mock_message("toapp_gethash_ack"))
 
         task = asyncio.get_running_loop().create_task(deliver())
@@ -69,12 +69,12 @@ async def test_concurrent_request_raises() -> None:
     broker = DeviceMessageBroker()
 
     async def slow_send() -> None:
-        await asyncio.sleep(5)
+        await block_forever()
 
     task = asyncio.get_running_loop().create_task(
         broker.send_and_wait(slow_send, "toapp_gethash_ack", send_timeout=0.01, retries=1)
     )
-    await asyncio.sleep(0.001)  # let first request register
+    await wait_until(lambda: "toapp_gethash_ack" in broker._pending, message="first request never registered")
 
     with pytest.raises(ConcurrentRequestError):
         await broker.send_and_wait(slow_send, "toapp_gethash_ack", send_timeout=0.01, retries=1)
@@ -117,11 +117,9 @@ async def test_close_cancels_pending_futures() -> None:
     assert len(broker._pending) == 0
 
 
-# ---------------------------------------------------------------------------
 # Subscriptions are independent of credential refreshes
 # (moved from tests/unit/auth/test_token_manager.py — the broker is the layer
 # under test; the TokenManager is just concurrent noise)
-# ---------------------------------------------------------------------------
 
 
 async def test_broker_subscriptions_survive_token_refresh() -> None:
@@ -190,3 +188,27 @@ async def test_multiple_subscriptions_all_receive_after_token_refresh() -> None:
     finally:
         sub_a.cancel()
         sub_b.cancel()
+
+
+@pytest.mark.regression
+async def test_a_stalled_send_is_bounded_by_the_send_timeout() -> None:
+    """A send that never returns must time out, not wait forever.
+
+    ``send_fn`` was awaited *outside* ``asyncio.timeout``, which only covered waiting
+    for the reply.  The cloud invoke has no timeout of its own, so one stalled send
+    blocked indefinitely — and a host that runs several reads on its setup path (the
+    Mammotion HA integration does) had its whole config-entry budget consumed by one
+    of them, surfacing as a CancelledError from the enclosing task.
+    """
+    broker = DeviceMessageBroker()
+
+    async def stalled_send() -> None:
+        await block_forever()
+
+    with pytest.raises(CommandTimeoutError):
+        await asyncio.wait_for(
+            broker.send_and_wait(stalled_send, "toapp_gethash_ack", send_timeout=0.01, retries=2),
+            timeout=5,
+        )
+
+    assert "toapp_gethash_ack" not in broker._pending, "the pending slot must be released"

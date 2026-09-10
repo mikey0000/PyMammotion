@@ -15,6 +15,10 @@ from tests.fakeserver.cloud import FakeMammotionCloud
 # in it too — otherwise their HTTP requests are never serviced.
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
+#: Ceiling on fixture teardown.  Nothing here legitimately takes seconds — a whole
+#: suite run is ~3s — so this only ever fires on a genuine hang.
+_TEARDOWN_TIMEOUT = 30.0
+
 
 @pytest.fixture(autouse=True)
 def fast_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -39,14 +43,17 @@ async def fake_cloud(monkeypatch: pytest.MonkeyPatch) -> FakeMammotionCloud:
     monkeypatch.setattr("pymammotion.http.http.MAMMOTION_DOMAIN", cloud.base_url)
     monkeypatch.setattr("pymammotion.http.http.MAMMOTION_API_DOMAIN", cloud.base_url)
     yield cloud
-    await cloud.stop()
+    # A shutdown that cannot finish is a bug either way; surface it as a failed test
+    # with a traceback instead of wedging the whole run (pre-commit once blocked on
+    # this for ten minutes before anyone noticed).
+    await asyncio.wait_for(cloud.stop(), timeout=_TEARDOWN_TIMEOUT)
 
 
 @pytest.fixture
 async def client(fake_cloud: FakeMammotionCloud) -> MammotionClient:
     mammotion = MammotionClient()
     yield mammotion
-    await mammotion.stop()
+    await asyncio.wait_for(mammotion.stop(), timeout=_TEARDOWN_TIMEOUT)
 
 
 async def wait_for(predicate, timeout: float = 5.0, interval: float = 0.05) -> None:

@@ -42,6 +42,10 @@ OTA_RESULT_SUCCESS: int = 0
 #: device-specific error numbers and are treated as failures too — see :meth:`OTAProgress.is_failed`.
 OTA_RESULT_FAILED: int = 1
 
+#: What an in-flight tick carries.  Also the safe default when the cloud omits
+#: ``result`` from an ``otaProgress`` push: absent must not read as ``0`` (success).
+OTA_RESULT_IN_PROGRESS: int = 2
+
 
 @dataclass
 class OTAProgress(DataClassORJSONMixin):

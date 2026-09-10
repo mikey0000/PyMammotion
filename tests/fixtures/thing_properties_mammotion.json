@@ -1,0 +1,41 @@
+{
+  "method": "thing.properties",
+  "id": "17446620309903486",
+  "params": {
+    "deviceType": "LawnMower",
+    "checkFailedData": {},
+    "groupIdList": [
+      "GROUP"
+    ],
+    "_tenantId": "TENANT",
+    "groupId": "GROUP",
+    "categoryKey": "LawnMower",
+    "batchId": "BATCH",
+    "gmtCreate": 1744662030970,
+    "productKey": "a2MoBDliJbI",
+    "generateTime": 1744662030971,
+    "deviceName": "Luba-TEST0001",
+    "_traceId": "TRACE",
+    "iotId": "FAKEIOTID0000000000000000",
+    "JMSXDeliveryCount": 1,
+    "checkLevel": 0,
+    "qos": 1,
+    "requestId": "REQ",
+    "_categoryKey": "TmallGenie.LawnMower",
+    "namespace": "TmallGenie",
+    "tenantId": "TENANT",
+    "thingType": "DEVICE",
+    "items": {
+      "deviceVersion": {
+        "time": 1744662030963,
+        "value": "1.10.5.246"
+      },
+      "batteryPercentage": {
+        "time": 1744662030963,
+        "value": 84
+      }
+    },
+    "tenantInstanceId": "TENANTINST"
+  },
+  "version": "1.0"
+}

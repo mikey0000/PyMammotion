@@ -181,6 +181,17 @@ This reverses an earlier "the gate is uniform, no exceptions" rule. The reasonin
 
 Still true: a *sleeping* device is woken over HTTP via `wake_device`, never by firing MQTT at it.
 
+**BLE reaches the mower through Home Assistant's bluetooth stack, in practice ESP32 (ESPHome) proxies.** Everything about `BLETransport` follows from that:
+
+- **HA owns discovery.** `self_managed_scanning` stays off; HA pushes each advertisement's `BLEDevice` via `set_ble_device()` (`ble_inventory.update_ble_device`). The pointer matters because the proxy that hears the mower changes over time, so `establish_connection` gets `ble_device_callback=lambda: self._ble_device` to re-read it on every attempt. Never cache a `BLEDevice` anywhere else.
+- **bleak's service cache is per address and lives for the whole process.** `establish_connection(..., use_services_cache=True)` reuses the cached GATT table across client objects *and* across proxies. A link that connects and then fails with `Characteristic 0000ff02-… was not found` (`BleakCharacteristicNotFoundError`) is a stale table, not a device change — the Yuka/ESPHome report that motivated this. `connect()` clears the cache (`client.clear_cache()`, which reaches the BlueZ and ESPHome backends) and reconnects once; only the second miss counts as a failure. Nothing else clears that cache short of restarting HA, so any new setup step that touches a characteristic must stay inside that retry block.
+- **Cooldown is the fallback signal, not a retry policy.** `connect_failure_threshold=1`, `connect_cooldown_seconds=120`: one real failure makes `is_usable` False for two minutes, `active_transport()` routes to MQTT, and HA's movement buttons go unavailable (they gate on `is_usable`). `BleakOutOfConnectionSlotsError` trips it immediately — an ESP32 proxy has only a few connection slots. Only a successful connect or `clear_ble_device()` resets the counter; a stream of advertisements does not.
+- **`min_rssi=-90` gates usability too.** HA passes the advertisement RSSI with the device; below the floor the transport is unusable and sends fall back to MQTT. Expect availability to flap for a mower at the edge of a proxy's range.
+- **Reconnects are never started from the disconnect callback** (`_on_disconnect_async` only clears state). The MQTT/BLE loops, user commands and fresh advertisements decide when to revive the link; doing it in the callback caused reconnect storms.
+- **`establish_connection` runs with `timeout=2, max_attempts=1`.** That is deliberate for snappy manual control, but it also disables the retry connector's own service-change recovery (which only runs between its attempts), which is why the cache retry above lives in our code. Proxies often need more than 2 s to bring a link up; revisit if proxy users report connect timeouts.
+- **habluetooth logs `Removing a non-existing connecting …`** when we tear a link down within milliseconds of connecting (the setup-failure path). It is slot accounting noise, not a fault to chase.
+- **Diagnosing a BLE report:** ask for debug logs around the *first* disconnect (device-, proxy- or slot-originated?) and which proxy the reconnect went through; look for `BLE setup after connect failed`, `in cooldown`, `out of connection slots`, and the RSSI in the report frame (`connect.bleRssi`).
+
 ### Connection Paths
 
 - **Cloud/MQTT (Aliyun, pre-2025):** `MammotionHTTP` login → `CloudIOTGateway` setup → `AliyunMQTTTransport`
@@ -257,3 +268,47 @@ Before adding code, look for what's already there. The architecture is layered a
 - Keep comments concise. Prefer one short line stating the non-obvious constraint, or no comment at all.
 - Do not add comments that just restate the code on the following line(s) (e.g. `# Check if initialized` above `if self.initialized:`). Comments should only explain why (non-obvious constraints, surprising behavior, or workarounds), never what. Never add comments that justify a change by referencing what the code looked like before. Comments in tests that explain why a function call or assertion is made are ok.
 - Do not add section or divider comments (e.g. `# --- XYZ Triggers ---`) inside or outside of functions, since those can easily become stale and be misleading.
+
+## Testing (rules for Claude)
+
+`docs/testing.md` is the testing constitution — layout, naming, doubles,
+fixtures, time, regression contracts, legacy debt. Read it before writing or
+editing anything under `tests/`. The rules below are the ones that most often
+get broken; the document is the authority.
+
+- **Tier by what it touches.** `tests/unit/` — one module, no sockets, no real
+  clock, no `tests/fakeserver`. `tests/integration/` — several components, the
+  fake cloud over loopback. `tests/live/` — real account or hardware, marked
+  `live`, skips silently. A unit test that imports `tests.fakeserver` is an
+  integration test in the wrong directory.
+- **`tests/unit/` mirrors the package.** `pymammotion/device/handle.py` →
+  `tests/unit/device/test_handle.py`. Split a module past ~600 lines by concern
+  (`test_handle_transport_selection.py`), never by number.
+- **A builder used by a second module moves to `_helpers.py`.** Package-local
+  `tests/unit/<pkg>/_helpers.py` for `make_*` builders, `_fakes.py` for
+  hand-written fakes, `tests/_helpers.py` across tiers, `tests/conftest.py`
+  only for global autouse safety nets. Four copies of `_make_handle` is the
+  failure this rule exists to stop.
+- **Spec every mock; prefer not to mock.** Real object > hand-written fake >
+  `create_autospec`/`MagicMock(spec=…)`. A bare `MagicMock()` answers every
+  attribute truthily forever, so a renamed method keeps passing. Never mock the
+  unit under test. Assert on outcomes, not on call plumbing — unless the call
+  *is* the contract ("does not send to an offline device").
+- **`await asyncio.sleep(0.15)` is not synchronisation.** Wait on an
+  `asyncio.Event`, a future, `queue.join()`, or `asyncio.sleep(0)` for exactly
+  one loop turn. Freeze the clock with `time_machine.travel(..., tick=False)`
+  for anything reading `time()`/`monotonic()`. Bound every wait with
+  `asyncio.wait_for`. `asyncio_mode = "auto"` — no `@pytest.mark.asyncio`.
+- **A regression test must have been seen red.** Write it against the broken
+  code, watch it fail, then fix. Mark it `@pytest.mark.regression`, name it for
+  the behaviour (not the ticket), and let its docstring say what the code did
+  wrong. It lives with the module it pins; only cross-module pins go in
+  `tests/regression/`.
+- **Every test you write gets reviewed.** Launch the `test-reviewer` agent over
+  the tests you touched and fix its blocking findings before reporting the work
+  complete. A `PostToolUse` hook queues the files and the `Stop` hook refuses
+  the first stop while the queue is non-empty; the reviewer clears it. The
+  author fixes — the reviewer does not rewrite.
+- **`tests/meta/test_conventions.py` asserts the mechanical rules** and carries
+  a frozen baseline of pre-existing offenders. The baseline may shrink, never
+  grow: fix the violations your change touches and delete their entries.

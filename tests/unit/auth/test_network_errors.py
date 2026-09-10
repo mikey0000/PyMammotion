@@ -24,9 +24,7 @@ from pymammotion.transport.base import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Classifier — the single source of truth
-# ---------------------------------------------------------------------------
 
 
 def test_classifier_recognises_dns_failure() -> None:
@@ -86,10 +84,8 @@ def test_classifier_rejects_unrelated_exceptions() -> None:
     assert is_transient_network_error(AuthError("forbidden")) is False
 
 
-# ---------------------------------------------------------------------------
 # token_manager.refresh_http — DNS failure must propagate, not become
 # ReLoginRequiredError
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -150,9 +146,7 @@ async def test_refresh_http_wraps_response_with_no_data(token_manager: TokenMana
         await token_manager.refresh_http()
 
 
-# ---------------------------------------------------------------------------
 # refresh_invoke_token — same classification rule applies
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_invoke_token_dns_failure_leaves_account_usable(token_manager: TokenManager) -> None:

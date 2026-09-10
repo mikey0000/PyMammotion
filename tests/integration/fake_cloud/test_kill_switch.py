@@ -15,6 +15,7 @@ import pytest
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import NoTransportAvailableError, ReLoginRequiredError
 from tests.fakeserver.cloud import FakeMammotionCloud
+from tests._helpers import advance_real_time
 
 from .conftest import wait_for
 
@@ -57,7 +58,8 @@ async def test_server_side_session_death_quiesces_everything(
     with pytest.raises(ReLoginRequiredError):
         await client.mammotion_http.get_user_device_list()
 
-    await asyncio.sleep(0.8)
+    # Silence is only provable by letting the would-be traffic have its window.
+    await advance_real_time(0.8)
 
     after = {name: scenario.counters.get(name, 0) for name in _OAUTH_COUNTERS}
     assert after == before, f"network traffic after account death: {before} -> {after}"

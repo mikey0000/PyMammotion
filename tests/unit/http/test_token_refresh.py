@@ -80,9 +80,7 @@ def _logged_in(http: MammotionHTTP) -> MammotionHTTP:
     return http
 
 
-# ---------------------------------------------------------------------------
 # ensure_token_valid — serialization
-# ---------------------------------------------------------------------------
 
 
 async def test_ensure_token_valid_skips_when_token_fresh() -> None:
@@ -124,9 +122,7 @@ async def test_decorator_routes_through_ensure_token_valid() -> None:
     http.ensure_token_valid.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # ensure_token_valid — a rejected refresh token is terminal
-# ---------------------------------------------------------------------------
 
 
 async def test_rejected_refresh_raises_relogin_required() -> None:
@@ -179,9 +175,7 @@ async def test_decorated_endpoint_surfaces_relogin_required() -> None:
         await _probe(http)
 
 
-# ---------------------------------------------------------------------------
 # ensure_token_valid — transient failures are NOT auth failures
-# ---------------------------------------------------------------------------
 
 
 async def test_transient_refresh_error_propagates_as_itself() -> None:
@@ -219,9 +213,7 @@ async def test_transient_refresh_error_is_not_relogin_required() -> None:
     assert not isinstance(excinfo.value, ReLoginRequiredError)
 
 
-# ---------------------------------------------------------------------------
 # refresh_token_v2 / login_v2 — transient server failures raise ConnectionError
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
@@ -249,9 +241,7 @@ async def test_login_v2_raises_connection_error_on_server_failure(status: int) -
         await http.login_v2("a@b.c", "pw")
 
 
-# ---------------------------------------------------------------------------
 # on_login_refreshed — rotations are observable (so TokenManager can persist them)
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_token_v2_success_fires_on_login_refreshed() -> None:
@@ -285,9 +275,7 @@ async def test_listener_failure_does_not_break_refresh() -> None:
     assert result.code == 0  # the refresh itself must still succeed
 
 
-# ---------------------------------------------------------------------------
 # No automatic password login anywhere in MammotionHTTP
-# ---------------------------------------------------------------------------
 
 
 def test_no_refresh_helper_can_reach_login_v2() -> None:
@@ -323,9 +311,7 @@ def test_handle_expiry_is_gone() -> None:
     assert not hasattr(MammotionHTTP, "refresh_login")
 
 
-# ---------------------------------------------------------------------------
 # terminal memory — a rejected refresh token stops all oauth2/token traffic
-# ---------------------------------------------------------------------------
 
 
 async def test_rejected_refresh_marks_http_terminal() -> None:

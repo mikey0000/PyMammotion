@@ -45,27 +45,21 @@ def _make_fake_ble_message() -> MagicMock:
     return msg
 
 
-# ---------------------------------------------------------------------------
 # transport_type
-# ---------------------------------------------------------------------------
 
 
 def test_transport_type(transport: BLETransport) -> None:
     assert transport.transport_type is TransportType.BLE
 
 
-# ---------------------------------------------------------------------------
 # is_connected when no client
-# ---------------------------------------------------------------------------
 
 
 def test_is_connected_false_when_no_client(transport: BLETransport) -> None:
     assert transport.is_connected is False
 
 
-# ---------------------------------------------------------------------------
 # set_ble_device stores the device
-# ---------------------------------------------------------------------------
 
 
 def test_set_ble_device_stores_device(transport: BLETransport) -> None:
@@ -74,9 +68,7 @@ def test_set_ble_device_stores_device(transport: BLETransport) -> None:
     assert transport._ble_device is fake_device  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # connect() raises NoBLEAddressKnownError when no BLEDevice set
-# ---------------------------------------------------------------------------
 
 
 async def test_connect_raises_when_no_ble_device(config: BLETransportConfig) -> None:
@@ -85,9 +77,7 @@ async def test_connect_raises_when_no_ble_device(config: BLETransportConfig) -> 
         await transport.connect()
 
 
-# ---------------------------------------------------------------------------
 # connect() creates BleMessage, sends initial sync, starts notify
-# ---------------------------------------------------------------------------
 
 
 async def test_connect_succeeds_with_ble_device(config: BLETransportConfig) -> None:
@@ -109,9 +99,7 @@ async def test_connect_succeeds_with_ble_device(config: BLETransportConfig) -> N
     fake_msg.post_custom_data_bytes.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # connect() converts a failing initial sync into BLEUnavailableError
-# ---------------------------------------------------------------------------
 
 
 async def test_connect_wraps_bleak_error_from_initial_sync(config: BLETransportConfig) -> None:
@@ -145,9 +133,7 @@ async def test_connect_wraps_bleak_error_from_initial_sync(config: BLETransportC
     fake_client.disconnect.assert_awaited()
 
 
-# ---------------------------------------------------------------------------
 # disconnect() sends final sync, clears client and message
-# ---------------------------------------------------------------------------
 
 
 async def test_disconnect_resets_is_connected(config: BLETransportConfig) -> None:
@@ -172,9 +158,7 @@ async def test_disconnect_resets_is_connected(config: BLETransportConfig) -> Non
     assert fake_msg.post_custom_data_bytes.await_count == 1
 
 
-# ---------------------------------------------------------------------------
 # send() routes through BleMessage.post_custom_data_bytes
-# ---------------------------------------------------------------------------
 
 
 async def test_send_uses_ble_message(config: BLETransportConfig) -> None:
@@ -198,9 +182,7 @@ async def test_send_uses_ble_message(config: BLETransportConfig) -> None:
     fake_client.write_gatt_char.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # H4: send() must surface BleakError as TransportError AND mark availability
-# ---------------------------------------------------------------------------
 
 
 async def test_send_propagates_bleak_error_and_marks_disconnected(config: BLETransportConfig) -> None:
@@ -283,9 +265,7 @@ async def test_send_raises_when_client_disconnected_during_write(config: BLETran
     assert TransportAvailability.DISCONNECTED in listener_states
 
 
-# ---------------------------------------------------------------------------
 # _notification_handler only forwards complete frames (result == 0)
-# ---------------------------------------------------------------------------
 
 
 async def test_notification_handler_forwards_complete_frame(config: BLETransportConfig) -> None:
@@ -327,9 +307,7 @@ async def test_notification_handler_ignores_fragments(config: BLETransportConfig
     fake_msg.parseBlufiNotifyData.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # availability transitions
-# ---------------------------------------------------------------------------
 
 
 async def test_availability_transitions_on_connect_disconnect(config: BLETransportConfig) -> None:
@@ -353,9 +331,7 @@ async def test_availability_transitions_on_connect_disconnect(config: BLETranspo
     assert TransportAvailability.DISCONNECTED in states
 
 
-# ---------------------------------------------------------------------------
 # is_usable / change-detection / cooldown / clear_ble_device
-# ---------------------------------------------------------------------------
 
 
 def _ble_device_with_address(address: str) -> MagicMock:
@@ -560,9 +536,7 @@ async def test_successful_connect_resets_failure_counter(config: BLETransportCon
     assert transport._consecutive_failures == 0  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # Self-managed scanning
-# ---------------------------------------------------------------------------
 
 
 async def test_self_managed_scanning_discovers_device() -> None:
@@ -621,9 +595,7 @@ async def test_self_managed_scanning_raises_when_scan_finds_nothing() -> None:
             await transport.connect()
 
 
-# ---------------------------------------------------------------------------
 # _handle_disconnect — thread safety (disconnect callbacks may run off-loop)
-# ---------------------------------------------------------------------------
 
 
 class TestHandleDisconnectThreadSafety:
@@ -680,9 +652,7 @@ class TestHandleDisconnectThreadSafety:
         assert not error_box, f"_handle_disconnect raised: {error_box}"
         assert transport.availability is TransportAvailability.DISCONNECTED
 
-# ---------------------------------------------------------------------------
 # connect() recovers from a stale GATT service cache instead of looping on cooldown
-# ---------------------------------------------------------------------------
 
 
 def _not_found() -> Exception:

@@ -23,6 +23,7 @@ from pymammotion.auth.token_manager import HTTPCredentials, TokenManager
 from pymammotion.http.model.http import UnauthorizedExceptionError
 from pymammotion.transport.base import ReLoginRequiredError
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from tests._helpers import let_others_run
 
 from tests.unit.auth._helpers import (
     encode_jwt,
@@ -108,12 +109,9 @@ async def test_initialize_stores_credentials() -> None:
     assert tm._mqtt_creds is mqtt_creds
 
 
-# ---------------------------------------------------------------------------
 # TokenManager — MQTT credential refresh
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_get_mammotion_mqtt_credentials_refreshes_when_near_expiry() -> None:
     """MQTT credentials expiring within 30 minutes must trigger a proactive refresh."""
     http = make_http_mock(refresh_code=0, mqtt_jwt="jwt-new")
@@ -130,7 +128,6 @@ async def test_get_mammotion_mqtt_credentials_refreshes_when_near_expiry() -> No
     http.get_mqtt_credentials.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_get_mammotion_mqtt_credentials_no_refresh_when_valid() -> None:
     """Fresh MQTT credentials must be returned without a network call."""
     http = make_http_mock(refresh_code=0, mqtt_jwt="jwt-new")
@@ -147,9 +144,7 @@ async def test_get_mammotion_mqtt_credentials_no_refresh_when_valid() -> None:
     http.get_mqtt_credentials.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # MQTT JWT expiry is read from the token's exp claim, not a fixed 24h assumption
-# ---------------------------------------------------------------------------
 
 
 def test_jwt_expiry_reads_exp_claim() -> None:
@@ -178,7 +173,6 @@ def test_jwt_expiry_falls_back_when_exp_claim_absent() -> None:
     assert before + 456.0 <= result <= time.time() + 456.0
 
 
-@pytest.mark.asyncio
 async def test_refresh_mqtt_creds_sets_expiry_from_jwt_exp() -> None:
     """refresh_mqtt_creds must read expires_at from the JWT exp claim so proactive
     refresh tracks the broker's real lifetime rather than assuming 24 hours.
@@ -193,7 +187,6 @@ async def test_refresh_mqtt_creds_sets_expiry_from_jwt_exp() -> None:
     assert creds.expires_at == pytest.approx(exp)
 
 
-@pytest.mark.asyncio
 async def test_refresh_mqtt_creds_falls_back_to_24h_for_opaque_jwt() -> None:
     """An opaque (non-decodable) JWT keeps the 24h fallback so refresh still works."""
     http = make_http_mock(refresh_code=0, mqtt_jwt="opaque-token")
@@ -206,9 +199,7 @@ async def test_refresh_mqtt_creds_falls_back_to_24h_for_opaque_jwt() -> None:
     assert before + 86400 <= creds.expires_at <= time.time() + 86400
 
 
-# ---------------------------------------------------------------------------
 # Strict Mammotion refresh — refresh-token only, never login_v2
-# ---------------------------------------------------------------------------
 
 
 def _make_strict_http_mock(*, refresh_code: int = 0, jwt: str = "jwt-strict") -> AsyncMock:
@@ -223,7 +214,6 @@ def _make_strict_http_mock(*, refresh_code: int = 0, jwt: str = "jwt-strict") ->
     )
 
 
-@pytest.mark.asyncio
 async def test_refresh_mqtt_credentials_never_calls_login_v2() -> None:
     """Renewing the MQTT JWT must never mint a session from the stored password."""
     http = _make_strict_http_mock(jwt="jwt-strict")
@@ -236,7 +226,6 @@ async def test_refresh_mqtt_credentials_never_calls_login_v2() -> None:
     http.login_v2.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_refresh_mqtt_credentials_retries_once_via_refresh_token() -> None:
     """A refused JWT endpoint triggers ONE forced access-token renewal, then a retry.
 
@@ -258,7 +247,6 @@ async def test_refresh_mqtt_credentials_retries_once_via_refresh_token() -> None
     assert http.get_mqtt_credentials.await_count == 2
 
 
-@pytest.mark.asyncio
 async def test_refresh_mqtt_credentials_raises_when_refresh_token_dead() -> None:
     """A rejected refresh token during the retry is terminal — and never a login_v2."""
     http = _make_strict_http_mock(refresh_code=401)
@@ -271,7 +259,6 @@ async def test_refresh_mqtt_credentials_raises_when_refresh_token_dead() -> None
     http.login_v2.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_refresh_mqtt_credentials_strict_raises_when_jwt_endpoint_empty() -> None:
     """If the JWT endpoint returns no data after a token refresh, give up — no login_v2."""
     http = _make_strict_http_mock()
@@ -284,7 +271,6 @@ async def test_refresh_mqtt_credentials_strict_raises_when_jwt_endpoint_empty() 
     http.login_v2.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_force_refresh_invoke_token_strict_uses_refresh_token_only() -> None:
     """allow_relogin=False must refresh via refresh_token_v2 (not refresh_login/login_v2)."""
     http = _make_strict_http_mock()
@@ -299,12 +285,9 @@ async def test_force_refresh_invoke_token_strict_uses_refresh_token_only() -> No
     http.fetch_authorization_token.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # TokenManager — mutex / concurrency safety
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_refresh_mqtt_credentials_serialises_with_other_refresh_paths() -> None:
     """The public refresh_mqtt_credentials() (with -s) must hold the same lock as
     force_refresh()/refresh_aliyun_credentials() so concurrent refresh paths run
@@ -323,7 +306,7 @@ async def test_refresh_mqtt_credentials_serialises_with_other_refresh_paths() ->
         nonlocal active, overlap_max
         active += 1
         overlap_max = max(overlap_max, active)
-        await asyncio.sleep(0.02)
+        await let_others_run()  # any unserialised caller would raise `active` here
         active -= 1
         data = MagicMock()
         data.access_token = "tok"
@@ -335,7 +318,7 @@ async def test_refresh_mqtt_credentials_serialises_with_other_refresh_paths() ->
         nonlocal active, overlap_max
         active += 1
         overlap_max = max(overlap_max, active)
-        await asyncio.sleep(0.02)
+        await let_others_run()  # any unserialised caller would raise `active` here
         active -= 1
         d = MagicMock()
         d.host = "h"
@@ -362,12 +345,9 @@ async def test_refresh_mqtt_credentials_serialises_with_other_refresh_paths() ->
     assert overlap_max == 1, f"Concurrent refreshes overlapped (max active = {overlap_max})"
 
 
-# ---------------------------------------------------------------------------
 # MQTTTransport.send() raises AuthError on expired token response
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("code", [401, 460])
 async def test_mqtt_transport_send_in_body_rejection_refreshes_once_then_gives_up(code: int) -> None:
     """A dead-token rejection gets exactly one invoke-token refresh and one retry, then the transport gives up.
@@ -394,9 +374,7 @@ async def test_mqtt_transport_send_in_body_rejection_refreshes_once_then_gives_u
     assert transport.is_usable is False
 
 
-# ---------------------------------------------------------------------------
 # on_login_refreshed — HTTP-level rotations are mirrored and persisted
-# ---------------------------------------------------------------------------
 
 
 def test_token_manager_wires_on_login_refreshed() -> None:
@@ -442,14 +420,12 @@ async def test_on_http_login_refreshed_noop_without_login_info() -> None:
     tm.on_credentials_updated.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # Two-tier failure model: account-scoped vs transport-scoped
 #
 # A dead HTTP refresh token means nothing about the account can be renewed —
 # that is terminal and the user must re-authenticate.  A dead Aliyun IoT session
 # or Mammotion MQTT JWT, while the HTTP login is still good, must give up on that
 # ONE transport and leave the account's credentials and other transport alone.
-# ---------------------------------------------------------------------------
 
 
 def _tm_with_gateway(*, refresh_code: int = 0) -> tuple[TokenManager, AsyncMock, MagicMock]:
@@ -469,7 +445,6 @@ def _tm_with_gateway(*, refresh_code: int = 0) -> tuple[TokenManager, AsyncMock,
     return tm, http, gateway
 
 
-@pytest.mark.asyncio
 async def test_rejected_http_refresh_token_is_account_terminal() -> None:
     """A dead refresh token marks the whole account — nothing can be renewed."""
     tm, http, _ = _tm_with_gateway(refresh_code=401)
@@ -481,7 +456,6 @@ async def test_rejected_http_refresh_token_is_account_terminal() -> None:
     http.login_v2.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_account_terminal_fails_fast_without_network() -> None:
     """Once terminal, further callers must not queue more doomed oauth2/token hits."""
     tm, http, _ = _tm_with_gateway(refresh_code=401)
@@ -497,7 +471,6 @@ async def test_account_terminal_fails_fast_without_network() -> None:
     assert http.refresh_token_v2.await_count == first_calls, "terminal state must not re-hit the network"
 
 
-@pytest.mark.asyncio
 async def test_dead_aliyun_session_does_not_mark_account_terminal() -> None:
     """Aliyun dying must not cost the user their login or the Mammotion transport."""
     tm, http, gateway = _tm_with_gateway()
@@ -511,7 +484,6 @@ async def test_dead_aliyun_session_does_not_mark_account_terminal() -> None:
     assert tm.mqtt_unavailable is None, "the Mammotion MQTT transport is unaffected"
 
 
-@pytest.mark.asyncio
 async def test_mammotion_mqtt_still_works_after_aliyun_dies() -> None:
     """The concrete consequence: a hybrid account keeps its post-2025 devices."""
     tm, http, gateway = _tm_with_gateway()
@@ -524,7 +496,6 @@ async def test_mammotion_mqtt_still_works_after_aliyun_dies() -> None:
     assert creds.jwt == "jwt-ok"
 
 
-@pytest.mark.asyncio
 async def test_dead_mqtt_jwt_does_not_mark_account_terminal() -> None:
     """The mirror case: MQTT dying leaves the login and Aliyun alone."""
     tm, http, _ = _tm_with_gateway()
@@ -538,7 +509,6 @@ async def test_dead_mqtt_jwt_does_not_mark_account_terminal() -> None:
     assert tm.aliyun_unavailable is None
 
 
-@pytest.mark.asyncio
 async def test_transient_network_error_marks_nothing_terminal() -> None:
     """A blip must leave every credential type retryable."""
     tm, http, _ = _tm_with_gateway()
@@ -552,7 +522,6 @@ async def test_transient_network_error_marks_nothing_terminal() -> None:
     assert tm.mqtt_unavailable is None
 
 
-@pytest.mark.asyncio
 async def test_aliyun_2401_rebuilds_session_without_password() -> None:
     """A 2401 is recovered via the authCode chain (connect_iot), never login_v2."""
     from pymammotion.transport.base import SessionExpiredError, TransportType
@@ -573,7 +542,6 @@ async def test_aliyun_2401_rebuilds_session_without_password() -> None:
     assert tm.aliyun_unavailable is None
 
 
-# ---------------------------------------------------------------------------
 # Reactive 401 refresh is deduplicated by access token
 #
 # Ported from the Android app: SpecialCodeIntercepter.refreshToken() compares the
@@ -581,7 +549,6 @@ async def test_aliyun_2401_rebuilds_session_without_password() -> None:
 # refreshing, so a burst of requests that all 401 on the same dead token produces
 # one refresh, not one per request.  Each refresh rotates the refresh token
 # server-side, so the duplicates actively race each other.
-# ---------------------------------------------------------------------------
 
 
 def _tm_for_invoke() -> tuple[TokenManager, AsyncMock]:
@@ -595,7 +562,6 @@ def _tm_for_invoke() -> tuple[TokenManager, AsyncMock]:
     return tm, http
 
 
-@pytest.mark.asyncio
 async def test_refresh_invoke_token_refreshes_when_token_unchanged() -> None:
     """The token that failed is still the live one — a real refresh is needed."""
     tm, http = _tm_for_invoke()
@@ -606,7 +572,6 @@ async def test_refresh_invoke_token_refreshes_when_token_unchanged() -> None:
     http.fetch_authorization_token.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_refresh_invoke_token_skips_when_another_caller_already_refreshed() -> None:
     """The live token has moved on — retry with it instead of rotating again."""
     tm, http = _tm_for_invoke()
@@ -618,7 +583,6 @@ async def test_refresh_invoke_token_skips_when_another_caller_already_refreshed(
     http.fetch_authorization_token.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_concurrent_401s_produce_exactly_one_refresh() -> None:
     """The end-to-end property: N commands failing on one dead token → one rotation."""
     tm, http = _tm_for_invoke()
@@ -635,7 +599,6 @@ async def test_concurrent_401s_produce_exactly_one_refresh() -> None:
     assert http.refresh_token_v2.await_count == 1
 
 
-@pytest.mark.asyncio
 async def test_refresh_invoke_token_without_stale_token_always_refreshes() -> None:
     """Callers that cannot say which token failed keep the old unconditional behaviour."""
     tm, http = _tm_for_invoke()
@@ -646,9 +609,7 @@ async def test_refresh_invoke_token_without_stale_token_always_refreshes() -> No
     http.refresh_token_v2.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # on_reauth_required — the account kill switch fires once, on the flag transition
-# ---------------------------------------------------------------------------
 
 
 async def test_reauth_transition_fires_kill_switch_once() -> None:

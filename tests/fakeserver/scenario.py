@@ -80,9 +80,7 @@ class Scenario:
     def count(self, name: str) -> None:
         self.counters[name] = self.counters.get(name, 0) + 1
 
-    # ------------------------------------------------------------------
     # Token minting / validation
-    # ------------------------------------------------------------------
 
     def age_cached_access_token(self, cache: dict, remaining: float = 60.0) -> None:
         """Rewrite *cache*'s access token so it expires in *remaining* seconds.
@@ -165,9 +163,7 @@ class Scenario:
             return False
         return float(claims.get("exp", 0)) > time.time()
 
-    # ------------------------------------------------------------------
     # Control actions
-    # ------------------------------------------------------------------
 
     def revoke_access_tokens(self) -> None:
         """Server-side revocation: every bearer becomes invalid (401s) while its

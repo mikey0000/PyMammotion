@@ -1,10 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
 
+from pymammotion.data.model.events import OTA_RESULT_IN_PROGRESS
 from pymammotion.data.mqtt.mammotion_properties import DeviceProperties
 
 
@@ -122,14 +123,24 @@ class STM32H7VersionItems(DataClassORJSONMixin):
 
 @dataclass
 class OTAProgressItems(DataClassORJSONMixin):
-    """Property item reporting the progress and outcome of an OTA firmware update."""
+    """Property item reporting the progress and outcome of an OTA firmware update.
 
-    result: int
-    otaId: str
-    progress: int
-    message: str
-    version: str
-    properties: str
+    Every field defaults: the cloud omits some of them mid-install, and mashumaro
+    raises ``MissingField`` — a sibling of ``KeyError`` under ``LookupError``, so it
+    escaped the caller's ``(ValueError, KeyError, TypeError)`` guard and took the whole
+    properties frame with it.
+
+    ``result`` defaults to :data:`OTA_RESULT_IN_PROGRESS` rather than 0, because 0 is
+    the *success* code: defaulting it would report a missing field as a finished
+    install and pin the bar to 100%.
+    """
+
+    result: int = OTA_RESULT_IN_PROGRESS
+    otaId: str = ""
+    progress: int = 0
+    message: str = ""
+    version: str = ""
+    properties: str = ""
 
 
 ItemTypes = (
@@ -238,9 +249,19 @@ class ThingPropertiesMessage(DataClassORJSONMixin):
 
 @dataclass
 class MammotionPropertiesMessage(DataClassORJSONMixin):
-    """Top-level properties message received over Mammotion's direct MQTT connection."""
+    """Top-level properties message received over Mammotion's direct MQTT connection.
 
-    id: str
-    version: str
-    sys: dict
-    params: DeviceProperties
+    Every envelope field is defaulted because the app's own model treats them that way:
+    ``TopicProperty`` (maiot_module) declares ``sys`` and ``params`` ``@Nullable`` and
+    reads ``id``/``version``/``method``/``time`` through null-tolerant getters.  Ours
+    required ``id``, ``version`` and ``sys``, so a lean envelope raised ``MissingField``
+    inside ``_dispatch_mammotion_properties``'s ``except Exception`` and was dropped at
+    DEBUG — which is how a firmware install reported 0% for its whole run: OTA progress
+    arrives as one of these posts (``.../thing/event/property/post``, carrying
+    ``params.otaProgress``) and never survived parsing.
+    """
+
+    id: str = ""
+    version: str = ""
+    sys: dict = field(default_factory=dict)
+    params: DeviceProperties = field(default_factory=DeviceProperties)

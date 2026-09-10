@@ -16,7 +16,6 @@ Env vars:
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import logging
 import os
@@ -26,6 +25,7 @@ import pytest
 
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import TransportType
+from tests._helpers import advance_real_time
 
 _logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ async def _try_attach_ble(client: MammotionClient, device_name: str, ble_address
     for _ in range(20):  # up to ~10s for BLE to come up
         if handle.is_transport_connected(TransportType.BLE):
             return True
-        await asyncio.sleep(0.5)
+        await advance_real_time(0.5)  # a real radio link, not a task we can wait on
     return handle.is_transport_connected(TransportType.BLE)
 
 

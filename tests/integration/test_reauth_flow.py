@@ -22,9 +22,7 @@ from pymammotion.transport.base import ReLoginRequiredError
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _make_mqtt_data(jwt: str = "jwt-new") -> MagicMock:
@@ -36,14 +34,12 @@ def _make_mqtt_data(jwt: str = "jwt-new") -> MagicMock:
     return data
 
 
-def _make_transport(http: AsyncMock, token_manager: AsyncMock | None = None) -> MQTTTransport:
+def _make_mqtt_transport(http: AsyncMock, token_manager: AsyncMock | None = None) -> MQTTTransport:
     config = MQTTTransportConfig(host="mqtt.example.com", client_id="c1", username="u", password="p")
     return MQTTTransport(config=config, mammotion_http=http, token_manager=token_manager or AsyncMock())
 
 
-# ---------------------------------------------------------------------------
 # _refresh_mqtt() — fast path
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_mqtt_creds_fast_path_stores_credentials() -> None:
@@ -62,9 +58,7 @@ async def test_refresh_mqtt_creds_fast_path_stores_credentials() -> None:
     http.refresh_token_v2.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # _refresh_mqtt() — one forced access-token renewal, then retry
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_mqtt_creds_retries_after_forced_token_renewal() -> None:
@@ -139,9 +133,7 @@ async def test_refresh_mqtt_creds_raises_relogin_on_unexpected_get_credentials_e
         await tm.get_mammotion_mqtt_credentials()
 
 
-# ---------------------------------------------------------------------------
 # MQTTTransport.send() — HTTP token path uses refresh_invoke_token
-# ---------------------------------------------------------------------------
 
 
 async def test_send_unauthorized_calls_refresh_invoke_token_not_mqtt_credentials() -> None:
@@ -155,7 +147,7 @@ async def test_send_unauthorized_calls_refresh_invoke_token_not_mqtt_credentials
 
     tm = AsyncMock()
 
-    transport = _make_transport(http, tm)
+    transport = _make_mqtt_transport(http, tm)
     await transport.send(b"\x00\x01", iot_id="device-001")
 
     tm.refresh_invoke_token.assert_awaited_once()
@@ -178,7 +170,7 @@ async def test_send_gives_up_as_no_transport_when_invoke_token_refresh_fails() -
     tm.account_id = "acc"
     tm.refresh_invoke_token.side_effect = ReLoginRequiredError("acc", "refresh token expired")
 
-    transport = _make_transport(http, tm)
+    transport = _make_mqtt_transport(http, tm)
 
     with pytest.raises(NoTransportAvailableError):
         await transport.send(b"\x00\x01", iot_id="device-001")
@@ -207,7 +199,7 @@ async def test_send_raises_transport_error_when_retry_fails_after_token_refresh(
         RuntimeError("server still broken"),
     ]
 
-    transport = _make_transport(http)
+    transport = _make_mqtt_transport(http)
 
     with pytest.raises(TransportError):
         await transport.send(b"\x00\x01", iot_id="device-001")

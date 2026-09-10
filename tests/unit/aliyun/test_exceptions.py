@@ -26,9 +26,7 @@ from pymammotion.aliyun.exceptions import (
     TooManyRequestsException,
 )
 
-# ---------------------------------------------------------------------------
 # TooManyRequestsException
-# ---------------------------------------------------------------------------
 
 
 def test_too_many_requests_named_args() -> None:
@@ -48,9 +46,7 @@ def test_too_many_requests_missing_iot_id_clear_error() -> None:
         TooManyRequestsException("rate limited")  # type: ignore[call-arg]
 
 
-# ---------------------------------------------------------------------------
 # DeviceOfflineException
-# ---------------------------------------------------------------------------
 
 
 def test_device_offline_named_args() -> None:
@@ -71,9 +67,7 @@ def test_device_offline_missing_iot_id_clear_error() -> None:
         DeviceOfflineException("offline")  # type: ignore[call-arg]
 
 
-# ---------------------------------------------------------------------------
 # GatewayTimeoutException
-# ---------------------------------------------------------------------------
 
 
 def test_gateway_timeout_named_args() -> None:

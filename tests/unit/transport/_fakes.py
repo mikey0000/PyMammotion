@@ -20,6 +20,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock
 
+from tests._helpers import block_forever
+
 
 class FakeMessage:
     """Stand-in for an aiomqtt message — just a topic and a payload."""
@@ -37,8 +39,9 @@ class FakeAsyncMessages:
     receive loop exit and mask bugs that only show up while it is still running.
     """
 
-    def __init__(self, messages: list[FakeMessage]) -> None:
+    def __init__(self, messages: list[FakeMessage], drained: asyncio.Event | None = None) -> None:
         self._messages = iter(messages)
+        self._drained = drained or asyncio.Event()
 
     def __aiter__(self) -> FakeAsyncMessages:
         return self
@@ -47,7 +50,8 @@ class FakeAsyncMessages:
         try:
             return next(self._messages)
         except StopIteration:
-            await asyncio.sleep(3600)
+            self._drained.set()
+            await block_forever()
             raise StopAsyncIteration from None
 
 
@@ -58,10 +62,15 @@ class FakeMQTTClient:
         self._messages_list: list[FakeMessage] = messages or []
         self.publish = AsyncMock()
         self.subscribe = AsyncMock()
+        #: Set once a receive loop has asked for a message past the seeded ones.  The
+        #: only honest signal that everything seeded was delivered, which is what a
+        #: test asserting *nothing* arrived has to wait for.  It lives on the client
+        #: because ``messages`` hands out a fresh iterator per access.
+        self.drained = asyncio.Event()
 
     @property
     def messages(self) -> FakeAsyncMessages:
-        return FakeAsyncMessages(self._messages_list)
+        return FakeAsyncMessages(self._messages_list, self.drained)
 
     async def __aenter__(self) -> FakeMQTTClient:
         return self

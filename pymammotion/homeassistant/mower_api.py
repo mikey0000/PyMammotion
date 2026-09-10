@@ -394,6 +394,7 @@ class HomeAssistantMowerApi:
             edge_mode=operation_settings.mowing_laps,  # perimeter/mowing laps
             path_order=create_path_order(operation_settings, device_name),
             obstacle_laps=operation_settings.obstacle_laps,
+            auto_change_direction=operation_settings.auto_change_direction,
         )
 
         if DeviceType.is_luba1(device_name):

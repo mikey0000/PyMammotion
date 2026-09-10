@@ -79,9 +79,7 @@ def _json_cache(**overrides: object) -> dict:
     return raw
 
 
-# ---------------------------------------------------------------------------
 # from_cache — the happy paths
-# ---------------------------------------------------------------------------
 
 
 def test_restores_every_field_from_live_models() -> None:
@@ -155,9 +153,7 @@ def test_optional_fields_may_all_be_absent() -> None:
     assert http.device_records.records == []
 
 
-# ---------------------------------------------------------------------------
 # from_cache — a bad cache degrades, it never raises
-# ---------------------------------------------------------------------------
 
 
 def test_missing_login_data_returns_none() -> None:
@@ -218,9 +214,7 @@ def test_malformed_optional_fields_leave_the_rest_intact() -> None:
     assert http.mqtt_credentials is not None  # untouched by its neighbours' failures
 
 
-# ---------------------------------------------------------------------------
 # validate_login
-# ---------------------------------------------------------------------------
 
 
 def _restored() -> MammotionHTTP:

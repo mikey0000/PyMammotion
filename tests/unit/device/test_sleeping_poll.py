@@ -26,7 +26,7 @@ from pymammotion.device.mqtt_loop import (
 )
 from pymammotion.transport.base import TransportType
 from pymammotion.utility.constant import NO_REQUEST_MODES, WorkMode
-from tests.unit._helpers import make_mock_handle, make_mock_transport
+from tests._helpers import make_mock_handle, make_mock_transport
 
 
 def _handle_with_status(sys_status: int, *, charge_state: int = 0, battery: int = 100) -> DeviceHandle:

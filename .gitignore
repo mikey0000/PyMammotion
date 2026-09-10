@@ -242,3 +242,6 @@ tests/dev_output/
 examples/dev_credentials.json
 # Live OAuth/MQTT tokens written by the dev console — never commit
 examples/dev_token_cache.json
+
+# per-session state written by .claude/hooks/test_review_gate.py
+.claude/state/

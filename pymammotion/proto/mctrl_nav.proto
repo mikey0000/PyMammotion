@@ -193,6 +193,12 @@ message NavReqCoverPath {
   int32 result = 16;
   int32 toward_mode = 17;
   int32 toward_included_angle = 18;
+  float ride_boundary_distance = 19;
+  int32 app_display_mode = 20;
+  // Field 21 is INFERRED (native encoder packed in 2.3.18.21). Confirm by
+  // capturing an outgoing NavReqCoverPath with scripts/frida/lubamsg-tap.js while
+  // toggling "Auto-reverse Mowing Direction" on a supporting mower.
+  int32 auto_change_direction = 21;
 }
 
 message NavUploadZigZagResult {

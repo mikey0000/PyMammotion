@@ -17,6 +17,7 @@ Two groups here:
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
@@ -30,6 +31,7 @@ from pymammotion.proto import (
     NavGetHashListAck,
 )
 from pymammotion.transport.base import CommandTimeoutError, SagaFailedError
+from tests._helpers import block_forever
 from tests.unit.messaging._helpers import ctrl_plan_msg as _ctrl_msg
 
 
@@ -49,9 +51,7 @@ def _nav_msg(**leaf: object) -> LubaMsg:
     return LubaMsg(nav=MctlNav(**leaf))  # type: ignore[arg-type]
 
 
-# ---------------------------------------------------------------------------
 # extract_nav_frame — the unwrap every saga needs
-# ---------------------------------------------------------------------------
 
 
 def test_extract_nav_frame_returns_name_and_value() -> None:
@@ -85,9 +85,7 @@ def test_extract_nav_frame_swallows_malformed_messages() -> None:
     assert Saga.extract_nav_frame(None, "toapp_gethash_ack") is None
 
 
-# ---------------------------------------------------------------------------
 # _collect_frames — nav envelope (the existing default)
-# ---------------------------------------------------------------------------
 
 
 async def test_collect_frames_queues_only_matching_leaves() -> None:
@@ -120,12 +118,10 @@ async def test_collect_frames_unsubscribes_on_exit() -> None:
     assert queue.qsize() == 0
 
 
-# ---------------------------------------------------------------------------
 # _collect_frames — ctrl envelope (Spino).  New in step 1.
 #
 # SpinoPlanFetchSaga previously carried a ~35-line copy of _collect_frames for
 # no reason other than the base hard-wiring the nav envelope.
-# ---------------------------------------------------------------------------
 
 
 async def test_collect_frames_supports_the_ctrl_envelope() -> None:
@@ -182,9 +178,7 @@ def test_spino_saga_no_longer_overrides_the_collector() -> None:
     assert "_collect_frames" not in vars(SpinoPlanFetchSaga)
 
 
-# ---------------------------------------------------------------------------
 # _next_frame / _region_data / execute
-# ---------------------------------------------------------------------------
 
 
 async def test_next_frame_returns_a_queued_item() -> None:
@@ -217,7 +211,7 @@ async def test_execute_enforces_the_total_timeout_wall() -> None:
         total_timeout = 0.02
 
         async def _run(self, broker: DeviceMessageBroker) -> None:
-            await asyncio.sleep(10)
+            await block_forever()
 
     with pytest.raises(SagaFailedError):
         await _Hanging().execute(DeviceMessageBroker())
@@ -229,7 +223,6 @@ async def test_execute_returns_on_success() -> None:
     assert saga.runs == 1
 
 
-# ---------------------------------------------------------------------------
 # Re-entry policy: progress, not attempt-counting.  New in step 3.
 #
 # The old loop restarted the whole run and counted attempts, which is the wrong
@@ -241,7 +234,6 @@ async def test_execute_returns_on_success() -> None:
 #
 # ``progress()`` replaces all of that: any advance resets the budget, so
 # ``max_attempts`` now caps *consecutive fruitless* attempts.
-# ---------------------------------------------------------------------------
 
 
 class _CountingSaga(Saga):
@@ -249,6 +241,7 @@ class _CountingSaga(Saga):
 
     name = "counting"
     max_attempts = 2
+    retry_backoff = 0.0  # the budget is the subject here, not the pause between attempts
 
     def __init__(self, progress_values: list[object]) -> None:
         self._values = progress_values
@@ -270,6 +263,7 @@ async def test_progress_defaults_to_none_so_untracked_sagas_still_cap_out() -> N
     class _Untracked(Saga):
         name = "untracked"
         max_attempts = 3
+        retry_backoff = 0.0
 
         def __init__(self) -> None:
             self.runs = 0
@@ -369,3 +363,23 @@ def test_manual_attempt_counter_hacks_are_gone() -> None:
         src = inspect.getsource(cls)
         assert "_reset_attempt_counter =" not in src, f"{cls.__name__} still sets the manual flag"
         assert "_budget_reset_granted =" not in src, f"{cls.__name__} still has the one-shot guard"
+
+
+async def test_retry_backoff_defaults_to_half_a_second_and_is_overridable() -> None:
+    """The pause between attempts is a per-saga knob, so a subclass can shorten it.
+
+    Asserted on the sleep call rather than on elapsed time: the call *is* the
+    contract, and timing it would put a wall clock back in the suite.
+    """
+    assert Saga.retry_backoff == 0.5, "the default must not change — it paces a real device"
+
+    class _Impatient(_CountingSaga):
+        name = "impatient"
+        retry_backoff = 0.125
+
+    saga = _Impatient([0, 0, 0])
+    with patch("pymammotion.messaging.saga.asyncio.sleep", new_callable=AsyncMock) as sleep:
+        with pytest.raises(SagaFailedError):
+            await saga.execute(DeviceMessageBroker())
+
+    assert sleep.await_args_list == [call(0.125)], f"backoff was not the subclass value: {sleep.await_args_list}"

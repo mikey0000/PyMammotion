@@ -548,6 +548,7 @@ class MessageNavigation(AbstractMessage, ABC):
             toward_included_angle=int(generate_route_information.toward_included_angle),  # luba 2 yuka only
             toward_mode=int(generate_route_information.toward_mode),  # luba 2 yuka only
             reserved=generate_route_information.path_order,
+            auto_change_direction=int(generate_route_information.auto_change_direction),
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
         logger.debug(f"Send command--Generate route information generateRouteInformation={generate_route_information}")
@@ -569,6 +570,7 @@ class MessageNavigation(AbstractMessage, ABC):
             channel_mode=int(generate_route_information.channel_mode),
             toward=int(generate_route_information.toward),
             reserved=generate_route_information.path_order,
+            auto_change_direction=int(generate_route_information.auto_change_direction),
         )
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")
         logger.debug(f"Send command -- Modify route parameters generate_route_information={generate_route_information}")

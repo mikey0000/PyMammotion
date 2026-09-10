@@ -17,14 +17,11 @@ from __future__ import annotations
 import math
 
 import pymap3d
-import pytest
 
 from pymammotion.data.model.coordinates import CoordinateConverter
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 _TOLERANCE_DEG = 1e-6  # ~0.1 m at the equator
 
@@ -45,9 +42,7 @@ def _check(lat_deg: float, lon_deg: float, east_m: float, north_m: float, label:
     )
 
 
-# ---------------------------------------------------------------------------
 # Northern hemisphere (Germany, lat ≈ +54°)
-# ---------------------------------------------------------------------------
 
 NORTH_LAT = 54.079261
 NORTH_LON = 12.369534
@@ -77,9 +72,7 @@ def test_northern_origin() -> None:
     assert abs(result.longitude - NORTH_LON) < _TOLERANCE_DEG
 
 
-# ---------------------------------------------------------------------------
 # Southern hemisphere (lat ≈ -14.5°)
-# ---------------------------------------------------------------------------
 
 SOUTH_LAT = -14.502342
 SOUTH_LON = 44.817709

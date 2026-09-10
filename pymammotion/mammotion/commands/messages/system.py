@@ -12,6 +12,7 @@ from pymammotion.proto import (
     AppDownlinkCmdT,
     AppDownlinkCmdTypeE,
     AppToDevSetMqttRtkT,
+    BmsCtrlInfoMsg,
     DebugCfgWriteT,
     DebugEnableT,
     DebugResCfgAbilityT,
@@ -123,6 +124,40 @@ class MessageSystem(AbstractMessage, ABC):
         mctlsys = MctlSys(blade_used_warn_time=UserSetBladeUsedWarnTime(blade_used_warn_time=seconds))
         logger.debug(f"Send command - set blade replacement warning time: hours={hours}, seconds={seconds}")
         return self.send_order_msg_sys(mctlsys)
+
+    def query_battery_info(self) -> bytes:
+        """Request the battery charging settings (``bms_ctrl_info_msg`` reply).
+
+        Mirrors ``MACommandHelper.queryBatteryInfo``: the two switches are sent as
+        -1 so the device treats the message as a read.
+        """
+        bms_info = BmsCtrlInfoMsg(smart_charge_switch=-1, peak_valley_charge_switch=-1)
+        return self.send_order_msg_sys(MctlSys(bms_ctrl_info_msg=bms_info))
+
+    def set_battery_info(
+        self,
+        smart_charge: bool,
+        charge_limit: int,
+        peak_valley_charge: bool = False,
+        valley_charge_start_time: int = 0,
+        valley_charge_end_time: int = 0,
+    ) -> bytes:
+        """Set the battery charge limit and off-peak charging window.
+
+        Mirrors ``MACommandHelper.setBatteryInfo``: ``smart_charge_switch`` is 0 for
+        smart charging and 1 for a fixed ``charge_limit`` (percent, 80-100 in the
+        app), which is forced to 100 while smart charging is on.  The message
+        carries every setting, so callers must pass the current off-peak values or
+        they are overwritten.  Times are minutes since midnight.
+        """
+        bms_info = BmsCtrlInfoMsg(
+            smart_charge_switch=0 if smart_charge else 1,
+            charge_soc_threshold=100 if smart_charge else charge_limit,
+            peak_valley_charge_switch=int(peak_valley_charge),
+            valley_charge_start_time=valley_charge_start_time,
+            valley_charge_end_time=valley_charge_end_time,
+        )
+        return self.send_order_msg_sys(MctlSys(bms_ctrl_info_msg=bms_info))
 
     def get_device_product_model(self) -> bytes:
         """Request the device product type and model information."""

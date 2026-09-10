@@ -30,6 +30,7 @@ class OperationSettings(DataClassORJSONMixin):
     obstacle_laps: int = 1
     mowing_laps: int = 1  # border laps
     start_progress: int = 0
+    auto_change_direction: int = 0  # flip mowing direction between tasks (anti-matting)
     areas: list[int] = field(default_factory=list)
 
 

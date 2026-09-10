@@ -9,7 +9,7 @@ import pytest
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.device.handle import DeviceAlreadyRegisteredError, DeviceHandle, DeviceRegistry
 from pymammotion.transport.base import TransportType
-from tests.unit._helpers import make_mock_mowing_device, make_mock_transport
+from tests._helpers import make_mock_mowing_device, make_mock_transport
 
 
 def _handle(device_id: str = "Luba-1", name: str | None = None, *, ble: bool = False) -> DeviceHandle:

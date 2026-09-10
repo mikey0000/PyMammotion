@@ -35,9 +35,7 @@ def _direct_shape(payload: bytes, iot_id: str = "iot-2") -> bytes:
     ).encode()
 
 
-# ---------------------------------------------------------------------------
 # The two envelope shapes
-# ---------------------------------------------------------------------------
 
 
 def test_unwraps_the_aliyun_nested_shape() -> None:
@@ -70,9 +68,7 @@ def test_missing_iot_id_yields_an_empty_string() -> None:
     assert unwrap_envelope("t", raw) == (b"p", "")
 
 
-# ---------------------------------------------------------------------------
 # Rejections — every one must return None, never raise
-# ---------------------------------------------------------------------------
 
 
 def test_non_json_payload_returns_none() -> None:

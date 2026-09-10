@@ -11,6 +11,7 @@ import pytest
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.transport.base import TransportError, TransportType
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from tests._helpers import wait_until
 from tests.unit.transport._fakes import (
     FakeMessage as _FakeMessage,
     FakeMQTTClient as _FakeMQTTClient,
@@ -41,27 +42,21 @@ def transport(config: MQTTTransportConfig, mammotion_http: MagicMock) -> MQTTTra
     return MQTTTransport(config, mammotion_http, AsyncMock())
 
 
-# ---------------------------------------------------------------------------
 # transport_type
-# ---------------------------------------------------------------------------
 
 
 def test_transport_type(transport: MQTTTransport) -> None:
     assert transport.transport_type is TransportType.CLOUD_MAMMOTION
 
 
-# ---------------------------------------------------------------------------
 # is_connected initial state
-# ---------------------------------------------------------------------------
 
 
 def test_is_connected_initially_false(transport: MQTTTransport) -> None:
     assert transport.is_connected is False
 
 
-# ---------------------------------------------------------------------------
 # update_credentials — full credential rotation
-# ---------------------------------------------------------------------------
 
 
 def test_update_credentials_rotates_client_id_username_and_jwt(transport: MQTTTransport) -> None:
@@ -103,7 +98,6 @@ def test_update_credentials_plain_host_defaults_to_plaintext_port(transport: MQT
     assert cfg.use_ssl is False
 
 
-@pytest.mark.asyncio
 async def test_refresh_credentials_applies_full_rotated_set(
     config: MQTTTransportConfig, mammotion_http: MagicMock
 ) -> None:
@@ -119,12 +113,9 @@ async def test_refresh_credentials_applies_full_rotated_set(
     assert (cfg.client_id, cfg.username, cfg.password) == ("newcid", "newuser", "newjwt")
 
 
-# ---------------------------------------------------------------------------
 # connect() / disconnect() — mock the aiomqtt.Client context manager
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_connect_sets_is_connected(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """connect() should set is_connected to True once the MQTT loop starts."""
     transport = MQTTTransport(config, mammotion_http, AsyncMock())
@@ -132,12 +123,11 @@ async def test_connect_sets_is_connected(config: MQTTTransportConfig, mammotion_
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: transport.is_connected, message="transport never connected")
         assert transport.is_connected is True
         await transport.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """disconnect() should set is_connected to False."""
     transport = MQTTTransport(config, mammotion_http, AsyncMock())
@@ -145,12 +135,11 @@ async def test_disconnect_sets_is_connected_false(config: MQTTTransportConfig, m
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: transport.is_connected, message="transport never connected")
         await transport.disconnect()
         assert transport.is_connected is False
 
 
-@pytest.mark.asyncio
 async def test_run_preconnect_refresh_rotates_full_credentials(
     config: MQTTTransportConfig, mammotion_http: MagicMock
 ) -> None:
@@ -175,7 +164,7 @@ async def test_run_preconnect_refresh_rotates_full_credentials(
 
     with patch("aiomqtt.Client", return_value=fake_client) as mock_client:
         await transport.connect()
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: transport.is_connected, message="transport never connected")
         await transport.disconnect()
 
     kwargs = mock_client.call_args.kwargs
@@ -184,12 +173,9 @@ async def test_run_preconnect_refresh_rotates_full_credentials(
     assert kwargs["password"] == "rotated-jwt"
 
 
-# ---------------------------------------------------------------------------
 # send() calls the HTTP invoke API
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_send_calls_mqtt_invoke(config: MQTTTransportConfig) -> None:
     """send() should forward the payload via mammotion_http.mqtt_invoke."""
     import base64
@@ -209,7 +195,6 @@ async def test_send_calls_mqtt_invoke(config: MQTTTransportConfig) -> None:
     assert call_args.args[2] == "dev123"
 
 
-@pytest.mark.asyncio
 async def test_send_raises_when_no_iot_id(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """send() with an empty iot_id should raise TransportError."""
     transport = MQTTTransport(config, mammotion_http, AsyncMock())
@@ -217,12 +202,9 @@ async def test_send_raises_when_no_iot_id(config: MQTTTransportConfig, mammotion
         await transport.send(b"hello")
 
 
-# ---------------------------------------------------------------------------
 # on_message callback is invoked for non-status messages
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_on_message_callback_called(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     """on_message should be called with the raw bytes of an incoming non-status message."""
     received: list[bytes] = []
@@ -238,17 +220,14 @@ async def test_on_message_callback_called(config: MQTTTransportConfig, mammotion
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        await wait_until(lambda: received, message="no payload reached the handler")
         assert received == [b"hello"]
         await transport.disconnect()
 
 
-# ---------------------------------------------------------------------------
 # Network errors (OSError / DNS) — retry with backoff, no auth count
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_oserror_retries_without_counting_as_auth_failure(
     config: MQTTTransportConfig, mammotion_http: MagicMock
 ) -> None:
@@ -272,17 +251,13 @@ async def test_oserror_retries_without_counting_as_auth_failure(
         patch("aiomqtt.Client", side_effect=_client_factory),
     ):
         await transport.connect()
-        for _ in range(100):
-            if connect_attempts >= 3:
-                break
-            await asyncio.sleep(0)
+        await wait_until(lambda: connect_attempts >= 3, message=f"only {connect_attempts} attempts")
         await transport.disconnect()
 
     assert connect_attempts >= 3
     transport.on_fatal_auth_error.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_dns_error_retries_without_counting_as_auth_failure(
     config: MQTTTransportConfig, mammotion_http: MagicMock
 ) -> None:
@@ -307,19 +282,14 @@ async def test_dns_error_retries_without_counting_as_auth_failure(
         patch("aiomqtt.Client", side_effect=_client_factory),
     ):
         await transport.connect()
-        for _ in range(100):
-            if connect_attempts >= 2:
-                break
-            await asyncio.sleep(0)
+        await wait_until(lambda: connect_attempts >= 2, message=f"only {connect_attempts} attempts")
         await transport.disconnect()
 
     assert connect_attempts >= 2
     transport.on_fatal_auth_error.assert_not_awaited()
 
 
-# ===========================================================================
 # send() without a token manager must raise TransportError (not a stripped assert)
-# ===========================================================================
 
 
 async def test_send_without_token_manager_raises_transport_error() -> None:
@@ -342,12 +312,10 @@ async def test_send_without_token_manager_raises_transport_error() -> None:
     assert "token manager" in str(exc_info.value).lower()
 
 
-# ---------------------------------------------------------------------------
 # Cloud error-code classification
 #
 # The code sets live in pymammotion.aliyun.exceptions so both cloud send paths
 # share one table; these tests pin the behaviour the table drives here.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("code", [6205, 6221, 50103, 50104])
@@ -392,14 +360,12 @@ async def test_send_raises_transport_error_for_unknown_code(
         await transport.send(b"\x00", iot_id="iot-1")
 
 
-# ---------------------------------------------------------------------------
 # Dispatch must not swallow what the downstream callback raises
 #
 # The parse and the callback used to sit inside one broad `except Exception`, so
 # anything a handler raised — SessionExpiredError, AuthError — was logged at DEBUG
 # and dropped.  `_run` already has the exception taxonomy (auth handling, backoff,
 # a catch-all); the dispatch helper must not second-guess it.
-# ---------------------------------------------------------------------------
 
 
 async def test_status_dispatch_propagates_callback_exceptions(
@@ -457,12 +423,9 @@ async def test_properties_dispatch_propagates_callback_exceptions(
         await transport._dispatch_device_properties("/x/thing/properties", b"{}")
 
 
-# ---------------------------------------------------------------------------
 # _run — broker auth rejections are bounded even with transient refresh failures
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_run_never_gives_up_while_forced_refresh_fails_transiently(
     config: MQTTTransportConfig, mammotion_http: MagicMock
 ) -> None:
@@ -518,9 +481,7 @@ def test_apply_credentials_does_not_clear_stop_event(transport: MQTTTransport) -
     )
     assert transport._stop_event.is_set()
 
-# ---------------------------------------------------------------------------
 # _dispatch_mammotion_event — notifications carry their params.value through
-# ---------------------------------------------------------------------------
 
 
 async def test_event_notification_passes_identifier_and_value(transport: MQTTTransport) -> None:

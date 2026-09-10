@@ -93,7 +93,20 @@ class DeviceMessageBroker:
 
         try:
             for attempt in range(1, retries + 1):
-                await send_fn()
+                try:
+                    # The send needs its own deadline: the cloud invoke is a plain HTTPS
+                    # POST with no timeout of its own, so a stalled one used to wait
+                    # forever here.  A host that runs several reads on its setup path
+                    # then loses its whole budget to one of them and the enclosing task
+                    # gets cancelled — which reaches the caller as CancelledError, not
+                    # as the timeout it actually was.
+                    async with asyncio.timeout(send_timeout):
+                        await send_fn()
+                except TimeoutError:
+                    _logger.debug("Send for '%s' stalled (attempt %d/%d)", expected_field, attempt, retries)
+                    if attempt < retries:
+                        continue
+                    raise CommandTimeoutError(expected_field, retries) from None
                 try:
                     # shield prevents the future being cancelled on timeout;
                     # a late response can still resolve it on retry.

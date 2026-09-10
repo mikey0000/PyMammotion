@@ -27,3 +27,4 @@ class CurrentTaskSettings(DataClassORJSONMixin):
     result: int = 0
     toward_mode: int = 0
     toward_included_angle: int = 0
+    auto_change_direction: int = 0

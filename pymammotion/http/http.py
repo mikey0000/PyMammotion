@@ -34,10 +34,13 @@ from pymammotion.http.model.http import (
     CheckDeviceVersion,
     DeviceInfo,
     DeviceRecords,
+    ErrorCodePage,
+    ErrorCodeRecord,
     ErrorInfo,
     JWTTokenInfo,
     LoginResponseData,
     MQTTConnection,
+    Product,
     Response,
     ShareRecords,
     UnauthorizedExceptionError,
@@ -51,6 +54,10 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 _ModelT = TypeVar("_ModelT", bound=DataClassORJSONMixin)
+
+#: Hard stop for the error-code walk.  The table is ~470 codes; at the smallest page
+#: size the app uses that is ten pages, so this is two orders of magnitude of slack.
+_MAX_ERROR_CODE_PAGES = 200
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -548,6 +555,122 @@ class MammotionHTTP:
                 return codes
 
         return {}
+
+    async def _request_device_server(
+        self,
+        path: str,
+        response_type: type[Response[_ModelT]],
+        what: str,
+        *,
+        payload: dict[str, Any] | None = None,
+    ) -> Response[_ModelT]:
+        """Call a ``device-server/v1`` endpoint and parse the envelope.
+
+        ``payload`` selects the verb: a body means POST, no body means GET — the
+        product list is a GET while the error-code endpoints are POSTs.  They
+        otherwise differ only in path and payload model, so they share this rather
+        than repeating the session/header/parse dance each time.  Note the prefix:
+        they live under ``device-server``, while the CSV export in
+        :meth:`get_all_error_codes` lives under ``user-server``.
+        """
+        url = f"{MAMMOTION_API_DOMAIN}{path}"
+        headers = {
+            **self._headers,
+            "Authorization": f"Bearer {self._require_login_info.access_token}",
+            "Content-Type": "application/json",
+        }
+        async with self._client_session() as session:
+            resp = (
+                await session.get(url, headers=headers)
+                if payload is None
+                else await session.post(url, json=payload, headers=headers)
+            )
+            if resp.status == HTTPStatus.UNAUTHORIZED.value:
+                raise UnauthorizedExceptionError(f"{what} rejected the access token")
+            if not (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                _LOGGER.warning("Failed to fetch %s. Status code: %s", what, resp.status)
+                return Response(code=resp.status, msg=f"{what} returned a non-JSON body")
+            resp_dict = await resp.json()
+            # The server signals a dead session either way; handing back a Response(401)
+            # would make it indistinguishable from an empty table.
+            if resp_dict.get("code") == HTTPStatus.UNAUTHORIZED.value:
+                raise UnauthorizedExceptionError(f"{what} rejected the access token")
+            if resp.status != HTTPStatus.OK.value:
+                _LOGGER.warning("Failed to fetch %s. Status code: %s, %s", what, resp.status, resp_dict)
+                return Response(code=resp.status, msg=f"{what} failed")
+            return response_factory(response_type, resp_dict)
+
+    @refresh_token_decorator
+    async def get_error_code_version(self) -> Response[str]:
+        """Fetch the published version of the error-code table.
+
+        The app calls this on startup and refetches the table only when the version
+        or the UI language changed, so it is the cheap way to decide whether a
+        cached table is stale.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/code/version", Response[str], "error code version", payload={}
+        )
+
+    @refresh_token_decorator
+    async def get_error_codes_page(self, page_number: int = 1, page_size: int = 50) -> Response[ErrorCodePage]:
+        """Fetch one page of the error-code table, translations included.
+
+        Mirrors the app's own paged call.  Richer than :meth:`get_all_error_codes`'s
+        CSV export — each record carries the display hints and the product keys it
+        applies to, as well as every language — so prefer this when the caller needs
+        more than implication/solution text.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/code/page-lan",
+            Response[ErrorCodePage],
+            "error code page",
+            payload={"pageNumber": page_number, "pageSize": page_size},
+        )
+
+    @refresh_token_decorator
+    async def get_product_list(self) -> Response[list[Product]]:
+        """Fetch every product key the cloud publishes, with the models under each.
+
+        The authoritative answer to "what hardware exists": ``pymammotion``'s own
+        product-key lists in ``utility/device_type.py`` are hand-maintained and drift
+        behind it, and an unknown key falls through to defaults — wrong broker for an
+        Aliyun device, wrong capabilities for the rest.  Diff the two after a release.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/product/product/list", Response[list[Product]], "product list"
+        )
+
+    async def get_all_error_codes_paged(self, page_size: int = 50) -> dict[str, ErrorCodeRecord]:
+        """Page through ``/code/page-lan`` and return every record, keyed by code.
+
+        Stops on the first short or empty page rather than trusting a total, because
+        this API's page counters are not consistent across endpoints.  A failing page
+        ends the walk and returns what was collected, so a mid-table 5xx degrades to
+        a partial table instead of nothing.
+
+        Two guards keep a misbehaving server from looping forever: a page that adds no
+        code we did not already have ends the walk (a server ignoring ``pageNumber``
+        and replaying page one would otherwise spin), and ``_MAX_ERROR_CODE_PAGES``
+        caps it outright.  A short page is *not* the only exit — the server may return
+        more rows than asked for.
+        """
+        collected: dict[str, ErrorCodeRecord] = {}
+        for page_number in range(1, _MAX_ERROR_CODE_PAGES + 1):
+            response = await self.get_error_codes_page(page_number, page_size)
+            page = response.data
+            if response.code != 0 or page is None or not page.records:
+                if response.code != 0:
+                    _LOGGER.warning("Error-code page %d failed: code=%s %s", page_number, response.code, response.msg)
+                return collected
+            fresh = {record.code: record for record in page.records if record.code not in collected}
+            collected.update(fresh)
+            if not fresh or len(page.records) < page_size:
+                return collected
+        _LOGGER.warning(
+            "Error-code walk hit the %d-page cap; returning %d codes", _MAX_ERROR_CODE_PAGES, len(collected)
+        )
+        return collected
 
     @refresh_token_decorator
     async def refresh_authorization_token(self) -> Response:

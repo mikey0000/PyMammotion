@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from pymammotion.transport.base import TransportRateLimitedError, TransportType
-from tests.unit._helpers import make_mock_handle, make_mock_transport
+from tests._helpers import make_mock_handle, make_mock_transport
 
 
 async def test_send_raw_raises_when_the_pre_flight_gate_blocks_the_send() -> None:

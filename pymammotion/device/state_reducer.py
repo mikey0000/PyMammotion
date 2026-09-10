@@ -23,8 +23,9 @@ import time
 from typing import TYPE_CHECKING
 
 import betterproto2
+from mashumaro.exceptions import MissingField
 
-from pymammotion.data.model.device_info import DeviceFirmwares, SideLight
+from pymammotion.data.model.device_info import ChargeSettings, DeviceFirmwares, SideLight
 from pymammotion.data.model.events import OTAProgress
 from pymammotion.data.model.generate_geojson import apply_area_geojson, apply_mowing_geojson
 from pymammotion.data.model.hash_list import (
@@ -56,6 +57,7 @@ from pymammotion.proto import (
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
+    BmsCtrlInfoMsg,
     CoverPathUploadT,
     DeviceFwInfo,
     DeviceProductTypeInfoT,
@@ -249,7 +251,11 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case (
-                        "bidire_comm_cmd" | "todev_time_ctrl_light" | "toapp_lora_cfg_rsp" | "device_product_type_info"
+                        "bidire_comm_cmd"
+                        | "todev_time_ctrl_light"
+                        | "toapp_lora_cfg_rsp"
+                        | "device_product_type_info"
+                        | "bms_ctrl_info_msg"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -558,6 +564,17 @@ class MowerStateReducer(StateReducer):
             case "toapp_lora_cfg_rsp":
                 lora_cfg: LoraCfgRsp = sys_msg[1]  # type: ignore
                 device.mower_state.lora_config = lora_cfg.cfg
+            case "bms_ctrl_info_msg":
+                bms_info: BmsCtrlInfoMsg = sys_msg[1]  # type: ignore
+                device.mower_state.charge_settings = ChargeSettings(
+                    smart_charge=bms_info.smart_charge_switch == 0,
+                    charge_limit=bms_info.charge_soc_threshold,
+                    peak_valley_charge=bool(bms_info.peak_valley_charge_switch),
+                    valley_charge_start_time=bms_info.valley_charge_start_time,
+                    valley_charge_end_time=bms_info.valley_charge_end_time,
+                    bat_cycle_times=bms_info.bat_cycle_times,
+                    bat_health_state=bms_info.bat_health_state,
+                )
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]  # type: ignore
                 if device_product_type.main_product_type != "" or device_product_type.sub_product_type != "":
@@ -783,7 +800,7 @@ class MowerStateReducer(StateReducer):
         if ota_prop := items.otaProgress:
             try:
                 ota = OTAProgressItems.from_dict(ota_prop.value)  # type: ignore
-            except (ValueError, KeyError, TypeError):
+            except (ValueError, KeyError, TypeError, MissingField):
                 _logger.debug("MowerStateReducer: failed to parse otaProgress property")
             else:
                 if _apply_ota_property(device, ota.progress, ota.result) and ota.version:
@@ -1484,7 +1501,7 @@ class RTKStateReducer(StateReducer):
         if ota_prop := items.otaProgress:
             try:
                 ota = OTAProgressItems.from_dict(ota_prop.value)  # type: ignore
-            except (ValueError, KeyError, TypeError):
+            except (ValueError, KeyError, TypeError, MissingField):
                 _logger.debug("RTKStateReducer: failed to parse otaProgress property")
             else:
                 if _apply_ota_property(device, ota.progress, ota.result) and ota.version:

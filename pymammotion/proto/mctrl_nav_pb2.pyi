@@ -557,7 +557,9 @@ class NavPosUp(_message.Message):
     def __init__(self, x: _Optional[float] = ..., y: _Optional[float] = ..., status: _Optional[int] = ..., toward: _Optional[int] = ..., stars: _Optional[int] = ..., age: _Optional[float] = ..., latStddev: _Optional[float] = ..., lonStddev: _Optional[float] = ..., l2dfStars: _Optional[int] = ..., posType: _Optional[int] = ..., cHashId: _Optional[int] = ..., posLevel: _Optional[int] = ...) -> None: ...
 
 class NavReqCoverPath(_message.Message):
-    __slots__ = ["UltraWave", "channelMode", "channelWidth", "edgeMode", "jobId", "jobMode", "jobVer", "knifeHeight", "pathHash", "pver", "reserved", "result", "speed", "subCmd", "toward", "toward_included_angle", "toward_mode", "zoneHashs"]
+    __slots__ = ["UltraWave", "app_display_mode", "auto_change_direction", "channelMode", "channelWidth", "edgeMode", "jobId", "jobMode", "jobVer", "knifeHeight", "pathHash", "pver", "reserved", "result", "ride_boundary_distance", "speed", "subCmd", "toward", "toward_included_angle", "toward_mode", "zoneHashs"]
+    APP_DISPLAY_MODE_FIELD_NUMBER: _ClassVar[int]
+    AUTO_CHANGE_DIRECTION_FIELD_NUMBER: _ClassVar[int]
     CHANNELMODE_FIELD_NUMBER: _ClassVar[int]
     CHANNELWIDTH_FIELD_NUMBER: _ClassVar[int]
     EDGEMODE_FIELD_NUMBER: _ClassVar[int]
@@ -569,6 +571,7 @@ class NavReqCoverPath(_message.Message):
     PVER_FIELD_NUMBER: _ClassVar[int]
     RESERVED_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
+    RIDE_BOUNDARY_DISTANCE_FIELD_NUMBER: _ClassVar[int]
     SPEED_FIELD_NUMBER: _ClassVar[int]
     SUBCMD_FIELD_NUMBER: _ClassVar[int]
     TOWARD_FIELD_NUMBER: _ClassVar[int]
@@ -577,6 +580,8 @@ class NavReqCoverPath(_message.Message):
     ULTRAWAVE_FIELD_NUMBER: _ClassVar[int]
     UltraWave: int
     ZONEHASHS_FIELD_NUMBER: _ClassVar[int]
+    app_display_mode: int
+    auto_change_direction: int
     channelMode: int
     channelWidth: int
     edgeMode: int
@@ -588,13 +593,14 @@ class NavReqCoverPath(_message.Message):
     pver: int
     reserved: str
     result: int
+    ride_boundary_distance: float
     speed: float
     subCmd: int
     toward: int
     toward_included_angle: int
     toward_mode: int
     zoneHashs: _containers.RepeatedScalarFieldContainer[int]
-    def __init__(self, pver: _Optional[int] = ..., jobId: _Optional[int] = ..., jobVer: _Optional[int] = ..., jobMode: _Optional[int] = ..., subCmd: _Optional[int] = ..., edgeMode: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., channelWidth: _Optional[int] = ..., UltraWave: _Optional[int] = ..., channelMode: _Optional[int] = ..., toward: _Optional[int] = ..., speed: _Optional[float] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., pathHash: _Optional[int] = ..., reserved: _Optional[str] = ..., result: _Optional[int] = ..., toward_mode: _Optional[int] = ..., toward_included_angle: _Optional[int] = ...) -> None: ...
+    def __init__(self, pver: _Optional[int] = ..., jobId: _Optional[int] = ..., jobVer: _Optional[int] = ..., jobMode: _Optional[int] = ..., subCmd: _Optional[int] = ..., edgeMode: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., channelWidth: _Optional[int] = ..., UltraWave: _Optional[int] = ..., channelMode: _Optional[int] = ..., toward: _Optional[int] = ..., speed: _Optional[float] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., pathHash: _Optional[int] = ..., reserved: _Optional[str] = ..., result: _Optional[int] = ..., toward_mode: _Optional[int] = ..., toward_included_angle: _Optional[int] = ..., ride_boundary_distance: _Optional[float] = ..., app_display_mode: _Optional[int] = ..., auto_change_direction: _Optional[int] = ...) -> None: ...
 
 class NavResFrame(_message.Message):
     __slots__ = ["frameid"]

@@ -17,6 +17,7 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
 from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
+from tests._helpers import let_others_run
 from tests.unit.aliyun._helpers import make_gateway, make_region, make_session
 
 
@@ -184,9 +185,7 @@ async def test_check_or_refresh_session_force_refreshes_even_when_fresh() -> Non
     assert gateway.session_by_authcode_response.data.iotToken == "force-new-token"  # noqa: SLF001
 
 
-# ===========================================================================
 # Rate-limiting circuit breaker — send_cloud_command on HTTP 429
-# ===========================================================================
 
 _DUMMY_COMMAND = b"\x00\x01"
 _DUMMY_IOT_ID = "test-iot-id"
@@ -212,12 +211,9 @@ def _make_response(status_code: int, body: bytes = b'{"code":200}') -> MagicMock
     return resp
 
 
-# ---------------------------------------------------------------------------
 # Tests
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_429_raises_too_many_requests_exception() -> None:
     """A 429 response raises TooManyRequestsException immediately."""
     gw = _make_gateway()
@@ -230,7 +226,6 @@ async def test_429_raises_too_many_requests_exception() -> None:
             await gw.send_cloud_command(_DUMMY_IOT_ID, _DUMMY_COMMAND)
 
 
-@pytest.mark.asyncio
 async def test_429_arms_circuit_breaker_for_60_seconds() -> None:
     """After a 429 the circuit breaker blocks all sends for 60 s."""
     gw = _make_gateway()
@@ -252,7 +247,6 @@ async def test_429_arms_circuit_breaker_for_60_seconds() -> None:
         assert gw._rate_limited_until == pytest.approx(frozen_now + 60.0)
 
 
-@pytest.mark.asyncio
 async def test_circuit_breaker_rejects_without_network_call() -> None:
     """While the window is active, no HTTP request is made."""
     gw = _make_gateway()
@@ -269,7 +263,6 @@ async def test_circuit_breaker_rejects_without_network_call() -> None:
         mock_client.async_do_request.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_backoff_doubles_on_successive_429s() -> None:
     """Each 429 doubles the backoff: 60 s → 120 s → 240 s."""
     gw = _make_gateway()
@@ -302,7 +295,6 @@ async def test_backoff_doubles_on_successive_429s() -> None:
             )
 
 
-@pytest.mark.asyncio
 async def test_success_resets_circuit_breaker() -> None:
     """A successful response resets both the window and the backoff counter."""
     gw = _make_gateway()
@@ -326,7 +318,6 @@ async def test_success_resets_circuit_breaker() -> None:
     assert gw._rate_limit_backoff == 60.0, "backoff should reset to 60 s"
 
 
-@pytest.mark.asyncio
 async def test_window_expires_and_request_goes_through() -> None:
     """After the window expires the next call is forwarded to the network."""
     gw = _make_gateway()
@@ -372,12 +363,9 @@ async def test_window_expires_and_request_goes_through() -> None:
         assert gw._rate_limit_backoff == 60.0
 
 
-# ---------------------------------------------------------------------------
 # Device-unbound (29004) handling in send_cloud_command
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_29004_raises_device_unbound_exception() -> None:
     """A 29004 ("device is unbind") response raises DeviceUnboundException with the iot_id."""
     gw = _make_gateway()
@@ -394,7 +382,6 @@ async def test_29004_raises_device_unbound_exception() -> None:
         assert exc_info.value.iot_id == _DUMMY_IOT_ID
 
 
-@pytest.mark.asyncio
 async def test_29004_does_not_arm_rate_limiter() -> None:
     """29004 raises before the success-path reset and must not arm the rate-limit breaker."""
     gw = _make_gateway()
@@ -411,7 +398,6 @@ async def test_29004_does_not_arm_rate_limiter() -> None:
     assert gw._rate_limited_until == 0.0
 
 
-@pytest.mark.asyncio
 async def test_6205_still_raises_device_offline_not_unbound() -> None:
     """Regression: 6205 stays DeviceOfflineException and is distinct from 29004."""
     gw = _make_gateway()
@@ -424,9 +410,7 @@ async def test_6205_still_raises_device_offline_not_unbound() -> None:
             await gw.send_cloud_command(_DUMMY_IOT_ID, _DUMMY_COMMAND)
 
 
-# ---------------------------------------------------------------------------
 # Restore refresh → the new iotToken is set on the gateway AND used by list_binding
-# ---------------------------------------------------------------------------
 
 
 async def test_refreshed_token_flows_into_list_binding_by_account() -> None:
@@ -481,11 +465,9 @@ async def test_refreshed_token_flows_into_list_binding_by_account() -> None:
     assert captured["body"].request.iot_token == "new-iot-token"  # type: ignore[union-attr]
 
 
-# ---------------------------------------------------------------------------
 # check_or_refresh_session — concurrent callers produce exactly one refresh
 # (moved from tests/unit/auth/test_token_manager.py: this is gateway-level
 # locking, the TokenManager was never involved)
-# ---------------------------------------------------------------------------
 
 
 def _expired_gateway() -> CloudIOTGateway:
@@ -510,7 +492,7 @@ async def test_concurrent_calls_only_refresh_once() -> None:
     async def _fake_refresh(*_args, **_kwargs) -> MagicMock:
         nonlocal http_call_count
         http_call_count += 1
-        await asyncio.sleep(0.02)  # simulate network latency so both enter concurrently
+        await let_others_run()  # a second caller would enter here if the lock were missing
         gw._session_by_authcode_response = fresh_session  # noqa: SLF001
         gw._iot_token_issued_at = int(time.time())  # noqa: SLF001
         resp = MagicMock()
@@ -540,7 +522,6 @@ async def test_concurrent_calls_only_refresh_once() -> None:
 
 async def test_second_waiter_skips_after_first_refreshes() -> None:
     """After the first caller refreshes, the second must not make another HTTP call."""
-    import asyncio
 
     gw = _expired_gateway()
     http_calls: list[str] = []
@@ -548,7 +529,7 @@ async def test_second_waiter_skips_after_first_refreshes() -> None:
 
     async def _fake_refresh(*_args, **_kwargs) -> MagicMock:
         http_calls.append("refresh")
-        await asyncio.sleep(0.01)
+        await let_others_run()
         gw._session_by_authcode_response = fresh  # noqa: SLF001
         gw._iot_token_issued_at = int(time.time())  # noqa: SLF001
         resp = MagicMock()

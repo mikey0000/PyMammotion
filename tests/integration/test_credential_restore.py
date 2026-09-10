@@ -5,14 +5,11 @@ device bootstrap across client + cloud gateway + http + token manager + transpor
 """
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
-from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import (
     DeviceRecords,
@@ -22,12 +19,10 @@ from pymammotion.http.model.http import (
     MQTTConnection,
     Response,
 )
-from pymammotion.transport.base import TransportType
+from tests._helpers import make_device_record, make_mock_http
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 # (BLE polling-loop autoload-suppress fixture lives in tests/conftest.py.)
 
 def _access_token(iot: str, robot: str) -> str:
@@ -92,40 +87,6 @@ def _make_share_record(*, is_receiver: int = 1, status: int = -1, batch_id: str 
     r.record_id = record_id
     return r
 
-def _make_device_record(device_name: str = "Yuka-TEST", iot_id: str = "iot-yuka", product_key: str = "pk1") -> MagicMock:
-    """Return a MagicMock shaped like a DeviceRecord."""
-    r = MagicMock()
-    r.device_name = device_name
-    r.iot_id = iot_id
-    r.product_key = product_key
-    return r
-
-def _make_mock_http(
-    *,
-    device_records: list[MagicMock] | None = None,
-    share_records: list[MagicMock] | None = None,
-    mqtt_creds: MagicMock | None = None,
-) -> MagicMock:
-    """Return a MagicMock shaped like MammotionHTTP with the given fixture data."""
-    http = MagicMock()
-    http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
-    http.get_user_shared_device_page = AsyncMock(
-        return_value=MagicMock(data=MagicMock(records=share_records or []))
-    )
-    # get_user_device_page both returns data AND updates http.device_records (side-effect)
-    page_data = MagicMock()
-    page_data.records = device_records or []
-    page_resp = MagicMock()
-    page_resp.data = page_data
-    http.get_user_device_page = AsyncMock(return_value=page_resp)
-    http.get_mqtt_credentials = AsyncMock()
-    http.confirm_share = AsyncMock()
-    http.mqtt_credentials = mqtt_creds or MagicMock()
-    http.login_info = MagicMock()
-    # restore_credentials validates the restored login before touching any transport.
-    http.validate_login = AsyncMock(return_value=True)
-    http.device_records = MagicMock(records=[])
-    return http
 
 async def test_token_manager_set_after_restore_aliyun() -> None:
     """_restore_aliyun must give the session a token_manager holding the gateway."""
@@ -534,7 +495,7 @@ async def test_bootstrap_no_existing_transport_calls_connect_once() -> None:
     client = MammotionClient()
     acct_session = AccountSession(account_id="u@x.com", email="u@x.com", password="pw")
 
-    mock_http = _make_mock_http(device_records=[_make_device_record()])
+    mock_http = make_mock_http(device_records=[make_device_record()])
     mock_transport = MagicMock()
     mock_transport.connect = AsyncMock()
 
@@ -555,7 +516,7 @@ async def test_bootstrap_existing_transport_does_not_call_connect() -> None:
     existing_transport.connect = AsyncMock()
     acct_session.mammotion_transport = existing_transport
 
-    mock_http = _make_mock_http(device_records=[_make_device_record("Yuka-NEW")])
+    mock_http = make_mock_http(device_records=[make_device_record("Yuka-NEW")])
 
     with patch.object(client, "_register_mammotion_device", AsyncMock()):
         await client._bootstrap_mammotion_mqtt(
@@ -578,8 +539,8 @@ async def test_bootstrap_confirm_share_called_once_per_batch() -> None:
         _make_share_record(is_receiver=0, batch_id="batch3", record_id="4"),  # not receiver → skip
         _make_share_record(status=0, batch_id="batch4", record_id="5"),  # already accepted → skip
     ]
-    mock_http = _make_mock_http(
-        device_records=[_make_device_record()],
+    mock_http = make_mock_http(
+        device_records=[make_device_record()],
         share_records=share_records,
     )
 
@@ -606,9 +567,9 @@ async def test_bootstrap_skip_ids_prevents_double_registration() -> None:
     existing_transport.connect = AsyncMock()
     acct_session.mammotion_transport = existing_transport
 
-    already_registered = _make_device_record("Luba-OLD")
-    new_device = _make_device_record("Yuka-NEW")
-    mock_http = _make_mock_http(device_records=[already_registered, new_device])
+    already_registered = make_device_record("Luba-OLD")
+    new_device = make_device_record("Yuka-NEW")
+    mock_http = make_mock_http(device_records=[already_registered, new_device])
 
     register_mock = AsyncMock()
     with patch.object(client, "_register_mammotion_device", register_mock):
@@ -631,7 +592,7 @@ async def test_restore_credentials_connect_called_exactly_once_when_cache_has_de
     client = MammotionClient()
 
     mqtt_creds = MQTTConnection(host="h", client_id="c", username="u", jwt="j")
-    cached_record = _make_device_record("Luba-OLD")
+    cached_record = make_device_record("Luba-OLD")
 
     cached_data = {
         "mammotion_mqtt": mqtt_creds.to_dict(),
@@ -650,8 +611,8 @@ async def test_restore_credentials_connect_called_exactly_once_when_cache_has_de
     mock_transport = MagicMock()
     mock_transport.connect = AsyncMock()
 
-    mock_http = _make_mock_http(
-        device_records=[cached_record, _make_device_record("Yuka-NEW")],
+    mock_http = make_mock_http(
+        device_records=[cached_record, make_device_record("Yuka-NEW")],
         mqtt_creds=mqtt_creds,
     )
     mock_http.device_records = MagicMock(records=[cached_record])
@@ -680,7 +641,7 @@ async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None
     """
     client = MammotionClient()
 
-    mock_http = _make_mock_http(device_records=[_make_device_record("Yuka-NEW")])
+    mock_http = make_mock_http(device_records=[make_device_record("Yuka-NEW")])
     mock_cloud = MagicMock()
     mock_cloud.mammotion_http = mock_http
     mock_cloud.devices_by_account_response = None
@@ -705,11 +666,9 @@ async def test_restore_credentials_no_mammotion_cache_bootstraps_fresh() -> None
     # The Mammotion MQTT bootstrap must have connected the new transport once
     mock_transport.connect.assert_awaited_once()
 
-# ---------------------------------------------------------------------------
 # restore_credentials — the login comes first
 # (fallback-to-full-login itself is covered end-to-end, with traffic bounds, in
 #  tests/integration/fake_cloud/test_restore_flow.py)
-# ---------------------------------------------------------------------------
 
 async def test_a_rotation_during_validation_is_persisted() -> None:
     """A refresh performed while validating the cached login must reach the host.
@@ -903,7 +862,7 @@ async def test_relogin_does_not_revoke_the_session_it_is_replacing() -> None:
     acct_session.cloud_client = old_cloud
     await client._account_registry.register(acct_session)
 
-    new_http = _make_mock_http()
+    new_http = make_mock_http()
     new_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
     # No Aliyun devices and no Mammotion records: this test is about the teardown,
     # not about what gets registered afterwards.

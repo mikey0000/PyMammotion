@@ -19,17 +19,12 @@ Edge cases covered
 
 from __future__ import annotations
 
-import dataclasses
-
-import pytest
 
 from pymammotion.data.model.hash_list import SvgMessage, SvgMessageData
 from pymammotion.data.model.svg import _SVG_CHUNK_SIZE, chunk_svg_messages
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _make_msg(data: str = "", *, chunk_size_hint: int = _SVG_CHUNK_SIZE) -> SvgMessage:
@@ -78,9 +73,7 @@ def _sentinel_fields_preserved(original: SvgMessage, frame: SvgMessage) -> None:
     assert frame.svg_message.svg_file_name == original.svg_message.svg_file_name
 
 
-# ---------------------------------------------------------------------------
 # Tests: single-frame cases
-# ---------------------------------------------------------------------------
 
 
 class TestSingleFrame:
@@ -121,9 +114,7 @@ class TestSingleFrame:
         _sentinel_fields_preserved(msg, chunk_svg_messages(msg)[0])
 
 
-# ---------------------------------------------------------------------------
 # Tests: multi-frame cases
-# ---------------------------------------------------------------------------
 
 
 class TestMultiFrame:
@@ -178,9 +169,7 @@ class TestMultiFrame:
         assert numbers == [1, 2, 3, 4, 5]
 
 
-# ---------------------------------------------------------------------------
 # Tests: immutability
-# ---------------------------------------------------------------------------
 
 
 class TestNoMutation:
@@ -202,9 +191,7 @@ class TestNoMutation:
         assert msg.svg_message.data_count == 0
 
 
-# ---------------------------------------------------------------------------
 # Tests: custom chunk_size
-# ---------------------------------------------------------------------------
 
 
 class TestCustomChunkSize:

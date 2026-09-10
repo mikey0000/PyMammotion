@@ -31,9 +31,7 @@ def _plan_frame(jobid: int, total: int) -> LubaMsg:
     return ctrl_plan_msg(jobid=jobid, totalplannum=total)
 
 
-# ---------------------------------------------------------------------------
 # ack_stream
-# ---------------------------------------------------------------------------
 
 
 async def test_ack_stream_acks_every_frame_including_the_last() -> None:
@@ -150,9 +148,7 @@ async def test_ack_stream_drives_the_device_via_the_ack_callback() -> None:
     assert sorted(frames) == [1, 2, 3]
 
 
-# ---------------------------------------------------------------------------
 # indexed_fetch
-# ---------------------------------------------------------------------------
 
 
 async def test_indexed_fetch_requests_every_index_and_yields_each_frame() -> None:

@@ -21,7 +21,6 @@ import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from pymammotion.device.ble_loop import (
     _BLE_STREAM_STALE_THRESHOLD,
@@ -29,10 +28,9 @@ from pymammotion.device.ble_loop import (
 )
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.proto import RptAct
-from pymammotion.transport.base import TransportType
 
 
-def _make_handle() -> MagicMock:
+def _make_loop_host() -> MagicMock:
     """Build a DeviceHandle double rigged to fire the continuous-stream branch."""
     handle = MagicMock()
     handle.is_stopping = False
@@ -74,10 +72,9 @@ async def _run_one_tick(handle: MagicMock) -> None:
         await asyncio.wait_for(ble_polling_loop(handle), timeout=2.0)
 
 
-@pytest.mark.asyncio
 async def test_first_iteration_sends_rpt_start() -> None:
     """When the stream isn't active yet, the loop must send RPT_START count=0."""
-    handle = _make_handle()
+    handle = _make_loop_host()
 
     await _run_one_tick(handle)
 
@@ -85,10 +82,9 @@ async def test_first_iteration_sends_rpt_start() -> None:
     handle.send_report_stream_keep.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_active_stream_sends_rpt_keep_when_data_flowing() -> None:
     """When the stream is active and frames are arriving, the loop sends RPT_KEEP."""
-    handle = _make_handle()
+    handle = _make_loop_host()
     handle.ble_stream_active = True
     # Pretend a report arrived very recently — well within the stale threshold
     handle.last_report_at = time.monotonic() - 1.0
@@ -103,7 +99,6 @@ async def test_active_stream_sends_rpt_keep_when_data_flowing() -> None:
     assert rpt_stop_calls == [], "RPT_STOP should not fire on a healthy stream"
 
 
-@pytest.mark.asyncio
 async def test_stale_stream_bounces_with_stop_then_fresh_start() -> None:
     """When _last_report_at is older than _BLE_STREAM_STALE_THRESHOLD, the loop
     must send RPT_STOP and re-issue RPT_START in the same tick.
@@ -111,7 +106,7 @@ async def test_stale_stream_bounces_with_stop_then_fresh_start() -> None:
     Regression for the gap copied from the APK's MSG_RPT_START_TIME_OUT /
     MSG_DATA_TIME_OUT timers.
     """
-    handle = _make_handle()
+    handle = _make_loop_host()
     handle.ble_stream_active = True
     # Last report was well past the threshold ago
     handle.last_report_at = time.monotonic() - (_BLE_STREAM_STALE_THRESHOLD + 5.0)
@@ -132,12 +127,11 @@ async def test_stale_stream_bounces_with_stop_then_fresh_start() -> None:
     handle.send_report_stream_keep.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_stale_check_skipped_before_first_report() -> None:
     """If _last_report_at == 0 (fresh boot, no report yet), the stale check
     must NOT trigger — otherwise the threshold trips immediately on startup.
     """
-    handle = _make_handle()
+    handle = _make_loop_host()
     handle.ble_stream_active = True
     handle.last_report_at = 0.0  # sentinel — never received a report
 
@@ -151,11 +145,10 @@ async def test_stale_check_skipped_before_first_report() -> None:
     assert rpt_stop_calls == [], "must not bounce on a never-received-report boot"
 
 
-@pytest.mark.asyncio
 async def test_stale_check_tolerates_stop_failure() -> None:
     """If RPT_STOP enqueue raises during the bounce, the loop must still clear
     _ble_stream_active so the next branch sends RPT_START."""
-    handle = _make_handle()
+    handle = _make_loop_host()
     handle.ble_stream_active = True
     handle.last_report_at = time.monotonic() - (_BLE_STREAM_STALE_THRESHOLD + 5.0)
     # First call (RPT_STOP) raises; second call (RPT_START) succeeds

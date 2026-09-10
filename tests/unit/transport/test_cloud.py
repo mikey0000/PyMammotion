@@ -15,7 +15,7 @@ from pymammotion.transport.base import TransportAvailability, TransportRateLimit
 from pymammotion.transport.cloud import CloudTransport
 
 
-def _make_concrete_transport() -> CloudTransport:
+def _make_concrete_cloud_transport() -> CloudTransport:
     """Return a minimal concrete CloudTransport (abstract methods stubbed out)."""
 
     class _Stub(CloudTransport):
@@ -48,20 +48,20 @@ def _make_concrete_transport() -> CloudTransport:
 
 def test_transport_not_rate_limited_initially() -> None:
     """A freshly created CloudTransport is not rate-limited."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     assert t.is_rate_limited is False
 
 
 def test_transport_set_rate_limited_blocks_for_duration() -> None:
     """After set_rate_limited(), is_rate_limited is True until the ban expires."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     t.set_rate_limited()
     assert t.is_rate_limited is True
 
 
 def test_transport_rate_limit_expires_after_12_hours() -> None:
     """is_rate_limited returns False once _rate_limited_until is in the past."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     t.set_rate_limited()
     assert t.is_rate_limited is True
 
@@ -72,7 +72,7 @@ def test_transport_rate_limit_expires_after_12_hours() -> None:
 
 def test_transport_rate_limit_duration_is_12_hours() -> None:
     """set_rate_limited() sets a ban of exactly _RATE_LIMIT_DURATION seconds."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     before = time.monotonic()
     t.set_rate_limited()
     after = time.monotonic()
@@ -84,7 +84,7 @@ def test_transport_rate_limit_duration_is_12_hours() -> None:
 
 def test_transport_rate_limit_constant_matches_handle_backoff() -> None:
     """CloudTransport._RATE_LIMIT_DURATION and the poll loop's backoff must agree."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     assert t._RATE_LIMIT_DURATION == _RATE_LIMITED_BACKOFF  # noqa: SLF001
 
 
@@ -92,7 +92,7 @@ def test_quota_block_self_clears_when_window_slides_under_limit() -> None:
     """The self-imposed send-quota must release the instant the rolling window drops back
     under the limit — no fixed-duration ban (that is reserved for cloud 429s).
     """
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     limit = t._SEND_LIMIT  # noqa: SLF001
     window = t._SEND_WINDOW  # noqa: SLF001
     clock = {"now": 100_000.0}
@@ -115,7 +115,7 @@ def test_quota_block_self_clears_when_window_slides_under_limit() -> None:
 
 def test_seconds_until_send_available_is_max_of_cloud_ban_and_quota() -> None:
     """When both a cloud ban and the quota are active, the longer release time wins."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     clock = {"now": 0.0}
 
     with patch("pymammotion.transport.cloud.time.monotonic", side_effect=lambda: clock["now"]):
@@ -132,10 +132,9 @@ def test_seconds_until_send_available_is_max_of_cloud_ban_and_quota() -> None:
         assert t.is_rate_limited is True  # cloud ban still active
 
 
-
 def test_is_send_blocked_applies_firmware_exemption() -> None:
     """is_send_blocked() must exempt firmware >= RATE_LIMIT_REMOVED_VERSION."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     t.set_rate_limited()
     assert t.is_rate_limited is True
 
@@ -153,7 +152,7 @@ def test_is_send_blocked_applies_firmware_exemption() -> None:
 
 def test_cloud_is_usable_goes_false_on_terminal_auth_failure() -> None:
     """The auth-flag notion of usable belongs here, not on the shared base."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     assert t.is_usable is True
 
     t.mark_auth_failed()
@@ -161,7 +160,7 @@ def test_cloud_is_usable_goes_false_on_terminal_auth_failure() -> None:
 
 
 def test_unrecoverable_auth_failure_is_reported_separately() -> None:
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     assert t.is_unrecoverable_auth_failure is False
 
     t.mark_unrecoverable_auth_failure()
@@ -169,14 +168,12 @@ def test_unrecoverable_auth_failure_is_reported_separately() -> None:
     assert t.is_usable is False
 
 
-# ---------------------------------------------------------------------------
 # The two block sources are separate, and a user-initiated send honours only one
-# ---------------------------------------------------------------------------
 
 
 def test_the_two_block_sources_are_reported_separately() -> None:
     """`is_rate_limited` fuses them; the halves have to stay individually readable."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     assert t.is_cloud_banned is False
     assert t.is_quota_exhausted is False
 
@@ -187,7 +184,7 @@ def test_the_two_block_sources_are_reported_separately() -> None:
 
 
 def test_quota_exhaustion_does_not_look_like_a_cloud_ban() -> None:
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     for _ in range(t._SEND_LIMIT):  # noqa: SLF001
         t.record_send()
 
@@ -198,7 +195,7 @@ def test_quota_exhaustion_does_not_look_like_a_cloud_ban() -> None:
 
 def test_user_initiated_spends_past_the_quota_but_not_past_a_cloud_ban() -> None:
     """The whole point of the flag: our own budget yields to a person, the server's does not."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     for _ in range(t._SEND_LIMIT):  # noqa: SLF001
         t.record_send()
 
@@ -211,13 +208,13 @@ def test_user_initiated_spends_past_the_quota_but_not_past_a_cloud_ban() -> None
 
 def test_firmware_exemption_still_wins_for_user_initiated() -> None:
     """Quota-free firmware is exempt regardless of who initiated the send."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     t.set_rate_limited()
     assert t.is_send_blocked("2.3.27.16", user_initiated=True) is False
 
 
 async def test_send_user_reaches_the_broker_while_the_quota_is_exhausted() -> None:
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     sent: list[bytes] = []
     t._invoke = lambda payload, iot_id: _record(sent, payload)  # type: ignore[assignment, method-assign]
     for _ in range(t._SEND_LIMIT):  # noqa: SLF001
@@ -230,7 +227,7 @@ async def test_send_user_reaches_the_broker_while_the_quota_is_exhausted() -> No
 
 async def test_send_user_is_still_counted_against_the_budget() -> None:
     """The window has to reflect real traffic or the next cadence decision is a lie."""
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     t._invoke = lambda payload, iot_id: _record([], payload)  # type: ignore[assignment, method-assign]
 
     await t.send_user(b"\x01", iot_id="iot", firmware_version="1.11.5.0")
@@ -239,7 +236,7 @@ async def test_send_user_is_still_counted_against_the_budget() -> None:
 
 
 async def test_send_user_refuses_while_the_cloud_ban_is_active() -> None:
-    t = _make_concrete_transport()
+    t = _make_concrete_cloud_transport()
     sent: list[bytes] = []
     t._invoke = lambda payload, iot_id: _record(sent, payload)  # type: ignore[assignment, method-assign]
     t.set_rate_limited()

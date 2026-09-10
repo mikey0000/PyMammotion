@@ -28,9 +28,7 @@ _IOT_TOKEN_EXPIRE = 72_000  # 20 h, matching the real Aliyun value
 _REFRESH_TOKEN_EXPIRE = 720_000
 
 
-# ---------------------------------------------------------------------------
 # Builders
-# ---------------------------------------------------------------------------
 
 
 def _session(iot_token: str, iot_token_expire: int = _IOT_TOKEN_EXPIRE) -> SessionByAuthCodeResponse:
@@ -42,7 +40,7 @@ def _session(iot_token: str, iot_token_expire: int = _IOT_TOKEN_EXPIRE) -> Sessi
     )
 
 
-def _make_gateway(initial_token: str = "iot-token-initial", *, age: int = 0) -> CloudIOTGateway:
+def _make_aged_gateway(initial_token: str = "iot-token-initial", *, age: int = 0) -> CloudIOTGateway:
     """A real gateway carrying ``initial_token``, issued ``age`` seconds ago."""
     return make_gateway(_session(initial_token), age=age)
 
@@ -125,14 +123,12 @@ def _assert_consistent(tm: TokenManager, gw: CloudIOTGateway, expected: str | No
         assert gw_token == expected
 
 
-# ---------------------------------------------------------------------------
 # Gateway token is stable until a refresh
-# ---------------------------------------------------------------------------
 
 
 def test_gateway_token_is_stable_across_reads() -> None:
     """Reading the gateway session token repeatedly must not mutate it."""
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     first = gw.session_by_authcode_response.data.iotToken  # type: ignore[union-attr]
     for _ in range(5):
         assert gw.session_by_authcode_response.data.iotToken == first  # type: ignore[union-attr]
@@ -146,14 +142,12 @@ async def test_get_aliyun_credentials_without_gateway_raises() -> None:
         await tm.get_aliyun_credentials()
 
 
-# ---------------------------------------------------------------------------
 # Fresh token: no refresh, token unchanged everywhere
-# ---------------------------------------------------------------------------
 
 
 async def test_fresh_credentials_returned_without_touching_gateway() -> None:
     """A still-valid cached token is returned via the fast path; the gateway is not called."""
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     tm._aliyun_creds = _fresh_creds("iot-token-initial")  # noqa: SLF001
     gw.check_or_refresh_session = AsyncMock()  # type: ignore[method-assign] — spy: must NOT fire
@@ -167,14 +161,12 @@ async def test_fresh_credentials_returned_without_touching_gateway() -> None:
     assert tm._aliyun_creds.iot_token == "iot-token-initial"  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # Expired / first fetch: refresh runs, gateway assigns, TokenManager mirrors it
-# ---------------------------------------------------------------------------
 
 
 async def test_expired_get_refreshes_and_matches_gateway() -> None:
     """A near-expiry token triggers a refresh; gateway + TokenManager end on the SAME new token."""
-    gw = _make_gateway("iot-token-initial", age=_IOT_TOKEN_EXPIRE)  # already past expiry
+    gw = _make_aged_gateway("iot-token-initial", age=_IOT_TOKEN_EXPIRE)  # already past expiry
     tm = _make_token_manager(gw)
     backend = _AliyunBackend()
 
@@ -188,7 +180,7 @@ async def test_expired_get_refreshes_and_matches_gateway() -> None:
 
 async def test_refresh_aliyun_credentials_matches_gateway() -> None:
     """refresh_aliyun_credentials() refreshes via the gateway and stays consistent."""
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     backend = _AliyunBackend()
 
@@ -201,7 +193,7 @@ async def test_refresh_aliyun_credentials_matches_gateway() -> None:
 
 async def test_refresh_sets_expiry_from_gateway_issued_at() -> None:
     """The cached expiry must be derived from the gateway's issued-at + iotTokenExpire."""
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     backend = _AliyunBackend()
 
@@ -215,7 +207,7 @@ async def test_refresh_sets_expiry_from_gateway_issued_at() -> None:
 
 async def test_token_refreshed_callback_receives_latest_token() -> None:
     """on_aliyun_token_refreshed (used to push the token to the transport) gets the new token."""
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     callback = MagicMock()
     tm.on_aliyun_token_refreshed = callback
@@ -229,9 +221,7 @@ async def test_token_refreshed_callback_receives_latest_token() -> None:
     assert callback.call_args[0][0] == gw.session_by_authcode_response.data.iotToken  # type: ignore[union-attr]
 
 
-# ---------------------------------------------------------------------------
 # Transport isolation: refreshing one transport must not disturb the other
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_mqtt_leaves_aliyun_token_untouched() -> None:
@@ -241,7 +231,7 @@ async def test_refresh_mqtt_leaves_aliyun_token_untouched() -> None:
     recovering the other is how a single dead transport used to take down a whole
     hybrid account.
     """
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     tm._aliyun_creds = _fresh_creds("iot-token-initial")  # noqa: SLF001
     gw.check_or_refresh_session = AsyncMock()  # type: ignore[method-assign] — spy: must NOT fire
@@ -255,14 +245,12 @@ async def test_refresh_mqtt_leaves_aliyun_token_untouched() -> None:
     assert tm._aliyun_creds.iot_token == "iot-token-initial"  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # Sequential refreshes: a new token each time, gateway + TM always in lockstep
-# ---------------------------------------------------------------------------
 
 
 async def test_sequential_refreshes_generate_new_tokens_in_lockstep() -> None:
     """Each refresh yields a distinct token; gateway and TokenManager track the latest every time."""
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     backend = _AliyunBackend()
 
@@ -280,7 +268,7 @@ async def test_sequential_refreshes_generate_new_tokens_in_lockstep() -> None:
 
 async def test_list_binding_sends_the_refreshed_token() -> None:
     """After a refresh, list_binding_by_account must send the gateway's new token (the 401 path)."""
-    gw = _make_gateway("iot-token-initial", age=_IOT_TOKEN_EXPIRE)
+    gw = _make_aged_gateway("iot-token-initial", age=_IOT_TOKEN_EXPIRE)
     tm = _make_token_manager(gw)
     backend = _AliyunBackend()
 
@@ -292,9 +280,7 @@ async def test_list_binding_sends_the_refreshed_token() -> None:
     assert backend.last_list_iot_token == tm._aliyun_creds.iot_token  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # SessionExpired → re-login: the NEW gateway token is used, never the stale one
-# ---------------------------------------------------------------------------
 
 
 async def test_session_expired_relogin_uses_new_gateway_token() -> None:
@@ -302,7 +288,7 @@ async def test_session_expired_relogin_uses_new_gateway_token() -> None:
 
     Regression: an early return here once handed back the stale iotToken.
     """
-    gw = _make_gateway("stale-token")
+    gw = _make_aged_gateway("stale-token")
     tm = _make_token_manager(gw)
     gw.check_or_refresh_session = AsyncMock(  # type: ignore[method-assign]
         side_effect=SessionExpiredError(TransportType.CLOUD_ALIYUN, "2401 refreshToken invalid")
@@ -323,7 +309,7 @@ async def test_session_expired_relogin_uses_new_gateway_token() -> None:
 
 async def test_session_expired_beyond_limit_raises_relogin_required() -> None:
     """Repeated 2401s within the window escalate to ReLoginRequiredError; creds stay unchanged."""
-    gw = _make_gateway("stale-token")
+    gw = _make_aged_gateway("stale-token")
     tm = _make_token_manager(gw)
     tm._aliyun_creds = _fresh_creds("stale-token")  # noqa: SLF001
     gw.check_or_refresh_session = AsyncMock(  # type: ignore[method-assign]
@@ -346,15 +332,13 @@ async def test_session_expired_beyond_limit_raises_relogin_required() -> None:
     assert tm._aliyun_creds.iot_token == "stale-token"  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # Invariant across every refresh entry point
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_with_none_session_data_raises_and_keeps_creds() -> None:
     """If the gateway session has no data after a 'successful' refresh, raise rather than
     assign a None token — and leave the previous cached credentials untouched."""
-    gw = _make_gateway("iot-token-initial")
+    gw = _make_aged_gateway("iot-token-initial")
     tm = _make_token_manager(gw)
     tm._aliyun_creds = _fresh_creds("iot-token-initial")  # noqa: SLF001
 
@@ -376,7 +360,7 @@ async def test_refresh_with_none_session_data_raises_and_keeps_creds() -> None:
 )
 async def test_token_invariant_holds_for_every_entrypoint(trigger: str) -> None:
     """Whichever way a refresh is triggered, the gateway and TokenManager end up consistent."""
-    gw = _make_gateway("iot-token-initial", age=_IOT_TOKEN_EXPIRE)
+    gw = _make_aged_gateway("iot-token-initial", age=_IOT_TOKEN_EXPIRE)
     tm = _make_token_manager(gw)
     backend = _AliyunBackend()
 

@@ -11,7 +11,7 @@ from pymammotion.client import MammotionClient, _CloudBinding
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.transport.base import TransportAvailability, TransportType
 from pymammotion.transport.ble import BLETransport
-from tests.unit._helpers import make_mock_mowing_device, make_mock_transport
+from tests._helpers import make_mock_mowing_device, make_mock_transport
 
 NAME = "Luba-ADOPT"
 

@@ -72,9 +72,7 @@ def test_unknown_sys_comm_id_ignored() -> None:
     assert result.pool_state.turbo_clean is False
 
 
-# ===========================================================================
 # PoolStateReducer tests for the ``LubaMsg.ctrl.plan_job_set`` path.
-# ===========================================================================
 
 
 def _frame(**kwargs) -> LubaMsg:
@@ -170,9 +168,7 @@ def test_pool_plan_with_enabled_round_trip() -> None:
     assert plan.with_renamed("foo").jobname == "foo"
 
 
-# ===========================================================================
 # PoolStateReducer — fw info, net envelope, devStatus extras, error clamp.
-# ===========================================================================
 
 
 def test_pool_fw_info_populates_device_firmwares() -> None:
@@ -345,7 +341,3 @@ def test_pool_todev_data_time_is_silent_noop() -> None:
     msg = LubaMsg(sys=MctlSys(todev_data_time=SysSetDateTime(year=234, month=7, date=20)))
     result = PoolStateReducer().apply(PoolCleanerDevice(name="Spino-E1abc"), msg)
     assert result.online is True
-
-
-if __name__ == "__main__":  # pragma: no cover
-    pytest.main([__file__, "-v"])

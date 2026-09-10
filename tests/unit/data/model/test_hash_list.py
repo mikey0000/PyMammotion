@@ -27,9 +27,7 @@ from pymammotion.data.model.hash_list import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _make_frame_list(name: str = "") -> FrameList:
@@ -78,9 +76,7 @@ def _hash_list_with_lines(*line_hashes: int) -> HashList:
     return hl
 
 
-# ---------------------------------------------------------------------------
 # FrameList.name
-# ---------------------------------------------------------------------------
 
 
 class TestFrameListName:
@@ -106,9 +102,7 @@ class TestFrameListName:
         assert fl.name == "First"
 
 
-# ---------------------------------------------------------------------------
 # computed_areas — both empty
-# ---------------------------------------------------------------------------
 
 
 class TestBothEmpty:
@@ -117,9 +111,7 @@ class TestBothEmpty:
         assert hl.computed_areas == []
 
 
-# ---------------------------------------------------------------------------
 # Tests: area_name only (no area)
-# ---------------------------------------------------------------------------
 
 
 class TestAreaNameOnly:
@@ -141,9 +133,7 @@ class TestAreaNameOnly:
         assert original[0].name == "Front"
 
 
-# ---------------------------------------------------------------------------
 # Tests: area only
-# ---------------------------------------------------------------------------
 
 
 class TestAreaOnly:
@@ -178,9 +168,7 @@ class TestAreaOnly:
         assert len(numbers) == len(set(numbers)), "each Area N must be unique"
 
 
-# ---------------------------------------------------------------------------
 # Tests: area_name has matching hash — various name states
-# ---------------------------------------------------------------------------
 
 
 class TestMatchingHash:
@@ -222,9 +210,7 @@ class TestMatchingHash:
         assert result[0].name == "Correct Name"
 
 
-# ---------------------------------------------------------------------------
 # Tests: area_name hashes NOT in area are preserved
-# ---------------------------------------------------------------------------
 
 
 class TestAreaNameHashesNotInArea:
@@ -243,9 +229,7 @@ class TestAreaNameHashesNotInArea:
         assert next(a.name for a in result if a.hash == 99) == "Stale"
 
 
-# ---------------------------------------------------------------------------
 # Tests: gap-fill numbering
-# ---------------------------------------------------------------------------
 
 
 class TestGapFillNumbering:
@@ -296,9 +280,7 @@ class TestGapFillNumbering:
         assert auto_names == {"Area 1", "Area 3"}
 
 
-# ---------------------------------------------------------------------------
 # Tests: immutability — computed_areas must never mutate self.area_name
-# ---------------------------------------------------------------------------
 
 
 class TestNoMutation:
@@ -336,9 +318,7 @@ class TestNoMutation:
         assert [(a.hash, a.name) for a in first] == [(a.hash, a.name) for a in second]
 
 
-# ---------------------------------------------------------------------------
 # Tests: mixed scenarios
-# ---------------------------------------------------------------------------
 
 
 class TestMixedScenarios:
@@ -399,9 +379,7 @@ class TestMixedScenarios:
         assert by_hash[h3] == "Backyard part 1"
 
 
-# ---------------------------------------------------------------------------
 # Tests: upsert_area_name (single-area rename echo, toapp_map_name_msg path)
-# ---------------------------------------------------------------------------
 
 
 class TestUpsertAreaName:
@@ -432,9 +410,7 @@ class TestUpsertAreaName:
         ]
 
 
-# ---------------------------------------------------------------------------
 # HashList.update — per-type routing + unknown-type fallback
-# ---------------------------------------------------------------------------
 
 
 class TestUpdateRouting:
@@ -495,9 +471,7 @@ class TestUpdateRouting:
         assert hl.find_incomplete_hashes(0) == []
 
 
-# ---------------------------------------------------------------------------
 # HashList.find_incomplete_hashes
-# ---------------------------------------------------------------------------
 
 
 class TestFindIncompleteHashes:
@@ -529,9 +503,7 @@ class TestFindIncompleteHashes:
         assert hl.find_incomplete_hashes(0) == []
 
 
-# ---------------------------------------------------------------------------
 # HashList.update_hash_lists — prunes geometry to the manifest, preserves names
-# ---------------------------------------------------------------------------
 
 
 class TestUpdateHashLists:
@@ -563,9 +535,7 @@ class TestUpdateHashLists:
         assert hl.area_name == [AreaHashNameList(name="Front", hash=100)]
 
 
-# ---------------------------------------------------------------------------
 # HashList.invalidate_breakpoint_line
-# ---------------------------------------------------------------------------
 
 # Real ub_path_hash extracted from a Luba-VA6LZCPX snapshot (active breakpoint line).
 _ACTIVE_LINE_HASH = 1623055749216062189
@@ -616,9 +586,7 @@ class TestInvalidateBreakpointLine:
         assert 111 in hl.area and 999 in hl.path
 
 
-# ---------------------------------------------------------------------------
 # computed_areas — post-sync regression (edited area gets a new content hash)
-# ---------------------------------------------------------------------------
 
 
 class TestComputedAreasAfterEdit:
@@ -637,9 +605,7 @@ class TestComputedAreasAfterEdit:
         assert 111 not in by_hash
 
 
-# ---------------------------------------------------------------------------
 # computed_areas — orphaned area_name entries must not reserve auto-numbers
-# ---------------------------------------------------------------------------
 
 
 class TestOrphanAreaNamesDoNotReserveNumbers:
@@ -697,9 +663,7 @@ class TestOrphanAreaNamesDoNotReserveNumbers:
         assert live == {111: "Area 1", 222: "Area 2", 333: "Area 3"}
 
 
-# ---------------------------------------------------------------------------
 # Restore path — hash-keyed dicts must come back keyed by int, never str
-# ---------------------------------------------------------------------------
 
 
 class TestRestoredHashKeysAreInts:
@@ -742,9 +706,7 @@ class TestRestoredHashKeysAreInts:
         assert {a.hash: a.name for a in self._round_tripped().computed_areas} == {507072516911571140: "Front"}
 
 
-# ---------------------------------------------------------------------------
 # computed_areas — real Luba 3 snapshot (three areas, device sent no names)
-# ---------------------------------------------------------------------------
 
 
 def _multi_frame_list(hash_id: int, paternal_b: int, frames: int) -> FrameList:

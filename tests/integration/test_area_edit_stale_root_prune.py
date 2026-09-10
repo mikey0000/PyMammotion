@@ -124,9 +124,7 @@ def test_area_name_list_does_not_wipe_root_during_active_saga() -> None:
     assert device.map.hashlist == [OLD_HASH]
 
 
-# ---------------------------------------------------------------------------
 # MapFetchSaga start-of-run bol_hash staleness check
-# ---------------------------------------------------------------------------
 
 
 def _stale_root_map() -> HashList:
