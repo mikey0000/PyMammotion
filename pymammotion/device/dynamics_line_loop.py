@@ -26,6 +26,7 @@ assembled point list is stored on ``device.map.dynamics_line``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -64,9 +65,12 @@ async def dynamics_line_loop(handle: LoopHost) -> None:
     device_type = DeviceType.value_of_str(handle.device_name)
 
     while not handle.is_stopping:
-        if await handle.sleep_or_rearm(_DYNAMICS_LINE_POLL_INTERVAL):
-            # rearmed by a user command — re-evaluate immediately
-            pass
+        # Plain sleep, not sleep_or_rearm: the shared _rearm_event is set by
+        # on_saga_end after this loop's own poll saga finishes, so sleep_or_rearm
+        # returned immediately and collapsed the interval into a back-to-back
+        # retrigger. BLE-disconnect still exits via the task cancel in handle.py
+        # plus the is_connected gate below, so the rearm wake isn't needed here.
+        await asyncio.sleep(_DYNAMICS_LINE_POLL_INTERVAL)
 
         if handle.is_stopping:
             return
