@@ -81,13 +81,20 @@ def test_sleeping_is_a_no_request_mode() -> None:
     assert WorkMode.MODE_SLEEPING in NO_REQUEST_MODES
 
 
+_FIXED_MONOTONIC = _SLEEPING_RECHECK_INTERVAL * 10
+
+
 def _loop_handle(*, usable: bool) -> MagicMock:
     """A DeviceHandle double reporting SLEEPING, driven for exactly one tick.
 
     A cloud transport is registered with its last-received stamp pushed well past
     any interval, so the loop's debounce cannot be what stops the poll — the mode
-    gates have to.  Staleness is expressed relative to ``time.monotonic()`` rather
-    than by freezing the clock, matching the BLE loop tests.
+    gates have to. ``time.monotonic`` is patched to a fixed anchor (see the test)
+    so the staleness offset below can never go negative: on a low-uptime machine
+    or container, ``time.monotonic()`` can be smaller than ``_SLEEPING_RECHECK_INTERVAL
+    + 60``, and ``max(negative_timestamp, last_poll_sent_at=0.0)`` would then pick
+    the 0.0 sentinel — making the loop see the activity as *just now* instead of
+    long ago.
     """
     handle = MagicMock()
     handle.is_stopping = False
@@ -104,7 +111,7 @@ def _loop_handle(*, usable: bool) -> MagicMock:
     handle.get_transport = MagicMock(return_value=mqtt)
     # Pushed well past any interval so the loop's debounce cannot be what stops
     # the poll — the mode gates have to be.
-    handle.last_transport_activity = time.monotonic() - (_SLEEPING_RECHECK_INTERVAL + 60)
+    handle.last_transport_activity = _FIXED_MONOTONIC - (_SLEEPING_RECHECK_INTERVAL + 60)
 
     handle.queue = MagicMock(is_saga_active=False)
     handle.availability = MagicMock(mqtt_reported_offline=not usable)
@@ -123,7 +130,9 @@ def _loop_handle(*, usable: bool) -> MagicMock:
 
 
 @pytest.mark.parametrize("usable", [False, True])
-async def test_sleeping_device_is_never_polled_and_backs_off_long(usable: bool) -> None:
+async def test_sleeping_device_is_never_polled_and_backs_off_long(
+    usable: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Whether or not the cloud has reported it offline yet, no poll goes out.
 
     ``usable=False`` is the normal case (the cloud saw it drop), stopped by the
@@ -131,6 +140,7 @@ async def test_sleeping_device_is_never_polled_and_backs_off_long(usable: bool) 
     lands, where NO_REQUEST_MODES is what holds the send back.  Both back off on the
     sleep interval, which is why the bucket has to exist for the pre-flight path too.
     """
+    monkeypatch.setattr(time, "monotonic", lambda: _FIXED_MONOTONIC)
     handle = _loop_handle(usable=usable)
     await asyncio.wait_for(mqtt_activity_loop(handle), timeout=1)
     handle.send_one_shot_report.assert_not_called()
