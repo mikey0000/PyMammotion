@@ -88,6 +88,7 @@ _REPORT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_BASESTATION_INFO,
     RptInfoType.RIT_VIO,
     RptInfoType.RIT_CONNECT,
+    RptInfoType.RIT_RTK,
 ]
 
 if TYPE_CHECKING:

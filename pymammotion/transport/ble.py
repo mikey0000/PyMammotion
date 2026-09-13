@@ -10,7 +10,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from bleak import BleakScanner
-from bleak.exc import BleakCharacteristicNotFoundError, BleakError
+from bleak.exc import BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, BleakOutOfConnectionSlotsError, establish_connection
 
 from pymammotion.bluetooth.ble_message import BleMessage
@@ -67,11 +67,6 @@ class BLETransportConfig:
     connect_failure_threshold: int = 1
     connect_cooldown_seconds: float = 120.0
     min_rssi: int = -90
-
-
-def _is_stale_gatt_cache(exc: BaseException) -> bool:
-    """Return True when a just-connected link reports a characteristic bleak's service cache lacks."""
-    return isinstance(exc, BleakCharacteristicNotFoundError) or "was not found" in str(exc)
 
 
 class BLETransport(Transport):
@@ -338,24 +333,25 @@ class BLETransport(Transport):
                     # so leaving it connected would wedge the transport into a state where
                     # writes succeed but responses never arrive.  Tear the link down.
                     #
-                    # A missing characteristic on a link that just connected means the
-                    # GATT table came from a stale service cache (typical after a drop and
-                    # a reconnect through another proxy), not that the device changed.
-                    # Nothing else ever clears that cache, so without this every later
-                    # attempt would fail the same way until the process restarts.  Clear
-                    # it and reconnect once; only a second miss counts as a real failure.
-                    stale_cache = not cache_cleared and _is_stale_gatt_cache(exc)
+                    # The link was built from a cached GATT table, so any setup failure on
+                    # it may be that cache: the device rejects handles it no longer has,
+                    # which the ESP proxy reports as INVALID_HANDLE / ILLEGAL_PARAMETER and
+                    # bleak as a missing characteristic.  Nothing else ever clears that
+                    # cache, so without this every later attempt fails the same way until
+                    # the process restarts.  Clear it and reconnect once; a second failure
+                    # is a real one.
+                    retry_fresh = not cache_cleared
                     with contextlib.suppress(Exception):
-                        if stale_cache:
+                        if retry_fresh:
                             await self._client.clear_cache()
                         await self._client.disconnect()
                     self._client = None
                     self._message = None
-                    if stale_cache:
+                    if retry_fresh:
                         cache_cleared = True
                         _logger.info(
-                            "BLETransport[%s]: characteristic missing from cached GATT table (%s) — "
-                            "cleared the service cache, reconnecting once",
+                            "BLETransport[%s]: setup failed on a link built from the cached GATT table (%s) — "
+                            "cleared the cache, reconnecting once",
                             self._config.device_id,
                             exc,
                         )

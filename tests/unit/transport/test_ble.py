@@ -748,7 +748,15 @@ async def test_connect_counts_a_second_missing_characteristic_as_a_real_failure(
     assert not transport.is_usable  # threshold is 1: the real failure arms the cooldown
 
 
-async def test_connect_does_not_clear_cache_for_unrelated_setup_errors(config: BLETransportConfig) -> None:
+async def test_connect_clears_cache_for_any_setup_error(config: BLETransportConfig) -> None:
+    """A stale cache does not always name a missing characteristic.
+
+    The reported Yuka failure was a CCCD write the device rejected outright — the ESP
+    proxy logged ``status=1`` (INVALID_HANDLE) and Home Assistant saw ``error=135``
+    (ILLEGAL_PARAMETER).  Neither is a BleakCharacteristicNotFoundError and neither
+    says "was not found", so matching on the exception left the cache in place and the
+    transport looped on cooldown until the process restarted.
+    """
     from bleak.exc import BleakError
 
     from pymammotion.transport.base import BLEUnavailableError
@@ -766,5 +774,32 @@ async def test_connect_does_not_clear_cache_for_unrelated_setup_errors(config: B
     ):
         await transport.connect()
 
-    client.clear_cache.assert_not_awaited()
-    assert establish.await_count == 1
+    client.clear_cache.assert_awaited_once()
+    assert establish.await_count == 2
+
+
+async def test_connect_retries_once_when_the_first_write_fails(config: BLETransportConfig) -> None:
+    """A failed _ble_sync is not a cache problem, but still costs exactly one retry.
+
+    The accepted cost of clearing on any post-connect setup failure rather than
+    predicate-matching the exception: one extra connect, then the same cooldown.
+    """
+    from pymammotion.transport.base import BLEUnavailableError
+
+    transport = BLETransport(config)
+    transport.set_ble_device(MagicMock(spec=BLEDevice))
+    client = _make_fake_client()
+    msg = _make_fake_ble_message()
+    msg.post_custom_data_bytes = AsyncMock(side_effect=TimeoutError())
+    establish = AsyncMock(return_value=client)
+
+    with (
+        patch("pymammotion.transport.ble.establish_connection", new=establish),
+        patch("pymammotion.transport.ble.BleMessage", return_value=msg),
+        pytest.raises(BLEUnavailableError),
+    ):
+        await transport.connect()
+
+    client.clear_cache.assert_awaited_once()
+    assert establish.await_count == 2
+    assert not transport.is_usable
