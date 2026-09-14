@@ -18,7 +18,12 @@ tests can construct variants inline.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock
+from bleak import BLEDevice
+from bleak_retry_connector import BleakClientWithServiceCache
+
+from pymammotion.bluetooth.ble_message import BleMessage
+
+from unittest.mock import AsyncMock, MagicMock
 
 from tests._helpers import block_forever
 
@@ -114,3 +119,36 @@ class NetworkErrorClient:
 
     async def __aexit__(self, *args: object) -> None:
         pass
+
+
+def make_fake_ble_client(*, connected: bool = True) -> MagicMock:
+    """Return a MagicMock specced to BleakClientWithServiceCache.
+
+    Specced so a rename upstream — or a call in our code to a method bleak does not
+    have — fails here instead of being answered truthily forever.
+    """
+    client = MagicMock(spec=BleakClientWithServiceCache)
+    client.is_connected = connected
+    client.start_notify = AsyncMock()
+    client.stop_notify = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.write_gatt_char = AsyncMock()
+    client.clear_cache = AsyncMock(return_value=True)
+    return client
+
+
+def make_fake_ble_message() -> MagicMock:
+    """Return a MagicMock specced to BleMessage."""
+    msg = MagicMock(spec=BleMessage)
+    msg.post_custom_data_bytes = AsyncMock()
+    msg.parseNotification = MagicMock(return_value=0)
+    msg.parseBlufiNotifyData = AsyncMock(return_value=b"\x01\x02")
+    msg.clear_notification = MagicMock()
+    return msg
+
+
+def make_ble_device(address: str) -> MagicMock:
+    """Return a MagicMock-spec BLEDevice with a settable .address attribute."""
+    dev = MagicMock(spec=BLEDevice)
+    dev.address = address
+    return dev
