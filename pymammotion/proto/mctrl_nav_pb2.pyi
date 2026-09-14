@@ -581,7 +581,7 @@ class NavReqCoverPath(_message.Message):
     UltraWave: int
     ZONEHASHS_FIELD_NUMBER: _ClassVar[int]
     app_display_mode: int
-    auto_change_direction: int
+    auto_change_direction: _containers.RepeatedScalarFieldContainer[int]
     channelMode: int
     channelWidth: int
     edgeMode: int
@@ -600,7 +600,7 @@ class NavReqCoverPath(_message.Message):
     toward_included_angle: int
     toward_mode: int
     zoneHashs: _containers.RepeatedScalarFieldContainer[int]
-    def __init__(self, pver: _Optional[int] = ..., jobId: _Optional[int] = ..., jobVer: _Optional[int] = ..., jobMode: _Optional[int] = ..., subCmd: _Optional[int] = ..., edgeMode: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., channelWidth: _Optional[int] = ..., UltraWave: _Optional[int] = ..., channelMode: _Optional[int] = ..., toward: _Optional[int] = ..., speed: _Optional[float] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., pathHash: _Optional[int] = ..., reserved: _Optional[str] = ..., result: _Optional[int] = ..., toward_mode: _Optional[int] = ..., toward_included_angle: _Optional[int] = ..., ride_boundary_distance: _Optional[float] = ..., app_display_mode: _Optional[int] = ..., auto_change_direction: _Optional[int] = ...) -> None: ...
+    def __init__(self, pver: _Optional[int] = ..., jobId: _Optional[int] = ..., jobVer: _Optional[int] = ..., jobMode: _Optional[int] = ..., subCmd: _Optional[int] = ..., edgeMode: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., channelWidth: _Optional[int] = ..., UltraWave: _Optional[int] = ..., channelMode: _Optional[int] = ..., toward: _Optional[int] = ..., speed: _Optional[float] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., pathHash: _Optional[int] = ..., reserved: _Optional[str] = ..., result: _Optional[int] = ..., toward_mode: _Optional[int] = ..., toward_included_angle: _Optional[int] = ..., ride_boundary_distance: _Optional[float] = ..., app_display_mode: _Optional[int] = ..., auto_change_direction: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class NavResFrame(_message.Message):
     __slots__ = ["frameid"]

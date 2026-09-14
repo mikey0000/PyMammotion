@@ -1,12 +1,14 @@
-"""Tests for MammotionClient.setup_device_watchers auto-trigger logic."""
+"""Tests for HomeAssistantMowerApi: watcher auto-triggers, map/plan sync gating, route generation."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from pymammotion.client import MammotionClient
+from pymammotion.data.model.device import MowerDevice
 from pymammotion.device.auto_fetch import AutoFetchWatchers
 from tests._helpers import make_bare_client
+from pymammotion.data.model.device_config import OperationSettings
 from pymammotion.homeassistant.mower_api import HomeAssistantMowerApi
 
 
@@ -371,3 +373,38 @@ async def test_async_wake_up_passes_through_a_refusal() -> None:
     api, _ = _api_with_wake(accepted=False)
 
     assert await api.async_wake_up("Luba-Test") is False
+
+
+# generate_route_information gates the unconfirmed field 21 (issues #193, #860)
+
+
+def _make_api_for_route(firmware: str) -> tuple[HomeAssistantMowerApi, MowerDevice]:
+    """Return an api whose single device reports *firmware*."""
+    api = _make_api()
+    device = MowerDevice()
+    device.report_data.dev.collector_status.collector_installation_status = 1
+    device.device_firmwares.device_version = firmware
+    api._mammotion = MagicMock(spec=MammotionClient)
+    api._mammotion.get_device_by_name.return_value = device
+    return api, device
+
+
+def _route_for(device_name: str, firmware: str) -> int:
+    settings = OperationSettings(auto_change_direction=1)
+    api, _ = _make_api_for_route(firmware)
+    return api.generate_route_information(device_name, settings).auto_change_direction
+
+
+def test_route_keeps_auto_change_direction_on_a_supported_device() -> None:
+    """A Luba VA on new enough firmware is where the app offers the toggle."""
+    assert _route_for("Luba-VA6ABCDE", "2.3.28.1") == 1
+
+
+def test_route_drops_auto_change_direction_on_old_firmware() -> None:
+    """The app hides this row below 2.3.28.1, so we must not write the setting either."""
+    assert _route_for("Luba-VA6ABCDE", "2.3.27.9") == 0
+
+
+def test_route_drops_auto_change_direction_on_an_unsupported_model() -> None:
+    """Model gating matters as much as firmware: the app offers the row on neither."""
+    assert _route_for("Luba-VS6ABCDE", "2.3.28.1") == 0

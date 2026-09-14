@@ -359,7 +359,23 @@ class DeviceHandle:
     @property
     def commands(self) -> MammotionCommand:
         """Return a MammotionCommand builder for this device."""
-        return MammotionCommand(self.device_name, self.user_account)
+        command = MammotionCommand(self.device_name, self.user_account)
+        # NAV routing (get_msg_device) keys off this; without it every device falls
+        # back to name-only detection.
+        command.set_device_product_key(self.product_key or self._reported_product_key())
+        return command
+
+    def _reported_product_key(self) -> str:
+        """Product key as the device itself reported it (``net.toapp_wifi_iot_status``).
+
+        Only reached for a BLE-only device, which has no device list to seed from.
+        Pool cleaners carry it on the device, mowers on ``mower_state``.
+        """
+        device = self.state_machine.current.raw
+        mower_state = getattr(device, "mower_state", None)
+        if mower_state is not None:
+            return str(mower_state.product_key or "")
+        return str(getattr(device, "product_key", "") or "")
 
     def _wire_transport(self, transport: Transport) -> Callable[[TransportAvailability], Awaitable[None]]:
         """Wire callbacks on a transport and register it; returns the availability handler.

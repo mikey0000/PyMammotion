@@ -400,6 +400,10 @@ class HomeAssistantMowerApi:
         if DeviceType.is_luba1(device_name):
             route_information.toward_mode = 0
             route_information.toward_included_angle = 0
+        firmware = device.device_firmwares.device_version if device is not None else ""
+        if not DeviceType.supports_auto_change_direction(device_name, firmware):
+            # The app gates this row on a capability list and firmware; match it.
+            route_information.auto_change_direction = 0
         return route_information
 
     async def async_plan_route(self, device_name: str, operation_settings: OperationSettings) -> bool | None:
