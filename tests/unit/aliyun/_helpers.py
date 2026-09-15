@@ -12,13 +12,18 @@ import time
 from unittest.mock import MagicMock
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.model.dev_by_account_response import (
+    Data,
+    Device,
+    ListingDevAccountResponse,
+)
 from pymammotion.aliyun.model.regions_response import RegionResponse, RegionResponseData
 from pymammotion.aliyun.model.session_by_authcode_response import (
     SessionByAuthCodeResponse,
     SessionOauthToken,
 )
 
-__all__ = ["make_gateway", "make_region", "make_session"]
+__all__ = ["make_gateway", "make_listing_device", "make_region", "make_session", "seed_listing"]
 
 
 def make_session(
@@ -76,3 +81,37 @@ def make_gateway(
     )
     gw._iot_token_issued_at = int(time.time()) - age  # noqa: SLF001
     return gw
+
+
+def make_listing_device(device_name: str, iot_id: str) -> Device:
+    """A Device carrying only the fields the Aliyun listing is keyed and filtered on."""
+    return Device(
+        gmt_modified=0,
+        node_type="DEVICE",
+        device_name=device_name,
+        product_name="Luba",
+        status=1,
+        identity_id="identity-1",
+        net_type="NET_LORA",
+        category_key="LawnMower",
+        product_key="pk-1",
+        is_edge_gateway=False,
+        category_name="Mower",
+        identity_alias="alias",
+        iot_id=iot_id,
+        bind_time=0,
+        owned=1,
+        thing_type="DEVICE",
+    )
+
+
+def seed_listing(gateway: CloudIOTGateway, *devices: Device) -> None:
+    """Put *devices* into the gateway's cached listing.
+
+    Writes the private attribute because there is no public setter: the only
+    production writer is inside the list-devices network call.
+    """
+    gateway._devices_by_account_response = ListingDevAccountResponse(  # noqa: SLF001
+        code=200,
+        data=Data(total=len(devices), data=list(devices), pageNo=1, pageSize=20),
+    )

@@ -1093,6 +1093,28 @@ class CloudIOTGateway:
         """Return the cached device listing response for the current account."""
         return self._devices_by_account_response
 
+    def forget_device(self, *, iot_id: str = "", device_name: str = "") -> bool:
+        """Drop a device from the cached Aliyun listing; True when one was removed.
+
+        This listing is what ``to_cache`` persists and what a restore re-registers an
+        Aliyun binding from, so a device unbound from Aliyun (29004) has to leave it —
+        otherwise every restart rebuilds the binding and the device 29004s again.
+        """
+        if self._devices_by_account_response is None or self._devices_by_account_response.data is None:
+            return False
+        devices = self._devices_by_account_response.data.data
+        keep = [
+            d
+            for d in devices
+            if not ((iot_id and d.iot_id == iot_id) or (device_name and d.device_name == device_name))
+        ]
+        if len(keep) == len(devices):
+            return False
+        self._devices_by_account_response.data.data = keep
+        self._devices_by_account_response.data.total = len(keep)
+        logger.warning("Removed unbound device from the Aliyun listing (iot_id=%s name=%s)", iot_id, device_name)
+        return True
+
     def set_http(self, mammotion_http: MammotionHTTP) -> None:
         """Replace the underlying MammotionHTTP instance used for authentication."""
         self.mammotion_http = mammotion_http

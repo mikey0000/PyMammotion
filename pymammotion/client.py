@@ -1146,6 +1146,7 @@ class MammotionClient(CloudAuthMixin):
         """
         device_name = handle.device_name
         session = self._get_session_for_handle(handle)
+        await self._forget_aliyun_binding(handle, session)
         try:
             # The Aliyun→Mammotion cloud migration after a firmware update is NOT
             # instantaneous: the 29004 unbind lands before the device is listed on
@@ -1168,6 +1169,23 @@ class MammotionClient(CloudAuthMixin):
                     )
         finally:
             handle.reset_unbound_migration()
+
+    async def _forget_aliyun_binding(self, handle: DeviceHandle, session: AccountSession | None) -> None:
+        """Drop the device from the cached Aliyun listing and persist that.
+
+        Runs on every 29004, before migration is attempted: the device is unbound from
+        Aliyun whatever happens next, and the listing is what a restore rebuilds Aliyun
+        bindings from.  Leaving it there meant every restart re-registered the device
+        and sent to it again, getting 29004 again, forever.
+        """
+        if session is None or session.cloud_client is None:
+            return
+        if not session.cloud_client.forget_device(iot_id=handle.iot_id, device_name=handle.device_name):
+            return
+        if self._on_credentials_updated is not None:
+            # The trimmed listing only survives a restart once the host rewrites the cache.
+            with contextlib.suppress(Exception):
+                await self._on_credentials_updated()
 
     async def _try_migrate_unbound(
         self, handle: DeviceHandle, session: AccountSession | None, *, final_attempt: bool
