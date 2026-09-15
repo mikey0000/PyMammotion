@@ -1994,7 +1994,7 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.9.0b8"
+version = "0.9.0b9"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
