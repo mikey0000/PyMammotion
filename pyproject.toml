@@ -84,8 +84,12 @@ current_version = "0.9.0b7"
 version_pattern = "MAJOR.MINOR.PATCH[PYTAGNUM]"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
-tag             = true
-push            = false
+# bumpver tags the bare version, which release.yml's 'v*' trigger ignores.
+# scripts/bumpver_tag.sh makes the v-prefixed tag instead.
+tag              = false
+push             = false
+pre_commit_hook  = "scripts/bumpver_relock.sh"
+post_commit_hook = "scripts/bumpver_tag.sh"
 
 [tool.bumpver.file_patterns]
 "pyproject.toml" = ['current_version = "{version}"', 'version = "{version}"']

@@ -43,10 +43,17 @@ uv run bumpver update --patch --tag beta   # open a new beta series
 uv run bumpver update --tag-num            # next beta of the same series
 uv run bumpver update --tag final          # promote the beta to the release
 
-# bumpver does not touch uv.lock, which records the workspace version.
-# Re-lock after every bump or `uv sync --frozen` fails in CI.
-uv lock
+# A bump is one step: hooks re-lock uv.lock into the commit and tag it v<version>.
+# Nothing to run afterwards -- just push the branch and the tag.
 ```
+
+`scripts/bumpver_relock.sh` and `scripts/bumpver_tag.sh` exist because bumpver
+cannot do either on its own. It patches the version, then `git commit` runs the
+`ty` and `pytest` pre-commit hooks, which shell out to `uv run`; that re-resolves
+on a version change and rewrites `uv.lock` mid-commit, so pre-commit aborts with
+"files were modified by this hook" and the bump is left staged. And it tags the
+bare version, which `release.yml`'s `v*` trigger ignores. Both hooks are wired in
+`[tool.bumpver]`; `tag = false` is deliberate.
 
 Releases are cut by pushing a `v<version>` tag; `release.yml` compares the tag
 against the built package after PEP 440 normalisation (so `v0.9.0-beta1` and
