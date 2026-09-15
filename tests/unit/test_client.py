@@ -1,4 +1,5 @@
 """Tests for MammotionClient (Wave 4 top-level API)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -368,7 +369,7 @@ async def test_send_command_with_args_prefer_ble_uses_ble_transport() -> None:
     # Confirm the BLE transport is registered on the handle before sending.
     assert handle._transports.get(TransportType.BLE) is ble  # noqa: SLF001
 
-    fake_bytes = b"\xDE\xAD\xBE\xEF"
+    fake_bytes = b"\xde\xad\xbe\xef"
     patcher = _stub_commands(handle, fake_bytes)
     try:
         await client._device_registry.register(handle)
@@ -393,7 +394,7 @@ async def test_send_command_with_args_uses_connected_ble_over_mqtt() -> None:
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
 
-    fake_bytes = b"\xCA\xFE"
+    fake_bytes = b"\xca\xfe"
     patcher = _stub_commands(handle, fake_bytes)
     try:
         await client._device_registry.register(handle)
@@ -419,7 +420,7 @@ async def test_send_command_with_args_uses_mqtt_when_ble_disconnected() -> None:
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
 
-    fake_bytes = b"\xCA\xFE"
+    fake_bytes = b"\xca\xfe"
     patcher = _stub_commands(handle, fake_bytes)
     try:
         await client._device_registry.register(handle)
@@ -453,7 +454,7 @@ async def test_send_command_with_args_prefer_ble_sends_over_mqtt_and_warms_ble()
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
 
-    fake_bytes = b"\xAB\xCD"
+    fake_bytes = b"\xab\xcd"
     patcher = _stub_commands(handle, fake_bytes)
     try:
         await client._device_registry.register(handle)
@@ -470,56 +471,6 @@ async def test_send_command_with_args_prefer_ble_sends_over_mqtt_and_warms_ble()
 
 
 # set_scheduled_updates: transport lifecycle
-
-
-async def test_set_scheduled_updates_false_disconnects_all_transports() -> None:
-    """set_scheduled_updates(enabled=False) must disconnect all transport types.
-
-    Cloud transports are routed through ``handle.disconnect_transport``; BLE is
-    disconnected directly on the transport (gated by ``is_usable``).
-    """
-    client = MammotionClient()
-    handle = make_mock_handle("dev1", "Luba-Sched")
-    ble = _make_connected_transport(TransportType.BLE)
-    ble.connect = AsyncMock()
-    await handle.add_transport(ble)
-    handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
-    handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
-    await client._device_registry.register(handle)
-
-    await client.set_scheduled_updates("Luba-Sched", enabled=False)
-
-    disconnected = [call.args[0] for call in handle.disconnect_transport.await_args_list]
-    assert TransportType.CLOUD_ALIYUN in disconnected
-    assert TransportType.CLOUD_MAMMOTION in disconnected
-    ble.disconnect.assert_awaited_once()
-    ble.connect.assert_not_awaited()
-    handle.connect_transport.assert_not_awaited()
-
-
-async def test_set_scheduled_updates_true_connects_all_transports() -> None:
-    """set_scheduled_updates(enabled=True) must reconnect all transport types.
-
-    Cloud transports are routed through ``handle.connect_transport``; BLE is
-    connected directly on the transport (gated by ``is_usable``).
-    """
-    client = MammotionClient()
-    handle = make_mock_handle("dev1", "Luba-Sched2")
-    ble = _make_connected_transport(TransportType.BLE)
-    ble.connect = AsyncMock()
-    await handle.add_transport(ble)
-    handle.connect_transport = AsyncMock()  # type: ignore[method-assign]
-    handle.disconnect_transport = AsyncMock()  # type: ignore[method-assign]
-    await client._device_registry.register(handle)
-
-    await client.set_scheduled_updates("Luba-Sched2", enabled=True)
-
-    connected = [call.args[0] for call in handle.connect_transport.await_args_list]
-    assert TransportType.CLOUD_ALIYUN in connected
-    assert TransportType.CLOUD_MAMMOTION in connected
-    ble.connect.assert_awaited_once()
-    ble.disconnect.assert_not_awaited()
-    handle.disconnect_transport.assert_not_awaited()
 
 
 async def test_set_scheduled_updates_skips_ble_when_not_usable() -> None:
@@ -629,7 +580,7 @@ async def test_send_command_with_args_prefer_ble_uses_mqtt_while_ble_connect_pen
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
 
-    fake_bytes = b"\xAB\xCD"
+    fake_bytes = b"\xab\xcd"
     patcher = _stub_commands(handle, fake_bytes)
     try:
         await client._device_registry.register(handle)
@@ -876,7 +827,6 @@ async def test_poll_loop_skips_during_saga() -> None:
         handle._stopping = True  # noqa: SLF001
         return False
 
-
     with (
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_counting_sleep)),
         patch.object(handle, "send_one_shot_report", one_shot_mock),
@@ -898,6 +848,7 @@ async def test_update_availability_restarts_loop_on_reconnect() -> None:
     # Start from disconnected.
     handle.update_availability(TransportType.CLOUD_ALIYUN, TransportAvailability.DISCONNECTED)
     from pymammotion.state.device_state import DeviceConnectionState
+
     assert handle.availability.connection_state != DeviceConnectionState.CONNECTED
 
     # Transition to connected → loop should restart.
@@ -934,11 +885,11 @@ async def test_send_raw_ble_connect_failure_falls_back_to_mqtt() -> None:
     await handle.add_transport(ble)
     await handle.add_transport(mqtt)
 
-    await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
+    await handle.send_raw(b"\xab\xcd", prefer_ble=True)
     await asyncio.sleep(0)  # let the background BLE connect run (and fail, swallowed)
 
     # Command sent via MQTT (the working link); BLE reconnect attempted in background.
-    mqtt.send.assert_awaited_once_with(b"\xAB\xCD", iot_id="", firmware_version=ANY)
+    mqtt.send.assert_awaited_once_with(b"\xab\xcd", iot_id="", firmware_version=ANY)
     ble.send.assert_not_awaited()
     ble.connect.assert_awaited_once()
 
@@ -963,7 +914,7 @@ async def test_send_raw_no_usable_transport_propagates() -> None:
     await handle.add_transport(ble)
 
     with pytest.raises(NoTransportAvailableError):
-        await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
+        await handle.send_raw(b"\xab\xcd", prefer_ble=True)
 
     ble.connect.assert_not_awaited()  # unusable BLE: no background connect attempted
 
@@ -995,7 +946,7 @@ async def test_send_raw_no_usable_transport_mqtt_offline_propagates() -> None:
     )
 
     with pytest.raises(NoTransportAvailableError):
-        await handle.send_raw(b"\xAB\xCD", prefer_ble=True)
+        await handle.send_raw(b"\xab\xcd", prefer_ble=True)
     mqtt.send.assert_not_awaited()
 
 
@@ -1032,10 +983,10 @@ async def test_send_raw_skips_ble_reconnect_when_not_usable() -> None:
     await handle.add_transport(ble)
     await handle.add_transport(mqtt)
 
-    await handle.send_raw(b"\xCA\xFE", prefer_ble=True)
+    await handle.send_raw(b"\xca\xfe", prefer_ble=True)
 
     ble.connect.assert_not_awaited()  # <- the whole point of the gate
-    mqtt.send.assert_awaited_once_with(b"\xCA\xFE", iot_id="", firmware_version=ANY)
+    mqtt.send.assert_awaited_once_with(b"\xca\xfe", iot_id="", firmware_version=ANY)
     ble.send.assert_not_awaited()
 
 
@@ -1065,7 +1016,7 @@ async def test_update_ble_device_returns_true_on_first_set_false_on_same_address
 
     assert await client.update_ble_device("Luba-Update", dev1) is True
     assert await client.update_ble_device("Luba-Update", dev2) is False  # same address
-    assert await client.update_ble_device("Luba-Update", dev3) is True   # different address
+    assert await client.update_ble_device("Luba-Update", dev3) is True  # different address
 
     await handle.stop()
 
@@ -1341,7 +1292,7 @@ async def test_send_command_with_args_skips_immediately_when_offline() -> None:
     )
     await client._device_registry.register(handle)
 
-    fake_bytes = b"\xCA\xFE"
+    fake_bytes = b"\xca\xfe"
     patcher = _stub_commands(handle, fake_bytes)
     sleep_calls: list[float] = []
     real_sleep = asyncio.sleep
@@ -1401,8 +1352,8 @@ async def test_has_usable_transport_true_when_offline_with_ble_usable_but_discon
     handle = make_mock_handle("dev1", "Luba-Recovery")
     mqtt = _make_connected_transport(TransportType.CLOUD_ALIYUN)
     ble = _make_connected_transport(TransportType.BLE)
-    ble.is_connected = False     # GATT not up yet
-    ble.is_usable = True         # has cached BLEDevice, not in cooldown
+    ble.is_connected = False  # GATT not up yet
+    ble.is_usable = True  # has cached BLEDevice, not in cooldown
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
     handle._availability = DeviceAvailability(  # noqa: SLF001
@@ -1996,7 +1947,7 @@ async def _warms_ble(handle: DeviceHandle, send: Any) -> bool:
     await handle.add_transport(ble)
 
     client = MammotionClient()
-    patcher = _stub_commands(handle, b"\xAB\xCD")
+    patcher = _stub_commands(handle, b"\xab\xcd")
     try:
         await client._device_registry.register(handle)  # noqa: SLF001
         with contextlib.suppress(Exception):
@@ -2045,8 +1996,6 @@ async def test_send_command_with_args_default_defers_to_a_ble_handle() -> None:
 async def test_an_explicit_prefer_ble_false_still_overrides_a_ble_handle() -> None:
     """Per-call override must still win over the handle's preference."""
     handle = _handle_preferring(prefer_ble=True)
-    warmed = await _warms_ble(
-        handle, lambda c: c.send_command_with_args("Luba-PB", "get_report_cfg", prefer_ble=False)
-    )
+    warmed = await _warms_ble(handle, lambda c: c.send_command_with_args("Luba-PB", "get_report_cfg", prefer_ble=False))
     assert warmed is False
     await handle.stop()

@@ -966,11 +966,17 @@ class DeviceHandle:
         """Mark the device offline on *transport* and pick a BLE fallback.
 
         Centralises the "cloud says device is offline" policy shared by
-        ``send_command`` / ``_do_send`` and ``send_raw``: flag MQTT as
+        ``send_command`` / ``_do_send`` and ``send_raw``: flag the device
         offline, then return a connected BLE transport if one exists so
         the caller can retry on it.  Returns ``None`` when no fallback is
         available — caller is expected to re-raise ``DeviceOfflineException``.
+
+        Only the device is flagged: *transport* keeps its own availability,
+        because the cloud connection is healthy and it is the device behind it
+        that cannot be reached.  ``mqtt_reported_offline`` blocks automatic
+        sends only, and clears on the next inbound cloud frame or status push.
         """
+        already_offline = self._availability.mqtt_reported_offline
         self.update_availability(
             transport.transport_type,
             self._availability.mqtt,
@@ -980,10 +986,13 @@ class DeviceHandle:
         if ble is not None and ble.is_connected:
             _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
             return ble
-        _logger.warning(
-            "Device '%s' reported offline by cloud — marking %s unavailable",
+        # A powered-off device fails every queued send, so only the transition
+        # into offline is worth a warning.
+        log = _logger.debug if already_offline else _logger.warning
+        log(
+            "Device '%s' reported offline by cloud — pausing automatic %s sends until it reports in",
             self.device_name,
-            transport.transport_type,
+            transport.transport_type.value,
         )
         return None
 

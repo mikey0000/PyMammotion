@@ -1825,6 +1825,41 @@ class MammotionClient(CloudAuthMixin):
         await handle.enqueue_saga(saga)
 
     # ------------------------------------------------------------------
+    # Per-device cloud control (called from HA's cloud connectivity switch)
+    # ------------------------------------------------------------------
+
+    async def set_cloud_attached(self, device_name: str, *, attached: bool) -> None:
+        """Attach or detach *device_name*'s cloud transports, leaving them connected.
+
+        The cloud transports are one object per account, shared by every handle
+        on it, so turning cloud off for a single device must unwire that handle
+        alone: disconnecting the transport would take cloud down for every other
+        device on the account, and nothing would bring it back.  Detaching also
+        drops the handle's inbound binding, so a device with cloud off neither
+        sends nor receives over it while its account keeps working.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+        session = self._get_session_for_handle(handle)
+
+        if not attached:
+            for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                handle.detach_transport(transport_type)
+            if session is not None:
+                self._inbound.unbind(session.account_id, handle.iot_id)
+            return
+
+        if session is None:
+            return
+        for transport in (session.aliyun_transport, session.mammotion_transport):
+            if transport is None:
+                continue
+            await handle.add_transport(transport)
+            await transport.connect()
+        self._inbound.bind(session.account_id, handle.iot_id, (session.account_id, handle.device_id))
+
+    # ------------------------------------------------------------------
     # Scheduled-updates control (called from HA schedule_updates switch)
     # ------------------------------------------------------------------
 
@@ -1833,11 +1868,11 @@ class MammotionClient(CloudAuthMixin):
 
         Called by HA when the user toggles the 'schedule updates' switch.
 
-        When *enabled* is True, all registered transports are reconnected.
-        The activity loop restarts automatically via ``update_availability``
-        once the transport reports CONNECTED.
-        When *enabled* is False, all transports are disconnected, which exits
-        the activity loop automatically.
+        When *enabled* is True, BLE is reconnected and the account's cloud
+        transports are re-attached.  The activity loop restarts automatically via
+        ``update_availability`` once a transport reports CONNECTED.
+        When *enabled* is False, BLE is disconnected and cloud is detached from
+        this handle, which exits the activity loop automatically.
         """
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
@@ -1845,12 +1880,9 @@ class MammotionClient(CloudAuthMixin):
         if (ble_transport := handle.get_transport(TransportType.BLE)) and ble_transport.is_usable:
             await ble_transport.connect() if enabled else await ble_transport.disconnect()
 
-        if enabled:
-            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-                await handle.connect_transport(t_type)
-        else:
-            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-                await handle.disconnect_transport(t_type)
+        # Cloud transports are account-shared — detach this handle rather than
+        # disconnecting them out from under the account's other devices.
+        await self.set_cloud_attached(device_name, attached=enabled)
 
     # ------------------------------------------------------------------
     # BLE connection
