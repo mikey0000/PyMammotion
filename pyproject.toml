@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymammotion"
-version = "0.9.0b3"
+version = "0.9.0b7"
 description = ""
 authors = [
     { name = "Michael Arthur", email = "michael@jumblesoft.co.nz" },
@@ -64,6 +64,7 @@ dev = [
     "pymap3d>=3.2.0",
     "ty>=0.0.35",
     "pytest-cov>=7.1.0",
+    "time-machine>=2.16.0",
 ]
 
 [tool.uv]
@@ -79,12 +80,16 @@ include = ["pymammotion"]
 include = ["pymammotion"]
 
 [tool.bumpver]
-current_version = "0.9.0b3"
+current_version = "0.9.0b7"
 version_pattern = "MAJOR.MINOR.PATCH[PYTAGNUM]"
 commit_message  = "Bump version {old_version} -> {new_version}"
 commit          = true
-tag             = true
-push            = false
+# bumpver tags the bare version, which release.yml's 'v*' trigger ignores.
+# scripts/bumpver_tag.sh makes the v-prefixed tag instead.
+tag              = false
+push             = false
+pre_commit_hook  = "scripts/bumpver_relock.sh"
+post_commit_hook = "scripts/bumpver_tag.sh"
 
 [tool.bumpver.file_patterns]
 "pyproject.toml" = ['current_version = "{version}"', 'version = "{version}"']
@@ -399,8 +404,12 @@ max-line-length-suggestions = 120
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+# Dump every thread's stack if one test blocks this long, so an intermittent hang in
+# the pre-commit run leaves evidence behind instead of just stopping.
+faulthandler_timeout = 120
 markers = [
     "live: tests that hit a real Mammotion device (skipped by default; requires MAMMOTION_EMAIL/PASSWORD env vars)",
+    "regression: pins a specific defect; see docs/testing.md section 7 for the contract",
 ]
 
 [tool.ruff]

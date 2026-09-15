@@ -233,6 +233,31 @@ class MQTTTransport(CloudTransport):
         """Map a (product_key, device_name) pair to an iot_id for message routing."""
         self._device_to_iot[(product_key, device_name)] = iot_id
 
+    @staticmethod
+    def device_topics(product_key: str, device_name: str) -> tuple[str, ...]:
+        """Return the topics this broker needs subscribed for one device.
+
+        Exactly what the app subscribes (``MaIoTApp.java``): the two event wildcards
+        and the status topic.  There is deliberately no properties topic — on this
+        broker a property post *is* an event, arriving as
+        ``.../thing/event/property/post``, which the first wildcard covers.  That is
+        the one that carries ``params.otaProgress``.
+
+        Lives here rather than in the client because the topic layout is this
+        transport's protocol, not the client's policy.
+        """
+        return (
+            f"/sys/{product_key}/{device_name}/thing/event/+/post",
+            f"/sys/proto/{product_key}/{device_name}/thing/event/+/post",
+            f"/sys/{product_key}/{device_name}/app/down/thing/status",
+        )
+
+    async def subscribe_device(self, product_key: str, device_name: str, iot_id: str) -> None:
+        """Subscribe a device's default topics and map its iot_id for routing."""
+        for topic in self.device_topics(product_key, device_name):
+            await self.add_topic(topic)
+        self.register_device(product_key, device_name, iot_id)
+
     # ------------------------------------------------------------------
     # Transport ABC
     # ------------------------------------------------------------------
@@ -553,6 +578,10 @@ class MQTTTransport(CloudTransport):
         when ``on_device_message`` is not set.
         """
         self._mark_received()
+        # Nothing else records the inbound topic, which made "did the broker send it?"
+        # unanswerable from a log — the question that matters when a firmware install
+        # reports no progress (otaProgress arrives as .../thing/event/property/post).
+        _logger.debug("MQTTTransport %s: received %s (%d bytes)", self.transport_type.value, topic, len(raw))
         if topic.endswith("/thing/status"):
             await self._dispatch_device_status(topic, raw)
             return

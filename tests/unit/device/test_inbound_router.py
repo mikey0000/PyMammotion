@@ -13,7 +13,7 @@ import pytest
 
 from pymammotion.device.handle import DeviceRegistry
 from pymammotion.device.inbound_router import InboundRouter
-from tests.unit._helpers import make_mock_handle
+from tests._helpers import make_mock_handle
 
 ACCOUNT = "user@example.com"
 

@@ -34,48 +34,32 @@ from pymammotion.aliyun.exceptions import CheckSessionException
 from pymammotion.account.registry import AccountSession
 from pymammotion.auth.token_manager import MQTTCredentials
 from pymammotion.client import MammotionClient
-from tests._helpers import make_bare_client
+from tests._helpers import make_account_session, make_bare_client
 from pymammotion.transport.base import ReLoginRequiredError
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from tests.unit.transport._fakes import AuthFailMQTTClient
 
 
-# ---------------------------------------------------------------------------
 # Shared helpers
-# ---------------------------------------------------------------------------
 
 
 def _mammotion_config() -> MQTTTransportConfig:
     return MQTTTransportConfig(host="mqtt.example.com", client_id="c1", username="u", password="jwt")
 
 
-def _make_session() -> AccountSession:
-    session = AccountSession(
-        account_id="test@example.com",
-        email="test@example.com",
-        password="secret",
-    )
-    session.mammotion_http = AsyncMock()
-    session.token_manager = AsyncMock()
-    return session
+def _make_cascade_session() -> AccountSession:
+    return make_account_session(password="secret", http=AsyncMock(), token_manager=AsyncMock())
 
 
 def _make_client_with_session() -> tuple[MammotionClient, AccountSession]:
     """Return a (client, session) pair with the session already registered."""
-    session = _make_session()
-    return _make_client(session), session
+    session = _make_cascade_session()
+    return make_bare_client(session), session
 
 
-def _make_client(session: AccountSession) -> MammotionClient:
-    return make_bare_client(session)
-
-
-# ---------------------------------------------------------------------------
 # Mammotion MQTT — Path 1: MQTT broker rejects credentials (rc=134)
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
     """A creds_refresher that raises ReLoginRequiredError (refresh token dead) must
     surface as ReLoginRequiredError via on_fatal_auth_error — the transport gives up.
@@ -109,7 +93,6 @@ async def test_mammotion_mqtt_broker_auth_failure_propagates_relogin() -> None:
     assert isinstance(fatal_errors[0], ReLoginRequiredError)
 
 
-@pytest.mark.asyncio
 async def test_mammotion_mqtt_broker_auth_failure_refreshes_once_then_gives_up() -> None:
     """When the broker keeps rejecting even after a full credential refresh, the
     transport forces ONE refresh (force=True), retries, and then gives up — firing
@@ -150,12 +133,9 @@ async def test_mammotion_mqtt_broker_auth_failure_refreshes_once_then_gives_up()
     assert isinstance(fatal_errors[0], ReLoginRequiredError)
 
 
-# ---------------------------------------------------------------------------
 # Mammotion MQTT — Path 2: mqtt_invoke HTTP API returns 401
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_mammotion_invoke_401_refreshes_invoke_token_without_relogin() -> None:
     """UnauthorizedException from mqtt_invoke renews the invoke token via the
     refresh token — never a password login."""
@@ -174,7 +154,6 @@ async def test_mammotion_invoke_401_refreshes_invoke_token_without_relogin() -> 
     assert "stale_token" in tm.refresh_invoke_token.await_args.kwargs
 
 
-@pytest.mark.asyncio
 async def test_mammotion_invoke_401_gives_up_as_no_transport_available() -> None:
     """If the invoke-token refresh raises ReLoginRequiredError, send() gives up:
     it fires the fatal handler and raises NoTransportAvailableError (NOT
@@ -206,7 +185,6 @@ async def test_mammotion_invoke_401_gives_up_as_no_transport_available() -> None
     assert len(fatal_errors) == 1
 
 
-@pytest.mark.asyncio
 async def test_mammotion_invoke_401_never_reaches_a_password_login() -> None:
     """End-to-end: a 401 storm on mqtt_invoke must not produce a single login_v2.
 
@@ -240,12 +218,9 @@ async def test_mammotion_invoke_401_never_reaches_a_password_login() -> None:
     session.mammotion_http.logout.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # Aliyun MQTT — cloud_gateway invoke failure cascade
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_aliyun_session_expired_relogin_required_propagates() -> None:
     """A dead Aliyun session surfaces ReLoginRequiredError to the caller.
 
@@ -270,7 +245,6 @@ async def test_aliyun_session_expired_relogin_required_propagates() -> None:
     session.mammotion_http.logout.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_aliyun_failure_does_not_touch_mammotion_credentials() -> None:
     """Recovering Aliyun must not rotate the Mammotion MQTT JWT."""
     client, session = _make_client_with_session()

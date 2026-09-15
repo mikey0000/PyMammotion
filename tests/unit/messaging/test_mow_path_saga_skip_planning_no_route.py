@@ -19,6 +19,7 @@ from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.mow_path_saga import MowPathSaga
 from pymammotion.proto import LubaMsg
 from pymammotion.transport.base import SagaFailedError
+from tests._helpers import wait_until
 from tests.unit.messaging._helpers import hash_list_msg, make_command_builder as _make_command_builder
 
 
@@ -52,7 +53,8 @@ async def test_skip_planning_with_no_route_val_raises_saga_failed() -> None:
     async def _inject() -> None:
         # Step 1 only: a single sub_cmd=3 hash frame so the saga proceeds past Step 1
         # straight into Step 2.  No route confirmation is ever delivered.
-        await asyncio.sleep(0.05)
+        # The frame is dropped unless the saga's subscription is already registered.
+        await wait_until(lambda: broker._event_bus._handlers, message="saga never subscribed")
         await broker.on_message(_hash_list_msg_sub3([1234567890]))
 
     injector = asyncio.create_task(_inject())

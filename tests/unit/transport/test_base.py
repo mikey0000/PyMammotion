@@ -1,8 +1,4 @@
 """Tests for EventBus and Subscription."""
-import asyncio
-import time
-from unittest.mock import patch
-import pytest
 from pymammotion.transport.base import EventBus, Subscription, Transport, TransportAvailability, TransportType
 
 
@@ -71,7 +67,7 @@ async def test_context_manager_cancels_on_exit() -> None:
     async def handler(v: int) -> None:
         called.append(v)
 
-    with bus.subscribe(handler) as sub:
+    with bus.subscribe(handler):
         await bus.emit(1)
     await bus.emit(2)
     assert called == [1]
@@ -118,11 +114,9 @@ async def test_unsubscribe_during_emit_is_safe() -> None:
     assert called == [7]
 
 
-# ---------------------------------------------------------------------------
 # The Transport base holds only what every link kind has.  Send quota and auth
 # flags live on CloudTransport (tests/unit/transport/test_cloud.py); BLE gating
 # lives on BLETransport (tests/unit/transport/test_ble.py).
-# ---------------------------------------------------------------------------
 
 
 def _make_concrete_transport() -> Transport:

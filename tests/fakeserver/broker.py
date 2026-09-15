@@ -113,21 +113,28 @@ class FakeMQTTBroker:
         _LOGGER.info("fake MQTT broker listening on 127.0.0.1:%d", self.port)
 
     async def stop(self) -> None:
+        # Stop accepting first, so no new handler can appear after the cancellations below.
+        if self._server is not None:
+            self._server.close()
         for session in list(self.sessions):
             session.connected = False
             with contextlib.suppress(Exception):
                 session.writer.close()
-        if self._server is not None:
-            self._server.close()
-            await self._server.wait_closed()
-        for task in list(self._tasks):
+        # Since 3.12.1 Server.wait_closed() waits for the client handlers to finish, so
+        # they have to be cancelled before it is awaited rather than after it: a handler
+        # parked on a read whose peer never closed would otherwise wait on the very
+        # cancellation that comes next.  Only sessions that finished CONNECT are in
+        # self.sessions, so closing writers alone does not cover every handler.
+        tasks = list(self._tasks)
+        for task in tasks:
             task.cancel()
+        for task in tasks:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
+        if self._server is not None:
+            await self._server.wait_closed()
 
-    # ------------------------------------------------------------------
     # Public injection API
-    # ------------------------------------------------------------------
 
     def publish(self, topic: str, payload: bytes, *, to_client_id: str | None = None) -> int:
         """Deliver *payload* to every session subscribed to *topic*.
@@ -153,9 +160,7 @@ class FakeMQTTBroker:
             with contextlib.suppress(Exception):
                 session.writer.close()
 
-    # ------------------------------------------------------------------
     # Protocol handling
-    # ------------------------------------------------------------------
 
     async def _read_packet(self, reader: asyncio.StreamReader) -> tuple[int, bytes]:
         first = await reader.readexactly(1)

@@ -17,12 +17,7 @@ import gc
 import tracemalloc
 
 from pymammotion.data.model.device import MowerDevice
-from pymammotion.data.model.hash_list import (
-    AreaHashNameList,
-    CommDataCouple,
-    FrameList as _FL,
-    NavGetCommData,
-)
+from pymammotion.data.model.hash_list import CommDataCouple, FrameList as _FL, NavGetCommData
 from pymammotion.data.model.report_info import (
     ConnectData,
     DeviceData,
@@ -53,15 +48,10 @@ from pymammotion.proto import (
     SocMul,
     VioToAppInfoMsg,
 )
+from tests.unit.device._helpers import make_reducer_device as _make_device
 from tests.unit.messaging._helpers import area_frame_named as _area_frame_named
 
 _ALL_FIELDS = ("map", "work", "mower_state", "non_work_hours", "work_session_result")
-
-
-def _make_device() -> MowerDevice:
-    device = MowerDevice(name="Luba-Test")
-    device.map.area_name = [AreaHashNameList(name="zone-1", hash=111)]
-    return device
 
 
 def _assert_sharing(
@@ -132,9 +122,7 @@ def test_bidire_reqconver_path_copies_nothing_but_rebinds_work() -> None:
     assert current.work is original_work
 
 
-# ===========================================================================
 # Demonstrates the memory allocation growth bug from #125.
-# ===========================================================================
 
 
 def _make_device_with_large_map(points_per_frame: int = 500) -> MowerDevice:
@@ -199,9 +187,7 @@ def test_retained_snapshots_do_not_balloon_on_nav_sys_param() -> None:
     )
 
 
-# ===========================================================================
 # Tests that ReportData.update() only mutates fields present in the proto message.
-# ===========================================================================
 
 
 def _make_report_data_with_values() -> ReportData:
@@ -310,9 +296,7 @@ def test_empty_message_leaves_everything_unchanged() -> None:
     assert rd.work.area == 1234
 
 
-# ===========================================================================
 # Area-name fallback — name_time.name priority over numbered fallbacks
-# ===========================================================================
 
 
 def _device_with_named_areas(areas: dict[int, str]) -> MowerDevice:
@@ -394,13 +378,11 @@ class TestStateReducerAreaNameFallback:
         assert {a.hash: a.name for a in device.map.area_name} == {111: "Voor", 222: "Achter"}
 
 
-# ===========================================================================
 # Device GPS coordinate (radians) is stored on device.location.device in degrees.
 #
 # The Mammotion property push delivers coordinate.lat/lon in RADIANS, but
 # device.location.device is consumed as degrees (HA device_tracker adds metre
 # offsets ÷ 111111 and never converts).  RTK stays radians (sensor.py * 180/pi).
-# ===========================================================================
 
 #
 # def test_mammotion_coordinate_stored_in_degrees() -> None:
@@ -520,9 +502,7 @@ def test_set_video_ack_success_is_quiet(caplog) -> None:
 
     assert caplog.text == ""
 
-# ---------------------------------------------------------------------------
 # otaProgress on the Mammotion flat property push drives update_check
-# ---------------------------------------------------------------------------
 
 
 def _ota_props(progress: int, result: int, version: str = "1.16.0.1101"):

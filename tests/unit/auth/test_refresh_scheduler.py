@@ -17,7 +17,6 @@ import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 
@@ -88,7 +87,6 @@ def test_next_refresh_survives_unusable_expiry() -> None:
 # ── what gets refreshed ─────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
 async def test_due_http_token_is_refreshed_with_no_api_traffic() -> None:
     """The case this exists for: nothing is being sent, yet the token still renews."""
     tm, http = _tm_scheduled(http_ttl=60.0)
@@ -99,7 +97,6 @@ async def test_due_http_token_is_refreshed_with_no_api_traffic() -> None:
     http.login_v2.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_nothing_refreshed_when_nothing_is_due() -> None:
     tm, http = _tm_scheduled(http_ttl=7200.0, mqtt_ttl=86400.0)
 
@@ -109,7 +106,6 @@ async def test_nothing_refreshed_when_nothing_is_due() -> None:
     http.get_mqtt_credentials.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_only_the_due_credential_is_refreshed() -> None:
     """A due MQTT JWT must not drag the healthy HTTP token into a rotation."""
     tm, http = _tm_scheduled(http_ttl=86400.0, mqtt_ttl=60.0)
@@ -120,7 +116,6 @@ async def test_only_the_due_credential_is_refreshed() -> None:
     http.refresh_token_v2.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_http_is_refreshed_before_the_credentials_derived_from_it() -> None:
     """Both due: the JWT is minted with the access token, so HTTP must go first."""
     tm, http = _tm_scheduled(http_ttl=60.0, mqtt_ttl=60.0)
@@ -139,7 +134,6 @@ async def test_http_is_refreshed_before_the_credentials_derived_from_it() -> Non
     assert order == ["http", "mqtt"]
 
 
-@pytest.mark.asyncio
 async def test_transport_scoped_failure_does_not_stop_other_refreshes() -> None:
     """A dead MQTT JWT must not prevent the Aliyun session from being renewed."""
     tm, http = _tm_scheduled(http_ttl=86400.0, mqtt_ttl=60.0, aliyun_ttl=60.0)
@@ -155,7 +149,6 @@ async def test_transport_scoped_failure_does_not_stop_other_refreshes() -> None:
 # ── the loop ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
 async def test_scheduler_renews_a_due_token_then_sleeps() -> None:
     """End-to-end: start the loop with a due token and watch it renew, unprompted."""
     tm, http = _tm_scheduled(http_ttl=60.0)
@@ -176,7 +169,6 @@ async def test_scheduler_renews_a_due_token_then_sleeps() -> None:
     http.refresh_token_v2.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_scheduler_stops_once_the_account_needs_reauth() -> None:
     """A dead refresh token is terminal — no point waking up again."""
     tm, http = _tm_scheduled(http_ttl=60.0)
@@ -193,7 +185,6 @@ async def test_scheduler_stops_once_the_account_needs_reauth() -> None:
     await tm.stop_refresh_scheduler()
 
 
-@pytest.mark.asyncio
 async def test_scheduler_is_idempotent_and_cancellable() -> None:
     tm, _ = _tm_scheduled(http_ttl=7200.0)
 

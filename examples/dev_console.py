@@ -96,6 +96,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import sys
 import time
 from typing import Any, Protocol
@@ -107,6 +108,9 @@ from rich.logging import RichHandler
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pymammotion.client import MammotionClient
+from pymammotion.data.error_codes import bundled_error_codes
+from pymammotion.data.model.errors import DeviceErrors
+from pymammotion.utility import device_type
 from pymammotion.messaging.broker import _LUBA_SUB_GROUP
 from pymammotion.transport.base import Subscription, TransportType
 
@@ -1135,6 +1139,85 @@ class DevConsole:
         state = "ON (polling stopped)" if on else "OFF (polling resumed)"
         _LOGGER.info("Listen-only mode: [bold]%s[/bold]", state)
 
+    async def error_codes(self, page_size: int = 50, save: bool = True) -> dict[str, object]:
+        """Fetch the live error-code table and diff it against the bundled one.
+
+        Answers the question the bundle cannot: does the cloud publish codes we do
+        not ship?  Uses the app's own paged endpoint (``code/page-lan``), which
+        carries the display hints and product keys the CSV export drops.
+        """
+        session = self._session
+        if session is None or session.mammotion_http is None:
+            _rich_console.print("[red]No cloud session — log in first.[/red]")
+            return {}
+
+        http = session.mammotion_http
+        version = await http.get_error_code_version()
+        _rich_console.rule("[bold yellow]Error codes[/bold yellow]")
+        _rich_console.print(f"  published version: {version.data} (code={version.code} {version.msg})")
+
+        live = await http.get_all_error_codes_paged(page_size=page_size)
+        bundled = dict(bundled_error_codes())
+        only_live = sorted(set(live) - set(bundled), key=lambda c: (len(c), c))
+        only_bundled = sorted(set(bundled) - set(live), key=lambda c: (len(c), c))
+
+        _rich_console.print(f"  live: {len(live)} codes   bundled: {len(bundled)} codes")
+        _rich_console.print(f"  [green]only live (we do not ship these): {only_live or 'none'}[/green]")
+        _rich_console.print(f"  [dim]only bundled (withdrawn upstream?): {only_bundled or 'none'}[/dim]")
+
+        unresolved = sorted(
+            {
+                abs(code)
+                for handle in self.mammotion.device_registry.all_devices
+                for code in getattr(handle.snapshot.raw, "errors", DeviceErrors()).err_code_list
+                if code != 0 and str(abs(code)) not in bundled and str(abs(code)) not in live
+            }
+        )
+        if unresolved:
+            _rich_console.print(f"  [red]reported by a device but in neither table: {unresolved}[/red]")
+
+        if save and live:
+            path = self._output_dir / "error_codes_live.json"
+            path.write_text(json.dumps({code: record.to_dict() for code, record in live.items()}, indent=2))
+            _rich_console.print(f"  wrote {path}")
+        _rich_console.rule()
+        return {"version": version.data, "live": live, "only_live": only_live, "only_bundled": only_bundled}
+
+    async def products(self, save: bool = True) -> dict[str, object]:
+        """Fetch the cloud's product list and diff it against what device_type.py knows.
+
+        An unknown product key does not fail loudly — it falls through to defaults, so
+        an Aliyun device ends up pointed at the Mammotion broker and capabilities are
+        guessed.  This is the check that finds those before a user reports one.
+        """
+        session = self._session
+        if session is None or session.mammotion_http is None:
+            _rich_console.print("[red]No cloud session — log in first.[/red]")
+            return {}
+
+        response = await session.mammotion_http.get_product_list()
+        products = response.data or []
+        _rich_console.rule("[bold yellow]Products[/bold yellow]")
+        _rich_console.print(f"  {len(products)} product keys (code={response.code} {response.msg})")
+
+        known = set(re.findall(r'"([A-Za-z0-9]{11})"', Path(device_type.__file__).read_text()))
+        unknown = [product for product in products if product.product_key not in known]
+        for product in unknown:
+            names = sorted({model.ext_mod for model in product.models}) or ["(no models listed)"]
+            _rich_console.print(f"  [red]{product.product_key}[/red]  {', '.join(names)}")
+        if not unknown:
+            _rich_console.print("  [green]every published key is known to device_type.py[/green]")
+
+        retired = sorted(known - {product.product_key for product in products})
+        _rich_console.print(f"  [dim]known but no longer published: {retired}[/dim]")
+
+        if save and products:
+            path = self._output_dir / "products.json"
+            path.write_text(json.dumps([product.to_dict() for product in products], indent=2))
+            _rich_console.print(f"  wrote {path}")
+        _rich_console.rule()
+        return {"products": products, "unknown": unknown, "retired": retired}
+
     def status(self) -> None:
         """Print a summary of connected devices and transport health."""
         print(f"\n{'Device':<30}  {'MQTT':>6}  State file")
@@ -1481,6 +1564,8 @@ async def _main(args: argparse.Namespace) -> None:
         "break_refresh_token": dev.break_refresh_token,
         "save_cache": dev.save_cache,
         "clear_cache": dev.clear_cache,
+        "error_codes": dev.error_codes,
+        "products": dev.products,
         "debug": dev.debug,
         "listen": dev.listen,
         "console": dev,

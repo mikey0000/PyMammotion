@@ -15,7 +15,7 @@ import pathlib
 import pytest
 
 from pymammotion.device.loop_host import LoopHost
-from tests.unit._helpers import make_mock_handle
+from tests._helpers import make_mock_handle
 
 LOOP_MODULES = ("mqtt_loop", "ble_loop", "dynamics_line_loop")
 DEVICE_DIR = pathlib.Path(LoopHost.__module__.replace(".", "/")).parent

@@ -87,9 +87,7 @@ def _make_nav_get_comm_data(raw: dict) -> NavGetCommData:
     )
 
 
-# ---------------------------------------------------------------------------
 # Mow path GeoJSON
-# ---------------------------------------------------------------------------
 
 
 def test_complete_mow_path_generates_features() -> None:
@@ -131,9 +129,7 @@ def test_incomplete_mow_path_generates_no_features() -> None:
     assert result["features"] == [], "Expected no features when mow path frames are incomplete"
 
 
-# ---------------------------------------------------------------------------
 # Map (area) GeoJSON
-# ---------------------------------------------------------------------------
 
 
 def _build_hash_list_with_area(area_frames: list[NavGetCommData]) -> HashList:
@@ -422,9 +418,7 @@ def test_feature_styles_use_leaflet_path_options() -> None:
         assert "road_center_dash" not in props
 
 
-# ---------------------------------------------------------------------------
 # Yuka device — mow path generation from real device data
-# ---------------------------------------------------------------------------
 
 
 def _load_yuka_fixture() -> dict:
@@ -548,9 +542,7 @@ def test_yuka_empty_current_mow_path_empty_geojson() -> None:
     assert hash_list.generated_mow_path_geojson == result
 
 
-# ---------------------------------------------------------------------------
 # Yuka — end-to-end: _apply_mow_path_geojson (client.py callback)
-# ---------------------------------------------------------------------------
 
 
 def test_yuka_apply_mow_path_geojson_populates_device() -> None:
@@ -592,9 +584,7 @@ def test_yuka_apply_mow_path_geojson_populates_device() -> None:
         assert -15.5 < lat < -13.5
 
 
-# ---------------------------------------------------------------------------
 # WorkData.real_path_num decoding
-# ---------------------------------------------------------------------------
 
 
 def test_work_data_real_path_num_decoding() -> None:
@@ -621,9 +611,7 @@ def test_work_data_zero_real_path_num() -> None:
     assert work.path_direction == 0
 
 
-# ---------------------------------------------------------------------------
 # Mow progress GeoJSON — generate_mow_progress_geojson
-# ---------------------------------------------------------------------------
 
 
 def test_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
@@ -788,9 +776,7 @@ def test_mow_progress_geojson_spatial_overlap_with_planned_path() -> None:
         )
 
 
-# ---------------------------------------------------------------------------
 # Yuka — end-to-end: _apply_mow_progress_geojson (client.py callback)
-# ---------------------------------------------------------------------------
 
 
 def test_apply_mow_progress_geojson_populates_device() -> None:
@@ -878,9 +864,7 @@ def test_apply_mow_progress_geojson_now_index_zero_returns_full_path() -> None:
     assert len(result["features"]) > 0, "now_index=0 should return full path, not empty"
 
 
-# ---------------------------------------------------------------------------
 # Mow progress GeoJSON — multi-type coverage (mow stripes + border passes)
-# ---------------------------------------------------------------------------
 
 
 def _yuka_progress_inputs() -> tuple[HashList, "Point", tuple[float, float] | None]:
@@ -1045,13 +1029,11 @@ def test_mow_progress_from_start_identical_to_mow_path() -> None:
         )
 
 
-# ---------------------------------------------------------------------------
 # Regression: the "RTK unset" guard must use exact 0.0, not round(lat, 0)
 #
 # RTK lat/lon are stored in RADIANS with an exact-0.0 "unset" sentinel.  A
 # `round(lat, 0) == 0` guard collapsed everything within ~0.5 rad (~28° of the
 # equator) to 0 and skipped geojson generation, leaving an empty {} (KeyError 'type').
-# ---------------------------------------------------------------------------
 
 
 def _device_with_mow_path(rtk_latitude_radians: float):
@@ -1165,14 +1147,12 @@ def test_map_object_stats_degenerate_closed_segment_has_zero_area() -> None:
     assert area == 0.0
 
 
-# ---------------------------------------------------------------------------
 # Empty area name fallback — "Zone N" template
 #
 # When the device reports area names as "" (empty string) the generator must
 # fall back to "Zone 1", "Zone 2" … rather than emitting empty titles.
 # This is the case for the real Luba-LD463652 config entry where both area
 # entries have name="".
-# ---------------------------------------------------------------------------
 
 
 def test_empty_area_name_falls_back_to_zone_template() -> None:

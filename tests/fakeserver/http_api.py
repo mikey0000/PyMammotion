@@ -65,9 +65,7 @@ def build_app(
     """
     app = web.Application()
 
-    # ------------------------------------------------------------------
     # OAuth
-    # ------------------------------------------------------------------
 
     async def oauth2_token(request: web.Request) -> web.Response:
         grant = request.query.get("grant_type", "")
@@ -112,9 +110,7 @@ def build_app(
             return _json({"code": 401, "msg": "unauthorized"})
         return _ok({"code": f"authcode-{int(time.time() * 1000)}"})
 
-    # ------------------------------------------------------------------
     # Device / account endpoints (MAMMOTION_API_DOMAIN)
-    # ------------------------------------------------------------------
 
     async def device_list(request: web.Request) -> web.Response:
         scenario.count("device_list_calls")
@@ -193,9 +189,7 @@ def build_app(
     async def generic_ok(_request: web.Request) -> web.Response:
         return _json({"code": 0, "msg": "success"})
 
-    # ------------------------------------------------------------------
     # {jwt.iot}-based endpoints (same host here)
-    # ------------------------------------------------------------------
 
     async def user_device_page(request: web.Request) -> web.Response:
         scenario.count("device_page_calls")
@@ -266,9 +260,7 @@ def build_app(
             await on_invoke(body.get("iotId", ""), content)
         return _ok({})
 
-    # ------------------------------------------------------------------
     # /control — runtime fault injection (for tests and for driving HA by hand)
-    # ------------------------------------------------------------------
 
     async def control_state(_request: web.Request) -> web.Response:
         return _json(

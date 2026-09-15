@@ -5,6 +5,17 @@ from dataclasses import dataclass, field
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
+def _first_or_zero(value: int | list[int] | None) -> int:
+    """Read field 21 whichever way the firmware sent it (issue #193).
+
+    It is declared repeated so both wire forms parse; devices that send a scalar
+    still arrive here as a one-element list.
+    """
+    if isinstance(value, list):
+        return int(value[0]) if value else 0
+    return int(value or 0)
+
+
 @dataclass
 class CurrentTaskSettings(DataClassORJSONMixin):
     """Configuration parameters for the currently active or most recent mowing task."""
@@ -27,3 +38,6 @@ class CurrentTaskSettings(DataClassORJSONMixin):
     result: int = 0
     toward_mode: int = 0
     toward_included_angle: int = 0
+    ride_boundary_distance: float = 0.0
+    app_display_mode: int = 0
+    auto_change_direction: int = field(default=0, metadata={"deserialize": _first_or_zero})

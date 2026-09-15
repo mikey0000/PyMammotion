@@ -6,18 +6,15 @@ catches the defect rather than restating the fix.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
-from tests.unit._helpers import make_mock_handle
+from tests._helpers import make_mock_handle
 
 
-# ---------------------------------------------------------------------------
 # CloudIOTGateway.from_cache must not touch the caller's dict
-# ---------------------------------------------------------------------------
 
 
 async def test_from_cache_does_not_mutate_the_callers_cache() -> None:
@@ -34,9 +31,7 @@ async def test_from_cache_does_not_mutate_the_callers_cache() -> None:
     assert cache == before, "from_cache mutated the caller's dict"
 
 
-# ---------------------------------------------------------------------------
 # TokenManager.subscribe_handle must key on the device, not object identity
-# ---------------------------------------------------------------------------
 
 
 def test_subscribe_handle_keys_on_the_device_not_the_object() -> None:
@@ -77,9 +72,7 @@ def test_two_devices_get_their_own_subscriptions() -> None:
     assert len(manager._handle_subscriptions) == 2
 
 
-# ---------------------------------------------------------------------------
 # stop_polling() must survive a reconnect
-# ---------------------------------------------------------------------------
 
 
 async def test_stop_polling_is_not_undone_by_a_reconnect() -> None:

@@ -61,7 +61,7 @@ from pymammotion.data.model.generate_geojson import (
     apply_dynamics_line_geojson,
     apply_mowing_geojson,
 )
-from pymammotion.data.model.hash_list import PathType
+from pymammotion.data.model.hash_list import PathType, SvgMessage
 from pymammotion.data.model.svg import chunk_svg_messages
 from pymammotion.device.auto_fetch import AutoFetchWatchers, _should_fetch_mow_path
 from pymammotion.device.ble_inventory import BleInventory
@@ -1087,17 +1087,12 @@ class MammotionClient(CloudAuthMixin):
     ) -> None:
         """Subscribe the per-device Mammotion MQTT topics and map the iot_id for routing.
 
-        Shared by first-time registration (``_register_mammotion_device``) and the
-        runtime Aliyun→Mammotion migration (``_on_device_unbound``).
+        The topic layout belongs to the transport (``MQTTTransport.device_topics``);
+        this only says *when* a device gets subscribed — on first-time registration
+        (``_register_mammotion_device``) and on the runtime Aliyun→Mammotion migration
+        (``_on_device_unbound``).
         """
-        for topic in (
-            f"/sys/{product_key}/{device_name}/thing/event/+/post",
-            f"/sys/proto/{product_key}/{device_name}/thing/event/+/post",
-            f"/sys/{product_key}/{device_name}/app/down/thing/status",
-            # f"/sys/{product_key}/{device_name}/app/down/thing/properties",
-        ):
-            await transport.add_topic(topic)
-        transport.register_device(product_key, device_name, iot_id)
+        await transport.subscribe_device(product_key, device_name, iot_id)
 
     async def _ensure_mammotion_transport(
         self, account: str, mammotion_http: MammotionHTTP, acct_session: AccountSession
@@ -1637,7 +1632,7 @@ class MammotionClient(CloudAuthMixin):
     async def send_svg(
         self,
         device_name: str,
-        svg_message: Any,
+        svg_message: SvgMessage,
         *,
         on_complete: Any | None = None,
     ) -> None:
@@ -1676,6 +1671,17 @@ class MammotionClient(CloudAuthMixin):
         if handle is None:
             _logger.warning("send_svg: device '%s' not registered", device_name)
             return
+
+        if not isinstance(svg_message, SvgMessage):
+            # Callers used to chunk first and pass the list, which reached
+            # chunk_svg_messages and failed as "'list' object has no attribute
+            # 'svg_message'" several frames down (Mammotion-HA#868).  Say so here
+            # instead: this method owns the chunking.
+            msg = (
+                f"send_svg expects a single SvgMessage, got {type(svg_message).__name__}"
+                " — do not call chunk_svg_messages first; send_svg chunks internally"
+            )
+            raise TypeError(msg)
 
         chunks = chunk_svg_messages(svg_message)
         saga = SvgSendSaga(chunks=chunks, command_builder=handle.commands, send_command=handle.send_raw)
@@ -1819,6 +1825,41 @@ class MammotionClient(CloudAuthMixin):
         await handle.enqueue_saga(saga)
 
     # ------------------------------------------------------------------
+    # Per-device cloud control (called from HA's cloud connectivity switch)
+    # ------------------------------------------------------------------
+
+    async def set_cloud_attached(self, device_name: str, *, attached: bool) -> None:
+        """Attach or detach *device_name*'s cloud transports, leaving them connected.
+
+        The cloud transports are one object per account, shared by every handle
+        on it, so turning cloud off for a single device must unwire that handle
+        alone: disconnecting the transport would take cloud down for every other
+        device on the account, and nothing would bring it back.  Detaching also
+        drops the handle's inbound binding, so a device with cloud off neither
+        sends nor receives over it while its account keeps working.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return
+        session = self._get_session_for_handle(handle)
+
+        if not attached:
+            for transport_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
+                handle.detach_transport(transport_type)
+            if session is not None:
+                self._inbound.unbind(session.account_id, handle.iot_id)
+            return
+
+        if session is None:
+            return
+        for transport in (session.aliyun_transport, session.mammotion_transport):
+            if transport is None:
+                continue
+            await handle.add_transport(transport)
+            await transport.connect()
+        self._inbound.bind(session.account_id, handle.iot_id, (session.account_id, handle.device_id))
+
+    # ------------------------------------------------------------------
     # Scheduled-updates control (called from HA schedule_updates switch)
     # ------------------------------------------------------------------
 
@@ -1827,11 +1868,11 @@ class MammotionClient(CloudAuthMixin):
 
         Called by HA when the user toggles the 'schedule updates' switch.
 
-        When *enabled* is True, all registered transports are reconnected.
-        The activity loop restarts automatically via ``update_availability``
-        once the transport reports CONNECTED.
-        When *enabled* is False, all transports are disconnected, which exits
-        the activity loop automatically.
+        When *enabled* is True, BLE is reconnected and the account's cloud
+        transports are re-attached.  The activity loop restarts automatically via
+        ``update_availability`` once a transport reports CONNECTED.
+        When *enabled* is False, BLE is disconnected and cloud is detached from
+        this handle, which exits the activity loop automatically.
         """
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
@@ -1839,12 +1880,9 @@ class MammotionClient(CloudAuthMixin):
         if (ble_transport := handle.get_transport(TransportType.BLE)) and ble_transport.is_usable:
             await ble_transport.connect() if enabled else await ble_transport.disconnect()
 
-        if enabled:
-            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-                await handle.connect_transport(t_type)
-        else:
-            for t_type in (TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION):
-                await handle.disconnect_transport(t_type)
+        # Cloud transports are account-shared — detach this handle rather than
+        # disconnecting them out from under the account's other devices.
+        await self.set_cloud_attached(device_name, attached=enabled)
 
     # ------------------------------------------------------------------
     # BLE connection

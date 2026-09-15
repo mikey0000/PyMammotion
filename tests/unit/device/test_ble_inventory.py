@@ -14,7 +14,7 @@ from pymammotion.device.ble_inventory import BleInventory
 from pymammotion.device.handle import DeviceRegistry
 from pymammotion.transport.base import TransportType
 from pymammotion.transport.ble import BLETransport
-from tests.unit._helpers import make_mock_handle
+from tests._helpers import make_mock_handle
 
 
 def _inventory() -> tuple[BleInventory, DeviceRegistry, AsyncMock]:

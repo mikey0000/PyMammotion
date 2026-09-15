@@ -43,10 +43,17 @@ uv run bumpver update --patch --tag beta   # open a new beta series
 uv run bumpver update --tag-num            # next beta of the same series
 uv run bumpver update --tag final          # promote the beta to the release
 
-# bumpver does not touch uv.lock, which records the workspace version.
-# Re-lock after every bump or `uv sync --frozen` fails in CI.
-uv lock
+# A bump is one step: hooks re-lock uv.lock into the commit and tag it v<version>.
+# Nothing to run afterwards -- just push the branch and the tag.
 ```
+
+`scripts/bumpver_relock.sh` and `scripts/bumpver_tag.sh` exist because bumpver
+cannot do either on its own. It patches the version, then `git commit` runs the
+`ty` and `pytest` pre-commit hooks, which shell out to `uv run`; that re-resolves
+on a version change and rewrites `uv.lock` mid-commit, so pre-commit aborts with
+"files were modified by this hook" and the bump is left staged. And it tags the
+bare version, which `release.yml`'s `v*` trigger ignores. Both hooks are wired in
+`[tool.bumpver]`; `tag = false` is deliberate.
 
 Releases are cut by pushing a `v<version>` tag; `release.yml` compares the tag
 against the built package after PEP 440 normalisation (so `v0.9.0-beta1` and
@@ -181,6 +188,22 @@ This reverses an earlier "the gate is uniform, no exceptions" rule. The reasonin
 
 Still true: a *sleeping* device is woken over HTTP via `wake_device`, never by firing MQTT at it.
 
+**BLE reaches the mower through Home Assistant's bluetooth stack, in practice ESP32 (ESPHome) proxies.** Everything about `BLETransport` follows from that:
+
+- **HA owns discovery.** `self_managed_scanning` stays off; HA pushes each advertisement's `BLEDevice` via `set_ble_device()`. The proxy that hears the mower changes, so `_connect_passes` re-reads `self._ble_device` every pass — `establish_connection` builds its client once from the `device` argument, so a handover is only picked up between passes. Do not reinstate `ble_device_callback`: bleak-retry-connector accepts it and never invokes it (dead since 2.13.0). Never cache a `BLEDevice` anywhere else.
+- **The cached GATT table outlives the process and the device can invalidate it.** A link that connects then fails at a characteristic holds a table the device moved on from. `_is_stale_gatt_table` matches both shapes: `BleakCharacteristicNotFoundError`, and — issue #193 — the table still lists ff02 but the Yuka re-registered its service at a new handle block, so the CCCD write gets `error=1 Invalid handle` (or `135 Illegal parameter`). `connect()` purges and reconnects once per call; a second disagreement is a real failure. Any new setup step touching a characteristic must stay inside that retry block.
+- **The purge only travels as far as the link is up.** An ESPHome proxy keeps its table in flash (on by default) and its backend refuses to forward a purge on a dead link — and the proxy usually drops the link just before we see the error, which is why the flash copy survived HA restarts in #193. When `_purge_gatt_cache()` reports failure, `connect()` spends one extra `establish_connection` on the purge alone (`purge_pending`), then drops it so the next pass rediscovers. Note `use_services_cache=False` does *not* purge a proxy's flash copy, despite what the bleak-retry-connector docs suggest.
+- **Read GATT status codes off `__cause__`, never by importing aioesphomeapi.** bleak_esphome flattens `BluetoothGATTAPIError` into `BleakError(str(exc)) from exc`, so the status survives only on the cause chain. `aioesphomeapi` is an `extras` group, so a top-level import breaks `import pymammotion` for every installed user.
+- **Cooldown is the fallback signal, not a retry policy.** `connect_failure_threshold=2`, `connect_cooldown_seconds=120`: two consecutive failures make `is_usable` False for two minutes, `active_transport()` routes to MQTT, and HA's movement buttons go unavailable (they gate on `is_usable`). `BleakOutOfConnectionSlotsError` trips it immediately — an ESP32 proxy has only a few connection slots. Only a successful connect or `clear_ble_device()` resets the counter; a stream of advertisements does not.
+- **`min_rssi=-90` gates usability too.** HA passes the advertisement RSSI with the device; below the floor the transport is unusable and sends fall back to MQTT. Expect availability to flap for a mower at the edge of a proxy's range.
+- **Reconnects are never started from the disconnect callback** (`_on_disconnect_async` only clears state). The MQTT/BLE loops, user commands and fresh advertisements decide when to revive the link; doing it in the callback caused reconnect storms.
+- **A disconnect callback is scoped to the client it was registered for.** `connect()` bumps `_client_generation` per client and registers `functools.partial(self._handle_disconnect, generation)`; `_on_disconnect_async` drops a stale generation. Otherwise a callback from a replaced link clears `_client`/`_message` on the healthy one, and the next characteristic access raises `AttributeError` out of `connect()`, past the `TransportError` contract callers need to fall back to MQTT. Callbacks land arbitrarily late, so the window is not narrow. In-flight handlers live in the `_disconnect_tasks` **set**; a single slot dropped tasks mid-flight.
+- **A disconnect observed while `connect()` holds `_connect_lock` is dropped**, checked in `_handle_disconnect` itself — anything scheduled runs a loop turn later, when the lock may be free. This is the window the generation *cannot* see: `establish_connection` retries against one habluetooth wrapper, so an abandoned attempt fires with the generation that then succeeds. (yalexs-ble guards identically.)
+- **`establish_connection` runs with `max_attempts=2`.** That re-enables the retry connector's own service-change recovery, which only runs *between* attempts. **There is no connect timeout to tune:** a `timeout=` kwarg reaches only the client constructor — `establish_connection` then calls `client.connect(timeout=BLEAK_TIMEOUT)` with a hardcoded 20 s, inside a 60 s safety timeout.
+- **`connect()` announces CONNECTING once and retracts it in a `finally`.** `_connect_passes()` returns True only when the link is usable; every other exit — unanticipated exception and cancellation included — announces DISCONNECTED there, not at each `raise`. Otherwise a stray exception strands CONNECTING, which nothing retracts and `state/device_state.py` reports as a mower connecting forever.
+- **habluetooth logs `Removing a non-existing connecting …`** when we tear a link down within milliseconds of connecting (the setup-failure path). It is slot accounting noise, not a fault to chase.
+- **Diagnosing a BLE report:** ask for debug logs around the *first* disconnect (device-, proxy- or slot-originated?) and which proxy the reconnect went through; look for `BLE setup after connect failed`, `in cooldown`, `out of connection slots`, and the RSSI in the report frame (`connect.bleRssi`).
+
 ### Connection Paths
 
 - **Cloud/MQTT (Aliyun, pre-2025):** `MammotionHTTP` login → `CloudIOTGateway` setup → `AliyunMQTTTransport`
@@ -255,5 +278,52 @@ Before adding code, look for what's already there. The architecture is layered a
 
 - When validation guarantees a dict key exists, prefer direct key access (`data["key"]`) instead of `.get("key")` so contract violations are surfaced instead of silently masked.
 - Keep comments concise. Prefer one short line stating the non-obvious constraint, or no comment at all.
+- **Default to no comment.** Add one only for something a competent reader could not infer from the code: a constraint imposed from outside, a workaround, a surprising ordering. If it can be inferred, delete it.
+- **One or two lines.** A comment longer than that is a sign the explanation belongs in `docs/` or a docstring, or that the code needs a better name. Never write a paragraph of rationale above a line of code — nobody reads it, and it rots.
+- The same applies to docstrings, `CLAUDE.md` bullets and commit messages: state the rule and the reason once, drop the history, the alternatives considered, and the citations.
 - Do not add comments that just restate the code on the following line(s) (e.g. `# Check if initialized` above `if self.initialized:`). Comments should only explain why (non-obvious constraints, surprising behavior, or workarounds), never what. Never add comments that justify a change by referencing what the code looked like before. Comments in tests that explain why a function call or assertion is made are ok.
 - Do not add section or divider comments (e.g. `# --- XYZ Triggers ---`) inside or outside of functions, since those can easily become stale and be misleading.
+
+## Testing (rules for Claude)
+
+`docs/testing.md` is the testing constitution — layout, naming, doubles,
+fixtures, time, regression contracts, legacy debt. Read it before writing or
+editing anything under `tests/`. The rules below are the ones that most often
+get broken; the document is the authority.
+
+- **Tier by what it touches.** `tests/unit/` — one module, no sockets, no real
+  clock, no `tests/fakeserver`. `tests/integration/` — several components, the
+  fake cloud over loopback. `tests/live/` — real account or hardware, marked
+  `live`, skips silently. A unit test that imports `tests.fakeserver` is an
+  integration test in the wrong directory.
+- **`tests/unit/` mirrors the package.** `pymammotion/device/handle.py` →
+  `tests/unit/device/test_handle.py`. Split a module past ~600 lines by concern
+  (`test_handle_transport_selection.py`), never by number.
+- **A builder used by a second module moves to `_helpers.py`.** Package-local
+  `tests/unit/<pkg>/_helpers.py` for `make_*` builders, `_fakes.py` for
+  hand-written fakes, `tests/_helpers.py` across tiers, `tests/conftest.py`
+  only for global autouse safety nets. Four copies of `_make_handle` is the
+  failure this rule exists to stop.
+- **Spec every mock; prefer not to mock.** Real object > hand-written fake >
+  `create_autospec`/`MagicMock(spec=…)`. A bare `MagicMock()` answers every
+  attribute truthily forever, so a renamed method keeps passing. Never mock the
+  unit under test. Assert on outcomes, not on call plumbing — unless the call
+  *is* the contract ("does not send to an offline device").
+- **`await asyncio.sleep(0.15)` is not synchronisation.** Wait on an
+  `asyncio.Event`, a future, `queue.join()`, or `asyncio.sleep(0)` for exactly
+  one loop turn. Freeze the clock with `time_machine.travel(..., tick=False)`
+  for anything reading `time()`/`monotonic()`. Bound every wait with
+  `asyncio.wait_for`. `asyncio_mode = "auto"` — no `@pytest.mark.asyncio`.
+- **A regression test must have been seen red.** Write it against the broken
+  code, watch it fail, then fix. Mark it `@pytest.mark.regression`, name it for
+  the behaviour (not the ticket), and let its docstring say what the code did
+  wrong. It lives with the module it pins; only cross-module pins go in
+  `tests/regression/`.
+- **Every test you write gets reviewed.** Launch the `test-reviewer` agent over
+  the tests you touched and fix its blocking findings before reporting the work
+  complete. A `PostToolUse` hook queues the files and the `Stop` hook refuses
+  the first stop while the queue is non-empty; the reviewer clears it. The
+  author fixes — the reviewer does not rewrite.
+- **`tests/meta/test_conventions.py` asserts the mechanical rules** and carries
+  a frozen baseline of pre-existing offenders. The baseline may shrink, never
+  grow: fix the violations your change touches and delete their entries.

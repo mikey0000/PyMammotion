@@ -3787,6 +3787,19 @@ class NavReqCoverPath(betterproto2.Message):
 
     toward_included_angle: "int" = betterproto2.field(18, betterproto2.TYPE_INT32)
 
+    ride_boundary_distance: "float" = betterproto2.field(19, betterproto2.TYPE_FLOAT)
+
+    app_display_mode: "int" = betterproto2.field(20, betterproto2.TYPE_INT32)
+
+    auto_change_direction: "list[int]" = betterproto2.field(21, betterproto2.TYPE_INT32, repeated=True)
+    """
+    Repeated because firmware varies: some devices send field 21 packed (issue #193),
+    and repeated accepts both wire forms where int32 rejects the packed one. The
+    number is inferred, but corroborated: the app's job model lists
+    autoChangeDirection beside rideBoundaryDistance and appDisplayMode, matching 19-21.
+    The app reads it as `value != 0`, so any non-zero means on.
+    """
+
 
 default_message_pool.register_message("", "NavReqCoverPath", NavReqCoverPath)
 

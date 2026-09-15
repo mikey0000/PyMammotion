@@ -10,6 +10,7 @@ from pymammotion.http.http import MammotionHTTP
 from pymammotion.transport.base import NoTransportAvailableError
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from tests.fakeserver.cloud import FakeMammotionCloud
+from tests._helpers import advance_real_time
 
 from .conftest import wait_for
 
@@ -94,7 +95,5 @@ async def test_broker_auth_rejection_is_bounded(
 
     # And it stays given up — no reconnect loop in the background.
     # (With backoff at 0.05s this window covers several would-be cycles.)
-    import asyncio
-
-    await asyncio.sleep(0.4)
+    await advance_real_time(0.4)
     assert scenario.counters.get("mammotion_mqtt_connects") == 2

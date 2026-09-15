@@ -15,22 +15,20 @@ intact.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.auth.token_manager import MQTTCredentials
 from pymammotion.client import MammotionClient
 from pymammotion.http.model.http import MQTTConnection
 from pymammotion.transport.base import ReLoginRequiredError, TransportType
-from pymammotion.transport.mqtt import MQTTTransport
+from tests._helpers import make_account_session
 
 
-def _make_session() -> AccountSession:
+def _make_breaker_session() -> AccountSession:
     """Build an AccountSession with the minimum mocks for `_setup_mammotion_transport`."""
-    session = AccountSession(account_id="acc", email="user@test.com", password="pw")
-    session.mammotion_http = MagicMock()
+    session = make_account_session("acc", email="user@test.com", password="pw")
     session.mammotion_http.logout = AsyncMock()
     session.mammotion_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
     tm = MagicMock()
@@ -51,7 +49,7 @@ def _make_mqtt_creds() -> MQTTConnection:
     return MQTTConnection(host="tcp://mqtt.example:1883", jwt="initial-jwt", client_id="cid", username="u")
 
 
-def _make_device(*, has_transport: TransportType | None) -> MagicMock:
+def _make_handle_double(*, has_transport: TransportType | None) -> MagicMock:
     """A mock DeviceHandle that reports a transport for *has_transport* only."""
     handle = MagicMock()
     handle.notify_critical_error = AsyncMock()
@@ -59,12 +57,9 @@ def _make_device(*, has_transport: TransportType | None) -> MagicMock:
     return handle
 
 
-# ---------------------------------------------------------------------------
 # Mammotion MQTT: give up (no re-login)
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_mammotion_fatal_auth_gives_up_without_relogin() -> None:
     """On fatal auth the handler must NOT re-login: it marks the transport
     unrecoverable and signals its mowers.  No login_v2, no logout — and no
@@ -74,7 +69,7 @@ async def test_mammotion_fatal_auth_gives_up_without_relogin() -> None:
     """
     client = MammotionClient()
     client.on_unrecoverable_auth_error = AsyncMock()
-    session = _make_session()
+    session = _make_breaker_session()
 
     session.token_manager.reauth_required = "refresh token rejected"  # account login is dead too
     transport = client._setup_mammotion_transport(
@@ -93,11 +88,10 @@ async def test_mammotion_fatal_auth_gives_up_without_relogin() -> None:
     client.on_unrecoverable_auth_error.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_give_up_marks_transport_so_connect_refuses() -> None:
     """After giving up, connect() must refuse to spawn a new _run task."""
     client = MammotionClient()
-    session = _make_session()
+    session = _make_breaker_session()
 
     transport = client._setup_mammotion_transport(
         _make_mqtt_creds(), session.mammotion_http, session, session.token_manager
@@ -114,18 +108,17 @@ async def test_give_up_marks_transport_so_connect_refuses() -> None:
     assert transport._task is None  # refused: no receive loop was spawned
 
 
-@pytest.mark.asyncio
 async def test_give_up_signals_only_mowers_on_that_transport() -> None:
     """The per-device error bus must fire only for the account's mowers that use the
     failed transport — not other devices, not other accounts.
     """
     client = MammotionClient()
     client.on_unrecoverable_auth_error = AsyncMock()
-    session = _make_session()
+    session = _make_breaker_session()
     session.device_ids = {"on_mammotion", "ble_only"}
 
-    on_mammotion = _make_device(has_transport=TransportType.CLOUD_MAMMOTION)
-    ble_only = _make_device(has_transport=TransportType.BLE)
+    on_mammotion = _make_handle_double(has_transport=TransportType.CLOUD_MAMMOTION)
+    ble_only = _make_handle_double(has_transport=TransportType.BLE)
     client._device_registry.for_account = MagicMock(  # type: ignore[method-assign]
         side_effect=lambda account: [on_mammotion, ble_only] if account == session.account_id else []
     )
@@ -141,12 +134,9 @@ async def test_give_up_signals_only_mowers_on_that_transport() -> None:
     client.on_unrecoverable_auth_error.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # A dead transport must not cost the account its login
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_transport_give_up_does_not_prompt_reauth_when_login_healthy() -> None:
     """The regression this whole design exists for.
 
@@ -158,7 +148,7 @@ async def test_transport_give_up_does_not_prompt_reauth_when_login_healthy() -> 
     """
     client = MammotionClient()
     client.on_unrecoverable_auth_error = AsyncMock()
-    session = _make_session()
+    session = _make_breaker_session()
     session.token_manager.reauth_required = None  # login still valid
 
     transport = client._setup_mammotion_transport(

@@ -51,9 +51,7 @@ def test_empty_mowing_device_roundtrip() -> None:
     assert data["name"] == "empty"
 
 
-# ===========================================================================
 # The OTA check (CheckDeviceVersion.current_version) is the cloud's view of the
-# ===========================================================================
 from pymammotion.data.model.device import Device, MowerDevice, RTKBaseStationDevice, create_device
 from pymammotion.http.model.http import CheckDeviceVersion
 

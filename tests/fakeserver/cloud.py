@@ -103,9 +103,7 @@ class FakeMammotionCloud:
         await self.mammotion_broker.stop()
         await self.aliyun_broker.stop()
 
-    # ------------------------------------------------------------------
     # Broker hooks
-    # ------------------------------------------------------------------
 
     async def _mammotion_auth(self, _client_id: str, _username: str | None, _password: str | None) -> int:
         self.scenario.count("mammotion_mqtt_connects")
@@ -135,9 +133,7 @@ class FakeMammotionCloud:
     async def _on_invoke(self, iot_id: str, payload: bytes) -> None:
         self.invocations.append((iot_id, payload))
 
-    # ------------------------------------------------------------------
     # Injection helpers (fake mower behaviour)
-    # ------------------------------------------------------------------
 
     def publish_device_status(self, *, online: bool) -> int:
         """Publish the Mammotion flat thing/status message for the fake mower."""

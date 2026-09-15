@@ -193,6 +193,14 @@ message NavReqCoverPath {
   int32 result = 16;
   int32 toward_mode = 17;
   int32 toward_included_angle = 18;
+  float ride_boundary_distance = 19;
+  int32 app_display_mode = 20;
+  // Repeated because firmware varies: some devices send field 21 packed (issue #193),
+  // and repeated accepts both wire forms where int32 rejects the packed one. The
+  // number is inferred, but corroborated: the app's job model lists
+  // autoChangeDirection beside rideBoundaryDistance and appDisplayMode, matching 19-21.
+  // The app reads it as `value != 0`, so any non-zero means on.
+  repeated int32 auto_change_direction = 21;
 }
 
 message NavUploadZigZagResult {

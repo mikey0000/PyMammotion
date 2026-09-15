@@ -25,7 +25,7 @@ from pymammotion.transport.base import (
     TransportRateLimitedError,
     TransportType,
 )
-from tests.unit._helpers import make_mock_handle, make_mock_transport
+from tests._helpers import let_others_run, wait_until, make_mock_handle, make_mock_transport
 
 
 async def _client_with(handle: object) -> MammotionClient:
@@ -232,24 +232,19 @@ async def test_a_cloud_429_on_the_queued_path_is_still_absorbed_by_the_queue() -
 
     handle.queue.start()
     await client.send_command_with_args("Luba-U12", "start_job")  # must not raise
-    for _ in range(20):
-        if mqtt.set_rate_limited.called:
-            break
-        await asyncio.sleep(0.05)
+    await wait_until(lambda: mqtt.set_rate_limited.called, message="the queue never absorbed the 429")
 
     assert mqtt.set_rate_limited.called
     assert handle.queue._task is not None and not handle.queue._task.done()  # noqa: SLF001
     await handle.stop()
 
 
-# ---------------------------------------------------------------------------
 # The offline gate is uniform: Priority.USER raises, it does not send anyway.
 #
 # A user command skips the has_usable_transport *pre-check* so the host gets an
 # exception instead of silence — that is the only difference.  It must not reach
 # the transport: the cloud may queue the payload and deliver it when the mower
 # returns, and a start_job landing hours later unattended is a safety problem.
-# ---------------------------------------------------------------------------
 
 
 def _status(value: StatusType) -> ThingStatusMessage:
@@ -334,7 +329,9 @@ async def test_a_queued_command_still_respects_the_offline_flag() -> None:
 
     handle.queue.start()
     await client.send_command_with_args("Luba-O2", "start_job")
-    await asyncio.sleep(0.1)
+    # Wait for the queue to drain, so "never sent" means processed-and-skipped, not not-yet-run.
+    await wait_until(lambda: handle.queue._queue.empty(), message="the queued command was never processed")  # noqa: SLF001
+    await let_others_run()
 
     mqtt.send.assert_not_awaited()
     await handle.stop()

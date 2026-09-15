@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from pymammotion.data.model.hash_list import CommDataCouple, FrameList, HashList, NavGetCommData, SvgMessage
+from pymammotion.data.model.hash_list import CommDataCouple, HashList, NavGetCommData, SvgMessage
 from pymammotion.data.model.svg import (
     area_centroid,
     build_svg_ack,
@@ -42,9 +42,7 @@ _SIMPLE_SVG = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>'
 _SVG_NAME = "pattern.svg"
 
 
-# ---------------------------------------------------------------------------
 # area_centroid
-# ---------------------------------------------------------------------------
 
 
 def test_centroid_square():
@@ -79,10 +77,8 @@ def test_centroid_degenerate_collinear():
     assert cy == pytest.approx(0.0, abs=1e-6)
 
 
-# ---------------------------------------------------------------------------
 # ADD — build_svg_for_area
 # Verified against APK PlanMapLandFragment + MACommandHelper.sendSvgDate()
-# ---------------------------------------------------------------------------
 
 
 def test_add_sub_cmd_is_1():
@@ -192,10 +188,8 @@ def test_add_default_base_dimensions_are_2_5m():
     assert msg.svg_message.base_height_m == pytest.approx(2.5)
 
 
-# ---------------------------------------------------------------------------
 # ACK — build_svg_ack
 # APK MACommandHelper.sendResponseSvgDate(): always sub_cmd=2, no svg_message body
-# ---------------------------------------------------------------------------
 
 def _make_device_svg_push(data_hash: int = 999, paternal: int = 555, total: int = 3, current: int = 2) -> SvgMessage:
     """Simulate an SVG frame the device pushes to the app."""
@@ -253,9 +247,7 @@ def test_ack_pver_and_type():
     assert ack.result == 0
 
 
-# ---------------------------------------------------------------------------
 # UPDATE — build_svg_update
-# ---------------------------------------------------------------------------
 
 
 def test_update_sub_cmd_is_3():
@@ -293,9 +285,7 @@ def test_update_recomputes_centroid():
     assert msg.svg_message.y_move == pytest.approx(3.0, abs=0.001)
 
 
-# ---------------------------------------------------------------------------
 # DELETE — build_svg_delete
-# ---------------------------------------------------------------------------
 
 
 def test_delete_sub_cmd_is_6():
@@ -333,9 +323,7 @@ def test_delete_type_and_pver():
     assert msg.type == 13
 
 
-# ---------------------------------------------------------------------------
 # Proto serialisation round-trip
-# ---------------------------------------------------------------------------
 
 
 def test_add_serialises_to_proto_bytes():
@@ -404,9 +392,7 @@ def test_delete_serialises_to_proto_bytes():
     assert decoded.todev_svg_msg.data_hash == 0xDEADBEEF
 
 
-# ---------------------------------------------------------------------------
 # Integration: real fixture area
-# ---------------------------------------------------------------------------
 
 
 def _load_yuka_hash_list() -> HashList:

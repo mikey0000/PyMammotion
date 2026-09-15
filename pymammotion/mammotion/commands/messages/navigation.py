@@ -38,6 +38,12 @@ from pymammotion.proto import (
 logger = logging.getLogger(__name__)
 
 
+def _auto_change_direction_field(route: GenerateRouteInformation) -> list[int]:
+    """Field 21 as a repeated field, empty when off so 0 stays off the wire."""
+    value = int(route.auto_change_direction)
+    return [value] if value else []
+
+
 class MessageNavigation(AbstractMessage, ABC):
     """Mixin that builds and serialises navigation protobuf command messages (maps, routes, tasks)."""
 
@@ -548,6 +554,7 @@ class MessageNavigation(AbstractMessage, ABC):
             toward_included_angle=int(generate_route_information.toward_included_angle),  # luba 2 yuka only
             toward_mode=int(generate_route_information.toward_mode),  # luba 2 yuka only
             reserved=generate_route_information.path_order,
+            auto_change_direction=_auto_change_direction_field(generate_route_information),
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
         logger.debug(f"Send command--Generate route information generateRouteInformation={generate_route_information}")
@@ -569,6 +576,7 @@ class MessageNavigation(AbstractMessage, ABC):
             channel_mode=int(generate_route_information.channel_mode),
             toward=int(generate_route_information.toward),
             reserved=generate_route_information.path_order,
+            auto_change_direction=_auto_change_direction_field(generate_route_information),
         )
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")
         logger.debug(f"Send command -- Modify route parameters generate_route_information={generate_route_information}")

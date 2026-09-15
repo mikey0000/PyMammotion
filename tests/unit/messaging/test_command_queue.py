@@ -1,14 +1,13 @@
 """Tests for DeviceCommandQueue."""
 from __future__ import annotations
 
-import asyncio
 
 import pytest
 
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.messaging.saga import Saga
-from pymammotion.transport.base import SagaFailedError
+from tests._helpers import wait_until
 
 
 async def test_is_saga_active_false_initially() -> None:
@@ -61,7 +60,7 @@ async def test_exclusive_active_set_after_saga() -> None:
             pass
 
     await q.enqueue_saga(QuickSaga(), broker)
-    await asyncio.sleep(0.1)
+    await wait_until(lambda: q.is_saga_active is False, message="saga never released the exclusive lock")
     assert q.is_saga_active is False
     await q.stop()
 
@@ -86,7 +85,7 @@ async def test_exception_in_work_does_not_crash_queue() -> None:
 
     await q.enqueue(bad_work)
     await q.enqueue(good_work)
-    await asyncio.sleep(0.1)
+    await wait_until(lambda: executed == [1], message="the queue stopped after the failing work item")
     assert executed == [1]
     await q.stop()
 
@@ -109,7 +108,7 @@ async def test_enqueue_saga_on_complete_called_on_success() -> None:
         completed.append(1)
 
     await q.enqueue_saga(QuickSaga(), broker, on_complete=on_complete)
-    await asyncio.sleep(0.1)
+    await wait_until(lambda: completed == [1], message="on_complete never fired")
 
     assert completed == [1]
     await q.stop()
@@ -134,7 +133,7 @@ async def test_enqueue_saga_on_complete_not_called_on_failure() -> None:
         completed.append(1)
 
     await q.enqueue_saga(FailingSaga(), broker, on_complete=on_complete)
-    await asyncio.sleep(0.1)
+    await wait_until(lambda: q.is_saga_active is False, message="the failing saga never released the lock")
 
     assert completed == []
     await q.stop()
@@ -162,7 +161,7 @@ async def test_enqueue_saga_on_complete_error_does_not_crash_queue() -> None:
 
     await q.enqueue_saga(QuickSaga(), broker, on_complete=bad_on_complete)
     await q.enqueue(next_work)
-    await asyncio.sleep(0.2)
+    await wait_until(lambda: executed == [1], message="a raising on_complete stalled the queue")
 
     assert executed == [1]
     await q.stop()
@@ -181,6 +180,6 @@ async def test_fifo_within_same_priority() -> None:
 
         await q.enqueue(work, priority=Priority.NORMAL)
 
-    await asyncio.sleep(0.1)
+    await wait_until(lambda: len(order) == 3, message=f"only {order} ran")
     assert order == [0, 1, 2]
     await q.stop()
