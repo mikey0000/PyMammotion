@@ -11,54 +11,13 @@ from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.proto import LubaMsg
 from tests.unit.messaging._helpers import (
+    apply_msg_to_map as _apply_msg_to_map,
     area_frame_named as _area_frame_named,
     comm_data_frame as _comm_data_msg,
     hash_list_msg as _hash_list_msg,
     make_command_builder as _make_command_builder,
+    run_saga_with_messages as _run_saga_with_messages,
 )
-
-
-def _apply_msg_to_map(msg: LubaMsg, m: HashList) -> None:
-    """Minimal StateReducer simulation: update m with each incoming nav message."""
-    if not msg.nav:
-        return
-    try:
-        leaf_name, leaf_val = betterproto2.which_one_of(msg.nav, "SubNavMsg")
-        if leaf_name == "toapp_gethash_ack":
-            m.update_root_hash_list(NavGetHashListData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
-        elif leaf_name == "toapp_get_commondata_ack":
-            m.update(NavGetCommData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-async def _run_saga_with_messages(
-    broker: DeviceMessageBroker,
-    saga: MapFetchSaga,
-    messages: list[LubaMsg],
-    delay: float = 0.02,
-    map_update: HashList | None = None,
-) -> None:
-    """Drive saga + sequential message injection concurrently.
-
-    If *map_update* is provided, each message is also applied to that HashList
-    to simulate the StateReducer updating device.map before the saga reads it.
-    """
-
-    async def _inject() -> None:
-        for msg in messages:
-            await asyncio.sleep(delay)
-            if map_update is not None:
-                _apply_msg_to_map(msg, map_update)
-            await broker.on_message(msg)
-
-    injector = asyncio.create_task(_inject())
-    try:
-        await saga.execute(broker)
-    finally:
-        injector.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await injector
 
 
 # test 1 — known type (area=0): saga stores data and terminates normally
@@ -89,6 +48,7 @@ async def test_saga_terminates_with_known_type() -> None:
         saga,
         messages=[
             _hash_list_msg([hash_id]),
+            _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
             _comm_data_msg(hash_id, type_code=0),  # PathType.AREA
         ],
         map_update=_map,
@@ -133,6 +93,7 @@ async def test_saga_does_not_loop_on_unknown_type() -> None:
             saga,
             messages=[
                 _hash_list_msg([hash_id]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(hash_id, type_code=26),  # unknown / unhandled type
             ],
             map_update=_map,
@@ -183,6 +144,7 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
             saga,
             messages=[
                 _hash_list_msg([area_hash, unknown_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(area_hash, type_code=0),    # PathType.AREA — stored
                 _comm_data_msg(unknown_hash, type_code=26),  # unknown — skipped
             ],
@@ -234,6 +196,7 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
             saga,
             messages=[
                 _hash_list_msg([corridor_line_hash, corridor_point_hash, virtual_wall_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(corridor_line_hash, type_code=19),   # CORRIDOR_LINE
                 _comm_data_msg(corridor_point_hash, type_code=20),  # CORRIDOR_POINT
                 _comm_data_msg(virtual_wall_hash, type_code=21),    # VIRTUAL_WALL
@@ -294,6 +257,7 @@ async def test_saga_acks_unrelated_dynamics_line_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 # Dynamics-line frame arrives BEFORE the area frame — saga must
                 # ack it even though it doesn't match the current hash.
                 _comm_data_msg(0, type_code=18),
@@ -356,6 +320,7 @@ async def test_saga_advances_on_unknown_type_single_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([unknown_hash, area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(unknown_hash, type_code=99),  # never-modelled
                 _comm_data_msg(area_hash, type_code=0),
             ],
@@ -403,6 +368,7 @@ async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([no_go_hash, area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(no_go_hash, type_code=23),  # NO_GO_ZONE
                 _comm_data_msg(area_hash, type_code=0),
             ],
@@ -497,7 +463,7 @@ async def test_saga_syncs_before_root_list_and_immediately_before_per_hash() -> 
     await _run_saga_with_messages(
         broker,
         saga,
-        messages=[_hash_list_msg([hash_id]), _comm_data_msg(hash_id, type_code=0)],
+        messages=[_hash_list_msg([hash_id]), _hash_list_msg([], sub_cmd=4), _comm_data_msg(hash_id, type_code=0)],
         map_update=_map,
     )
 

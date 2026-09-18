@@ -7,9 +7,21 @@ so tests can call them directly without registering them as parameters.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from unittest.mock import MagicMock
 
-from pymammotion.data.model.hash_list import CommDataCouple, NavGetCommData, NavNameTime
+import betterproto2
+
+from pymammotion.data.model.hash_list import (
+    CommDataCouple,
+    HashList,
+    NavGetCommData,
+    NavGetHashListData,
+    NavNameTime,
+)
+from pymammotion.messaging.broker import DeviceMessageBroker
+from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.proto import (
     LubaMsg,
     MctlNav,
@@ -94,3 +106,46 @@ def area_frame_named(hash_val: int, name: str) -> NavGetCommData:
         name_time=NavNameTime(name=name, create_time=1, modify_time=1),
         data_couple=[CommDataCouple(x=0.0, y=0.0)],
     )
+
+
+def apply_msg_to_map(msg: LubaMsg, m: HashList) -> None:
+    """Minimal StateReducer simulation: update m with each incoming nav message."""
+    if not msg.nav:
+        return
+    try:
+        leaf_name, leaf_val = betterproto2.which_one_of(msg.nav, "SubNavMsg")
+        if leaf_name == "toapp_gethash_ack":
+            m.update_root_hash_list(NavGetHashListData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+        elif leaf_name == "toapp_get_commondata_ack":
+            m.update(NavGetCommData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def run_saga_with_messages(
+    broker: DeviceMessageBroker,
+    saga: MapFetchSaga,
+    messages: list[LubaMsg],
+    delay: float = 0.02,
+    map_update: HashList | None = None,
+) -> None:
+    """Drive saga + sequential message injection concurrently.
+
+    If *map_update* is provided, each message is also applied to that HashList
+    to simulate the StateReducer updating device.map before the saga reads it.
+    """
+
+    async def _inject() -> None:
+        for msg in messages:
+            await asyncio.sleep(delay)
+            if map_update is not None:
+                apply_msg_to_map(msg, map_update)
+            await broker.on_message(msg)
+
+    injector = asyncio.create_task(_inject())
+    try:
+        await saga.execute(broker)
+    finally:
+        injector.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await injector

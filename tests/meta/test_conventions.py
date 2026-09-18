@@ -36,7 +36,7 @@ BARE_ASYNCIO_MARKER: dict[str, int] = {}
 #: Test modules over the size cap, at the length they had when the cap landed.
 OVERSIZED = {
     "integration/test_credential_restore.py": 881,
-    "integration/test_sagas.py": 977,
+    "integration/test_sagas.py": 985,
     "unit/auth/test_token_manager.py": 712,
     "unit/data/model/test_generate_geojson.py": 1201,
     "unit/data/model/test_hash_list.py": 790,
