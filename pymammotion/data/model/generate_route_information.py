@@ -58,6 +58,19 @@ class GenerateRouteInformation:
     toward_mode: int = 0  # angle type relative etc
     edge_mode: int = 1  # border laps
     obstacle_laps: int = 1
+    #: "Auto-reverse Mowing Direction" (app ``title_reverse_direction``): 1 makes the
+    #: device flip the mowing direction between tasks to reduce grass matting.  The
+    #: field number this rides on (``NavReqCoverPath.auto_change_direction`` = 21) is
+    #: inferred: the app's native encoder is packed in the 2.3.18.21 APK, so only the
+    #: RN side (``jobModel.autoChangeDirection``) is readable, and 21 is the next free
+    #: number after ``app_display_mode`` = 20 in the last unpacked APK (2.3.8.201).
+    #: Only devices passing ``DeviceType.supports_auto_change_direction`` should set it.
+    #: To confirm 21: with a supporting mower, toggle the setting in the app while
+    #: capturing with ``scripts/frida/lubamsg-tap.js`` and read the field number off
+    #: the outgoing ``NavReqCoverPath``.  Dumping the packed dex is not needed — the
+    #: 2.3.18.21 build's ijiami packer kills a stock frida-server, so the on-the-wire
+    #: capture is the cheap confirmation path.
+    auto_change_direction: int = 0
 
     @classmethod
     def from_current_task_settings(cls, settings: CurrentTaskSettings) -> GenerateRouteInformation:
@@ -72,7 +85,8 @@ class GenerateRouteInformation:
 
         - ``job_id``, ``job_mode``, ``edge_mode``, ``channel_width``,
           ``ultra_wave``, ``channel_mode``, ``toward``, ``speed``,
-          ``toward_mode``, ``toward_included_angle`` — direct copy.
+          ``toward_mode``, ``toward_included_angle``, ``auto_change_direction`` —
+          direct copy.
         - ``job_ver`` → ``job_version``
         - ``knife_height`` → ``blade_height``
         - ``zone_hashs`` → ``one_hashs`` (copied, not aliased)
@@ -98,6 +112,7 @@ class GenerateRouteInformation:
             toward_mode=settings.toward_mode,
             edge_mode=settings.edge_mode,
             obstacle_laps=decoded.obstacle_laps,
+            auto_change_direction=settings.auto_change_direction,
         )
 
     @staticmethod

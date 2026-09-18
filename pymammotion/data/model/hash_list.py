@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
+import copy as _copy
 import dataclasses
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
-from shapely import Point
 
 from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
-from pymammotion.utility.map import CoordinateConverter
 from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 
 if TYPE_CHECKING:
-    from pymammotion.data.model.location import Dock, LocationPoint
+    from pymammotion.data.model.location import LocationPoint
 
 
 class PathType(IntEnum):
@@ -451,8 +450,6 @@ class HashList(DataClassORJSONMixin):
         methods — never mutated in place — so sharing references across copies
         is safe.
         """
-        import copy as _copy
-
         cls = self.__class__
         new = cls.__new__(cls)
         memo[id(self)] = new
@@ -1117,94 +1114,13 @@ class HashList(DataClassORJSONMixin):
         }
         return bool(geojson_hashes - current_hashlist)
 
-    def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
-        """Rebuild ``generated_geojson`` from the cached frames."""
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    def record_geojson_state(self, yaw: float) -> None:
+        """Note the yaw and hashlist that ``generated_geojson`` was built from.
 
-        coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
-        RTK_real_loc = coordinator_converter.enu_to_lla(0, 0)
-
-        dock_location = coordinator_converter.enu_to_lla(dock.latitude, dock.longitude)
-        dock_rotation = coordinator_converter.get_transform_yaw_with_yaw(dock.rotation) + 180
-
-        self.generated_geojson = GeojsonGenerator.generate_geojson(
-            self,
-            Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
-            Point(dock_location.latitude, dock_location.longitude),
-            int(dock_rotation),
-            yaw=rtk.yaw,
-        )
-        self.geojson_yaw = rtk.yaw
-        # Record the hashlist used so the next geojson_needs_regeneration()
-        # can short-circuit when state hasn't changed.
+        Paired with :meth:`geojson_needs_regeneration`, which reads both back — the
+        staleness bookkeeping stays on the model while generation itself lives in
+        ``generate_geojson`` (which needs to import this module, so this one must not
+        import it back).
+        """
+        self.geojson_yaw = yaw
         self._geojson_hashlist_snapshot = frozenset(self.area_root_hashlist)
-
-    def generate_mowing_geojson(self, rtk: LocationPoint) -> Any:
-        """Rebuild ``generated_mow_path_geojson`` from the cached mow-path frames."""
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
-
-        coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
-        rtk_real_loc = coordinator_converter.enu_to_lla(0, 0)
-
-        self.generated_mow_path_geojson = GeojsonGenerator.generate_mow_path_geojson(
-            self,
-            Point(rtk_real_loc.latitude, rtk_real_loc.longitude),
-            yaw=rtk.yaw,
-        )
-
-        return self.generated_mow_path_geojson
-
-    def apply_mow_progress_geojson(
-        self,
-        rtk: LocationPoint,
-        now_index: int,
-        ub_path_hash: int,
-        path_pos_x: int,
-        path_pos_y: int,
-    ) -> None:
-        """Slice ``current_mow_path`` to *now_index* and store as progress GeoJSON.
-
-        No-op when RTK isn't fixed (``latitude == 0``), ``now_index`` is
-        negative, or no mow path is cached.  ``path_pos_x``/``path_pos_y`` are
-        device-side integers scaled by 1e4.
-        """
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
-
-        # "Unset" RTK is the exact-0.0 default (radians).  Compare to 0.0, NOT round(lat, 0):
-        # rounding to 0 decimals collapses everything within ~0.5 rad (~28°) of the equator to
-        # 0 and would skip real fixes.
-        if rtk.latitude == 0.0 or now_index < 0 or not self.current_mow_path:
-            return
-
-        raw_x = path_pos_x / 10000.0
-        raw_y = path_pos_y / 10000.0
-        path_pos = (raw_x, raw_y) if (raw_x != 0.0 or raw_y != 0.0) else None
-
-        conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-        rtk_ll = conv.enu_to_lla(0, 0)
-        self.generated_mow_progress_geojson = GeojsonGenerator.generate_mow_progress_geojson(
-            self,
-            now_index,
-            Point(rtk_ll.latitude, rtk_ll.longitude),
-            ub_path_hash=ub_path_hash,
-            path_pos=path_pos,
-            yaw=rtk.yaw,
-        )
-
-    def apply_dynamics_line_geojson(self, rtk: LocationPoint) -> None:
-        """Convert ``dynamics_line`` to a WGS-84 LineString GeoJSON.
-
-        No-op when RTK isn't fixed or fewer than two points have been received.
-        """
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
-
-        if rtk.latitude == 0.0 or len(self.dynamics_line) < 2:
-            return
-
-        conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-        rtk_ll = conv.enu_to_lla(0, 0)
-        self.generated_dynamics_line_geojson = GeojsonGenerator.generate_dynamics_line_geojson(
-            self.dynamics_line,
-            Point(rtk_ll.latitude, rtk_ll.longitude),
-            yaw=rtk.yaw,
-        )

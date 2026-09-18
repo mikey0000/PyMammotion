@@ -47,6 +47,9 @@ class Saga(ABC):
     max_attempts: int = 3
     step_timeout: float = 15.0
     total_timeout: float = 300.0  # 5-minute hard limit across all attempts
+    #: Pause before re-entering ``_run``, giving the device time to settle after the
+    #: interruption that ended the last attempt.
+    retry_backoff: float = 0.5
     device_name: str = ""
 
     @staticmethod
@@ -219,19 +222,20 @@ class Saga(ABC):
                     )
                     last_progress = current
                     attempt = 0
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(self.retry_backoff)
                     continue
                 if attempt >= self.max_attempts:
                     raise SagaFailedError(self.name, self.max_attempts) from exc
                 _logger.warning(
-                    "Saga '%s'[%s] interrupted with no progress on attempt %d/%d: %s. Restarting in 0.5s.",
+                    "Saga '%s'[%s] interrupted with no progress on attempt %d/%d: %s. Restarting in %ss.",
                     self.name,
                     self.device_name,
                     attempt,
                     self.max_attempts,
                     exc,
+                    self.retry_backoff,
                 )
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(self.retry_backoff)
             else:
                 _logger.debug("Saga '%s'[%s] completed on attempt %d", self.name, self.device_name, attempt)
                 return

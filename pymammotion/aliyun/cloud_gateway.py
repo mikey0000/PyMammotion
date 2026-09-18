@@ -1093,6 +1093,28 @@ class CloudIOTGateway:
         """Return the cached device listing response for the current account."""
         return self._devices_by_account_response
 
+    def forget_device(self, *, iot_id: str = "", device_name: str = "") -> bool:
+        """Drop a device from the cached Aliyun listing; True when one was removed.
+
+        This listing is what ``to_cache`` persists and what a restore re-registers an
+        Aliyun binding from, so a device unbound from Aliyun (29004) has to leave it —
+        otherwise every restart rebuilds the binding and the device 29004s again.
+        """
+        if self._devices_by_account_response is None or self._devices_by_account_response.data is None:
+            return False
+        devices = self._devices_by_account_response.data.data
+        keep = [
+            d
+            for d in devices
+            if not ((iot_id and d.iot_id == iot_id) or (device_name and d.device_name == device_name))
+        ]
+        if len(keep) == len(devices):
+            return False
+        self._devices_by_account_response.data.data = keep
+        self._devices_by_account_response.data.total = len(keep)
+        logger.warning("Removed unbound device from the Aliyun listing (iot_id=%s name=%s)", iot_id, device_name)
+        return True
+
     def set_http(self, mammotion_http: MammotionHTTP) -> None:
         """Replace the underlying MammotionHTTP instance used for authentication."""
         self.mammotion_http = mammotion_http
@@ -1144,7 +1166,7 @@ class CloudIOTGateway:
             self._session_by_authcode_response.token_issued_at = self._iot_token_issued_at
 
         raw: dict[str, Any] = {
-            "connect_response": self._connect_response,
+            "connect_data": self._connect_response,
             "auth_data": self._login_by_oauth_response,
             "region_data": self._region_response,
             "aep_data": self._aep_response,
@@ -1181,17 +1203,21 @@ class CloudIOTGateway:
 
         """
         required_keys = (
-            "connect_response",
+            "connect_data",
             "auth_data",
             "region_data",
             "aep_data",
             "session_data",
             "device_data",
         )
-        if any(k not in data for k in required_keys):
+
+        # Older caches stored this under "connect_response".  Resolve it locally —
+        # this method is documented pure and the caller may re-persist the dict.
+        connect_data = data.get("connect_data") or data.get("connect_response")
+
+        if connect_data is None or any(k not in data for k in required_keys if k != "connect_data"):
             return None
 
-        connect_data = data["connect_response"]
         auth_data = data["auth_data"]
         region_data = data["region_data"]
         aep_data = data["aep_data"]

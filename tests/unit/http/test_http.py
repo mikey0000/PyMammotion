@@ -17,6 +17,7 @@ import pytest
 
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import JWTTokenInfo, MQTTConnection, UnauthorizedExceptionError
+from tests.unit._helpers import make_http_posting
 
 
 def _make_http_with_session() -> MammotionHTTP:
@@ -33,7 +34,6 @@ def _make_http_with_session() -> MammotionHTTP:
     return http
 
 
-@pytest.mark.asyncio
 async def test_logout_invalidates_cached_mqtt_credentials_and_expiry() -> None:
     http = _make_http_with_session()
     # Populate the state that logout() previously left stale.
@@ -52,7 +52,6 @@ async def test_logout_invalidates_cached_mqtt_credentials_and_expiry() -> None:
     assert "Authorization" not in http._headers, "Authorization header must be removed"
 
 
-@pytest.mark.asyncio
 async def test_logout_is_a_noop_when_already_logged_out() -> None:
     """logout() with login_info=None must not blow up or touch other state."""
     http = MammotionHTTP()
@@ -92,7 +91,6 @@ def _make_http_with_get(status: int, json_data: dict) -> MammotionHTTP:
         (200, {"code": 401, "msg": "unauthorized"}),  # 401 as an in-body code
     ],
 )
-@pytest.mark.asyncio
 async def test_get_user_device_list_raises_on_401(status: int, body: dict) -> None:
     """A rejected token must raise, not come back as Response(code=401).
 
@@ -106,7 +104,6 @@ async def test_get_user_device_list_raises_on_401(status: int, body: dict) -> No
         await http.get_user_device_list()
 
 
-@pytest.mark.asyncio
 async def test_get_user_device_list_returns_devices_on_success() -> None:
     """The success path still decodes and caches the list."""
     http = _make_http_with_get(200, {"code": 0, "msg": "ok", "data": [{"deviceName": "Luba-1", "iotId": "iot-1"}]})
@@ -116,3 +113,34 @@ async def test_get_user_device_list_returns_devices_on_success() -> None:
     assert response.code == 0
     assert [d.device_name for d in (response.data or [])] == ["Luba-1"]
     assert [d.device_name for d in http.device_info] == ["Luba-1"]
+
+
+def _make_http_posting(status: int, body: dict, content_type: str = "application/json") -> MammotionHTTP:
+    """Build a MammotionHTTP whose _client_session POSTs return a canned response."""
+    http, _session = make_http_posting(status, body, content_type)
+    return http
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (401, {}),
+        (460, {}),
+        (200, {"code": 401, "msg": "expired"}),
+        (200, {"code": 460, "msg": "expired"}),
+        (500, {"code": 460, "msg": "expired"}),
+    ],
+)
+async def test_mqtt_invoke_raises_on_every_dead_token_shape(status: int, body: dict) -> None:
+    """A dead token must never come back as a plain Response — under any HTTP status."""
+    http = _make_http_posting(status, body)
+    with pytest.raises(UnauthorizedExceptionError):
+        await http.mqtt_invoke("payload", "", "iot-1")
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 503])
+async def test_get_mqtt_credentials_raises_connection_error_on_server_fault(status: int) -> None:
+    """5xx/throttling is a server fault, not a token verdict — it must not read as ``data is None``."""
+    http = _make_http_posting(status, {})
+    with pytest.raises(ConnectionError):
+        await http.get_mqtt_credentials()

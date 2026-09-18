@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,33 +12,15 @@ from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.proto import LubaMsg as RealLubaMsg
 from pymammotion.state.device_state import DeviceAvailability, DeviceConnectionState, TransportAvailability
 from pymammotion.transport.base import NoTransportAvailableError, TransportType
+from tests._helpers import make_mock_handle, make_mock_mowing_device, make_mock_transport, wait_until
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
-
-def make_device(online: bool = True, enabled: bool = True) -> MagicMock:
-    """Return a MagicMock shaped like a MowingDevice."""
-    device = MagicMock()
-    device.online = online
-    device.enabled = enabled
-    device.report_data.dev.battery_val = 80
-    device.report_data.dev.sys_status = "idle"
-    device.report_data.work.knife_height = 50
-    return device
 
 
 def make_transport(transport_type: TransportType, *, connected: bool = True) -> MagicMock:
     """Return a MagicMock shaped like a Transport."""
-    transport = MagicMock()
-    transport.transport_type = transport_type
-    transport.is_connected = connected
-    transport.send = AsyncMock()
-    transport.disconnect = AsyncMock()
-    transport.on_message = None
-    return transport
+    return make_mock_transport(transport_type, connected=connected)
 
 
 def make_handle(
@@ -48,38 +31,69 @@ def make_handle(
     ble_transport: MagicMock | None = None,
 ) -> DeviceHandle:
     """Build a DeviceHandle with a mock MowingDevice."""
-    device = make_device()
-    return DeviceHandle(
-        device_id=device_id,
-        device_name=device_name,
-        initial_device=device,
+    return make_mock_handle(
+        device_id,
+        device_name,
         mqtt_transport=mqtt_transport,
         ble_transport=ble_transport,
     )
 
 
-# ---------------------------------------------------------------------------
 # test 1: add_transport sets on_message
-# ---------------------------------------------------------------------------
 
 
-async def test_add_transport_sets_on_message() -> None:
-    """transport.on_message must be a callable closure after add_transport.
-
-    _wire_transport now sets a per-transport closure (not _on_raw_message directly)
-    so that the transport type is captured and forwarded to _on_raw_message.
-    """
+async def test_add_transport_sets_on_message_for_ble() -> None:
+    """BLE is per-device, so it gets the closure that carries the transport type."""
     handle = make_handle()
-    transport = make_transport(TransportType.CLOUD_ALIYUN)
+    transport = make_transport(TransportType.BLE)
 
     await handle.add_transport(transport)
 
     assert callable(transport.on_message)
 
 
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("transport_type", [TransportType.CLOUD_ALIYUN, TransportType.CLOUD_MAMMOTION])
+async def test_add_transport_leaves_cloud_on_message_alone(transport_type: TransportType) -> None:
+    """Cloud transports are account-shared, so a per-device closure must not land there.
+
+    The slot is single-valued: whichever handle wired last would own it for every
+    device on the account.  Cloud frames route by iot_id via on_device_message.
+    """
+    handle = make_handle()
+    transport = make_transport(transport_type)
+    transport.on_message = None
+
+    await handle.add_transport(transport)
+
+    assert transport.on_message is None
+
+
+async def test_two_handles_sharing_a_cloud_transport_cannot_steal_the_slot() -> None:
+    """Two devices on one account share the transport object; neither may claim it."""
+    shared = make_transport(TransportType.CLOUD_ALIYUN)
+    shared.on_message = None
+    first = make_handle("dev1", "Mower One")
+    second = make_handle("dev2", "Mower Two")
+
+    await first.add_transport(shared)
+    await second.add_transport(shared)
+
+    assert shared.on_message is None
+
+
+async def test_detaching_a_cloud_transport_leaves_no_reference_to_the_handle() -> None:
+    """A detached handle must not stay reachable through the shared transport."""
+    shared = make_transport(TransportType.CLOUD_ALIYUN)
+    shared.on_message = None
+    handle = make_handle()
+    await handle.add_transport(shared)
+
+    handle.detach_transport(TransportType.CLOUD_ALIYUN)
+
+    assert shared.on_message is None
+
+
 # test 3: update_availability changes state
-# ---------------------------------------------------------------------------
 
 
 async def test_update_availability_changes_state() -> None:
@@ -93,9 +107,7 @@ async def test_update_availability_changes_state() -> None:
     assert handle.availability.connection_state == DeviceConnectionState.CONNECTED
 
 
-# ---------------------------------------------------------------------------
 # test 4: stop cancels queue and broker
-# ---------------------------------------------------------------------------
 
 
 async def test_stop_cancels_queue_and_broker() -> None:
@@ -114,9 +126,7 @@ async def test_stop_cancels_queue_and_broker() -> None:
     broker_close.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # test 5: registry register and get
-# ---------------------------------------------------------------------------
 
 
 async def test_registry_register_and_get() -> None:
@@ -131,9 +141,7 @@ async def test_registry_register_and_get() -> None:
     assert registry.get("nonexistent") is None
 
 
-# ---------------------------------------------------------------------------
 # test 6: registry unregister calls stop
-# ---------------------------------------------------------------------------
 
 
 async def test_registry_unregister_calls_stop() -> None:
@@ -149,95 +157,6 @@ async def test_registry_unregister_calls_stop() -> None:
     assert registry.get("dev99") is None
 
 
-# ---------------------------------------------------------------------------
-# test 7: _active_transport preference order
-# ---------------------------------------------------------------------------
-
-
-async def test_active_transport_prefers_connected_ble_by_default() -> None:
-    """With both connected, BLE wins unconditionally (lower latency, bypasses cloud throttle)."""
-    ble_transport = make_transport(TransportType.BLE, connected=True)
-    mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-
-    handle = make_handle()
-    await handle.add_transport(mqtt_transport)
-    await handle.add_transport(ble_transport)
-
-    active = handle.active_transport()
-    assert active.transport_type == TransportType.BLE
-
-
-async def test_active_transport_prefer_ble_flag_reverses_order() -> None:
-    """When prefer_ble=True, BLE is chosen over MQTT when both are connected."""
-    from pymammotion.device.handle import DeviceHandle
-
-    ble_transport = make_transport(TransportType.BLE, connected=True)
-    mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-
-    handle = DeviceHandle(
-        device_id="dev-ble",
-        device_name="BLE-Preferred",
-        initial_device=make_device(),
-        prefer_ble=True,
-    )
-    await handle.add_transport(mqtt_transport)
-    await handle.add_transport(ble_transport)
-
-    active = handle.active_transport()
-    assert active.transport_type == TransportType.BLE
-
-
-async def test_active_transport_prefers_connected_ble_over_disconnected_mqtt() -> None:
-    """Connected BLE always wins, even over a disconnected MQTT — BLE is the faster path."""
-    ble_transport = make_transport(TransportType.BLE, connected=True)
-    mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=False)
-
-    handle = make_handle()
-    await handle.add_transport(mqtt_transport)
-    await handle.add_transport(ble_transport)
-
-    active = handle.active_transport()
-    assert active.transport_type == TransportType.BLE
-
-
-async def test_active_transport_falls_back_to_mqtt_when_ble_disconnected() -> None:
-    """If BLE is registered but not actively connected, MQTT is used."""
-    ble_transport = make_transport(TransportType.BLE, connected=False)
-    mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-
-    handle = make_handle()
-    await handle.add_transport(mqtt_transport)
-    await handle.add_transport(ble_transport)
-
-    active = handle.active_transport()
-    assert active.transport_type == TransportType.CLOUD_ALIYUN
-
-
-async def test_active_transport_prefers_working_mqtt_over_disconnected_ble() -> None:
-    """With prefer_ble=True but BLE merely usable-and-disconnected, a connected MQTT wins.
-
-    BLE connection is now a background task: active_transport() only returns BLE when it is
-    *actively connected*.  A disconnected-but-usable BLE no longer pre-empts a working MQTT —
-    the send goes over the working connection while BLE reconnects in the background.
-    """
-    from pymammotion.device.handle import DeviceHandle
-
-    ble_transport = make_transport(TransportType.BLE, connected=False)
-    mqtt_transport = make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-
-    handle = DeviceHandle(
-        device_id="dev-ble2",
-        device_name="BLE-Preferred-2",
-        initial_device=make_device(),
-        prefer_ble=True,
-    )
-    await handle.add_transport(mqtt_transport)
-    await handle.add_transport(ble_transport)
-
-    active = handle.active_transport()
-    assert active.transport_type == TransportType.CLOUD_ALIYUN
-
-
 async def test_active_transport_raises_when_none_registered() -> None:
     """NoTransportAvailableError is raised when no transport is registered at all."""
     handle = make_handle()
@@ -246,21 +165,17 @@ async def test_active_transport_raises_when_none_registered() -> None:
         handle.active_transport()
 
 
-# ---------------------------------------------------------------------------
 # Helpers for offline / online tests
-# ---------------------------------------------------------------------------
 
 
 def _patch_raw_message_internals(handle: DeviceHandle) -> None:
     """Stub out the state-machine internals so _on_raw_message doesn't crash."""
-    handle._reducer.apply = MagicMock(return_value=make_device())  # type: ignore[method-assign]
+    handle._reducer.apply = MagicMock(return_value=make_mock_mowing_device())  # type: ignore[method-assign]
     handle.state_machine.apply = MagicMock(return_value=(MagicMock(), False))  # type: ignore[method-assign]
     handle.broker.on_message = AsyncMock()  # type: ignore[method-assign]
 
 
-# ---------------------------------------------------------------------------
 # test 8: DeviceOfflineException marks mqtt_reported_offline — CLOUD_ALIYUN
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -287,9 +202,7 @@ async def test_device_offline_marks_reported_offline(transport_type: TransportTy
     assert handle.availability.is_available is False
 
 
-# ---------------------------------------------------------------------------
 # test 9: message arriving clears mqtt_reported_offline — both MQTT transports
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -320,9 +233,7 @@ async def test_incoming_message_clears_reported_offline(transport_type: Transpor
     assert handle.availability.is_available is True
 
 
-# ---------------------------------------------------------------------------
 # test 10: BLE message does NOT clear mqtt_reported_offline
-# ---------------------------------------------------------------------------
 
 
 async def test_ble_message_does_not_clear_reported_offline() -> None:
@@ -349,14 +260,12 @@ async def test_ble_message_does_not_clear_reported_offline() -> None:
     assert handle.availability.mqtt_reported_offline is True
 
 
-# ---------------------------------------------------------------------------
 # test 11: BLE fallback when MQTT is used and reports the device offline
 #
 # With the current transport-selection rule (connected BLE always wins), this
 # fallback only fires when BLE is *not* connected at selection time — MQTT
 # is picked, it raises DeviceOfflineException, and BLE has since come online
 # (or is available to retry on).
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -375,7 +284,9 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
 
     call_count = 0
 
-    async def _send_marked_side_effect(transport: object, payload: bytes) -> None:  # noqa: ARG001
+    async def _send_marked_side_effect(
+        transport: object, payload: bytes, *, user_initiated: bool = False
+    ) -> None:  # noqa: ARG001
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -396,9 +307,7 @@ async def test_ble_fallback_used_when_mqtt_offline(transport_type: TransportType
     assert handle.availability.mqtt_reported_offline is True
 
 
-# ---------------------------------------------------------------------------
 # snapshot.raw reflects updated device state after on_raw_message
-# ---------------------------------------------------------------------------
 
 
 async def test_snapshot_raw_updates_after_on_raw_message() -> None:
@@ -469,12 +378,10 @@ async def test_on_raw_message_drops_frame_with_malformed_report_data(caplog: pyt
     assert "invalid value [114, 30]" in caplog.text
 
 
-# ---------------------------------------------------------------------------
 # Regression: protobuf path must emit even when no snapshot-level field changes.
 # DeviceSnapshot._diff only looks at connection_state/online/enabled/battery.
 # A nav message updating mower_state.rain_detection (or any other deep field)
 # must still propagate to state_changed_bus subscribers.
-# ---------------------------------------------------------------------------
 
 
 async def test_on_raw_message_emits_even_when_diff_is_empty() -> None:
@@ -509,9 +416,7 @@ async def test_on_raw_message_emits_even_when_diff_is_empty() -> None:
     assert handle.snapshot.raw.mower_state.rain_detection is True
 
 
-# ---------------------------------------------------------------------------
 # MQTT unusable when mqtt_reported_offline: active_transport skips MQTT
-# ---------------------------------------------------------------------------
 
 
 async def test_active_transport_skips_mqtt_when_reported_offline() -> None:
@@ -541,9 +446,7 @@ async def test_active_transport_raises_when_only_mqtt_and_offline() -> None:
         handle.active_transport()
 
 
-# ---------------------------------------------------------------------------
 # _sleep_or_rearm: signals delivered between iterations must wake the next call
-# ---------------------------------------------------------------------------
 
 
 async def test_sleep_or_rearm_returns_immediately_if_event_pre_set() -> None:
@@ -580,7 +483,8 @@ async def test_sleep_or_rearm_wakes_on_signal_during_wait() -> None:
     handle = make_handle()
 
     async def signal_after_delay() -> None:
-        await asyncio.sleep(0.05)
+        # The signal has to land *during* the wait, so wait for the waiter itself.
+        await wait_until(lambda: handle._rearm_event._waiters, message="sleep_or_rearm never waited")  # noqa: SLF001
         handle._rearm_event.set()  # noqa: SLF001
 
     asyncio.create_task(signal_after_delay())
@@ -589,9 +493,7 @@ async def test_sleep_or_rearm_wakes_on_signal_during_wait() -> None:
     assert not handle._rearm_event.is_set()  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # map_updated emission — area-name changes must notify HA
-# ---------------------------------------------------------------------------
 
 
 async def _emit_via_raw_message(handle: DeviceHandle, msg: RealLubaMsg) -> None:
@@ -670,195 +572,35 @@ async def _record(sink: list[bool]) -> None:
     sink.append(True)
 
 
-# ===========================================================================
 # Rate limiting is now owned by the Transport base class (_rate_limited_until timestamp).
-# ===========================================================================
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pymammotion.aliyun.exceptions import TooManyRequestsException
-from pymammotion.device.handle import DeviceHandle
-from pymammotion.device.mqtt_loop import _RATE_LIMITED_BACKOFF
-from pymammotion.transport.base import Transport, TransportRateLimitedError, TransportType
+from pymammotion.transport.base import TransportRateLimitedError, TransportType
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_mowing_device() -> MagicMock:
-    device = MagicMock()
-    device.online = True
-    device.enabled = True
-    device.report_data.dev.battery_val = 75
-    device.report_data.dev.sys_status = 0
-    return device
 
 
 def _make_rl_handle() -> DeviceHandle:
     return DeviceHandle(
         device_id="dev1",
         device_name="Luba-RL",
-        initial_device=_make_mowing_device(),
+        initial_device=make_mock_mowing_device(),
     )
 
 
-def _make_mqtt_transport(*, connected: bool = True) -> MagicMock:
-    t = MagicMock()
-    t.transport_type = TransportType.CLOUD_ALIYUN
-    t.is_connected = connected
-    t.is_rate_limited = False
-    t.is_send_blocked = MagicMock(return_value=False)
-    t.seconds_until_send_available = MagicMock(return_value=0.0)
-    t.send = AsyncMock()
-    t.send_heartbeat = AsyncMock()
-    t.set_rate_limited = MagicMock()
-    t.disconnect = AsyncMock()
-    t.on_message = None
-    t.add_availability_listener = MagicMock()
-    t.last_received_monotonic = 0.0
-    t.last_send_monotonic = 0.0
-    return t
-
-
-# ---------------------------------------------------------------------------
-# Transport base class — is_rate_limited / set_rate_limited
-# ---------------------------------------------------------------------------
-
-
-def _make_concrete_transport() -> Transport:
-    """Return a minimal concrete Transport (abstract methods stubbed out)."""
-
-    class _Stub(Transport):
-        @property
-        def transport_type(self) -> TransportType:
-            return TransportType.CLOUD_ALIYUN
-
-        @property
-        def is_connected(self) -> bool:
-            return True
-
-        @property
-        def availability(self):  # type: ignore[override]
-            from pymammotion.transport.base import TransportAvailability
-            return TransportAvailability.CONNECTED
-
-        async def connect(self) -> None:
-            pass
-
-        async def disconnect(self) -> None:
-            pass
-
-        async def send(self, payload: bytes, iot_id: str = "") -> None:
-            pass
-
-    return _Stub()
-
-
-def test_transport_not_rate_limited_initially() -> None:
-    """A freshly created Transport is not rate-limited."""
-    t = _make_concrete_transport()
-    assert t.is_rate_limited is False
-
-
-def test_transport_set_rate_limited_blocks_for_duration() -> None:
-    """After set_rate_limited(), is_rate_limited is True until the ban expires."""
-    t = _make_concrete_transport()
-    t.set_rate_limited()
-    assert t.is_rate_limited is True
-
-
-def test_transport_rate_limit_expires_after_12_hours() -> None:
-    """is_rate_limited returns False once _rate_limited_until is in the past."""
-    t = _make_concrete_transport()
-    t.set_rate_limited()
-    assert t.is_rate_limited is True
-
-    # Simulate the 12-hour ban having expired.
-    t._rate_limited_until = time.monotonic() - 1  # noqa: SLF001
-    assert t.is_rate_limited is False
-
-
-def test_transport_rate_limit_duration_is_12_hours() -> None:
-    """set_rate_limited() sets a ban of exactly _RATE_LIMIT_DURATION seconds."""
-    t = _make_concrete_transport()
-    before = time.monotonic()
-    t.set_rate_limited()
-    after = time.monotonic()
-
-    # Ban should expire roughly 12 hours from now.
-    expected = 43200.0  # 12 h
-    assert before + expected <= t._rate_limited_until <= after + expected  # noqa: SLF001
-
-
-def test_transport_rate_limit_constant_matches_handle_backoff() -> None:
-    """Transport._RATE_LIMIT_DURATION and handle._RATE_LIMITED_BACKOFF must agree."""
-    t = _make_concrete_transport()
-    assert t._RATE_LIMIT_DURATION == _RATE_LIMITED_BACKOFF  # noqa: SLF001
-
-
-def test_quota_block_self_clears_when_window_slides_under_limit() -> None:
-    """The self-imposed send-quota must release the instant the rolling window drops back
-    under the limit — no fixed-duration ban (that is reserved for cloud 429s)."""
-    from unittest.mock import patch
-
-    t = _make_concrete_transport()
-    limit = t._SEND_LIMIT  # noqa: SLF001
-    window = t._SEND_WINDOW  # noqa: SLF001
-    clock = {"now": 100_000.0}
-
-    with patch("pymammotion.transport.base.time.monotonic", side_effect=lambda: clock["now"]):
-        for _ in range(limit):
-            t.record_send()
-
-        # Quota exhausted — blocked — but NO fixed cloud ban was imposed.
-        assert t.is_rate_limited is True
-        assert t._rate_limited_until == 0.0  # noqa: SLF001 — quota path must not set the cloud timer
-        # Release is exactly one window after the oldest send.
-        assert t.seconds_until_send_available() == window
-
-        # Slide the window so the oldest send ages out → count drops to limit-1.
-        clock["now"] += window + 1.0
-        assert t.is_rate_limited is False
-        assert t.seconds_until_send_available() == 0.0
-
-
-def test_seconds_until_send_available_is_max_of_cloud_ban_and_quota() -> None:
-    """When both a cloud ban and the quota are active, the longer release time wins."""
-    from unittest.mock import patch
-
-    t = _make_concrete_transport()
-    clock = {"now": 0.0}
-
-    with patch("pymammotion.transport.base.time.monotonic", side_effect=lambda: clock["now"]):
-        t._rate_limited_until = 100.0  # noqa: SLF001 — short cloud ban
-        for _ in range(t._SEND_LIMIT):  # noqa: SLF001 — full window, release a whole window away
-            t.record_send()
-
-        # Quota release (_SEND_WINDOW) dominates the 100 s cloud ban.
-        assert t.seconds_until_send_available() == t._SEND_WINDOW  # noqa: SLF001
-
-        # Clear the quota; the cloud ban now dominates.
-        t._send_timestamps.clear()  # noqa: SLF001
-        assert t.seconds_until_send_available() == 100.0
-        assert t.is_rate_limited is True  # cloud ban still active
-
-
-# ---------------------------------------------------------------------------
 # _send_marked raises TransportRateLimitedError when transport is rate-limited
-# ---------------------------------------------------------------------------
 
 
 async def test_send_marked_raises_when_transport_rate_limited() -> None:
     """_send_marked() must raise TransportRateLimitedError without calling transport.send()."""
     handle = _make_rl_handle()
-    mqtt = _make_mqtt_transport()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
     mqtt.is_send_blocked = MagicMock(return_value=True)
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(mqtt)
 
     with pytest.raises(TransportRateLimitedError):
         await handle._send_marked(mqtt, b"\x01\x02\x03")  # noqa: SLF001
@@ -869,50 +611,52 @@ async def test_send_marked_raises_when_transport_rate_limited() -> None:
 async def test_send_marked_passes_through_when_not_rate_limited() -> None:
     """_send_marked() calls transport.send() when the transport is not rate-limited."""
     handle = _make_rl_handle()
-    mqtt = _make_mqtt_transport()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = False
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(mqtt)
 
     await handle._send_marked(mqtt, b"\x01\x02\x03")  # noqa: SLF001
 
     mqtt.send.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # send_raw — 429 from transport.send() triggers set_rate_limited()
-# ---------------------------------------------------------------------------
 
 
 async def test_send_raw_calls_set_rate_limited_on_429() -> None:
-    """send_raw must call transport.set_rate_limited() when TooManyRequestsException is raised."""
-    handle = _make_rl_handle()
-    mqtt = _make_mqtt_transport()
-    mqtt.send = AsyncMock(side_effect=TooManyRequestsException("rate limited", "iot-id"))
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    """send_raw arms the ban and then propagates — the cloud refused this payload.
 
-    await handle.send_raw(b"\x00")
+    Swallowing it reported success for a send that never happened, which the direct
+    (Priority.USER) path cannot tolerate: it relies on an exception to tell the host.
+    """
+    handle = _make_rl_handle()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
+    mqtt.send = AsyncMock(side_effect=TooManyRequestsException("rate limited", "iot-id"))
+    await handle.add_transport(mqtt)
+
+    with pytest.raises(TooManyRequestsException):
+        await handle.send_raw(b"\x00")
 
     mqtt.set_rate_limited.assert_called_once()
 
 
-async def test_send_raw_blocked_silently_when_already_rate_limited() -> None:
-    """send_raw must silently drop the send (not call transport.send) when already rate-limited."""
+async def test_send_raw_raises_when_already_rate_limited() -> None:
+    """send_raw must not touch the transport, and must tell the caller the send didn't happen."""
     handle = _make_rl_handle()
-    mqtt = _make_mqtt_transport()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
     mqtt.is_send_blocked = MagicMock(return_value=True)
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(mqtt)
 
-    await handle.send_raw(b"\x00")
+    with pytest.raises(TransportRateLimitedError):
+        await handle.send_raw(b"\x00")
 
     mqtt.send.assert_not_awaited()
     # set_rate_limited must NOT be called again — the ban is already active.
     mqtt.set_rate_limited.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
 # BLE is unaffected by rate limiting
-# ---------------------------------------------------------------------------
 
 
 async def test_ble_transport_not_blocked_by_rate_limited_flag() -> None:
@@ -930,46 +674,38 @@ async def test_ble_transport_not_blocked_by_rate_limited_flag() -> None:
     ble.on_message = None
     ble.add_availability_listener = MagicMock()
     ble.last_received_monotonic = 0.0
-    handle._transports[TransportType.BLE] = ble  # noqa: SLF001
+    await handle.add_transport(ble)
 
     await handle._send_marked(ble, b"\xAA\xBB")  # noqa: SLF001
 
     ble.send.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # Rate limit does NOT reset the ban timestamp on repeated calls
 # (first 429 sets it; guard-triggered TransportRateLimitedError is not a new 429)
-# ---------------------------------------------------------------------------
 
 
 async def test_send_raw_guard_does_not_call_set_rate_limited_again() -> None:
     """If a transport is already rate-limited, send_raw must not call set_rate_limited() again."""
     handle = _make_rl_handle()
-    mqtt = _make_mqtt_transport()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True
     mqtt.is_send_blocked = MagicMock(return_value=True)
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(mqtt)
 
     # Call send_raw three times while the transport is already rate-limited.
-    await handle.send_raw(b"\x01")
-    await handle.send_raw(b"\x02")
-    await handle.send_raw(b"\x03")
+    for payload in (b"\x01", b"\x02", b"\x03"):
+        with pytest.raises(TransportRateLimitedError):
+            await handle.send_raw(payload)
 
     mqtt.set_rate_limited.assert_not_called()
     mqtt.send.assert_not_awaited()
 
 
-# ===========================================================================
 # RPT_START verification: two attempts, each waiting _RPT_ACK_TIMEOUT for the
 # device's report stream to tick, with a quota-free re-sync before the retry.
-# ===========================================================================
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from pymammotion.device.handle import DeviceHandle
 
 
 @pytest.fixture
@@ -1099,17 +835,13 @@ async def test_frame_already_in_flight_counts(rpt_handle: DeviceHandle) -> None:
     assert result is True
 
 
-# ===========================================================================
 # The 2026-05-22 HA log showed 130+ identical
-# ===========================================================================
 import contextlib
 import logging
-from unittest.mock import MagicMock
 
 import pytest
 
-from pymammotion.device.handle import DeviceHandle
-from pymammotion.transport.base import NoTransportAvailableError, TransportAvailability, TransportType
+from pymammotion.transport.base import TransportType
 
 
 @pytest.fixture
@@ -1230,82 +962,71 @@ def test_prefer_ble_change_is_a_transition(dedup_handle: DeviceHandle, caplog: p
     assert len(rule_lines) >= 3
 
 
-# ===========================================================================
 # Also covers add_ble_device() wiring a BLETransport onto an existing handle.
-# ===========================================================================
-import asyncio
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY
 
 import pytest
 
 from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import MowingDevice
-from pymammotion.device.handle import DeviceHandle
-from pymammotion.transport.base import NoTransportAvailableError, TransportType
+from pymammotion.transport.base import TransportType
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
-def _make_transport(transport_type: TransportType, *, connected: bool = True) -> MagicMock:
-    t = MagicMock()
-    t.transport_type = transport_type
-    t.is_connected = connected
-    t.is_rate_limited = False
-    t.is_send_blocked = MagicMock(return_value=False)
-    t.seconds_until_send_available = MagicMock(return_value=0.0)
-    t.last_send_monotonic = 0.0
-    t.send = AsyncMock()
-    t.send_heartbeat = AsyncMock()
-    t.connect = AsyncMock()
-    t.disconnect = AsyncMock()
-    t.on_message = None
-    t.add_availability_listener = MagicMock()
-    return t
-
-
-def _make_handle(
+def make_real_handle(
     device_id: str = "Luba-TEST",
     device_name: str = "Luba-TEST",
     *,
     prefer_ble: bool = False,
 ) -> DeviceHandle:
-    return DeviceHandle(
-        device_id=device_id,
-        device_name=device_name,
-        initial_device=MowingDevice(name=device_name),
+    """A handle over a real MowingDevice, for the paths that read actual report data."""
+    return make_mock_handle(
+        device_id,
+        device_name,
         prefer_ble=prefer_ble,
+        device=MowingDevice(name=device_name),
     )
 
 
-# ---------------------------------------------------------------------------
-# BLE-only
-# ---------------------------------------------------------------------------
+# active_transport() selection matrix
 
 
-async def test_ble_only_active_transport_is_ble() -> None:
-    """With only a connected BLE transport, active_transport() returns it."""
-    handle = _make_handle(prefer_ble=True)
-    ble = _make_transport(TransportType.BLE, connected=True)
-    await handle.add_transport(ble)
+@pytest.mark.parametrize(
+    ("ble", "mqtt", "prefer_ble", "expected"),
+    [
+        pytest.param(True, True, False, TransportType.BLE, id="both-connected-default-picks-ble"),
+        pytest.param(True, True, True, TransportType.BLE, id="both-connected-prefer-ble-picks-ble"),
+        pytest.param(True, False, False, TransportType.BLE, id="connected-ble-beats-disconnected-mqtt"),
+        pytest.param(False, True, False, TransportType.CLOUD_ALIYUN, id="disconnected-ble-yields-to-mqtt"),
+        pytest.param(False, True, True, TransportType.CLOUD_ALIYUN, id="prefer-ble-still-yields-when-ble-down"),
+        pytest.param(True, None, True, TransportType.BLE, id="ble-only-connected"),
+        pytest.param(False, None, True, TransportType.BLE, id="ble-only-disconnected-still-selected"),
+        pytest.param(None, True, False, TransportType.CLOUD_ALIYUN, id="mqtt-only-connected"),
+        pytest.param(None, False, False, TransportType.CLOUD_ALIYUN, id="mqtt-only-disconnected-still-selected"),
+    ],
+)
+async def test_active_transport_selection_matrix(
+    ble: bool | None, mqtt: bool | None, prefer_ble: bool, expected: TransportType
+) -> None:
+    """The full active_transport() decision table.
 
-    assert handle.active_transport() is ble
-
-
-async def test_ble_only_returns_ble_even_when_disconnected() -> None:
-    """When the only BLE transport is registered (but disconnected), active_transport returns it.
-
-    ble_ok = ble is not None — registration alone makes BLE eligible.
-    send_raw() calls ble.connect() before sending; active_transport() does not gate on
-    is_connected so routing is always deterministic.
+    Connected BLE always wins (lower latency, bypasses the cloud throttle); a
+    disconnected-but-registered BLE only wins when it is the sole transport —
+    otherwise a working MQTT takes the send while BLE reconnects in the
+    background.  A disconnected transport is still selected when it is all
+    there is: send_raw owns the reconnect, so routing stays deterministic.
     """
-    handle = _make_handle(prefer_ble=True)
-    ble = _make_transport(TransportType.BLE, connected=False)
-    await handle.add_transport(ble)
+    handle = make_real_handle(prefer_ble=prefer_ble)
+    if mqtt is not None:
+        await handle.add_transport(make_mock_transport(TransportType.CLOUD_ALIYUN, connected=mqtt))
+    if ble is not None:
+        await handle.add_transport(make_mock_transport(TransportType.BLE, connected=ble))
 
-    assert handle.active_transport() is ble
+    assert handle.active_transport().transport_type is expected
+
+# BLE-only
 
 
 async def test_ble_only_sends_and_reconnects_in_background() -> None:
@@ -1314,8 +1035,8 @@ async def test_ble_only_sends_and_reconnects_in_background() -> None:
     Connecting is no longer awaited inline before the send; it is scheduled as a background
     task so a slow/failing BLE connect can't block the command path.
     """
-    handle = _make_handle(prefer_ble=True)
-    ble = _make_transport(TransportType.BLE, connected=False)
+    handle = make_real_handle(prefer_ble=True)
+    ble = make_mock_transport(TransportType.BLE, connected=False)
 
     async def _do_connect() -> None:
         ble.is_connected = True
@@ -1330,33 +1051,13 @@ async def test_ble_only_sends_and_reconnects_in_background() -> None:
     ble.connect.assert_awaited_once()  # reconnect attempted in the background
 
 
-# ---------------------------------------------------------------------------
 # WiFi-only (MQTT)
-# ---------------------------------------------------------------------------
-
-
-async def test_wifi_only_active_transport_is_mqtt() -> None:
-    """With only a connected MQTT transport, active_transport() returns it."""
-    handle = _make_handle()
-    mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-    await handle.add_transport(mqtt)
-
-    assert handle.active_transport() is mqtt
-
-
-async def test_wifi_only_disconnected_mqtt_still_selected() -> None:
-    """A disconnected MQTT transport is still returned — send_raw handles the actual send."""
-    handle = _make_handle()
-    mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=False)
-    await handle.add_transport(mqtt)
-
-    assert handle.active_transport() is mqtt
 
 
 async def test_wifi_only_send_uses_mqtt() -> None:
     """send_raw() routes the payload through the MQTT transport."""
-    handle = _make_handle()
-    mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    handle = make_real_handle()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN, connected=True)
     await handle.add_transport(mqtt)
 
     await handle.send_raw(b"\xAB\xCD")
@@ -1364,53 +1065,13 @@ async def test_wifi_only_send_uses_mqtt() -> None:
     mqtt.send.assert_awaited_once_with(b"\xAB\xCD", iot_id="", firmware_version=ANY)
 
 
-# ---------------------------------------------------------------------------
 # Hybrid — connected BLE always wins
-# ---------------------------------------------------------------------------
-
-
-async def test_hybrid_default_prefers_connected_ble() -> None:
-    """When both are connected, BLE is chosen unconditionally (lower latency)."""
-    handle = _make_handle(prefer_ble=False)
-    mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-    ble = _make_transport(TransportType.BLE, connected=True)
-    await handle.add_transport(mqtt)
-    await handle.add_transport(ble)
-
-    assert handle.active_transport() is ble
-
-
-async def test_hybrid_prefer_ble_chooses_ble() -> None:
-    """When both are connected and prefer_ble=True, BLE is chosen."""
-    handle = _make_handle(prefer_ble=True)
-    mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-    ble = _make_transport(TransportType.BLE, connected=True)
-    await handle.add_transport(mqtt)
-    await handle.add_transport(ble)
-
-    assert handle.active_transport() is ble
-
-
-async def test_hybrid_disconnected_ble_yields_to_connected_mqtt() -> None:
-    """When prefer_ble=True but BLE is disconnected and MQTT is connected, MQTT is selected.
-
-    A disconnected-but-usable BLE no longer pre-empts a working MQTT; BLE reconnects in the
-    background and only wins once it is actively connected.
-    """
-    handle = _make_handle(prefer_ble=True)
-    mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-    ble = _make_transport(TransportType.BLE, connected=False)
-    await handle.add_transport(mqtt)
-    await handle.add_transport(ble)
-
-    active = handle.active_transport()
-    assert active is mqtt
 
 
 async def test_hybrid_ble_disconnected_reconnects_in_background_when_no_mqtt() -> None:
     """With prefer_ble=True and MQTT absent, send_raw() sends over BLE and reconnects in background."""
-    handle = _make_handle(prefer_ble=True)
-    ble = _make_transport(TransportType.BLE, connected=False)
+    handle = make_real_handle(prefer_ble=True)
+    ble = make_mock_transport(TransportType.BLE, connected=False)
 
     async def _do_connect() -> None:
         ble.is_connected = True
@@ -1427,9 +1088,9 @@ async def test_hybrid_ble_disconnected_reconnects_in_background_when_no_mqtt() -
 
 async def test_hybrid_per_call_prefer_ble_override() -> None:
     """send_raw(prefer_ble=True) picks BLE even when the handle default is MQTT."""
-    handle = _make_handle(prefer_ble=False)
-    mqtt = _make_transport(TransportType.CLOUD_ALIYUN, connected=True)
-    ble = _make_transport(TransportType.BLE, connected=True)
+    handle = make_real_handle(prefer_ble=False)
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN, connected=True)
+    ble = make_mock_transport(TransportType.BLE, connected=True)
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
 
@@ -1439,21 +1100,19 @@ async def test_hybrid_per_call_prefer_ble_override() -> None:
     mqtt.send.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # add_ble_device() wiring
-# ---------------------------------------------------------------------------
 
 
 async def test_add_ble_device_wires_transport_when_handle_exists() -> None:
     """add_ble_device() must create and wire a BLETransport when the handle is already registered."""
     client = MammotionClient()
 
-    handle = _make_handle(device_id="Luba-WIRE", device_name="Luba-WIRE")
+    handle = make_real_handle(device_id="Luba-WIRE", device_name="Luba-WIRE")
     await client._device_registry.register(handle)
 
     fake_ble_device = MagicMock()
 
-    with patch("pymammotion.client.BLETransport") as MockBLETransport:
+    with patch("pymammotion.device.ble_inventory.BLETransport") as MockBLETransport:
         mock_transport = MagicMock()
         mock_transport.transport_type = TransportType.BLE
         mock_transport.is_connected = False
@@ -1473,13 +1132,13 @@ async def test_add_ble_device_stores_in_manager_when_no_handle() -> None:
     client = MammotionClient()
     fake_ble_device = MagicMock()
 
-    with patch("pymammotion.client.BLETransport") as MockBLETransport:
+    with patch("pymammotion.device.ble_inventory.BLETransport") as MockBLETransport:
         await client.add_ble_device("Luba-NOPE", fake_ble_device)
         # No handle registered → BLETransport must NOT be constructed
         MockBLETransport.assert_not_called()
 
     # Device should be stored in the manager for later use
-    assert client._ble_manager._entries.get("Luba-NOPE") is not None
+    assert client._ble._manager._entries.get("Luba-NOPE") is not None
 
 
 async def test_update_ble_device_updates_live_transport() -> None:
@@ -1487,12 +1146,12 @@ async def test_update_ble_device_updates_live_transport() -> None:
     from pymammotion.transport.ble import BLETransport, BLETransportConfig
 
     client = MammotionClient()
-    handle = _make_handle(device_id="Luba-UPD", device_name="Luba-UPD")
+    handle = make_real_handle(device_id="Luba-UPD", device_name="Luba-UPD")
     await client._device_registry.register(handle)
 
     # Wire a real BLETransport (but with no actual device set yet)
     ble = BLETransport(BLETransportConfig(device_id="Luba-UPD"))
-    handle._transports[TransportType.BLE] = ble
+    await handle.add_transport(ble)
 
     new_device = MagicMock()
     await client.update_ble_device("Luba-UPD", new_device)
@@ -1500,16 +1159,7 @@ async def test_update_ble_device_updates_live_transport() -> None:
     assert ble._ble_device is new_device
 
 
-# ===========================================================================
 # The method waits for a transport to be ready: BLE counts the instant it
-# ===========================================================================
-from types import SimpleNamespace
-
-import pytest
-
-from pymammotion.device.handle import DeviceHandle
-from pymammotion.transport.base import TransportType
-
 
 def _fake_handle(connected: set[TransportType]) -> SimpleNamespace:
     """A stand-in exposing just what wait_until_connected touches."""
@@ -1524,26 +1174,22 @@ async def _wait(fake: SimpleNamespace, **kwargs: float) -> bool:
     return await DeviceHandle.wait_until_connected(fake, **kwargs)
 
 
-@pytest.mark.asyncio
 async def test_ble_connected_returns_true_immediately() -> None:
     fake = _fake_handle({TransportType.BLE})
     # Large stability window is irrelevant — BLE needs no settling.
     assert await _wait(fake, timeout=5.0, mqtt_stable_for=10.0) is True
 
 
-@pytest.mark.asyncio
 async def test_mqtt_ready_when_stability_window_is_zero() -> None:
     fake = _fake_handle({TransportType.CLOUD_MAMMOTION})
     assert await _wait(fake, timeout=5.0, mqtt_stable_for=0.0) is True
 
 
-@pytest.mark.asyncio
 async def test_mqtt_aliyun_also_counts() -> None:
     fake = _fake_handle({TransportType.CLOUD_ALIYUN})
     assert await _wait(fake, timeout=5.0, mqtt_stable_for=0.0) is True
 
 
-@pytest.mark.asyncio
 async def test_mqtt_not_stable_long_enough_times_out() -> None:
     # MQTT is connected but the stability window can't be met before give-up,
     # so the method returns False (caller continues anyway).
@@ -1551,202 +1197,18 @@ async def test_mqtt_not_stable_long_enough_times_out() -> None:
     assert await _wait(fake, timeout=0.3, mqtt_stable_for=5.0) is False
 
 
-@pytest.mark.asyncio
 async def test_no_transport_times_out_false() -> None:
     fake = _fake_handle(set())
     assert await _wait(fake, timeout=0.3, mqtt_stable_for=10.0) is False
 
 
-@pytest.mark.asyncio
 async def test_ble_beats_unstable_mqtt() -> None:
     # BLE connected wins immediately even with a huge MQTT stability window.
     fake = _fake_handle({TransportType.BLE, TransportType.CLOUD_MAMMOTION})
     assert await _wait(fake, timeout=5.0, mqtt_stable_for=999.0) is True
 
 
-# ===========================================================================
-# Issue #130: `params.time` (Unix ms) reflects cloud-side generation time and
-# ===========================================================================
-import base64
-import json
-import time
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
-
-from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport, _STALE_EVENT_THRESHOLD_MS
-
-
-@pytest.fixture
-def transport():
-    """AliyunMQTTTransport with a mocked cloud gateway."""
-    config = AliyunMQTTConfig(
-        host="test.iot-as-mqtt.cn-shanghai.aliyuncs.com",
-        client_id_base="testpk&testdn",
-        username="testdn&testpk",
-        device_name="testdn",
-        product_key="testpk",
-        device_secret="testsecret",
-        iot_token="testtoken",
-    )
-    gateway = MagicMock()
-    t = AliyunMQTTTransport(config, gateway)
-    t.on_device_event = AsyncMock()
-    t.on_device_properties = AsyncMock()
-    return t
-
-
-def _make_event_envelope(envelope_time_ms: int, identifier: str = "device_protobuf_msg_event") -> bytes:
-    """Build a raw JSON thing/events envelope with the given params.time."""
-    sample_bytes = b'\x08\xf4\x01\x10\x01\x18\x07(\x010\x01R\x08\xba\x02\x05\x12\x03\x08\x05\x10K'
-    encoded = base64.b64encode(sample_bytes).decode("ascii")
-
-    payload = {
-        "method": "thing.events",
-        "id": "test-event-id",
-        "version": "1.0",
-        "params": {
-            "identifier": identifier,
-            "type": "info",
-            "time": envelope_time_ms,
-            "iotId": "test_iot_id",
-            "productKey": "testpk",
-            "deviceName": "testdn",
-            "gmtCreate": 1714000000000,
-            "groupIdList": [],
-            "groupId": "",
-            "categoryKey": "LawnMower",
-            "batchId": "",
-            "checkLevel": 0,
-            "namespace": "",
-            "tenantId": "",
-            "name": "",
-            "thingType": "DEVICE",
-            "tenantInstanceId": "",
-            "value": {
-                "content": encoded,
-            },
-        },
-    }
-    return json.dumps(payload).encode()
-
-
-@pytest.mark.asyncio
-async def test_fresh_event_forwarded(transport: AliyunMQTTTransport):
-    """Events with params.time within the threshold are forwarded."""
-    now_ms = int(time.time() * 1000)
-    raw = _make_event_envelope(now_ms - 5_000)  # 5 seconds old
-
-    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
-
-    transport.on_device_event.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_stale_event_dropped(transport: AliyunMQTTTransport):
-    """Events older than the threshold are silently dropped."""
-    now_ms = int(time.time() * 1000)
-    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 10_000)  # well past threshold
-
-    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
-
-    transport.on_device_event.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_event_without_any_timestamp_forwarded(transport: AliyunMQTTTransport):
-    """Events with no usable envelope timestamp (time/generateTime/gmtCreate) are not dropped."""
-    payload = json.loads(_make_event_envelope(0))
-    payload["params"]["gmtCreate"] = 0  # the helper's fixture value would trip the fallback
-    raw = json.dumps(payload).encode()
-
-    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
-
-    transport.on_device_event.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_event_without_time_falls_back_to_gmt_create(transport: AliyunMQTTTransport):
-    """Events missing params.time are filtered via gmtCreate (stale fixture value → dropped)."""
-    raw = _make_event_envelope(0)  # helper sets gmtCreate=1714000000000 (ancient)
-
-    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
-
-    transport.on_device_event.assert_not_called()
-
-
-def _make_properties_envelope(generate_time_ms: int) -> bytes:
-    """Realistic thing/properties envelope: carries generateTime/gmtCreate, NO params.time."""
-    payload = {
-        "method": "thing.properties",
-        "id": "test-props-id",
-        "version": "1.0",
-        "params": {
-            "deviceType": "LawnMower",
-            "checkFailedData": {},
-            "groupIdList": [],
-            "_tenantId": "",
-            "groupId": "",
-            "categoryKey": "LawnMower",
-            "batchId": "",
-            "gmtCreate": generate_time_ms,
-            "productKey": "testpk",
-            "generateTime": generate_time_ms,
-            "deviceName": "testdn",
-            "_traceId": "",
-            "iotId": "test_iot_id",
-            "JMSXDeliveryCount": 1,
-            "checkLevel": 0,
-            "qos": 1,
-            "requestId": "1",
-            "_categoryKey": "TmallGenie.LawnMower",
-            "namespace": "",
-            "tenantId": "",
-            "thingType": "DEVICE",
-            "items": {"batteryPercentage": {"time": generate_time_ms, "value": 80}},
-            "tenantInstanceId": "",
-        },
-    }
-    return json.dumps(payload).encode()
-
-
-@pytest.mark.asyncio
-async def test_stale_properties_dropped(transport: AliyunMQTTTransport):
-    """Stale thing/properties are dropped via generateTime (they carry no params.time)."""
-    now_ms = int(time.time() * 1000)
-    raw = _make_properties_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 30_000)
-
-    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
-
-    transport.on_device_properties.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_fresh_properties_forwarded(transport: AliyunMQTTTransport):
-    """Fresh thing/properties (recent generateTime, no params.time) are forwarded."""
-    now_ms = int(time.time() * 1000)
-    raw = _make_properties_envelope(now_ms - 5_000)
-
-    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
-
-    transport.on_device_properties.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_event_at_threshold_boundary_forwarded(transport: AliyunMQTTTransport):
-    """Events exactly at the threshold age are forwarded (not strictly greater)."""
-    now_ms = int(time.time() * 1000)
-    # Subtract threshold minus a small margin to stay within bounds
-    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS + 1_000)
-
-    await transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
-
-    transport.on_device_event.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
 # Device-unbound (Aliyun 29004): detach (non-disconnecting) + migrate/remove hook
-# ---------------------------------------------------------------------------
 
 
 async def test_detach_transport_pops_without_disconnect() -> None:
@@ -1812,7 +1274,9 @@ async def test_device_unbound_retries_over_ble() -> None:
 
     call_count = 0
 
-    async def _side_effect(transport: object, payload: bytes) -> None:  # noqa: ARG001
+    async def _side_effect(
+        transport: object, payload: bytes, *, user_initiated: bool = False
+    ) -> None:  # noqa: ARG001
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -1846,31 +1310,11 @@ async def test_device_unbound_hook_fires_only_once() -> None:
     hook.assert_awaited_once_with(handle)
 
 
-# ---------------------------------------------------------------------------
 # Firmware exemption — is_send_blocked must agree at every layer
 # (regression: _send_marked used to check is_rate_limited without the firmware
 # exemption that transport.send() applies, permanently blocking all commands
 # and sagas for quota-free-firmware devices once the window filled or a 429
 # set the ban — while telemetry kept flowing.)
-# ---------------------------------------------------------------------------
-
-
-def test_is_send_blocked_applies_firmware_exemption() -> None:
-    """is_send_blocked() must exempt firmware >= RATE_LIMIT_REMOVED_VERSION."""
-    t = _make_concrete_transport()
-    t.set_rate_limited()
-    assert t.is_rate_limited is True
-
-    # Pre-removal firmware: blocked.
-    assert t.is_send_blocked("1.11.5.0") is True
-    # Post-removal firmware (e.g. Luba Mini 2.x): exempt.
-    assert t.is_send_blocked("2.3.27.16") is False
-    # Unknown / unparseable version: fail closed (blocked).
-    assert t.is_send_blocked("") is True
-
-    # Not rate-limited at all: never blocked, regardless of firmware.
-    t._rate_limited_until = time.monotonic() - 1  # noqa: SLF001
-    assert t.is_send_blocked("1.11.5.0") is False
 
 
 async def test_send_marked_allows_exempt_firmware_while_rate_limited() -> None:
@@ -1880,10 +1324,10 @@ async def test_send_marked_allows_exempt_firmware_while_rate_limited() -> None:
     transport.send() — it must never block a send the transport would allow.
     """
     handle = _make_rl_handle()
-    mqtt = _make_mqtt_transport()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
     mqtt.is_rate_limited = True  # quota/ban active...
     mqtt.is_send_blocked = MagicMock(return_value=False)  # ...but firmware is exempt
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    await handle.add_transport(mqtt)
 
     await handle._send_marked(mqtt, b"\x01\x02\x03")  # noqa: SLF001
 
@@ -1893,9 +1337,346 @@ async def test_send_marked_allows_exempt_firmware_while_rate_limited() -> None:
 async def test_send_marked_passes_firmware_version_to_is_send_blocked() -> None:
     """The pre-check must consult is_send_blocked with the handle's firmware version."""
     handle = _make_rl_handle()
-    mqtt = _make_mqtt_transport()
-    handle._transports[TransportType.CLOUD_ALIYUN] = mqtt  # noqa: SLF001
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
+    await handle.add_transport(mqtt)
 
     await handle._send_marked(mqtt, b"\x01")  # noqa: SLF001
 
-    mqtt.is_send_blocked.assert_called_once_with(handle.firmware_version)
+    mqtt.is_send_blocked.assert_called_once_with(handle.firmware_version, user_initiated=False)
+
+
+# Queue gate symmetry on BLE loss
+# (BLE CONNECTED opens the gate as a fallback send path; if BLE then drops
+# while MQTT is still mid-reconnect, nothing re-closed it and every queued
+# command was dispatched into a window with no usable transport.)
+
+
+async def test_ble_disconnect_repauses_gate_while_mqtt_reconnecting() -> None:
+    """Losing the BLE fallback must re-close the gate when MQTT is not connected."""
+    mqtt = make_transport(TransportType.CLOUD_ALIYUN, connected=False)
+    mqtt.availability = TransportAvailability.CONNECTING
+    ble = make_transport(TransportType.BLE)
+    handle = make_handle(mqtt_transport=mqtt, ble_transport=ble)
+    handler = handle._make_availability_handler(TransportType.BLE)  # noqa: SLF001
+    assert handle.queue._transport_gate.is_set() is True  # noqa: SLF001
+
+    await handler(TransportAvailability.DISCONNECTED)
+
+    assert handle.queue._transport_gate.is_set() is False  # noqa: SLF001
+
+
+async def test_ble_disconnect_leaves_gate_open_when_mqtt_connected() -> None:
+    """A BLE drop must not gate the queue while MQTT can still carry commands."""
+    mqtt = make_transport(TransportType.CLOUD_ALIYUN)
+    ble = make_transport(TransportType.BLE)
+    handle = make_handle(mqtt_transport=mqtt, ble_transport=ble)
+    handler = handle._make_availability_handler(TransportType.BLE)  # noqa: SLF001
+
+    await handler(TransportAvailability.DISCONNECTED)
+
+    assert handle.queue._transport_gate.is_set() is True  # noqa: SLF001
+
+
+async def test_on_ble_connected_is_noop_while_stopping() -> None:
+    """_on_ble_connected runs detached, so it can land after stop() latched _stopping.
+
+    start() clears that flag, which would restart the queue and the MQTT activity
+    loop on a handle that is shutting down.
+    """
+    handle = make_handle()
+    handle._stopping = True  # noqa: SLF001
+
+    await handle._on_ble_connected()  # noqa: SLF001
+
+    assert handle._stopping is True  # noqa: SLF001
+    assert handle.queue._task is None  # noqa: SLF001
+    assert handle._keep_alive_task is None  # noqa: SLF001
+
+
+# Transport wiring hygiene: unwire on detach, identical-object no-op, replay on attach
+
+
+async def test_detach_transport_removes_this_handles_availability_listener() -> None:
+    """A detached shared transport must stop driving this handle's queue gate."""
+    handle = make_handle()
+    shared = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(shared)
+    (listener,), _ = shared.add_availability_listener.call_args
+
+    detached = handle.detach_transport(TransportType.CLOUD_ALIYUN)
+
+    assert detached is shared
+    shared.remove_availability_listener.assert_called_once_with(listener)
+    shared.disconnect.assert_not_awaited()
+    assert handle.availability.mqtt is TransportAvailability.DISCONNECTED
+    assert handle.detach_transport(TransportType.CLOUD_ALIYUN) is None
+
+
+async def test_add_transport_same_object_is_a_no_op() -> None:
+    handle = make_handle()
+    shared = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(shared)
+    await handle.add_transport(shared)
+
+    assert shared.add_availability_listener.call_count == 1
+    shared.disconnect.assert_not_awaited()
+
+
+async def test_add_transport_replacing_cloud_detaches_without_disconnecting(caplog) -> None:
+    handle = make_handle()
+    old = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    new = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(old)
+
+    with caplog.at_level(logging.WARNING):
+        await handle.add_transport(new)
+
+    old.disconnect.assert_not_awaited()
+    old.remove_availability_listener.assert_called_once()
+    assert handle.get_transport(TransportType.CLOUD_ALIYUN) is new
+    assert "without disconnecting" in caplog.text
+
+
+async def test_add_transport_replacing_ble_disconnects_the_old_link() -> None:
+    handle = make_handle()
+    old = make_mock_transport(TransportType.BLE, availability=TransportAvailability.UNKNOWN)
+    new = make_mock_transport(TransportType.BLE, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(old)
+    await handle.add_transport(new)
+    old.disconnect.assert_awaited_once()
+
+
+async def test_add_transport_replays_connected_state_and_opens_the_queue_gate() -> None:
+    handle = make_handle()
+    handle.queue.pause_for_reconnect()
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)  # availability CONNECTED
+
+    await handle.add_transport(mqtt)
+
+    assert handle.availability.mqtt is TransportAvailability.CONNECTED
+    assert handle.queue._transport_gate.is_set()  # noqa: SLF001
+    await handle.stop()
+
+
+async def test_first_cloud_attach_clears_a_stale_offline_latch() -> None:
+    handle = make_handle()
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+    first = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(first)
+    assert handle.availability.mqtt_reported_offline is False
+
+    handle._availability = DeviceAvailability(  # noqa: SLF001
+        ble=handle._availability.ble,  # noqa: SLF001
+        mqtt=handle._availability.mqtt,  # noqa: SLF001
+        mqtt_reported_offline=True,
+    )
+    second = make_mock_transport(TransportType.CLOUD_MAMMOTION, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(second)
+    assert handle.availability.mqtt_reported_offline is True  # only the *first* cloud attach clears it
+
+
+async def test_ble_power_off_frame_does_not_latch_mqtt_offline() -> None:
+    """A power-off notice over BLE is not a cloud offline report."""
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.proto import MctlSys, MowToAppInfoT
+
+    # A real model: the reducer must accept the frame for the power-off step to run.
+    handle = DeviceHandle("dev1", "Luba-PO", MowingDevice(name="Luba-PO"))
+    msg = RealLubaMsg(sys=MctlSys(mow_to_app_info=MowToAppInfoT(type=0, cmd=0, mow_data=[1])))
+
+    await handle.on_raw_message(bytes(msg), TransportType.BLE)
+    assert handle.availability.mqtt_reported_offline is False
+
+    await handle.on_raw_message(bytes(msg), TransportType.CLOUD_ALIYUN)
+    assert handle.availability.mqtt_reported_offline is True
+
+
+async def test_take_ble_from_moves_the_transport_without_disconnecting() -> None:
+    src = make_handle("dev1", "A")
+    dst = make_handle("dev1", "A")
+    ble = make_mock_transport(TransportType.BLE, availability=TransportAvailability.UNKNOWN)
+    await src.add_transport(ble)
+
+    await dst.take_ble_from(src)
+
+    assert dst.get_transport(TransportType.BLE) is ble
+    assert not src.has_transport(TransportType.BLE)
+    ble.disconnect.assert_not_awaited()
+    assert ble.remove_availability_listener.call_count == 1
+    assert ble.add_availability_listener.call_count == 2
+
+
+async def test_stop_unwires_transports_before_disconnecting() -> None:
+    handle = make_handle()
+    t = make_mock_transport(TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN)
+    await handle.add_transport(t)
+    await handle.stop()
+    t.remove_availability_listener.assert_called_once()
+    t.disconnect.assert_awaited_once()
+    assert handle.is_started is False
+
+
+# Public accessors the poll loops use instead of reaching into _transports
+
+
+async def test_has_any_transport_reflects_registration() -> None:
+    handle = make_handle()
+    assert handle.has_any_transport is False
+
+    await handle.add_transport(make_transport(TransportType.CLOUD_ALIYUN))
+    assert handle.has_any_transport is True
+
+
+async def test_last_transport_activity_is_the_newest_across_transports() -> None:
+    """The poll loop debounces against this, so it must be the max, not any one."""
+    handle = make_handle()
+    assert handle.last_transport_activity == 0.0
+
+    older = make_transport(TransportType.CLOUD_ALIYUN)
+    older.last_received_monotonic = 100.0
+    newer = make_transport(TransportType.BLE)
+    newer.last_received_monotonic = 500.0
+    await handle.add_transport(older)
+    await handle.add_transport(newer)
+
+    assert handle.last_transport_activity == 500.0
+
+
+async def test_spawn_holds_the_task_until_it_completes() -> None:
+    """An unreferenced task can be garbage-collected mid-flight."""
+    handle = make_handle()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _work() -> None:
+        started.set()
+        await release.wait()
+
+    handle._spawn(_work())
+    await started.wait()
+    assert len(handle._background_tasks) == 1
+
+    release.set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert not handle._background_tasks, "done tasks must be discarded"
+
+# subscribe_notification — non-protobuf thing/event posts reach subscribers
+
+
+async def test_mammotion_mqtt_notification_reaches_subscribers_then_refreshes_report_cfg() -> None:
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_mock_mowing_device())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    await handle.on_device_notification("device_warning_code_event", {"data": "[]"})
+
+    assert received == [DeviceNotification("dev1", "device_warning_code_event", {"data": "[]"})]
+    handle.request_report_cfg.assert_awaited_once_with(dedup_key="report_cfg_on_notification")
+
+
+async def test_aliyun_event_emits_the_same_notification_with_a_dict_value() -> None:
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.mqtt.event import DeviceNotificationEventValue
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=MowingDevice())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    # The real params dataclass needs fifteen Aliyun envelope fields; only the
+    # identifier and the mashumaro value object matter to the notification path.
+    params = SimpleNamespace(
+        identifier="device_notification_event",
+        value=DeviceNotificationEventValue(data='{"localTime":1725159492000,"code":"1002"}'),
+    )
+    await handle.on_device_event(SimpleNamespace(params=params))
+
+    assert received == [
+        DeviceNotification("dev1", "device_notification_event", {"data": '{"localTime":1725159492000,"code":"1002"}'})
+    ]
+    handle.request_report_cfg.assert_awaited_once_with(dedup_key="report_cfg_on_notification")
+
+
+async def test_aliyun_event_with_untyped_dict_params_still_notifies() -> None:
+    """``ThingEventMessage.params`` falls back to a bare dict for unmodelled variants."""
+    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=MowingDevice())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    # Shape taken from a real device_information_event capture: no typed variant
+    # matches it, so mashumaro hands back the raw envelope dict.
+    params = {
+        "identifier": "device_information_event",
+        "type": "info",
+        "deviceName": "Luba-MTAJTZ7T",
+        "value": {"id": 0, "cmd": 1, "params": '{"set week-time":"6-10:0"}'},
+    }
+    await handle.on_device_event(SimpleNamespace(params=params))
+
+    assert received == [DeviceNotification("dev1", "device_information_event", params["value"])]
+
+
+async def test_notification_value_of_unsupported_type_is_dropped_with_a_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A value that is neither a dict nor mashumaro-convertible must not vanish silently."""
+    from pymammotion.state.device_state import DeviceNotification
+
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_mock_mowing_device())
+    handle.request_report_cfg = AsyncMock()
+    received: list[DeviceNotification] = []
+
+    async def on_notification(event: DeviceNotification) -> None:
+        received.append(event)
+
+    handle.subscribe_notification(on_notification)
+    with caplog.at_level("DEBUG", logger="pymammotion.device.handle"):
+        await handle.on_device_notification("device_warning_code_event", ["1002"])
+
+    assert received == [DeviceNotification("dev1", "device_warning_code_event", None)]
+    assert any("unsupported type list" in r.getMessage() for r in caplog.records)
+
+
+async def test_cancelled_notification_subscription_hears_nothing() -> None:
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_mock_mowing_device())
+    handle.request_report_cfg = AsyncMock()
+    handler = AsyncMock()
+
+    handle.subscribe_notification(handler).cancel()
+    await handle.on_device_notification("device_information_event", None)
+
+    handler.assert_not_awaited()
+
+
+def test_no_transport_available_is_logged_once_per_state(caplog: pytest.LogCaptureFixture) -> None:
+    """A cloud-offline device is asked on every poll; the answer must not flood the log."""
+    handle = DeviceHandle(device_id="dev1", device_name="Luba-Test", initial_device=make_mock_mowing_device())
+
+    with caplog.at_level("DEBUG", logger="pymammotion.device.handle"):
+        for _ in range(5):
+            with pytest.raises(NoTransportAvailableError):
+                handle.active_transport()
+
+    assert sum("No transport available" in r.message for r in caplog.records) == 1

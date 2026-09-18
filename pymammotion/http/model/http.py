@@ -153,6 +153,100 @@ class DeviceRecords(DataClassORJSONMixin):
 
 
 @dataclass
+class ProductModel(DataClassORJSONMixin):
+    """One hardware model within a product.
+
+    ``int_id`` is the numeric model id the device reports in its properties, and the
+    key that actually identifies hardware — ``int_mod``/``ext_mod`` are names, and
+    the same names recur under several product keys.
+    """
+
+    int_mod: Annotated[str, Alias("intMod")] = ""
+    int_id: Annotated[str, Alias("intId")] = ""
+    ext_mod: Annotated[str, Alias("extMod")] = ""
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
+
+@dataclass
+class Product(DataClassORJSONMixin):
+    """A product key and the hardware models sold under it.
+
+    Several keys can carry the same models (a region or a rebrand), and a key may
+    carry none at all, so treat an empty ``models`` as normal rather than as an error.
+    """
+
+    product_key: Annotated[str, Alias("productKey")] = ""
+    models: Annotated[list[ProductModel], Alias("productModelVos")] = field(default_factory=list)
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
+
+@dataclass
+class ErrorCodeHandle(DataClassORJSONMixin):
+    """One language's text for an error code, as returned by /code/page-lan."""
+
+    language: str = ""
+    implication: str = ""
+    solution: str = ""
+    button_name: Annotated[str, Alias("buttonName")] = ""
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
+
+@dataclass
+class ErrorCodeRecord(DataClassORJSONMixin):
+    """A single error code from /code/page-lan, with every language in one record.
+
+    Richer than the ``export-data`` CSV row (:class:`ErrorInfo`): it also carries the
+    display hints the app uses (``show_type``/``show_work``/``show_time``) and the
+    product keys the code applies to, and it nests the translations rather than
+    spreading them across one column pair per language.
+    """
+
+    id: str = ""
+    code: str = ""
+    description: str = ""
+    level: str = ""
+    module: str = ""
+    sub_module: Annotated[str, Alias("subModule")] = ""
+    show_type: Annotated[str, Alias("showType")] = ""
+    show_time: Annotated[str, Alias("showTime")] = ""
+    create_time: Annotated[str, Alias("createTime")] = ""
+    publish_time: Annotated[str, Alias("publishTime")] = ""
+    product_keys: Annotated[list[str], Alias("productKeys")] = field(default_factory=list)
+    handle_list: Annotated[list[ErrorCodeHandle], Alias("handleList")] = field(default_factory=list)
+    detail_status: Annotated[str, Alias("detailStatus")] = ""
+    detail_url: Annotated[str, Alias("detailUrl")] = ""
+    copywriting: str = ""
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
+    def text(self, language: str = "en") -> ErrorCodeHandle | None:
+        """Return the handle for *language*, or ``None`` when this code has no such translation."""
+        wanted = language.lower()
+        return next((handle for handle in self.handle_list if handle.language.lower() == wanted), None)
+
+
+@dataclass
+class ErrorCodePage(DataClassORJSONMixin):
+    """One page of /code/page-lan results."""
+
+    records: list[ErrorCodeRecord] = field(default_factory=list)
+    total: int = 0
+    size: int = 0
+    current: int = 0
+    pages: int = 0
+
+    class Config(BaseConfig):
+        allow_deserialization_not_by_alias = True
+
+
+@dataclass
 class ShareRecord(DataClassORJSONMixin):
     """Single record from the /user-server/v1/share/device/page endpoint."""
 

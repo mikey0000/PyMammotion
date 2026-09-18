@@ -139,6 +139,37 @@ class WildlifeSafety(IntEnum):
     low_speed_mowing = 2
 
 
+class RainProtectionMode(IntEnum):
+    """Rain-protection strategy, new in app 2.3.18 ("Rain Protection" screen).
+
+    Replaces the plain on/off rain switch on capable devices — see
+    ``DeviceType.supports_rain_protection_modes``, whose firmware gate is still
+    unconfirmed.  Values are read verbatim from the app's RN bundle
+    (``RainProtectionMode`` in ``assets/index.android.bundle``, APK 2.3.18.21):
+
+      0  off    — mows in rain anyway
+      1  smart  — rain sensor plus OpenWeather data, computes its own resume time;
+                  falls back to sensor behaviour with no internet
+      2  sensor — rain sensor only, resumes after ``delay_duration`` hours
+
+    The app defaults to ``sensor``.  The wire encoding is not modelled here: the
+    setter is a native module (``RainProtectionModule.setRainProtectionMode``) in
+    the packed part of the APK, so writing one would be guesswork.
+    """
+
+    off = 0
+    smart = 1
+    sensor = 2
+
+
+#: Resume delays (hours) the app offers for ``RainProtectionMode.sensor``; it
+#: forces 0 for every other mode.  Verbatim from the same RN bundle.
+RAIN_PROTECTION_DELAY_HOURS: tuple[int, ...] = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 24, 48)
+
+#: Delay the app pre-selects when a device reports a value outside the list above.
+RAIN_PROTECTION_DEFAULT_DELAY_HOURS = 24
+
+
 class PathAngleSetting(IntEnum):
     """Path Angle type."""
 

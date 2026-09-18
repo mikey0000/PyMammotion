@@ -19,11 +19,15 @@ import dataclasses
 import json
 import logging
 import math
+import time
 from typing import TYPE_CHECKING
 
 import betterproto2
+from mashumaro.exceptions import MissingField
 
-from pymammotion.data.model.device_info import DeviceFirmwares, SideLight
+from pymammotion.data.model.device_info import ChargeSettings, DeviceFirmwares, SideLight
+from pymammotion.data.model.events import OTAProgress
+from pymammotion.data.model.generate_geojson import apply_area_geojson, apply_mowing_geojson
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     CommDataCouple,
@@ -53,6 +57,7 @@ from pymammotion.proto import (
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
+    BmsCtrlInfoMsg,
     CoverPathUploadT,
     DeviceFwInfo,
     DeviceProductTypeInfoT,
@@ -71,6 +76,8 @@ from pymammotion.proto import (
     LubaMsg,
     MulAudioCfg,
     MulSetAudio,
+    MulSetVideoAck,
+    MulVideoErrorCode,
     NavEdgePoints,
     NavGetAllPlanTask,
     NavGetCommDataAck,
@@ -93,9 +100,10 @@ from pymammotion.proto import (
     WifiIotStatusReport,
     WorkReportInfoAck,
 )
+from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from pymammotion.data.model.device import Device, MowingDevice, PoolCleanerDevice, RTKBaseStationDevice
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
@@ -243,7 +251,11 @@ class MowerStateReducer(StateReducer):
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
                     case (
-                        "bidire_comm_cmd" | "todev_time_ctrl_light" | "toapp_lora_cfg_rsp" | "device_product_type_info"
+                        "bidire_comm_cmd"
+                        | "todev_time_ctrl_light"
+                        | "toapp_lora_cfg_rsp"
+                        | "device_product_type_info"
+                        | "bms_ctrl_info_msg"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -354,8 +366,6 @@ class MowerStateReducer(StateReducer):
         # GNSS RTK origin or a lat/lon dock. Generating GeoJSON from a (0,0)
         # RTK origin produces nonsense at best and can crash the geometry
         # library. Bail out until a pool-specific reducer exists.
-        from pymammotion.utility.device_type import DeviceType
-
         if DeviceType.is_swimming_pool(device.name):
             _logger.debug(
                 "StateReducer: skipping nav update for swimming-pool device %s",
@@ -376,12 +386,12 @@ class MowerStateReducer(StateReducer):
                 # handler regenerates once after all frames arrive instead of
                 # paying the O(N) cost on every frame.
                 if not self._is_saga_active() and len(device.map.missing_hashlist(0)) == 0:
-                    device.map.generate_geojson(device.location.RTK, device.location.dock)
+                    apply_area_geojson(device.map, device.location.RTK, device.location.dock)
             case "cover_path_upload":
                 mow_path: CoverPathUploadT = nav_msg[1]  # type: ignore
                 device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
                 if not self._is_saga_active() and len(device.map.find_missing_mow_path_frames()) == 0:
-                    device.map.generate_mowing_geojson(device.location.RTK)
+                    apply_mowing_geojson(device.map, device.location.RTK)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]  # type: ignore
                 device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))
@@ -522,7 +532,7 @@ class MowerStateReducer(StateReducer):
                     and device.map.area
                     and device.map.geojson_needs_regeneration(device.location.RTK)
                 ):
-                    device.map.generate_geojson(device.location.RTK, device.location.dock)
+                    apply_area_geojson(device.map, device.location.RTK, device.location.dock)
             case "toapp_report_data":
                 device.update_report_data(sys_msg[1])  # type: ignore
             case "mow_to_app_info":
@@ -554,6 +564,17 @@ class MowerStateReducer(StateReducer):
             case "toapp_lora_cfg_rsp":
                 lora_cfg: LoraCfgRsp = sys_msg[1]  # type: ignore
                 device.mower_state.lora_config = lora_cfg.cfg
+            case "bms_ctrl_info_msg":
+                bms_info: BmsCtrlInfoMsg = sys_msg[1]  # type: ignore
+                device.mower_state.charge_settings = ChargeSettings(
+                    smart_charge=bms_info.smart_charge_switch == 0,
+                    charge_limit=bms_info.charge_soc_threshold,
+                    peak_valley_charge=bool(bms_info.peak_valley_charge_switch),
+                    valley_charge_start_time=bms_info.valley_charge_start_time,
+                    valley_charge_end_time=bms_info.valley_charge_end_time,
+                    bat_cycle_times=bms_info.bat_cycle_times,
+                    bat_health_state=bms_info.bat_health_state,
+                )
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]  # type: ignore
                 if device_product_type.main_product_type != "" or device_product_type.sub_product_type != "":
@@ -572,8 +593,6 @@ class MowerStateReducer(StateReducer):
         # Unpacking driver oneof variants into mower-specific dataclasses would
         # either silently corrupt mower fields or AttributeError on missing
         # attributes — skip until a pool-specific reducer exists.
-        from pymammotion.utility.device_type import DeviceType
-
         if DeviceType.is_swimming_pool(device.name):
             _logger.debug(
                 "StateReducer: skipping driver update for swimming-pool device %s",
@@ -675,6 +694,13 @@ class MowerStateReducer(StateReducer):
                 device.mower_state.audio.volume = cfg_msg.au_switch
                 device.mower_state.audio.language = cfg_msg.au_language.name
                 device.mower_state.audio.sex = cfg_msg.sex.value
+            case "set_video_ack":
+                video_ack: MulSetVideoAck = mul_msg[1]  # type: ignore
+                if video_ack.error_code is not MulVideoErrorCode.SUCCESS:
+                    _logger.warning(
+                        "MowerStateReducer: device rejected the Agora video command (%s)",
+                        video_ack.error_code.name,
+                    )
             case "get_lamp_rsp":
                 lamp_resp: Getlamprsp = mul_msg[1]  # type: ignore
                 device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
@@ -774,17 +800,11 @@ class MowerStateReducer(StateReducer):
         if ota_prop := items.otaProgress:
             try:
                 ota = OTAProgressItems.from_dict(ota_prop.value)  # type: ignore
-                done = ota.progress == 100
-                device.update_check = dataclasses.replace(
-                    device.update_check,
-                    progress=ota.progress,
-                    isupgrading=not done,
-                    upgradeable=False if done else device.update_check.upgradeable,
-                )
-                if done:
-                    device.device_firmwares.device_version = ota.version
-            except (ValueError, KeyError, TypeError):
+            except (ValueError, KeyError, TypeError, MissingField):
                 _logger.debug("MowerStateReducer: failed to parse otaProgress property")
+            else:
+                if _apply_ota_property(device, ota.progress, ota.result) and ota.version:
+                    device.device_firmwares.device_version = ota.version
 
         return device
 
@@ -867,7 +887,73 @@ class MowerStateReducer(StateReducer):
         except (AttributeError, ValueError, TypeError):
             _logger.debug("MowerStateReducer: failed to apply networkInfo (mammotion)")
 
+        if (ota := p.ota_progress) and _apply_ota_property(device, ota.progress, ota.result) and ota.version:
+            device.device_firmwares.device_version = ota.version
+
         return device
+
+
+def _apply_ota_property(device: Device, progress: int, result: int) -> bool:
+    """Fold a cloud-pushed ``otaProgress`` property into ``update_check``; return True when finished.
+
+    Result codes follow the app (``FirmwareUpdateView.setProgress``): 0 is finished
+    and pins the bar to 100, 1 or negative is a failure, anything else is still
+    running.  Stamps ``ota_progress_at`` so the periodic version poll cannot erase a
+    live install with its stale ``isupgrading=False`` (``Device.apply_version_check``).
+    The caller records the installed version in its own model's field.
+    """
+    status = OTAProgress(progress=progress, result=result)
+    if status.is_complete:
+        device.update_check = dataclasses.replace(
+            device.update_check, progress=100, isupgrading=False, upgradeable=False
+        )
+    elif status.is_failed:
+        device.update_check = dataclasses.replace(device.update_check, progress=progress, isupgrading=False)
+    else:
+        device.update_check = dataclasses.replace(device.update_check, progress=progress, isupgrading=True)
+    device.ota_progress_at = time.monotonic()
+    return status.is_complete
+
+
+def _apply_rtk_coordinate(device: RTKBaseStationDevice, lat: float | None, lon: float | None) -> None:
+    """Store an RTK ``coordinate`` push (radians); zero means unset and is skipped.
+
+    a1Nc68bGZzX devices report latitude 436° low (value is in radians); the guard on
+    out-of-range keeps a firmware fix from shifting it again.
+    """
+    shift = math.radians(436) if device.product_key == "a1Nc68bGZzX" else 0.0
+    if lat:
+        raw_lat = float(lat)
+        device.lat = raw_lat + shift if shift and abs(raw_lat) > math.pi / 2 else raw_lat
+    if lon:
+        raw_lon = float(lon)
+        device.lon = raw_lon + shift if shift and abs(raw_lon) > math.pi / 2 else raw_lon
+
+
+def _apply_rtk_version_info(
+    device: RTKBaseStationDevice,
+    current: RTKBaseStationDevice,
+    dev_ver: str,
+    modules: Iterable[tuple[str, str]],
+) -> None:
+    """Apply an RTK ``deviceVersionInfo`` push: whole-device version plus per-module firmware."""
+    # dataclasses.replace() is shallow — copy device_firmwares before the in-place
+    # writes or the previous snapshot is mutated too (and the identity-based diff
+    # never reports the change).
+    device.device_firmwares = copy.deepcopy(current.device_firmwares)
+    if dev_ver:
+        device.device_version = str(dev_ver)
+        device.device_firmwares.device_version = str(dev_ver)
+    for fw_type, fw_version in modules:
+        if not fw_version:
+            continue
+        match str(fw_type):
+            case "101":
+                device.device_firmwares.main_controller = fw_version
+            case "102":
+                device.device_firmwares.rtk_version = fw_version
+            case "103":
+                device.device_firmwares.lora_version = fw_version
 
 
 def _apply_mower_fw_module(firmwares: DeviceFirmwares, fw_type: str, version: str) -> None:
@@ -1083,9 +1169,7 @@ class PoolStateReducer(StateReducer):
         if not (is_map or is_line):
             return
 
-        new_points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
         tag = map_info.tag  # MapTrans raw int: 0=completed, 1=transmitting, 2=failed
-
         if tag == MapTrans.failed:
             _logger.warning(
                 "PoolStateReducer: %s map/line fetch failed (MapTrans.failed) for %s",
@@ -1093,6 +1177,8 @@ class PoolStateReducer(StateReducer):
                 device.name,
             )
             return
+
+        new_points = [PoolPoint(x=p.x, y=p.y) for p in map_info.points]
 
         # pack_index==1 means the first (or only) packet of a new transfer.
         # Reset to avoid accumulating leftover points from a previous fetch.
@@ -1385,20 +1471,7 @@ class RTKStateReducer(StateReducer):
         if coord_prop := items.coordinate:
             try:
                 coord = json.loads(coord_prop.value)  # type: ignore
-                # The coordinate property is already in radians (protocol-level unit).
-                if (lat := coord.get("lat")) and lat != 0:
-                    raw_lat = float(lat)
-                    # a1Nc68bGZzX devices report latitude 436° low (value is in radians);
-                    # guard on out-of-range so a firmware fix doesn't keep shifting it.
-                    if current.product_key == "a1Nc68bGZzX" and abs(raw_lat) > math.pi / 2:
-                        raw_lat += math.radians(436)
-
-                    device.lat = raw_lat
-                if (lon := coord.get("lon")) and lon != 0:
-                    raw_lon = float(lon)
-                    if current.product_key == "a1Nc68bGZzX" and abs(raw_lon) > math.pi / 2:
-                        raw_lon += math.radians(436)
-                    device.lon = raw_lon
+                _apply_rtk_coordinate(device, coord.get("lat"), coord.get("lon"))
             except (ValueError, KeyError, TypeError):
                 _logger.debug("RTKStateReducer: failed to parse coordinate property")
 
@@ -1417,26 +1490,9 @@ class RTKStateReducer(StateReducer):
         if dev_ver_info := items.deviceVersionInfo:
             try:
                 blob = json.loads(dev_ver_info.value)  # type: ignore
-                # dataclasses.replace() is shallow — copy device_firmwares before the
-                # in-place writes below or the previous snapshot is mutated too (and
-                # the identity-based diff never reports the change).
-                device.device_firmwares = copy.deepcopy(current.device_firmwares)
-                if dev_ver := blob.get("devVer"):
-                    device.device_version = str(dev_ver)
-                    device.device_firmwares.device_version = str(dev_ver)
-                for module in blob.get("fwInfo", []):
-                    fw_type = str(module.get("t", ""))
-                    fw_version = str(module.get("v", ""))
-                    if not fw_version:
-                        continue
-                    match fw_type:
-                        case "101":
-                            device.device_firmwares.main_controller = fw_version
-                        case "102":
-                            device.device_firmwares.rtk_version = fw_version
-                        case "103":
-                            device.device_firmwares.lora_version = fw_version
-            except (ValueError, TypeError):
+                modules = [(str(m.get("t", "")), str(m.get("v", ""))) for m in blob.get("fwInfo", [])]
+                _apply_rtk_version_info(device, current, str(blob.get("devVer") or ""), modules)
+            except (ValueError, TypeError, AttributeError):
                 _logger.debug("RTKStateReducer: failed to parse deviceVersionInfo property")
 
         if lora_prop := items.loraGeneralConfig:
@@ -1445,22 +1501,52 @@ class RTKStateReducer(StateReducer):
         if ota_prop := items.otaProgress:
             try:
                 ota = OTAProgressItems.from_dict(ota_prop.value)  # type: ignore
-                done = ota.progress == 100
-                device.update_check = dataclasses.replace(
-                    device.update_check,
-                    progress=ota.progress,
-                    isupgrading=not done,
-                    upgradeable=False if done else device.update_check.upgradeable,
-                )
-                if done:
-                    device.device_version = ota.version
-            except (ValueError, KeyError, TypeError):
+            except (ValueError, KeyError, TypeError, MissingField):
                 _logger.debug("RTKStateReducer: failed to parse otaProgress property")
+            else:
+                if _apply_ota_property(device, ota.progress, ota.result) and ota.version:
+                    device.device_version = ota.version
+
+        return device
+
+    def apply_mammotion_properties(  # type: ignore
+        self, current: RTKBaseStationDevice, properties: MammotionPropertiesMessage
+    ) -> RTKBaseStationDevice:
+        """Extract RTK state from a Mammotion MQTT flat property push.
+
+        Mirrors :meth:`apply_properties` for the post-2025 broker, reading the
+        already-typed :class:`~pymammotion.data.mqtt.mammotion_properties.DeviceProperties`.
+        """
+        device: RTKBaseStationDevice = dataclasses.replace(current)
+        p = properties.params
+
+        if (coord := p.coordinate) is not None:
+            _apply_rtk_coordinate(device, coord.lat, coord.lon)
+
+        if net := p.network_info:
+            if net.wifi_rssi:
+                device.wifi_rssi = net.wifi_rssi
+            device.wifi_mac = net.wifi_sta_mac or device.wifi_mac
+            device.bt_mac = net.bt_mac or device.bt_mac
+
+        if p.device_version:
+            device.device_version = p.device_version
+
+        if info := p.device_version_info:
+            _apply_rtk_version_info(device, current, info.dev_ver, ((m.t, m.v) for m in info.fw_info))
+
+        if p.lora_general_config:
+            device.lora_version = p.lora_general_config
+
+        if (ota := p.ota_progress) and _apply_ota_property(device, ota.progress, ota.result) and ota.version:
+            device.device_version = ota.version
 
         return device
 
 
-def get_state_reducer(device_name: str, is_saga_active: Callable[[], bool] | None = None) -> StateReducer:
+def get_state_reducer(
+    device_name: str, product_key: str = "", is_saga_active: Callable[[], bool] | None = None
+) -> StateReducer:
     """Return the appropriate :class:`StateReducer` for *device_name*.
 
     Dispatches to:
@@ -1475,12 +1561,8 @@ def get_state_reducer(device_name: str, is_saga_active: Callable[[], bool] | Non
     Picked once per device at handle construction time so the hot path
     doesn't pay an isinstance check on every incoming message.
     """
-    # Local import to avoid a circular dependency between the reducer module
-    # and the device-type helpers it consults.
-    from pymammotion.utility.device_type import DeviceType
-
-    if DeviceType.is_swimming_pool(device_name):
+    if DeviceType.is_swimming_pool(device_name, product_key):
         return PoolStateReducer(is_saga_active)
-    if DeviceType.is_rtk(device_name):
+    if DeviceType.is_rtk(device_name, product_key):
         return RTKStateReducer(is_saga_active)
     return MowerStateReducer(is_saga_active)

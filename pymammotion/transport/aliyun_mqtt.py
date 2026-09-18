@@ -30,17 +30,14 @@ from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
 from pymammotion.transport.base import (
-    MQTT_RECONNECT_MAX_SEC_ALIYUN,
-    MQTT_RECONNECT_MIN_SEC,
     AccountInUseError,
     ReLoginRequiredError,
     SessionExpiredError,
-    Transport,
     TransportAvailability,
     TransportError,
-    TransportRateLimitedError,
     TransportType,
 )
+from pymammotion.transport.cloud import MQTT_RECONNECT_MAX_SEC_ALIYUN, MQTT_RECONNECT_MIN_SEC, CloudTransport
 from pymammotion.transport.envelope import unwrap_envelope
 
 if TYPE_CHECKING:
@@ -135,7 +132,7 @@ class AliyunMQTTConfig:
         )
 
 
-class AliyunMQTTTransport(Transport):
+class AliyunMQTTTransport(CloudTransport):
     """Concrete Transport for the Aliyun IoT MQTT platform.
 
     Separate subscribe and publish topics
@@ -162,7 +159,6 @@ class AliyunMQTTTransport(Transport):
     # NOTE: on_message is deliberately NOT redeclared here — a class attribute would
     # shadow the base Transport.on_message property and defeat its receive-timestamping.
     on_device_message: Callable[[str, bytes], Awaitable[None]] | None = None
-    on_fatal_auth_error: Callable[[ReLoginRequiredError], Awaitable[None]] | None = None
 
     def __init__(self, config: AliyunMQTTConfig, cloud_gateway: CloudIOTGateway) -> None:
         """Initialise the transport with the supplied Aliyun configuration."""
@@ -272,12 +268,17 @@ class AliyunMQTTTransport(Transport):
             self.record_error()
             raise
 
-    async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "") -> None:  # noqa: ARG002 — Transport.send signature
-        """Send *payload* to the device and count it against the 24-hour quota."""
-        if self.is_rate_limited:
-            remaining = self.seconds_until_send_available()
-            msg = f"AliyunMQTTTransport rate-limited for {remaining:.0f}s more"
-            raise TransportRateLimitedError(msg)
+    async def send(self, payload: bytes, iot_id: str = "", firmware_version: str = "1.0.0.0") -> None:
+        """Send *payload* to the device and count it against the 24-hour quota.
+
+        Gated on ``is_send_blocked`` rather than the bare ``is_rate_limited`` so this
+        agrees with ``MQTTTransport.send``, with ``send_user``, and with the
+        pre-flight in ``DeviceHandle._send_marked``.  In practice every Aliyun device
+        predates ``RATE_LIMIT_REMOVED_VERSION``, so the firmware exemption never fires
+        here — but a gate that disagrees with the one above it is a bug waiting for
+        the first device that does qualify.
+        """
+        self.raise_if_send_blocked(firmware_version)
         _logger.debug("Sending Aliyun MQTT payload: %s, %s", payload, iot_id)
         await self._invoke(payload, iot_id)
         self.record_send()
@@ -374,10 +375,11 @@ class AliyunMQTTTransport(Transport):
     async def _run(self) -> None:  # noqa: C901
         """Run the main Aliyun MQTT connection loop, reconnecting with exponential backoff."""
         backoff = MQTT_RECONNECT_MIN_SEC
-        #: Consecutive credential-refresh reconnect cycles without receiving a single
-        #: message.  Bounds the rc-4/5 and bind_reply-2043 refresh loops: a refresh that
-        #: "succeeds" but is rejected by the broker again must not retry forever with
-        #: zero backoff — that hammers Aliyun (historically: account blocks).
+        #: Consecutive credential-refresh reconnect cycles without the broker accepting
+        #: the session (an accepted bind_reply or real device traffic).  Bounds the
+        #: rc-4/5 and bind_reply-2043 refresh loops: a refresh that "succeeds" but is
+        #: rejected by the broker again must not retry forever with zero backoff —
+        #: that hammers Aliyun (historically: account blocks).
         auth_refresh_cycles = 0
 
         _tls_context = await self.get_ssl_context()
@@ -400,7 +402,9 @@ class AliyunMQTTTransport(Transport):
                     max_queued_incoming_messages=_MQTT_MAX_QUEUED,
                 ) as client:
                     self._client = client
-                    backoff = MQTT_RECONNECT_MIN_SEC  # reset on successful connect
+                    # Only the reconnect backoff resets on a handshake; the auth
+                    # refresh budget waits for the broker to accept the bind.
+                    backoff = MQTT_RECONNECT_MIN_SEC
                     await self._notify_availability(TransportAvailability.CONNECTED)
 
                     for topic in self._effective_subscribe_topics():
@@ -425,12 +429,9 @@ class AliyunMQTTTransport(Transport):
                         if self._stop_event.is_set():
                             break
                         self._mark_received()
-                        auth_refresh_cycles = 0  # broker accepted us — refresh budget resets
                         topic = str(message.topic)
                         raw = bytes(message.payload)
-                        if topic.endswith("/thing/status"):
-                            await self._dispatch_device_status(topic, raw)
-                        elif topic.endswith("/account/bind_reply"):
+                        if topic.endswith("/account/bind_reply"):
                             code = self._handle_bind_reply(raw)
                             if code == 2152:
                                 raise AccountInUseError(
@@ -443,14 +444,37 @@ class AliyunMQTTTransport(Transport):
                                     TransportType.CLOUD_ALIYUN,
                                     "Aliyun IoT token rejected by broker (bind_reply 2043) — token needs refresh",
                                 )
+                            if code == 200:
+                                auth_refresh_cycles = 0
+                            continue
+                        # A non-bind message means the broker is serving this session.
+                        # The refresh budget resets only on an accepted bind or HERE —
+                        # never on a rejecting bind_reply and never at connect time: a
+                        # TCP CONNECT succeeds even when the bind is about to be rejected,
+                        # and resetting there made _MAX_AUTH_REFRESH_CYCLES unreachable
+                        # (a ~1s refresh/reconnect loop — the account-blocking hammer).
+                        auth_refresh_cycles = 0
+                        if topic.endswith("/thing/status"):
+                            await self._dispatch_device_status(topic, raw)
                         elif topic.endswith(("/thing/events", "/thing/properties")):
                             await self._dispatch_aliyun_event(topic, raw)
                         else:
                             result = self._unwrap_envelope(topic, raw)
                             if result is not None:
                                 decoded, iot_id = result
-                                if iot_id and self.on_device_message is not None:
-                                    await self.on_device_message(iot_id, decoded)
+                                if self.on_device_message is not None:
+                                    # Per-device routing is registered, so an envelope we
+                                    # can't attribute is dropped rather than handed to the
+                                    # raw callback — that would feed one device's frame to
+                                    # whichever handle happened to own the shared slot.
+                                    # Mirrors MQTTTransport._dispatch_message.
+                                    if iot_id:
+                                        await self.on_device_message(iot_id, decoded)
+                                    else:
+                                        _logger.debug(
+                                            "AliyunMQTTTransport: envelope on %s carries no iotId — dropping",
+                                            topic,
+                                        )
                                 elif self.on_message is not None:
                                     await self.on_message(decoded)
 

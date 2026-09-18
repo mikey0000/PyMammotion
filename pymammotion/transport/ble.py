@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import dataclass
+import functools
 import logging
 import time
 from typing import TYPE_CHECKING, Any
 
 from bleak import BleakScanner
-from bleak.exc import BleakError
+from bleak.exc import BleakCharacteristicNotFoundError, BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, BleakOutOfConnectionSlotsError, establish_connection
 
 from pymammotion.bluetooth.ble_message import BleMessage
@@ -64,9 +65,52 @@ class BLETransportConfig:
     ble_address: str | None = None
     self_managed_scanning: bool = False
     scan_timeout: float = 10.0
-    connect_failure_threshold: int = 1
+    connect_failure_threshold: int = 2
     connect_cooldown_seconds: float = 120.0
     min_rssi: int = -90
+
+
+#: ``esp_gatt_status_t`` values, as an ESPHome proxy reports them.  Spelled out rather
+#: than imported from aioesphomeapi: BLE here has to work without Home Assistant, and
+#: that package is not a runtime dependency.  0x01 is also the standard ATT error code;
+#: 0x87 is ESP-IDF's own numbering.
+_GATT_INVALID_HANDLE = 0x01
+_GATT_ILLEGAL_PARAMETER = 0x87
+
+#: The statuses meaning the table we hold no longer matches the device, so rediscovering
+#: it is the fix.  Deliberately narrow — an auth or pairing status comes back with the
+#: handles intact, and purging there would cost every later connect a full rediscovery
+#: for nothing, which on a proxy is the expensive part.
+_STALE_GATT_TABLE_CODES = frozenset({_GATT_INVALID_HANDLE, _GATT_ILLEGAL_PARAMETER})
+
+#: Connection attempts one ``connect()`` may spend: the ordinary one, one spent purging
+#: the cached GATT table over a live link, and one to rediscover afterwards.
+_MAX_CONNECT_PASSES = 3
+
+
+def _gatt_status_code(exc: BaseException) -> int | None:
+    """Return the numeric GATT status behind *exc*, or None when it carries none.
+
+    bleak_esphome flattens every ``BluetoothGATTAPIError`` into a plain
+    ``BleakError(str(exc)) from exc``, so the status survives only on ``__cause__``.
+    Read by duck-typing rather than by importing aioesphomeapi: BLE here must work
+    without Home Assistant, and aioesphomeapi is not a runtime dependency.
+    """
+    code = getattr(getattr(exc.__cause__, "error", None), "error", None)
+    return code if isinstance(code, int) else None
+
+
+def _is_stale_gatt_table(exc: BaseException) -> bool:
+    """Return True when a just-connected link disagrees with the cached GATT table.
+
+    Two shapes reach us.  Either bleak cannot find the characteristic at all, or the
+    cached table still lists it and the device has since moved it — the Yuka
+    re-registers its service at a fresh handle block without reusing the freed
+    handles, so the write lands on a handle that no longer exists (issue #193).
+    """
+    if isinstance(exc, BleakCharacteristicNotFoundError) or "was not found" in str(exc):
+        return True
+    return _gatt_status_code(exc) in _STALE_GATT_TABLE_CODES
 
 
 class BLETransport(Transport):
@@ -113,9 +157,12 @@ class BLETransport(Transport):
         #: Last advertisement RSSI (dBm) pushed via ``set_ble_device``.  ``None``
         #: until a caller supplies one — an unknown RSSI never gates ``is_usable``.
         self._last_rssi: int | None = None
-        #: Strong reference to the in-flight disconnect handler task (see
-        #: ``_dispatch_disconnect``).
-        self._disconnect_task: asyncio.Task[None] | None = None
+        #: Strong references to in-flight disconnect handlers.  A set, not one slot:
+        #: rapid disconnects would overwrite the reference and drop a task mid-flight.
+        self._disconnect_tasks: set[asyncio.Task[None]] = set()
+        #: Bumped per client.  A disconnect callback carries the generation it was
+        #: registered for, so one from a replaced link cannot clear the live one.
+        self._client_generation: int = 0
 
     # ------------------------------------------------------------------
     # Public device management
@@ -224,21 +271,21 @@ class BLETransport(Transport):
         discover the device.  HA-Luba leaves this disabled and relies on HA's
         bluetooth integration to push BLEDevices instead.
 
+        A link that disagrees with its cached GATT table buys one purge and one
+        reconnect, bounded overall by ``_MAX_CONNECT_PASSES``.
+
         Raises:
-            BLEUnavailableError: in cooldown, scan failure, or when
-                ``establish_connection``, ``start_notify`` or the initial sync
-                raised ``BleakError``.
+            BLEUnavailableError: in cooldown, or when connecting, the notify
+                subscription or the initial sync failed — the message names which.
+                ``TimeoutError`` and ``OSError`` surface this way too, so callers
+                catching ``TransportError`` can fall back to MQTT.
             NoBLEAddressKnownError: no BLEDevice cached and self-managed scan
                 disabled (or address is missing for the scan).
 
         """
         # Fast cooldown gate — refuse immediately without taking the lock so the
         # caller falls back to MQTT rather than burning a connection slot.
-        remaining = self._connect_cooldown_until - time.monotonic()
-        if remaining > 0:
-            raise BLEUnavailableError(
-                f"BLE connect for {self._config.device_id!r} is in cooldown ({remaining:.0f}s remaining)"
-            )
+        self._raise_if_cooling_down()
 
         # Serialize concurrent connects.  Two writers racing through
         # ``_write_payload`` (or a write racing the disconnect-callback's
@@ -247,11 +294,7 @@ class BLETransport(Transport):
         async with self._connect_lock:
             # Re-check cooldown under the lock — another caller may have tripped
             # the threshold while we were waiting.
-            remaining = self._connect_cooldown_until - time.monotonic()
-            if remaining > 0:
-                raise BLEUnavailableError(
-                    f"BLE connect for {self._config.device_id!r} is in cooldown ({remaining:.0f}s remaining)"
-                )
+            self._raise_if_cooling_down()
 
             if self._ble_device is None:
                 if self._config.self_managed_scanning:
@@ -276,31 +319,69 @@ class BLETransport(Transport):
             await self._notify_availability(TransportAvailability.CONNECTING)
             _logger.debug("BLETransport connecting to %s", self._config.device_id)
 
+            connected = False
+            try:
+                connected = await self._connect_passes(self._ble_device)
+            finally:
+                # Announced here rather than at each raise so an unanticipated exception
+                # or a cancellation cannot strand availability at CONNECTING.  Runs before
+                # the exception resumes, so callers still observe DISCONNECTED.
+                if not connected and self._availability is not TransportAvailability.DISCONNECTED:
+                    await self._notify_availability(TransportAvailability.DISCONNECTED)
+
+    async def _connect_passes(self, ble_device: BLEDevice) -> bool:
+        """Run the connect/setup attempts, returning True once the link is usable.
+
+        Caller holds ``_connect_lock`` and has already announced CONNECTING.
+        """
+        # One recovery pass per connect(): purge the cached GATT table and retry.
+        # ``purge_pending`` means the purge still has to reach the adapter over a
+        # live link, because the link that hit the stale table was already gone.
+        cache_purged = False
+        purge_pending = False
+        for _ in range(_MAX_CONNECT_PASSES):
+            self._client_generation += 1
+            # establish_connection builds its client once from the device handed to it,
+            # so a proxy handover is only picked up between passes.  Do not reach for
+            # ble_device_callback: it is accepted and never invoked.
+            device = self._ble_device or ble_device
             try:
                 self._client = await establish_connection(
                     BleakClientWithServiceCache,
-                    self._ble_device,
+                    device,
                     self._config.device_id,
-                    self._handle_disconnect,
+                    functools.partial(self._handle_disconnect, self._client_generation),
                     use_services_cache=True,
-                    timeout=2,
-                    max_attempts=1,
-                    ble_device_callback=lambda: self._ble_device,  # type: ignore
+                    max_attempts=2,
                 )
             except BleakError as exc:
-                await self._notify_availability(TransportAvailability.DISCONNECTED)
                 self._record_connect_failure(exc)
                 raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
 
+            if purge_pending:
+                # A proxy only accepts a purge over a live link, and the one that hit
+                # the stale table was already gone.  Spend this connection on the purge
+                # alone, then drop it so the next pass rediscovers.
+                purge_pending = False
+                cache_purged = True
+                purged = await self._purge_gatt_cache()
+                await self._teardown_client()
+                _logger.info(
+                    "BLETransport[%s]: purged the cached GATT table over a live link "
+                    "(refused: %s) — reconnecting to rediscover",
+                    self._config.device_id,
+                    not purged,
+                )
+                continue
+
             self._message = BleMessage(self._client)
 
-            # BlueZ may retain a stale notify subscription from a previous ungraceful
-            # disconnect.  Release it proactively so start_notify doesn't get
-            # [org.bluez.Error.NotPermitted] Notify acquired.
-            with contextlib.suppress(Exception):
+            # BlueZ may retain a notify subscription from a previous ungraceful
+            # disconnect, which makes start_notify fail with "Notify acquired".
+            with contextlib.suppress(BleakError, TimeoutError, OSError):
                 await self._client.stop_notify(UUID_NOTIFICATION_CHARACTERISTIC)
-            # Both steps below run against an established link, and both leave the
-            # transport unusable when they fail, so they share one teardown path.
+
+            step = "notify subscription"  # named so the error says which step failed
             try:
                 try:
                     await self._client.start_notify(UUID_NOTIFICATION_CHARACTERISTIC, self._notification_handler)
@@ -323,27 +404,89 @@ class BLETransport(Transport):
 
                 # One-shot sync on connect — subsequent periodic syncs are driven by
                 # DeviceHandle._keep_alive_loop (20 s).
+                step = "initial sync"
                 await self._ble_sync()
+                return True
             except (BleakError, TimeoutError, OSError) as exc:
-                # The link came up but notify or the very first write failed, so the
-                # transport is not actually usable.  is_connected reads the live client,
-                # so leaving it connected would wedge the transport into a state where
-                # writes succeed but responses never arrive.  Tear the link down, count
-                # the failure (this drives the cooldown) and raise a TransportError:
-                # a raw BleakError escaping here would break this method's documented
-                # contract, so callers that catch only TransportError abort instead of
-                # falling back to MQTT.
-                with contextlib.suppress(Exception):
-                    await self._client.disconnect()
-                self._client = None
-                self._message = None
-                await self._notify_availability(TransportAvailability.DISCONNECTED)
-                self._record_connect_failure(exc if isinstance(exc, BleakError) else None)
-                raise BLEUnavailableError(
-                    f"BLE setup after connect failed for {self._config.device_id!r}: {exc}"
-                ) from exc
+                # The link is up but unusable; leaving it connected would let writes
+                # succeed while no response ever arrives.
+                stale_table = _is_stale_gatt_table(exc)
+                if stale_table and not cache_purged:
+                    # Nothing else purges that table — on a proxy its flash copy
+                    # outlives a Home Assistant restart.  The purge needs a live link,
+                    # and this one is usually already gone, so the next pass carries it.
+                    if await self._purge_gatt_cache():
+                        cache_purged = True
+                    else:
+                        purge_pending = True
+                    await self._teardown_client()
+                    _logger.info(
+                        "BLETransport[%s]: cached GATT table no longer matches the device (%s) — "
+                        "purging it and reconnecting once",
+                        self._config.device_id,
+                        exc,
+                    )
+                    continue
 
-    def _record_connect_failure(self, exc: BleakError | None = None) -> None:
+                # Must be a TransportError: a raw BleakError makes callers abort
+                # instead of falling back to MQTT.
+                await self._teardown_client()
+                self._record_connect_failure(exc)
+                if stale_table:
+                    raise BLEUnavailableError(
+                        f"BLE {step} failed for {self._config.device_id!r}: the device's GATT table "
+                        f"still does not match after a cache purge — the adapter may be serving a "
+                        f"cached table it will not drop ({exc})"
+                    ) from exc
+                raise BLEUnavailableError(f"BLE {step} failed for {self._config.device_id!r}: {exc}") from exc
+
+        # Unreachable while the flags stay monotone; guards a future recovery path.
+        raise BLEUnavailableError(
+            f"BLE connect for {self._config.device_id!r} gave up after {_MAX_CONNECT_PASSES} attempts"
+        )
+
+    def _raise_if_cooling_down(self) -> None:
+        """Refuse a connect while the failure cooldown is still running."""
+        remaining = self._connect_cooldown_until - time.monotonic()
+        if remaining > 0:
+            raise BLEUnavailableError(
+                f"BLE connect for {self._config.device_id!r} is in cooldown "
+                f"({remaining:.0f}s remaining after {self._config.connect_failure_threshold} "
+                f"consecutive failures)"
+            )
+
+    async def _purge_gatt_cache(self) -> bool:
+        """Discard the cached GATT table; False when the purge certainly failed.
+
+        A proxy keeps its copy in flash and only accepts the purge over a live link, so
+        False means the caller must retry on one.  True is the weaker claim: the ESPHome
+        backend also answers True having cleared memory alone, on firmware without the
+        cache-clearing flag — indistinguishable from here, and a retry would not help.
+        """
+        if self._client is None:
+            return False
+        try:
+            reached_adapter = await self._client.clear_cache()
+        except (BleakError, TimeoutError, OSError) as exc:
+            _logger.debug(
+                "BLETransport[%s]: GATT cache purge did not reach the adapter: %s",
+                self._config.device_id,
+                exc,
+            )
+            return False
+        if not reached_adapter:
+            _logger.debug("BLETransport[%s]: adapter declined the GATT cache purge", self._config.device_id)
+        return bool(reached_adapter)
+
+    async def _teardown_client(self) -> None:
+        """Drop the current client, indifferent to how the link died."""
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                await self._client.disconnect()
+        self._client = None
+        self._message = None
+
+    def _record_connect_failure(self, exc: BaseException | None = None) -> None:
         """Increment the failure counter; clear device and start cooldown at threshold.
 
         A :class:`BleakOutOfConnectionSlotsError` (the proxy/adapter is out of
@@ -479,8 +622,8 @@ class BLETransport(Transport):
         self._availability = state
         await self._fire_availability_listeners(state)
 
-    def _handle_disconnect(self, _client: Any) -> None:
-        """Handle unexpected disconnect reported by bleak.
+    def _handle_disconnect(self, generation: int, _client: Any) -> None:
+        """Handle unexpected disconnect reported by bleak for client *generation*.
 
         bleak may invoke this callback from a non-asyncio thread depending on the
         backend.  We do **not** mutate any state here — every reader of
@@ -493,25 +636,43 @@ class BLETransport(Transport):
         flag flip so the next event-loop-side caller sees DISCONNECTED.  This is
         only safe before ``connect()`` has ever run (no listeners, no live writes).
         """
+        # connect() owns the client while it holds the lock.  Checked here, not in the
+        # scheduled callback, which runs a loop turn later when the lock may be free.
+        # Catches what the generation cannot: establish_connection retries against one
+        # wrapper, so an abandoned attempt fires with the generation that then succeeds.
+        if self._connect_lock.locked():
+            _logger.debug(
+                "BLETransport[%s]: ignoring disconnect observed while connecting (generation %d)",
+                self._config.device_id,
+                generation,
+            )
+            return
+
         loop = self._loop
         if loop is None or loop.is_closed():
             self._availability = TransportAvailability.DISCONNECTED
             return
-        loop.call_soon_threadsafe(self._dispatch_disconnect)
+        loop.call_soon_threadsafe(self._dispatch_disconnect, generation)
 
-    def _dispatch_disconnect(self) -> None:
+    def _dispatch_disconnect(self, generation: int) -> None:
         """Schedule async disconnect handling.  Runs on the event loop."""
         # Hold a strong reference so the task can't be garbage-collected before it
         # runs — a dropped disconnect would leave _client set and availability
         # CONNECTED until the next write fails.
-        self._disconnect_task = asyncio.create_task(self._on_disconnect_async())
+        task = asyncio.create_task(self._on_disconnect_async(generation))
+        self._disconnect_tasks.add(task)
+        task.add_done_callback(self._disconnect_tasks.discard)
 
-    async def _on_disconnect_async(self) -> None:
+    async def _on_disconnect_async(self, generation: int) -> None:
         """Process an unexpected disconnect on the event loop.
 
         Single-threaded once we're here: every other writer to ``_message``,
         ``_client``, and ``_availability`` is also on this loop, so no extra
         synchronization is required.
+
+        A callback can land arbitrarily late — an ESPHome proxy delivers them over its
+        API connection — so one may arrive after ``connect()`` replaced that link.
+        Acting on it would clear the healthy client that replaced it.
 
         Auto-reconnect is *not* attempted here — the higher-level loops in
         ``DeviceHandle`` decide when to revive BLE (on user command, on the
@@ -519,6 +680,14 @@ class BLETransport(Transport):
         from the disconnect callback caused unconditional reconnect storms,
         including racing the explicit ``disconnect()`` path.
         """
+        if generation != self._client_generation:
+            _logger.debug(
+                "BLETransport[%s]: ignoring disconnect from a replaced link (generation %d, now %d)",
+                self._config.device_id,
+                generation,
+                self._client_generation,
+            )
+            return
         self._client = None
         self._message = None
         if self._availability is TransportAvailability.DISCONNECTED:

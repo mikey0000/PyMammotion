@@ -28,6 +28,7 @@ class BLEDeviceEntry:
 
     device_id: str
     ble_device: Any | None = None  # bleak BLEDevice — Any to avoid hard import
+    rssi: int | None = None
 
 
 class BLETransportManager:
@@ -43,32 +44,25 @@ class BLETransportManager:
         """Initialise an empty registry."""
         self._entries: dict[str, BLEDeviceEntry] = {}
 
-    def register_external_ble_client(
-        self,
-        device_id: str,
-        ble_device: Any,
-    ) -> None:
-        """Register a BLEDevice for the given device_id.
+    def register_external_ble_client(self, device_id: str, ble_device: Any, rssi: int | None = None) -> None:
+        """Record the latest BLEDevice (and advertisement RSSI) for *device_id*.
 
         Creates or updates the entry.  Does not attempt connection.
         """
-        if device_id in self._entries:
-            self._entries[device_id].ble_device = ble_device
+        if (entry := self._entries.get(device_id)) is None:
+            self._entries[device_id] = BLEDeviceEntry(device_id=device_id, ble_device=ble_device, rssi=rssi)
         else:
-            self._entries[device_id] = BLEDeviceEntry(device_id=device_id, ble_device=ble_device)
+            entry.ble_device = ble_device
+            entry.rssi = rssi
         _logger.debug("BLETransportManager: registered external BLE client for %s", device_id)
 
-    def update_external_ble_client(
-        self,
-        device_id: str,
-        ble_device: Any,
-    ) -> None:
+    def update_external_ble_client(self, device_id: str, ble_device: Any, rssi: int | None = None) -> None:
         """Update the BLEDevice for an existing entry (or create one)."""
-        if device_id not in self._entries:
-            self._entries[device_id] = BLEDeviceEntry(device_id=device_id, ble_device=ble_device)
-        else:
-            self._entries[device_id].ble_device = ble_device
-        _logger.debug("BLETransportManager: updated external BLE client for %s", device_id)
+        self.register_external_ble_client(device_id, ble_device, rssi)
+
+    def get_entry(self, device_id: str) -> BLEDeviceEntry | None:
+        """Return the cached entry for *device_id*, or None."""
+        return self._entries.get(device_id)
 
     def get_ble_device(self, device_id: str) -> Any | None:
         """Return the cached BLEDevice for device_id, or None."""

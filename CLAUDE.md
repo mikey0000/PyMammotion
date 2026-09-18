@@ -36,12 +36,38 @@ uv run python tests/login_test.py
 uv run protoc -I=. --python_out=. --python_betterproto2_out=pymammotion/proto ./pymammotion/proto/*.proto
 
 # Version bump (patch/minor/major)
-./bin/bumpver update --patch
+uv run bumpver update --patch
+
+# Pre-release bump: 0.9.0 -> 0.9.1b0 -> 0.9.1b1 -> ... -> 0.9.1
+uv run bumpver update --patch --tag beta   # open a new beta series
+uv run bumpver update --tag-num            # next beta of the same series
+uv run bumpver update --tag final          # promote the beta to the release
+
+# A bump is one step: hooks re-lock uv.lock into the commit and tag it v<version>.
+# Nothing to run afterwards -- just push the branch and the tag.
 ```
+
+`scripts/bumpver_relock.sh` and `scripts/bumpver_tag.sh` exist because bumpver
+cannot do either on its own. It patches the version, then `git commit` runs the
+`ty` and `pytest` pre-commit hooks, which shell out to `uv run`; that re-resolves
+on a version change and rewrites `uv.lock` mid-commit, so pre-commit aborts with
+"files were modified by this hook" and the bump is left staged. And it tags the
+bare version, which `release.yml`'s `v*` trigger ignores. Both hooks are wired in
+`[tool.bumpver]`; `tag = false` is deliberate.
+
+Releases are cut by pushing a `v<version>` tag; `release.yml` compares the tag
+against the built package after PEP 440 normalisation (so `v0.9.0-beta1` and
+`v0.9.0b1` both match a `0.9.0b1` package) and marks the GitHub release as a
+pre-release when the version is one.
 
 ## Architecture
 
 The refactored architecture is a **layered, composable system** replacing the earlier monolithic god-object pattern.
+
+The full structural guide — module inventory, the four flows (inbound message,
+outbound command, saga, credentials), the single-home table, and extension
+recipes — is `docs/architecture.md`. The summary below plus the invariants that
+follow it are the rules; that file is the map.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -63,12 +89,14 @@ The refactored architecture is a **layered, composable system** replacing the ea
 │  └─ Transport[]  (one or more, see below)                │
 ├──────────────────────────────────────────────────────────┤
 │  Transport layer  (pymammotion/transport/)               │
-│  ├─ AliyunMQTTTransport  (aliyun_mqtt.py)                │
-│  │   pre-2025 devices; HMAC-SHA1, paho-mqtt, port 8883  │
-│  ├─ MQTTTransport  (mqtt.py)                             │
-│  │   post-2025 devices; aiomqtt, JWT password            │
-│  │   send() raises AuthError on HTTP 401/460             │
-│  └─ BLETransport  (ble.py)                               │
+│  ├─ CloudTransport  (cloud.py)  — broker-only surface:   │
+│  │   send quota, terminal auth flags, thing/* callbacks  │
+│  │   ├─ AliyunMQTTTransport  (aliyun_mqtt.py)            │
+│  │   │   pre-2025 devices; HMAC-SHA1, paho, port 8883    │
+│  │   └─ MQTTTransport  (mqtt.py)                         │
+│  │       post-2025 devices; aiomqtt, JWT password        │
+│  │       send() raises AuthError on HTTP 401/460         │
+│  └─ BLETransport  (ble.py)  — straight off Transport     │
 │      bleak + bleak-retry-connector; all device types     │
 ├──────────────────────────────────────────────────────────┤
 │  Saga layer  (pymammotion/messaging/)                    │
@@ -136,13 +164,45 @@ This is why `validate_login` ends in a real call rather than a local expiry chec
 
 This exists because every other refresh path is lazy — it runs because something asked for a credential. When all of an account's devices are offline, `mqtt_activity_loop` skips sending (`has_usable_transport` is False), so no HTTP call is made, `ensure_token_valid` never fires, and the in-band Aliyun expiry check *inside* `send_cloud_command` never runs. Without the scheduler nothing renews anything and the credentials rot until the refresh tokens themselves expire, at which point recovery needs the user. Refresh order matters: HTTP goes first, because both the Mammotion JWT and the Aliyun session are minted using the HTTP access token.
 
+**A user-initiated command does not queue.** `Priority.USER` and `Priority.EMERGENCY` are *direct-send* levels: `MammotionClient` dispatches them on the caller's own task and `DeviceCommandQueue.enqueue` raises `ValueError` if given one. Ranking them inside the queue cannot work — the processor is strictly sequential, so an item behind an in-flight saga waits for that saga's `work()` to return no matter how it sorts. A direct command still picks its transport through `send_raw`/`active_transport()` and is still classified by `messaging.command_queue.execute_command` (the same gateway-timeout retry and demotion buckets the queue uses), but with `reraise=True` so the host learns it did not land — including `NoTransportAvailableError`, where the queued path returns silently.
+
+**The send quota paces polling, not people.** `CloudTransport` separates the two block sources: `is_cloud_banned` (the broker answered 429; `set_rate_limited()` started a fixed 12 h timer) and `is_quota_exhausted` (our own 600-per-12 h rolling window, which exists to avoid ever provoking that 429). `is_send_blocked(fw, user_initiated=True)` honours the ban and skips the quota, and `CloudTransport.send_user()` is the verb that carries it. What actually spends the budget is library-internal traffic, not people: `transfers.ack_stream` sends one ack **per received frame** (a single map fetch is easily hundreds of sends), the MQTT poll loop fires a one-shot report every 5–60 min per device mode, `auto_fetch` watchers trigger whole map/plan sagas on a state change, and the host's own periodic refresh adds more. None of that is ever `Priority.USER`, so exempting genuine button presses does not meaningfully loosen the budget. `Priority.USER` is still opt-in per call site, but for an ordering reason rather than a budget one — see the rule in `docs/decisions.md` D14. BLE has no quota; `_send_marked` routes only cloud transports to `send_user`.
+
 **Cloud error codes live in one table.** `pymammotion/aliyun/exceptions.py` holds `DEVICE_OFFLINE_CODES`, `DEVICE_UNBOUND_CODES`, `GATEWAY_TIMEOUT_CODES` (plus the pairing-flow codes, currently unused). Both cloud send paths — `CloudIOTGateway.send_cloud_command` and `MQTTTransport._invoke` — classify against them, so a newly-observed code is added once. Don't pattern-match a raw code inline in a send path.
 
-**Never send MQTT to an offline device.** When the cloud has reported a device offline (`DeviceAvailability.mqtt_reported_offline = True`, set by `DeviceOfflineException` and "offline" `thing/status` messages), no code path should fire an MQTT send to that device — not user commands, not periodic polls, not heartbeats, not sagas. The cloud will queue the message and either drop it or deliver it when the device returns, neither of which we want, and the broker side raises `DeviceOfflineException` again, so the round-trip is wasted. Gates that enforce this:
-- `DeviceHandle.active_transport()` raises `NoTransportAvailableError` when MQTT is the only registered transport and `mqtt_reported_offline` is True.
+**BLE is a per-device transport; accounts are cloud-only.** `DeviceRegistry` is keyed by `(account_id, device_id)` — one `DeviceHandle` per account per device. A handle no account has claimed (BLE-only) sits under the sentinel key `BLE_ONLY_ACCOUNT` (`"__ble__"`), which is a registry key only: no `AccountSession` is ever registered under it, and `AccountSession.device_ids` lists cloud-bound devices alone. Every registration goes through `MammotionClient._ensure_device_handle`: a cloud login for a device that has a sentinel handle **re-keys that same object** onto the account (BLE transport, state and `prefer_ble` intact) rather than building a second handle; account sign-out re-keys a BLE-owning handle back to the sentinel with the cloud transports detached, so BLE keeps running. Exactly one handle owns a device's `BLETransport` (`DeviceRegistry.find_ble_owner`); it stays with its holder until `move_ble_to_account` hands it over. Cloud transports are account-shared objects — a handle detaches them (`detach_transport`, which also removes its availability listener) and never disconnects them; the session does that once. Name-only public methods take an optional `account_id`; without it the unique holder is used, else the BLE owner, else the first cloud holder with a warning.
+
+**Never send *background* MQTT to an offline device.** When the cloud has reported a device offline (`DeviceAvailability.mqtt_reported_offline = True`, set by `DeviceOfflineException` and "offline" `thing/status` messages), no automatic path should fire a send at that device — not periodic polls, not heartbeats, not sagas, not queued coordinator refreshes. Nobody is waiting on that traffic, so it has no reason to spend sends probing a device the cloud says is away. Gates that enforce this:
+- `DeviceHandle._cloud_transport_usable()` is the one gate; `active_transport()` raises `NoTransportAvailableError` through it when MQTT is the only registered transport and `mqtt_reported_offline` is True.
 - `DeviceHandle._mqtt_activity_loop` pre-flights `active_transport()` and skips when it raises.
 - `MammotionClient.send_command_with_args` short-circuits with a debug log when offline-and-no-BLE.
-- `mqtt_reported_offline` clears automatically as soon as any MQTT frame arrives via `on_raw_message`, so no manual reset is needed — natural device traffic re-arms sending. Any new send path you add must follow the same gate, or route via `send_raw` / `send_command_with_args` which already check it.
+- Any new *background* send path you add must follow the same gate, or route via `send_raw` / `send_command_with_args` which already check it.
+
+**A user command is the exception: it passes the offline flag and is sent immediately.** `Priority.USER` / `EMERGENCY` thread `user_initiated=True` down `send_raw` → `active_transport` → `_cloud_transport_usable`, which then ignores `mqtt_reported_offline` — and *only* that flag; a terminal auth failure (`is_usable`) still refuses everyone. Such commands also bypass the queue entirely (`Priority.is_direct` → `execute_command` on the caller's task), so they are never held behind a saga or TTL-dropped. BLE is unaffected and still wins when connected, so this only ever decides MQTT-or-nothing.
+
+This reverses an earlier "the gate is uniform, no exceptions" rule. The reasoning that supported it does not survive contact with the send path:
+
+1. **There is no queued-delivery hazard on this path.** The old rule's decisive point was that the cloud may hold a payload and deliver it when the device returns, so a `start_job` could arrive hours later unattended. A send is not a publish into a broker queue — it is a synchronous HTTPS POST (`CloudIOTGateway.send_cloud_command` → `/thing/service/invoke`, `cloud_gateway.py`; `MQTTTransport._invoke` → `mqtt_invoke`). An offline device is **rejected** with a `DEVICE_OFFLINE_CODES` code, which raises `DeviceOfflineException`, re-arms the flag and propagates to the caller. The cloud declines it; nothing is left queued to act on the mower later. MQTT carries the *replies*, which is why its state is a poor proxy for whether a command can be delivered at all.
+2. **The flag is advisory, not an observation.** It is only ever as fresh as the last thing the cloud chose to push. Refusing on it converts a possibly-stale cloud opinion into a hard failure for someone standing next to a mower they can see is running. One bounded round trip settles it, and self-reports either way.
+3. **"The flag clears only on an inbound frame" is still false**, and is still not the justification. Six paths clear it and five need nothing from us: `on_status_message` on an "online" `thing/status` (its comment notes this lands "even before the first protobuf frame"), `on_device_properties`, `on_mammotion_properties`, `on_device_event`, `on_raw_message` on any inbound frame, plus `add_transport` clearing a stale flag. That refutes a specific deadlock claim; it is not the reason for the exception. Points 1 and 2 are.
+
+Still true: a *sleeping* device is woken over HTTP via `wake_device`, never by firing MQTT at it.
+
+**BLE reaches the mower through Home Assistant's bluetooth stack, in practice ESP32 (ESPHome) proxies.** Everything about `BLETransport` follows from that:
+
+- **HA owns discovery.** `self_managed_scanning` stays off; HA pushes each advertisement's `BLEDevice` via `set_ble_device()`. The proxy that hears the mower changes, so `_connect_passes` re-reads `self._ble_device` every pass — `establish_connection` builds its client once from the `device` argument, so a handover is only picked up between passes. Do not reinstate `ble_device_callback`: bleak-retry-connector accepts it and never invokes it (dead since 2.13.0). Never cache a `BLEDevice` anywhere else.
+- **The cached GATT table outlives the process and the device can invalidate it.** A link that connects then fails at a characteristic holds a table the device moved on from. `_is_stale_gatt_table` matches both shapes: `BleakCharacteristicNotFoundError`, and — issue #193 — the table still lists ff02 but the Yuka re-registered its service at a new handle block, so the CCCD write gets `error=1 Invalid handle` (or `135 Illegal parameter`). `connect()` purges and reconnects once per call; a second disagreement is a real failure. Any new setup step touching a characteristic must stay inside that retry block.
+- **The purge only travels as far as the link is up.** An ESPHome proxy keeps its table in flash (on by default) and its backend refuses to forward a purge on a dead link — and the proxy usually drops the link just before we see the error, which is why the flash copy survived HA restarts in #193. When `_purge_gatt_cache()` reports failure, `connect()` spends one extra `establish_connection` on the purge alone (`purge_pending`), then drops it so the next pass rediscovers. Note `use_services_cache=False` does *not* purge a proxy's flash copy, despite what the bleak-retry-connector docs suggest.
+- **Read GATT status codes off `__cause__`, never by importing aioesphomeapi.** bleak_esphome flattens `BluetoothGATTAPIError` into `BleakError(str(exc)) from exc`, so the status survives only on the cause chain. `aioesphomeapi` is an `extras` group, so a top-level import breaks `import pymammotion` for every installed user.
+- **Cooldown is the fallback signal, not a retry policy.** `connect_failure_threshold=2`, `connect_cooldown_seconds=120`: two consecutive failures make `is_usable` False for two minutes, `active_transport()` routes to MQTT, and HA's movement buttons go unavailable (they gate on `is_usable`). `BleakOutOfConnectionSlotsError` trips it immediately — an ESP32 proxy has only a few connection slots. Only a successful connect or `clear_ble_device()` resets the counter; a stream of advertisements does not.
+- **`min_rssi=-90` gates usability too.** HA passes the advertisement RSSI with the device; below the floor the transport is unusable and sends fall back to MQTT. Expect availability to flap for a mower at the edge of a proxy's range.
+- **Reconnects are never started from the disconnect callback** (`_on_disconnect_async` only clears state). The MQTT/BLE loops, user commands and fresh advertisements decide when to revive the link; doing it in the callback caused reconnect storms.
+- **A disconnect callback is scoped to the client it was registered for.** `connect()` bumps `_client_generation` per client and registers `functools.partial(self._handle_disconnect, generation)`; `_on_disconnect_async` drops a stale generation. Otherwise a callback from a replaced link clears `_client`/`_message` on the healthy one, and the next characteristic access raises `AttributeError` out of `connect()`, past the `TransportError` contract callers need to fall back to MQTT. Callbacks land arbitrarily late, so the window is not narrow. In-flight handlers live in the `_disconnect_tasks` **set**; a single slot dropped tasks mid-flight.
+- **A disconnect observed while `connect()` holds `_connect_lock` is dropped**, checked in `_handle_disconnect` itself — anything scheduled runs a loop turn later, when the lock may be free. This is the window the generation *cannot* see: `establish_connection` retries against one habluetooth wrapper, so an abandoned attempt fires with the generation that then succeeds. (yalexs-ble guards identically.)
+- **`establish_connection` runs with `max_attempts=2`.** That re-enables the retry connector's own service-change recovery, which only runs *between* attempts. **There is no connect timeout to tune:** a `timeout=` kwarg reaches only the client constructor — `establish_connection` then calls `client.connect(timeout=BLEAK_TIMEOUT)` with a hardcoded 20 s, inside a 60 s safety timeout.
+- **`connect()` announces CONNECTING once and retracts it in a `finally`.** `_connect_passes()` returns True only when the link is usable; every other exit — unanticipated exception and cancellation included — announces DISCONNECTED there, not at each `raise`. Otherwise a stray exception strands CONNECTING, which nothing retracts and `state/device_state.py` reports as a mower connecting forever.
+- **habluetooth logs `Removing a non-existing connecting …`** when we tear a link down within milliseconds of connecting (the setup-failure path). It is slot accounting noise, not a fault to chase.
+- **Diagnosing a BLE report:** ask for debug logs around the *first* disconnect (device-, proxy- or slot-originated?) and which proxy the reconnect went through; look for `BLE setup after connect failed`, `in cooldown`, `out of connection slots`, and the RSSI in the report frame (`connect.bleRssi`).
 
 ### Connection Paths
 
@@ -154,7 +214,7 @@ This exists because every other refresh path is lazy — it runs because somethi
 ### Commands and Device Types
 
 Commands: `pymammotion/mammotion/commands/mammotion_command.py` and `messages/`.
-HA-facing API: `pymammotion/homeassistant/mower_api.py` and `rtk_api.py`.
+HA-facing API: `pymammotion/homeassistant/mower_api.py`.
 Device variants (25+): `pymammotion/utility/device_type.py` — `DeviceType.has_4g()`, `is_yuka()`, `is_rtk()`, etc.
 
 ## APK Reference Source
@@ -208,7 +268,7 @@ Before adding code, look for what's already there. The architecture is layered a
 - **Single responsibility:** each file owns one concern. Transport selection lives on `DeviceHandle`; cooldown/scan logic lives on `BLETransport`; cadence tables live in `handle.py`. Don't smear logic across layers.
 - **Open/closed:** prefer extending tables (e.g. `_MQTT_POLL_INTERVAL[mode]`) over adding `if mode == ...` branches in send paths.
 - **Dependency direction:** `pymammotion` doesn't know HA exists. HA-Luba consumes `pymammotion` via the `MammotionClient` and `DeviceHandle` public APIs. If you find yourself reaching into `_private` attributes from HA-Luba, surface a public property instead.
-- **Substitutability:** all `Transport` implementations satisfy the same interface. New default behavior goes on the base class (`base.py`); overrides go on the concrete class.
+- **Substitutability:** all `Transport` implementations satisfy the same interface. New default behavior goes on the *narrowest* base that needs it — `base.py` only if BLE genuinely has it too, otherwise `cloud.py`. Putting a broker concern on `Transport` is how BLE ended up inheriting a send quota, an auth-failure API and four `thing/*` callbacks it never used; giving BLE no-op stubs to keep one flat interface is the wrong repair (see `docs/decisions.md` D13).
 
 **When proposing changes, lead with the audit.** "Where does this concern live today? Can the existing site cover the new requirement?" If the answer is yes, extend the existing site. If no, explain why a new site is needed and where it sits in the architecture before writing.
 
@@ -218,5 +278,52 @@ Before adding code, look for what's already there. The architecture is layered a
 
 - When validation guarantees a dict key exists, prefer direct key access (`data["key"]`) instead of `.get("key")` so contract violations are surfaced instead of silently masked.
 - Keep comments concise. Prefer one short line stating the non-obvious constraint, or no comment at all.
+- **Default to no comment.** Add one only for something a competent reader could not infer from the code: a constraint imposed from outside, a workaround, a surprising ordering. If it can be inferred, delete it.
+- **One or two lines.** A comment longer than that is a sign the explanation belongs in `docs/` or a docstring, or that the code needs a better name. Never write a paragraph of rationale above a line of code — nobody reads it, and it rots.
+- The same applies to docstrings, `CLAUDE.md` bullets and commit messages: state the rule and the reason once, drop the history, the alternatives considered, and the citations.
 - Do not add comments that just restate the code on the following line(s) (e.g. `# Check if initialized` above `if self.initialized:`). Comments should only explain why (non-obvious constraints, surprising behavior, or workarounds), never what. Never add comments that justify a change by referencing what the code looked like before. Comments in tests that explain why a function call or assertion is made are ok.
 - Do not add section or divider comments (e.g. `# --- XYZ Triggers ---`) inside or outside of functions, since those can easily become stale and be misleading.
+
+## Testing (rules for Claude)
+
+`docs/testing.md` is the testing constitution — layout, naming, doubles,
+fixtures, time, regression contracts, legacy debt. Read it before writing or
+editing anything under `tests/`. The rules below are the ones that most often
+get broken; the document is the authority.
+
+- **Tier by what it touches.** `tests/unit/` — one module, no sockets, no real
+  clock, no `tests/fakeserver`. `tests/integration/` — several components, the
+  fake cloud over loopback. `tests/live/` — real account or hardware, marked
+  `live`, skips silently. A unit test that imports `tests.fakeserver` is an
+  integration test in the wrong directory.
+- **`tests/unit/` mirrors the package.** `pymammotion/device/handle.py` →
+  `tests/unit/device/test_handle.py`. Split a module past ~600 lines by concern
+  (`test_handle_transport_selection.py`), never by number.
+- **A builder used by a second module moves to `_helpers.py`.** Package-local
+  `tests/unit/<pkg>/_helpers.py` for `make_*` builders, `_fakes.py` for
+  hand-written fakes, `tests/_helpers.py` across tiers, `tests/conftest.py`
+  only for global autouse safety nets. Four copies of `_make_handle` is the
+  failure this rule exists to stop.
+- **Spec every mock; prefer not to mock.** Real object > hand-written fake >
+  `create_autospec`/`MagicMock(spec=…)`. A bare `MagicMock()` answers every
+  attribute truthily forever, so a renamed method keeps passing. Never mock the
+  unit under test. Assert on outcomes, not on call plumbing — unless the call
+  *is* the contract ("does not send to an offline device").
+- **`await asyncio.sleep(0.15)` is not synchronisation.** Wait on an
+  `asyncio.Event`, a future, `queue.join()`, or `asyncio.sleep(0)` for exactly
+  one loop turn. Freeze the clock with `time_machine.travel(..., tick=False)`
+  for anything reading `time()`/`monotonic()`. Bound every wait with
+  `asyncio.wait_for`. `asyncio_mode = "auto"` — no `@pytest.mark.asyncio`.
+- **A regression test must have been seen red.** Write it against the broken
+  code, watch it fail, then fix. Mark it `@pytest.mark.regression`, name it for
+  the behaviour (not the ticket), and let its docstring say what the code did
+  wrong. It lives with the module it pins; only cross-module pins go in
+  `tests/regression/`.
+- **Every test you write gets reviewed.** Launch the `test-reviewer` agent over
+  the tests you touched and fix its blocking findings before reporting the work
+  complete. A `PostToolUse` hook queues the files and the `Stop` hook refuses
+  the first stop while the queue is non-empty; the reviewer clears it. The
+  author fixes — the reviewer does not rewrite.
+- **`tests/meta/test_conventions.py` asserts the mechanical rules** and carries
+  a frozen baseline of pre-existing offenders. The baseline may shrink, never
+  grow: fix the violations your change touches and delete their entries.

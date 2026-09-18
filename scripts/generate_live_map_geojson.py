@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from pymammotion.client import MammotionClient
+from pymammotion.data.model.generate_geojson import apply_area_geojson
 from pymammotion.device.handle import DeviceHandle
 
 logging.basicConfig(
@@ -92,7 +93,7 @@ async def main() -> int:
     log.info("Using device: %s", handle.device_name)
 
     # start_map_sync enqueues MapFetchSaga and wires _on_map_complete which
-    # calls device.map.generate_geojson itself — same path dev_console.py's
+    # calls apply_area_geojson itself — same path dev_console.py's
     # sync_map() uses.
     log.info("Enqueuing MapFetchSaga …")
     await client.start_map_sync(handle.device_name)
@@ -110,7 +111,7 @@ async def main() -> int:
         return 1
 
     if not device.map.generated_geojson and device.location.RTK.latitude != 0:
-        device.map.generate_geojson(device.location.RTK, device.location.dock)
+        apply_area_geojson(device.map, device.location.RTK, device.location.dock)
 
     geo = device.map.generated_geojson or {"type": "FeatureCollection", "features": []}
     out_path = OUTPUT_DIR / f"map_{handle.device_name}.geojson"

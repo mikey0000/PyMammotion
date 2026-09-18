@@ -20,7 +20,6 @@ import time
 from unittest.mock import AsyncMock, patch
 
 from aiohttp import ClientError
-import jwt as pyjwt
 import pytest
 
 from pymammotion.http.http import MammotionHTTP
@@ -35,13 +34,14 @@ from pymammotion.http.model.http import (
     UnauthorizedExceptionError,
 )
 from pymammotion.transport.base import ReLoginRequiredError
+from tests._helpers import encode_jwt
 
 _EXP = 9999999999
 
 
 def _access_token(iot: str = "token-iot", robot: str = "token-robot", exp: int = _EXP) -> str:
     """Mint an unsigned-verifiable access token carrying the iot/robot/exp claims."""
-    return pyjwt.encode({"iot": iot, "robot": robot, "exp": exp}, "x" * 32, algorithm="HS256")
+    return encode_jwt(iot=iot, robot=robot, exp=exp)
 
 
 def _login_data(access_token: str | None = None) -> LoginResponseData:
@@ -79,9 +79,7 @@ def _json_cache(**overrides: object) -> dict:
     return raw
 
 
-# ---------------------------------------------------------------------------
 # from_cache — the happy paths
-# ---------------------------------------------------------------------------
 
 
 def test_restores_every_field_from_live_models() -> None:
@@ -155,9 +153,7 @@ def test_optional_fields_may_all_be_absent() -> None:
     assert http.device_records.records == []
 
 
-# ---------------------------------------------------------------------------
 # from_cache — a bad cache degrades, it never raises
-# ---------------------------------------------------------------------------
 
 
 def test_missing_login_data_returns_none() -> None:
@@ -218,9 +214,7 @@ def test_malformed_optional_fields_leave_the_rest_intact() -> None:
     assert http.mqtt_credentials is not None  # untouched by its neighbours' failures
 
 
-# ---------------------------------------------------------------------------
 # validate_login
-# ---------------------------------------------------------------------------
 
 
 def _restored() -> MammotionHTTP:

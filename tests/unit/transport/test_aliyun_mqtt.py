@@ -4,12 +4,15 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
+from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport, _STALE_EVENT_THRESHOLD_MS
 from pymammotion.transport.base import ReLoginRequiredError, TransportError, TransportType
+from tests._helpers import wait_until
+from tests._helpers import make_bare_client
 from tests.unit.transport._fakes import (
     AuthFailMQTTClient as _AuthFailMQTTClient,
     FakeMessage as _FakeMessage,
@@ -18,9 +21,7 @@ from tests.unit.transport._fakes import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -48,35 +49,26 @@ def transport(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> AliyunMQTTT
     return AliyunMQTTTransport(config, cloud_gateway)
 
 
-# ---------------------------------------------------------------------------
 # Minimal fake aiomqtt helpers
-# ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
 # transport_type
-# ---------------------------------------------------------------------------
 
 
 def test_transport_type(transport: AliyunMQTTTransport) -> None:
     assert transport.transport_type is TransportType.CLOUD_ALIYUN
 
 
-# ---------------------------------------------------------------------------
 # is_connected initial state
-# ---------------------------------------------------------------------------
 
 
 def test_is_connected_initially_false(transport: AliyunMQTTTransport) -> None:
     assert transport.is_connected is False
 
 
-# ---------------------------------------------------------------------------
 # Connect / disconnect lifecycle
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_connect_sets_is_connected(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """connect() should set is_connected to True once the MQTT loop is running."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
@@ -84,12 +76,11 @@ async def test_connect_sets_is_connected(config: AliyunMQTTConfig, cloud_gateway
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: transport.is_connected, message="transport never connected")
         assert transport.is_connected is True
         await transport.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_disconnect_sets_is_connected_false(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """disconnect() should leave is_connected as False."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
@@ -97,12 +88,11 @@ async def test_disconnect_sets_is_connected_false(config: AliyunMQTTConfig, clou
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: transport.is_connected, message="transport never connected")
         await transport.disconnect()
         assert transport.is_connected is False
 
 
-@pytest.mark.asyncio
 async def test_connect_idempotent(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """Calling connect() twice should not create a second task."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
@@ -110,16 +100,14 @@ async def test_connect_idempotent(config: AliyunMQTTConfig, cloud_gateway: Magic
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: transport.is_connected, message="transport never connected")
         first_task = transport._task
         await transport.connect()  # should be ignored
         assert transport._task is first_task
         await transport.disconnect()
 
 
-# ---------------------------------------------------------------------------
 # Topic management
-# ---------------------------------------------------------------------------
 
 
 def test_add_subscribe_topic(transport: AliyunMQTTTransport) -> None:
@@ -134,19 +122,15 @@ def test_add_subscribe_topic_no_duplicates(transport: AliyunMQTTTransport) -> No
     assert transport._subscribe_topics.count(topic) == 1
 
 
-# ---------------------------------------------------------------------------
 # send()
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_send_raises_when_no_iot_id(transport: AliyunMQTTTransport) -> None:
     """send() with an empty iot_id should raise TransportError."""
     with pytest.raises(TransportError, match="iot_id"):
         await transport.send(b"hello")
 
 
-@pytest.mark.asyncio
 async def test_send_calls_cloud_gateway(config: AliyunMQTTConfig) -> None:
     """send() with a valid iot_id delegates to cloud_gateway.send_cloud_command."""
     cloud_gateway = MagicMock()
@@ -158,9 +142,7 @@ async def test_send_calls_cloud_gateway(config: AliyunMQTTConfig) -> None:
     cloud_gateway.send_cloud_command.assert_awaited_once_with("abc123", b"\x01\x02")
 
 
-# ---------------------------------------------------------------------------
 # Envelope unwrapping: params.value.content (Aliyun thing.events shape)
-# ---------------------------------------------------------------------------
 
 
 def _make_thing_events_envelope(proto_bytes: bytes) -> bytes:
@@ -179,7 +161,6 @@ def _make_thing_events_envelope(proto_bytes: bytes) -> bytes:
     return json.dumps(envelope).encode()
 
 
-@pytest.mark.asyncio
 async def test_on_message_called_with_unwrapped_bytes(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """on_message should receive the decoded protobuf bytes, not the JSON envelope.
 
@@ -204,14 +185,12 @@ async def test_on_message_called_with_unwrapped_bytes(config: AliyunMQTTConfig, 
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        await wait_until(lambda: received, message="no payload reached the handler")
         assert received == [proto_bytes]
         await transport.disconnect()
 
 
-# ---------------------------------------------------------------------------
 # Envelope unwrapping: params.content (Mammotion direct-MQTT shape)
-# ---------------------------------------------------------------------------
 
 
 def _make_mammotion_direct_envelope(proto_bytes: bytes) -> bytes:
@@ -226,7 +205,6 @@ def _make_mammotion_direct_envelope(proto_bytes: bytes) -> bytes:
     return json.dumps(envelope).encode()
 
 
-@pytest.mark.asyncio
 async def test_on_message_called_mammotion_direct_shape(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """on_message should also unwrap the Mammotion direct-MQTT params.content shape."""
     received: list[bytes] = []
@@ -245,17 +223,14 @@ async def test_on_message_called_mammotion_direct_shape(config: AliyunMQTTConfig
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        await wait_until(lambda: received, message="no payload reached the handler")
         assert received == [proto_bytes]
         await transport.disconnect()
 
 
-# ---------------------------------------------------------------------------
 # Non-protobuf messages without content are silently dropped
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_non_content_message_does_not_call_on_message(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """Messages with no base64 content field (e.g. bind_reply) must not call on_message."""
     received: list[bytes] = []
@@ -273,14 +248,12 @@ async def test_non_content_message_does_not_call_on_message(config: AliyunMQTTCo
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        await asyncio.wait_for(fake_client.drained.wait(), timeout=2.0)
         assert received == []
         await transport.disconnect()
 
 
-# ---------------------------------------------------------------------------
 # thing/status messages are routed to on_device_status, not on_message
-# ---------------------------------------------------------------------------
 
 
 def _make_thing_status_payload(iot_id: str, status: int) -> bytes:
@@ -311,7 +284,6 @@ def _make_thing_status_payload(iot_id: str, status: int) -> bytes:
     }).encode()
 
 
-@pytest.mark.asyncio
 async def test_thing_status_online_routes_to_on_device_status(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -337,7 +309,7 @@ async def test_thing_status_online_routes_to_on_device_status(
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        await wait_until(lambda: calls, message="no message reached the callback")
         assert len(calls) == 1
         iot_id, msg = calls[0]
         assert iot_id == "iot123"
@@ -347,7 +319,6 @@ async def test_thing_status_online_routes_to_on_device_status(
         await transport.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_thing_status_offline_routes_to_on_device_status(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -369,7 +340,7 @@ async def test_thing_status_offline_routes_to_on_device_status(
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        await wait_until(lambda: calls, message="no message reached the callback")
         assert len(calls) == 1
         iot_id, msg = calls[0]
         assert iot_id == "iot123"
@@ -378,12 +349,9 @@ async def test_thing_status_offline_routes_to_on_device_status(
         await transport.disconnect()
 
 
-# ---------------------------------------------------------------------------
 # Auth error (rc=4/5) raises AuthError and stops reconnect
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_auth_error_raises_and_stops_reconnect(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """rc=4/5 from the broker should raise ReLoginRequiredError and stop the connection loop."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
@@ -397,12 +365,9 @@ async def test_auth_error_raises_and_stops_reconnect(config: AliyunMQTTConfig, c
     assert transport._stop_event.is_set()
 
 
-# ---------------------------------------------------------------------------
 # Network errors (OSError / DNS / ENETUNREACHABLE) — retry with backoff, no auth count
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_oserror_retries_without_auth_failure(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """OSError (e.g. ENETUNREACHABLE) must retry with backoff and never call on_auth_failure."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
@@ -424,17 +389,13 @@ async def test_oserror_retries_without_auth_failure(config: AliyunMQTTConfig, cl
         await transport.connect()
         # Use a small real sleep — `asyncio.sleep(0)` does not pump executor
         # callbacks, and `get_ssl_context` now properly awaits a thread offload.
-        for _ in range(200):
-            if connect_attempts >= 3:
-                break
-            await asyncio.sleep(0.005)
+        await wait_until(lambda: connect_attempts >= 3, message=f"only {connect_attempts} connect attempts")
         await transport.disconnect()
 
     assert connect_attempts >= 3
     transport.on_auth_failure.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_dns_error_retries_without_auth_failure(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """socket.gaierror (DNS failure) must retry and not trigger on_auth_failure."""
     import socket
@@ -455,19 +416,14 @@ async def test_dns_error_retries_without_auth_failure(config: AliyunMQTTConfig, 
          patch("pymammotion.transport.aliyun_mqtt.MQTT_RECONNECT_MAX_SEC_ALIYUN", 0), \
          patch("aiomqtt.Client", side_effect=_client_factory):
         await transport.connect()
-        for _ in range(200):
-            if connect_attempts >= 2:
-                break
-            await asyncio.sleep(0.005)
+        await wait_until(lambda: connect_attempts >= 2, message=f"only {connect_attempts} connect attempts")
         await transport.disconnect()
 
     assert connect_attempts >= 2
     transport.on_auth_failure.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # AliyunMQTTConfig.from_aliyun_credentials factory
-# ---------------------------------------------------------------------------
 
 
 def test_from_aliyun_credentials_builds_correct_config() -> None:
@@ -510,9 +466,7 @@ def test_from_aliyun_credentials_custom_client_id() -> None:
     assert cfg.client_id_base == "custom-base"
 
 
-# ---------------------------------------------------------------------------
 # update_iot_token
-# ---------------------------------------------------------------------------
 
 
 def test_update_iot_token_stores_new_value(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
@@ -526,9 +480,7 @@ def test_update_iot_token_stores_new_value(config: AliyunMQTTConfig, cloud_gatew
     assert transport._config.iot_token == "tok"  # frozen config is not mutated
 
 
-# ---------------------------------------------------------------------------
 # Helpers for bind_reply tests
-# ---------------------------------------------------------------------------
 
 
 def _bind_reply_msg(code: int) -> _FakeMessage:
@@ -537,12 +489,9 @@ def _bind_reply_msg(code: int) -> _FakeMessage:
     return _FakeMessage(topic, payload)
 
 
-# ---------------------------------------------------------------------------
 # bind_reply 2043 — SessionExpiredError cascade (transport level)
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_2043_no_callback_raises_relogin_required(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -557,7 +506,6 @@ async def test_bind_reply_2043_no_callback_raises_relogin_required(
     assert transport._stop_event.is_set()
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_2043_callback_returns_false_raises_relogin_required(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -574,7 +522,6 @@ async def test_bind_reply_2043_callback_returns_false_raises_relogin_required(
     assert transport._stop_event.is_set()
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_2043_callback_raises_nonfatal_exception_raises_relogin_required(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -590,7 +537,6 @@ async def test_bind_reply_2043_callback_raises_nonfatal_exception_raises_relogin
     transport.on_auth_failure.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_2043_callback_returns_true_reconnects(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -614,14 +560,18 @@ async def test_bind_reply_2043_callback_returns_true_reconnects(
 
     with patch("aiomqtt.Client", side_effect=clients):
         await transport.connect()
-        await asyncio.sleep(0.1)
+        # Poll rather than a fixed sleep: the reconnect includes a real backoff
+        # sleep, and a fixed wait makes the assertion timing-dependent under load.
+        await wait_until(
+            lambda: transport.is_connected and transport._iot_token == "refreshed-token",
+            message="transport never reconnected with the refreshed token",
+        )
         assert transport.is_connected
         assert transport._iot_token == "refreshed-token"
         assert len(auth_failure_calls) == 1
         await transport.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_2043_new_token_sent_on_reconnect(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -649,11 +599,7 @@ async def test_bind_reply_2043_new_token_sent_on_reconnect(
 
     with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
         await transport.connect()
-        # Poll until the reconnected client has published the bind message.
-        for _ in range(200):
-            if second_client.publish.await_count:
-                break
-            await real_sleep(0.005)
+        await wait_until(lambda: second_client.publish.await_count, message="no bind published on reconnect")
         await transport.disconnect()
 
     # The second client's publish should have been called with the new token
@@ -663,7 +609,6 @@ async def test_bind_reply_2043_new_token_sent_on_reconnect(
     assert published_body["params"]["iotToken"] == "brand-new-token"
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_200_no_auth_failure(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
@@ -675,15 +620,13 @@ async def test_bind_reply_200_no_auth_failure(
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: transport.is_connected, message="transport never connected")
         await transport.disconnect()
 
     transport.on_auth_failure.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # Client _on_aliyun_auth_failure callback (integration)
-# ---------------------------------------------------------------------------
 
 
 def _make_mock_cloud_client(iot_token: str = "initial-tok") -> MagicMock:
@@ -700,8 +643,7 @@ def _make_mock_cloud_client(iot_token: str = "initial-tok") -> MagicMock:
 
 def _make_aliyun_session(iot_token: str = "initial-tok") -> tuple:
     """Return (MammotionClient, AccountSession, AliyunMQTTTransport) wired via _setup_aliyun_transport."""
-    from pymammotion.account.registry import AccountRegistry, AccountSession
-    from pymammotion.client import MammotionClient
+    from pymammotion.account.registry import AccountSession
 
     session = AccountSession(
         account_id="test@example.com",
@@ -711,9 +653,7 @@ def _make_aliyun_session(iot_token: str = "initial-tok") -> tuple:
     session.mammotion_http = AsyncMock()
     session.token_manager = AsyncMock()
 
-    client = MammotionClient.__new__(MammotionClient)
-    client._account_registry = AccountRegistry()
-    client._account_registry._sessions[session.account_id] = session
+    client = make_bare_client(session)
 
     cloud_client = _make_mock_cloud_client(iot_token)
     transport = client._setup_aliyun_transport(cloud_client, session)
@@ -721,7 +661,6 @@ def _make_aliyun_session(iot_token: str = "initial-tok") -> tuple:
     return client, session, transport
 
 
-@pytest.mark.asyncio
 async def test_on_aliyun_auth_failure_targeted_refresh_succeeds_no_full_relogin() -> None:
     """Happy path: targeted refresh succeeds → token pushed → True, login_v2 NOT called.
 
@@ -747,7 +686,6 @@ async def test_on_aliyun_auth_failure_targeted_refresh_succeeds_no_full_relogin(
     session.token_manager.get_aliyun_credentials.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_on_aliyun_auth_failure_gives_up_without_password_login() -> None:
     """An unrenewable Aliyun session gives up on THIS transport — no login_v2.
 
@@ -770,7 +708,6 @@ async def test_on_aliyun_auth_failure_gives_up_without_password_login() -> None:
     session.mammotion_http.login_v2.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_on_aliyun_auth_failure_keeps_http_login_intact() -> None:
     """Giving up on Aliyun must not log the account out or clear its credentials."""
     client, session, transport = _make_aliyun_session("old-tok")
@@ -787,7 +724,6 @@ async def test_on_aliyun_auth_failure_keeps_http_login_intact() -> None:
     session.mammotion_http.login_v2.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_on_aliyun_auth_failure_calls_targeted_refresh_before_full_relogin() -> None:
     """on_auth_failure must call refresh_aliyun_credentials first.
 
@@ -811,7 +747,6 @@ async def test_on_aliyun_auth_failure_calls_targeted_refresh_before_full_relogin
     session.mammotion_http.login_v2.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_on_aliyun_auth_failure_no_token_manager_returns_false() -> None:
     """When token_manager is None (edge case), on_auth_failure returns False immediately."""
     client, session, transport = _make_aliyun_session()
@@ -828,12 +763,9 @@ async def test_on_aliyun_auth_failure_no_token_manager_returns_false() -> None:
     assert result is False
 
 
-# ---------------------------------------------------------------------------
 # End-to-end: bind_reply 2043 → full relogin failure → AuthError → HA must re-login
-# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_end() -> None:
     """Full cascade: bind_reply 2043 → targeted refresh fails → give up on the transport.
 
@@ -862,7 +794,6 @@ async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_en
     session.mammotion_http.logout.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_bind_reply_2043_relogin_success_fires_on_fatal_auth_and_reconnects() -> None:
     """bind_reply 2043 → targeted refresh fails → _full_relogin fails → on_fatal_auth_error fires."""
     client, session, transport = _make_aliyun_session("stale-tok")
@@ -894,7 +825,6 @@ async def test_bind_reply_2043_relogin_success_fires_on_fatal_auth_and_reconnect
     assert isinstance(fatal_calls[0], ReLoginRequiredError)
 
 
-@pytest.mark.asyncio
 async def test_send_device_unbound_reraised_without_record_error(config: AliyunMQTTConfig) -> None:
     """A DeviceUnboundException propagates and must NOT count against transport health.
 
@@ -914,7 +844,6 @@ async def test_send_device_unbound_reraised_without_record_error(config: AliyunM
     transport.record_error.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_send_generic_error_records_error(config: AliyunMQTTConfig) -> None:
     """Contrast: a generic send failure DOES count against transport health."""
     cloud_gateway = MagicMock()
@@ -926,3 +855,299 @@ async def test_send_generic_error_records_error(config: AliyunMQTTConfig) -> Non
         await transport.send(b"\x01\x02", iot_id="abc123")
 
     transport.record_error.assert_called_once()
+
+
+# bind_reply 2043 — the refresh budget must be exhaustible (account-block hammer)
+
+
+async def test_bind_reply_2043_replay_is_bounded(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
+    """Repeated 2043s exhaust _MAX_AUTH_REFRESH_CYCLES even when every refresh succeeds.
+
+    The rejecting bind_reply is itself a received message; resetting the refresh
+    budget on *any* message cleared it before the 2043 was parsed, making the cap
+    unreachable — a ~1s connect/refresh/reconnect loop (the historical
+    account-blocking hammer).
+    """
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_auth_failure = AsyncMock(return_value=True)
+    fatal_calls: list[Exception] = []
+
+    async def _fatal(exc: Exception) -> None:
+        fatal_calls.append(exc)
+
+    transport.on_fatal_auth_error = _fatal
+
+    clients = [_FakeMQTTClient(messages=[_bind_reply_msg(2043)]) for _ in range(10)]
+
+    real_sleep = asyncio.sleep
+
+    async def _instant_sleep(_delay: float) -> None:
+        await real_sleep(0)
+
+    with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
+        with pytest.raises(ReLoginRequiredError):
+            await transport._run()
+
+    assert transport.on_auth_failure.await_count == 3  # _MAX_AUTH_REFRESH_CYCLES
+    assert len(fatal_calls) == 1
+    assert transport._stop_event.is_set()
+    assert transport.is_usable is False
+
+
+async def test_accepted_bind_reply_resets_refresh_budget(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
+    """A bind_reply the broker accepts (code 200) restores the full refresh budget."""
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_auth_failure = AsyncMock(return_value=True)
+
+    async def _fatal(_exc: Exception) -> None:
+        return None
+
+    transport.on_fatal_auth_error = _fatal
+
+    clients = [
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 1
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 2
+        _FakeMQTTClient(messages=[_bind_reply_msg(200), _bind_reply_msg(2043)]),  # accepted → reset; then cycle 1
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 2
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 3
+        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # budget exhausted → fatal
+    ]
+
+    real_sleep = asyncio.sleep
+
+    async def _instant_sleep(_delay: float) -> None:
+        await real_sleep(0)
+
+    with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
+        with pytest.raises(ReLoginRequiredError):
+            await transport._run()
+
+    # 5 refreshes total: the accepted bind_reply in the middle restarted the count.
+    assert transport.on_auth_failure.await_count == 5
+
+
+# Issue #130: envelope staleness — params.time / generateTime / gmtCreate gate
+# (moved here from tests/unit/device/test_handle.py; these exercise
+# AliyunMQTTTransport._dispatch_aliyun_event, not DeviceHandle)
+
+
+@pytest.fixture
+def staleness_transport():
+    """AliyunMQTTTransport with a mocked cloud gateway."""
+    config = AliyunMQTTConfig(
+        host="test.iot-as-mqtt.cn-shanghai.aliyuncs.com",
+        client_id_base="testpk&testdn",
+        username="testdn&testpk",
+        device_name="testdn",
+        product_key="testpk",
+        device_secret="testsecret",
+        iot_token="testtoken",
+    )
+    gateway = MagicMock()
+    t = AliyunMQTTTransport(config, gateway)
+    t.on_device_event = AsyncMock()
+    t.on_device_properties = AsyncMock()
+    return t
+
+
+def _make_event_envelope(envelope_time_ms: int, identifier: str = "device_protobuf_msg_event") -> bytes:
+    """Build a raw JSON thing/events envelope with the given params.time."""
+    sample_bytes = b'\x08\xf4\x01\x10\x01\x18\x07(\x010\x01R\x08\xba\x02\x05\x12\x03\x08\x05\x10K'
+    encoded = base64.b64encode(sample_bytes).decode("ascii")
+
+    payload = {
+        "method": "thing.events",
+        "id": "test-event-id",
+        "version": "1.0",
+        "params": {
+            "identifier": identifier,
+            "type": "info",
+            "time": envelope_time_ms,
+            "iotId": "test_iot_id",
+            "productKey": "testpk",
+            "deviceName": "testdn",
+            "gmtCreate": 1714000000000,
+            "groupIdList": [],
+            "groupId": "",
+            "categoryKey": "LawnMower",
+            "batchId": "",
+            "checkLevel": 0,
+            "namespace": "",
+            "tenantId": "",
+            "name": "",
+            "thingType": "DEVICE",
+            "tenantInstanceId": "",
+            "value": {
+                "content": encoded,
+            },
+        },
+    }
+    return json.dumps(payload).encode()
+
+
+async def test_fresh_event_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Events with params.time within the threshold are forwarded."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_event_envelope(now_ms - 5_000)  # 5 seconds old
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_called_once()
+
+
+async def test_stale_event_dropped(staleness_transport: AliyunMQTTTransport):
+    """Events older than the threshold are silently dropped."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 10_000)  # well past threshold
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_not_called()
+
+
+async def test_event_without_any_timestamp_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Events with no usable envelope timestamp (time/generateTime/gmtCreate) are not dropped."""
+    payload = json.loads(_make_event_envelope(0))
+    payload["params"]["gmtCreate"] = 0  # the helper's fixture value would trip the fallback
+    raw = json.dumps(payload).encode()
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_called_once()
+
+
+async def test_event_without_time_falls_back_to_gmt_create(staleness_transport: AliyunMQTTTransport):
+    """Events missing params.time are filtered via gmtCreate (stale fixture value → dropped)."""
+    raw = _make_event_envelope(0)  # helper sets gmtCreate=1714000000000 (ancient)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_not_called()
+
+
+def _make_properties_envelope(generate_time_ms: int) -> bytes:
+    """Realistic thing/properties envelope: carries generateTime/gmtCreate, NO params.time."""
+    payload = {
+        "method": "thing.properties",
+        "id": "test-props-id",
+        "version": "1.0",
+        "params": {
+            "deviceType": "LawnMower",
+            "checkFailedData": {},
+            "groupIdList": [],
+            "_tenantId": "",
+            "groupId": "",
+            "categoryKey": "LawnMower",
+            "batchId": "",
+            "gmtCreate": generate_time_ms,
+            "productKey": "testpk",
+            "generateTime": generate_time_ms,
+            "deviceName": "testdn",
+            "_traceId": "",
+            "iotId": "test_iot_id",
+            "JMSXDeliveryCount": 1,
+            "checkLevel": 0,
+            "qos": 1,
+            "requestId": "1",
+            "_categoryKey": "TmallGenie.LawnMower",
+            "namespace": "",
+            "tenantId": "",
+            "thingType": "DEVICE",
+            "items": {"batteryPercentage": {"time": generate_time_ms, "value": 80}},
+            "tenantInstanceId": "",
+        },
+    }
+    return json.dumps(payload).encode()
+
+
+async def test_stale_properties_dropped(staleness_transport: AliyunMQTTTransport):
+    """Stale thing/properties are dropped via generateTime (they carry no params.time)."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_properties_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS - 30_000)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
+
+    staleness_transport.on_device_properties.assert_not_called()
+
+
+async def test_fresh_properties_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Fresh thing/properties (recent generateTime, no params.time) are forwarded."""
+    now_ms = int(time.time() * 1000)
+    raw = _make_properties_envelope(now_ms - 5_000)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/properties", raw)
+
+    staleness_transport.on_device_properties.assert_called_once()
+
+
+async def test_event_at_threshold_boundary_forwarded(staleness_transport: AliyunMQTTTransport):
+    """Events exactly at the threshold age are forwarded (not strictly greater)."""
+    now_ms = int(time.time() * 1000)
+    # Subtract threshold minus a small margin to stay within bounds
+    raw = _make_event_envelope(now_ms - _STALE_EVENT_THRESHOLD_MS + 1_000)
+
+    await staleness_transport._dispatch_aliyun_event("/sys/testpk/testdn/app/down/thing/events", raw)
+
+    staleness_transport.on_device_event.assert_called_once()
+
+
+# An envelope we can't attribute must be dropped, never handed to on_message
+
+
+def _make_envelope_without_iot_id(proto_bytes: bytes) -> bytes:
+    """A thing.events envelope with the iotId field missing."""
+    content = base64.b64encode(proto_bytes).decode()
+    return json.dumps(
+        {
+            "method": "thing.events",
+            "id": "1",
+            "version": "1.0",
+            "params": {"identifier": "device_protobuf_msg_event", "value": {"content": content}},
+        }
+    ).encode()
+
+
+async def test_unattributable_envelope_is_dropped_not_sent_to_on_message(
+    config: AliyunMQTTConfig, cloud_gateway: MagicMock
+) -> None:
+    """With per-device routing registered, a frame with no iotId goes nowhere.
+
+    The transport is account-shared, so falling back to the raw callback would feed
+    one device's frame to whichever handle happened to own that single slot.
+    """
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_device_message = AsyncMock()
+    raw_handler = AsyncMock()  # must NOT be called
+    transport.on_message = raw_handler
+
+    envelope = _make_envelope_without_iot_id(b"\x08\x01")
+    fake_client = _FakeMQTTClient(messages=[_FakeMessage("/sys/pk/dn/app/down/_thing/event/notify", envelope)])
+
+    with patch("aiomqtt.Client", return_value=fake_client):
+        await transport.connect()
+        await asyncio.wait_for(fake_client.drained.wait(), timeout=2.0)
+        transport.on_device_message.assert_not_awaited()
+        raw_handler.assert_not_awaited()
+        await transport.disconnect()
+
+
+async def test_attributable_envelope_still_routes_by_iot_id(
+    config: AliyunMQTTConfig, cloud_gateway: MagicMock
+) -> None:
+    """The normal path is unchanged: iotId present -> on_device_message."""
+    transport = AliyunMQTTTransport(config, cloud_gateway)
+    transport.on_device_message = AsyncMock()
+    raw_handler = AsyncMock()
+    transport.on_message = raw_handler
+
+    proto_bytes = b"\x08\x01\x12\x03foo"
+    fake_client = _FakeMQTTClient(
+        messages=[_FakeMessage("/sys/pk/dn/app/down/_thing/event/notify", _make_thing_events_envelope(proto_bytes))]
+    )
+
+    with patch("aiomqtt.Client", return_value=fake_client):
+        await transport.connect()
+        await wait_until(lambda: transport.on_device_message.await_count == 1, message="no device message")
+        transport.on_device_message.assert_awaited_once_with("device123", proto_bytes)
+        raw_handler.assert_not_awaited()
+        await transport.disconnect()

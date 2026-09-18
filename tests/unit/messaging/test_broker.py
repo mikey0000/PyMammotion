@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError
+from tests._helpers import block_forever, wait_until
 
 
 def make_mock_message(field_name: str) -> MagicMock:
@@ -17,7 +18,6 @@ def make_mock_message(field_name: str) -> MagicMock:
 
 async def test_solicited_response_resolves_future() -> None:
     broker = DeviceMessageBroker()
-    received: list[object] = []
 
     async def send_fn() -> None:
         pass
@@ -25,7 +25,7 @@ async def test_solicited_response_resolves_future() -> None:
     with patch("betterproto2.which_one_of", return_value=("toapp_gethash_ack", MagicMock())):
 
         async def deliver() -> None:
-            await asyncio.sleep(0.01)
+            await wait_until(lambda: "toapp_gethash_ack" in broker._pending, message="request never registered")
             await broker.on_message(make_mock_message("toapp_gethash_ack"))
 
         task = asyncio.get_running_loop().create_task(deliver())
@@ -69,12 +69,12 @@ async def test_concurrent_request_raises() -> None:
     broker = DeviceMessageBroker()
 
     async def slow_send() -> None:
-        await asyncio.sleep(5)
+        await block_forever()
 
     task = asyncio.get_running_loop().create_task(
         broker.send_and_wait(slow_send, "toapp_gethash_ack", send_timeout=0.01, retries=1)
     )
-    await asyncio.sleep(0.001)  # let first request register
+    await wait_until(lambda: "toapp_gethash_ack" in broker._pending, message="first request never registered")
 
     with pytest.raises(ConcurrentRequestError):
         await broker.send_and_wait(slow_send, "toapp_gethash_ack", send_timeout=0.01, retries=1)
@@ -115,3 +115,100 @@ async def test_close_cancels_pending_futures() -> None:
     with pytest.raises(asyncio.CancelledError):
         await waiter
     assert len(broker._pending) == 0
+
+
+# Subscriptions are independent of credential refreshes
+# (moved from tests/unit/auth/test_token_manager.py — the broker is the layer
+# under test; the TokenManager is just concurrent noise)
+
+
+async def test_broker_subscriptions_survive_token_refresh() -> None:
+    """Unsolicited subscriptions on DeviceMessageBroker must keep working after a
+    credential refresh — the two are completely independent layers.
+    """
+    from pymammotion.auth.token_manager import TokenManager
+    from tests.unit.auth._helpers import make_http_creds, make_http_mock, make_mqtt_creds
+
+    broker = DeviceMessageBroker()
+    received: list[object] = []
+
+    async def _handler(msg: object) -> None:
+        received.append(msg)
+
+    with broker.subscribe_unsolicited(_handler):
+        # Simulate a token refresh happening while the subscription is live
+        http = make_http_mock(refresh_code=0, mqtt_jwt="jwt-new")
+        tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+        await tm.initialize(
+            http_creds=make_http_creds(100),
+            aliyun_creds=None,
+            mqtt_creds=make_mqtt_creds(86400),
+        )
+        await tm.refresh_mqtt_credentials()
+
+        # Deliver an unsolicited message (no pending future → goes to event bus)
+        sentinel = object()
+        await broker._event_bus.emit(sentinel)  # noqa: SLF001
+
+    assert len(received) == 1
+    assert received[0] is sentinel
+
+
+async def test_multiple_subscriptions_all_receive_after_token_refresh() -> None:
+    """All active subscriptions must receive events after a token refresh."""
+    from pymammotion.auth.token_manager import TokenManager
+    from tests.unit.auth._helpers import make_http_creds, make_http_mock
+
+    broker = DeviceMessageBroker()
+    calls_a: list[object] = []
+    calls_b: list[object] = []
+
+    async def handler_a(msg: object) -> None:
+        calls_a.append(msg)
+
+    async def handler_b(msg: object) -> None:
+        calls_b.append(msg)
+
+    sub_a = broker.subscribe_unsolicited(handler_a)
+    sub_b = broker.subscribe_unsolicited(handler_b)
+
+    try:
+        http = make_http_mock(refresh_code=0, mqtt_jwt="jwt-new")
+        tm = TokenManager(account_id="user@example.com", mammotion_http=http)
+        await tm.initialize(http_creds=make_http_creds(100), aliyun_creds=None, mqtt_creds=None)
+        await tm.refresh_mqtt_credentials()
+
+        sentinel = object()
+        await broker._event_bus.emit(sentinel)  # noqa: SLF001
+
+        assert len(calls_a) == 1
+        assert calls_a[0] is sentinel
+        assert len(calls_b) == 1
+        assert calls_b[0] is sentinel
+    finally:
+        sub_a.cancel()
+        sub_b.cancel()
+
+
+@pytest.mark.regression
+async def test_a_stalled_send_is_bounded_by_the_send_timeout() -> None:
+    """A send that never returns must time out, not wait forever.
+
+    ``send_fn`` was awaited *outside* ``asyncio.timeout``, which only covered waiting
+    for the reply.  The cloud invoke has no timeout of its own, so one stalled send
+    blocked indefinitely — and a host that runs several reads on its setup path (the
+    Mammotion HA integration does) had its whole config-entry budget consumed by one
+    of them, surfacing as a CancelledError from the enclosing task.
+    """
+    broker = DeviceMessageBroker()
+
+    async def stalled_send() -> None:
+        await block_forever()
+
+    with pytest.raises(CommandTimeoutError):
+        await asyncio.wait_for(
+            broker.send_and_wait(stalled_send, "toapp_gethash_ack", send_timeout=0.01, retries=2),
+            timeout=5,
+        )
+
+    assert "toapp_gethash_ack" not in broker._pending, "the pending slot must be released"

@@ -1,7 +1,6 @@
 """Tests for DeviceAvailability and DeviceStateMachine."""
 from unittest.mock import MagicMock
 
-import pytest
 
 from pymammotion.state.device_state import (
     DeviceAvailability,
@@ -9,11 +8,10 @@ from pymammotion.state.device_state import (
     DeviceStateMachine,
     TransportAvailability,
 )
+from tests._helpers import make_mock_mowing_device
 
 
-# ---------------------------------------------------------------------------
 # DeviceAvailability.is_available
-# ---------------------------------------------------------------------------
 
 
 def test_ble_connected_always_available() -> None:
@@ -58,9 +56,7 @@ def test_default_both_unknown_not_available() -> None:
     assert avail.is_available is False
 
 
-# ---------------------------------------------------------------------------
 # DeviceAvailability.connection_state
-# ---------------------------------------------------------------------------
 
 
 def test_connection_state_connected_when_available() -> None:
@@ -83,25 +79,18 @@ def test_ble_connecting_sets_connecting_state() -> None:
     assert avail.connection_state == DeviceConnectionState.CONNECTING
 
 
-# ---------------------------------------------------------------------------
 # Helper: minimal MowingDevice mock
-# ---------------------------------------------------------------------------
 
 
 def make_device(online: bool = True, enabled: bool = True) -> MagicMock:
-    """Return a MagicMock shaped like a MowingDevice."""
-    device = MagicMock()
-    device.online = online
-    device.enabled = enabled
-    device.report_data.dev.battery_val = 75
+    """A mock MowingDevice reporting a numeric sys_status, which availability reads."""
+    device = make_mock_mowing_device(online=online, enabled=enabled)
     device.report_data.dev.sys_status = 0
     device.report_data.work.knife_height = 60
     return device
 
 
-# ---------------------------------------------------------------------------
 # DeviceStateMachine
-# ---------------------------------------------------------------------------
 
 
 def test_state_machine_initial_sequence() -> None:

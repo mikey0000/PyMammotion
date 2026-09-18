@@ -14,7 +14,7 @@ from pymammotion.bluetooth.const import UUID_WRITE_CHARACTERISTIC
 from pymammotion.bluetooth.data.framectrldata import FrameCtrlData
 from pymammotion.bluetooth.data.notifydata import BlufiNotifyData
 from pymammotion.bluetooth.model.atomic_integer import AtomicInteger
-from pymammotion.utility.constant.device_constant import BleOrderCmd
+from pymammotion.utility.constant.ble_order import BleOrderCmd
 
 _LOGGER = logging.getLogger(__name__)
 

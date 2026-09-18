@@ -34,10 +34,13 @@ from pymammotion.http.model.http import (
     CheckDeviceVersion,
     DeviceInfo,
     DeviceRecords,
+    ErrorCodePage,
+    ErrorCodeRecord,
     ErrorInfo,
     JWTTokenInfo,
     LoginResponseData,
     MQTTConnection,
+    Product,
     Response,
     ShareRecords,
     UnauthorizedExceptionError,
@@ -52,7 +55,14 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 _ModelT = TypeVar("_ModelT", bound=DataClassORJSONMixin)
 
+#: Hard stop for the error-code walk.  The table is ~470 codes; at the smallest page
+#: size the app uses that is ten pages, so this is two orders of magnitude of slack.
+_MAX_ERROR_CODE_PAGES = 200
+
 _LOGGER = logging.getLogger(__name__)
+
+#: HTTP status or in-body codes by which the server reports a dead access token.
+_DEAD_TOKEN_CODES = frozenset({401, 460})
 
 #: Hard bound on how long a token refresh may run.  ``_refresh_lock`` — and, via
 #: ``TokenManager``, every other coroutine waiting on a credential — is held for
@@ -213,6 +223,11 @@ class MammotionHTTP:
         # refresh_token_v2) so concurrent near-expiry callers produce ONE refresh
         # instead of a stampede of competing rotations.
         self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        #: Terminal memory: once the refresh token is rejected, every decorated
+        #: endpoint must fail fast with ReLoginRequiredError instead of spending
+        #: another doomed oauth2/token round trip per call.  Cleared only by a
+        #: successful login or token exchange.
+        self._reauth_required: str | None = None
         #: Fired (async) after any successful oauth2/token exchange rotates the
         #: login session.  TokenManager wires this to mirror the rotation into its
         #: credential snapshot and persist it — a rotation that isn't persisted
@@ -442,6 +457,21 @@ class MammotionHTTP:
 
         return wrapper
 
+    @property
+    def reauth_required(self) -> str | None:
+        """Reason this login is terminally dead, or ``None`` while healthy."""
+        return self._reauth_required
+
+    def mark_reauth_required(self, reason: str) -> None:
+        """Remember that the refresh token was rejected so every later call fails fast.
+
+        Idempotent; the first reason wins.  TokenManager pushes its account-wide
+        terminal state down here so endpoints that never touch the manager still
+        stop hammering oauth2/token.
+        """
+        if self._reauth_required is None:
+            self._reauth_required = reason
+
     async def ensure_token_valid(self, caller: str = "") -> None:
         """Refresh the OAuth access token if it expires within the next 5 minutes.
 
@@ -466,6 +496,8 @@ class MammotionHTTP:
                 as an auth failure.
 
         """
+        if self._reauth_required is not None:
+            raise ReLoginRequiredError(self.account or "", self._reauth_required)
         if self.expires_in >= time.time() + 300:  # 300 seconds = 5 minutes
             return
         async with self._refresh_lock:
@@ -490,9 +522,9 @@ class MammotionHTTP:
                     caller,
                     response.code,
                 )
-                raise ReLoginRequiredError(
-                    self.account or "", f"refresh token rejected by oauth2/token (code={response.code})"
-                )
+                reason = f"refresh token rejected by oauth2/token (code={response.code})"
+                self.mark_reauth_required(reason)
+                raise ReLoginRequiredError(self.account or "", reason)
 
     async def login_by_email(self, email: str, password: str) -> Response[LoginResponseData]:
         """Log in using email and password via the v2 OAuth endpoint."""
@@ -523,6 +555,122 @@ class MammotionHTTP:
                 return codes
 
         return {}
+
+    async def _request_device_server(
+        self,
+        path: str,
+        response_type: type[Response[_ModelT]],
+        what: str,
+        *,
+        payload: dict[str, Any] | None = None,
+    ) -> Response[_ModelT]:
+        """Call a ``device-server/v1`` endpoint and parse the envelope.
+
+        ``payload`` selects the verb: a body means POST, no body means GET — the
+        product list is a GET while the error-code endpoints are POSTs.  They
+        otherwise differ only in path and payload model, so they share this rather
+        than repeating the session/header/parse dance each time.  Note the prefix:
+        they live under ``device-server``, while the CSV export in
+        :meth:`get_all_error_codes` lives under ``user-server``.
+        """
+        url = f"{MAMMOTION_API_DOMAIN}{path}"
+        headers = {
+            **self._headers,
+            "Authorization": f"Bearer {self._require_login_info.access_token}",
+            "Content-Type": "application/json",
+        }
+        async with self._client_session() as session:
+            resp = (
+                await session.get(url, headers=headers)
+                if payload is None
+                else await session.post(url, json=payload, headers=headers)
+            )
+            if resp.status == HTTPStatus.UNAUTHORIZED.value:
+                raise UnauthorizedExceptionError(f"{what} rejected the access token")
+            if not (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                _LOGGER.warning("Failed to fetch %s. Status code: %s", what, resp.status)
+                return Response(code=resp.status, msg=f"{what} returned a non-JSON body")
+            resp_dict = await resp.json()
+            # The server signals a dead session either way; handing back a Response(401)
+            # would make it indistinguishable from an empty table.
+            if resp_dict.get("code") == HTTPStatus.UNAUTHORIZED.value:
+                raise UnauthorizedExceptionError(f"{what} rejected the access token")
+            if resp.status != HTTPStatus.OK.value:
+                _LOGGER.warning("Failed to fetch %s. Status code: %s, %s", what, resp.status, resp_dict)
+                return Response(code=resp.status, msg=f"{what} failed")
+            return response_factory(response_type, resp_dict)
+
+    @refresh_token_decorator
+    async def get_error_code_version(self) -> Response[str]:
+        """Fetch the published version of the error-code table.
+
+        The app calls this on startup and refetches the table only when the version
+        or the UI language changed, so it is the cheap way to decide whether a
+        cached table is stale.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/code/version", Response[str], "error code version", payload={}
+        )
+
+    @refresh_token_decorator
+    async def get_error_codes_page(self, page_number: int = 1, page_size: int = 50) -> Response[ErrorCodePage]:
+        """Fetch one page of the error-code table, translations included.
+
+        Mirrors the app's own paged call.  Richer than :meth:`get_all_error_codes`'s
+        CSV export — each record carries the display hints and the product keys it
+        applies to, as well as every language — so prefer this when the caller needs
+        more than implication/solution text.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/code/page-lan",
+            Response[ErrorCodePage],
+            "error code page",
+            payload={"pageNumber": page_number, "pageSize": page_size},
+        )
+
+    @refresh_token_decorator
+    async def get_product_list(self) -> Response[list[Product]]:
+        """Fetch every product key the cloud publishes, with the models under each.
+
+        The authoritative answer to "what hardware exists": ``pymammotion``'s own
+        product-key lists in ``utility/device_type.py`` are hand-maintained and drift
+        behind it, and an unknown key falls through to defaults — wrong broker for an
+        Aliyun device, wrong capabilities for the rest.  Diff the two after a release.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/product/product/list", Response[list[Product]], "product list"
+        )
+
+    async def get_all_error_codes_paged(self, page_size: int = 50) -> dict[str, ErrorCodeRecord]:
+        """Page through ``/code/page-lan`` and return every record, keyed by code.
+
+        Stops on the first short or empty page rather than trusting a total, because
+        this API's page counters are not consistent across endpoints.  A failing page
+        ends the walk and returns what was collected, so a mid-table 5xx degrades to
+        a partial table instead of nothing.
+
+        Two guards keep a misbehaving server from looping forever: a page that adds no
+        code we did not already have ends the walk (a server ignoring ``pageNumber``
+        and replaying page one would otherwise spin), and ``_MAX_ERROR_CODE_PAGES``
+        caps it outright.  A short page is *not* the only exit — the server may return
+        more rows than asked for.
+        """
+        collected: dict[str, ErrorCodeRecord] = {}
+        for page_number in range(1, _MAX_ERROR_CODE_PAGES + 1):
+            response = await self.get_error_codes_page(page_number, page_size)
+            page = response.data
+            if response.code != 0 or page is None or not page.records:
+                if response.code != 0:
+                    _LOGGER.warning("Error-code page %d failed: code=%s %s", page_number, response.code, response.msg)
+                return collected
+            fresh = {record.code: record for record in page.records if record.code not in collected}
+            collected.update(fresh)
+            if not fresh or len(page.records) < page_size:
+                return collected
+        _LOGGER.warning(
+            "Error-code walk hit the %d-page cap; returning %d codes", _MAX_ERROR_CODE_PAGES, len(collected)
+        )
+        return collected
 
     @refresh_token_decorator
     async def refresh_authorization_token(self) -> Response:
@@ -614,6 +762,42 @@ class MammotionHTTP:
                     _LOGGER.warning("Failed to unpair devices. Status code: %s, %s", resp.status, data)
                     return Response(code=resp.status, msg="unpair devices failed")
                 return Response.from_dict(data)
+
+        return Response(code=resp.status, msg="success")
+
+    @refresh_token_decorator
+    async def wake_up_device(self, device_name: str) -> Response[bool]:
+        """Ask the cloud to wake a device out of low-power sleep (``MODE_SLEEPING``).
+
+        A sleeping device has dropped its broker connection, so this is the only
+        way back: there is no MQTT command that reaches it.  Mirrors the app's
+        ``POST device/wakeup`` (``HomeApiService.java:130`` /
+        ``HomeStateViewModule.wakingUp`` in APK 2.3.8.201), which passes the device
+        *name* — not its iotId — and reads a bare boolean out of ``data``.
+
+        ``data is True`` means the cloud accepted the request, not that the device
+        is awake: the app then waits for the device to reappear and reports failure
+        on a timeout.  The app treats ``data is False`` as an outright failure.
+        """
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/device/wakeup",
+                json={"deviceName": device_name},
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
+                    "Content-Type": "application/json",
+                    "Client-Id": self.client_id,
+                    "Client-Type": "1",
+                },
+            )
+            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                data = await resp.json()
+                _LOGGER.debug("wake_up_device response: %s", data)
+                if resp.status != HTTPStatus.OK.value:
+                    _LOGGER.warning("Failed to wake device %s. Status code: %s, %s", device_name, resp.status, data)
+                    return Response(code=resp.status, msg="wake up device failed")
+                return response_factory(Response[bool], data)
 
         return Response(code=resp.status, msg="success")
 
@@ -920,6 +1104,8 @@ class MammotionHTTP:
                     "User-Agent": "okhttp/4.9.3",
                 },
             )
+            if resp.status in (408, 429) or resp.status >= 500:
+                raise ConnectionError(f"mqtt/auth/jwt returned HTTP {resp.status}")
             if resp.status != 200:
                 return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
@@ -956,13 +1142,15 @@ class MammotionHTTP:
                 },
             )
             resp_dict = await resp.json()
-        # Check auth failure BEFORE the generic non-200 bail-out: a 401 can arrive as
-        # an HTTP status or as an in-body code, and it must surface as
-        # UnauthorizedException (which drives the force-refresh path) rather than a
-        # plain Response(code=401).
-        if resp.status == 401 or resp_dict.get("code") == 401:
+        # Check auth failure BEFORE the generic non-200 bail-out: a dead token arrives
+        # as HTTP 401/460 or as an in-body 401/460 under any status, and every shape
+        # must surface as UnauthorizedException (which drives the force-refresh path)
+        # rather than a plain Response.
+        if resp.status in _DEAD_TOKEN_CODES or resp_dict.get("code") in _DEAD_TOKEN_CODES:
             _LOGGER.debug(
-                "mqtt_invoke: 401 for iot_id=%s with access_token fp=%s",
+                "mqtt_invoke: %s/%s for iot_id=%s with access_token fp=%s",
+                resp.status,
+                resp_dict.get("code"),
                 iot_id,
                 _token_fingerprint(self._login_info.access_token if self._login_info else None),
             )
@@ -1032,6 +1220,7 @@ class MammotionHTTP:
         if login_response is None or login_response.data is None:
             _LOGGER.debug("login_v2 returned empty response: %s", login_response)
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+        self._reauth_required = None
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
         self._headers["Authorization"] = (
@@ -1135,6 +1324,7 @@ class MammotionHTTP:
             _token_fingerprint(self._login_info.access_token if self._login_info else None),
             _token_fingerprint(refresh_response.data.access_token),
         )
+        self._reauth_required = None
         self.login_info = refresh_response.data
         self.expires_in = refresh_response.data.expires_in + time.time()
         self._headers["Authorization"] = (
@@ -1215,6 +1405,7 @@ class MammotionHTTP:
         login_response = response_factory(Response[LoginResponseData], data)
         if login_response is None or login_response.data is None:
             return Response.from_dict({"code": resp.status, "msg": "Login failed"})
+        self._reauth_required = None
         self.login_info = login_response.data
         self.expires_in = login_response.data.expires_in + time.time()
         self._headers["Authorization"] = (

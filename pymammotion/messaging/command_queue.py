@@ -29,21 +29,104 @@ _logger = logging.getLogger(__name__)
 
 
 class Priority(IntEnum):
-    """Command execution priority. Lower value = higher priority."""
+    """Command execution priority. Lower value = higher priority.
 
-    # NOTE: EMERGENCY items skip the TTL and transport gates, but the processor is
-    # strictly sequential — an item enqueued while an EXCLUSIVE saga is mid-flight
-    # still waits for that saga's work() to return.  True e-stop preemption needs a
-    # direct send path, not this queue.
-    EMERGENCY = 0  # estop, return-to-dock — never dropped, skips TTL/transport gates
-    EXCLUSIVE = 1  # sagas (map/plan fetch) — holds processor until complete
-    NORMAL = 2  # regular HA commands — waits for exclusive slot
-    BACKGROUND = 3  # low-urgency polling — waits for exclusive slot
+    The two highest levels never enter this queue at all — ``MammotionClient``
+    dispatches them on the caller's own task (see :attr:`is_direct`).  That is the
+    only way to get true preemption: the processor is strictly sequential, so an
+    item enqueued while an EXCLUSIVE saga is mid-flight would still have to wait
+    for that saga's ``work()`` to return no matter how it was ranked.
+    """
+
+    EMERGENCY = 0  # e-stop — direct send, outranks everything
+    USER = 1  # human-initiated action — direct send, never queued or dropped
+    EXCLUSIVE = 2  # sagas (map/plan fetch) — holds processor until complete
+    NORMAL = 3  # regular HA commands — waits for exclusive slot
+    BACKGROUND = 4  # low-urgency polling — waits for exclusive slot
+
+    @property
+    def is_direct(self) -> bool:
+        """True for the priorities that bypass this queue entirely."""
+        return self <= Priority.USER
 
 
 #: Commands that have not been dispatched within this window are silently dropped.
-#: EMERGENCY items (e-stop, return-to-dock) are exempt.
 _COMMAND_TTL = 120.0  # 2 minutes
+
+
+#: Attempts allowed for a work item that keeps hitting a cloud gateway timeout.
+_GATEWAY_TIMEOUT_MAX = 3
+
+
+async def execute_command(
+    work: Callable[[], Awaitable[None]],
+    *,
+    device_name: str,
+    on_critical_error: Callable[[Exception], Awaitable[None]] | None = None,
+    reraise: bool = False,
+) -> None:
+    """Run *work* with the gateway-timeout retry and the standard error buckets.
+
+    The single home for "should this exception be treated as expected?".  Both the
+    queue processor and ``MammotionClient``'s direct send path go through here, so a
+    user-initiated command is classified, logged and escalated exactly as a queued
+    one is.
+
+    *reraise* is the only difference between the two callers: the queue swallows,
+    because there is nobody left to tell, while a direct send propagates so the host
+    learns the command did not land.  ``asyncio.CancelledError`` always propagates.
+    """
+    for attempt in range(1, _GATEWAY_TIMEOUT_MAX + 1):
+        try:
+            await work()
+            return
+        except GatewayTimeoutException:
+            if attempt < _GATEWAY_TIMEOUT_MAX:
+                _logger.warning(
+                    "DeviceCommandQueue[%s]: gateway timeout (attempt %d/%d) — retrying",
+                    device_name,
+                    attempt,
+                    _GATEWAY_TIMEOUT_MAX,
+                )
+                continue
+            _logger.warning(
+                "DeviceCommandQueue[%s]: gateway timeout after %d attempts — dropping command",
+                device_name,
+                attempt,
+            )
+            if reraise:
+                raise
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Expected during transport churn — quiet by default.  Recovery
+            # is automatic: mqtt_reported_offline clears on inbound frames,
+            # BLE rearms via the availability listener.  No retry loop or
+            # caller-side gate needed; just don't pollute the log.
+            if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException, DeviceUnboundException)):
+                _logger.debug("DeviceCommandQueue[%s]: %s", device_name, exc)
+            elif isinstance(
+                exc,
+                (
+                    AuthError,  # includes ReLoginRequiredError
+                    SagaFailedError,
+                    TooManyRequestsException,
+                    TransportRateLimitedError,
+                    TransportError,
+                ),
+            ):
+                _logger.warning("DeviceCommandQueue[%s]: %s", device_name, exc)
+            else:
+                _logger.exception("DeviceCommandQueue[%s]: unhandled error in work item", device_name)
+            if on_critical_error is not None and isinstance(exc, (AuthError, SagaFailedError)):
+                try:
+                    await on_critical_error(exc)
+                except Exception:
+                    _logger.exception("on_critical_error callback failed")
+            if reraise:
+                raise
+            return
 
 
 @dataclass(order=True)
@@ -63,7 +146,9 @@ class DeviceCommandQueue:
     NORMAL/BACKGROUND items marked skip_if_saga_active=True are silently
     dropped while a saga is running — used by HA coordinator update() calls
     to prevent accumulation during long map/plan fetches.
-    EMERGENCY items always execute and are never skipped.
+
+    Only the queued priorities reach here.  EMERGENCY and USER are dispatched
+    directly by ``MammotionClient`` and :meth:`enqueue` rejects them.
     """
 
     def __init__(self, device_name: str = "") -> None:
@@ -72,7 +157,7 @@ class DeviceCommandQueue:
         self._exclusive_active = asyncio.Event()
         self._exclusive_active.set()  # set = free (no saga running)
         # Gate cleared while the active MQTT transport is reconnecting (CONNECTING state)
-        # and no BLE fallback is available.  Non-EMERGENCY items wait here so we don't
+        # and no BLE fallback is available.  Queued items wait here so we don't
         # dispatch commands whose responses we cannot receive (MQTT subscription inactive).
         # DeviceHandle manages the gate via pause_for_reconnect() / resume_after_reconnect().
         self._transport_gate: asyncio.Event = asyncio.Event()
@@ -109,7 +194,7 @@ class DeviceCommandQueue:
         CONNECTING state and no BLE fallback is available.  Commands accumulate
         in the queue but are not dispatched until resume_after_reconnect() is
         called (transport becomes CONNECTED, or BLE connects as a fallback).
-        EMERGENCY items always bypass this gate.
+        Direct-send commands never touch this gate — they don't use the queue.
         """
         self._transport_gate.clear()
 
@@ -145,10 +230,16 @@ class DeviceCommandQueue:
         If dedup_key is given and an item with that key is already pending,
         the new item is silently dropped. Use for idempotent commands like
         RPT_START that should only be queued once at a time.
+
+        Raises:
+            ValueError: if *priority* is a direct-send level.  EMERGENCY and USER
+                are dispatched by ``MammotionClient`` on the caller's task; queueing
+                one would reintroduce exactly the waiting it exists to avoid.
+
         """
-        # EMERGENCY is never skipped or blocked
-        if priority == Priority.EMERGENCY:
-            skip_if_saga_active = False
+        if priority.is_direct:
+            msg = f"{priority.name} is a direct-send priority and must not be queued"
+            raise ValueError(msg)
 
         if skip_if_saga_active and self.is_saga_active and priority > Priority.EXCLUSIVE:
             return
@@ -236,9 +327,8 @@ class DeviceCommandQueue:
                 # Drop commands that have waited longer than _COMMAND_TTL without being
                 # dispatched.  Checked here — before any lock/gate waits — so stale
                 # commands don't execute after a long reconnect or saga pause.
-                # EMERGENCY items (e-stop, return-to-dock) are exempt, and so are
-                # EXCLUSIVE sagas: a queued map/plan sync routinely waits out a
-                # multi-minute saga ahead of it, and silently dropping it means
+                # EXCLUSIVE sagas are exempt: a queued map/plan sync routinely waits
+                # out a multi-minute saga ahead of it, and silently dropping it means
                 # on_complete never fires and nothing upstream learns the sync
                 # didn't happen.
                 if item.priority > Priority.EXCLUSIVE:
@@ -251,7 +341,7 @@ class DeviceCommandQueue:
                         )
                         continue
 
-                # Non-emergency items yield to an active exclusive op
+                # Queued items yield to an active exclusive op
                 if item.priority > Priority.EXCLUSIVE:
                     await self._exclusive_active.wait()
 
@@ -259,61 +349,26 @@ class DeviceCommandQueue:
                 if item.skip_if_saga_active and self.is_saga_active and item.priority > Priority.EXCLUSIVE:
                     continue
 
-                # Non-emergency items hold here while the MQTT transport is reconnecting.
-                # This prevents dispatching commands whose responses can't be received
-                # because the MQTT subscription isn't active yet.  EMERGENCY items
-                # (e-stop, return-to-dock) bypass the gate unconditionally.
-                if item.priority > Priority.EMERGENCY:
-                    await self._transport_gate.wait()
+                # Hold here while the MQTT transport is reconnecting, so we don't
+                # dispatch commands whose responses can't be received because the
+                # MQTT subscription isn't active yet.  Nothing bypasses this gate:
+                # the priorities that used to (EMERGENCY) no longer reach the queue.
+                await self._transport_gate.wait()
 
-                _gateway_timeout_max = 3
-                for _attempt in range(1, _gateway_timeout_max + 1):
-                    try:
-                        await item.work()
-                        break  # success — exit retry loop
-                    except GatewayTimeoutException:
-                        if _attempt < _gateway_timeout_max:
-                            _logger.warning(
-                                "DeviceCommandQueue[%s]: gateway timeout (attempt %d/%d) — retrying",
-                                self._device_name,
-                                _attempt,
-                                _gateway_timeout_max,
-                            )
-                        else:
-                            _logger.warning(
-                                "DeviceCommandQueue[%s]: gateway timeout after %d attempts — dropping command",
-                                self._device_name,
-                                _attempt,
-                            )
+                await execute_command(
+                    item.work,
+                    device_name=self._device_name,
+                    on_critical_error=self.on_critical_error,
+                )
             except asyncio.CancelledError:
                 # stop() sets _running=False before cancelling the processor task,
                 # so CancelledError here always means we are shutting down.
                 break
-            except Exception as exc:
-                # Expected during transport churn — quiet by default.  Recovery
-                # is automatic: mqtt_reported_offline clears on inbound frames,
-                # BLE rearms via the availability listener.  No retry loop or
-                # caller-side gate needed; just don't pollute the log.
-                if isinstance(exc, (NoTransportAvailableError, DeviceOfflineException, DeviceUnboundException)):
-                    _logger.debug("DeviceCommandQueue[%s]: %s", self._device_name, exc)
-                elif isinstance(
-                    exc,
-                    (
-                        AuthError,  # includes ReLoginRequiredError
-                        SagaFailedError,
-                        TooManyRequestsException,
-                        TransportRateLimitedError,
-                        TransportError,
-                    ),
-                ):
-                    _logger.warning("DeviceCommandQueue[%s]: %s", self._device_name, exc)
-                else:
-                    _logger.exception("DeviceCommandQueue[%s]: unhandled error in work item", self._device_name)
-                if self.on_critical_error is not None and isinstance(exc, (AuthError, SagaFailedError)):
-                    try:
-                        await self.on_critical_error(exc)
-                    except Exception:
-                        _logger.exception("on_critical_error callback failed")
+            except Exception:
+                # execute_command classifies everything the work item raises, so
+                # reaching here means the loop machinery itself failed.  Log and keep
+                # going: a dead processor silently stops every command for this device.
+                _logger.exception("DeviceCommandQueue[%s]: queue processor error", self._device_name)
             finally:
                 with contextlib.suppress(ValueError):
                     self._queue.task_done()

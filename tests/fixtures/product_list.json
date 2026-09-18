@@ -1,0 +1,1055 @@
+[
+  {
+    "product_key": "a1BmXWlsdbA",
+    "models": [
+      {
+        "int_mod": "HM050080LBAWD50",
+        "int_id": "99",
+        "ext_mod": "LubaAWD5000"
+      },
+      {
+        "int_mod": "HM030060LBAWD50OMNI",
+        "int_id": "98",
+        "ext_mod": "LubaAWD5000"
+      }
+    ]
+  },
+  {
+    "product_key": "a1jOhAYOIG8",
+    "models": []
+  },
+  {
+    "product_key": "a1K4Ki2L5rK",
+    "models": [
+      {
+        "int_mod": "HM050080LBAWD50",
+        "int_id": "0",
+        "ext_mod": "LubaAWD5000"
+      },
+      {
+        "int_mod": "HM030060LBAWD50OMNI",
+        "int_id": "3",
+        "ext_mod": "LubaAWD5000"
+      },
+      {
+        "int_mod": "HM060100LBAWD50OMNIH",
+        "int_id": "4",
+        "ext_mod": "LubaAWD5000H"
+      }
+    ]
+  },
+  {
+    "product_key": "a1ae1QnXZGf",
+    "models": []
+  },
+  {
+    "product_key": "a1nf9kRBWoH",
+    "models": [
+      {
+        "int_mod": "HM030080LBAWD30",
+        "int_id": "1",
+        "ext_mod": "LubaAWD3000"
+      }
+    ]
+  },
+  {
+    "product_key": "a1ZU6bdGjaM",
+    "models": [
+      {
+        "int_mod": "HM010060LBAWD10",
+        "int_id": "2",
+        "ext_mod": "LubaAWD1000"
+      }
+    ]
+  },
+  {
+    "product_key": "a1LLmy1zc0j",
+    "models": [
+      {
+        "int_mod": "HM030070LBVAWD50OMNI",
+        "int_id": "5",
+        "ext_mod": "Luba2AWD5000"
+      },
+      {
+        "int_mod": "HM060100LBVAWD50OMNIH",
+        "int_id": "6",
+        "ext_mod": "Luba2AWD5000H"
+      },
+      {
+        "int_mod": "HM030070LBVAWD10OMNI",
+        "int_id": "7",
+        "ext_mod": "Luba2AWD1000"
+      },
+      {
+        "int_mod": "HM060100LBVAWD10OMNIH",
+        "int_id": "8",
+        "ext_mod": "Luba2AWD1000H"
+      },
+      {
+        "int_mod": "HM030070LBVAWD30OMNI",
+        "int_id": "9",
+        "ext_mod": "Luba2AWD3000"
+      },
+      {
+        "int_mod": "HM060100LBVAWD30OMNIH",
+        "int_id": "10",
+        "ext_mod": "Luba2AWD3000H"
+      },
+      {
+        "int_mod": "HM030070LBVAWD100OMNI",
+        "int_id": "11",
+        "ext_mod": "Luba2AWD10000"
+      },
+      {
+        "int_mod": "HM060100LBVAWD100OMNIH",
+        "int_id": "12",
+        "ext_mod": "Luba2AWD10000H"
+      }
+    ]
+  },
+  {
+    "product_key": "a1Nc68bGZzX",
+    "models": [
+      {
+        "int_mod": "HMRTKV1",
+        "int_id": "16",
+        "ext_mod": "RtkRefStationV1"
+      }
+    ]
+  },
+  {
+    "product_key": "a1IQV0BrnXb",
+    "models": [
+      {
+        "int_mod": "HM030070YK10",
+        "int_id": "14",
+        "ext_mod": "Yuka1000"
+      },
+      {
+        "int_mod": "HM030070YK15",
+        "int_id": "15",
+        "ext_mod": "Yuka1500"
+      },
+      {
+        "int_mod": "HM030100YK10H",
+        "int_id": "17",
+        "ext_mod": "Yuka1000"
+      },
+      {
+        "int_mod": "HM030100YK15H",
+        "int_id": "18",
+        "ext_mod": "Yuka1500"
+      },
+      {
+        "int_mod": "HM020090YK20",
+        "int_id": "21",
+        "ext_mod": "Yuka2000"
+      },
+      {
+        "int_mod": "HM030100YK20H",
+        "int_id": "22",
+        "ext_mod": "Yuka2000"
+      }
+    ]
+  },
+  {
+    "product_key": "a1vIxwrmpMn",
+    "models": [
+      {
+        "int_mod": "HMRTKV2",
+        "int_id": "97",
+        "ext_mod": "SolarRtkV2"
+      }
+    ]
+  },
+  {
+    "product_key": "a1biqVGvxrE",
+    "models": [
+      {
+        "int_mod": "HM020080YKMINI08",
+        "int_id": "19",
+        "ext_mod": "YUKA mini 800"
+      },
+      {
+        "int_mod": "HM020080YKMINI05",
+        "int_id": "20",
+        "ext_mod": "YUKA mini 500"
+      },
+      {
+        "int_mod": "HM050090YKMINI08H",
+        "int_id": "29",
+        "ext_mod": "YUKA mini 800"
+      },
+      {
+        "int_mod": "HM050090YKMINI05H",
+        "int_id": "30",
+        "ext_mod": "YUKA mini 500"
+      },
+      {
+        "int_mod": "HM020080YKMINI06",
+        "int_id": "37",
+        "ext_mod": "YUKA mini 600"
+      },
+      {
+        "int_mod": "HM050090YKMINI06H",
+        "int_id": "39",
+        "ext_mod": "YUKA mini 600"
+      },
+      {
+        "int_mod": "HM020080YKMINI07",
+        "int_id": "38",
+        "ext_mod": "YUKA mini 700"
+      },
+      {
+        "int_mod": "HM050090YKMINI07H",
+        "int_id": "40",
+        "ext_mod": "YUKA mini 700"
+      }
+    ]
+  },
+  {
+    "product_key": "a1pHsTqyoPR",
+    "models": [
+      {
+        "int_mod": "HM030070LB2PAWD30OMNI",
+        "int_id": "23",
+        "ext_mod": "LUBA 2 AWD 3000X"
+      },
+      {
+        "int_mod": "HM060100LB2PAWD30OMNIH",
+        "int_id": "24",
+        "ext_mod": "LUBA 2 AWD 3000HX"
+      },
+      {
+        "int_mod": "HM030070LB2PAWD50OMNI",
+        "int_id": "25",
+        "ext_mod": "LUBA 2 AWD 5000X"
+      },
+      {
+        "int_mod": "HM060100LB2PAWD50OMNIH",
+        "int_id": "26",
+        "ext_mod": "LUBA 2 AWD 5000HX"
+      },
+      {
+        "int_mod": "HM030070LB2PAWD100OMNI",
+        "int_id": "27",
+        "ext_mod": "LUBA 2 AWD 10000X"
+      },
+      {
+        "int_mod": "HM060100LB2PAWD100OMNIH",
+        "int_id": "28",
+        "ext_mod": "LUBA 2 AWD 10000HX"
+      }
+    ]
+  },
+  {
+    "product_key": "a1dCWYFLROK",
+    "models": [
+      {
+        "int_mod": "HM020065LB2MINIAWD15OMNI",
+        "int_id": "32",
+        "ext_mod": "LUBA mini AWD 1500"
+      },
+      {
+        "int_mod": "HM020065LB2MINIAWD08OMNI",
+        "int_id": "31",
+        "ext_mod": "LUBA mini AWD 800"
+      },
+      {
+        "int_mod": "HM055100LB2MINIAWD08OMNIH",
+        "int_id": "34",
+        "ext_mod": "LUBA mini AWD 800H"
+      },
+      {
+        "int_mod": "HM055100LB2MINIAWD15OMNIH",
+        "int_id": "35",
+        "ext_mod": "LUBA mini AWD 1500H"
+      }
+    ]
+  },
+  {
+    "product_key": "a1wIIUUdAMX",
+    "models": [
+      {
+        "int_mod": "RTK300",
+        "int_id": "96",
+        "ext_mod": "RTK300"
+      },
+      {
+        "int_mod": "RTK310",
+        "int_id": "95",
+        "ext_mod": "RTK310"
+      },
+      {
+        "int_mod": "RTK301",
+        "int_id": "94",
+        "ext_mod": "RTK301"
+      }
+    ]
+  },
+  {
+    "product_key": "a1lNESu9VST",
+    "models": [
+      {
+        "int_mod": "HM020090YKPLUS15",
+        "int_id": "41",
+        "ext_mod": "YUKA 1000"
+      },
+      {
+        "int_mod": "HM020090YKPLUS20",
+        "int_id": "42",
+        "ext_mod": "YUKA 2000"
+      },
+      {
+        "int_mod": "HM030100YKPLUS15H",
+        "int_id": "43",
+        "ext_mod": "YUKA 1000"
+      },
+      {
+        "int_mod": "HM030100YKPLUS20H",
+        "int_id": "44",
+        "ext_mod": "YUKA 2000"
+      },
+      {
+        "int_mod": "HM020090YKPLUS30",
+        "int_id": "46",
+        "ext_mod": "YUKA 3000"
+      },
+      {
+        "int_mod": "HM030100YKPLUS30H",
+        "int_id": "47",
+        "ext_mod": "YUKA 3000"
+      }
+    ]
+  },
+  {
+    "product_key": "a15Cq8FbCh1",
+    "models": [
+      {
+        "int_mod": "SPINO E1",
+        "int_id": "52",
+        "ext_mod": "SPINO E1"
+      },
+      {
+        "int_mod": "SPINO S1",
+        "int_id": "93",
+        "ext_mod": "SPINO S1"
+      }
+    ]
+  },
+  {
+    "product_key": "a1jDMfG2Fgj",
+    "models": [
+      {
+        "int_mod": "HM020065LB2MINIAWD12OMNILD",
+        "int_id": "33",
+        "ext_mod": "LUBA mini AWD LiDAR"
+      }
+    ]
+  },
+  {
+    "product_key": "a1jFe8HzcDb",
+    "models": [
+      {
+        "int_mod": "HM020080YKMINIV09",
+        "int_id": "50",
+        "ext_mod": "YUKA mini 2 800"
+      }
+    ]
+  },
+  {
+    "product_key": "a1NfZqdSREf",
+    "models": [
+      {
+        "int_mod": "NRTK",
+        "int_id": "54",
+        "ext_mod": "NRTK"
+      }
+    ]
+  },
+  {
+    "product_key": "a1Ce85210Be",
+    "models": [
+      {
+        "int_mod": "91",
+        "int_id": "91",
+        "ext_mod": "LUBA AWD 3000 Vision"
+      },
+      {
+        "int_mod": "61",
+        "int_id": "61",
+        "ext_mod": "LUBA 3 AWD 1500"
+      },
+      {
+        "int_mod": "62",
+        "int_id": "62",
+        "ext_mod": "LUBA 3 AWD 1500H"
+      },
+      {
+        "int_mod": "63",
+        "int_id": "63",
+        "ext_mod": "LUBA 3 AWD 3000"
+      },
+      {
+        "int_mod": "64",
+        "int_id": "64",
+        "ext_mod": "LUBA 3 AWD 3000H"
+      },
+      {
+        "int_mod": "65",
+        "int_id": "65",
+        "ext_mod": "LUBA 3 AWD 5000"
+      },
+      {
+        "int_mod": "66",
+        "int_id": "66",
+        "ext_mod": "LUBA 3 AWD 5000H"
+      },
+      {
+        "int_mod": "67",
+        "int_id": "67",
+        "ext_mod": "LUBA 3 AWD 10000"
+      },
+      {
+        "int_mod": "68",
+        "int_id": "68",
+        "ext_mod": "LUBA 3 AWD 10000H"
+      },
+      {
+        "int_mod": "104",
+        "int_id": "104",
+        "ext_mod": "LUBA 3 AWD 5000"
+      }
+    ]
+  },
+  {
+    "product_key": "a1OWGO8WXbh",
+    "models": [
+      {
+        "int_mod": "HM020060YKMNL10",
+        "int_id": "55",
+        "ext_mod": "YUKA mini 2 1000"
+      }
+    ]
+  },
+  {
+    "product_key": "USpE46bNTC7",
+    "models": [
+      {
+        "int_mod": "HM020080YKMINI09",
+        "int_id": "53",
+        "ext_mod": "YUKA mini Vision 700"
+      },
+      {
+        "int_mod": "HM020080YKMINIV07",
+        "int_id": "49",
+        "ext_mod": "YUKA mini 2 500"
+      },
+      {
+        "int_mod": "HM020080YKMINIV09",
+        "int_id": "50",
+        "ext_mod": "YUKA mini 2 800"
+      },
+      {
+        "int_mod": "135",
+        "int_id": "135",
+        "ext_mod": "YUKA mini 2 800"
+      }
+    ]
+  },
+  {
+    "product_key": "a1pb9toor70",
+    "models": [
+      {
+        "int_mod": "101",
+        "int_id": "101",
+        "ext_mod": "LUBA mini Vision 800"
+      }
+    ]
+  },
+  {
+    "product_key": "5BMtap5Q3Yq",
+    "models": [
+      {
+        "int_mod": "HM020060YKMNL10",
+        "int_id": "55",
+        "ext_mod": "YUKA mini 2 1000"
+      },
+      {
+        "int_mod": "103",
+        "int_id": "103",
+        "ext_mod": "YUKA mini 2 1000"
+      },
+      {
+        "int_mod": "118",
+        "int_id": "118",
+        "ext_mod": "YUKA mini 2 1000"
+      },
+      {
+        "int_mod": "120",
+        "int_id": "120",
+        "ext_mod": "YUKA mini 2 1000H"
+      },
+      {
+        "int_mod": "136",
+        "int_id": "136",
+        "ext_mod": "YUKA mini 2 800 LiDAR"
+      },
+      {
+        "int_mod": "162",
+        "int_id": "162",
+        "ext_mod": "YUKA mini 2 2000R"
+      }
+    ]
+  },
+  {
+    "product_key": "uY54W5rM8YH",
+    "models": [
+      {
+        "int_mod": "91",
+        "int_id": "91",
+        "ext_mod": "LUBA AWD 3000 Vision"
+      },
+      {
+        "int_mod": "61",
+        "int_id": "61",
+        "ext_mod": "LUBA 3 AWD 1500"
+      },
+      {
+        "int_mod": "62",
+        "int_id": "62",
+        "ext_mod": "LUBA 3 AWD 1500H"
+      },
+      {
+        "int_mod": "63",
+        "int_id": "63",
+        "ext_mod": "LUBA 3 AWD 3000"
+      },
+      {
+        "int_mod": "64",
+        "int_id": "64",
+        "ext_mod": "LUBA 3 AWD 3000H"
+      },
+      {
+        "int_mod": "65",
+        "int_id": "65",
+        "ext_mod": "LUBA 3 AWD 5000"
+      },
+      {
+        "int_mod": "66",
+        "int_id": "66",
+        "ext_mod": "LUBA 3 AWD 5000H"
+      },
+      {
+        "int_mod": "67",
+        "int_id": "67",
+        "ext_mod": "LUBA 3 AWD 10000"
+      },
+      {
+        "int_mod": "68",
+        "int_id": "68",
+        "ext_mod": "LUBA 3 AWD 10000H"
+      },
+      {
+        "int_mod": "104",
+        "int_id": "104",
+        "ext_mod": "LUBA 3 AWD 5000"
+      },
+      {
+        "int_mod": "107",
+        "int_id": "107",
+        "ext_mod": "LUBA 3 AWD 1500"
+      },
+      {
+        "int_mod": "108",
+        "int_id": "108",
+        "ext_mod": "LUBA 3 AWD 1500H"
+      },
+      {
+        "int_mod": "109",
+        "int_id": "109",
+        "ext_mod": "LUBA 3 AWD 3000"
+      },
+      {
+        "int_mod": "110",
+        "int_id": "110",
+        "ext_mod": "LUBA 3 AWD 3000H"
+      },
+      {
+        "int_mod": "111",
+        "int_id": "111",
+        "ext_mod": "LUBA 3 AWD 10000"
+      },
+      {
+        "int_mod": "112",
+        "int_id": "112",
+        "ext_mod": "LUBA 3 AWD 10000H"
+      },
+      {
+        "int_mod": "113",
+        "int_id": "113",
+        "ext_mod": "LUBA AWD 3000 Vision"
+      },
+      {
+        "int_mod": "114",
+        "int_id": "114",
+        "ext_mod": "LUBA 3 AWD 5000H"
+      },
+      {
+        "int_mod": "115",
+        "int_id": "115",
+        "ext_mod": "LUBA 3 AWD 5000"
+      },
+      {
+        "int_mod": "116",
+        "int_id": "116",
+        "ext_mod": "LUBA 3 AWD 5000"
+      },
+      {
+        "int_mod": "119",
+        "int_id": "119",
+        "ext_mod": "LUBA 3 AWD 3000"
+      },
+      {
+        "int_mod": "121",
+        "int_id": "121",
+        "ext_mod": "LUBA 3 AWD 1500"
+      },
+      {
+        "int_mod": "122",
+        "int_id": "122",
+        "ext_mod": "LUBA 3 AWD 1500"
+      },
+      {
+        "int_mod": "123",
+        "int_id": "123",
+        "ext_mod": "LUBA 3 AWD 3000"
+      },
+      {
+        "int_mod": "124",
+        "int_id": "124",
+        "ext_mod": "LUBA 3 AWD 5000"
+      },
+      {
+        "int_mod": "146",
+        "int_id": "146",
+        "ext_mod": "LUBA 3 AWD 5000"
+      },
+      {
+        "int_mod": "147",
+        "int_id": "147",
+        "ext_mod": "LUBA 3 AWD 1500"
+      },
+      {
+        "int_mod": "148",
+        "int_id": "148",
+        "ext_mod": "LUBA 3 AWD 5000"
+      }
+    ]
+  },
+  {
+    "product_key": "CDYuKXTYrSP",
+    "models": [
+      {
+        "int_mod": "70",
+        "int_id": "70",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 2000"
+      },
+      {
+        "int_mod": "106",
+        "int_id": "106",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 1500"
+      },
+      {
+        "int_mod": "129",
+        "int_id": "129",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 1500"
+      },
+      {
+        "int_mod": "130",
+        "int_id": "130",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 1500"
+      },
+      {
+        "int_mod": "131",
+        "int_id": "131",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 1500"
+      },
+      {
+        "int_mod": "132",
+        "int_id": "132",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 1500"
+      },
+      {
+        "int_mod": "133",
+        "int_id": "133",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 1500H"
+      },
+      {
+        "int_mod": "149",
+        "int_id": "149",
+        "ext_mod": "LUBA mini AWD 360 LIDAR 1500"
+      }
+    ]
+  },
+  {
+    "product_key": "3drMFnqGVNe",
+    "models": [
+      {
+        "int_mod": "101",
+        "int_id": "101",
+        "ext_mod": "LUBA mini Vision 800"
+      },
+      {
+        "int_mod": "105",
+        "int_id": "105",
+        "ext_mod": "LUBA mini Vision 1000"
+      },
+      {
+        "int_mod": "125",
+        "int_id": "125",
+        "ext_mod": "LUBA mini Vision 1000"
+      },
+      {
+        "int_mod": "126",
+        "int_id": "126",
+        "ext_mod": "LUBA mini Vision 1000"
+      },
+      {
+        "int_mod": "127",
+        "int_id": "127",
+        "ext_mod": "LUBA mini Vision 1000"
+      },
+      {
+        "int_mod": "128",
+        "int_id": "128",
+        "ext_mod": "LUBA mini Vision 1000H"
+      },
+      {
+        "int_mod": "142",
+        "int_id": "142",
+        "ext_mod": "LUBA mini Vision 800"
+      }
+    ]
+  },
+  {
+    "product_key": "8xMGQS6DESC",
+    "models": [
+      {
+        "int_mod": "HM020080YKMINI06",
+        "int_id": "37",
+        "ext_mod": "YUKA mini 600"
+      },
+      {
+        "int_mod": "HM020080YKMINI07",
+        "int_id": "38",
+        "ext_mod": "YUKA mini 700"
+      },
+      {
+        "int_mod": "HM050090YKMINI06H",
+        "int_id": "39",
+        "ext_mod": "YUKA mini 600"
+      },
+      {
+        "int_mod": "HM050090YKMINI08H",
+        "int_id": "29",
+        "ext_mod": "YUKA mini 800"
+      },
+      {
+        "int_mod": "HM050090YKMINI07H",
+        "int_id": "40",
+        "ext_mod": "YUKA mini 700"
+      },
+      {
+        "int_mod": "HM050090YKMINI05H",
+        "int_id": "30",
+        "ext_mod": "YUKA mini 500"
+      },
+      {
+        "int_mod": "HM020080YKMINI05",
+        "int_id": "20",
+        "ext_mod": "YUKA mini 500"
+      },
+      {
+        "int_mod": "HM020080YKMINI08",
+        "int_id": "19",
+        "ext_mod": "YUKA mini 800"
+      }
+    ]
+  },
+  {
+    "product_key": "ATyVu9QkAdX",
+    "models": [
+      {
+        "int_mod": "HM030070LB2PAWD30OMNI",
+        "int_id": "23",
+        "ext_mod": "LUBA 2 AWD 3000X"
+      },
+      {
+        "int_mod": "HM060100LB2PAWD50OMNIH",
+        "int_id": "26",
+        "ext_mod": "LUBA 2 AWD 5000HX"
+      },
+      {
+        "int_mod": "HM030070LB2PAWD100OMNI",
+        "int_id": "27",
+        "ext_mod": "LUBA 2 AWD 10000X"
+      },
+      {
+        "int_mod": "HM060100LB2PAWD100OMNIH",
+        "int_id": "28",
+        "ext_mod": "LUBA 2 AWD 10000HX"
+      },
+      {
+        "int_mod": "HM030070LB2PAWD50OMNI",
+        "int_id": "25",
+        "ext_mod": "LUBA 2 AWD 5000X"
+      },
+      {
+        "int_mod": "HM060100LB2PAWD30OMNIH",
+        "int_id": "24",
+        "ext_mod": "LUBA 2 AWD 3000HX"
+      }
+    ]
+  },
+  {
+    "product_key": "ftDnXns2cdT",
+    "models": [
+      {
+        "int_mod": "HM055100LB2MINIAWD15OMNIH",
+        "int_id": "35",
+        "ext_mod": "LUBA mini AWD 1500H"
+      },
+      {
+        "int_mod": "HM055100LB2MINIAWD08OMNIH",
+        "int_id": "34",
+        "ext_mod": "LUBA mini AWD 800H"
+      },
+      {
+        "int_mod": "HM020065LB2MINIAWD15OMNI",
+        "int_id": "32",
+        "ext_mod": "LUBA mini AWD 1500"
+      },
+      {
+        "int_mod": "HM020065LB2MINIAWD08OMNI",
+        "int_id": "31",
+        "ext_mod": "LUBA mini AWD 800"
+      }
+    ]
+  },
+  {
+    "product_key": "UfsEwwHp8uz",
+    "models": [
+      {
+        "int_mod": "HM020090YKPLUS20",
+        "int_id": "42",
+        "ext_mod": "YUKA 2000"
+      },
+      {
+        "int_mod": "HM030100YKPLUS20H",
+        "int_id": "44",
+        "ext_mod": "YUKA 2000"
+      },
+      {
+        "int_mod": "HM020090YKPLUS15",
+        "int_id": "41",
+        "ext_mod": "YUKA 1000"
+      },
+      {
+        "int_mod": "HM020090YKPLUS30",
+        "int_id": "46",
+        "ext_mod": "YUKA 3000"
+      },
+      {
+        "int_mod": "HM030100YKPLUS15H",
+        "int_id": "43",
+        "ext_mod": "YUKA 1000"
+      },
+      {
+        "int_mod": "HM030100YKPLUS30H",
+        "int_id": "47",
+        "ext_mod": "YUKA 3000"
+      }
+    ]
+  },
+  {
+    "product_key": "FpstPz2SpwH",
+    "models": [
+      {
+        "int_mod": "HM020065LB2MINIAWD12OMNILD",
+        "int_id": "33",
+        "ext_mod": "LUBA mini AWD LiDAR"
+      }
+    ]
+  },
+  {
+    "product_key": "6kWUnPW8UrW",
+    "models": [
+      {
+        "int_mod": "HM060100LBVAWD100OMNIH",
+        "int_id": "12",
+        "ext_mod": "Luba2AWD10000H"
+      },
+      {
+        "int_mod": "HM030070LBVAWD50OMNI",
+        "int_id": "5",
+        "ext_mod": "Luba2AWD5000"
+      },
+      {
+        "int_mod": "HM060100LBVAWD50OMNIH",
+        "int_id": "6",
+        "ext_mod": "Luba2AWD5000H"
+      },
+      {
+        "int_mod": "HM030070LBVAWD10OMNI",
+        "int_id": "7",
+        "ext_mod": "Luba2AWD1000"
+      },
+      {
+        "int_mod": "HM060100LBVAWD10OMNIH",
+        "int_id": "8",
+        "ext_mod": "Luba2AWD1000H"
+      },
+      {
+        "int_mod": "HM030070LBVAWD30OMNI",
+        "int_id": "9",
+        "ext_mod": "Luba2AWD3000"
+      },
+      {
+        "int_mod": "HM060100LBVAWD30OMNIH",
+        "int_id": "10",
+        "ext_mod": "Luba2AWD3000H"
+      },
+      {
+        "int_mod": "HM030070LBVAWD100OMNI",
+        "int_id": "11",
+        "ext_mod": "Luba2AWD10000"
+      }
+    ]
+  },
+  {
+    "product_key": "KJHXKHMEvj3",
+    "models": [
+      {
+        "int_mod": "HM030070YK10",
+        "int_id": "14",
+        "ext_mod": "Yuka 1000"
+      },
+      {
+        "int_mod": "HM030070YK15",
+        "int_id": "15",
+        "ext_mod": "Yuka 1500"
+      },
+      {
+        "int_mod": "HM020090YK20",
+        "int_id": "21",
+        "ext_mod": "Yuka 2000"
+      },
+      {
+        "int_mod": "HM030100YK15H",
+        "int_id": "18",
+        "ext_mod": "Yuka1500"
+      },
+      {
+        "int_mod": "HM030100YK20H",
+        "int_id": "22",
+        "ext_mod": "Yuka2000"
+      },
+      {
+        "int_mod": "HM030100YK10H",
+        "int_id": "17",
+        "ext_mod": "Yuka1000"
+      }
+    ]
+  },
+  {
+    "product_key": "6DPytKe4pKz",
+    "models": [
+      {
+        "int_mod": "NRTK",
+        "int_id": "54",
+        "ext_mod": "NRTK"
+      }
+    ]
+  },
+  {
+    "product_key": "sePx2YW6xDT",
+    "models": [
+      {
+        "int_mod": "RTK300",
+        "int_id": "96",
+        "ext_mod": "RTK300"
+      },
+      {
+        "int_mod": "RTK310",
+        "int_id": "95",
+        "ext_mod": "RTK310"
+      },
+      {
+        "int_mod": "RTK301",
+        "int_id": "94",
+        "ext_mod": "RTK301"
+      }
+    ]
+  },
+  {
+    "product_key": "HwHcWDDVkT9",
+    "models": [
+      {
+        "int_mod": "HMRTKV2",
+        "int_id": "97",
+        "ext_mod": "SolarRtkV2"
+      }
+    ]
+  },
+  {
+    "product_key": "mUzerUySdcC",
+    "models": [
+      {
+        "int_mod": "HMRTKV1",
+        "int_id": "16",
+        "ext_mod": "RtkRefStationV1"
+      }
+    ]
+  },
+  {
+    "product_key": "b9tzVWaMxDZ",
+    "models": [
+      {
+        "int_mod": "HM050080LBAWD50",
+        "int_id": "0",
+        "ext_mod": "LubaAWD5000"
+      },
+      {
+        "int_mod": "HM030060LBAWD50OMNI",
+        "int_id": "3",
+        "ext_mod": "LubaAWD5000"
+      },
+      {
+        "int_mod": "HM060100LBAWD50OMNIH",
+        "int_id": "4",
+        "ext_mod": "LubaAWD5000H"
+      },
+      {
+        "int_mod": "HM030080LBAWD30",
+        "int_id": "1",
+        "ext_mod": "LubaAWD3000"
+      },
+      {
+        "int_mod": "HM010060LBAWD10",
+        "int_id": "2",
+        "ext_mod": "LubaAWD1000"
+      },
+      {
+        "int_mod": "HM050080LBAWD50",
+        "int_id": "99",
+        "ext_mod": "LubaAWD5000"
+      },
+      {
+        "int_mod": "HM030060LBAWD50OMNI",
+        "int_id": "98",
+        "ext_mod": "LubaAWD5000"
+      }
+    ]
+  }
+]

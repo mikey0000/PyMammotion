@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 
 from pymammotion.client import MammotionClient
 from pymammotion.data.model import GenerateRouteInformation
+from pymammotion.data.model.device_capabilities import DeviceConfig
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, TransportType
-from pymammotion.utility.device_config import DeviceConfig
 from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
@@ -38,10 +38,10 @@ class HomeAssistantMowerApi:
         self._last_call_times: dict[str, dict[str, datetime]] = {}
         self._call_intervals = {
             # Retry pacing for data we don't hold yet, not a refresh of what we do.
-            "check_maps": timedelta(minutes=5),
+            "check_maps": timedelta(hours=2),
             "read_plan": timedelta(minutes=30),
             "get_report_cfg": timedelta(hours=1),
-            "get_maintenance": timedelta(minutes=30),
+            "get_maintenance": timedelta(hours=24),
             "device_version_upgrade": timedelta(hours=24),
             "device_info": timedelta(hours=24),
         }
@@ -130,11 +130,6 @@ class HomeAssistantMowerApi:
             await self._mammotion.start_plan_sync(device_name)
             self._mark_api_called("read_plan", device_name)
 
-        # if self._should_call_api("get_errors", device_name):
-        #     await self.async_send_command(device_name, "get_error_code")
-        #     await self.async_send_command(device_name, "get_error_timestamp")
-        #     self._mark_api_called("get_errors", device_name)
-
         if self._should_call_api("get_report_cfg", device_name):
             await self.async_send_command(device_name, "get_report_cfg")
             self._mark_api_called("get_report_cfg", device_name)
@@ -203,6 +198,14 @@ class HomeAssistantMowerApi:
             await http.start_ota_upgrade(handle.iot_id, version)
         else:
             logger.warning("update_firmware: no cloud client available for device '%s'", device_name)
+
+    async def async_wake_up(self, device_name: str) -> bool:
+        """Wake a sleeping device and report whether the cloud accepted the request.
+
+        See :meth:`MammotionClient.wake_device` — a True return means the wake was
+        accepted, not that the device is awake yet.
+        """
+        return await self._mammotion.wake_device(device_name)
 
     async def async_start_stop_blades(self, device_name: str, start_stop: bool, blade_height: int = 60) -> None:
         """Start stop blades."""
@@ -391,11 +394,16 @@ class HomeAssistantMowerApi:
             edge_mode=operation_settings.mowing_laps,  # perimeter/mowing laps
             path_order=create_path_order(operation_settings, device_name),
             obstacle_laps=operation_settings.obstacle_laps,
+            auto_change_direction=operation_settings.auto_change_direction,
         )
 
         if DeviceType.is_luba1(device_name):
             route_information.toward_mode = 0
             route_information.toward_included_angle = 0
+        firmware = device.device_firmwares.device_version if device is not None else ""
+        if not DeviceType.supports_auto_change_direction(device_name, firmware):
+            # The app gates this row on a capability list and firmware; match it.
+            route_information.auto_change_direction = 0
         return route_information
 
     async def async_plan_route(self, device_name: str, operation_settings: OperationSettings) -> bool | None:
