@@ -19,7 +19,7 @@ OLD = [
     DetectionStrategy.less_touch,
     DetectionStrategy.no_touch,
 ]
-NEW = [DetectionStrategy.direct_touch, DetectionStrategy.no_touch, DetectionStrategy.sensitive]
+NEW = [DetectionStrategy.slow_touch, DetectionStrategy.no_touch, DetectionStrategy.sensitive]
 LUBA1 = [DetectionStrategy.direct_touch, DetectionStrategy.slow_touch, DetectionStrategy.less_touch]
 
 
