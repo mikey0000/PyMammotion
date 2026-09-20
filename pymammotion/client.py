@@ -705,7 +705,7 @@ class MammotionClient(CloudAuthMixin):
         self,
         device_id: str,
         device_name: str,
-        initial_device: MowingDevice,
+        initial_device: DeviceModel,
         *,
         ble_device: BLEDevice | None = None,
         ble_address: str | None = None,

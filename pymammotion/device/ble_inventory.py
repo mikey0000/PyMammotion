@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from bleak.backends.device import BLEDevice
 
     from pymammotion.bluetooth.manager import BLEDeviceEntry
-    from pymammotion.data.model.device import MowingDevice
+    from pymammotion.data.model.device import Device
     from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 
 _logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class BleInventory:
         self,
         device_id: str,
         device_name: str,
-        initial_device: MowingDevice,
+        initial_device: Device,
         *,
         ble_device: BLEDevice | None = None,
         ble_address: str | None = None,
@@ -148,7 +148,10 @@ class BleInventory:
             device_id:             Unique device identifier (e.g. ``"Luba-XXXXXX"``) —
                                    must match the cloud device name for adoption.
             device_name:           Human-readable name shown in HA.
-            initial_device:        Empty or cached ``MowingDevice`` for initial state.
+            initial_device:        Empty or cached device state — a ``MowingDevice``
+                                   for a mower, a ``PoolCleanerDevice`` for a Spino.
+                                   ``DeviceHandle`` picks its reducer from the device
+                                   name, so the two must agree.
             ble_device:            Optional pre-discovered bleak ``BLEDevice``.
             ble_address:           Optional MAC.  Required when ``ble_device``
                                    is not supplied.  Stored in the transport
