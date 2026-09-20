@@ -217,3 +217,33 @@ class BladeState(IntEnum):
 
     OFF = 0  # Blade not rotating
     ON = 1  # Blade active / rotating
+
+
+class CollectorState(IntEnum):
+    """3-bit grass-collector state packed into DeviceData.sensor_status bits 24-26.
+
+    The app's ``colloctState``.  It stops collection and shows the upload-failed
+    warning for anything above COLLECTING, so values 3-7 also map to FAULT.
+
+    Source: MACarDataManager.java ``(sensorStatus >> 24) & 7`` +
+    MapManualActivityNew.java lambda$initCarWorkState$7.
+    """
+
+    IDLE = 0  # Collector not running
+    COLLECTING = 1  # Sweeping clippings into the bin
+    FAULT = 2  # Collection failed; values 3-7 also map here
+
+
+class DumpState(UnknownTolerantIntEnum):
+    """3-bit bin-tipping state packed into DeviceData.sensor_status bits 27-29.
+
+    The app's ``pourState``.  Source: MACarDataManager.java
+    ``(sensorStatus >> 27) & 7`` + MapManualActivityNew.java
+    lambda$initCarWorkState$7.
+    """
+
+    UNKNOWN = -1  # Unmodelled state code (values 4-7)
+    LOWERED = 0  # Bin stowed
+    RAISED = 1  # Bin lifted and ready to tip
+    ADJUSTING = 2  # Collect-mode adjustment running; must be turned off first
+    POURING = 3  # Clippings being tipped out

@@ -9,6 +9,8 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model.enums import (
     BladeState,
+    CollectorState,
+    DumpState,
     MnetLinkType,
     PositionMode,
     RTKStatus,
@@ -206,6 +208,26 @@ class DeviceData(DataClassORJSONMixin):
         """Right ultrasonic sensor state (sensor_status bits 21-23)."""
         raw = (self.sensor_status >> 21) & 0x7
         return SensorCheckState(min(raw, int(SensorCheckState.ERROR)))
+
+    @property
+    def collector_state(self) -> CollectorState:
+        """Grass-collector (sweep) state (sensor_status bits 24-26)."""
+        raw = (self.sensor_status >> 24) & 0x7
+        return CollectorState(min(raw, int(CollectorState.FAULT)))
+
+    @property
+    def dump_state(self) -> DumpState:
+        """Bin-tipping (dump) state (sensor_status bits 27-29)."""
+        return DumpState((self.sensor_status >> 27) & 0x7)
+
+    @property
+    def collector_installed(self) -> bool:
+        """Whether the mower reports a grass collector fitted.
+
+        The app hides every sweep and dump control while this is False
+        (MapManualActivityNew.java lambda$initCarWorkState$7).
+        """
+        return self.collector_status.collector_installation_status != 0
 
     # ------------------------------------------------------------------
     # vslam_status bit-field accessors
