@@ -6,6 +6,8 @@ import json
 import math
 from types import SimpleNamespace
 
+import pytest
+
 from pymammotion.data.model.device import RTKBaseStationDevice
 from pymammotion.data.mqtt.properties import Item, Items, MammotionPropertiesMessage
 from pymammotion.device.state_reducer import RTKStateReducer
@@ -56,6 +58,67 @@ def test_flat_coordinate_applies_the_a1nc68bgzzx_shift_on_both_paths() -> None:
 
     assert flat.lat == aliyun.lat == raw + math.radians(436)
     assert flat.lon == aliyun.lon == raw + math.radians(436)
+
+
+def test_a_valid_longitude_beyond_90_degrees_is_left_alone() -> None:
+    """The #188 regression: New Zealand at ~174.5°E, reported correctly.
+
+    A longitude that large is perfectly valid, but the guard was pi/2 -- the
+    latitude limit -- so the quirk fired on a correct value and rendered it as
+    610.5°.  Every base station east of 90°E or west of 90°W was affected.
+    """
+    reducer = RTKStateReducer()
+    nz_lon = math.radians(174.5)
+
+    flat = reducer.apply_mammotion_properties(_rtk("a1Nc68bGZzX"), _flat({"coordinate": {"lat": -0.7, "lon": nz_lon}}))
+    aliyun = reducer.apply_properties(_rtk("a1Nc68bGZzX"), _aliyun(coordinate=json.dumps({"lat": -0.7, "lon": nz_lon})))
+
+    assert flat.lon == aliyun.lon == nz_lon
+    assert flat.lat == aliyun.lat == -0.7
+
+
+@pytest.mark.parametrize("degrees", [-179.9, -174.5, -120.0, -90.1, 90.1, 120.0, 174.5, 179.9])
+def test_no_in_range_longitude_is_shifted(degrees: float) -> None:
+    """Anything inside ±180° is a real position and must survive untouched."""
+    lon = math.radians(degrees)
+
+    updated = RTKStateReducer().apply_mammotion_properties(
+        _rtk("a1Nc68bGZzX"), _flat({"coordinate": {"lat": 0.5, "lon": lon}})
+    )
+
+    assert updated.lon == lon
+
+
+@pytest.mark.parametrize("degrees", [-436.0, -400.0, -380.0, -361.0])
+def test_a_shifted_longitude_is_still_corrected(degrees: float) -> None:
+    """#563 must keep working: 436° low, so far out that it cannot be a real position."""
+    raw = math.radians(degrees)
+
+    updated = RTKStateReducer().apply_mammotion_properties(
+        _rtk("a1Nc68bGZzX"), _flat({"coordinate": {"lat": 0.5, "lon": raw}})
+    )
+
+    assert updated.lon == raw + math.radians(436)
+    assert abs(updated.lon) <= math.pi
+
+
+def test_the_two_axes_keep_their_own_limits() -> None:
+    """A latitude of 2.0 rad (115°) cannot be real, while that longitude can."""
+    reducer = RTKStateReducer()
+
+    updated = reducer.apply_mammotion_properties(_rtk("a1Nc68bGZzX"), _flat({"coordinate": {"lat": 2.0, "lon": 2.0}}))
+
+    assert updated.lat == 2.0 + math.radians(436)
+    assert updated.lon == 2.0
+
+
+def test_another_product_key_is_never_shifted() -> None:
+    """The quirk is one product key's firmware, not a general correction."""
+    updated = RTKStateReducer().apply_mammotion_properties(
+        _rtk("a1Another"), _flat({"coordinate": {"lat": -7.0, "lon": -7.0}})
+    )
+
+    assert (updated.lat, updated.lon) == (-7.0, -7.0)
 
 
 def test_flat_network_info_matches_aliyun() -> None:
