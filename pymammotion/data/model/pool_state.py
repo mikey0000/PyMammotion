@@ -20,6 +20,7 @@ from enum import IntEnum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.enum_base import UnknownTolerantIntEnum
 
 
@@ -92,9 +93,31 @@ class SpinoWorkMode(UnknownTolerantIntEnum):
     AUTO = 1  # "ALL"
     FLOOR = 2  # "FLOOR"
     WALL = 3  # "WALL"
-    ECO = 4  # "ECO" (SP variant labels this "Water surface")
+    ECO = 4  # "ECO" — the SP enum names this WATER_SURFACE but shows the same label
     LINE = 5  # "LINE" / waterline
     CUSTOM = 6  # SP-only "CUSTOM"
+
+    @classmethod
+    def for_device(cls, device_name: str, product_key: str = "") -> list[SpinoWorkMode]:
+        """Return the cleaning modes *this* cleaner offers.
+
+        The app has two mode enums, one per hardware class:
+        ``SwimmingWorkModule`` (ALL/FLOOR/WALL/ECO/LINE) for the touch models
+        and ``SwimmingSPWorkModule`` (…/WATER_SURFACE/LINE/CUSTOM) for the PC210
+        SP, each backing its own fragment — so **CUSTOM is SP-only**.
+
+        LINE is narrower still: ``SwimmingPoolHomePop.updateIndexView`` skips it
+        unless the ``isPC100`` flag is false, and ``DeviceItemFragment:1025``
+        sets that flag as ``type != SWIMMINGPOOL_S1``.  The waterline explainer
+        is gated the same way (``CarModeCustomView``: ``isSwimmingPool_S1()``).
+        So a plain Spino or an E1 has four modes, not six.
+        """
+        device_type = DeviceType.value_of_str(device_name, product_key)
+        if device_type in (DeviceType.SWIMMINGPOOL_SP, DeviceType.SD_PX):
+            return [cls.AUTO, cls.FLOOR, cls.WALL, cls.ECO, cls.LINE, cls.CUSTOM]
+        if device_type is DeviceType.SWIMMINGPOOL_S1:
+            return [cls.AUTO, cls.FLOOR, cls.WALL, cls.ECO, cls.LINE]
+        return [cls.AUTO, cls.FLOOR, cls.WALL, cls.ECO]
 
 
 class WallMaterial(UnknownTolerantIntEnum):

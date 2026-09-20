@@ -417,6 +417,10 @@ class PoolCleanerDevice(Device):
     product_key: str = ""
     wifi_ssid: str = ""
     ip: str = ""
+    # Same source as the RTK's pair (net.toapp_networkinfo_rsp / thing properties);
+    # a host needs them to register the device's network identity.
+    wifi_mac: str = ""
+    bt_mac: str = ""
     wifi_enabled: bool = True
     pool_state: PoolState = field(default_factory=PoolState)
     pool_map: PoolMap = field(default_factory=PoolMap)
