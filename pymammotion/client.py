@@ -1634,6 +1634,10 @@ class MammotionClient(CloudAuthMixin):
             # happened at all, so a device that simply has no schedules stored
             # isn't re-asked on every interval.
             if device := self.get_device_by_name(device_name):
+                # The saga only reaches here having collected total_plan_num
+                # frames, so its result is the device's whole set — anything
+                # else we hold was deleted on the device.
+                device.map.replace_plans(saga.result)
                 device.map.plans_stale = False
                 device.map.plans_fetched = True
 

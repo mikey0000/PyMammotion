@@ -835,9 +835,27 @@ class HashList(DataClassORJSONMixin):
         return target_dict.get(hash_data.hash)
 
     def update_plan(self, plan: Plan) -> None:
-        """Store *plan* by ``plan_id``; drop plans whose ``total_plan_num`` is zero."""
+        """Store *plan* by ``plan_id``; drop plans whose ``total_plan_num`` is zero.
+
+        Adds only — a schedule deleted on the device is removed by
+        :meth:`replace_plans` at the end of a full fetch, not here, because a
+        single frame says nothing about what else the device still holds.
+        """
         if plan.total_plan_num != 0:
             self.plan[plan.plan_id] = plan
+
+    def replace_plans(self, plans: dict[str, Plan]) -> None:
+        """Make *plans* the entire stored set.
+
+        A completed plan fetch returns everything the device has, so anything
+        held that is not in it has been deleted on the device.  Nothing used to
+        remove those — ``update_plan`` only adds and the reducer's
+        ``all_plan_task`` branch is never requested — so they lingered, and
+        being persisted they survived restarts (Mammotion-HA #892).
+
+        Copied rather than aliased: the saga reuses its result dict.
+        """
+        self.plan = dict(plans)
 
     def _get_path_type_mapping(self) -> dict[int, dict[int, FrameList]]:
         """Return a ``PathType → per-type dict`` mapping for NavGetCommData dispatch.
