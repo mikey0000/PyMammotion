@@ -1260,16 +1260,24 @@ class DeviceHandle:
         # only makes sense over BLE (10 s cadence would be MQTT-quota-expensive).
 
     def _start_ble_loop(self) -> None:
-        """Start (or restart) the BLE heartbeat task if not already running."""
-        if self._skips_activity_loops or self._stopping:
+        """Start (or restart) the BLE heartbeat task if not already running.
+
+        Honours :meth:`stop_polling`: ``_on_ble_connected`` calls this on every
+        BLE reconnect, which would otherwise undo a host's "polling off".
+        """
+        if self._skips_activity_loops or self._stopping or self._polling_stopped:
             return
         if self._ble_keep_alive_task is None or self._ble_keep_alive_task.done():
             _logger.debug("start_ble_loop [%s]: starting BLE activity loop", self.device_name)
             self._ble_keep_alive_task = asyncio.get_running_loop().create_task(ble_activity_loop(self))
 
     def _start_ble_polling_loop(self) -> None:
-        """Start (or restart) the BLE polling/streaming loop if not already running."""
-        if self._skips_activity_loops or self._stopping:
+        """Start (or restart) the BLE polling/streaming loop if not already running.
+
+        Honours :meth:`stop_polling`: ``_on_ble_connected`` calls this on every
+        BLE reconnect, which would otherwise undo a host's "polling off".
+        """
+        if self._skips_activity_loops or self._stopping or self._polling_stopped:
             return
         if self._ble_polling_task is None or self._ble_polling_task.done():
             _logger.debug("start_ble_polling_loop [%s]: starting BLE polling loop", self.device_name)
@@ -1283,7 +1291,7 @@ class DeviceHandle:
         because its eligibility flips on firmware >= 1.15.3.4422, which the loop
         re-checks on every tick using the live ``main_controller`` version.
         """
-        if self._skips_activity_loops or self._stopping:
+        if self._skips_activity_loops or self._stopping or self._polling_stopped:
             return
         if self._dynamics_line_task is not None and not self._dynamics_line_task.done():
             return
@@ -1307,19 +1315,45 @@ class DeviceHandle:
             self._keep_alive_task = asyncio.get_running_loop().create_task(mqtt_activity_loop(self))
 
     async def stop_polling(self) -> None:
-        """Cancel the MQTT poll loop, leaving the queue and transports running.
+        """Cancel every outbound poll loop, leaving the queue and transports running.
 
         The handle stays fully operational for receiving messages — state updates,
         saga results, and user-initiated sends all continue to work.  No outbound
-        polls are sent until ``start()`` is called again; a transport reconnect does
-        not resume them.
+        polls are sent until :meth:`resume_polling` (or :meth:`start`) is called; a
+        transport reconnect does not resume them.
+
+        The BLE loops are cancelled too.  They exit only on disconnect or handle
+        stop, so a BLE-connected device went on streaming ``RPT_START count=0`` at
+        full cadence while its host believed polling was off.
         """
         self._polling_stopped = True
-        if self._keep_alive_task is not None and not self._keep_alive_task.done():
-            self._keep_alive_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._keep_alive_task
+        for task in (self._keep_alive_task, self._ble_keep_alive_task, self._ble_polling_task):
+            if task is not None and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
         self._keep_alive_task = None
+        self._ble_keep_alive_task = None
+        self._ble_polling_task = None
+
+    async def resume_polling(self) -> None:
+        """Undo :meth:`stop_polling`, restarting whatever the live transports support.
+
+        ``restart_keep_alive`` deliberately respects ``_polling_stopped`` so a
+        reconnect cannot override the host's "polling off"; only ``start()`` cleared
+        the flag, and ``start()`` is guarded by ``is_started``, so a host that turned
+        polling off and back on never got its loops back.  This is the explicit way
+        back.
+        """
+        if self._stopping:
+            return
+        self._polling_stopped = False
+        await self.restart_keep_alive()
+        ble = self.get_transport(TransportType.BLE)
+        if ble is not None and ble.is_connected:
+            self._start_ble_loop()
+            self._start_ble_polling_loop()
+            self._start_dynamics_line_loop()
 
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
