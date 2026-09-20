@@ -259,6 +259,18 @@ class EdgePoints(DataClassORJSONMixin):
         return result
 
 
+#: Length of a plan's ``reserved`` buffer, as the APK builds it.
+_RESERVED_LENGTH = 8
+#: Offset the device adds to the settings bytes when it stores a plan.
+_RESERVED_ECHO_OFFSET = 10
+#: Bytes carrying settings, which arrive with the offset applied.
+_RESERVED_ECHOED_BYTES = (0, 1, 3, 4, 5, 6)
+#: Enable flag — written raw (0/1), read back as 10/11.
+_RESERVED_ENABLE_BYTE = 2
+#: Never written by the app; always sent as 0.
+_RESERVED_UNUSED_BYTE = 7
+
+
 @dataclass
 class Plan(DataClassORJSONMixin):
     """A scheduled mowing plan (job) retrieved from the device."""
@@ -303,12 +315,18 @@ class Plan(DataClassORJSONMixin):
     toward_included_angle: int = 0
 
     # --- enable / rename helpers -----------------------------------------
-    # ``reserved`` is an 8-byte buffer the device stores alongside the
-    # plan.  Byte 2 = enable flag (0/1); the other bytes carry settings
-    # encoded with a +10 offset (exact meaning not fully decoded —
-    # ``docs/tasks_and_schedules.md`` § 1.3).  For enable/rename/copy
-    # we round-trip the stored buffer verbatim and only mutate byte 2 so
-    # callers don't have to know the layout.
+    # ``reserved`` is an 8-byte buffer the device stores alongside the plan:
+    #
+    #   0  path / bow order      3  job start progress    6  collect frequency
+    #   1  no-go zone laps       4  unused (written 0)    7  unused (sent 0)
+    #   2  enable flag           5  Yuka job config, else 8
+    #
+    # (``HomeStateViewModule.getReserved`` writes it;
+    # ``MACarDataManager.setJobPlanDB`` reads bytes 0-2 back.)
+    #
+    # The device adds +10 to the settings bytes on store, so a buffer read
+    # back from it must be normalised before being sent again — see
+    # :meth:`Plan.reserved_for_send`, which ``send_schedule`` applies.
     #
     # All bytes the APK writes are < 128, so latin-1 round-trips
     # losslessly between str and bytes.
@@ -333,15 +351,46 @@ class Plan(DataClassORJSONMixin):
     def with_enabled(self, enabled: bool) -> Plan:
         """Return a copy of this plan with ``reserved[2]`` set for *enabled*.
 
-        Sends byte 2 = 0 (enable) or 1 (disable) — the device adds +10 to all
-        bytes on echo, so it will store/return 10 (enabled) or 11 (disabled).
-        Bytes 0,1,3..7 are preserved verbatim.
+        Only the flag is touched.  The rest of the buffer is normalised once,
+        at transmission, by :meth:`reserved_for_send`.
         """
-        raw = bytearray(self.reserved.encode("latin-1") if self.reserved else b"")
-        if len(raw) < 8:
-            raw.extend(b"\x00" * (8 - len(raw)))
-        raw[2] = 0 if enabled else 1
+        raw = self._reserved_bytes()
+        raw[_RESERVED_ENABLE_BYTE] = 0 if enabled else 1
         return dataclasses.replace(self, reserved=raw.decode("latin-1"))
+
+    def _reserved_bytes(self) -> bytearray:
+        """Return ``reserved`` as exactly ``_RESERVED_LENGTH`` bytes."""
+        raw = bytearray(self.reserved.encode("latin-1") if self.reserved else b"")
+        if len(raw) < _RESERVED_LENGTH:
+            raw.extend(b"\x00" * (_RESERVED_LENGTH - len(raw)))
+        return raw[:_RESERVED_LENGTH]
+
+    def reserved_for_send(self) -> str:
+        """Return ``reserved`` with the device's echo offset removed.
+
+        The device adds +10 to the settings bytes when it stores a plan, so
+        sending a buffer back exactly as it was read compounds the offset and
+        walks the schedule's settings away from what the user chose — every
+        toggle or rename shifting them by another 10 until they wrap
+        (Mammotion-HA #891).
+
+        The app normalises on every write instead
+        (``JobScheduleActivity.java:848-866``): subtract the offset from the
+        settings bytes, write the enable flag raw, and send byte 7 as 0.
+        Bytes 4 and 7 are unused — written as 0 at creation and never decoded —
+        so whether they carry the echo does not matter; the app decrements 4
+        and zeroes 7, and this does the same.
+
+        Values below the offset clamp at 0 rather than wrapping.  The app never
+        meets one because it only ever edits a plan it read back; a plan built
+        locally has no offset to remove.
+        """
+        raw = self._reserved_bytes()
+        for index in _RESERVED_ECHOED_BYTES:
+            raw[index] = max(raw[index] - _RESERVED_ECHO_OFFSET, 0)
+        raw[_RESERVED_ENABLE_BYTE] = 0 if self.is_enabled() else 1
+        raw[_RESERVED_UNUSED_BYTE] = 0
+        return raw.decode("latin-1")
 
     def with_renamed(self, new_name: str) -> Plan:
         """Return a copy of this plan with ``task_name`` set to *new_name*."""

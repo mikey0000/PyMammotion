@@ -50,24 +50,30 @@ Each operation that creates a new plan (`Create`, `Copy`) MUST generate a fresh 
 `reserved.encode('latin-1')` round-trips losslessly. The APK constructs it as
 `new String(byte[8])`.
 
-Layout, decoded from `JobScheduleActivity.java:833-868` (rename) and `:1317-1344` (toggle):
+Layout, from the encoder `HomeStateViewModule.getReserved` (`:998-1021`) and the decoder
+`MACarDataManager.setJobPlanDB` (`:6338-6361`):
 
-| Index | Meaning                                  | Encoding                      |
-|------:|------------------------------------------|-------------------------------|
-| 0     | (unknown setting #1)                     | value + 10 on write, − 10 read|
-| 1     | (unknown setting #2)                     | value + 10                    |
-| **2** | **Enable flag**                           | **0 = disabled, 1 = enabled** |
-| 3     | (unknown setting #3, likely edge mode)   | value + 10                    |
-| 4     | (unknown setting #4, likely knife height)| value + 10                    |
-| 5     | (unknown setting #5)                     | value + 10                    |
-| 6     | (unknown setting #6)                     | value + 10                    |
-| 7     | always 0 (null terminator)               | 0                             |
+| Index | Meaning                                       | Encoding                       |
+|------:|-----------------------------------------------|--------------------------------|
+| 0     | Path / bow order (`border_mode`)              | value + 10 on store, − 10 read |
+| 1     | No-go zone mowing laps (`mowing_laps_obs`)    | value + 10                     |
+| **2** | **Enable flag**                                | **written 0/1, stored 10/11**  |
+| 3     | Job start progress (`start_progress`)         | value + 10                     |
+| 4     | Unused — written as literal 0                 | —                              |
+| 5     | Yuka job config, else 8                       | value + 10                     |
+| 6     | Collect grass frequency                       | value + 10                     |
+| 7     | Unused — never written, always sent as 0      | —                              |
 
-The exact meaning of bytes 0, 1, 3, 4, 5, 6 is not fully decoded. **For
-enable/disable/rename/copy/edit operations, round-trip the stored `reserved` verbatim and
-mutate only byte 2 (and `task_name`/`plan_id` outside the buffer).** This sidesteps the
-uncertainty and matches what the APK does (it reads byte 2, rebuilds the buffer with the
-other bytes preserved).
+**The device adds +10 to the settings bytes when it stores a plan, so a buffer read back
+from it must be normalised before being sent again.** Round-tripping it verbatim compounds
+the offset: every enable/disable or rename shifts the settings another 10 until they wrap
+(Mammotion-HA #891). The APK subtracts the offset on every write
+(`JobScheduleActivity.java:848-866`, shared by rename and toggle): decrement bytes
+0, 1, 3, 4, 5, 6; write byte 2 raw; send byte 7 as 0.
+
+`Plan.reserved_for_send()` does exactly that, and `send_plan` / `send_schedule` apply it,
+so the normalisation happens once per transmission and cannot compound. `Plan.with_enabled`
+only sets byte 2 locally.
 
 For full **create-from-scratch**, bytes 0, 1, 3, 4, 5, 6 must be derived from the plan's
 explicit fields (`knife_height`, `edge_mode`, etc.) using the +10 offset. **The exact mapping
@@ -343,9 +349,11 @@ await coordinator.async_send_command(
     "enable_plan", plan=plan, enabled=False,
 )
 # pymammotion side:
-#   modified = plan.with_enabled(False)          # mutates reserved[2] = 0
+#   modified = plan.with_enabled(False)          # sets reserved[2] = 1 (disabled)
 #   modified.sub_cmd = 4                          # EDIT
-#   bytes_ = command.send_schedule(modified)      # full NavPlanJobSet on the wire
+#   bytes_ = command.send_schedule(modified)      # full NavPlanJobSet on the wire,
+#                                                 # reserved normalised by
+#                                                 # Plan.reserved_for_send()
 ```
 
 ### 4.2 Mower: rename
@@ -400,10 +408,11 @@ await coordinator.async_send_command(
 
 ## 5. Known unknowns
 
-1. **Mower `reserved` bytes 0, 1, 3, 4, 5, 6** — the +10-offset values are confirmed but their
-   field meanings are inferred (likely knife_height / edge_mode / channel mode / etc.).
-   Validate by capturing the wire frames the official app produces for a known plan via
-   `scripts/frida/` or `scripts/mqtt_log.txt`.
+1. **Whether the device echoes bytes 4 and 7** — a user measured that it does not
+   (Mammotion-HA #891), while bytes 0, 1, 3, 5, 6 do. It makes no practical difference:
+   both are unused, byte 4 is written as a literal 0 at creation and byte 7 is never
+   written, and neither is ever decoded. The APK decrements 4 and zeroes 7 regardless,
+   and so do we.
 2. **Spino `jobid` generation** — the APK uses `long` but doesn't expose a canonical generator
    in the decompiled source we've inspected. Python uses `secrets.randbits(63) | 1`; if the
    device validates a specific format (e.g. timestamp-based, like the mower), capture and

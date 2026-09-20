@@ -201,7 +201,7 @@ class MessageNavigation(AbstractMessage, ABC):
                 task_name=plan_bean.task_name,
                 job_name=plan_bean.job_name,
                 zone_hashs=plan_bean.zone_hashs,
-                reserved=plan_bean.reserved,
+                reserved=plan_bean.reserved_for_send(),
             )
         )
         logger.debug(f"Send read job plan command planBean={plan_bean}")
@@ -239,7 +239,7 @@ class MessageNavigation(AbstractMessage, ABC):
             task_name=plan_bean.task_name,
             job_name=plan_bean.job_name,
             zone_hashs=plan_bean.zone_hashs,
-            reserved=plan_bean.reserved,
+            reserved=plan_bean.reserved_for_send(),
             weeks=plan_bean.weeks,
             start_date=plan_bean.start_date,
             trigger_type=plan_bean.trigger_type,
@@ -298,9 +298,9 @@ class MessageNavigation(AbstractMessage, ABC):
     def enable_plan(self, plan: Plan, enabled: bool) -> bytes:
         """Toggle a plan's enable flag and resend as an edit.
 
-        The flag lives in ``Plan.reserved[2]``; the other reserved bytes
-        are preserved verbatim from the stored plan, matching the APK's
-        ``scheduleSwitch`` (``JobScheduleActivity.java:1342``).
+        The flag lives in ``Plan.reserved[2]``; the rest of the buffer is
+        normalised on the way out by :meth:`Plan.reserved_for_send`, matching
+        the APK (``JobScheduleActivity.java:848-866``).
         """
         return self.edit_plan(plan.with_enabled(enabled))
 
