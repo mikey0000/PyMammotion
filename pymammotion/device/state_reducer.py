@@ -915,7 +915,7 @@ def _apply_ota_property(device: Device, progress: int, result: int) -> bool:
     return status.is_complete
 
 
-def _apply_rtk_coordinate(device: RTKBaseStationDevice, lat: float | None, lon: float | None) -> None:
+def apply_rtk_coordinate(device: RTKBaseStationDevice, lat: float | None, lon: float | None) -> None:
     """Store an RTK ``coordinate`` push (radians); zero means unset and is skipped.
 
     a1Nc68bGZzX devices report the coordinate 436° low (Mammotion-HA #563: a
@@ -1475,7 +1475,7 @@ class RTKStateReducer(StateReducer):
         if coord_prop := items.coordinate:
             try:
                 coord = json.loads(coord_prop.value)  # type: ignore
-                _apply_rtk_coordinate(device, coord.get("lat"), coord.get("lon"))
+                apply_rtk_coordinate(device, coord.get("lat"), coord.get("lon"))
             except (ValueError, KeyError, TypeError):
                 _logger.debug("RTKStateReducer: failed to parse coordinate property")
 
@@ -1525,7 +1525,7 @@ class RTKStateReducer(StateReducer):
         p = properties.params
 
         if (coord := p.coordinate) is not None:
-            _apply_rtk_coordinate(device, coord.lat, coord.lon)
+            apply_rtk_coordinate(device, coord.lat, coord.lon)
 
         if net := p.network_info:
             if net.wifi_rssi:

@@ -68,6 +68,7 @@ from pymammotion.device.ble_inventory import BleInventory
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.inbound_router import InboundRouter
 from pymammotion.device.readiness import get_readiness_checker
+from pymammotion.device.state_reducer import apply_rtk_coordinate
 from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection
 from pymammotion.messaging.command_queue import Priority, execute_command
 from pymammotion.messaging.common_data_saga import CommonDataSaga
@@ -654,10 +655,14 @@ class MammotionClient(CloudAuthMixin):
             if coordinate := data.coordinate:  # type: ignore
                 coord_val = json.loads(coordinate.value)  # type: ignore
                 _logger.debug("Raw RTK coordinate payload: %s", coord_val)
-                if coord_val["lat"] != 0:
-                    updated = dataclasses.replace(updated, lat=coord_val["lat"])
-                if coord_val["lon"] != 0:
-                    updated = dataclasses.replace(updated, lon=coord_val["lon"])
+                # Through the shared helper, not raw: this poll is the second way
+                # a coordinate reaches an RTK, and writing it straight past the
+                # a1Nc68bGZzX correction left those stations reporting a latitude
+                # 436 degrees out (Mammotion-HA, PyMammotion #188).
+                candidate = dataclasses.replace(updated)
+                apply_rtk_coordinate(candidate, coord_val.get("lat"), coord_val.get("lon"))
+                if (candidate.lat, candidate.lon) != (updated.lat, updated.lon):
+                    updated = candidate
             if device_version := data.deviceVersion:  # type: ignore
                 updated = dataclasses.replace(updated, device_version=device_version.value)
             if updated is not current:

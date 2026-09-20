@@ -193,3 +193,49 @@ def test_aliyun_ota_progress_uses_the_same_result_codes() -> None:
     assert failed.update_check.isupgrading is False
     assert failed.update_check.progress == 55
     assert failed.device_version == ""
+
+
+async def test_the_http_property_poll_applies_the_quirk_too() -> None:
+    """The second way a coordinate reaches an RTK skipped the correction entirely.
+
+    ``MammotionClient.fetch_rtk_properties`` wrote lat/lon straight onto the
+    device, so a1Nc68bGZzX stations polled over HTTP reported a latitude 436°
+    out — the reporter's -474.669° (Mammotion-HA / PyMammotion #188) — while
+    the MQTT push path corrected the same payload.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from pymammotion.client import MammotionClient
+
+    device = RTKBaseStationDevice(name="RTKBAU242721575", product_key="a1Nc68bGZzX")
+    device.iot_id = "iot-1"
+    handle = MagicMock()
+    handle.snapshot.raw = device
+    handle.state_machine.apply.return_value = (MagicMock(), None)
+    handle.emit_state_changed = AsyncMock()
+
+    client = MammotionClient.__new__(MammotionClient)
+    client._device_registry = MagicMock()  # noqa: SLF001
+    client._device_registry.get_by_name.return_value = handle  # noqa: SLF001
+
+    gateway = MagicMock()
+    gateway.get_device_properties = AsyncMock(
+        return_value=MagicMock(
+            code=200,
+            data=MagicMock(
+                otaProgress=None,
+                networkInfo=None,
+                deviceVersion=None,
+                coordinate=MagicMock(value=json.dumps({"lat": -8.28453707294943, "lon": 3.059871264118208})),
+            ),
+        )
+    )
+    type(client).cloud_gateway = property(lambda _self: gateway)
+    try:
+        await client.fetch_rtk_properties("RTKBAU242721575")
+    finally:
+        del type(client).cloud_gateway
+
+    applied = handle.state_machine.apply.call_args.args[0]
+    assert applied.lat == pytest.approx(math.radians(-38.669))
+    assert applied.lon == pytest.approx(3.059871264118208)
