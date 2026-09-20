@@ -729,9 +729,15 @@ class MammotionClient(CloudAuthMixin):
         """Connect the BLE transport for a registered device."""
         await self._ble.connect_ble(device_name, account_id)
 
-    async def add_ble_to_device(self, device_name: str, ble_device: BLEDevice, account_id: str | None = None) -> None:
+    async def add_ble_to_device(
+        self,
+        device_name: str,
+        ble_device: BLEDevice,
+        account_id: str | None = None,
+        rssi: int | None = None,
+    ) -> None:
         """Attach a BLE transport to an already-registered device, or refresh the one it has."""
-        await self._ble.add_ble_to_device(device_name, ble_device, account_id)
+        await self._ble.add_ble_to_device(device_name, ble_device, account_id, rssi)
 
     def _wire_transport_callbacks(self, transport: Any, account_id: str) -> None:
         """Attach the six :class:`InboundRouter` route callbacks to *transport*, bound to its account.
