@@ -557,22 +557,30 @@ class MammotionHTTP:
 
         return {}
 
-    async def get_product_params(
-        self, product_key: str, device_version: str, int_mod: str = ""
-    ) -> ProductParamData | None:
-        """Return which job settings a model and firmware expose, and how.
+    async def get_product_params(self, product_key: str, device_version: str, int_mod: str) -> ProductParamData | None:
+        """Return which job settings a model exposes, and how each is presented.
 
         This is the capability list the app uses to decide whether to show a row
-        such as ride-boundary distance, what to default it to, and whether the
-        user may change it.  **Nothing in the library calls this**: it exists so
-        ``scripts/dump_product_params.py`` can fetch the schema for an account's
-        devices, and the results be folded into the static helpers by hand.
-        Wiring it into setup would add a per-device HTTP round trip for data that
-        changes with firmware releases, not with the clock.
+        such as ride-boundary distance, what to default it to, whether the user
+        may change it, and the bounds of the control.  The answer is per
+        ``int_mod`` — the internal model id, not the product key alone, and not
+        the firmware: every model under one product key was observed returning
+        the same 22 rows at one firmware, while nine of that key's models
+        returned no schema at all.
+
+        ``device_version`` and ``int_mod`` are both rejected blank ("can not be
+        blank"), so neither has a useful default.
+
+        **Nothing in the library calls this.** It exists so
+        ``scripts/dump_product_params.py`` can dump the schema and the results
+        be folded into the static helpers by hand — which is what the app itself
+        falls back to in ``WorkingSettingManage.getDefaultData``.
         """
         async with self._client_session() as session:
             resp = await session.post(
-                f"{MAMMOTION_API_DOMAIN}/product/param/version/search",
+                # Relative in the APK ("product/param/version/search"); this is
+                # the retrofit base it resolves against.
+                f"{MAMMOTION_API_DOMAIN}/device-server/v1/product/param/version/search",
                 headers={
                     **self._headers,
                     "Authorization": f"Bearer {self._require_login_info.access_token}",

@@ -34,7 +34,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from pymammotion.client import MammotionClient
+from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.product_params import ProductParamData
 
 _log = logging.getLogger("dump_product_params")
@@ -55,17 +55,50 @@ def _annotate(summary: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _dump_one(
-    client: MammotionClient, product_key: str, device_version: str, *, raw: bool
+    http: MammotionHTTP, product_key: str, device_version: str, int_mod: str, *, raw: bool
 ) -> dict[str, Any] | None:
-    http = client.mammotion_http
-    if http is None:
-        _log.error("no HTTP session — login did not complete")
-        return None
-    params: ProductParamData | None = await http.get_product_params(product_key, device_version)
-    if params is None:
-        _log.warning("no parameters returned for %s @ %s", product_key, device_version)
+    params: ProductParamData | None = await http.get_product_params(product_key, device_version, int_mod)
+    if params is None or not params.detail_vos:
         return None
     return params.to_dict() if raw else _annotate(params.to_summary())
+
+
+async def _firmware_by_name(http: MammotionHTTP, iot_ids: list[str]) -> dict[str, str]:
+    """Map device name to running firmware; the endpoint rejects a blank version."""
+    if not iot_ids:
+        return {}
+    try:
+        ota = await http.get_device_ota_firmware(iot_ids)
+    except Exception:  # noqa: BLE001
+        _log.warning("could not read firmware versions", exc_info=True)
+        return {}
+    return {c.device_name: c.current_version or "" for c in (ota.data or []) if c.device_name}
+
+
+async def _sweep(
+    http: MammotionHTTP,
+    product_key: str,
+    models: list[Any],
+    version: str,
+    *,
+    raw: bool,
+) -> dict[str, Any]:
+    """Query every internal model under one product key.
+
+    The schema is keyed by ``intMod``, and a device does not report which of its
+    product's models it is over HTTP, so the whole set is dumped and identical
+    answers collapsed — that is what makes the result usable as a static table.
+    """
+    by_model: dict[str, Any] = {}
+    for model in models:
+        if not model.int_mod:
+            continue
+        result = await _dump_one(http, product_key, version, model.int_mod, raw=raw)
+        if result is None:
+            continue
+        label = f"{model.int_mod} ({model.ext_mod})" if model.ext_mod else model.int_mod
+        by_model[label] = result
+    return by_model
 
 
 async def _collect(args: argparse.Namespace) -> dict[str, Any]:
@@ -77,28 +110,59 @@ async def _collect(args: argparse.Namespace) -> dict[str, Any]:
 
     out: dict[str, Any] = {}
     async with ClientSession() as session:
-        client = MammotionClient()
-        try:
-            await client.login_and_initiate_cloud(email, password, session)
+        # HTTP only: this is an account-level lookup, so there is no reason to
+        # bring up MQTT and the device transports for it.
+        http = MammotionHTTP(session=session)
+        login = await http.login_v2(email, password)
+        if login.code != 0:
+            _log.error("login failed: %s", login.msg)
+            raise SystemExit(1)
 
-            if args.product_key:
-                key = f"{args.product_key}@{args.device_version}"
-                out[key] = await _dump_one(client, args.product_key, args.device_version, raw=args.raw)
-                return out
+        if args.product_key:
+            if not args.int_mod or not args.device_version:
+                _log.error("--product-key needs --int-mod and --device-version; both are rejected blank")
+                raise SystemExit(2)
+            key = f"{args.product_key}@{args.device_version}"
+            out[key] = {
+                args.int_mod: await _dump_one(
+                    http, args.product_key, args.device_version, args.int_mod, raw=args.raw
+                )
+            }
+            return out
 
-            devices = list(client.aliyun_device_list()) + list(client.mammotion_device_list())
-            for record in devices:
-                product_key = record.product_key or ""
-                name = record.device_name or product_key
-                state = client.get_device_by_name(name)
-                firmware = getattr(getattr(state, "device_firmwares", None), "device_version", "") or ""
-                if not product_key:
-                    _log.info("skipping %s — no product key", name)
-                    continue
-                _log.info("querying %s (%s @ %s)", name, product_key, firmware or "unknown firmware")
-                out[f"{name} [{product_key}@{firmware}]"] = await _dump_one(client, product_key, firmware, raw=args.raw)
-        finally:
-            await client.stop()
+        products = {p.product_key: p for p in ((await http.get_product_list()).data or [])}
+
+        if args.all_products:
+            if not args.device_version:
+                _log.error("--all-products needs --device-version; the endpoint rejects a blank one")
+                raise SystemExit(2)
+            for product_key, product in products.items():
+                _log.info("querying %s (%d models)", product_key, len(product.models or []))
+                found = await _sweep(http, product_key, product.models or [], args.device_version, raw=args.raw)
+                if found:
+                    out[product_key] = found
+            return out
+
+        page = await http.get_user_device_page()
+        records = (page.data.records if page.data else []) or []
+        firmware = await _firmware_by_name(http, [r.iot_id for r in records if r.iot_id])
+
+        for record in records:
+            product_key = record.product_key or ""
+            name = record.device_name or product_key
+            if not product_key:
+                _log.info("skipping %s — no product key", name)
+                continue
+            version = args.device_version or firmware.get(name, "")
+            if not version:
+                _log.warning("skipping %s — no firmware version and none given", name)
+                continue
+            product = products.get(product_key)
+            models = product.models if product else []
+            _log.info("querying %s (%s @ %s, %d models)", name, product_key, version, len(models or []))
+            found = await _sweep(http, product_key, models or [], version, raw=args.raw)
+            if found:
+                out[f"{name} [{product_key}@{version}]"] = found
     return out
 
 
@@ -125,7 +189,11 @@ def main() -> None:
     parser.add_argument("-o", "--out", type=Path, help="write the dump here instead of stdout")
     parser.add_argument("--raw", action="store_true", help="dump the response verbatim, not the summary")
     parser.add_argument("--product-key", help="query one model instead of the account's devices")
-    parser.add_argument("--device-version", default="", help="firmware to query with --product-key")
+    parser.add_argument("--int-mod", help="internal model id, required with --product-key")
+    parser.add_argument("--device-version", default="", help="firmware to query for; never blank")
+    parser.add_argument(
+        "--all-products", action="store_true", help="sweep every product and model, not just this account's"
+    )
     parser.add_argument("--diff", type=Path, help="compare against a previous dump and print the changes")
     args = parser.parse_args()
 
