@@ -624,6 +624,20 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Sending command--Start job")
         return self.send_order_msg_nav(build)
 
+    def start_no_area_work(self) -> bytes:
+        """Start a map-free mow from where the mower is standing ("DropMow").
+
+        The app's ``noAreaWork()``: mowing with no map and no boundary, from the
+        direction the mower currently faces, for spot work outside a mapped
+        area.  It is behind the app's Beta Features screen, offered only on the
+        X5 models, and accepted only while the mower is idle
+        (``MODE_READY``/``MODE_CORRIDOR_DRAW``) — see
+        :meth:`~pymammotion.utility.device_type.DeviceType.is_x5_series`.
+        """
+        build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=16, result=0))
+        logger.debug("Send command - Start map-free work (DropMow)")
+        return self.send_order_msg_nav(build)
+
     def cancel_return_to_dock(self) -> bytes:
         """Cancel an in-progress return-to-dock (return-to-charge) command."""
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=12, result=0))

@@ -663,6 +663,24 @@ class DeviceType(Enum):
         )
 
     @staticmethod
+    def is_x5_series(device_name: str) -> bool:
+        """Return True for the X5 platform, which is what offers map-free mowing.
+
+        Mirrors the app's ``DeviceType.isX5DeviceTyp()``.
+        """
+        return DeviceType.value_of_str(device_name) in (
+            DeviceType.YUKA_MINIV,
+            DeviceType.YUKA_ML,
+            DeviceType.LUBA_VA,
+            DeviceType.LUBA_HM,
+            DeviceType.LUBA_ME,
+            DeviceType.LUBA_MB,
+            DeviceType.LUBA_LA,
+            DeviceType.LUBA_MD,
+            DeviceType.CM900,
+        )
+
+    @staticmethod
     def is_mini_or_x_series(device_name: str) -> bool:
         """Return True if the device is part of the mini or X series."""
         dt = DeviceType.value_of_str(device_name)
