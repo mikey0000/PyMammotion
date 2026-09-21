@@ -59,17 +59,10 @@ class GenerateRouteInformation:
     edge_mode: int = 1  # border laps
     obstacle_laps: int = 1
     #: "Auto-reverse Mowing Direction" (app ``title_reverse_direction``): 1 makes the
-    #: device flip the mowing direction between tasks to reduce grass matting.  The
-    #: field number this rides on (``NavReqCoverPath.auto_change_direction`` = 21) is
-    #: inferred: the app's native encoder is packed in the 2.3.18.21 APK, so only the
-    #: RN side (``jobModel.autoChangeDirection``) is readable, and 21 is the next free
-    #: number after ``app_display_mode`` = 20 in the last unpacked APK (2.3.8.201).
-    #: Only devices passing ``DeviceType.supports_auto_change_direction`` should set it.
-    #: To confirm 21: with a supporting mower, toggle the setting in the app while
-    #: capturing with ``scripts/frida/lubamsg-tap.js`` and read the field number off
-    #: the outgoing ``NavReqCoverPath``.  Dumping the packed dex is not needed — the
-    #: 2.3.18.21 build's ijiami packer kills a stock frida-server, so the on-the-wire
-    #: capture is the cheap confirmation path.
+    #: device flip the mowing direction between tasks to reduce grass matting.  Rides
+    #: on ``NavReqCoverPath`` field 20, confirmed by toggling it in the app and
+    #: watching that field go to 1.  Only devices passing
+    #: ``DeviceType.supports_auto_change_direction`` should set it.
     auto_change_direction: int = 0
 
     @classmethod

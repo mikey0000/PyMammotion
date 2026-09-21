@@ -24,21 +24,21 @@ def test_generate_route_carries_auto_change_direction() -> None:
     """The anti-matting toggle reaches the device on the generate-route command."""
     command = MammotionCommand("Luba-VA6ABCDE", 1)
     route = GenerateRouteInformation(one_hashs=[1], auto_change_direction=1)
-    assert _cover_path(command.generate_route_information(route)).auto_change_direction == [1]
+    assert _cover_path(command.generate_route_information(route)).auto_change_direction == 1
 
 
 def test_modify_route_carries_auto_change_direction() -> None:
     """Changing the toggle mid-task goes out on the modify-route command too."""
     command = MammotionCommand("Luba-VA6ABCDE", 1)
     route = GenerateRouteInformation(one_hashs=[1], auto_change_direction=1)
-    assert _cover_path(command.modify_route_information(route)).auto_change_direction == [1]
+    assert _cover_path(command.modify_route_information(route)).auto_change_direction == 1
 
 
 def test_generate_route_omits_the_field_when_off() -> None:
-    """Off stays off the wire, as it did when the field was a scalar."""
+    """Off is the proto3 default, so a device that never heard of the field sees nothing."""
     command = MammotionCommand("Luba-VS6ABCDE", 1)
     route = GenerateRouteInformation(one_hashs=[1])
-    assert _cover_path(command.generate_route_information(route)).auto_change_direction == []
+    assert _cover_path(command.generate_route_information(route)).auto_change_direction == 0
 
 
 def test_from_current_task_settings_keeps_the_reported_value() -> None:
@@ -65,20 +65,31 @@ def _wire(field_number: int, wire_type: int, payload: bytes) -> bytes:
     ("label", "wire"),
     [
         ("packed", _wire(21, 2, bytes([1, 10]))),
-        ("scalar", _wire(21, 0, bytes([10]))),
+        ("scalar", _wire(21, 0, bytes([11]))),
     ],
 )
-def test_field_21_parses_whichever_way_the_firmware_sent_it(label: str, wire: bytes) -> None:
-    """Issue #193: a packed field 21 used to take the whole report frame down with it.
+def test_an_unidentified_field_21_does_not_take_the_frame_down(label: str, wire: bytes) -> None:
+    """Issue #192: field 21 used to be decoded as auto_change_direction, an int.
 
-    betterproto2 does not enforce wire type — a length-delimited payload on an int32
-    field parsed as a packed list, which then failed mashumaro's int validation and
-    dropped every frame carrying it.  Both encodings must survive now.
+    Some firmware sends it length-delimited, betterproto2 read that as a packed list,
+    mashumaro rejected the list and every report frame carrying it was dropped.  It is
+    declared repeated under a neutral name now, so both wire forms survive and the
+    values are visible while we work out what the field means.
     """
     settings = CurrentTaskSettings.from_dict(
         NavReqCoverPath().parse(wire).to_dict(casing=betterproto2.Casing.SNAKE)
     )
-    assert settings.auto_change_direction == 10, label
+    assert settings.unknown_21, label
+    assert settings.auto_change_direction == 0, "field 21 is not auto_change_direction"
+
+
+@pytest.mark.regression
+def test_auto_change_direction_rides_on_field_20() -> None:
+    """Confirmed by observation: the app's toggle sets field 20, not 21."""
+    settings = CurrentTaskSettings.from_dict(
+        NavReqCoverPath().parse(_wire(20, 0, bytes([1]))).to_dict(casing=betterproto2.Casing.SNAKE)
+    )
+    assert settings.auto_change_direction == 1
 
 
 @pytest.mark.regression

@@ -194,13 +194,19 @@ message NavReqCoverPath {
   int32 toward_mode = 17;
   int32 toward_included_angle = 18;
   float ride_boundary_distance = 19;
-  int32 app_display_mode = 20;
-  // Repeated because firmware varies: some devices send field 21 packed (issue #193),
-  // and repeated accepts both wire forms where int32 rejects the packed one. The
-  // number is inferred, but corroborated: the app's job model lists
-  // autoChangeDirection beside rideBoundaryDistance and appDisplayMode, matching 19-21.
-  // The app reads it as `value != 0`, so any non-zero means on.
-  repeated int32 auto_change_direction = 21;
+  // Confirmed by observation: toggling "Auto-reverse Mowing Direction" in the app
+  // sets this to 1. It was previously named app_display_mode, from the 2.3.8.201
+  // unpacked APK.
+  int32 auto_change_direction = 20;
+  // Field 21's meaning is unidentified. It was guessed to be auto_change_direction
+  // ("the next number after app_display_mode = 20"); that was wrong -- 20 is.
+  //
+  // Decoded under a neutral name so its values show up in state dumps while we work
+  // out what it is. Repeated because it arrives both ways: a Luba Mini AWD sends it
+  // length-delimited (issue #192 -- the "[10]" in that traceback is its single 0x0A
+  // payload byte read as packed varints), and 11 has been seen elsewhere. Declaring
+  // it int32 is what made that frame fail to parse at all.
+  repeated int32 unknown_21 = 21;
 }
 
 message NavUploadZigZagResult {
