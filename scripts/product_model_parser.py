@@ -5,7 +5,8 @@ def load_json_from_file(file_path):
     with open(file_path) as file:
         return json.load(file)
 
-json_file_path = 'device_configuration_form.json'
+
+json_file_path = "device_configuration_form.json"
 
 # Assuming new_data is the JSON string you provided
 new_data = """
@@ -34,8 +35,8 @@ data = load_json_from_file(json_file_path)
 inner_list = {}
 
 # Update the inner_list with new data
-for item in data['deviceMode']:
-    int_mod = item['intMod']
+for item in data["deviceMode"]:
+    int_mod = item["intMod"]
 
     # Convert keys for compatibility if necessary
     updated_item = {
@@ -49,7 +50,7 @@ for item in data['deviceMode']:
         "work_area_num_max": item["work_area_num_max"],
         "path_spacing_min": item.get("working_pathSpace_min", 20),
         "path_spacing_max": item.get("working_pathSpace_max", 35),
-        "display_image_type": item["display_imge_type"]
+        "display_image_type": item["display_imge_type"],
     }
 
     # Update existing entry or add a new one

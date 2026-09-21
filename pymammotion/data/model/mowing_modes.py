@@ -159,7 +159,6 @@ class DetectionStrategy(IntEnum):
         raise ValueError(msg)
 
 
-
 #: Label key per strategy, named after the APK string each tab renders
 #: (``state_close`` / ``title_slow_touch`` / ``title_less_touch`` /
 #: ``title_standard`` / ``title_proguard``).  ``slow_touch`` is the one that
@@ -171,6 +170,7 @@ _OPTION_KEYS: dict[DetectionStrategy, str] = {
     DetectionStrategy.no_touch: "standard",
     DetectionStrategy.sensitive: "sensitive",
 }
+
 
 class WildlifeSafety(IntEnum):
     """Wildlife / animal protection behaviour when an animal is detected.

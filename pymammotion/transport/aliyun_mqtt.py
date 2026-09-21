@@ -334,7 +334,7 @@ class AliyunMQTTTransport(CloudTransport):
 
     def _effective_subscribe_topics(self) -> list[str]:
         """Return subscribe topics, falling back to defaults if none are configured."""
-        return self._subscribe_topics if self._subscribe_topics else self._default_subscribe_topics()
+        return self._subscribe_topics or self._default_subscribe_topics()
 
     # ------------------------------------------------------------------
     # Connection loop
@@ -493,7 +493,7 @@ class AliyunMQTTTransport(CloudTransport):
                         except ReLoginRequiredError as relogin_exc:
                             await self._handle_fatal_auth_error(relogin_exc)
                             raise
-                        except Exception:  # noqa: BLE001 — a host callback must not break reconnect
+                        except Exception:
                             _logger.warning("on_auth_failure callback failed", exc_info=True)
                     fatal = ReLoginRequiredError("", f"Aliyun MQTT auth exhausted (rc={rc})")
                     await self._handle_fatal_auth_error(fatal)
@@ -516,7 +516,7 @@ class AliyunMQTTTransport(CloudTransport):
                     except ReLoginRequiredError as relogin_exc:
                         await self._handle_fatal_auth_error(relogin_exc)
                         raise
-                    except Exception:  # noqa: BLE001 — a host callback must not break reconnect
+                    except Exception:
                         _logger.warning("on_auth_failure callback failed", exc_info=True)
                 fatal = ReLoginRequiredError("", f"Aliyun bind token unrecoverable: {exc}")
                 await self._handle_fatal_auth_error(fatal)
@@ -564,7 +564,7 @@ class AliyunMQTTTransport(CloudTransport):
         # taxonomy, rather than being logged at DEBUG and dropped here.
         try:
             msg = ThingStatusMessage.from_json(raw)
-        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
+        except Exception:
             _logger.debug("AliyunMQTTTransport: failed to parse thing/status on %s", topic, exc_info=True)
             return
         if msg.params.iot_id:
@@ -579,7 +579,7 @@ class AliyunMQTTTransport(CloudTransport):
             if code != 200:
                 # (code=2043): {'code': 2043, 'id': 'msgid1', 'message': 'check iotToken failed'}
                 _logger.error("Aliyun account bind failed (code=%s): %s", code, parsed)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.debug("AliyunMQTTTransport: failed to parse bind_reply", exc_info=True)
         return code
 
@@ -629,14 +629,14 @@ class AliyunMQTTTransport(CloudTransport):
         if topic.endswith("/thing/events") and self.on_device_event is not None:
             try:
                 event = ThingEventMessage.from_dicts(parsed)
-            except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
+            except Exception:
                 _logger.debug("AliyunMQTTTransport: failed to parse thing/events on %s", topic, exc_info=True)
                 return
             await self.on_device_event(event_iot_id, event)
         elif topic.endswith("/thing/properties") and self.on_device_properties is not None:
             try:
                 props = ThingPropertiesMessage.from_dict(parsed)
-            except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
+            except Exception:
                 _logger.debug("AliyunMQTTTransport: failed to parse thing/properties on %s", topic, exc_info=True)
                 return
             await self.on_device_properties(event_iot_id, props)

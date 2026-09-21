@@ -643,7 +643,7 @@ class TokenManager:
                 # exits on the next pass via the _reauth_required check above.
                 _LOGGER.warning("token scheduler [%s]: re-authentication required — stopping", self._account_id)
                 return
-            except Exception:  # noqa: BLE001 — the scheduler must survive every transient failure
+            except Exception:
                 # Transient (network/DNS/server) — never terminal.  Back off and retry;
                 # the credentials are probably still fine, we just could not reach the
                 # server, and treating that as an auth failure would strand a working
@@ -675,7 +675,7 @@ class TokenManager:
                     await self.refresh_mqtt_credentials()
                 elif isinstance(exc, SessionExpiredError) and exc.transport_type == TransportType.CLOUD_ALIYUN:
                     await self.refresh_aliyun_credentials()
-            except Exception:  # noqa: BLE001 — the error bus must never be broken by a failed refresh
+            except Exception:
                 _LOGGER.debug("token manager [%s]: reactive refresh failed", self._account_id, exc_info=True)
 
         self._handle_subscriptions[key] = _HandleSubscription(handle, handle.subscribe_errors(_on_error))

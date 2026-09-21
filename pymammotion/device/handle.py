@@ -532,7 +532,7 @@ class DeviceHandle:
         async def _send_report_cfg() -> None:
             try:
                 await self.send_raw(cmd, prefer_ble=True)
-            except Exception:  # noqa: BLE001 — best-effort refresh; nothing depends on it landing
+            except Exception:
                 _logger.debug("_on_ble_connected [%s]: report_cfg request failed", self.device_name, exc_info=True)
 
         await self.queue.enqueue(_send_report_cfg, priority=Priority.BACKGROUND, skip_if_saga_active=True)
@@ -856,7 +856,7 @@ class DeviceHandle:
         async def _send() -> None:
             try:
                 await self.send_raw(cmd)
-            except Exception:  # noqa: BLE001 — best-effort refresh; nothing depends on it landing
+            except Exception:
                 _logger.debug("request_report_cfg [%s]: failed", self.device_name, exc_info=True)
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True, dedup_key=dedup_key)
@@ -891,7 +891,7 @@ class DeviceHandle:
             try:
                 raw_bytes = base64.b64decode(event.params.value.content)
                 await self.on_raw_message(raw_bytes)
-            except Exception:  # noqa: BLE001 — a frame we cannot decode is one we drop
+            except Exception:
                 _logger.debug("on_device_event: failed to decode protobuf content", exc_info=True)
         else:
             if self._availability.mqtt_reported_offline:
@@ -1119,8 +1119,8 @@ class DeviceHandle:
         version = self.snapshot.raw.update_check.current_version
 
         # TODO do this by device type
-        if version == "1.0.0.0" and hasattr(cast(MowerDevice, self.snapshot.raw), "mower_state"):
-            version = cast(MowerDevice, self.snapshot.raw).mower_state.swversion
+        if version == "1.0.0.0" and hasattr(cast("MowerDevice", self.snapshot.raw), "mower_state"):
+            version = cast("MowerDevice", self.snapshot.raw).mower_state.swversion
         return version
 
     def restore_device(self, device: Device) -> None:
@@ -1655,7 +1655,7 @@ class DeviceHandle:
                 try:
                     _logger.debug("RPT_START [%s]: no report yet — re-syncing before retry", self.device_name)
                     await nudge()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     _logger.debug(
                         "RPT_START [%s]: retry-prefix sync failed",
                         self.device_name,
@@ -1981,7 +1981,7 @@ class DeviceHandle:
                     self.device_name,
                     exc,
                 )
-            except Exception:  # noqa: BLE001 — detached task must swallow everything
+            except Exception:
                 # Any other failure (BleakError, TransportError, timeout, ...) must not
                 # escape the detached task; log it so it's visible without crashing the loop.
                 _logger.warning(
@@ -2028,7 +2028,7 @@ class DeviceHandle:
                     _ble_fallback = True
                 else:
                     _logger.debug("BLE preferred but disconnected for '%s' — reconnecting", self.device_name)
-                    self.schedule_ble_connection(cast(BLETransport, ble))
+                    self.schedule_ble_connection(cast("BLETransport", ble))
         try:
             transport = self.active_transport(prefer_ble=prefer_ble, user_initiated=user_initiated)
         except NoTransportAvailableError:

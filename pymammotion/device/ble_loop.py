@@ -130,7 +130,7 @@ async def ble_activity_loop(handle: LoopHost) -> None:
                 _BLE_HEARTBEAT_FAIL_LIMIT,
                 exc,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             handle.ble_heartbeat_failures += 1
             _logger.debug("ble_loop [%s]: unexpected error in heartbeat", handle.device_name, exc_info=True)
 
@@ -178,7 +178,7 @@ async def ble_polling_loop(handle: LoopHost) -> None:
                 # Transitioned out of continuous mode — issue a single STOP.
                 try:
                     await handle.enqueue_ble_stream_command(RptAct.RPT_STOP, count=1)
-                except Exception:  # noqa: BLE001 — the polling loop must outlive any single command
+                except Exception:
                     _logger.debug("ble_polling [%s]: STOP enqueue failed", handle.device_name, exc_info=True)
                 handle.ble_stream_active = False
                 # Wake the MQTT loop now that it owns the cadence again.
@@ -206,7 +206,7 @@ async def ble_polling_loop(handle: LoopHost) -> None:
                     )
                     try:
                         await handle.enqueue_ble_stream_command(RptAct.RPT_STOP, count=1)
-                    except Exception:  # noqa: BLE001 — the polling loop must outlive any single command
+                    except Exception:
                         _logger.debug(
                             "ble_polling [%s]: stale-bounce RPT_STOP failed (continuing)",
                             handle.device_name,
@@ -226,7 +226,7 @@ async def ble_polling_loop(handle: LoopHost) -> None:
                         # verification fails the flag stays False and this
                         # branch retries on the next tick.
                         await handle.enqueue_ble_stream_command(RptAct.RPT_START, count=0)
-                except Exception:  # noqa: BLE001 — the polling loop must outlive any single command
+                except Exception:
                     _logger.debug(
                         "ble_polling [%s]: stream renew/start failed",
                         handle.device_name,
@@ -239,7 +239,7 @@ async def ble_polling_loop(handle: LoopHost) -> None:
                     try:
                         await handle.send_one_shot_report()
                         last_one_shot_at = now
-                    except Exception:  # noqa: BLE001 — the polling loop must outlive any single command
+                    except Exception:
                         _logger.debug(
                             "ble_polling [%s]: one-shot enqueue failed",
                             handle.device_name,

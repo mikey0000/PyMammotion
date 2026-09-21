@@ -124,9 +124,7 @@ async def _collect(args: argparse.Namespace) -> dict[str, Any]:
                 raise SystemExit(2)
             key = f"{args.product_key}@{args.device_version}"
             out[key] = {
-                args.int_mod: await _dump_one(
-                    http, args.product_key, args.device_version, args.int_mod, raw=args.raw
-                )
+                args.int_mod: await _dump_one(http, args.product_key, args.device_version, args.int_mod, raw=args.raw)
             }
             return out
 

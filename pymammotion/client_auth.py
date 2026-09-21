@@ -138,14 +138,14 @@ class CloudAuthMixin:
             if revoke:
                 try:
                     await session.mammotion_http.logout()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     _logger.warning("HTTP logout failed — proceeding anyway", exc_info=True)
             session.mammotion_http = None
         if session.cloud_client is not None:
             if revoke:
                 try:
                     await session.cloud_client.sign_out()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     _logger.warning("cloud sign_out failed — proceeding anyway", exc_info=True)
             session.cloud_client = None
         if session.token_manager is not None:
@@ -416,7 +416,7 @@ class CloudAuthMixin:
                     # swallowing it here would let the restore finish and report
                     # success on a login the server has already invalidated.
                     raise
-                except Exception:  # noqa: BLE001
+                except Exception:
                     _logger.warning(
                         "restore_credentials: failed to fetch iot_id map for Mammotion bootstrap", exc_info=True
                     )
@@ -429,7 +429,7 @@ class CloudAuthMixin:
                 )
             except _AUTH_REJECTED:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning("restore_credentials: Mammotion MQTT bootstrap failed", exc_info=True)
 
         self._start_token_refresh(acct_session)

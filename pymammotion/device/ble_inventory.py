@@ -178,7 +178,7 @@ class BleInventory:
         if (holder := self._device_registry.find_ble_owner(device_id)) is not None:
             _logger.info("add_ble_only_device: %s already has a BLE transport — reusing handle", device_name)
             if ble_device is not None:
-                cast(BLETransport, holder.get_transport(TransportType.BLE)).set_ble_device(ble_device)
+                cast("BLETransport", holder.get_transport(TransportType.BLE)).set_ble_device(ble_device)
             return holder
 
         transport = self._new_ble_transport(
@@ -251,7 +251,7 @@ class BleInventory:
         Returns ``True`` when a transport was created or its address changed.
         """
         if (ble := handle.get_transport(TransportType.BLE)) is not None:
-            return cast(BLETransport, ble).set_ble_device(ble_device, rssi)
+            return cast("BLETransport", ble).set_ble_device(ble_device, rssi)
         await handle.add_transport(self._new_ble_transport(handle.device_id, ble_device, rssi))
         return True
 

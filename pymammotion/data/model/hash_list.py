@@ -1036,7 +1036,7 @@ class HashList(DataClassORJSONMixin):
         Creates a new FrameList for a first sighting, otherwise appends the
         frame unless its ``current_frame`` is already present.
         """
-        if hash_dict.get(hash_data.hash, None) is None:
+        if hash_dict.get(hash_data.hash) is None:
             hash_dict[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
             return True
 

@@ -226,7 +226,7 @@ class MQTTTransport(CloudTransport):
             if self._client is not None:
                 try:
                     await self._client.subscribe(topic)
-                except Exception:  # noqa: BLE001 — reconnect re-subscribes, so a live failure is noise
+                except Exception:
                     _logger.debug("add_topic: live subscribe failed (will retry on reconnect)", exc_info=True)
 
     def register_device(self, product_key: str, device_name: str, iot_id: str) -> None:
@@ -458,7 +458,7 @@ class MQTTTransport(CloudTransport):
                 await self._give_up(rle)
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
                 return
-            except Exception:  # noqa: BLE001 — only ReLoginRequiredError is terminal here
+            except Exception:
                 _logger.warning("Pre-connect credential refresh failed (transient?)", exc_info=True)
 
             try:
@@ -510,7 +510,7 @@ class MQTTTransport(CloudTransport):
                             )
                             await self._give_up(rle)
                             return
-                        except Exception:  # noqa: BLE001 — only ReLoginRequiredError is terminal here
+                        except Exception:
                             # Transient refresh failure (network) — back off and retry.
                             # Never terminal: the broker rejecting an expired JWT while
                             # the HTTP API is down says nothing about the login.
@@ -639,7 +639,7 @@ class MQTTTransport(CloudTransport):
                 msg = MammotionStatusMessage.from_dict(parsed).to_thing_status()
             else:
                 msg = ThingStatusMessage.from_dict(parsed)
-        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
+        except Exception:
             _logger.debug("MQTTTransport: failed to parse thing/status on %s: %s", topic, raw, exc_info=True)
             return
         if msg.params.iot_id:
@@ -651,7 +651,7 @@ class MQTTTransport(CloudTransport):
             return
         try:
             props = ThingPropertiesMessage.from_json(raw)
-        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
+        except Exception:
             _logger.debug("MQTTTransport: failed to parse thing/properties on %s", topic, exc_info=True)
             return
         if props.params.iot_id:
@@ -672,7 +672,7 @@ class MQTTTransport(CloudTransport):
         try:
             msg = MammotionPropertiesMessage.from_json(raw)
             await self.on_device_mammotion_properties(iot_id, msg)
-        except Exception:  # noqa: BLE001 — a malformed payload is noise, not a failure
+        except Exception:
             _logger.debug("MQTTTransport: failed to parse property/post on %s: %s", topic, raw, exc_info=True)
 
     async def _dispatch_mammotion_event(self, topic: str, raw: bytes) -> None:

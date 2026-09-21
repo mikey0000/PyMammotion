@@ -612,7 +612,7 @@ class MammotionClient(CloudAuthMixin):
                         snapshot, _ = handle.state_machine.apply(updated, handle.availability)
                         await handle.emit_state_changed(snapshot)
                     break
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.warning("fetch_rtk_lora_info: failed to fetch RTK devices for %s", device_name, exc_info=True)
 
     async def fetch_rtk_properties(self, device_name: str) -> None:
@@ -668,7 +668,7 @@ class MammotionClient(CloudAuthMixin):
             if updated is not current:
                 snapshot, _ = handle.state_machine.apply(updated, handle.availability)
                 await handle.emit_state_changed(snapshot)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.warning("fetch_rtk_properties: failed for %s", device_name, exc_info=True)
 
     async def apply_device_properties(self, device_name: str, properties: ThingPropertiesMessage) -> None:
@@ -1316,7 +1316,7 @@ class MammotionClient(CloudAuthMixin):
             cloud_client = CloudIOTGateway(mammotion_http)
             try:
                 await self._connect_iot(cloud_client)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning(
                     "restore_credentials: could not rebuild the Aliyun session for %s — "
                     "skipping the Aliyun transport this cycle (the HTTP login is unaffected)",
@@ -1349,7 +1349,7 @@ class MammotionClient(CloudAuthMixin):
             owned_iot_id_map = {d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id}
         except _AUTH_REJECTED:
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.warning("restore_credentials: failed to fetch device iot_id map (Aliyun restore)", exc_info=True)
 
         known_ids: set[str] = set()
@@ -1400,7 +1400,7 @@ class MammotionClient(CloudAuthMixin):
                                     acct_session=acct_session,
                                 )
                                 known_ids.add(device.device_name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 discovery_failed = True
                 _logger.warning(
                     "restore_credentials: new-device discovery failed for account %s (Aliyun)",
@@ -1457,7 +1457,7 @@ class MammotionClient(CloudAuthMixin):
                 }
             except _AUTH_REJECTED:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning(
                     "restore_credentials: failed to fetch device iot_id map (Mammotion restore)", exc_info=True
                 )
@@ -1575,12 +1575,14 @@ class MammotionClient(CloudAuthMixin):
                 is_luba1=DeviceType.is_luba1(device_name),
                 command_builder=commands,
                 send_command=handle.send_raw,
-                get_map=lambda: cast(MowerDevice, handle.snapshot.raw).map,
+                get_map=lambda: cast("MowerDevice", handle.snapshot.raw).map,
                 # None — not 0 — when no report frame has arrived yet: 0 is a real
                 # bol_hash meaning "no areas", so returning it here would make the
                 # saga wipe a good cached manifest on every pre-report sync.
                 get_bol_hash=lambda: (
-                    locs[0].bol_hash if (locs := cast(MowerDevice, handle.snapshot.raw).report_data.locations) else None
+                    locs[0].bol_hash
+                    if (locs := cast("MowerDevice", handle.snapshot.raw).report_data.locations)
+                    else None
                 ),
                 sync_type=2 if handle.is_transport_connected(TransportType.BLE) else 3,
                 skip_area_names=skip_area_names,
@@ -1728,7 +1730,7 @@ class MammotionClient(CloudAuthMixin):
     async def check_and_get_mow_path(self, device_name: str) -> None:
         """Fetch the cover path for the current route unless a valid one is already cached."""
         if handle := self._device_registry.get_by_name(device_name):
-            device = cast(MowerDevice, handle.snapshot.raw)
+            device = cast("MowerDevice", handle.snapshot.raw)
             work = device.report_data.work
             if device.map.current_mow_path and device.map.has_mow_path_for_hash(work.path_hash):
                 return  # Cache is valid for the current route
@@ -1744,7 +1746,7 @@ class MammotionClient(CloudAuthMixin):
             try:
                 current_work = GenerateRouteInformation.from_current_task_settings(device.work)
                 await self.start_mow_path_saga(device_name, zone_hashs=[], route_info=current_work, skip_planning=True)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
     async def start_mow_path_saga(

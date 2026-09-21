@@ -35,6 +35,7 @@ log = logging.getLogger("geojson_test")
 OUTPUT_DIR = Path(__file__).parent.parent / "examples" / "dev_output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def _pick_mower(devices: list[DeviceHandle]) -> DeviceHandle | None:
     mowers = [d for d in devices if d.device_name.startswith(("Luba", "Yuka", "Spino"))]
     return mowers[0] if mowers else (devices[0] if devices else None)
@@ -57,6 +58,7 @@ async def _login_with_retry(client: MammotionClient, email: str, password: str, 
 async def _wait_for_map_sync(handle: DeviceHandle, timeout: float = 180.0) -> bool:
     """Poll handle.has_queued_commands until the map saga completes or we time out."""
     import time as _time
+
     deadline = _time.monotonic() + timeout
     await asyncio.sleep(1.0)  # give enqueue_saga time to flip is_saga_active
     while handle.has_queued_commands():

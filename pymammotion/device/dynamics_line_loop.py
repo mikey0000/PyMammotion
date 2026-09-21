@@ -136,5 +136,5 @@ async def _enqueue_dynamics_line_saga(handle: LoopHost) -> None:
 
     try:
         await handle.enqueue_saga(saga, on_complete=_on_complete)
-    except Exception:  # noqa: BLE001
+    except Exception:
         _logger.debug("dynamics_line_loop [%s]: enqueue failed", handle.device_name, exc_info=True)

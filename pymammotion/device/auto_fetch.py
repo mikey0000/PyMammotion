@@ -99,7 +99,7 @@ class AutoFetchWatchers:
             return None
 
         async def _on_path_hashes_changed(path_hash: int) -> None:
-            device = cast(MowerDevice, handle.snapshot.raw)
+            device = cast("MowerDevice", handle.snapshot.raw)
             if device.map.current_mow_path and device.map.has_mow_path_for_hash(path_hash):
                 return  # Cache is valid for the current route
             if device.map.current_mow_path:
@@ -115,11 +115,11 @@ class AutoFetchWatchers:
             try:
                 current_work = GenerateRouteInformation.from_current_task_settings(device.work)
                 await self.start_mow_path_saga(device_name, zone_hashs=[], route_info=current_work, skip_planning=True)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
         async def _on_mow_progress_changed(_pos: tuple[int, int]) -> None:
-            device = cast(MowerDevice, handle.snapshot.raw)
+            device = cast("MowerDevice", handle.snapshot.raw)
             if device.map.current_mow_path and device.report_data.dev.sys_status == WorkMode.MODE_WORKING:
                 work = device.report_data.work
                 apply_mow_progress_geojson(
@@ -147,7 +147,7 @@ class AutoFetchWatchers:
                 )
                 return
 
-            device_snapshot = cast(MowerDevice, handle.snapshot.raw)
+            device_snapshot = cast("MowerDevice", handle.snapshot.raw)
             device_type = DeviceType.value_of_str(device_name)
             is_mowing = device_snapshot.report_data.dev.sys_status in MOWING_ACTIVE_MODES
             incremental = (
@@ -165,7 +165,7 @@ class AutoFetchWatchers:
 
             try:
                 await self.start_map_sync(device_name, skip_area_names=incremental)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning("Auto-trigger map sync failed for %s", device_name, exc_info=True)
 
         async def _on_init_cfg_hash_changed(cfg_hash: int) -> None:
@@ -184,7 +184,7 @@ class AutoFetchWatchers:
             )
             try:
                 await self.start_plan_sync(device_name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning("Auto-trigger plan sync failed for %s", device_name, exc_info=True)
 
         sub = handle.watch_field(

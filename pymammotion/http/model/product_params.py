@@ -22,14 +22,32 @@ from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 
+def _sort_key(param: "ProductParam") -> tuple[int, int, str]:
+    """Order rows by the app's sort, then numerically by code.
+
+    Codes are strings on the wire, so a plain sort puts "12" before "3".
+    """
+    try:
+        return (param.sort, int(param.code), "")
+    except (TypeError, ValueError):
+        return (param.sort, 1 << 31, param.code)
+
+
 @dataclass
 class ProductParam(DataClassORJSONMixin):
     """One settable job parameter for a model, as the app would render it."""
 
     class Config(BaseConfig):
-        """Unknown keys are tolerated: the schema gains fields between app releases."""
+        """Tolerate new keys, and read back what ``to_dict`` wrote.
+
+        Without ``allow_deserialization_not_by_alias`` a round trip through
+        ``to_dict`` silently yields an empty list: it writes field names while
+        the aliases are what the wire uses, and a host persisting the schema
+        would read back nothing.
+        """
 
         forbid_extra_keys = False
+        allow_deserialization_not_by_alias = True
 
     code: str = ""
     name: str = ""
@@ -57,9 +75,10 @@ class ProductParamData(DataClassORJSONMixin):
     """The parameter set for one product key at one firmware version."""
 
     class Config(BaseConfig):
-        """Unknown keys are tolerated."""
+        """Tolerate new keys, and read back what ``to_dict`` wrote."""
 
         forbid_extra_keys = False
+        allow_deserialization_not_by_alias = True
 
     detail_vos: list[ProductParam] = field(default_factory=list, metadata=field_options(alias="detailVos"))
     int_mod: str | None = field(default=None, metadata=field_options(alias="intMod"))
@@ -85,5 +104,5 @@ class ProductParamData(DataClassORJSONMixin):
                 "ui_type": param.ui_type,
                 "forced": param.is_force == 1,
             }
-            for param in sorted(self.detail_vos, key=lambda p: (p.sort, p.code))
+            for param in sorted(self.detail_vos, key=_sort_key)
         }

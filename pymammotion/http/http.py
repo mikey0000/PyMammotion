@@ -551,7 +551,7 @@ class MammotionHTTP:
                 reader = csv.DictReader(data.get("data", "").split("\n"), delimiter=",")
                 codes = {}
                 for row in reader:
-                    error_info = ErrorInfo(**cast(dict[str, Any], row))
+                    error_info = ErrorInfo(**cast("dict[str, Any]", row))
                     codes[error_info.code] = error_info
                 return codes
 
@@ -1045,7 +1045,7 @@ class MammotionHTTP:
                 return Response(code=resp.status, msg="get device list failed", data=[])
             if resp_dict:
                 response = response_factory(Response[list[DeviceInfo]], resp_dict)
-                self.device_info = response.data if response.data else self.device_info
+                self.device_info = response.data or self.device_info
                 return response
 
         return Response(code=200, msg="success", data=[])
@@ -1070,7 +1070,7 @@ class MammotionHTTP:
                     _LOGGER.warning("Failed to fetch shared devices. Status code: %s, %s", resp.status, resp_dict)
                     return Response(code=resp.status, msg="get shared device page failed")
                 response = response_factory(Response[ShareRecords], resp_dict)
-                self.devices_shared_info = response.data if response.data else self.devices_shared_info
+                self.devices_shared_info = response.data or self.devices_shared_info
                 return response
 
         return Response(code=200, msg="success")
@@ -1127,7 +1127,7 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 resp_dict = await resp.json()
                 response = response_factory(Response[DeviceRecords], resp_dict)
-                self.device_records = response.data if response.data else self.device_records
+                self.device_records = response.data or self.device_records
                 return response
 
         return Response(code=200, msg="success")
