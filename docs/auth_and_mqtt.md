@@ -256,10 +256,11 @@ if self.expires_in < time.time() + 300:   # 5-minute lookahead
     await self.refresh_login()
 ```
 
-`refresh_login()` calls `refresh_token_v2()` if the token has not yet expired,
-otherwise falls back to a full `login_v2()`. On a reactive 401 from the invoke
-response, `UnauthorizedException` is raised and the caller (transport layer) is
-responsible for triggering a re-login.
+pymammotion never falls back to `login_v2()` automatically (see `docs/decisions.md` D7):
+`TokenManager.refresh_http()` uses `refresh_token_v2()`, and a rejected refresh sets
+`reauth_required` so the host prompts the user. A reactive 401 from the invoke response
+goes through `TokenManager.refresh_invoke_token(stale_token=...)`, which is deduplicated
+by access token (D10).
 
 `refresh_token_v2()` calls `POST /oauth2/token` with the same body fields as the APK.
 The signature string is assembled as:
@@ -336,13 +337,14 @@ The Python library (`TokenManager`, `MQTTTransport`, `AliyunMQTTTransport`) mirr
 | APK component | Python equivalent |
 |---|---|
 | `MaIoTRequestHelper.getJWTForAuth()` | `TokenManager.get_mammotion_mqtt_credentials()` |
-| `MaIoTRequestHelper.refreshToken()` | `TokenManager.get_valid_http_token()` |
+| `MaIoTRequestHelper.refreshToken()` | `TokenManager.refresh_http()` / `refresh_invoke_token()` |
 | `MQTTClient` + `MQTTService` | `MQTTTransport` (aiomqtt, JWT password) |
 | Aliyun AEP SDK + `AliIoTLoginUtil` | `AliyunMQTTTransport` (paho, HMAC-SHA1, port 8883) |
-| `Constants.MA_IoT_APP_KEY_VALUE` | hardcoded in `MammotionHTTP` |
-| `SignUtil.signWithHmacSHA256()` | `MammotionHTTP._generate_signature()` |
+| `Constants.MA_IoT_APP_KEY_VALUE` | hardcoded in `http/http.py` |
+| `SignUtil.signWithHmacSHA256()` | `http.sign_with_hmac_sha256()` / `create_oauth_signature()` |
 
 Key divergence: the APK fetches a fresh MQTT JWT **before every connect attempt** (including
-after automatic reconnect completes). The Python `TokenManager` proactively refreshes
-30 minutes before expiry and also on `AuthError`, which achieves the same goal without
-re-fetching on every reconnect.
+after automatic reconnect completes). The Python `TokenManager` refreshes the JWT
+30 minutes before expiry from its clock-driven scheduler, and `MQTTTransport` pulls a fresh
+set through its `creds_refresher` on an auth-rejected connect, which achieves the same goal
+without re-fetching on every reconnect.

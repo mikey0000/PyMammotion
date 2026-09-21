@@ -124,8 +124,8 @@ APK builder: `MACommandHelper.singleSchedule(planId)` (`command/MACommandHelper.
 | `result`   | int32  | Device's response code — `1` == success, anything else fails  |
 
 pymammotion exposes this as `MammotionCommand.single_schedule(plan_id)`
-(`navigation.py:247`), the HA-facing helper `MammotionMowerApi.start_task(...)`
-(`mower_api.py:426`), and the HA-Luba coordinator method
+(`navigation.py`), the HA-facing helper `MammotionMowerApi.start_task(...)`
+(`mower_api.py`), and the HA-Luba coordinator method
 `MammotionReportUpdateCoordinator.start_task(plan_id)`. The dynamic task-button
 press triggers this; the same call is also reachable as the
 `mammotion.start_task` HA service for use from automations.
@@ -134,7 +134,9 @@ press triggers this; the same call is also reachable as the
 by id. `NavTaskCtrl` (start/pause/resume/stop) drives the *currently running*
 job regardless of how it was started. Don't confuse the two — sending
 `NavTaskCtrl(action=1)` ("startJob") without a stored plan does not run a
-schedule, it resumes whatever was last set.
+schedule, it resumes whatever was last set. Its action codes: 3 resume from pause,
+4 stop and save map, 5 return to charger, 7 resume from breakpoint, 9 resume from an
+arbitrary point, 18 stop and discard map.
 
 **Worked example (mower):**
 
@@ -286,21 +288,31 @@ the default `nav` path. This matches the APK, which builds Spino plans under `Sp
 | Trigger                                          | Mower                                                                | Spino                              |
 |--------------------------------------------------|----------------------------------------------------------------------|------------------------------------|
 | First connection / setup                         | HA polling layer issues `read_plan` on the first `update()`          | `MammotionSpinoCoordinator._async_setup` calls `start_spino_plan_sync` |
-| Periodic re-poll                                 | `mower_api.py:95-98` — every 10 min OR if `len(map.plan) != total_plan_num` | Same condition adapted to `device.plans` |
+| Periodic re-poll                                 | `mower_api.py` — every 30 min (`read_plan` interval), or immediately while `plans_stale` is set or nothing has been fetched yet (`plans_fetched`) | Same condition adapted to `device.plans` |
 | After area/zone delete (APK only)                | APK calls `readPlan(2, 0, 0)` (`AreaDBHelper.java:747`)              | n/a                                |
-| Device reports new IDs we don't have             | Mower-only: unsolicited `all_plan_task` (id+name pairs) flips `device.map.plans_stale = True` (`state_reducer.py:343-351`); polling layer notices the mismatch on the next tick | n/a — Spino has no `all_plan_task` analogue |
+| Device reports new IDs we don't have             | Mower-only: unsolicited `all_plan_task` (id+name pairs) flips `device.map.plans_stale = True` (`state_reducer.py`); the polling layer re-fetches on its next tick | n/a — Spino has no `all_plan_task` analogue |
 
 ### 3.2 `plans_stale` lifecycle
 
-Set: `state_reducer.py:343-351` when a fresh `all_plan_task` frame contains IDs not present in
-`device.map.plan`.
-Consumed: `mower_api.py:95-98` triggers a re-fetch on the next polling tick.
-Cleared: **currently never explicitly cleared in pymammotion** — relies on the count-equality
-condition naturally going false after the saga populates `map.plan`. This is a small wart
-worth noting for future cleanup but does not cause re-fetch storms (the count condition gates
-it).
+Set: `state_reducer.py` when a fresh `all_plan_task` frame contains IDs not present in
+`device.map.plan` (mower), or when a Spino `plan_job_set` reports more plans than we hold.
+Consumed: `mower_api.py` triggers a re-fetch on the next polling tick.
+Cleared: `MammotionClient.start_plan_sync` on saga completion, which replaces `map.plan`
+with the saga's result and sets `plans_fetched` so a device with no schedules is not
+re-asked every interval. The Spino reducer clears its flag when the counts match.
 
-### 3.3 Keeping the device synced during the loop
+### 3.3 How the APK decides to fetch
+
+The device embeds three hashes in every work-report message: `initCfgHash` (main config
+including job plans), `ubEcodeHash` (error-code config) and `ubZoneHash` (zone config,
+also updated mid-mow). `DeviceInitializationManager.updateInitHash()` compares each
+against its cached value and on mismatch sends `allpowerfullRW(id=5, context=1|2|3, rw=1)`
+with up to 10 exponential-backoff retries. There is no periodic timer; only a hash change
+starts a fetch. pymammotion has no hash-based equivalent — it relies on `plans_stale`, the
+count comparison and the 30-minute poll. A watcher on `initCfgHash` (like the `bol_hash`
+watcher for maps) would be the faithful port.
+
+### 3.4 Keeping the device synced during the loop
 
 The device drops out of its "synced" state ~10 s after the last `todev_ble_sync` and then
 stops responding to commands (see `docs/apk_timers_and_loops.md` and
@@ -325,10 +337,10 @@ sufficient. Map/cover-path steps are multi-frame and historically lost frames mi
 (no `toapp_gethash_ack`), so those sagas add a belt-and-suspenders `_send_ble_sync` immediately
 before each major request on top of the same device-level keep-alive.
 
-### 3.4 After a write, is the device's reply enough?
+### 3.5 After a write, is the device's reply enough?
 
 Yes for the mower: `Create`/`Edit`/`Delete` responses come back as `todev_planjob_set` frames
-(or a `result` ack inside one) and the reducer (`state_reducer.py:340-342`) upserts the
+(or a `result` ack inside one) and the reducer (`state_reducer.py`) upserts the
 updated plan into `device.map.plan`. No explicit re-fetch is needed unless the response is
 missed.
 
@@ -420,6 +432,3 @@ await coordinator.async_send_command(
 3. **Spino `result` codes** — both protos have a `result` field returned by the device. The
    mower's success code is `0`; non-zero values are not catalogued. Capture and document as
    they're observed.
-4. **`plans_stale` is never explicitly cleared** in pymammotion (§ 3.2). Not a bug today
-   because the count-equality re-fetch gate makes it self-resolving, but worth a small follow-up
-   to clear it at the end of `PlanFetchSaga` / `SpinoPlanFetchSaga`.

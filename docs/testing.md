@@ -368,8 +368,8 @@ Known debt, largest first:
 | Debt | Count | Fix |
 |---|---|---|
 | 25 unit modules that mirror no source module | `tests/unit/` | §2 — rename to `test_<module>_<concern>.py`, or move to `tests/regression/` |
-| 9 modules over the 600-line cap (`test_client.py` at 2045, `test_handle.py` at 1681) | `tests/unit/`, `tests/integration/` | §2 — split by concern |
-| test data still under `tests/fixtures/` | 5 files | §2 — move to `tests/data/`, update the three loaders |
+| 8 modules over the 600-line cap (`test_client.py` at ~2000, `test_handle.py` at ~1700) | `tests/unit/`, `tests/integration/` | §2 — split by concern |
+| test data still under `tests/fixtures/` | 7 files | §2 — move to `tests/data/`, update the three loaders |
 
 Paid down already, and now pinned at zero by `tests/meta/test_conventions.py`:
 62 wall-clock sleeps (56 in the unit tier, 6 elsewhere), 127 redundant

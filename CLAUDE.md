@@ -241,7 +241,7 @@ Key files for protocol/logic research:
 
 - **Async throughout:** All I/O uses `asyncio`/`async`/`await`
 - **Line length:** 120 characters
-- **Python version:** 3.12+
+- **Python version:** 3.13+
 - **Type stubs** for missing third-party types are in `stubs/`
 - Ruff excludes `pymammotion/proto/`, `tests/`, and `scripts/` from linting
 - ty excludes `pymammotion/proto/**`, `tests/**`, `scripts/**`, and `examples/**`
@@ -261,11 +261,11 @@ Before adding code, look for what's already there. The architecture is layered a
 **Consolidate, don't proliferate.** If you find yourself writing the same check (offline gate, transport-usable test, mode classification, retry policy, …) in a second place, stop and look for the existing one. Examples currently in the codebase:
 - "Is anything sendable right now?" → `DeviceHandle.has_usable_transport` / `active_transport()`. Don't add another offline check.
 - "Is BLE in a usable state?" → `BLETransport.is_usable`. Don't re-derive from `_ble_device` and `_connect_cooldown_until`.
-- "What kind of state is the mower in for cadence?" → `DeviceHandle._device_mode()` + `_MQTT_POLL_INTERVAL` / `_BLE_POLL_INTERVAL` tables. Don't pattern-match `sys_status` inline.
+- "What kind of state is the mower in for cadence?" → `DeviceHandle.cadence_mode()` (classification in `device/modes.py`) + the `_MQTT_POLL_INTERVAL` / `_BLE_POLL_INTERVAL` tables in `device/mqtt_loop.py` / `device/ble_loop.py`. Don't pattern-match `sys_status` inline.
 - "Should the queue treat this exception as expected?" → the demotion buckets in `DeviceCommandQueue._process` (`NoTransportAvailableError` / `DeviceOfflineException` are DEBUG; auth/saga/rate-limit are WARNING). Don't add a try/except in callers to swallow expected errors — let them propagate to the queue.
 
 **SOLID, applied here:**
-- **Single responsibility:** each file owns one concern. Transport selection lives on `DeviceHandle`; cooldown/scan logic lives on `BLETransport`; cadence tables live in `handle.py`. Don't smear logic across layers.
+- **Single responsibility:** each file owns one concern. Transport selection lives on `DeviceHandle`; cooldown/scan logic lives on `BLETransport`; cadence tables live in `device/mqtt_loop.py` / `device/ble_loop.py`. Don't smear logic across layers.
 - **Open/closed:** prefer extending tables (e.g. `_MQTT_POLL_INTERVAL[mode]`) over adding `if mode == ...` branches in send paths.
 - **Dependency direction:** `pymammotion` doesn't know HA exists. HA-Luba consumes `pymammotion` via the `MammotionClient` and `DeviceHandle` public APIs. If you find yourself reaching into `_private` attributes from HA-Luba, surface a public property instead.
 - **Substitutability:** all `Transport` implementations satisfy the same interface. New default behavior goes on the *narrowest* base that needs it — `base.py` only if BLE genuinely has it too, otherwise `cloud.py`. Putting a broker concern on `Transport` is how BLE ended up inheriting a send quota, an auth-failure API and four `thing/*` callbacks it never used; giving BLE no-op stubs to keep one flat interface is the wrong repair (see `docs/decisions.md` D13).

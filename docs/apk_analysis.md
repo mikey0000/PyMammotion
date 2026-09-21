@@ -143,44 +143,6 @@ if (f7220a.type().isRTK()) {
 
 ---
 
-## Implications for pymammotion
-
-### Current issue
-
-RTK devices (e.g. `RTKBAU242721575`) may appear in the Aliyun binding list
-(`list_binding_by_account`) with a wrong or placeholder `iotId`. Registering them
-via `_register_aliyun_device` causes sends to go through `AliyunMQTTTransport` /
-`cloud_gateway.send_cloud_command`, which is incorrect for Mammotion IoT devices.
-
-### Correct approach
-
-1. Detect Mammotion IoT devices by `productKey` using `isMaIotDevice()` logic —
-   i.e. check against the list of Mammotion product keys in `device_type.py`
-   (`YukaMVProductKey`, `LubaLAProductKey`, `YukaMN100ProductKey`, `Cm900ProductKey`,
-   and the RTK keys).
-
-2. For these devices, skip Aliyun registration and register via
-   `_register_mammotion_device` with `iotId` from `get_user_device_page()`.
-
-3. If `iotId` is empty/wrong, fall back to **`productKey + deviceName`** in the
-   `mqtt_invoke` call — the server supports this form.
-
-### `mqtt_invoke` fallback
-
-The current `MQTTTransport.send()` raises `TransportError` when `iot_id` is empty.
-A better approach: if `iot_id` is empty, pass `productKey` and `deviceName` instead:
-
-```python
-# http.py mqtt_invoke — server accepts iotId OR productKey+deviceName
-if iot_id:
-    body["iotId"] = iot_id
-else:
-    body["productKey"] = product_key
-    body["deviceName"] = device_name
-```
-
----
-
 ## Key Source Files
 
 | File | Contents |
