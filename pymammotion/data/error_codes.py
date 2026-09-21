@@ -72,6 +72,29 @@ def bundled_error_codes() -> Mapping[str, ErrorInfo]:
     return table
 
 
+#: A table fetched from an account, shared by every device in the process.  The
+#: table is the same ~470 rows for every device on an account, so one copy is
+#: kept here rather than one per device: held per device it was serialised into
+#: each device's persisted state and into every diagnostics dump, several times
+#: over, for data the library already bundles.
+_fetched: dict[str, ErrorInfo] = {}
+
+
+def set_fetched_error_codes(table: Mapping[str, ErrorInfo] | None) -> None:
+    """Install the account-fetched table for every lookup in this process.
+
+    Passing ``None`` or an empty mapping clears it and falls back to the bundle.
+    """
+    _fetched.clear()
+    if table:
+        _fetched.update(table)
+
+
+def fetched_error_codes() -> Mapping[str, ErrorInfo]:
+    """Return the account-fetched table, empty when nothing has been fetched."""
+    return _fetched
+
+
 def normalise_code(code: int | str) -> str:
     """Return the table key for a code as the device reports it.
 
@@ -86,12 +109,14 @@ def normalise_code(code: int | str) -> str:
 def get_error_info(code: int | str, *, extra: Mapping[str, ErrorInfo] | None = None) -> ErrorInfo | None:
     """Look up one code, or ``None`` when neither source knows it.
 
-    *extra* is consulted first, so a host that fetched a fresher table (via
-    ``MammotionHTTP.get_all_error_codes``) keeps that precedence over the bundle
-    without having to merge the two itself.
+    *extra* is consulted first, then the process-wide table a host installed
+    with :func:`set_fetched_error_codes`, then the bundle — so a fresher table
+    takes precedence without any caller having to merge the two itself.
     """
     key = normalise_code(code)
     if extra and (found := extra.get(key)):
+        return found
+    if found := _fetched.get(key):
         return found
     return bundled_error_codes().get(key)
 

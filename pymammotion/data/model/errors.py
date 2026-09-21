@@ -8,13 +8,17 @@ from pymammotion.http.model.http import ErrorInfo
 
 @dataclass
 class DeviceErrors(DataClassORJSONMixin):
-    """Active error codes and their associated timestamps reported by the device."""
+    """Active error codes and their associated timestamps reported by the device.
+
+    The code *table* is not here.  It is the same ~470 rows for every device on
+    an account, so it lives once per process — see
+    :func:`~pymammotion.data.error_codes.set_fetched_error_codes`.  Held per
+    device it was serialised into each device's persisted state and into every
+    diagnostics dump, once per device, for data the library already bundles.
+    """
 
     err_code_list: list[int] = field(default_factory=list)
     err_code_list_time: list[int] = field(default_factory=list)
-    #: A table fetched from the account endpoint, when the host has one.  Optional:
-    #: the library bundles the same table, and lookups fall back to it.
-    error_codes: dict[str, ErrorInfo] = field(default_factory=dict)
 
     @property
     def active_codes(self) -> list[int]:
@@ -28,12 +32,12 @@ class DeviceErrors(DataClassORJSONMixin):
 
     def info(self, code: int | str) -> ErrorInfo | None:
         """Return the table entry for *code*, preferring a fetched table over the bundle."""
-        return get_error_info(code, extra=self.error_codes)
+        return get_error_info(code)
 
     def describe(self, code: int | str, language: str = "en") -> str:
         """Human-readable text for *code*, never empty."""
-        return describe(code, language, extra=self.error_codes)
+        return describe(code, language)
 
     def solution(self, code: int | str, language: str = "en") -> str:
         """Remedy text for *code*, or an empty string when it has none."""
-        return solution(code, language, extra=self.error_codes)
+        return solution(code, language)

@@ -45,6 +45,7 @@ from pymammotion.http.model.http import (
     ShareRecords,
     UnauthorizedExceptionError,
 )
+from pymammotion.http.model.product_params import ProductParamData
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
 from pymammotion.transport.base import AuthError, ReLoginRequiredError
@@ -555,6 +556,39 @@ class MammotionHTTP:
                 return codes
 
         return {}
+
+    async def get_product_params(
+        self, product_key: str, device_version: str, int_mod: str = ""
+    ) -> ProductParamData | None:
+        """Return which job settings a model and firmware expose, and how.
+
+        This is the capability list the app uses to decide whether to show a row
+        such as ride-boundary distance, what to default it to, and whether the
+        user may change it.  **Nothing in the library calls this**: it exists so
+        ``scripts/dump_product_params.py`` can fetch the schema for an account's
+        devices, and the results be folded into the static helpers by hand.
+        Wiring it into setup would add a per-device HTTP round trip for data that
+        changes with firmware releases, not with the clock.
+        """
+        async with self._client_session() as session:
+            resp = await session.post(
+                f"{MAMMOTION_API_DOMAIN}/product/param/version/search",
+                headers={
+                    **self._headers,
+                    "Authorization": f"Bearer {self._require_login_info.access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "productKey": product_key,
+                    "deviceVersion": device_version,
+                    "intMod": int_mod,
+                },
+            )
+            data = await resp.json()
+            if resp.status != HTTPStatus.OK.value or data.get("data") is None:
+                _LOGGER.warning("Failed to fetch product params for %s. Status: %s, %s", product_key, resp.status, data)
+                return None
+            return ProductParamData.from_dict(data["data"])
 
     async def _request_device_server(
         self,
