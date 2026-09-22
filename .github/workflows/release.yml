@@ -48,14 +48,28 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      # The tag and the package version are compared after PEP 440 normalisation,
+      # so v0.9.0-beta1, v0.9.0.b1 and v0.9.0b1 all match a 0.9.0b1 package.
       - name: Check package version matches tag
+        id: version
         run: |
-          PACKAGE_VERSION=$(uv run python -c "import importlib.metadata; print(importlib.metadata.version('pymammotion'))")
           TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
-            echo "Package version ($PACKAGE_VERSION) does not match tag version ($TAG_VERSION)"
-            exit 1
-          fi
+          uv run python - "$TAG_VERSION" <<'EOF'
+          import importlib.metadata, os, sys
+          from packaging.version import InvalidVersion, Version
+
+          package_version = Version(importlib.metadata.version("pymammotion"))
+          try:
+              tag_version = Version(sys.argv[1])
+          except InvalidVersion:
+              sys.exit(f"Tag version ({sys.argv[1]}) is not a valid PEP 440 version")
+          if package_version != tag_version:
+              sys.exit(f"Package version ({package_version}) does not match tag version ({tag_version})")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"prerelease={str(package_version.is_prerelease).lower()}\n")
+              fh.write(f"version={package_version}\n")
+          EOF
 
       - name: Inject credentials
         run: |
@@ -79,5 +93,6 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          prerelease: ${{ steps.version.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from pymammotion.device.handle import _DebouncedBus
-from pymammotion.state.device_state import DeviceAvailability, DeviceConnectionState, DeviceSnapshot
+from pymammotion.state.device_state import DeviceConnectionState, DeviceSnapshot
+from tests._helpers import advance_real_time, wait_until
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def make_snapshot(seq: int = 1, battery: int = 80) -> DeviceSnapshot:
@@ -37,9 +34,7 @@ def make_snapshot(seq: int = 1, battery: int = 80) -> DeviceSnapshot:
     )
 
 
-# ---------------------------------------------------------------------------
 # Test 1: debounce_interval=0 — immediate emission, no coalescing
-# ---------------------------------------------------------------------------
 
 
 async def test_no_debounce_emits_immediately() -> None:
@@ -64,9 +59,7 @@ async def test_no_debounce_emits_immediately() -> None:
     assert handler.call_args_list[2].args[0] is snap3
 
 
-# ---------------------------------------------------------------------------
 # Test 2: debounce_interval>0 — rapid emits coalesce to the last snapshot
-# ---------------------------------------------------------------------------
 
 
 async def test_debounce_coalesces_rapid_emits() -> None:
@@ -87,17 +80,14 @@ async def test_debounce_coalesces_rapid_emits() -> None:
     # Handler should NOT have been called yet
     assert handler.await_count == 0
 
-    # Wait for debounce to fire
-    await asyncio.sleep(0.15)
+    await wait_until(lambda: handler.await_count == 1, message="the debounced emit never fired")
 
     # Only 1 call with the last snapshot
     assert handler.await_count == 1
     assert handler.call_args_list[0].args[0] is snap3
 
 
-# ---------------------------------------------------------------------------
 # Test 3: max_debounce_wait forces emission during continuous rapid events
-# ---------------------------------------------------------------------------
 
 
 async def test_max_debounce_wait_forces_emission() -> None:
@@ -120,24 +110,21 @@ async def test_max_debounce_wait_forces_emission() -> None:
     await bus.emit(snap1)
     assert handler.await_count == 0
 
-    # Wait long enough that remaining_max is very small (< debounce_interval)
-    await asyncio.sleep(0.06)
+    # The burst clock must genuinely age: remaining_max has to fall below debounce_interval.
+    await advance_real_time(0.06)
 
     # Second emit: remaining_max ≈ 0.02s < 0.5s (debounce_interval)
     # → debounce task sleeps only ~0.02s, not 0.5s
     await bus.emit(snap2)
 
-    # The task should fire within 0.05s (0.02s sleep + margin)
-    await asyncio.sleep(0.06)
+    await wait_until(lambda: handler.await_count == 1, message="max_debounce_wait never forced the emit")
 
     # Handler should have been called exactly once with the last snapshot
     assert handler.await_count == 1
     assert handler.call_args_list[0].args[0] is snap2
 
 
-# ---------------------------------------------------------------------------
 # Test 4: stop() cancels pending task without calling handler
-# ---------------------------------------------------------------------------
 
 
 async def test_stop_cancels_pending_task_without_calling_handler() -> None:

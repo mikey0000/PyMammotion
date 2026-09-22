@@ -178,7 +178,7 @@ async def _run_mow_path_saga(
         is_mow=True,
         is_dump=True,
         is_edge=False,
-        channel_width=12,          # Yuka path_spacing: min=8 max=14
+        channel_width=12,  # Yuka path_spacing: min=8 max=14
         speed=0.3,
         job_mode=4,
         border_mode=0,
@@ -355,6 +355,7 @@ async def main() -> None:
 
             # Aliyun devices: send commands via HTTP API; Mammotion devices: via MQTT transport
             if cloud_client is not None and iot_id in client._iot_id_to_device_id:  # noqa: SLF001
+
                 async def _send_command(  # noqa: RUF029
                     cmd: bytes,
                     _cloud: CloudIOTGateway = cloud_client,
@@ -362,6 +363,7 @@ async def main() -> None:
                 ) -> None:
                     await _cloud.send_cloud_command(_iot_id, cmd)
             else:
+
                 async def _send_command(cmd: bytes, _handle: DeviceHandle = handle) -> None:  # type: ignore[misc]
                     await _handle.active_transport().send(cmd, iot_id=_handle.iot_id)  # noqa: SLF001
 

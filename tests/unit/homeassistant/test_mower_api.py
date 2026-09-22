@@ -1,16 +1,18 @@
-"""Tests for MammotionClient.setup_device_watchers auto-trigger logic."""
+"""Tests for HomeAssistantMowerApi: watcher auto-triggers, map/plan sync gating, route generation."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from pymammotion.client import MammotionClient
+from pymammotion.data.model.device import MowerDevice
+from pymammotion.device.auto_fetch import AutoFetchWatchers
+from tests._helpers import make_bare_client
+from pymammotion.data.model.device_config import OperationSettings
 from pymammotion.homeassistant.mower_api import HomeAssistantMowerApi
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _set_snapshot(
@@ -38,8 +40,7 @@ def _make_client_with_handle(
     ``captured_handlers[0]`` is the handler passed to ``handle.watch_field`` for
     the (ub_path_hash, path_hash) getter.
     """
-    client = MammotionClient.__new__(MammotionClient)
-    client._watcher_subscriptions = {}
+    client = make_bare_client()
 
     handle = MagicMock()
     handle.device_name = device_name
@@ -62,14 +63,20 @@ def _make_client_with_handle(
     client.start_mow_path_saga = AsyncMock()
     client.send_command_with_args = AsyncMock()
 
+    # The watchers hold the registry and saga starters they were built with, so they
+    # have to be rebuilt after the substitutions above.
+    client._watchers = AutoFetchWatchers(
+        registry,
+        start_map_sync=client.start_map_sync,
+        start_plan_sync=client.start_plan_sync,
+        start_mow_path_saga=client.start_mow_path_saga,
+    )
     client.setup_device_watchers(device_name)
 
     return client, handle, captured_handlers
 
 
-# ---------------------------------------------------------------------------
 # Test: no active job (hashes are 0) → no saga triggered
-# ---------------------------------------------------------------------------
 
 
 async def test_watcher_no_trigger_when_hashes_are_zero() -> None:
@@ -82,9 +89,7 @@ async def test_watcher_no_trigger_when_hashes_are_zero() -> None:
     client.start_mow_path_saga.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # Test: path_hash == 1 is treated as "job ended" (no trigger)
-# ---------------------------------------------------------------------------
 
 
 async def test_watcher_no_trigger_when_path_hash_is_one() -> None:
@@ -97,9 +102,7 @@ async def test_watcher_no_trigger_when_path_hash_is_one() -> None:
     client.start_mow_path_saga.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # Test: cover path already loaded → no saga
-# ---------------------------------------------------------------------------
 
 
 async def test_watcher_no_trigger_when_path_already_loaded() -> None:
@@ -117,9 +120,7 @@ async def test_watcher_no_trigger_when_path_already_loaded() -> None:
     client.start_mow_path_saga.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # Test: saga_active guard prevents double-queueing
-# ---------------------------------------------------------------------------
 
 
 async def test_watcher_skips_when_saga_already_active() -> None:
@@ -132,11 +133,9 @@ async def test_watcher_skips_when_saga_already_active() -> None:
     client.start_mow_path_saga.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # sys_status watcher was removed — cadence/streaming now lives in DeviceHandle
 # (BLE polling loop + MQTT cadence table).  No client-side watcher fires
 # request_iot_sys on sys_status transitions any more.
-# ---------------------------------------------------------------------------
 
 
 async def test_setup_device_watchers_does_not_register_sys_status_watcher() -> None:
@@ -151,9 +150,7 @@ async def test_setup_device_watchers_does_not_register_sys_status_watcher() -> N
     assert len(handlers) == 4
 
 
-# ---------------------------------------------------------------------------
 # Saga subscription hooks (stop continuous during saga, restart after)
-# ---------------------------------------------------------------------------
 # The saga hooks are now wired in DeviceHandle.__init__, not by
 # setup_device_watchers.  Tests here verify handle-level hook behaviour.
 
@@ -201,9 +198,7 @@ async def test_on_saga_end_sets_rearm_event() -> None:
     assert handle._rearm_event.is_set()  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # _map_sync_needed — when a MapFetchSaga is worth enqueuing
-# ---------------------------------------------------------------------------
 
 
 def _make_api() -> HomeAssistantMowerApi:
@@ -214,7 +209,7 @@ def _make_api() -> HomeAssistantMowerApi:
     return api
 
 
-def _make_device(*, root_hash_lists: list | None = None, area: dict | None = None, missing: list | None = None):
+def _make_device_with_map(*, root_hash_lists: list | None = None, area: dict | None = None, missing: list | None = None):
     """Return a device whose map reports the given completeness."""
     device = MagicMock()
     device.map.root_hash_lists = root_hash_lists if root_hash_lists is not None else []
@@ -223,7 +218,7 @@ def _make_device(*, root_hash_lists: list | None = None, area: dict | None = Non
     return device
 
 
-def _make_handle(*, usable: bool = True) -> MagicMock:
+def _make_api_handle(*, usable: bool = True) -> MagicMock:
     handle = MagicMock()
     handle.has_usable_transport = usable
     return handle
@@ -236,63 +231,61 @@ def test_map_sync_not_needed_when_map_complete() -> None:
     refetch only costs cloud round-trips.
     """
     api = _make_api()
-    device = _make_device(root_hash_lists=[MagicMock()], area={1: MagicMock()})
+    device = _make_device_with_map(root_hash_lists=[MagicMock()], area={1: MagicMock()})
 
-    assert api._map_sync_needed("Yuka-Test", device, _make_handle()) is False
+    assert api._map_sync_needed("Yuka-Test", device, _make_api_handle()) is False
 
     # Still false long after the check_maps interval would have elapsed.
     api._last_call_times["Yuka-Test"] = {"check_maps": datetime.now(UTC) - timedelta(hours=2)}
-    assert api._map_sync_needed("Yuka-Test", device, _make_handle()) is False
+    assert api._map_sync_needed("Yuka-Test", device, _make_api_handle()) is False
 
 
 def test_map_sync_not_needed_when_device_unreachable() -> None:
     """An offline device must not queue a saga that dies on NoTransportAvailableError."""
     api = _make_api()
-    device = _make_device()
+    device = _make_device_with_map()
 
-    assert api._map_sync_needed("Luba-Test", device, _make_handle(usable=False)) is False
+    assert api._map_sync_needed("Luba-Test", device, _make_api_handle(usable=False)) is False
 
 
 def test_map_sync_resumes_once_device_reachable() -> None:
     """Skipping while unreachable must not consume the retry window."""
     api = _make_api()
-    device = _make_device()
+    device = _make_device_with_map()
 
-    assert api._map_sync_needed("Luba-Test", device, _make_handle(usable=False)) is False
-    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is True
+    assert api._map_sync_needed("Luba-Test", device, _make_api_handle(usable=False)) is False
+    assert api._map_sync_needed("Luba-Test", device, _make_api_handle()) is True
 
 
 def test_map_sync_needed_when_map_empty() -> None:
     """A device we hold no map for syncs on the first poll."""
     api = _make_api()
 
-    assert api._map_sync_needed("Luba-Test", _make_device(), _make_handle()) is True
+    assert api._map_sync_needed("Luba-Test", _make_device_with_map(), _make_api_handle()) is True
 
 
 def test_map_sync_incomplete_retry_is_interval_paced() -> None:
     """An incomplete map retries at the check_maps interval, not every poll."""
     api = _make_api()
-    device = _make_device(root_hash_lists=[MagicMock()], area={1: MagicMock()}, missing=[42])
+    device = _make_device_with_map(root_hash_lists=[MagicMock()], area={1: MagicMock()}, missing=[42])
 
-    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is True
+    assert api._map_sync_needed("Luba-Test", device, _make_api_handle()) is True
     api._mark_api_called("check_maps", "Luba-Test")
-    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is False
+    assert api._map_sync_needed("Luba-Test", device, _make_api_handle()) is False
 
     api._last_call_times["Luba-Test"]["check_maps"] = datetime.now(UTC) - timedelta(minutes=6)
-    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is True
+    assert api._map_sync_needed("Luba-Test", device, _make_api_handle()) is True
 
 
 def test_map_sync_not_needed_for_device_with_no_areas() -> None:
     """A received manifest with no areas in it counts as complete."""
     api = _make_api()
-    device = _make_device(root_hash_lists=[MagicMock()])
+    device = _make_device_with_map(root_hash_lists=[MagicMock()])
 
-    assert api._map_sync_needed("Luba-Test", device, _make_handle()) is False
+    assert api._map_sync_needed("Luba-Test", device, _make_api_handle()) is False
 
 
-# ---------------------------------------------------------------------------
 # _plan_sync_needed — when a PlanFetchSaga is worth enqueuing
-# ---------------------------------------------------------------------------
 
 
 def _make_plan_device(*, fetched: bool = False, stale: bool = False, plan: dict | None = None):
@@ -312,10 +305,10 @@ def test_plan_sync_not_needed_once_fetched() -> None:
     api = _make_api()
     device = _make_plan_device(fetched=True, plan={"a": MagicMock()})
 
-    assert api._plan_sync_needed("Yuka-Test", device, _make_handle()) is False
+    assert api._plan_sync_needed("Yuka-Test", device, _make_api_handle()) is False
 
     api._last_call_times["Yuka-Test"] = {"read_plan": datetime.now(UTC) - timedelta(hours=4)}
-    assert api._plan_sync_needed("Yuka-Test", device, _make_handle()) is False
+    assert api._plan_sync_needed("Yuka-Test", device, _make_api_handle()) is False
 
 
 def test_plan_sync_not_needed_for_device_with_no_schedules() -> None:
@@ -323,7 +316,7 @@ def test_plan_sync_not_needed_for_device_with_no_schedules() -> None:
     api = _make_api()
     device = _make_plan_device(fetched=True)
 
-    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is False
+    assert api._plan_sync_needed("Luba-Test", device, _make_api_handle()) is False
 
 
 def test_plan_sync_needed_when_stale() -> None:
@@ -331,7 +324,7 @@ def test_plan_sync_needed_when_stale() -> None:
     api = _make_api()
     device = _make_plan_device(fetched=True, stale=True, plan={"a": MagicMock()})
 
-    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+    assert api._plan_sync_needed("Luba-Test", device, _make_api_handle()) is True
 
 
 def test_plan_sync_not_needed_when_device_unreachable() -> None:
@@ -339,8 +332,8 @@ def test_plan_sync_not_needed_when_device_unreachable() -> None:
     api = _make_api()
     device = _make_plan_device()
 
-    assert api._plan_sync_needed("Luba-Test", device, _make_handle(usable=False)) is False
-    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+    assert api._plan_sync_needed("Luba-Test", device, _make_api_handle(usable=False)) is False
+    assert api._plan_sync_needed("Luba-Test", device, _make_api_handle()) is True
 
 
 def test_plan_sync_retry_is_interval_paced() -> None:
@@ -348,9 +341,70 @@ def test_plan_sync_retry_is_interval_paced() -> None:
     api = _make_api()
     device = _make_plan_device()
 
-    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+    assert api._plan_sync_needed("Luba-Test", device, _make_api_handle()) is True
     api._mark_api_called("read_plan", "Luba-Test")
-    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is False
+    assert api._plan_sync_needed("Luba-Test", device, _make_api_handle()) is False
 
     api._last_call_times["Luba-Test"]["read_plan"] = datetime.now(UTC) - timedelta(minutes=31)
-    assert api._plan_sync_needed("Luba-Test", device, _make_handle()) is True
+    assert api._plan_sync_needed("Luba-Test", device, _make_api_handle()) is True
+
+
+# async_wake_up — HA-facing wake for a device in MODE_SLEEPING
+
+
+def _api_with_wake(*, accepted: bool) -> tuple[HomeAssistantMowerApi, MagicMock]:
+    """A mower API whose client's wake_device returns *accepted*."""
+    api = _make_api()
+    client = MagicMock()
+    client.wake_device = AsyncMock(return_value=accepted)
+    api._mammotion = client
+    return api, client
+
+
+async def test_async_wake_up_delegates_to_the_client() -> None:
+    """The wake lives on MammotionClient (it owns both the handle and the session)."""
+    api, client = _api_with_wake(accepted=True)
+
+    assert await api.async_wake_up("Luba-Test") is True
+    client.wake_device.assert_awaited_once_with("Luba-Test")
+
+
+async def test_async_wake_up_passes_through_a_refusal() -> None:
+    api, _ = _api_with_wake(accepted=False)
+
+    assert await api.async_wake_up("Luba-Test") is False
+
+
+# generate_route_information gates the unconfirmed field 21 (issues #193, #860)
+
+
+def _make_api_for_route(firmware: str) -> tuple[HomeAssistantMowerApi, MowerDevice]:
+    """Return an api whose single device reports *firmware*."""
+    api = _make_api()
+    device = MowerDevice()
+    device.report_data.dev.collector_status.collector_installation_status = 1
+    device.device_firmwares.device_version = firmware
+    api._mammotion = MagicMock(spec=MammotionClient)
+    api._mammotion.get_device_by_name.return_value = device
+    return api, device
+
+
+def _route_for(device_name: str, firmware: str) -> int:
+    settings = OperationSettings(auto_change_direction=1)
+    api, _ = _make_api_for_route(firmware)
+    return api.generate_route_information(device_name, settings).auto_change_direction
+
+
+def test_route_keeps_auto_change_direction_on_a_supported_device() -> None:
+    """A Luba VA on new enough firmware is where the app offers the toggle."""
+    assert _route_for("Luba-VA6ABCDE", "2.3.28.1") == 1
+
+
+def test_route_drops_auto_change_direction_on_old_firmware() -> None:
+    """The app hides this row below 2.3.28.1, so we must not write the setting either."""
+    assert _route_for("Luba-VA6ABCDE", "2.3.27.9") == 0
+
+
+def test_route_drops_auto_change_direction_on_an_unsupported_model() -> None:
+    """Model gating matters as much as firmware: the app offers the row on neither."""
+    assert _route_for("Luba-VS6ABCDE", "2.3.28.1") == 0

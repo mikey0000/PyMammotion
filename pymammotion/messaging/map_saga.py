@@ -25,7 +25,8 @@ class MapFetchSaga(Saga):
     Execution order:
       1. Area names (non-Luba1) — re-requested on every run including retries.
       2-3. Root hash list frames (all sub_cmd=0 hashes)
-      4. Boundary/obstacle/path data for every hash ID in the list
+      3. Dump spot hash list frames (sub_cmd=4), if any.
+      4. Boundary/obstacle/path/dump data for every hash ID in the combined list
 
     Steps 2-4 use subscribe_unsolicited so that device-pushed frames are never
     dropped due to a race between receiving and registering a send_and_wait.
@@ -50,6 +51,14 @@ class MapFetchSaga(Saga):
     # SVG tile responses can take ~4 s over MQTT, and the device may broadcast
     # stale frames for already-complete hashes between the request and the reply.
     step_timeout = 5.0
+
+    # The APK itself only ever sends sub_cmd=4 (dump hash list) when the user enters
+    # dump-drawing mode — never during an ordinary map load — so most devices have
+    # never been asked this and we don't know whether an unsupported/no-data device
+    # answers fast with an empty frame or stays silent. A short, dedicated timeout
+    # (rather than the full step_timeout) bounds that unknown-device stall so an
+    # ordinary map sync on a non-collector model isn't taxed the full 5 s every time.
+    _dump_hash_list_timeout = 1.5
 
     # SubNavMsg leaf fields the step-4 comm-data loop collects and acks.
     _COMM_FIELDS = ("toapp_get_commondata_ack", "toapp_svg_msg")
@@ -116,12 +125,13 @@ class MapFetchSaga(Saga):
         await self._send_command(self._command_builder.send_todev_ble_sync(sync_type=self._sync_type))
 
     async def progress(self) -> Any:
-        """Areas still missing data — falls as the fetch advances.
+        """Areas/dump hashes still missing data — falls as the fetch advances.
 
         Drives the base class's attempt-budget refresh, replacing the manual
         ``_reset_attempt_counter`` this saga used to set at the same point.
         """
-        return len(self._get_map().find_incomplete_hashes(0))
+        map_state = self._get_map()
+        return len(dict.fromkeys(map_state.find_incomplete_hashes(0) + map_state.find_incomplete_hashes(4)))
 
     async def _run(self, broker: DeviceMessageBroker) -> None:
         """Execute all saga steps.  Uses device.map (via get_map) as the source of truth."""
@@ -212,7 +222,40 @@ class MapFetchSaga(Saga):
         )
 
         # ------------------------------------------------------------------
-        # Step 4: Fetch boundary/obstacle/path data for every hash ID.
+        # Step 3b: Dump (grass-collection point) hash list frames (sub_cmd=4).
+        # Same shape as steps 2-3, but a device with no dumping spots configured
+        # legitimately answers with nothing at all (matches how MowPathSaga
+        # treats sub_cmd=3's line-hash-list silence), so allow_empty=True keeps
+        # that a successful, empty step rather than a saga-failing timeout.
+        # ------------------------------------------------------------------
+        with self._collect_frames(broker, "toapp_gethash_ack", lambda v: v.sub_cmd == 4) as dump_hash_queue:
+            cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=4)
+            await self._send_command(cmd)
+
+            async def _ack_dump(hash_ack: Any) -> None:
+                await self._send_command(
+                    self._command_builder.get_hash_response(
+                        total_frame=hash_ack.total_frame, current_frame=hash_ack.current_frame
+                    )
+                )
+
+            dump_frames = await ack_stream(
+                dump_hash_queue,
+                field="toapp_gethash_ack(sub_cmd=4)",
+                ack=_ack_dump,
+                timeout=self._dump_hash_list_timeout,
+                allow_empty=True,
+            )
+
+        _logger.debug(
+            "MapFetchSaga[%s]: dump hash list complete — %d frame(s), %d hash IDs to fetch",
+            self._device_name,
+            len(dump_frames),
+            len(self._get_map().find_incomplete_hashes(4)),
+        )
+
+        # ------------------------------------------------------------------
+        # Step 4: Fetch boundary/obstacle/path/dump data for every hash ID.
         # Same unsolicited-subscription pattern: subscribe before first send
         # so rapid multi-frame responses are never lost.
         #
@@ -240,8 +283,15 @@ class MapFetchSaga(Saga):
             # resume — a previous run that got interrupted mid-area will have
             # added a partial FrameList to ``device.map.area[hash]``; the saga
             # must re-send ``synchronize_hash_data`` so the device re-streams
-            # the missing frames from scratch.
-            missing_hashes = self._get_map().find_incomplete_hashes(0)
+            # the missing frames from scratch.  sub_cmd=0 (boundaries) and
+            # sub_cmd=4 (dumping spots) are merged — order-preserving via
+            # ``dict.fromkeys`` — so both are fetched in this same loop; the
+            # device tells them apart by each frame's own ``type`` field, not
+            # by which request asked for it.
+            map_state = self._get_map()
+            missing_hashes = list(
+                dict.fromkeys(map_state.find_incomplete_hashes(0) + map_state.find_incomplete_hashes(4))
+            )
             current_hash: int | None = None
             # Saga-local tracker of hashes whose `current_frame == total_frame`
             # transaction we've observed.  Used to advance current_hash even
@@ -308,7 +358,9 @@ class MapFetchSaga(Saga):
                 # Check whether the whole hash is done.  Filter find_incomplete_hashes by
                 # addressed_hashes so a hash whose only frame had an unknown type (e.g.
                 # radar type=23) doesn't keep us pinned to the same current_hash.
-                new_missing = [h for h in self._get_map().find_incomplete_hashes(0) if h not in addressed_hashes]
+                map_state = self._get_map()
+                incomplete = dict.fromkeys(map_state.find_incomplete_hashes(0) + map_state.find_incomplete_hashes(4))
+                new_missing = [h for h in incomplete if h not in addressed_hashes]
                 if len(new_missing) < len(missing_hashes):
                     no_progress = 0
                 else:
@@ -338,11 +390,12 @@ class MapFetchSaga(Saga):
             )
 
         _logger.debug(
-            "MapFetchSaga[%s]: map fetch complete — areas=%d obstacles=%d paths=%d",
+            "MapFetchSaga[%s]: map fetch complete — areas=%d obstacles=%d paths=%d dumps=%d",
             self._device_name,
             len(current_map.area),
             len(current_map.obstacle),
             len(current_map.path),
+            len(current_map.dump),
         )
         self.result = current_map
 

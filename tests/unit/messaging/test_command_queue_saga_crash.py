@@ -13,6 +13,7 @@ import asyncio
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.messaging.saga import Saga
+from tests._helpers import block_forever, wait_until
 
 
 class _CrashingSaga(Saga):
@@ -39,7 +40,7 @@ class _SlowSaga(Saga):
 
     async def _run(self, broker: DeviceMessageBroker) -> None:
         self.started.set()
-        await asyncio.sleep(60.0)
+        await block_forever()
 
 
 async def test_saga_exception_releases_exclusive_lock() -> None:
@@ -54,15 +55,13 @@ async def test_saga_exception_releases_exclusive_lock() -> None:
             ran.append(1)
 
         await q.enqueue_saga(_CrashingSaga(), broker)
-        # Give the queue processor a chance to run the (failing) saga.
-        await asyncio.sleep(0.2)
+        await wait_until(lambda: q.is_saga_active is False, message="the crashed saga never released the lock")
 
-        # Lock must be released even though the saga raised.
         assert q.is_saga_active is False, "exclusive lock not released after saga crash"
 
         # A subsequent NORMAL command must execute (proves queue is not stuck).
         await q.enqueue(follow_up, priority=Priority.NORMAL)
-        await asyncio.sleep(0.2)
+        await wait_until(lambda: ran == [1], message="follow-up command did not run — queue is deadlocked")
         assert ran == [1], "follow-up command did not run — queue is deadlocked"
     finally:
         await q.stop()
@@ -101,7 +100,7 @@ async def test_saga_stop_releases_exclusive_lock() -> None:
     q.start()
     try:
         await q.enqueue(follow_up, priority=Priority.NORMAL)
-        await asyncio.sleep(0.2)
+        await wait_until(lambda: ran == [1], message="follow-up command did not run after restart")
         assert ran == [1], "follow-up command did not run after restart"
     finally:
         await q.stop()
@@ -130,7 +129,7 @@ async def test_on_saga_start_cancellation_releases_exclusive_lock() -> None:
     q.start()
     try:
         await q.enqueue_saga(_QuickSaga(), broker)
-        await asyncio.sleep(0.2)
+        await wait_until(lambda: q.is_saga_active is False, message="lock not released after on_saga_start cancel")
 
         assert q.is_saga_active is False, "exclusive lock not released after on_saga_start cancel"
     finally:

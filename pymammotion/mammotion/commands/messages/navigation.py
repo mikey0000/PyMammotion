@@ -195,7 +195,7 @@ class MessageNavigation(AbstractMessage, ABC):
                 task_name=plan_bean.task_name,
                 job_name=plan_bean.job_name,
                 zone_hashs=plan_bean.zone_hashs,
-                reserved=plan_bean.reserved,
+                reserved=plan_bean.reserved_for_send(),
             )
         )
         logger.debug(f"Send read job plan command planBean={plan_bean}")
@@ -233,7 +233,7 @@ class MessageNavigation(AbstractMessage, ABC):
             task_name=plan_bean.task_name,
             job_name=plan_bean.job_name,
             zone_hashs=plan_bean.zone_hashs,
-            reserved=plan_bean.reserved,
+            reserved=plan_bean.reserved_for_send(),
             weeks=plan_bean.weeks,
             start_date=plan_bean.start_date,
             trigger_type=plan_bean.trigger_type,
@@ -292,9 +292,9 @@ class MessageNavigation(AbstractMessage, ABC):
     def enable_plan(self, plan: Plan, enabled: bool) -> bytes:
         """Toggle a plan's enable flag and resend as an edit.
 
-        The flag lives in ``Plan.reserved[2]``; the other reserved bytes
-        are preserved verbatim from the stored plan, matching the APK's
-        ``scheduleSwitch`` (``JobScheduleActivity.java:1342``).
+        The flag lives in ``Plan.reserved[2]``; the rest of the buffer is
+        normalised on the way out by :meth:`Plan.reserved_for_send`, matching
+        the APK (``JobScheduleActivity.java:848-866``).
         """
         return self.edit_plan(plan.with_enabled(enabled))
 
@@ -548,6 +548,7 @@ class MessageNavigation(AbstractMessage, ABC):
             toward_included_angle=int(generate_route_information.toward_included_angle),  # luba 2 yuka only
             toward_mode=int(generate_route_information.toward_mode),  # luba 2 yuka only
             reserved=generate_route_information.path_order,
+            auto_change_direction=int(generate_route_information.auto_change_direction),
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
         logger.debug(f"Send command--Generate route information generateRouteInformation={generate_route_information}")
@@ -569,6 +570,7 @@ class MessageNavigation(AbstractMessage, ABC):
             channel_mode=int(generate_route_information.channel_mode),
             toward=int(generate_route_information.toward),
             reserved=generate_route_information.path_order,
+            auto_change_direction=int(generate_route_information.auto_change_direction),
         )
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")
         logger.debug(f"Send command -- Modify route parameters generate_route_information={generate_route_information}")
@@ -620,6 +622,20 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Sending==========Start job command")
         build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=1, result=0))
         logger.debug("Sending command--Start job")
+        return self.send_order_msg_nav(build)
+
+    def start_no_area_work(self) -> bytes:
+        """Start a map-free mow from where the mower is standing ("DropMow").
+
+        The app's ``noAreaWork()``: mowing with no map and no boundary, from the
+        direction the mower currently faces, for spot work outside a mapped
+        area.  It is behind the app's Beta Features screen, offered only on the
+        X5 models, and accepted only while the mower is idle
+        (``MODE_READY``/``MODE_CORRIDOR_DRAW``) — see
+        :meth:`~pymammotion.utility.device_type.DeviceType.is_x5_series`.
+        """
+        build = MctlNav(todev_taskctrl=NavTaskCtrl(type=1, action=16, result=0))
+        logger.debug("Send command - Start map-free work (DropMow)")
         return self.send_order_msg_nav(build)
 
     def cancel_return_to_dock(self) -> bytes:

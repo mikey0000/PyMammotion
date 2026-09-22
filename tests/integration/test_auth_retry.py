@@ -1,12 +1,13 @@
 """Tests for MammotionClient._send_with_auth_retry: one targeted refresh, one retry, then propagate."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
+from tests._helpers import make_account_session, make_bare_client
 from pymammotion.transport.base import (
     AuthError,
     ReLoginRequiredError,
@@ -15,19 +16,13 @@ from pymammotion.transport.base import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
-def _make_session(*, has_token_manager: bool = True) -> AccountSession:
+def _make_retry_session(*, has_token_manager: bool = True) -> AccountSession:
     """Return an AccountSession with mocked token manager and HTTP client."""
-    session = AccountSession(
-        account_id="test@example.com",
-        email="test@example.com",
-        password="password123",
-    )
-    session.mammotion_http = MagicMock()
+    session = make_account_session()
+    session.token_manager = None
     if has_token_manager:
         tm = AsyncMock()
         tm.refresh_aliyun_credentials = AsyncMock()
@@ -38,19 +33,11 @@ def _make_session(*, has_token_manager: bool = True) -> AccountSession:
 
 def _make_client(*, has_token_manager: bool = True) -> tuple[MammotionClient, AccountSession]:
     """Return a (client, session) with the session registered in the account registry."""
-    client = MammotionClient.__new__(MammotionClient)
-    from pymammotion.account.registry import AccountRegistry
-
-    client._account_registry = AccountRegistry()
-    session = _make_session(has_token_manager=has_token_manager)
-    # Bypass the async lock — directly insert into the internal dict
-    client._account_registry._sessions[session.account_id] = session
-    return client, session
+    session = _make_retry_session(has_token_manager=has_token_manager)
+    return make_bare_client(session), session
 
 
-# ---------------------------------------------------------------------------
 # Happy path — no error
-# ---------------------------------------------------------------------------
 
 
 async def test_send_succeeds_no_retry() -> None:
@@ -65,9 +52,7 @@ async def test_send_succeeds_no_retry() -> None:
     session.token_manager.refresh_mqtt_credentials.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # SessionExpiredError — targeted refresh succeeds
-# ---------------------------------------------------------------------------
 
 
 async def test_aliyun_session_expired_targeted_refresh_succeeds() -> None:
@@ -93,9 +78,7 @@ async def test_mammotion_session_expired_targeted_refresh_succeeds() -> None:
     session.token_manager.refresh_aliyun_credentials.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # Targeted refresh is the ONLY recovery — no escalation ladder
-# ---------------------------------------------------------------------------
 
 
 async def test_targeted_refresh_fails_propagates_without_escalating() -> None:
@@ -185,9 +168,7 @@ async def test_no_send_failure_ever_triggers_a_password_login(error: Exception) 
     session.mammotion_http.logout.assert_not_awaited()
 
 
-# ---------------------------------------------------------------------------
 # No token manager — retry without refresh
-# ---------------------------------------------------------------------------
 
 
 async def test_no_token_manager_session_expired_retries_without_refresh() -> None:
@@ -211,9 +192,7 @@ async def test_no_token_manager_auth_error_propagates() -> None:
     send_fn.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # CheckSessionException backward compat
-# ---------------------------------------------------------------------------
 
 
 async def test_check_session_exception_caught_as_session_expired() -> None:
@@ -229,9 +208,7 @@ async def test_check_session_exception_caught_as_session_expired() -> None:
     session.token_manager.refresh_aliyun_credentials.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
 # _refresh_for_transport dispatches correctly
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_for_transport_aliyun() -> None:

@@ -16,3 +16,4 @@ class _DeviceMode(Enum):
     DOCKED_CHARGING = "docked_charging"  # charging on dock, battery < 100
     DOCKED_FULL = "docked_full"  # docked at 100%
     IDLE = "idle"  # paused, locked, or any non-active non-docked state
+    SLEEPING = "sleeping"  # sys_status == MODE_SLEEPING (low-power sleep)

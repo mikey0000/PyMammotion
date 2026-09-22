@@ -1,0 +1,5191 @@
+{
+  "[uY54W5rM8YH@2.3.30.39]": {
+    "107 (LUBA 3 AWD 1500)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.3",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "108 (LUBA 3 AWD 1500H)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "100",
+        "min": "55",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.3",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "109 (LUBA 3 AWD 3000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "110 (LUBA 3 AWD 3000H)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "100",
+        "min": "55",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "111 (LUBA 3 AWD 10000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "112 (LUBA 3 AWD 10000H)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "100",
+        "min": "55",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "113 (LUBA AWD 3000 Vision)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "114 (LUBA 3 AWD 5000H)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "100",
+        "min": "55",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "115 (LUBA 3 AWD 5000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "116 (LUBA 3 AWD 5000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "119 (LUBA 3 AWD 3000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "121 (LUBA 3 AWD 1500)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.3",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "122 (LUBA 3 AWD 1500)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.3",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "123 (LUBA 3 AWD 3000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "124 (LUBA 3 AWD 5000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "146 (LUBA 3 AWD 5000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "147 (LUBA 3 AWD 1500)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.3",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "148 (LUBA 3 AWD 5000)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.6",
+        "forced": false,
+        "max": "1",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    },
+    "61 (LUBA 3 AWD 1500)": {
+      "1": {
+        "default": "1",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "10": {
+        "default": "3",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡边割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "11": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "巡禁区割草",
+        "range": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "12": {
+        "default": "10",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "绕障策略",
+        "range": [
+          "1",
+          "10",
+          "11",
+          "12"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "13": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径执行顺序",
+        "range": [
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "14": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "频率设置",
+        "range": [
+          "0"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "15 (ride_boundary_distance)": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "骑边距离",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "sliderStepPage"
+      },
+      "16": {
+        "default": "0",
+        "forced": false,
+        "max": "1000",
+        "min": "",
+        "name": "草坪纹路",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "17": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "集草与割草选项",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "selectedVertical"
+      },
+      "18": {
+        "default": "",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "作业效率",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "sliderStepSimple"
+      },
+      "2": {
+        "default": "10",
+        "forced": false,
+        "max": "100",
+        "min": "2",
+        "name": "集草频率",
+        "range": [],
+        "shown": false,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "22": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "刀盘高度（旋钮配图）",
+        "range": [],
+        "shown": false,
+        "step": "",
+        "ui_type": "slider"
+      },
+      "23": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径自动切换",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "24": {
+        "default": "0.6",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "自动行驶速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "25": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "掉头方式",
+        "range": [],
+        "shown": true,
+        "step": "",
+        "ui_type": "switch"
+      },
+      "3 (channel_width (path spacing))": {
+        "default": "",
+        "forced": false,
+        "max": "70",
+        "min": "25",
+        "name": "刀盘高度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "cutHeighSlider"
+      },
+      "4 (blade_height)": {
+        "default": "0.3",
+        "forced": false,
+        "max": "0.6",
+        "min": "0.2",
+        "name": "作业速度",
+        "range": [],
+        "shown": true,
+        "step": "0.1",
+        "ui_type": "slider"
+      },
+      "5": {
+        "default": "25",
+        "forced": false,
+        "max": "35",
+        "min": "20",
+        "name": "路径间距",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "6": {
+        "default": "0",
+        "forced": false,
+        "max": "180",
+        "min": "0",
+        "name": "路径角度-自定义角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "slider"
+      },
+      "7": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "航线模式",
+        "range": [
+          "3",
+          "0",
+          "1"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "8": {
+        "default": "0",
+        "forced": false,
+        "max": "",
+        "min": "",
+        "name": "路径角度",
+        "range": [
+          "0",
+          "1",
+          "2"
+        ],
+        "shown": true,
+        "step": "",
+        "ui_type": "segment"
+      },
+      "9": {
+        "default": "90",
+        "forced": false,
+        "max": "179",
+        "min": "1",
+        "name": "双弓正交-菱形角度",
+        "range": [],
+        "shown": true,
+        "step": "1",
+        "ui_type": "segment"
+      }
+    }
+  }
+}

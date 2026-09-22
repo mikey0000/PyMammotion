@@ -8,11 +8,10 @@ import pytest
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
 from pymammotion.messaging.saga import Saga
+from tests._helpers import wait_until
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 class _BlockingSaga(Saga):
@@ -41,9 +40,7 @@ class _InstantSaga(Saga):
         pass
 
 
-# ---------------------------------------------------------------------------
 # Test 1: skip_if_saga_active=True drops a NORMAL command while saga active
-# ---------------------------------------------------------------------------
 
 
 async def test_skip_if_saga_active_true_drops_normal_command() -> None:
@@ -66,9 +63,7 @@ async def test_skip_if_saga_active_true_drops_normal_command() -> None:
     q._exclusive_active.set()
 
 
-# ---------------------------------------------------------------------------
 # Test 2: skip_if_saga_active=False queues item and it runs after saga
-# ---------------------------------------------------------------------------
 
 
 async def test_skip_if_saga_active_false_queues_command() -> None:
@@ -79,9 +74,7 @@ async def test_skip_if_saga_active_false_queues_command() -> None:
     q.start()
 
     await q.enqueue_saga(saga, broker)
-
-    # Give the processor time to pick up the saga
-    await asyncio.sleep(0.05)
+    await wait_until(lambda: q.is_saga_active, message="the processor never picked the saga up")
     assert q.is_saga_active is True
 
     executed: list[int] = []
@@ -97,24 +90,20 @@ async def test_skip_if_saga_active_false_queues_command() -> None:
 
     # Release the saga so the normal work can proceed
     saga.release()
-    await asyncio.sleep(0.15)
+    await wait_until(lambda: executed == [1], message="queued work never ran after the saga released")
 
     assert executed == [1]
     await q.stop()
 
 
-# ---------------------------------------------------------------------------
 # Test 3: EMERGENCY always runs even while saga is active
-# ---------------------------------------------------------------------------
 
 
-async def test_emergency_runs_during_saga() -> None:
-    """EMERGENCY priority items must be enqueued (not dropped) and run after the current work item.
+async def test_a_saga_does_not_block_a_direct_command() -> None:
+    """The queue refuses direct priorities, so a user command cannot be parked by a saga.
 
-    EMERGENCY bypasses the skip_if_saga_active drop and the exclusive-slot wait,
-    so the item IS placed on the queue.  The single-threaded processor finishes
-    its current work task first, then picks up the EMERGENCY item — so we need
-    to release the saga before asserting execution.
+    This replaces an older test that enqueued EMERGENCY mid-saga and then had to
+    release the saga before the item ran — which was the whole problem.
     """
     q = DeviceCommandQueue()
     broker = DeviceMessageBroker()
@@ -122,29 +111,17 @@ async def test_emergency_runs_during_saga() -> None:
     q.start()
 
     await q.enqueue_saga(saga, broker)
-    await asyncio.sleep(0.05)
+    await wait_until(lambda: q.is_saga_active, message="the processor never picked the saga up")
     assert q.is_saga_active is True
 
-    emergency_called: list[int] = []
+    async def user_work() -> None:
+        pass
 
-    async def emergency_work() -> None:
-        emergency_called.append(1)
+    with pytest.raises(ValueError, match="direct-send priority"):
+        await q.enqueue(user_work, priority=Priority.USER)
 
-    # EMERGENCY with skip_if_saga_active=True must still be enqueued (not dropped)
-    await q.enqueue(emergency_work, priority=Priority.EMERGENCY, skip_if_saga_active=True)
-    assert not q._queue.empty(), "EMERGENCY item must not have been dropped"
-
-    # Release the saga so the processor can move on to the EMERGENCY item
     saga.release()
-    await asyncio.sleep(0.15)
-    assert emergency_called == [1]
-
     await q.stop()
-
-
-# ---------------------------------------------------------------------------
-# Test 4: stop() cancels a currently-running saga task
-# ---------------------------------------------------------------------------
 
 
 async def test_stop_cancels_running_saga_task() -> None:
@@ -155,7 +132,7 @@ async def test_stop_cancels_running_saga_task() -> None:
     q.start()
 
     await q.enqueue_saga(saga, broker)
-    await asyncio.sleep(0.05)
+    await wait_until(lambda: q.is_saga_active, message="the processor never picked the saga up")
     assert q.is_saga_active is True
 
     # stop() should complete even though the saga is blocking
@@ -165,9 +142,7 @@ async def test_stop_cancels_running_saga_task() -> None:
     assert q.is_saga_active is False
 
 
-# ---------------------------------------------------------------------------
 # Test 5: is_saga_active is False after stop()
-# ---------------------------------------------------------------------------
 
 
 async def test_is_saga_active_false_after_stop() -> None:
@@ -178,7 +153,7 @@ async def test_is_saga_active_false_after_stop() -> None:
     q.start()
 
     await q.enqueue_saga(saga, broker)
-    await asyncio.sleep(0.05)
+    await wait_until(lambda: q.is_saga_active, message="the processor never picked the saga up")
 
     await q.stop()
 

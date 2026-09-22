@@ -25,6 +25,7 @@ import pytest
 
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.transport.base import CommandTimeoutError
+from tests._helpers import wait_until
 
 
 def _mock_msg() -> MagicMock:
@@ -60,15 +61,14 @@ async def test_late_response_after_timeout_is_safe_and_recoverable() -> None:
             # Sanity: pending slot was cleared by the finally block.
             assert field not in broker._pending
 
-            # 2. The "late" response arrives ~50 ms after the timeout.
-            await asyncio.sleep(0.05)
+            # 2. The "late" response arrives after the timeout has already cleaned up.
             await broker.on_message(_mock_msg())  # must not raise
 
             # 3. The slot is still clean and a fresh request resolves normally.
             assert field not in broker._pending
 
             async def deliver_next() -> None:
-                await asyncio.sleep(0.01)
+                await wait_until(lambda: field in broker._pending, message="request never registered")
                 await broker.on_message(_mock_msg())
 
             deliver_task = loop.create_task(deliver_next())
@@ -173,11 +173,7 @@ async def test_set_result_race_with_cancel_in_finally() -> None:
         send_task = loop.create_task(
             broker.send_and_wait(send_fn, field, send_timeout=0.05, retries=1)
         )
-        # Wait until the pending entry is registered.
-        for _ in range(100):
-            await asyncio.sleep(0.001)
-            if field in broker._pending:
-                break
+        await wait_until(lambda: field in broker._pending, message="request never registered")
         assert field in broker._pending
         pending = broker._pending[field]
 

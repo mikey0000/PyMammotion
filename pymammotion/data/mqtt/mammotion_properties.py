@@ -2,11 +2,15 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 from typing import Annotated, Any
 
 from mashumaro.config import BaseConfig
+from mashumaro.exceptions import InvalidFieldValue, MissingField
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -253,6 +257,52 @@ class CheckData(DataClassORJSONMixin):
 
 
 @dataclass
+class OtaProgress(DataClassORJSONMixin):
+    """Firmware update progress pushed as the ``otaProgress`` property.
+
+    Every field is defaulted: the device omits fields freely and a partial
+    object must not fail the whole property post.
+    """
+
+    progress: int = 0
+    result: int = 0
+    ota_id: Annotated[str, Alias("otaId")] = ""
+    version: str = ""
+    message: str = ""
+    properties: str = ""
+
+    class Config(BaseConfig):
+        """Mashumaro config: accept both aliased and raw field names on deserialize."""
+
+        allow_deserialization_not_by_alias = True
+
+
+def _nested_object(cls: type[DataClassORJSONMixin]) -> dict[str, Callable[[Any], Any]]:
+    """Strategy for a nested property the device sends either as an object or as a JSON string.
+
+    A nested blob whose shape this model has not seen decodes to ``None`` rather
+    than failing the post: the key set varies per firmware, and the battery and
+    state in the same message must not be lost over a diagnostics field.
+    """
+
+    def deserialize(value: Any) -> Any:
+        try:
+            if isinstance(value, str):
+                return cls.from_json(value)
+            if isinstance(value, dict):
+                return cls.from_dict(value)
+        except (MissingField, InvalidFieldValue, ValueError) as exc:
+            _logger.error("Dropping unparseable %s from property/post: %s", cls.__name__, exc)
+            return None
+        return value
+
+    return {
+        "deserialize": deserialize,
+        "serialize": lambda x: x.to_json() if hasattr(x, "to_json") else x,
+    }
+
+
+@dataclass
 class DeviceProperties(DataClassORJSONMixin):
     """Full set of device properties received in a Mammotion direct-MQTT properties message.
 
@@ -287,6 +337,7 @@ class DeviceProperties(DataClassORJSONMixin):
     device_other_info: Annotated[DeviceOtherInfo | None, Alias("deviceOtherInfo")] = None
     network_info: Annotated[NetworkInfo | None, Alias("networkInfo")] = None
     check_data: Annotated[CheckData | None, Alias("checkData")] = None
+    ota_progress: Annotated[OtaProgress | None, Alias("otaProgress")] = None
     iot_id: str = ""
     left_motor_version: Annotated[str, Alias("leftMotorVersion")] = ""
     right_motor_version: Annotated[str, Alias("rightMotorVersion")] = ""
@@ -300,24 +351,6 @@ class DeviceProperties(DataClassORJSONMixin):
 
         allow_deserialization_not_by_alias = True
         serialization_strategy: dict[Any, dict[str, Callable[[Any], Any]]] = {  # noqa: RUF012
-            DeviceVersionInfo: {
-                "deserialize": lambda x: DeviceVersionInfo.from_json(x) if isinstance(x, str) else x,
-                "serialize": lambda x: x.to_json() if hasattr(x, "to_json") else x,
-            },
-            Coordinate: {
-                "deserialize": lambda x: Coordinate.from_json(x) if isinstance(x, str) else x,
-                "serialize": lambda x: x.to_json() if hasattr(x, "to_json") else x,
-            },
-            DeviceOtherInfo: {
-                "deserialize": lambda x: DeviceOtherInfo.from_json(x) if isinstance(x, str) else x,
-                "serialize": lambda x: x.to_json() if hasattr(x, "to_json") else x,
-            },
-            NetworkInfo: {
-                "deserialize": lambda x: NetworkInfo.from_json(x) if isinstance(x, str) else x,
-                "serialize": lambda x: x.to_json() if hasattr(x, "to_json") else x,
-            },
-            CheckData: {
-                "deserialize": lambda x: CheckData.from_json(x) if isinstance(x, str) else x,
-                "serialize": lambda x: x.to_json() if hasattr(x, "to_json") else x,
-            },
+            cls: _nested_object(cls)
+            for cls in (DeviceVersionInfo, Coordinate, DeviceOtherInfo, NetworkInfo, CheckData, OtaProgress)
         }

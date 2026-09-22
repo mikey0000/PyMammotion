@@ -18,33 +18,20 @@ from typing import Any
 import pytest
 
 from pymammotion.messaging.transfers import ack_stream, indexed_fetch
-from pymammotion.proto import (
-    LubaMsg,
-    MctlNav,
-    NavGetCommDataAck,
-    PlanJobSet,
-    SpinoCtrl,
-)
+from pymammotion.proto import LubaMsg
 from pymammotion.transport.base import CommandTimeoutError
+from tests.unit.messaging._helpers import comm_data_frame, ctrl_plan_msg
 
 
 def _frame(current: int, total: int, *, type_code: int = 3) -> LubaMsg:
-    return LubaMsg(
-        nav=MctlNav(
-            toapp_get_commondata_ack=NavGetCommDataAck(
-                pver=1, action=8, type=type_code, hash=1, total_frame=total, current_frame=current
-            )
-        )
-    )
+    return comm_data_frame(hash_id=1, type_code=type_code, current_frame=current, total_frame=total)
 
 
 def _plan_frame(jobid: int, total: int) -> LubaMsg:
-    return LubaMsg(ctrl=SpinoCtrl(plan_job_set=PlanJobSet(jobid=jobid, totalplannum=total)))
+    return ctrl_plan_msg(jobid=jobid, totalplannum=total)
 
 
-# ---------------------------------------------------------------------------
 # ack_stream
-# ---------------------------------------------------------------------------
 
 
 async def test_ack_stream_acks_every_frame_including_the_last() -> None:
@@ -161,9 +148,7 @@ async def test_ack_stream_drives_the_device_via_the_ack_callback() -> None:
     assert sorted(frames) == [1, 2, 3]
 
 
-# ---------------------------------------------------------------------------
 # indexed_fetch
-# ---------------------------------------------------------------------------
 
 
 async def test_indexed_fetch_requests_every_index_and_yields_each_frame() -> None:

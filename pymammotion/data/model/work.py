@@ -27,3 +27,7 @@ class CurrentTaskSettings(DataClassORJSONMixin):
     result: int = 0
     toward_mode: int = 0
     toward_included_angle: int = 0
+    ride_boundary_distance: float = 0.0
+    auto_change_direction: int = 0
+    #: Unidentified. Surfaced so its values can be collected; see the proto comment.
+    unknown_21: list[int] = field(default_factory=list)

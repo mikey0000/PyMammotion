@@ -32,7 +32,7 @@ class PlanJobSet(_message.Message):
     deviceid: str
     enable: int
     enddate: str
-    jobid: str
+    jobid: int
     jobname: str
     operating_power: int
     planindex: int
@@ -41,13 +41,13 @@ class PlanJobSet(_message.Message):
     speed: int
     startdate: str
     starttime: int
-    sub_mode: int
+    sub_mode: _containers.RepeatedScalarFieldContainer[int]
     totalplannum: int
     triggertype: int
     userid: str
     weeks: _containers.RepeatedScalarFieldContainer[int]
     work_mode: int
-    def __init__(self, cmd: _Optional[int] = ..., work_mode: _Optional[int] = ..., sub_mode: _Optional[int] = ..., userid: _Optional[str] = ..., deviceid: _Optional[str] = ..., starttime: _Optional[int] = ..., totalplannum: _Optional[int] = ..., planindex: _Optional[int] = ..., result: _Optional[int] = ..., speed: _Optional[int] = ..., operating_power: _Optional[int] = ..., jobname: _Optional[str] = ..., jobid: _Optional[str] = ..., startdate: _Optional[str] = ..., enddate: _Optional[str] = ..., triggertype: _Optional[int] = ..., day: _Optional[int] = ..., weeks: _Optional[_Iterable[int]] = ..., remained_seconds: _Optional[int] = ..., enable: _Optional[int] = ...) -> None: ...
+    def __init__(self, cmd: _Optional[int] = ..., work_mode: _Optional[int] = ..., sub_mode: _Optional[_Iterable[int]] = ..., userid: _Optional[str] = ..., deviceid: _Optional[str] = ..., starttime: _Optional[int] = ..., totalplannum: _Optional[int] = ..., planindex: _Optional[int] = ..., result: _Optional[int] = ..., speed: _Optional[int] = ..., operating_power: _Optional[int] = ..., jobname: _Optional[str] = ..., jobid: _Optional[int] = ..., startdate: _Optional[str] = ..., enddate: _Optional[str] = ..., triggertype: _Optional[int] = ..., day: _Optional[int] = ..., weeks: _Optional[_Iterable[int]] = ..., remained_seconds: _Optional[int] = ..., enable: _Optional[int] = ...) -> None: ...
 
 class SpinoCtrl(_message.Message):
     __slots__ = ["plan_job_set"]

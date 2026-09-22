@@ -154,7 +154,6 @@ def test_rtk_apply_does_not_mutate_previous_snapshot() -> None:
     assert device.update_check.progress == 33
 
 
-# ---------------------------------------------------------------------------
 # Cloud poll vs. BLE push precedence.
 #
 # OTA progress arrives from the cloud's checkDeviceVersion poll normally, and from the
@@ -163,7 +162,6 @@ def test_rtk_apply_does_not_mutate_previous_snapshot() -> None:
 #
 # Staleness is exercised by offsetting ota_progress_at from real time.monotonic(),
 # matching the approach in test_ble_loop.py.
-# ---------------------------------------------------------------------------
 
 
 def _cloud_check(*, isupgrading: bool, progress: int, current_version: str = "1.30.25.11") -> CheckDeviceVersion:

@@ -303,7 +303,7 @@ import betterproto2
 
 from .message_pool import default_message_pool
 
-_COMPILER_VERSION = "0.9.0"
+_COMPILER_VERSION = "0.10.1"
 betterproto2.check_compiler_version(_COMPILER_VERSION)
 
 
@@ -3786,6 +3786,27 @@ class NavReqCoverPath(betterproto2.Message):
     toward_mode: "int" = betterproto2.field(17, betterproto2.TYPE_INT32)
 
     toward_included_angle: "int" = betterproto2.field(18, betterproto2.TYPE_INT32)
+
+    ride_boundary_distance: "float" = betterproto2.field(19, betterproto2.TYPE_FLOAT)
+
+    auto_change_direction: "int" = betterproto2.field(20, betterproto2.TYPE_INT32)
+    """
+    Confirmed by observation: toggling "Auto-reverse Mowing Direction" in the app
+    sets this to 1. It was previously named app_display_mode, from the 2.3.8.201
+    unpacked APK.
+    """
+
+    unknown_21: "list[int]" = betterproto2.field(21, betterproto2.TYPE_INT32, repeated=True)
+    """
+    Field 21's meaning is unidentified. It was guessed to be auto_change_direction
+    ("the next number after app_display_mode = 20"); that was wrong -- 20 is.
+
+    Decoded under a neutral name so its values show up in state dumps while we work
+    out what it is. Repeated because it arrives both ways: a Luba Mini AWD sends it
+    length-delimited (issue #192 -- the "[10]" in that traceback is its single 0x0A
+    payload byte read as packed varints), and 11 has been seen elsewhere. Declaring
+    it int32 is what made that frame fail to parse at all.
+    """
 
 
 default_message_pool.register_message("", "NavReqCoverPath", NavReqCoverPath)

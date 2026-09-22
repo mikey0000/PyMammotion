@@ -52,6 +52,24 @@ class AudioSettings(DataClassORJSONMixin):
 
 
 @dataclass
+class ChargeSettings(DataClassORJSONMixin):
+    """Battery charging settings reported by ``MctlSys.bms_ctrl_info_msg``.
+
+    ``smart_charge`` is the decoded form of the wire ``smart_charge_switch``, which
+    the app treats inverted: 0 means smart charging is on, 1 means the user-set
+    ``charge_limit`` applies.  Times are minutes since midnight.
+    """
+
+    smart_charge: bool = False
+    charge_limit: int = 0
+    peak_valley_charge: bool = False
+    valley_charge_start_time: int = 0
+    valley_charge_end_time: int = 0
+    bat_cycle_times: int = 0
+    bat_health_state: int = 0
+
+
+@dataclass
 class MowerInfo(DataClassORJSONMixin):
     """Aggregated mower configuration including blade, navigation, and peripheral settings."""
 
@@ -84,6 +102,7 @@ class MowerInfo(DataClassORJSONMixin):
     internal_model: str = ""  # thing/properties intMod — internal SKU (e.g. "HM020080YKMINI06")
     battery_hardware: str = ""  # thing/properties bmsHardwareVersion (e.g. "BW_BATTERY_25P_6S1P")
     lamp_info: LampInfo = field(default_factory=LampInfo)
+    charge_settings: ChargeSettings = field(default_factory=ChargeSettings)
 
 
 @dataclass

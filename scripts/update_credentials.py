@@ -9,6 +9,7 @@ Usage:
 The script replaces the sentinel block in const.py with an obfuscated form.
 Run with empty strings (or --reset) to reset to the source (no-credentials) state.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,7 +77,9 @@ def main() -> None:
         assert _decode(enc_key) == args.app_key, "Round-trip check failed for --app-key"
         assert _decode(enc_secret) == args.app_secret, "Round-trip check failed for --app-secret"
         assert _decode(enc_oauth2_id) == args.oauth2_client_id, "Round-trip check failed for --oauth2-client-id"
-        assert _decode(enc_oauth2_secret) == args.oauth2_client_secret, "Round-trip check failed for --oauth2-client-secret"
+        assert _decode(enc_oauth2_secret) == args.oauth2_client_secret, (
+            "Round-trip check failed for --oauth2-client-secret"
+        )
         replacement = _ENCODED_BLOCK.format(
             key=enc_key,
             secret=enc_secret,

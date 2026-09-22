@@ -9,95 +9,18 @@ import betterproto2
 from pymammotion.data.model.hash_list import HashList, NavGetCommData, NavGetHashListData
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
-from pymammotion.proto import LubaMsg, MctlNav, NavGetCommDataAck, NavGetHashListAck
-from tests.unit.messaging._helpers import make_command_builder as _make_command_builder
+from pymammotion.proto import LubaMsg
+from tests.unit.messaging._helpers import (
+    apply_msg_to_map as _apply_msg_to_map,
+    area_frame_named as _area_frame_named,
+    comm_data_frame as _comm_data_msg,
+    hash_list_msg as _hash_list_msg,
+    make_command_builder as _make_command_builder,
+    run_saga_with_messages as _run_saga_with_messages,
+)
 
 
-def _hash_list_msg(hash_ids: list[int]) -> LubaMsg:
-    """Build a LubaMsg carrying a single-frame toapp_gethash_ack with the given hash IDs."""
-    return LubaMsg(
-        nav=MctlNav(
-            toapp_gethash_ack=NavGetHashListAck(
-                pver=1,
-                sub_cmd=0,
-                total_frame=1,
-                current_frame=1,
-                data_couple=hash_ids,
-            )
-        )
-    )
-
-
-def _comm_data_msg(
-    hash_id: int,
-    type_code: int,
-    *,
-    current_frame: int = 1,
-    total_frame: int = 1,
-    paternal_hash_a: int = 0,
-) -> LubaMsg:
-    """Build a LubaMsg carrying a single-frame toapp_get_commondata_ack."""
-    return LubaMsg(
-        nav=MctlNav(
-            toapp_get_commondata_ack=NavGetCommDataAck(
-                pver=1,
-                action=8,
-                type=type_code,
-                hash=hash_id,
-                total_frame=total_frame,
-                current_frame=current_frame,
-                paternal_hash_a=paternal_hash_a,
-            )
-        )
-    )
-
-
-def _apply_msg_to_map(msg: LubaMsg, m: HashList) -> None:
-    """Minimal StateReducer simulation: update m with each incoming nav message."""
-    if not msg.nav:
-        return
-    try:
-        leaf_name, leaf_val = betterproto2.which_one_of(msg.nav, "SubNavMsg")
-        if leaf_name == "toapp_gethash_ack":
-            m.update_root_hash_list(NavGetHashListData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
-        elif leaf_name == "toapp_get_commondata_ack":
-            m.update(NavGetCommData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-async def _run_saga_with_messages(
-    broker: DeviceMessageBroker,
-    saga: MapFetchSaga,
-    messages: list[LubaMsg],
-    delay: float = 0.02,
-    map_update: HashList | None = None,
-) -> None:
-    """Drive saga + sequential message injection concurrently.
-
-    If *map_update* is provided, each message is also applied to that HashList
-    to simulate the StateReducer updating device.map before the saga reads it.
-    """
-
-    async def _inject() -> None:
-        for msg in messages:
-            await asyncio.sleep(delay)
-            if map_update is not None:
-                _apply_msg_to_map(msg, map_update)
-            await broker.on_message(msg)
-
-    injector = asyncio.create_task(_inject())
-    try:
-        await saga.execute(broker)
-    finally:
-        injector.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await injector
-
-
-# ---------------------------------------------------------------------------
 # test 1 — known type (area=0): saga stores data and terminates normally
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_terminates_with_known_type() -> None:
@@ -125,6 +48,7 @@ async def test_saga_terminates_with_known_type() -> None:
         saga,
         messages=[
             _hash_list_msg([hash_id]),
+            _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
             _comm_data_msg(hash_id, type_code=0),  # PathType.AREA
         ],
         map_update=_map,
@@ -134,9 +58,7 @@ async def test_saga_terminates_with_known_type() -> None:
     assert hash_id in saga.result.area
 
 
-# ---------------------------------------------------------------------------
 # test 2 — unknown type (26): saga must NOT loop forever; it should complete
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_does_not_loop_on_unknown_type() -> None:
@@ -171,6 +93,7 @@ async def test_saga_does_not_loop_on_unknown_type() -> None:
             saga,
             messages=[
                 _hash_list_msg([hash_id]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(hash_id, type_code=26),  # unknown / unhandled type
             ],
             map_update=_map,
@@ -190,9 +113,7 @@ async def test_saga_does_not_loop_on_unknown_type() -> None:
     assert synchronize_calls == 1, f"Expected 1 synchronize call, got {synchronize_calls}"
 
 
-# ---------------------------------------------------------------------------
 # test 3 — mixed: one known + one unknown type; known is stored, unknown is skipped
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_stores_known_and_skips_unknown_types() -> None:
@@ -223,6 +144,7 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
             saga,
             messages=[
                 _hash_list_msg([area_hash, unknown_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(area_hash, type_code=0),    # PathType.AREA — stored
                 _comm_data_msg(unknown_hash, type_code=26),  # unknown — skipped
             ],
@@ -237,9 +159,7 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
     assert saga._command_builder.synchronize_hash_data.call_count == 2  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # test 4 — virtual wall (21) + corridor line (19) + corridor point (20) are stored
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
@@ -276,6 +196,7 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
             saga,
             messages=[
                 _hash_list_msg([corridor_line_hash, corridor_point_hash, virtual_wall_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(corridor_line_hash, type_code=19),   # CORRIDOR_LINE
                 _comm_data_msg(corridor_point_hash, type_code=20),  # CORRIDOR_POINT
                 _comm_data_msg(virtual_wall_hash, type_code=21),    # VIRTUAL_WALL
@@ -296,9 +217,7 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
     assert saga._command_builder.synchronize_hash_data.call_count == 3  # noqa: SLF001
 
 
-# ---------------------------------------------------------------------------
 # Regression tests for LUBA_VA log incident 2026-05-22
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_acks_unrelated_dynamics_line_frame() -> None:
@@ -338,6 +257,7 @@ async def test_saga_acks_unrelated_dynamics_line_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 # Dynamics-line frame arrives BEFORE the area frame — saga must
                 # ack it even though it doesn't match the current hash.
                 _comm_data_msg(0, type_code=18),
@@ -400,6 +320,7 @@ async def test_saga_advances_on_unknown_type_single_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([unknown_hash, area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(unknown_hash, type_code=99),  # never-modelled
                 _comm_data_msg(area_hash, type_code=0),
             ],
@@ -447,6 +368,7 @@ async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
             saga,
             messages=[
                 _hash_list_msg([no_go_hash, area_hash]),
+                _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
                 _comm_data_msg(no_go_hash, type_code=23),  # NO_GO_ZONE
                 _comm_data_msg(area_hash, type_code=0),
             ],
@@ -461,26 +383,13 @@ async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
     assert cb.synchronize_hash_data.call_count == 2
 
 
-# ===========================================================================
 # Area-name fallback after a full sync (name_time.name preferred over "area N")
-# ===========================================================================
 
 from pymammotion.data.model.hash_list import (  # noqa: E402
     AreaHashNameList as _AHN,
-    CommDataCouple as _CDC,
     FrameList as _FL,
     HashList as _HL,
-    NavGetCommData as _NGCD,
-    NavNameTime as _NNT,
 )
-
-
-def _area_frame_named(hash_val: int, name: str) -> _NGCD:
-    return _NGCD(
-        hash=hash_val, total_frame=1, current_frame=1,
-        name_time=_NNT(name=name, create_time=1, modify_time=1),
-        data_couple=[_CDC(x=0.0, y=0.0)],
-    )
 
 
 def _fallback_area_names(current_map: _HL) -> None:
@@ -516,14 +425,12 @@ class TestAreaNameFallbackAfterSync:
         assert m.area_name[0].name == "Existing"
 
 
-# ---------------------------------------------------------------------------
 # BLE-sync ordering: a sync must precede the root-list AND the per-hash request
 #
 # Regression: the device drops out of its "synced" state after a few seconds and
 # then returns no toapp_gethash_ack.  A single sync at the top of the run could be
 # stale by the time the root-list request fires (e.g. after the area-name step), so
 # we re-sync immediately before the root-list and per-hash requests.
-# ---------------------------------------------------------------------------
 
 
 async def test_saga_syncs_before_root_list_and_immediately_before_per_hash() -> None:
@@ -556,7 +463,7 @@ async def test_saga_syncs_before_root_list_and_immediately_before_per_hash() -> 
     await _run_saga_with_messages(
         broker,
         saga,
-        messages=[_hash_list_msg([hash_id]), _comm_data_msg(hash_id, type_code=0)],
+        messages=[_hash_list_msg([hash_id]), _hash_list_msg([], sub_cmd=4), _comm_data_msg(hash_id, type_code=0)],
         map_update=_map,
     )
 

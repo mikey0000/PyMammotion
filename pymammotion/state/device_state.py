@@ -7,24 +7,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pymammotion.transport.base import TransportAvailability
-from pymammotion.utility.constant.device_constant import WorkMode
 
 if TYPE_CHECKING:
     from pymammotion.data.model.device import Device
 
 _logger = logging.getLogger(__name__)
-
-_WORK_MODE_TO_ACTIVITY: dict[int, str] = {
-    WorkMode.MODE_READY: "ready",
-    WorkMode.MODE_WORKING: "mowing",
-    WorkMode.MODE_RETURNING: "returning",
-    WorkMode.MODE_PAUSE: "paused",
-    WorkMode.MODE_LOCK: "locked",
-    WorkMode.MODE_NOT_ACTIVE: "unknown",
-}
 
 
 class DeviceConnectionState(Enum):
@@ -105,6 +95,22 @@ class ConnectionStateChangedEvent:
 
 
 @dataclass(frozen=True)
+class DeviceNotification:
+    """A non-protobuf ``thing/event`` post from the device.
+
+    Covers the notification, warning-code, information, warning, business-request
+    and log-progress identifiers on both clouds.  ``value`` is the event's
+    ``params.value`` object as a plain dict (``None`` when the post carried none);
+    the notification/warning-code/information identifiers wrap their payload as a
+    JSON string under ``"data"``.
+    """
+
+    device_id: str
+    identifier: str
+    value: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
 class DeviceShutdownEvent:
     """Emitted when the device sends a mow_to_app_info shutdown notification.
 
@@ -167,8 +173,9 @@ class DeviceStateMachine:
     ) -> DeviceSnapshot:
         """Build a DeviceSnapshot from any Device subclass.
 
-        Mower-specific fields (battery, activity, blade height) are extracted
-        when present (``MowingDevice``); RTK and pool devices get neutral defaults.
+        Battery is read from ``report_data`` when present (``MowingDevice``); RTK and
+        pool devices get a neutral default.  Anything else a consumer needs is reached
+        through ``snapshot.raw``.
         """
         if availability is None:
             availability = DeviceAvailability()

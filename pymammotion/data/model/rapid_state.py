@@ -1,18 +1,9 @@
 from dataclasses import dataclass
-from enum import Enum
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.data.model.enums import FuseLocalizationStatus
+from pymammotion.data.model.enums import FuseLocalizationStatus, RTKStatus
 from pymammotion.utility.conversions import parse_double
-
-
-class RTKStatus(Enum):
-    """RTK fix quality reported in rapid-state messages."""
-
-    NONE = 0
-    BAD = 1
-    FINE = 4
 
 
 @dataclass
@@ -51,9 +42,20 @@ class RapidState(DataClassORJSONMixin):
 
     @classmethod
     def from_raw(cls, raw: list[int]) -> "RapidState":
-        """Construct a RapidState from the raw integer list received in a rapid-state device message."""
+        """Construct a RapidState from the raw integer list received in a rapid-state device message.
+
+        ``raw[0]`` is ``SIGNAL_QUALITY_INDEX``, which carries the NMEA GGA fix-quality
+        indicator (0 invalid, 1 SPS, 2 DGPS, 4 RTK fixed, 5 RTK float).  That is the
+        vocabulary :meth:`RTKStatus.from_value` decodes, and the same one
+        ``ReportData.fix_status`` already used — hence one shared enum rather than the
+        three-state one this module used to define.  Note the codes that changed
+        meaning with it: ``2`` was folded into ``NONE`` and is now ``SINGLE``, ``5``
+        was folded into the old ``BAD`` and is now ``FLOAT``, and an unmodelled code is
+        ``UNKNOWN`` instead of ``NONE``.  A consumer testing for "no fix" must compare
+        against ``NONE`` specifically, not "not FIX".
+        """
         state = RapidState(
-            rtk_status=RTKStatus.FINE if raw[0] == 4 else RTKStatus.BAD if raw[0] in (1, 5) else RTKStatus.NONE,
+            rtk_status=RTKStatus.from_value(raw[0]),
             pos_level=raw[1],
             satellites_total=raw[2],
             rtk_age=parse_double(raw[3], 4.0),

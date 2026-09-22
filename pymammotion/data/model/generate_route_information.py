@@ -58,6 +58,12 @@ class GenerateRouteInformation:
     toward_mode: int = 0  # angle type relative etc
     edge_mode: int = 1  # border laps
     obstacle_laps: int = 1
+    #: "Auto-reverse Mowing Direction" (app ``title_reverse_direction``): 1 makes the
+    #: device flip the mowing direction between tasks to reduce grass matting.  Rides
+    #: on ``NavReqCoverPath`` field 20, confirmed by toggling it in the app and
+    #: watching that field go to 1.  Only devices passing
+    #: ``DeviceType.supports_auto_change_direction`` should set it.
+    auto_change_direction: int = 0
 
     @classmethod
     def from_current_task_settings(cls, settings: CurrentTaskSettings) -> GenerateRouteInformation:
@@ -72,7 +78,8 @@ class GenerateRouteInformation:
 
         - ``job_id``, ``job_mode``, ``edge_mode``, ``channel_width``,
           ``ultra_wave``, ``channel_mode``, ``toward``, ``speed``,
-          ``toward_mode``, ``toward_included_angle`` — direct copy.
+          ``toward_mode``, ``toward_included_angle``, ``auto_change_direction`` —
+          direct copy.
         - ``job_ver`` → ``job_version``
         - ``knife_height`` → ``blade_height``
         - ``zone_hashs`` → ``one_hashs`` (copied, not aliased)
@@ -98,6 +105,7 @@ class GenerateRouteInformation:
             toward_mode=settings.toward_mode,
             edge_mode=settings.edge_mode,
             obstacle_laps=decoded.obstacle_laps,
+            auto_change_direction=settings.auto_change_direction,
         )
 
     @staticmethod

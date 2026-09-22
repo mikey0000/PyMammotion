@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
+import copy as _copy
 import dataclasses
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
-from shapely import Point
 
 from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
-from pymammotion.utility.map import CoordinateConverter
 from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 
 if TYPE_CHECKING:
-    from pymammotion.data.model.location import Dock, LocationPoint
+    from pymammotion.data.model.location import LocationPoint
 
 
 class PathType(IntEnum):
@@ -260,6 +259,18 @@ class EdgePoints(DataClassORJSONMixin):
         return result
 
 
+#: Length of a plan's ``reserved`` buffer, as the APK builds it.
+_RESERVED_LENGTH = 8
+#: Offset the device adds to the settings bytes when it stores a plan.
+_RESERVED_ECHO_OFFSET = 10
+#: Bytes carrying settings, which arrive with the offset applied.
+_RESERVED_ECHOED_BYTES = (0, 1, 3, 4, 5, 6)
+#: Enable flag — written raw (0/1), read back as 10/11.
+_RESERVED_ENABLE_BYTE = 2
+#: Never written by the app; always sent as 0.
+_RESERVED_UNUSED_BYTE = 7
+
+
 @dataclass
 class Plan(DataClassORJSONMixin):
     """A scheduled mowing plan (job) retrieved from the device."""
@@ -304,12 +315,18 @@ class Plan(DataClassORJSONMixin):
     toward_included_angle: int = 0
 
     # --- enable / rename helpers -----------------------------------------
-    # ``reserved`` is an 8-byte buffer the device stores alongside the
-    # plan.  Byte 2 = enable flag (0/1); the other bytes carry settings
-    # encoded with a +10 offset (exact meaning not fully decoded —
-    # ``docs/tasks_and_schedules.md`` § 1.3).  For enable/rename/copy
-    # we round-trip the stored buffer verbatim and only mutate byte 2 so
-    # callers don't have to know the layout.
+    # ``reserved`` is an 8-byte buffer the device stores alongside the plan:
+    #
+    #   0  path / bow order      3  job start progress    6  collect frequency
+    #   1  no-go zone laps       4  unused (written 0)    7  unused (sent 0)
+    #   2  enable flag           5  Yuka job config, else 8
+    #
+    # (``HomeStateViewModule.getReserved`` writes it;
+    # ``MACarDataManager.setJobPlanDB`` reads bytes 0-2 back.)
+    #
+    # The device adds +10 to the settings bytes on store, so a buffer read
+    # back from it must be normalised before being sent again — see
+    # :meth:`Plan.reserved_for_send`, which ``send_schedule`` applies.
     #
     # All bytes the APK writes are < 128, so latin-1 round-trips
     # losslessly between str and bytes.
@@ -334,15 +351,46 @@ class Plan(DataClassORJSONMixin):
     def with_enabled(self, enabled: bool) -> Plan:
         """Return a copy of this plan with ``reserved[2]`` set for *enabled*.
 
-        Sends byte 2 = 0 (enable) or 1 (disable) — the device adds +10 to all
-        bytes on echo, so it will store/return 10 (enabled) or 11 (disabled).
-        Bytes 0,1,3..7 are preserved verbatim.
+        Only the flag is touched.  The rest of the buffer is normalised once,
+        at transmission, by :meth:`reserved_for_send`.
         """
-        raw = bytearray(self.reserved.encode("latin-1") if self.reserved else b"")
-        if len(raw) < 8:
-            raw.extend(b"\x00" * (8 - len(raw)))
-        raw[2] = 0 if enabled else 1
+        raw = self._reserved_bytes()
+        raw[_RESERVED_ENABLE_BYTE] = 0 if enabled else 1
         return dataclasses.replace(self, reserved=raw.decode("latin-1"))
+
+    def _reserved_bytes(self) -> bytearray:
+        """Return ``reserved`` as exactly ``_RESERVED_LENGTH`` bytes."""
+        raw = bytearray(self.reserved.encode("latin-1") if self.reserved else b"")
+        if len(raw) < _RESERVED_LENGTH:
+            raw.extend(b"\x00" * (_RESERVED_LENGTH - len(raw)))
+        return raw[:_RESERVED_LENGTH]
+
+    def reserved_for_send(self) -> str:
+        """Return ``reserved`` with the device's echo offset removed.
+
+        The device adds +10 to the settings bytes when it stores a plan, so
+        sending a buffer back exactly as it was read compounds the offset and
+        walks the schedule's settings away from what the user chose — every
+        toggle or rename shifting them by another 10 until they wrap
+        (Mammotion-HA #891).
+
+        The app normalises on every write instead
+        (``JobScheduleActivity.java:848-866``): subtract the offset from the
+        settings bytes, write the enable flag raw, and send byte 7 as 0.
+        Bytes 4 and 7 are unused — written as 0 at creation and never decoded —
+        so whether they carry the echo does not matter; the app decrements 4
+        and zeroes 7, and this does the same.
+
+        Values below the offset clamp at 0 rather than wrapping.  The app never
+        meets one because it only ever edits a plan it read back; a plan built
+        locally has no offset to remove.
+        """
+        raw = self._reserved_bytes()
+        for index in _RESERVED_ECHOED_BYTES:
+            raw[index] = max(raw[index] - _RESERVED_ECHO_OFFSET, 0)
+        raw[_RESERVED_ENABLE_BYTE] = 0 if self.is_enabled() else 1
+        raw[_RESERVED_UNUSED_BYTE] = 0
+        return raw.decode("latin-1")
 
     def with_renamed(self, new_name: str) -> Plan:
         """Return a copy of this plan with ``task_name`` set to *new_name*."""
@@ -451,8 +499,6 @@ class HashList(DataClassORJSONMixin):
         methods — never mutated in place — so sharing references across copies
         is safe.
         """
-        import copy as _copy
-
         cls = self.__class__
         new = cls.__new__(cls)
         memo[id(self)] = new
@@ -789,9 +835,27 @@ class HashList(DataClassORJSONMixin):
         return target_dict.get(hash_data.hash)
 
     def update_plan(self, plan: Plan) -> None:
-        """Store *plan* by ``plan_id``; drop plans whose ``total_plan_num`` is zero."""
+        """Store *plan* by ``plan_id``; drop plans whose ``total_plan_num`` is zero.
+
+        Adds only — a schedule deleted on the device is removed by
+        :meth:`replace_plans` at the end of a full fetch, not here, because a
+        single frame says nothing about what else the device still holds.
+        """
         if plan.total_plan_num != 0:
             self.plan[plan.plan_id] = plan
+
+    def replace_plans(self, plans: dict[str, Plan]) -> None:
+        """Make *plans* the entire stored set.
+
+        A completed plan fetch returns everything the device has, so anything
+        held that is not in it has been deleted on the device.  Nothing used to
+        remove those — ``update_plan`` only adds and the reducer's
+        ``all_plan_task`` branch is never requested — so they lingered, and
+        being persisted they survived restarts (Mammotion-HA #892).
+
+        Copied rather than aliased: the saga reuses its result dict.
+        """
+        self.plan = dict(plans)
 
     def _get_path_type_mapping(self) -> dict[int, dict[int, FrameList]]:
         """Return a ``PathType → per-type dict`` mapping for NavGetCommData dispatch.
@@ -972,7 +1036,7 @@ class HashList(DataClassORJSONMixin):
         Creates a new FrameList for a first sighting, otherwise appends the
         frame unless its ``current_frame`` is already present.
         """
-        if hash_dict.get(hash_data.hash, None) is None:
+        if hash_dict.get(hash_data.hash) is None:
             hash_dict[hash_data.hash] = FrameList(total_frame=hash_data.total_frame, data=[hash_data])
             return True
 
@@ -1117,94 +1181,13 @@ class HashList(DataClassORJSONMixin):
         }
         return bool(geojson_hashes - current_hashlist)
 
-    def generate_geojson(self, rtk: LocationPoint, dock: Dock) -> Any:
-        """Rebuild ``generated_geojson`` from the cached frames."""
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
+    def record_geojson_state(self, yaw: float) -> None:
+        """Note the yaw and hashlist that ``generated_geojson`` was built from.
 
-        coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
-        RTK_real_loc = coordinator_converter.enu_to_lla(0, 0)
-
-        dock_location = coordinator_converter.enu_to_lla(dock.latitude, dock.longitude)
-        dock_rotation = coordinator_converter.get_transform_yaw_with_yaw(dock.rotation) + 180
-
-        self.generated_geojson = GeojsonGenerator.generate_geojson(
-            self,
-            Point(RTK_real_loc.latitude, RTK_real_loc.longitude),
-            Point(dock_location.latitude, dock_location.longitude),
-            int(dock_rotation),
-            yaw=rtk.yaw,
-        )
-        self.geojson_yaw = rtk.yaw
-        # Record the hashlist used so the next geojson_needs_regeneration()
-        # can short-circuit when state hasn't changed.
+        Paired with :meth:`geojson_needs_regeneration`, which reads both back — the
+        staleness bookkeeping stays on the model while generation itself lives in
+        ``generate_geojson`` (which needs to import this module, so this one must not
+        import it back).
+        """
+        self.geojson_yaw = yaw
         self._geojson_hashlist_snapshot = frozenset(self.area_root_hashlist)
-
-    def generate_mowing_geojson(self, rtk: LocationPoint) -> Any:
-        """Rebuild ``generated_mow_path_geojson`` from the cached mow-path frames."""
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
-
-        coordinator_converter = CoordinateConverter(rtk.latitude, rtk.longitude)
-        rtk_real_loc = coordinator_converter.enu_to_lla(0, 0)
-
-        self.generated_mow_path_geojson = GeojsonGenerator.generate_mow_path_geojson(
-            self,
-            Point(rtk_real_loc.latitude, rtk_real_loc.longitude),
-            yaw=rtk.yaw,
-        )
-
-        return self.generated_mow_path_geojson
-
-    def apply_mow_progress_geojson(
-        self,
-        rtk: LocationPoint,
-        now_index: int,
-        ub_path_hash: int,
-        path_pos_x: int,
-        path_pos_y: int,
-    ) -> None:
-        """Slice ``current_mow_path`` to *now_index* and store as progress GeoJSON.
-
-        No-op when RTK isn't fixed (``latitude == 0``), ``now_index`` is
-        negative, or no mow path is cached.  ``path_pos_x``/``path_pos_y`` are
-        device-side integers scaled by 1e4.
-        """
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
-
-        # "Unset" RTK is the exact-0.0 default (radians).  Compare to 0.0, NOT round(lat, 0):
-        # rounding to 0 decimals collapses everything within ~0.5 rad (~28°) of the equator to
-        # 0 and would skip real fixes.
-        if rtk.latitude == 0.0 or now_index < 0 or not self.current_mow_path:
-            return
-
-        raw_x = path_pos_x / 10000.0
-        raw_y = path_pos_y / 10000.0
-        path_pos = (raw_x, raw_y) if (raw_x != 0.0 or raw_y != 0.0) else None
-
-        conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-        rtk_ll = conv.enu_to_lla(0, 0)
-        self.generated_mow_progress_geojson = GeojsonGenerator.generate_mow_progress_geojson(
-            self,
-            now_index,
-            Point(rtk_ll.latitude, rtk_ll.longitude),
-            ub_path_hash=ub_path_hash,
-            path_pos=path_pos,
-            yaw=rtk.yaw,
-        )
-
-    def apply_dynamics_line_geojson(self, rtk: LocationPoint) -> None:
-        """Convert ``dynamics_line`` to a WGS-84 LineString GeoJSON.
-
-        No-op when RTK isn't fixed or fewer than two points have been received.
-        """
-        from pymammotion.data.model.generate_geojson import GeojsonGenerator
-
-        if rtk.latitude == 0.0 or len(self.dynamics_line) < 2:
-            return
-
-        conv = CoordinateConverter(rtk.latitude, rtk.longitude)
-        rtk_ll = conv.enu_to_lla(0, 0)
-        self.generated_dynamics_line_geojson = GeojsonGenerator.generate_dynamics_line_geojson(
-            self.dynamics_line,
-            Point(rtk_ll.latitude, rtk_ll.longitude),
-            yaw=rtk.yaw,
-        )

@@ -34,8 +34,16 @@ BIND_WINDOW_CLOSED_CODES = frozenset({6618, 50105})
 QR_CODE_INVALID_CODES = frozenset({2067})
 
 
-class AuthRefreshException(Exception):
-    """Raise exception when library cannot refresh token."""
+class AuthRefreshException(SessionExpiredError):
+    """The Aliyun refresh token itself has expired; the session must be re-minted.
+
+    Subclasses :class:`SessionExpiredError` so the standard recovery path applies:
+    ``refresh_aliyun_credentials`` → ``connect_iot`` rebuilds the session from the
+    healthy HTTP login's authCode chain.
+    """
+
+    def __init__(self, message: str = "") -> None:
+        super().__init__(TransportType.CLOUD_ALIYUN, message)
 
 
 class DeviceOfflineException(Exception):

@@ -18,7 +18,14 @@ tests can construct variants inline.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock
+from bleak import BLEDevice
+from bleak_retry_connector import BleakClientWithServiceCache
+
+from pymammotion.bluetooth.ble_message import BleMessage
+
+from unittest.mock import AsyncMock, MagicMock
+
+from tests._helpers import block_forever
 
 
 class FakeMessage:
@@ -37,8 +44,9 @@ class FakeAsyncMessages:
     receive loop exit and mask bugs that only show up while it is still running.
     """
 
-    def __init__(self, messages: list[FakeMessage]) -> None:
+    def __init__(self, messages: list[FakeMessage], drained: asyncio.Event | None = None) -> None:
         self._messages = iter(messages)
+        self._drained = drained or asyncio.Event()
 
     def __aiter__(self) -> FakeAsyncMessages:
         return self
@@ -47,7 +55,8 @@ class FakeAsyncMessages:
         try:
             return next(self._messages)
         except StopIteration:
-            await asyncio.sleep(3600)
+            self._drained.set()
+            await block_forever()
             raise StopAsyncIteration from None
 
 
@@ -58,10 +67,15 @@ class FakeMQTTClient:
         self._messages_list: list[FakeMessage] = messages or []
         self.publish = AsyncMock()
         self.subscribe = AsyncMock()
+        #: Set once a receive loop has asked for a message past the seeded ones.  The
+        #: only honest signal that everything seeded was delivered, which is what a
+        #: test asserting *nothing* arrived has to wait for.  It lives on the client
+        #: because ``messages`` hands out a fresh iterator per access.
+        self.drained = asyncio.Event()
 
     @property
     def messages(self) -> FakeAsyncMessages:
-        return FakeAsyncMessages(self._messages_list)
+        return FakeAsyncMessages(self._messages_list, self.drained)
 
     async def __aenter__(self) -> FakeMQTTClient:
         return self
@@ -105,3 +119,36 @@ class NetworkErrorClient:
 
     async def __aexit__(self, *args: object) -> None:
         pass
+
+
+def make_fake_ble_client(*, connected: bool = True) -> MagicMock:
+    """Return a MagicMock specced to BleakClientWithServiceCache.
+
+    Specced so a rename upstream — or a call in our code to a method bleak does not
+    have — fails here instead of being answered truthily forever.
+    """
+    client = MagicMock(spec=BleakClientWithServiceCache)
+    client.is_connected = connected
+    client.start_notify = AsyncMock()
+    client.stop_notify = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.write_gatt_char = AsyncMock()
+    client.clear_cache = AsyncMock(return_value=True)
+    return client
+
+
+def make_fake_ble_message() -> MagicMock:
+    """Return a MagicMock specced to BleMessage."""
+    msg = MagicMock(spec=BleMessage)
+    msg.post_custom_data_bytes = AsyncMock()
+    msg.parseNotification = MagicMock(return_value=0)
+    msg.parseBlufiNotifyData = AsyncMock(return_value=b"\x01\x02")
+    msg.clear_notification = MagicMock()
+    return msg
+
+
+def make_ble_device(address: str) -> MagicMock:
+    """Return a MagicMock-spec BLEDevice with a settable .address attribute."""
+    dev = MagicMock(spec=BLEDevice)
+    dev.address = address
+    return dev

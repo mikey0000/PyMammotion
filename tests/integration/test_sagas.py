@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pymammotion.data.model.hash_list import (
-    AreaHashNameList,
     HashList,
     MowPath,
     NavGetHashListData,
-    Plan,
     RootHashList,
 )
 from pymammotion.messaging.broker import CommandTimeoutError, DeviceMessageBroker
@@ -23,9 +20,7 @@ from pymammotion.messaging.plan_saga import PlanFetchSaga
 from pymammotion.messaging.saga import SagaFailedError
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 
 def _make_hash_list_ack_response(
@@ -73,18 +68,6 @@ def _make_area_name_response(names: list[tuple[int, str]]) -> MagicMock:
 
     nav = MagicMock()
     nav.toapp_all_hash_name = area_name_msg
-
-    msg = MagicMock()
-    msg.nav = nav
-    return msg
-
-
-def _make_plan_ack_response() -> MagicMock:
-    """Create a MagicMock resembling a LubaMsg with todev_planjob_set."""
-    planjob = MagicMock()
-
-    nav = MagicMock()
-    nav.todev_planjob_set = planjob
 
     msg = MagicMock()
     msg.nav = nav
@@ -146,9 +129,7 @@ def _which_one_of_for_hash(obj: Any, group: str) -> tuple[str, Any]:
     return ("toapp_gethash_ack", obj.toapp_gethash_ack)
 
 
-# ---------------------------------------------------------------------------
 # MapFetchSaga tests
-# ---------------------------------------------------------------------------
 
 
 async def test_map_saga_fetches_area_names_for_non_luba1() -> None:
@@ -327,9 +308,7 @@ async def test_map_saga_raises_saga_failed_after_max_attempts() -> None:
     assert exc_info.value.attempts == saga.max_attempts
 
 
-# ---------------------------------------------------------------------------
 # PlanFetchSaga tests
-# ---------------------------------------------------------------------------
 
 
 async def test_plan_saga_sends_plan_and_waits_for_ack() -> None:
@@ -486,9 +465,7 @@ async def test_plan_saga_does_not_retry_by_default() -> None:
     assert builder.read_plan.call_count == 1  # exactly one attempt
 
 
-# ---------------------------------------------------------------------------
 # MapFetchSaga: get_hash_response is an ack-only command (regression)
-# ---------------------------------------------------------------------------
 
 
 async def test_map_saga_only_acks_get_hash_response_in_response_to_frames() -> None:
@@ -499,6 +476,10 @@ async def test_map_saga_only_acks_get_hash_response_in_response_to_frames() -> N
     ``get_hash_response(total_frame, current_frame)``.  Acking is what the
     device interprets as "send me the next one".  Mirrors
     HashDataManager.setHashList in the APK (line 1173).
+
+    The saga asks for two hash lists — sub_cmd=0 for boundaries and sub_cmd=4
+    for dumping spots — so a kick-off per list is expected; what must not
+    appear is a ``get_hash_response`` that no frame prompted.
     """
     from pymammotion.data.model.hash_list import NavGetHashListData, RootHashList
 
@@ -558,18 +539,22 @@ async def test_map_saga_only_acks_get_hash_response_in_response_to_frames() -> N
             get_map=lambda: hash_list,
         )
         saga.step_timeout = 0.1
+        saga._dump_hash_list_timeout = 0.1
         await saga.execute(broker)
 
-    # Exactly one kick-off request.
-    assert send_log.count("get_all_boundary_hash_list") == 1
+    # One kick-off request per hash list: sub_cmd=0 (boundaries), then sub_cmd=4 (dumping spots).
+    assert send_log.count("get_all_boundary_hash_list") == 2
+    assert [c.kwargs["sub_cmd"] for c in builder.get_all_boundary_hash_list.call_args_list] == [0, 4]
     # One ack per frame received — no proactive "request next" sends.
     assert send_log.count("get_hash_response") == total_frames
-    # Order: the kick-off comes first, then ack follows each frame.
+    # Order: the kick-off comes first, then an ack follows each frame, then the dump kick-off —
+    # which this device answers with nothing, so it draws no acks of its own.
     assert send_log == [
         "get_all_boundary_hash_list",
         "get_hash_response",
         "get_hash_response",
         "get_hash_response",
+        "get_all_boundary_hash_list",
     ]
     # Each ack carries the current_frame of the frame it acknowledges —
     # NOT ``next_frame - 1`` (the old proactive-request pattern).
@@ -577,9 +562,7 @@ async def test_map_saga_only_acks_get_hash_response_in_response_to_frames() -> N
     assert acked_frames == [1, 2, 3]
 
 
-# ---------------------------------------------------------------------------
 # MapFetchSaga resume after interruption (bug regression)
-# ---------------------------------------------------------------------------
 
 
 def _seed_partial_map(
@@ -779,9 +762,7 @@ async def test_invalidate_maps_clears_only_root_hash_list_on_mismatch() -> None:
     assert 999 in hash_list.path
 
 
-# ---------------------------------------------------------------------------
 # MowPathSaga
-# ---------------------------------------------------------------------------
 
 
 async def test_mow_path_saga_preserves_current_mow_path_across_runs() -> None:
@@ -913,12 +894,10 @@ async def test_mow_path_saga_syncs_before_route_and_line_info() -> None:
     cb.send_todev_ble_sync.assert_called_with(sync_type=2)
 
 
-# ---------------------------------------------------------------------------
 # SpinoPlanFetchSaga tests — Spino path mirrors the mower's PlanFetchSaga but
 # the leaf field name is ``plan_job_set`` (not ``todev_planjob_set``), the
 # payload lives in ``LubaMsg.ctrl.plan_job_set``, and plans are keyed by the
 # numeric ``jobid`` (fixed64) instead of a string ``plan_id``.
-# ---------------------------------------------------------------------------
 
 
 async def test_spino_plan_saga_collects_all_plans_by_jobid() -> None:
