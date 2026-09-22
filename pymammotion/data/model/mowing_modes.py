@@ -95,7 +95,7 @@ class DetectionStrategy(IntEnum):
     Luba 2 / Yuka at firmware 1.12.0+ and all other devices (Yuka mini/pro/MV
     variants) use a new-style UI whose off position is value **1**, not 0
     (``WorkingSettingManage.aytomatiTypecRange = {"1", "10", "11"}``):
-      1   slow_touch    "Off"       — labelled ``state_close``; the firmware accepts 0 here too
+      1   slow_touch    "Basic"       — labelled ``state_close``; the firmware accepts 0 here too
       10  no_touch      "Standard"  — proactive obstacle avoidance
       11  sensitive     "Sensitive" — avoids obstacles and non-grassy areas
 
