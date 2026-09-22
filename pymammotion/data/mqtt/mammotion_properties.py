@@ -2,11 +2,15 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 from typing import Annotated, Any
 
 from mashumaro.config import BaseConfig
+from mashumaro.exceptions import InvalidFieldValue, MissingField
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -274,13 +278,22 @@ class OtaProgress(DataClassORJSONMixin):
 
 
 def _nested_object(cls: type[DataClassORJSONMixin]) -> dict[str, Callable[[Any], Any]]:
-    """Strategy for a nested property the device sends either as an object or as a JSON string."""
+    """Strategy for a nested property the device sends either as an object or as a JSON string.
+
+    A nested blob whose shape this model has not seen decodes to ``None`` rather
+    than failing the post: the key set varies per firmware, and the battery and
+    state in the same message must not be lost over a diagnostics field.
+    """
 
     def deserialize(value: Any) -> Any:
-        if isinstance(value, str):
-            return cls.from_json(value)
-        if isinstance(value, dict):
-            return cls.from_dict(value)
+        try:
+            if isinstance(value, str):
+                return cls.from_json(value)
+            if isinstance(value, dict):
+                return cls.from_dict(value)
+        except (MissingField, InvalidFieldValue, ValueError) as exc:
+            _logger.error("Dropping unparseable %s from property/post: %s", cls.__name__, exc)
+            return None
         return value
 
     return {
