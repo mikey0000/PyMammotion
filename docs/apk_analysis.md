@@ -2,7 +2,6 @@
 
 Decompiled source location:
 ```
-/home/michael/Downloads/Mammotion_2.2.4.13_APKPure/com.agilexrobotics/java_src/com/agilexrobotics/
 ```
 
 ---
