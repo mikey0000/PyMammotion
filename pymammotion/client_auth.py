@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.exceptions import CloudSetupError
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import UnauthorizedExceptionError
@@ -211,7 +212,6 @@ class CloudAuthMixin:
                 await mammotion_http.confirm_share(batch_id, record_ids)
 
         device_page_resp = await mammotion_http.get_user_device_page()
-        aliyun_devices = device_list_resp.data
         mammotion_records = (device_page_resp.data.records if device_page_resp.data else []) or []
 
         # Build an authoritative device_name→iot_id map from /device-server/v1/device/list.
@@ -230,22 +230,23 @@ class CloudAuthMixin:
         )
         acct_session.user_account = self._extract_user_account(mammotion_http)
 
-        if aliyun_devices:
-            cloud_client = CloudIOTGateway(mammotion_http)
-            await self._connect_iot(cloud_client)
-            shared_notice = await cloud_client.get_shared_notice_list()
-            if shared_notice.data and shared_notice.data.data:
-                pending = [d.record_id for d in shared_notice.data.data if d.status == -1]
-                if pending:
-                    await cloud_client.confirm_share(pending)
+        aliyun_error: Exception | None = None
+        cloud_client: CloudIOTGateway | None = None
+        # The app starts its Aliyun login from this code alone (IOTConnectViewModel.iotLogin).
+        if (login_info := mammotion_http.login_info) is not None and login_info.authorization_code:
+            try:
+                cloud_client = await self._connect_aliyun_for_login(mammotion_http)
+            except _AUTH_REJECTED:
+                raise
+            except Exception as exc:
+                _logger.warning(
+                    "login: Aliyun setup failed for %s — continuing without the Aliyun transport",
+                    account,
+                    exc_info=True,
+                )
+                aliyun_error = exc
 
-            if cloud_client.aep_response is None or cloud_client.region_response is None:
-                msg = "Aliyun setup incomplete — aep_response or region_response missing"
-                raise RuntimeError(msg)
-            if cloud_client.session_by_authcode_response.data is None:  # type: ignore
-                msg = "Aliyun setup incomplete — session_by_authcode_response.data missing"
-                raise RuntimeError(msg)
-
+        if cloud_client is not None:
             acct_session.cloud_client = cloud_client
             token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
             token_manager.attach_cloud_gateway(cloud_client)
@@ -262,9 +263,30 @@ class CloudAuthMixin:
 
         if mammotion_records:
             await self._bootstrap_mammotion_mqtt(account, mammotion_http, acct_session, owned_iot_id_map)
+        elif aliyun_error is not None:
+            raise aliyun_error
 
         await self._account_registry.register(acct_session)
         self._start_token_refresh(acct_session)
+
+    async def _connect_aliyun_for_login(self, mammotion_http: MammotionHTTP) -> CloudIOTGateway:
+        """Run the Aliyun chain for a fresh login and accept any pending Aliyun shares."""
+        cloud_client = CloudIOTGateway(mammotion_http)
+        await self._connect_iot(cloud_client)
+        if (
+            cloud_client.aep_response is None
+            or cloud_client.region_response is None
+            or cloud_client.session_by_authcode_response is None
+            or cloud_client.session_by_authcode_response.data is None
+        ):
+            msg = "Aliyun setup incomplete — no AEP, region or session response"
+            raise CloudSetupError(msg)
+        shared_notice = await cloud_client.get_shared_notice_list()
+        if shared_notice.data and shared_notice.data.data:
+            pending = [d.record_id for d in shared_notice.data.data if d.status == -1]
+            if pending:
+                await cloud_client.confirm_share(pending)
+        return cloud_client
 
     def to_cache(self) -> dict[str, Any]:
         """Serialize current cloud credentials to a cache dictionary.

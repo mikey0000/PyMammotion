@@ -102,6 +102,11 @@ transport discards working credentials. And `on_unrecoverable_auth_error` is
 invoked under `contextlib.suppress(Exception)`, so raising from inside it does
 nothing — the host must schedule its reauth flow instead.
 
+The fresh login applies the same scoping to Aliyun setup, matching the app
+(`DeviceManager.getAliDeviceListCheckLogin`): it is attempted whenever the login
+carries an authorization code, and a failure costs only the Aliyun devices. It
+propagates only when the account has no Mammotion devices to fall back on.
+
 ## D10. Reactive refreshes are deduplicated by access token
 
 `refresh_invoke_token(stale_token=...)` returns early when the token the failed

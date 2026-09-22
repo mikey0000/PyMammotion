@@ -34,10 +34,13 @@ def make_http_posting(
     resp = MagicMock(status=status, headers={"Content-Type": content_type})
     resp.json = AsyncMock(return_value=body)
     session = MagicMock()
-    # Both verbs: device-server mixes them (the product list is a GET, the error-code
-    # endpoints are POSTs), and an unmocked one returns a non-awaitable MagicMock.
+    # Every verb device-server uses (the product list is a GET, the error-code
+    # endpoints are POSTs, map backups add PUT and DELETE); an unmocked one returns
+    # a non-awaitable MagicMock.
     session.post = AsyncMock(return_value=resp)
     session.get = AsyncMock(return_value=resp)
+    session.put = AsyncMock(return_value=resp)
+    session.delete = AsyncMock(return_value=resp)
 
     @asynccontextmanager
     async def _fake_session() -> object:  # type: ignore[misc]

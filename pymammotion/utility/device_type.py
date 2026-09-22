@@ -66,11 +66,11 @@ LubaMEProductKey = ["HK8snDC8Kxh"]
 
 RTKNBProductKey = ["a1NfZqdSREf", "a1ZuQVL7UiN", "6DPytKe4pKz"]
 
-LubaLAProductKey = ["CDYuKXTYrSP"]
+LubaLAProductKey = ["CDYuKXTYrSP", "a1YbcqQYFv2"]
 
 YukaMN100ProductKey = ["NnbeYtaEUGE"]
 
-Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m"]
+Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m", "a1tyIkI4q0G"]
 
 # Observed on a Spino-E1 (PC100).  The app carries no product key for it — its
 # ``DeviceProductKey`` table stops at the PC210 pair below and the E1 is resolved
@@ -90,27 +90,33 @@ SwimmingPoolSPProductKey = ["FCtXbVnmd2C", "YBRDhT2YTvY"]
 # ``DeviceType.valueOfStrByProductKey`` resolves to SD_PX, part of the pool family.
 SdPxProductKey = ["GJzsmaVk5za", "fEaKVY28tNz"]
 
-# Exhaustive list of all known Aliyun-platform product keys.
-# Any product key NOT in this list is assumed to be a Mammotion-IoT device.
-# This "closed Aliyun / open Mammotion-IoT" policy means new device types are
-# handled correctly without a library update.
+# Aliyun-platform product keys: the ``a1…`` half of each mower and RTK family.  The
+# other half is the family's Mammotion-IoT twin (APK ``MaIoTApp.isMaIotDevice``), so a
+# whole family must never be spread in.  Unlisted keys default to Mammotion IoT.  The
+# pool families are left out: the app names both of their ``a1…`` keys Mammotion IoT.
 AliyunProductKey = [
-    *LubaProductKey,
-    *LubaVProductKey,
-    *LubaVProProductKey,
-    *Luba2MiniProductKey,
-    *YukaProductKey,
-    *YukaPlusProductKey,
-    *YukaMiniProductKey,
-    *RTKProductKey,
-    "a1jFe8HzcDb",  # YukaMV (Aliyun variant — USpE46bNTC7 / pdA6uJrBfjz are Mammotion IoT)
-    "a16cz0iXgUJ",  # YukaMV (Aliyun variant)
-    *LubaLDProductKey,
-    *LubaVAProductKey,
-    *YukaMLProductKey,
-    *LubaMDProductKey,
-    *LubaMBProductKey,
-    *RTKNBProductKey,
+    key
+    for family in (
+        LubaProductKey,
+        LubaVProductKey,
+        LubaVProProductKey,
+        Luba2MiniProductKey,
+        YukaProductKey,
+        YukaPlusProductKey,
+        YukaMiniProductKey,
+        RTKProductKey,
+        YukaMVProductKey,
+        LubaLDProductKey,
+        LubaVAProductKey,
+        YukaMLProductKey,
+        LubaMDProductKey,
+        LubaMBProductKey,
+        RTKNBProductKey,
+        LubaLAProductKey,
+        Cm900ProductKey,
+    )
+    for key in family
+    if key.startswith("a1")
 ]
 
 

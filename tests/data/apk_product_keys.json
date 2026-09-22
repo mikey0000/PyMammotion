@@ -1,0 +1,150 @@
+{
+  "_source": "Mammotion APK 2.3.8.201: MaIoTApp.isMaIotDevice (incl. SwimmingPoolOtaCorrelation.SWIMMING_POOL_PRODUCT_KEY) and device/source/device/utils/DeviceProductKey tables. The 2.3.18.21 build is packed and its Java is not readable.",
+  "is_ma_iot_device": [
+    "3drMFnqGVNe",
+    "3wGqhPzhxct",
+    "4hyGWnWvKZD",
+    "5BMtap5Q3Yq",
+    "6DbgVh2Qs5m",
+    "6kWUnPW8UrW",
+    "8xMGQS6DESC",
+    "ATyVu9QkAdX",
+    "CDYuKXTYrSP",
+    "FCtXbVnmd2C",
+    "FpstPz2SpwH",
+    "GJzsmaVk5za",
+    "HR4H6GXNcMG",
+    "HZwxBHRrp97",
+    "KJHXKHMEvj3",
+    "NccBrfYKtgE",
+    "NnbeYtaEUGE",
+    "USpE46bNTC7",
+    "UfsEwwHp8uz",
+    "VzYKDtUJQhe",
+    "W9bQbGbF6wS",
+    "YBRDhT2YTvY",
+    "a15Cq8FbCh1",
+    "a1UvLZ3mWcW",
+    "dypw8uTjDCr",
+    "fEaKVY28tNz",
+    "ftDnXns2cdT",
+    "j3KJD98Ezpu",
+    "jvEDnj42DRK",
+    "mxR26AUHJvc",
+    "pdA6uJrBfjz",
+    "rBGTwYhfhyY",
+    "tBGBYjWrvF3",
+    "tBnCA8u2Aps",
+    "uY54W5rM8YH",
+    "wNfrfQ5sVt2",
+    "zkRuTK9KsXG"
+  ],
+  "device_product_key_tables": {
+    "LubaProductKey": [
+      "a1UBFdq6nNz",
+      "a1x0zHD3Xop",
+      "a1pvCnb3PPu",
+      "a1kweSOPylG",
+      "a1JFpmAV5Ur",
+      "a1BmXWlsdbA",
+      "a1jOhAYOIG8",
+      "a1K4Ki2L5rK",
+      "a1ae1QnXZGf",
+      "a1nf9kRBWoH",
+      "a1ZU6bdGjaM"
+    ],
+    "LubaVProductKey": [
+      "a1iMygIwxFC",
+      "a1LLmy1zc0j",
+      "a1LLmy1zc0j"
+    ],
+    "LubaVProProductKey": [
+      "a1mb8v6tnAa",
+      "a1pHsTqyoPR"
+    ],
+    "Luba2MiniProductKey": [
+      "a1L5ZfJIxGl",
+      "a1dCWYFLROK"
+    ],
+    "YukaProductKey": [
+      "a1kT0TlYEza",
+      "a1IQV0BrnXb"
+    ],
+    "YukaVPProductKey": [
+      "a1lNESu9VST",
+      "a1zAEzmvWDa"
+    ],
+    "YukaMiniProductKey": [
+      "a1BqmEWMRbX",
+      "a1biqVGvxrE"
+    ],
+    "RTKProductKey": [
+      "a1qXkZ5P39W",
+      "a1Nc68bGZzX"
+    ],
+    "RTK3ProductKey": [
+      "a1wIIUUdAMX",
+      "a1mGLcddn4u"
+    ],
+    "YukaMVProductKey": [
+      "a1jFe8HzcDb",
+      "a16cz0iXgUJ",
+      "USpE46bNTC7",
+      "pdA6uJrBfjz"
+    ],
+    "LubaLDProductKey": [
+      "a1jDMfG2Fgj",
+      "a1vtZq9LUFS"
+    ],
+    "LubaVAProductKey": [
+      "a1Ce85210Be",
+      "a1BBOJnnjb9"
+    ],
+    "LubaHMProductKey": [
+      "tBnCA8u2Aps",
+      "jvEDnj42DRK"
+    ],
+    "YukaMLProductKey": [
+      "a1OWGO8WXbh",
+      "a1s6znKxGvI"
+    ],
+    "LubaMDProductKey": [
+      "a1T6VTFTc0C",
+      "a14iRDqMepW"
+    ],
+    "LubaMBProductKey": [
+      "a1pb9toor70"
+    ],
+    "RTKNBProductKey": [
+      "a1NfZqdSREf",
+      "a1ZuQVL7UiN"
+    ],
+    "LubaLAProductKey": [
+      "CDYuKXTYrSP",
+      "a1YbcqQYFv2"
+    ],
+    "YukaMN100ProductKey": [
+      "NnbeYtaEUGE"
+    ],
+    "YukaMN101ProductKey": [
+      "rBGTwYhfhyY"
+    ],
+    "Cm900ProductKey": [
+      "zkRuTK9KsXG",
+      "6DbgVh2Qs5m",
+      "a1tyIkI4q0G",
+      "1SCa3mAX6G"
+    ],
+    "PC210ProductKey": [
+      "FCtXbVnmd2C",
+      "YBRDhT2YTvY"
+    ],
+    "PC210PileProductKey": [
+      "GJzsmaVk5za",
+      "fEaKVY28tNz"
+    ],
+    "LubaMEProductKey": [
+      "HK8snDC8Kxh"
+    ]
+  }
+}

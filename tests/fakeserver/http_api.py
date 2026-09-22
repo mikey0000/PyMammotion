@@ -135,8 +135,8 @@ def build_app(
         scenario.count("share_page_calls")
         if not scenario.bearer_ok(request.headers.get("Authorization")):
             return _json({"code": 401, "msg": "unauthorized"}, status=401)
-        # data deliberately absent: a non-None value (even an empty ShareRecords)
-        # drags MammotionClient into the Aliyun connect_iot chain.
+        if scenario.share_page_returns_data:
+            return _ok({"records": [], "total": 0, "size": 100, "current": 1, "pages": 0})
         return _json({"code": 0, "msg": "success"})
 
     async def confirm_share(_request: web.Request) -> web.Response:
@@ -215,6 +215,8 @@ def build_app(
                 "current": 1,
                 "pages": 1,
             }
+            if scenario.mammotion_device_bound
+            else {"records": [], "total": 0, "size": 100, "current": 1, "pages": 0}
         )
 
     async def mqtt_auth_jwt(request: web.Request) -> web.Response:

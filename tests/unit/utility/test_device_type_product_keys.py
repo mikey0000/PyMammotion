@@ -9,6 +9,10 @@ guessed capabilities for the rest — so it is pinned here instead.
 The cloud publishes most families twice: an ``a1…`` key from the Aliyun era and a
 newer key with an identical model set.  Holding only one half is how a device bound
 under the newer key ends up unclassified.
+
+``tests/data/apk_product_keys.json`` is a second, independent source: the app's own
+Aliyun / Mammotion-IoT split, transcribed from the decompiled APK.  It pins which
+broker each key routes to, where ``product_list.json`` pins only its family.
 """
 
 from __future__ import annotations
@@ -73,3 +77,28 @@ def test_keys_sharing_a_model_set_share_a_family() -> None:
         if len(keys) > 1 and len({tuple(_families(key)) for key in keys}) > 1
     }
     assert not split, f"keys with identical models classified differently: {split}"
+
+
+APK = json.loads((pathlib.Path(__file__).parents[2] / "data" / "apk_product_keys.json").read_text())
+APK_MA_IOT = APK["is_ma_iot_device"]
+#: Every family the app knows is published as an ``a1…`` Aliyun-era key plus, for most,
+#: a newer Mammotion-IoT twin; the app names the twins in ``isMaIotDevice``.
+APK_ALIYUN = sorted(
+    {key for keys in APK["device_product_key_tables"].values() for key in keys if key.startswith("a1")}
+    - set(APK_MA_IOT)
+)
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("product_key", APK_MA_IOT)
+def test_app_mammotion_iot_keys_do_not_route_to_aliyun(product_key: str) -> None:
+    """Spreading whole families into the Aliyun list swept their Mammotion-IoT twins in with them."""
+    assert not device_type_module.DeviceType.is_aliyun_product_key(product_key)
+    assert device_type_module.DeviceType.is_mammotion_iot_product_key(product_key)
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("product_key", APK_ALIYUN)
+def test_app_aliyun_era_keys_route_to_aliyun(product_key: str) -> None:
+    """An Aliyun-era key missing from the list falls through to the Mammotion-IoT default."""
+    assert device_type_module.DeviceType.is_aliyun_product_key(product_key)

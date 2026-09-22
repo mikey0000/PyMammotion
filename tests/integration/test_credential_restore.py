@@ -466,7 +466,8 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
     mock_http.get_user_device_list = AsyncMock(return_value=MagicMock(data=None))
     mock_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
     mock_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=None))
-    mock_http.login_info = None
+    # The authorization code is what starts the Aliyun chain.
+    mock_http.login_info = MagicMock(authorization_code="authcode")
     mock_http.mqtt_credentials = None
 
     mock_transport = MagicMock()
@@ -864,9 +865,8 @@ async def test_relogin_does_not_revoke_the_session_it_is_replacing() -> None:
 
     new_http = make_mock_http()
     new_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
-    # No Aliyun devices and no Mammotion records: this test is about the teardown,
+    # No Aliyun session and no Mammotion records: this test is about the teardown,
     # not about what gets registered afterwards.
-    new_http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=None))
     new_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
 
     with (

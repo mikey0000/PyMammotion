@@ -182,6 +182,8 @@ def make_mock_http(
     http.confirm_share = AsyncMock()
     http.mqtt_credentials = mqtt_creds or MagicMock()
     http.login_info = MagicMock()
+    # An empty code means no Aliyun session, so a login never starts the real Aliyun chain.
+    http.login_info.authorization_code = ""
     http.validate_login = AsyncMock(return_value=True)
     http.device_records = MagicMock(records=[])
     return http

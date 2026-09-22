@@ -73,6 +73,13 @@ class Scenario:
     # --- Aliyun MQTT -----------------------------------------------------
     bind_reply_code: int = 200
     aliyun_connack_rc: int = 0
+    #: The login's ``authorization_code`` seeds the Aliyun chain, which this fake does
+    #: not serve — so by default it issues none, modelling a Mammotion-only account.
+    issue_authorization_code: bool = False
+    #: The real cloud always answers the shared-device page with a ``data`` object.
+    share_page_returns_data: bool = False
+    #: False empties the Mammotion device page, modelling an Aliyun-only account.
+    mammotion_device_bound: bool = True
 
     # --- Counters ---------------------------------------------------------
     counters: dict[str, int] = field(default_factory=dict)
@@ -124,7 +131,7 @@ class Scenario:
             "token_type": "bearer",
             "refresh_token": self.current_refresh_token,
             "expires_in": int(self.access_token_ttl),
-            "authorization_code": f"authcode-{secrets.token_hex(6)}",
+            "authorization_code": f"authcode-{secrets.token_hex(6)}" if self.issue_authorization_code else "",
             "userInformation": {
                 "areaCode": "44",
                 "domainAbbreviation": "EU",
@@ -197,6 +204,9 @@ class Scenario:
         self.aliyun_connack_rc = 0
         self.invoke_mode = "ok"
         self.bind_reply_code = 200
+        self.issue_authorization_code = False
+        self.share_page_returns_data = False
+        self.mammotion_device_bound = True
         self.valid_access_tokens.clear()
         self.current_refresh_token = None
         self.counters.clear()
