@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Annotated, Generic, Literal, TypeVar
 
 from mashumaro.config import BaseConfig
@@ -197,6 +197,24 @@ class ErrorCodeHandle(DataClassORJSONMixin):
         allow_deserialization_not_by_alias = True
 
 
+#: ``/code/page-lan`` numbers its modules where the ``export-data`` CSV names them.
+#: Inferred from the codes each number carries; 10 and 80 match how the export
+#: labels the codes the two sources share.
+PAGE_LAN_MODULES: dict[str, str] = {
+    "10": "navigation",
+    "20": "sensor",
+    "30": "vision",
+    "60": "motor",
+    "70": "power",
+    "80": "common",
+}
+
+
+def _page_lan_text(text: str) -> str:
+    """Return *text* stripped, or ``""`` for the ``"- -"`` page-lan sends when a code has no text."""
+    return "" if not (stripped := text.strip()).strip("- ") else stripped
+
+
 @dataclass
 class ErrorCodeRecord(DataClassORJSONMixin):
     """A single error code from /code/page-lan, with every language in one record.
@@ -230,6 +248,21 @@ class ErrorCodeRecord(DataClassORJSONMixin):
         """Return the handle for *language*, or ``None`` when this code has no such translation."""
         wanted = language.lower()
         return next((handle for handle in self.handle_list if handle.language.lower() == wanted), None)
+
+    def to_error_info(self) -> ErrorInfo:
+        """Return this record as an ``export-data`` row, one column pair per language it carries."""
+        row = dict.fromkeys((f.name for f in fields(ErrorInfo)), "")
+        row |= {
+            "code": self.code,
+            "module": PAGE_LAN_MODULES.get(self.module, self.module),
+            "level": self.level,
+            "description": self.description,
+        }
+        for handle in self.handle_list:
+            if (key := f"{handle.language.lower()}_implication") in row:
+                row[key] = _page_lan_text(handle.implication)
+                row[f"{handle.language.lower()}_solution"] = _page_lan_text(handle.solution)
+        return ErrorInfo(**row)
 
 
 @dataclass
@@ -295,7 +328,7 @@ class MQTTConnection(DataClassORJSONMixin):
 
 
 @dataclass
-class Response(DataClassORJSONMixin, Generic[DataT]):
+class Response(DataClassORJSONMixin, Generic[DataT]):  # noqa: UP046 — mashumaro resolves Generic[DataT]
     """Generic API response envelope carrying a status code, message, and optional payload."""
 
     code: int
@@ -375,7 +408,7 @@ class ProductVersionInfo(DataClassORJSONMixin):
 
 
 @dataclass
-class CheckDeviceVersion(DataClassORJSONMixin):
+class CheckDeviceVersion(DataClassORJSONMixin):  # noqa: PLW1641 — @dataclass already makes it unhashable
     """OTA upgrade eligibility and current/available version info for a single device."""
 
     cause_code: Annotated[int, Alias("causeCode")] = 0

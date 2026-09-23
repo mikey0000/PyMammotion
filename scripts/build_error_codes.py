@@ -1,28 +1,29 @@
-"""Regenerate ``pymammotion/data/error_codes.csv`` from an account's error-code export.
+"""Regenerate ``pymammotion/data/error_codes.csv`` from the cloud's error-code sources.
 
-The source is the ``/user-server/v1/code/record/export-data`` CSV that
-``MammotionHTTP.get_all_error_codes`` fetches — 469 codes and 26 languages at the
-time of writing, exactly the columns :class:`ErrorInfo` declares.
+Two inputs, merged:
 
-The app's paged ``code/page-lan`` endpoint was checked against this export on
-2026-09-09 and returns the identical 469-code set, so it is not a second source of
-codes either — only of richer per-record metadata.
+* ``--export``: the ``/user-server/v1/code/record/export-data`` CSV that
+  ``MammotionHTTP.get_all_error_codes`` fetches — the columns :class:`ErrorInfo`
+  declares, every language.  It wins wherever it has text.
+* ``--page-lan``: a dump of ``MammotionHTTP.get_all_error_codes_paged`` (a JSON
+  object keyed by code, or a list of records).  It adds the codes the export lacks
+  and fills cells the export leaves blank; it never overwrites export text.
 
-The APK's ``assets/servicecode.csv`` was evaluated as a second source and rejected:
-its 368 codes are a strict subset of the export's, its 14 language columns are a
-subset of the export's 26, and it fills **zero** cells the export leaves empty.  Pass
-``--apk`` anyway to have it diffed against the export — it reports codes the APK has
-that the export lacks (none so far) and codes whose text disagrees (8 at the time of
-writing, where the APK carries older phrasing and the export carries what the app
-renders today).  Keep it as a cross-check, not as an input.
+The two overlap only partly — on 2026-09-10 ``page-lan`` had 176 codes the export
+lacked and the export 221 ``page-lan`` lacked — so neither alone is the table.
+
+``--apk`` diffs the APK's ``assets/servicecode.csv`` against the result as a
+cross-check only; it has never added a code or a cell.
 
 Usage::
 
     uv run python scripts/build_error_codes.py \
-        --export <endpoint.csv | config_entry-mammotion-*.json> \
+        --export <endpoint.csv | config_entry-mammotion-*.json | pymammotion/data/error_codes.csv> \
+        [--page-lan examples/dev_output/error_codes_live.json] \
         [--apk <path to assets/servicecode.csv>]
 
-``--export`` accepts either the raw CSV or a Home Assistant diagnostics JSON, whose
+``--export`` accepts the raw CSV, the bundled CSV itself (to fold a new
+``page-lan`` dump into it), or a Home Assistant diagnostics JSON whose
 ``data.<device>.errors.error_codes`` map is that CSV already parsed.
 """
 
@@ -36,7 +37,7 @@ import json
 import pathlib
 import sys
 
-from pymammotion.http.model.http import ErrorInfo
+from pymammotion.http.model.http import ErrorCodeRecord, ErrorInfo
 
 COLUMNS = [field.name for field in fields(ErrorInfo)]
 OUTPUT = pathlib.Path(__file__).parents[1] / "pymammotion" / "data" / "error_codes.csv"
@@ -57,6 +58,25 @@ def _read_export(path: pathlib.Path) -> dict[str, dict[str, str]]:
         if codes:
             return codes
     raise SystemExit(f"no errors.error_codes found in {path}")
+
+
+def _read_page_lan(path: pathlib.Path) -> dict[str, dict[str, str]]:
+    """Read a page-lan dump and return its records as export-shaped rows."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    records = raw.values() if isinstance(raw, dict) else raw
+    rows = (ErrorCodeRecord.from_dict(record).to_error_info() for record in records)
+    return {row.code: {column: getattr(row, column) for column in COLUMNS} for row in rows}
+
+
+def merge(export: dict[str, dict[str, str]], page_lan: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    """Add page-lan codes the export lacks and fill its blank cells, never overwriting export text."""
+    merged = {code: dict(row) for code, row in export.items()}
+    for code, row in page_lan.items():
+        target = merged.setdefault(code, dict.fromkeys(COLUMNS, ""))
+        for column, value in row.items():
+            if value.strip() and not (target.get(column) or "").strip():
+                target[column] = value
+    return merged
 
 
 def _sort_key(code: str) -> tuple[int, str]:
@@ -85,11 +105,17 @@ def cross_check(export: dict[str, dict[str, str]], apk: dict[str, dict[str, str]
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--export", type=pathlib.Path, required=True, help="export-data CSV or HA diagnostics JSON")
+    parser.add_argument("--page-lan", type=pathlib.Path, help="get_all_error_codes_paged dump (JSON)")
     parser.add_argument("--apk", type=pathlib.Path, help="the APK's assets/servicecode.csv, for cross-checking only")
     parser.add_argument("--output", type=pathlib.Path, default=OUTPUT)
     args = parser.parse_args()
 
     export = _read_export(args.export)
+    if args.page_lan:
+        page_lan = _read_page_lan(args.page_lan)
+        added = len(set(page_lan) - set(export))
+        export = merge(export, page_lan)
+        print(f"  page-lan: {len(page_lan)} codes, {added} not in the export")
     if unknown := set(COLUMNS) - set(next(iter(export.values()))):
         print(f"warning: the export is missing columns ErrorInfo declares: {sorted(unknown)}", file=sys.stderr)
 

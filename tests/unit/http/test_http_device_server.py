@@ -4,9 +4,9 @@ These sit under a different prefix from the rest of the client — the CSV expor
 ``get_all_error_codes`` is ``user-server`` — and they share one POST helper, so their
 tests share a module.
 
-The paged code endpoint is richer than the CSV export: each record nests every
-language and carries the display hints and product keys.  It is not, however, a
-richer *code* list — run against a live account it returns the same 469 codes.
+The paged code endpoint carries display hints and product keys the CSV export
+drops, answers in the language named by ``Accept-Language``, and publishes codes
+the export lacks (see ``pymammotion/data/error_codes.py``).
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from pymammotion.http import http as http_module
 from pymammotion.http.model.http import UnauthorizedExceptionError
 from tests.unit._helpers import make_http_posting
 
@@ -76,6 +77,33 @@ async def test_a_page_request_sends_the_paging_body_the_app_sends() -> None:
     assert session.post.await_args.args[0].endswith("/device-server/v1/code/page-lan")
 
 
+async def test_a_page_request_names_its_language_the_way_the_app_does() -> None:
+    """The app puts the table language in ``Accept-Language``, not the body; HA hands over BCP 47 tags."""
+    http, session = make_http_posting(HTTPStatus.OK.value, _page("1005"))
+
+    await http.get_error_codes_page(language="de-CH")
+
+    assert session.post.await_args.kwargs["headers"]["Accept-Language"] == "de"
+    assert session.post.await_args.kwargs["json"] == {"pageNumber": 1, "pageSize": 50}
+
+
+async def test_a_page_request_without_a_language_sends_no_language_header() -> None:
+    http, session = make_http_posting(HTTPStatus.OK.value, _page("1005"))
+
+    await http.get_error_codes_page()
+
+    assert "Accept-Language" not in session.post.await_args.kwargs["headers"]
+
+
+async def test_paging_asks_for_the_language_on_every_page() -> None:
+    http, session = make_http_posting(HTTPStatus.OK.value, {})
+    _responses(session, [_page("1", "2"), _page("3")])
+
+    await http.get_all_error_codes_paged(page_size=PAGE_SIZE, language="fr")
+
+    assert [c.kwargs["headers"].get("Accept-Language") for c in session.post.await_args_list] == ["fr", "fr"]
+
+
 async def test_paging_walks_until_a_short_page() -> None:
     """The page counters are inconsistent across this API, so a short page is the signal."""
     http, session = make_http_posting(HTTPStatus.OK.value, {})
@@ -108,6 +136,47 @@ async def test_a_failing_page_returns_what_was_already_collected() -> None:
     collected = await http.get_all_error_codes_paged(page_size=PAGE_SIZE)
 
     assert sorted(collected) == ["1", "2"]
+
+
+async def test_a_failing_page_returns_nothing_when_the_table_must_be_complete() -> None:
+    """A caller that persists the result as the whole table must not get a partial one."""
+    http, session = make_http_posting(HTTPStatus.OK.value, {})
+    _responses(session, [_page("1", "2"), {"code": 500, "msg": "boom"}], statuses=[200, 500])
+
+    collected = await http.get_all_error_codes_paged(page_size=PAGE_SIZE, require_complete=True)
+
+    assert collected == {}
+
+
+async def test_a_complete_walk_is_returned_when_the_table_must_be_complete() -> None:
+    http, session = make_http_posting(HTTPStatus.OK.value, {})
+    _responses(session, [_page("1", "2"), _page("3")])
+
+    collected = await http.get_all_error_codes_paged(page_size=PAGE_SIZE, require_complete=True)
+
+    assert sorted(collected) == ["1", "2", "3"]
+
+
+async def test_an_empty_page_ends_a_complete_walk_rather_than_failing_it() -> None:
+    """An empty page is the server saying "no more", not a lost page."""
+    http, session = make_http_posting(HTTPStatus.OK.value, {})
+    _responses(session, [_page("1", "2"), {"code": 0, "msg": "success", "data": {"records": []}}])
+
+    collected = await http.get_all_error_codes_paged(page_size=PAGE_SIZE, require_complete=True)
+
+    assert sorted(collected) == ["1", "2"]
+
+
+async def test_hitting_the_page_cap_returns_nothing_when_the_table_must_be_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A walk cut off by the cap has an unknown number of pages left, so it is not whole."""
+    monkeypatch.setattr(http_module, "_MAX_ERROR_CODE_PAGES", 2)
+    http, session = make_http_posting(HTTPStatus.OK.value, {})
+    _responses(session, [_page("1", "2"), _page("3", "4")])
+
+    assert await http.get_all_error_codes_paged(page_size=PAGE_SIZE, require_complete=True) == {}
+    assert session.post.await_count == 2
 
 
 async def test_a_401_is_raised_rather_than_returned() -> None:

@@ -28,6 +28,7 @@ from pymammotion.const import (
     MAMMOTION_OAUTH2_CLIENT_ID,
     MAMMOTION_OAUTH2_CLIENT_SECRET,
 )
+from pymammotion.data.error_codes import table_language
 from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
 from pymammotion.http.model.http import (
@@ -615,6 +616,7 @@ class MammotionHTTP:
         *,
         payload: dict[str, Any] | None = None,
         method: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Response[_DataT]:
         """Call a ``device-server/v1`` endpoint and parse the envelope.
 
@@ -631,6 +633,7 @@ class MammotionHTTP:
             **self._headers,
             "Authorization": f"Bearer {self._require_login_info.access_token}",
             "Content-Type": "application/json",
+            **(headers or {}),
         }
         verb = method or ("GET" if payload is None else "POST")
         async with self._client_session() as session:
@@ -664,19 +667,22 @@ class MammotionHTTP:
         )
 
     @refresh_token_decorator
-    async def get_error_codes_page(self, page_number: int = 1, page_size: int = 50) -> Response[ErrorCodePage]:
-        """Fetch one page of the error-code table, translations included.
+    async def get_error_codes_page(
+        self, page_number: int = 1, page_size: int = 50, *, language: str | None = None
+    ) -> Response[ErrorCodePage]:
+        """Fetch one page of the error-code table.
 
-        Mirrors the app's own paged call.  Richer than :meth:`get_all_error_codes`'s
-        CSV export — each record carries the display hints and the product keys it
-        applies to, as well as every language — so prefer this when the caller needs
-        more than implication/solution text.
+        Mirrors the app's own paged call, which names the table's language in
+        ``Accept-Language`` rather than the body; *language* may be a BCP 47 tag such
+        as ``de-CH``.  Each record also carries the display hints and product keys the
+        CSV export of :meth:`get_all_error_codes` drops.
         """
         return await self._request_device_server(
             "/device-server/v1/code/page-lan",
             Response[ErrorCodePage],
             "error code page",
             payload={"pageNumber": page_number, "pageSize": page_size},
+            headers={"Accept-Language": table_language(language)} if language else None,
         )
 
     @refresh_token_decorator
@@ -692,13 +698,16 @@ class MammotionHTTP:
             "/device-server/v1/product/product/list", Response[list[Product]], "product list"
         )
 
-    async def get_all_error_codes_paged(self, page_size: int = 50) -> dict[str, ErrorCodeRecord]:
+    async def get_all_error_codes_paged(
+        self, page_size: int = 50, *, language: str | None = None, require_complete: bool = False
+    ) -> dict[str, ErrorCodeRecord]:
         """Page through ``/code/page-lan`` and return every record, keyed by code.
 
         Stops on the first short or empty page rather than trusting a total, because
         this API's page counters are not consistent across endpoints.  A failing page
         ends the walk and returns what was collected, so a mid-table 5xx degrades to
-        a partial table instead of nothing.
+        a partial table instead of nothing — unless *require_complete*, which returns
+        ``{}`` instead, for a caller that would persist the result as the whole table.
 
         Two guards keep a misbehaving server from looping forever: a page that adds no
         code we did not already have ends the walk (a server ignoring ``pageNumber``
@@ -708,11 +717,12 @@ class MammotionHTTP:
         """
         collected: dict[str, ErrorCodeRecord] = {}
         for page_number in range(1, _MAX_ERROR_CODE_PAGES + 1):
-            response = await self.get_error_codes_page(page_number, page_size)
+            response = await self.get_error_codes_page(page_number, page_size, language=language)
             page = response.data
-            if response.code != 0 or page is None or not page.records:
-                if response.code != 0:
-                    _LOGGER.warning("Error-code page %d failed: code=%s %s", page_number, response.code, response.msg)
+            if response.code != 0 or page is None:
+                _LOGGER.warning("Error-code page %d failed: code=%s %s", page_number, response.code, response.msg)
+                return {} if require_complete else collected
+            if not page.records:
                 return collected
             fresh = {record.code: record for record in page.records if record.code not in collected}
             collected.update(fresh)
@@ -721,7 +731,7 @@ class MammotionHTTP:
         _LOGGER.warning(
             "Error-code walk hit the %d-page cap; returning %d codes", _MAX_ERROR_CODE_PAGES, len(collected)
         )
-        return collected
+        return {} if require_complete else collected
 
     @refresh_token_decorator
     async def get_map_backups(self) -> Response[list[BackupMapItem]]:
