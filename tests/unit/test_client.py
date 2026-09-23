@@ -606,6 +606,11 @@ from pymammotion.device.mqtt_loop import (  # noqa: E402
     poll_interval,
 )
 
+# ``last_transport_activity`` is 0.0 until data arrives, so against the real clock the loop's
+# silence check measures machine uptime: on a host up for less than the poll interval (a fresh
+# CI runner) a mocked ``sleep_or_rearm`` busy-spins past ``wait_for`` or takes the wrong branch.
+_CLOCK_PAST_EVERY_INTERVAL = 1_000_000.0
+
 
 async def _make_handle_for_poll(transport_type: TransportType | None) -> DeviceHandle:
     handle = make_mock_handle("dev1", "Luba-Poll")
@@ -684,9 +689,11 @@ async def test_poll_loop_sends_after_silence() -> None:
         await one_shot_mock()
 
     with (
+        patch("pymammotion.device.mqtt_loop.time") as mock_time,
         patch.object(handle, "sleep_or_rearm", AsyncMock(return_value=False)),
         patch.object(handle, "send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
+        mock_time.monotonic.return_value = _CLOCK_PAST_EVERY_INTERVAL
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
     one_shot_mock.assert_awaited_once()
@@ -713,9 +720,11 @@ async def test_poll_loop_rate_limited_no_ble_backs_off() -> None:
     one_shot_mock = AsyncMock()
 
     with (
+        patch("pymammotion.device.mqtt_loop.time") as mock_time,
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_record_sleep)),
         patch.object(handle, "send_one_shot_report", one_shot_mock),
     ):
+        mock_time.monotonic.return_value = _CLOCK_PAST_EVERY_INTERVAL
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
     one_shot_mock.assert_not_awaited()
@@ -739,9 +748,11 @@ async def test_poll_loop_rate_limited_backoff_shortens_to_window_release() -> No
         return False
 
     with (
+        patch("pymammotion.device.mqtt_loop.time") as mock_time,
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_record_sleep)),
         patch.object(handle, "send_one_shot_report", AsyncMock()),
     ):
+        mock_time.monotonic.return_value = _CLOCK_PAST_EVERY_INTERVAL
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
     assert sleep_seconds == [300.0]  # not _RATE_LIMITED_BACKOFF
@@ -776,9 +787,11 @@ async def test_poll_loop_rate_limited_with_ble_still_polls() -> None:
         await one_shot_mock()
 
     with (
+        patch("pymammotion.device.mqtt_loop.time") as mock_time,
         patch.object(handle, "sleep_or_rearm", AsyncMock(return_value=False)),
         patch.object(handle, "send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
+        mock_time.monotonic.return_value = _CLOCK_PAST_EVERY_INTERVAL
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
         await handle.stop()
 
@@ -1191,9 +1204,11 @@ async def test_poll_loop_resumes_after_mqtt_offline_clears() -> None:
         await one_shot_mock()
 
     with (
+        patch("pymammotion.device.mqtt_loop.time") as mock_time,
         patch.object(handle, "sleep_or_rearm", AsyncMock(side_effect=_sleep_then_recover)),
         patch.object(handle, "send_one_shot_report", AsyncMock(side_effect=_send_and_stop)),
     ):
+        mock_time.monotonic.return_value = _CLOCK_PAST_EVERY_INTERVAL
         await asyncio.wait_for(mqtt_activity_loop(handle), timeout=2.0)
 
     one_shot_mock.assert_awaited_once()
