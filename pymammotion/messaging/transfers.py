@@ -26,11 +26,14 @@ Two shapes are covered:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import functools
 import logging
 from typing import TYPE_CHECKING, Any
 
 import betterproto2
 
+from pymammotion.proto import LubaMsg
 from pymammotion.transport.base import CommandTimeoutError
 
 if TYPE_CHECKING:
@@ -47,6 +50,29 @@ LEAF_GROUPS: dict[str, str | None] = {
     "nav": "SubNavMsg",
     "ctrl": None,
 }
+
+
+@functools.cache
+def _leaves(envelope: str) -> frozenset[str]:
+    envelope_cls = LubaMsg._betterproto.cls_by_field[envelope]  # noqa: SLF001 — betterproto2 has no public field table
+    group = LEAF_GROUPS[envelope]
+    return frozenset(
+        f.name for f in dataclasses.fields(envelope_cls) if group is None or f.metadata["betterproto"].group == group
+    )
+
+
+def require_leaf(field: str | tuple[str, ...] | frozenset[str], envelope: str) -> None:
+    """Raise ``ValueError`` unless every name in *field* is a leaf of *envelope*.
+
+    A name that is not a leaf matches no frame, so a transfer on it reads as silence.
+    """
+    if envelope not in LEAF_GROUPS:
+        msg = f"unknown envelope {envelope!r} — add it to transfers.LEAF_GROUPS"
+        raise ValueError(msg)
+    names = (field,) if isinstance(field, str) else field
+    if unknown := sorted(n for n in names if n not in _leaves(envelope)):
+        msg = f"{unknown} not a leaf of the {envelope!r} envelope"
+        raise ValueError(msg)
 
 
 def extract_frame(
@@ -142,8 +168,10 @@ async def ack_stream(
 
     Raises:
         CommandTimeoutError: The device went quiet before the set was complete.
+        ValueError: *field* is not a leaf of *envelope*.
 
     """
+    require_leaf(field, envelope)
     frames: dict[int, Any] = {}
     while True:
         try:
@@ -194,8 +222,10 @@ async def indexed_fetch(
 
     Raises:
         CommandTimeoutError: The device didn't answer a request.
+        ValueError: *field* is not a leaf of *envelope*.
 
     """
+    require_leaf(field, envelope)
     await request(0)
     first = await _await_frame(queue, field=field, envelope=envelope, timeout=timeout, current_frame=1)
 

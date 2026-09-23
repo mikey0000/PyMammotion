@@ -241,7 +241,7 @@ class MapFetchSaga(Saga):
 
             dump_frames = await ack_stream(
                 dump_hash_queue,
-                field="toapp_gethash_ack(sub_cmd=4)",
+                field="toapp_gethash_ack",
                 ack=_ack_dump,
                 timeout=self._dump_hash_list_timeout,
                 allow_empty=True,

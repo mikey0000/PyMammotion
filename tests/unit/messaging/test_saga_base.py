@@ -144,7 +144,7 @@ async def test_nav_collector_ignores_ctrl_frames() -> None:
     """The default envelope stays nav — a Spino frame must not satisfy a mower saga."""
     broker = DeviceMessageBroker()
     saga = _NoopSaga()
-    with saga._collect_frames(broker, "plan_job_set") as queue:  # noqa: SLF001
+    with saga._collect_frames(broker, "todev_planjob_set") as queue:  # noqa: SLF001
         await broker.on_message(_ctrl_msg())
         assert queue.qsize() == 0
 
@@ -383,3 +383,12 @@ async def test_retry_backoff_defaults_to_half_a_second_and_is_overridable() -> N
             await saga.execute(DeviceMessageBroker())
 
     assert sleep.await_args_list == [call(0.125)], f"backoff was not the subclass value: {sleep.await_args_list}"
+
+
+def test_collect_frames_rejects_a_field_that_is_not_an_envelope_leaf() -> None:
+    """A decorated name like ``toapp_gethash_ack(sub_cmd=4)`` matches no frame, so the
+    step it feeds would read as silence; it must fail at subscribe time instead."""
+    saga = _NoopSaga()
+    with pytest.raises(ValueError, match="not a leaf of the 'nav' envelope"):
+        with saga._collect_frames(DeviceMessageBroker(), "toapp_gethash_ack(sub_cmd=4)"):  # noqa: SLF001
+            pass

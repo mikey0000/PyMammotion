@@ -156,7 +156,7 @@ class MowPathSaga(Saga):
             # Silence *mid*-stream still raises, since that is a real interruption.
             line_frames = await ack_stream(
                 hash_ack_queue,
-                field="toapp_gethash_ack(sub_cmd=3)",
+                field="toapp_gethash_ack",
                 ack=_ack,
                 timeout=self.step_timeout,
                 allow_empty=True,

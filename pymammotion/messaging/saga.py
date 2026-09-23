@@ -102,9 +102,7 @@ class Saga(ABC):
         :meth:`extract_frame`, so a device speaking a different envelope needs an
         entry in :data:`transfers.LEAF_GROUPS`, not a subclass override of this method.
         """
-        if envelope not in transfers.LEAF_GROUPS:
-            msg = f"unknown envelope {envelope!r} — add it to transfers.LEAF_GROUPS"
-            raise ValueError(msg)
+        transfers.require_leaf(field, envelope)
 
         queue: asyncio.Queue[Any] = asyncio.Queue()
 

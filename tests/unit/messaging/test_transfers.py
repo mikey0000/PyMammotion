@@ -17,10 +17,10 @@ from typing import Any
 
 import pytest
 
-from pymammotion.messaging.transfers import ack_stream, indexed_fetch
+from pymammotion.messaging.transfers import ack_stream, indexed_fetch, require_leaf
 from pymammotion.proto import LubaMsg
 from pymammotion.transport.base import CommandTimeoutError
-from tests.unit.messaging._helpers import comm_data_frame, ctrl_plan_msg
+from tests.unit.messaging._helpers import comm_data_frame, ctrl_plan_msg, hash_list_msg
 
 
 def _frame(current: int, total: int, *, type_code: int = 3) -> LubaMsg:
@@ -257,3 +257,71 @@ async def test_indexed_fetch_works_on_the_nav_envelope_too() -> None:
         )
     ]
     assert [f.current_frame for f in got] == [1, 2]
+
+
+# require_leaf
+
+
+@pytest.mark.parametrize(
+    ("field", "envelope"),
+    [
+        ("toapp_gethash_ack", "nav"),
+        (("toapp_get_commondata_ack", "toapp_svg_msg"), "nav"),
+        ("plan_job_set", "ctrl"),
+    ],
+    ids=["nav-leaf", "nav-leaf-tuple", "ctrl-leaf"],
+)
+def test_require_leaf_accepts_real_envelope_leaves(field: str | tuple[str, ...], envelope: str) -> None:
+    require_leaf(field, envelope)
+
+
+@pytest.mark.parametrize(
+    ("field", "envelope"),
+    [
+        ("toapp_gethash_ack(sub_cmd=3)", "nav"),
+        (("toapp_get_commondata_ack", "toapp_svg_msgs"), "nav"),
+        ("todev_planjob_set", "ctrl"),
+    ],
+    ids=["decorated-name", "one-bad-name-in-tuple", "leaf-of-the-other-envelope"],
+)
+def test_require_leaf_rejects_names_that_are_not_envelope_leaves(
+    field: str | tuple[str, ...], envelope: str
+) -> None:
+    with pytest.raises(ValueError, match="not a leaf"):
+        require_leaf(field, envelope)
+
+
+def test_require_leaf_rejects_an_unknown_envelope() -> None:
+    with pytest.raises(ValueError, match="unknown envelope"):
+        require_leaf("toapp_gethash_ack", "sys")
+
+
+async def test_ack_stream_rejects_a_field_that_can_never_match() -> None:
+    """With allow_empty, a field no frame can match used to read as an empty answer."""
+    queue: asyncio.Queue = asyncio.Queue()
+    queue.put_nowait(hash_list_msg([1], sub_cmd=4))  # never dequeued: the check fires first
+
+    async def ack(_frame: Any) -> None:
+        return None
+
+    with pytest.raises(ValueError, match="not a leaf"):
+        await ack_stream(queue, field="toapp_gethash_ack(sub_cmd=4)", ack=ack, timeout=0.1, allow_empty=True)
+
+
+async def test_indexed_fetch_rejects_a_field_before_sending_any_request() -> None:
+    requested: list[int] = []
+
+    async def request(index: int) -> None:
+        requested.append(index)
+
+    with pytest.raises(ValueError, match="not a leaf"):
+        async for _ in indexed_fetch(
+            asyncio.Queue(),
+            field="todev_planjob_set",
+            envelope="ctrl",
+            request=request,
+            total_of=lambda f: f.totalplannum,
+            timeout=0.1,
+        ):
+            pass
+    assert requested == [], "a request was sent for a transfer that could never be read"

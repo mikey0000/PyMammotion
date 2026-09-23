@@ -7,15 +7,20 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from pymammotion.data.model.hash_list import HashList
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
+from tests.unit.messaging._fakes import FakeHashListDevice
 from tests.unit.messaging._helpers import (
     comm_data_frame as _comm_data_msg,
     hash_list_msg as _hash_list_msg,
     make_command_builder as _make_command_builder,
     run_saga_with_messages as _run_saga_with_messages,
 )
+
+_SAGA_TIMEOUT = 5.0
 
 
 async def test_saga_fetches_dump_hash_list_and_stores_type_12() -> None:
@@ -104,3 +109,38 @@ async def test_saga_completes_when_device_has_no_dumping_spots() -> None:
     assert saga.result is not None
     assert area_hash in saga.result.area
     assert saga.result.dump == {}
+
+
+@pytest.mark.regression
+async def test_saga_acks_every_dump_hash_list_frame_and_fetches_every_dump_spot() -> None:
+    """The sub_cmd=4 stream must be acked frame by frame, like the sub_cmd=0 one.
+
+    ``ack_stream`` was handed ``field="toapp_gethash_ack(sub_cmd=4)"``, which is no
+    protobuf leaf, so every frame the collector queued failed to unwrap.  With
+    ``allow_empty=True`` that read as "device has no dumping spots": frame 1 was
+    never acked, the device never sent frame 2, and any dump hash past the first
+    frame was silently never fetched.
+    """
+    broker = DeviceMessageBroker()
+    _map = HashList()
+    area_hash, dump_a, dump_b = 4000000000000000011, 4000000000000000012, 4000000000000000013
+    device = FakeHashListDevice(
+        broker,
+        _map,
+        hash_lists={0: [[area_hash]], 4: [[dump_a], [dump_b]]},
+        comm_types={area_hash: 0, dump_a: 12, dump_b: 12},
+    )
+    saga = MapFetchSaga(
+        device_id="dev-dump-multi",
+        device_name="Luba-Test",
+        is_luba1=True,
+        command_builder=device.command_builder,
+        send_command=device.send,
+        get_map=lambda: _map,
+    )
+
+    await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
+
+    assert [a for a in device.hash_list_acks if a[0] == 4] == [(4, 1, 2), (4, 2, 2)]
+    assert saga.result is not None
+    assert set(saga.result.dump) == {dump_a, dump_b}

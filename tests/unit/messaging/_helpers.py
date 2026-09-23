@@ -16,6 +16,7 @@ import betterproto2
 from pymammotion.data.model.hash_list import (
     CommDataCouple,
     HashList,
+    MowPath,
     NavGetCommData,
     NavGetHashListData,
     NavNameTime,
@@ -55,15 +56,17 @@ def make_command_builder() -> MagicMock:
     return cb
 
 
-def hash_list_msg(hash_ids: list[int], *, sub_cmd: int = 0) -> LubaMsg:
-    """Build a LubaMsg carrying a single-frame toapp_gethash_ack with the given hash IDs."""
+def hash_list_msg(
+    hash_ids: list[int], *, sub_cmd: int = 0, current_frame: int = 1, total_frame: int = 1
+) -> LubaMsg:
+    """Build a LubaMsg carrying one toapp_gethash_ack frame with the given hash IDs."""
     return LubaMsg(
         nav=MctlNav(
             toapp_gethash_ack=NavGetHashListAck(
                 pver=1,
                 sub_cmd=sub_cmd,
-                total_frame=1,
-                current_frame=1,
+                total_frame=total_frame,
+                current_frame=current_frame,
                 data_couple=hash_ids,
             )
         )
@@ -118,6 +121,8 @@ def apply_msg_to_map(msg: LubaMsg, m: HashList) -> None:
             m.update_root_hash_list(NavGetHashListData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
         elif leaf_name == "toapp_get_commondata_ack":
             m.update(NavGetCommData.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
+        elif leaf_name == "cover_path_upload":
+            m.update_mow_path(MowPath.from_dict(leaf_val.to_dict(casing=betterproto2.Casing.SNAKE)))
     except Exception:  # noqa: BLE001
         pass
 
