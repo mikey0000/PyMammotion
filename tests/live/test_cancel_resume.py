@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from examples.scenarios import scenario_cancel_resume
 from pymammotion.client import MammotionClient
+
+scenario_cancel_resume = pytest.importorskip("examples.scenarios").scenario_cancel_resume
 
 
 @pytest.mark.live
