@@ -57,10 +57,10 @@ async def dynamics_line_loop(handle: LoopHost) -> None:
     drops BLE without going through the availability handler).
 
     LUBA_VA is firmware-gated (must be >= 1.15.3.4422 per APK
-    ``DeviceType.isSupportDynamicsLine``).  Because the main-controller
-    version isn't known until the first report arrives, the loop re-checks
+    ``DeviceType.isSupportDynamicsLine``).  Because the device version isn't
+    known until the device reports it, the loop re-checks
     ``is_support_dynamics_line(fw)`` on every tick using the current
-    ``device_firmwares.main_controller``.
+    ``device_firmwares.device_version``.
     """
     device_type = DeviceType.value_of_str(handle.device_name)
 
@@ -91,24 +91,24 @@ async def dynamics_line_loop(handle: LoopHost) -> None:
 
         # Re-check on every tick — LUBA_VA depends on firmware version which
         # may not be known until reports start arriving.
-        if not device_type.is_support_dynamics_line(_main_controller_version(handle)):
+        if not device_type.is_support_dynamics_line(_device_version(handle)):
             continue
 
         await _enqueue_dynamics_line_saga(handle)
 
 
-def _main_controller_version(handle: LoopHost) -> str | None:
-    """Return the device's main-controller firmware version, or None if unknown.
+def _device_version(handle: LoopHost) -> str | None:
+    """Return the device's firmware version, or None if unknown.
 
-    Pulls ``device_firmwares.main_controller`` off the current state snapshot;
-    that's the field ``DeviceVersionUtils.isLessThanInputVersion`` consults in
-    the APK.
+    ``DeviceVersionUtils.isLessThanInputVersion`` in the APK compares the stored
+    ``device_current_version_<name>`` — the whole-device version from the base
+    info, the version screen and the cloud check — not a module's version, so
+    this is ``device_firmwares.device_version`` rather than ``main_controller``.
     """
     raw = handle.snapshot.raw
     if not isinstance(raw, MowerDevice):
         return None
-    fw = raw.device_firmwares.main_controller
-    return fw or None
+    return raw.device_firmwares.device_version or None
 
 
 async def _enqueue_dynamics_line_saga(handle: LoopHost) -> None:

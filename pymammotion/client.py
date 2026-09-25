@@ -58,6 +58,7 @@ from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowerDevice, MowingDevice, RTKBaseStationDevice, create_device
 from pymammotion.data.model.generate_geojson import (
     apply_area_geojson,
+    apply_device_mow_progress_geojson,
     apply_dynamics_line_geojson,
     apply_mowing_geojson,
 )
@@ -90,6 +91,7 @@ from pymammotion.transport.base import (
     TransportType,
 )
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
+from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES
 from pymammotion.utility.device_type import DeviceType
 
 #: Channels for the continuous subscription (matches HA-Luba async_request_iot_sync_continuous).
@@ -1727,27 +1729,35 @@ class MammotionClient(CloudAuthMixin):
 
         await handle.enqueue_saga(saga, on_complete=_on_complete)
 
-    async def check_and_get_mow_path(self, device_name: str) -> None:
-        """Fetch the cover path for the current route unless a valid one is already cached."""
-        if handle := self._device_registry.get_by_name(device_name):
-            device = cast("MowerDevice", handle.snapshot.raw)
-            work = device.report_data.work
-            if device.map.current_mow_path and device.map.has_mow_path_for_hash(work.path_hash):
-                return  # Cache is valid for the current route
-            if device.map.current_mow_path:
-                device.map.invalidate_mow_path(0)
-            if not _should_fetch_mow_path(device, handle, work.path_hash):
-                return
-            _logger.debug(
-                "Device %s path_hash=%d — auto-fetching cover path",
-                device_name,
-                work.path_hash,
+    async def check_and_get_mow_path(self, device_name: str) -> bool:
+        """Fetch the cover path for the current route unless a complete one is already cached.
+
+        When the cache is current, rebuilds mow progress from it instead.  Returns
+        True only when a fetch was enqueued.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return False
+        device = cast("MowerDevice", handle.snapshot.raw)
+        path_hash = device.report_data.work.path_hash
+        if device.map.is_mow_path_current(path_hash):
+            apply_device_mow_progress_geojson(device)
+            return False
+        if device.map.current_mow_path and device.map.computed_path_hash != path_hash:
+            # Cached lines belong to another route; a matching list with lines still
+            # missing is kept so the fetch only asks for what is absent.
+            device.map.invalidate_mow_path(0)
+        if not _should_fetch_mow_path(device, handle, path_hash):
+            return False
+        _logger.debug("Device %s path_hash=%d — fetching cover path", device_name, path_hash)
+        try:
+            current_work = GenerateRouteInformation.from_current_task_settings(device.work)
+            return await self.start_mow_path_saga(
+                device_name, zone_hashs=[], route_info=current_work, skip_planning=True
             )
-            try:
-                current_work = GenerateRouteInformation.from_current_task_settings(device.work)
-                await self.start_mow_path_saga(device_name, zone_hashs=[], route_info=current_work, skip_planning=True)
-            except Exception:
-                _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
+        except Exception:
+            _logger.warning("MowPathSaga for %s failed to start", device_name, exc_info=True)
+            return False
 
     async def start_mow_path_saga(
         self,
@@ -1756,7 +1766,7 @@ class MammotionClient(CloudAuthMixin):
         route_info: GenerateRouteInformation | None = None,
         *,
         skip_planning: bool = False,
-    ) -> None:
+    ) -> bool:
         """Enqueue a MowPathSaga to plan a route and collect the cover path.
 
         Args:
@@ -1766,6 +1776,10 @@ class MammotionClient(CloudAuthMixin):
             skip_planning: When True, skip the generate_route_information step.
                            Use this to fetch an already-computed path (e.g. when
                            the device started working externally).
+
+        Returns:
+            True when the saga was enqueued; False for an unknown device or when
+            ``mow_path_fetch_enabled`` is off and the fetch would go over MQTT.
 
         """
         if handle := self._device_registry.get_by_name(device_name):
@@ -1777,7 +1791,7 @@ class MammotionClient(CloudAuthMixin):
                     "start_mow_path_saga '%s': mow_path_fetch_enabled=False over MQTT — skipping",
                     device_name,
                 )
-                return
+                return False
             saga = MowPathSaga(
                 command_builder=handle.commands,
                 send_command=handle.send_raw,
@@ -1793,8 +1807,35 @@ class MammotionClient(CloudAuthMixin):
                 device = self.get_device_by_name(device_name)
                 if device is not None and device.location.RTK.latitude != 0.0:
                     apply_mowing_geojson(device.map, device.location.RTK)
+                    apply_device_mow_progress_geojson(device)
 
             await handle.enqueue_saga(saga, on_complete=_on_mow_path_complete)
+            return True
+        return False
+
+    async def check_and_get_dynamics_line(self, device_name: str) -> bool:
+        """Fetch the live dynamics line once, if the mower supports it and a job is running.
+
+        The gates mirror the APK's ``HashDataManager.getDynamicsLine()``: dynamics-line
+        models only (LUBA_VA by firmware), and only while a job is in progress.  Over
+        MQTT it also needs ``mow_path_fetch_enabled``, like :meth:`start_mow_path_saga`
+        — BLE is already polled every 10 s by ``dynamics_line_loop``.  Unlike that
+        loop it queues behind a running saga rather than skipping, so it can follow
+        a cover-path fetch.  Returns True only when a fetch was enqueued.
+        """
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None:
+            return False
+        device = cast("MowerDevice", handle.snapshot.raw)
+        firmware = device.device_firmwares.device_version or None
+        if not DeviceType.value_of_str(device_name).is_support_dynamics_line(firmware):
+            return False
+        if device.report_data.dev.sys_status not in MOWING_ACTIVE_MODES:
+            return False
+        if not handle.mow_path_fetch_enabled and not handle.is_transport_connected(TransportType.BLE):
+            return False
+        await self.get_dynamics_line(device_name)
+        return True
 
     async def get_dynamics_line(self, device_name: str) -> None:
         """Fetch the live mow-progress path for *device_name* via a CommonDataSaga.

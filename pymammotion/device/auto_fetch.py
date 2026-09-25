@@ -14,8 +14,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
-from pymammotion.data.model.device import MowerDevice
-from pymammotion.data.model.generate_geojson import apply_mow_progress_geojson
+from pymammotion.data.model.generate_geojson import apply_device_mow_progress_geojson
 from pymammotion.data.model.generate_route_information import GenerateRouteInformation
 from pymammotion.utility.constant.device_enums import WorkMode
 from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES
@@ -24,6 +23,7 @@ from pymammotion.utility.device_type import DeviceType
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from pymammotion.data.model.device import MowerDevice
     from pymammotion.device.handle import DeviceHandle, DeviceRegistry
     from pymammotion.transport.base import Subscription
 
@@ -36,7 +36,7 @@ def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash:
     Mirrors the APK's HashDataManager.updateTotalHash() gate logic:
     - Not in firmware-update mode (DeviceWorkState.MODE_UPDATING == 16).
     - No saga already running (!isUpdateMap / is_saga_active).
-    - path_hash (work field 2 = work.getPathHash()) is non-zero.
+    - path_hash (work field 2 = work.getPathHash()) is above 1 — 0 and 1 mean no route.
     - Device's current bol_hash matches our computed_bol_hash (j == getDBCmHash())
       — prevents fetching cover paths against a stale map.
     """
@@ -44,7 +44,7 @@ def _should_fetch_mow_path(device: MowerDevice, handle: DeviceHandle, path_hash:
         return False
     if handle.queue.is_saga_active:
         return False
-    if path_hash == 0:
+    if path_hash <= 1:
         return False
     current_bol_hash = device.report_data.locations[0].bol_hash if device.report_data.locations else 0
     return current_bol_hash != 0 and current_bol_hash == device.map.computed_bol_hash
@@ -100,10 +100,10 @@ class AutoFetchWatchers:
 
         async def _on_path_hashes_changed(path_hash: int) -> None:
             device = cast("MowerDevice", handle.snapshot.raw)
-            if device.map.current_mow_path and device.map.has_mow_path_for_hash(path_hash):
-                return  # Cache is valid for the current route
-            if device.map.current_mow_path:
-                # Cache exists but for a different route — clear it before fetching.
+            if device.map.is_mow_path_current(path_hash):
+                return
+            if device.map.current_mow_path and device.map.computed_path_hash != path_hash:
+                # Cached lines belong to another route — clear them before fetching.
                 device.map.invalidate_mow_path(0)
             if not _should_fetch_mow_path(device, handle, path_hash):
                 return
@@ -119,17 +119,7 @@ class AutoFetchWatchers:
                 _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
 
         async def _on_mow_progress_changed(_pos: tuple[int, int]) -> None:
-            device = cast("MowerDevice", handle.snapshot.raw)
-            if device.map.current_mow_path and device.report_data.dev.sys_status == WorkMode.MODE_WORKING:
-                work = device.report_data.work
-                apply_mow_progress_geojson(
-                    device.map,
-                    device.location.RTK,
-                    work.now_index,
-                    work.ub_path_hash,
-                    work.path_pos_x,
-                    work.path_pos_y,
-                )
+            apply_device_mow_progress_geojson(cast("MowerDevice", handle.snapshot.raw))
 
         async def _on_bol_hash_changed(bol_hash: int) -> None:
             # bol_hash changes when the device's map element DB has been edited —
@@ -151,7 +141,8 @@ class AutoFetchWatchers:
             device_type = DeviceType.value_of_str(device_name)
             is_mowing = device_snapshot.report_data.dev.sys_status in MOWING_ACTIVE_MODES
             incremental = (
-                device_type.is_support_dynamics_line(device_snapshot.device_firmwares.main_controller) and is_mowing
+                device_type.is_support_dynamics_line(device_snapshot.device_firmwares.device_version or None)
+                and is_mowing
             )
             _logger.debug(
                 "Device %s bol_hash changed to %d — syncing map if not mowing for lidar versions (incremental=%s)",

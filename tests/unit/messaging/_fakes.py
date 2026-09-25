@@ -19,8 +19,10 @@ class FakeHashListDevice:
     (one list of hash IDs per frame); a sub_cmd absent from it is answered with
     silence.  ``comm_types`` gives the ``type`` returned for each hash on
     ``synchronize_hash_data``.  ``get_line_info_list`` is answered with one
-    single-frame cover path per request.  Every frame is applied to ``device_map``
-    before the broker sees it, standing in for the StateReducer.
+    single-frame cover path per request, one packet per requested line, except the
+    first ``ignore_line_requests`` requests, which get silence.  Every frame is
+    applied to ``device_map`` before the broker sees it, standing in for the
+    StateReducer.
     """
 
     def __init__(
@@ -30,8 +32,10 @@ class FakeHashListDevice:
         hash_lists: dict[int, list[list[int]]],
         *,
         comm_types: dict[int, int] | None = None,
+        ignore_line_requests: int = 0,
     ) -> None:
         self._broker = broker
+        self._ignore_line_requests = ignore_line_requests
         self._map = device_map
         self._hash_lists = hash_lists
         self._comm_types = comm_types or {}
@@ -74,7 +78,8 @@ class FakeHashListDevice:
                 await self._deliver(comm_data_frame(hash_num, type_code=self._comm_types[hash_num]))
             case ("line_info", hashes, transaction_id):
                 self.line_info_requests.append(hashes)
-                await self._deliver(_cover_path_msg(hashes[0], transaction_id))
+                if len(self.line_info_requests) > self._ignore_line_requests:
+                    await self._deliver(_cover_path_msg(hashes, transaction_id))
 
     async def _emit_hash_frame(self, sub_cmd: int, current_frame: int) -> None:
         if not (frames := self._hash_lists.get(sub_cmd)):
@@ -93,14 +98,14 @@ class FakeHashListDevice:
         await self._broker.on_message(msg)
 
 
-def _cover_path_msg(path_hash: int, transaction_id: int) -> LubaMsg:
+def _cover_path_msg(path_hashes: list[int], transaction_id: int) -> LubaMsg:
     return LubaMsg(
         nav=MctlNav(
             cover_path_upload=CoverPathUploadT(
                 total_frame=1,
                 current_frame=1,
                 transaction_id=transaction_id,
-                path_packets=[CoverPathPacketT(path_hash=path_hash)],
+                path_packets=[CoverPathPacketT(path_hash=h, path_total=1, path_cur=1) for h in path_hashes],
             )
         )
     )

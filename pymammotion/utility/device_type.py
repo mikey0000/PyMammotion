@@ -315,14 +315,16 @@ class DeviceType(Enum):
         path as a separate ``NavGetCommData(action=8, type=18)`` response that
         the APK polls every 10 s while the device is mowing.
 
-        LUBA_VA qualifies only when the main-controller firmware is at least
-        ``1.15.3.4422`` — pass ``firmware_version`` to enable that case
-        (typically ``mower_device.device_firmwares.main_controller``).  When
+        LUBA_VA qualifies only when the device firmware is at least
+        ``1.15.3.4422`` — pass ``firmware_version`` to enable that case:
+        ``mower_device.device_firmwares.device_version``, the whole-device
+        version the APK stores as ``device_current_version_<name>``, not a
+        module version such as ``main_controller``.  When
         ``firmware_version`` is omitted, LUBA_VA is treated as unsupported
         (conservative — matches the APK's behaviour for missing/older firmware).
 
         Args:
-            firmware_version: Optional main-controller firmware version string
+            firmware_version: Optional device firmware version string
                 (e.g. ``"1.15.4.0"``).  Only consulted for LUBA_VA.
 
         """

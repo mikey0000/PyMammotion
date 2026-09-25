@@ -34,7 +34,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from shapely.geometry import Point
 
@@ -50,6 +50,10 @@ from pymammotion.data.model.hash_list import (
     SvgMessage,
 )
 from pymammotion.data.model.location import Dock, LocationPoint
+from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES
+
+if TYPE_CHECKING:
+    from pymammotion.data.model.device import MowerDevice
 
 logger = logging.getLogger(__name__)
 
@@ -1311,6 +1315,25 @@ def apply_mow_progress_geojson(
         ub_path_hash=ub_path_hash,
         path_pos=path_pos,
         yaw=rtk.yaw,
+    )
+
+
+def apply_device_mow_progress_geojson(device: "MowerDevice") -> None:
+    """Rebuild mow progress from *device*'s latest report while a job is in progress.
+
+    Paused and returning count as in progress: the mower keeps its place in the
+    route, and the cover path often lands after it has already stopped moving.
+    """
+    if device.report_data.dev.sys_status not in MOWING_ACTIVE_MODES:
+        return
+    work = device.report_data.work
+    apply_mow_progress_geojson(
+        device.map,
+        device.location.RTK,
+        work.now_index,
+        work.ub_path_hash,
+        work.path_pos_x,
+        work.path_pos_y,
     )
 
 

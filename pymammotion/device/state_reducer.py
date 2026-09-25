@@ -27,7 +27,11 @@ from mashumaro.exceptions import MissingField
 
 from pymammotion.data.model.device_info import ChargeSettings, DeviceFirmwares, SideLight
 from pymammotion.data.model.events import OTAProgress
-from pymammotion.data.model.generate_geojson import apply_area_geojson, apply_mowing_geojson
+from pymammotion.data.model.generate_geojson import (
+    apply_area_geojson,
+    apply_device_mow_progress_geojson,
+    apply_mowing_geojson,
+)
 from pymammotion.data.model.hash_list import (
     AreaHashNameList,
     CommDataCouple,
@@ -392,6 +396,9 @@ class MowerStateReducer(StateReducer):
                 device.map.update_mow_path(MowPath.from_dict(mow_path.to_dict(casing=betterproto2.Casing.SNAKE)))
                 if not self._is_saga_active() and len(device.map.find_missing_mow_path_frames()) == 0:
                     apply_mowing_geojson(device.map, device.location.RTK)
+                    # Progress otherwise only rebuilds on a position change, which may
+                    # never come if the path lands after the mower paused.
+                    apply_device_mow_progress_geojson(device)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]  # type: ignore
                 device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))

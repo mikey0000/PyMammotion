@@ -101,6 +101,7 @@ import sys
 import time
 from typing import Any, Protocol
 
+import betterproto2
 import IPython
 from rich.console import Console
 from rich.logging import RichHandler
@@ -109,10 +110,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pymammotion.client import MammotionClient
 from pymammotion.data.error_codes import bundled_error_codes
+from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.errors import DeviceErrors
+from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.utility import device_type
 from pymammotion.messaging.broker import _LUBA_SUB_GROUP
-from pymammotion.transport.base import Subscription, TransportType
+from pymammotion.messaging.transfers import extract_frame
+from pymammotion.transport.base import CommandTimeoutError, Subscription, TransportType
 
 
 def _commondata_detail(leaf_name: str, leaf_val: Any) -> str:
@@ -1034,8 +1038,11 @@ class DevConsole:
         """Fetch the mow cover path for *name* via MowPathSaga and dump state.
 
         By default uses ``skip_planning=True`` (fetch the path for the currently
-        running job without re-planning).  Pass ``zone_hashs`` and
-        ``skip_planning=False`` to trigger a full plan-and-fetch cycle.
+        running job without re-planning).  The saga cannot query the running
+        job itself in that mode, so the job's route settings are fetched first
+        with ``query_generate_route_information`` (``sub_cmd=2``) and handed to
+        it as ``route_info``.  Pass ``zone_hashs`` and ``skip_planning=False``
+        to trigger a full plan-and-fetch cycle.
 
         Blocks until the saga finishes or *timeout* seconds elapse.
 
@@ -1051,16 +1058,41 @@ class DevConsole:
                 f"Available: {[h.device_name for h in self.mammotion.device_registry.all_devices]}"
             )
             return
-        try:
-            fut = asyncio.run_coroutine_threadsafe(
-                self.mammotion.start_mow_path_saga(
-                    name,
-                    zone_hashs=zone_hashs or [],
-                    skip_planning=skip_planning,
-                ),
-                self.loop,
+
+        async def _start() -> bool:
+            route_info: GenerateRouteInformation | None = None
+            if skip_planning:
+                try:
+                    resp = await self.mammotion.send_command_and_wait(
+                        name, "query_generate_route_information", "bidire_reqconver_path"
+                    )
+                except CommandTimeoutError:
+                    print(f"✗  No reply to query_generate_route_information from {name!r} — is a job running?")
+                    return False
+                frame = extract_frame(resp, "bidire_reqconver_path")
+                if frame is None:
+                    print(f"✗  Reply from {name!r} carried no bidire_reqconver_path frame: {resp}")
+                    return False
+                work = CurrentTaskSettings.from_dict(frame[1].to_dict(casing=betterproto2.Casing.SNAKE))
+                print(
+                    f"   running job: job_id={work.job_id} job_ver={work.job_ver} "
+                    f"zones={work.zone_hashs} path_hash={work.path_hash}"
+                )
+                if not work.zone_hashs:
+                    print("   ⚠  job reports no zones — the device may not have a route in progress")
+                route_info = GenerateRouteInformation.from_current_task_settings(work)
+            await self.mammotion.start_mow_path_saga(
+                name,
+                zone_hashs=zone_hashs or [],
+                route_info=route_info,
+                skip_planning=skip_planning,
             )
-            fut.result(timeout=timeout)
+            return True
+
+        try:
+            fut = asyncio.run_coroutine_threadsafe(_start(), self.loop)
+            if not fut.result(timeout=timeout):
+                return
             print(f"✓  mow path saga enqueued for {name!r} — watching for completion …")
             self.dump(name)
         except TimeoutError:

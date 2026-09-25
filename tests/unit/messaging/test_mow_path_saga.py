@@ -42,3 +42,61 @@ async def test_saga_acks_every_line_hash_list_frame_and_requests_every_line_hash
 
     assert device.hash_list_acks == [(3, 1, 2), (3, 2, 2)]
     assert device.line_info_requests == [[line_a, line_b]]
+
+
+def _retry_saga(device: FakeHashListDevice, _map: HashList, line: int) -> MowPathSaga:
+    saga = MowPathSaga(
+        command_builder=device.command_builder,
+        send_command=device.send,
+        get_map=lambda: _map,
+        zone_hashs=[line],
+        route_info=GenerateRouteInformation(one_hashs=[line]),
+        device_name="Luba-Test",
+    )
+    # The APK's 6 s / 4 s timers, shrunk so the retry path runs in milliseconds.
+    saga.first_frame_timeout = saga.next_frame_timeout = saga.residual_frame_timeout = 0.01
+    return saga
+
+
+async def test_saga_re_requests_missing_lines_until_the_device_answers() -> None:
+    broker = DeviceMessageBroker()
+    _map = HashList()
+    line = 5000000000000000001
+    device = FakeHashListDevice(broker, _map, hash_lists={3: [[line]]}, ignore_line_requests=2)
+    saga = _retry_saga(device, _map, line)
+
+    await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
+
+    assert device.line_info_requests == [[line], [line], [line]]
+    assert not saga.failed
+    assert _map.has_mow_path_for_hash(line)
+
+
+async def test_saga_gives_up_after_ten_retries_without_raising() -> None:
+    """Matches the APK's numberLine >= 10 cut-off: one request plus ten retries, then stop."""
+    broker = DeviceMessageBroker()
+    _map = HashList()
+    line = 5000000000000000001
+    device = FakeHashListDevice(broker, _map, hash_lists={3: [[line]]}, ignore_line_requests=1000)
+    saga = _retry_saga(device, _map, line)
+
+    await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
+
+    assert len(device.line_info_requests) == 1 + saga.max_cover_path_retries
+    assert saga.failed
+    assert _map.current_mow_path == {}
+
+
+async def test_saga_skips_lines_already_cached() -> None:
+    """Lines cached before the fetch (e.g. from another client's request) are not asked for again."""
+    broker = DeviceMessageBroker()
+    _map = HashList()
+    cached, missing = 5000000000000000001, 5000000000000000002
+    device = FakeHashListDevice(broker, _map, hash_lists={3: [[cached, missing]]})
+    await device.send(("line_info", [cached], 1))
+    device.line_info_requests.clear()
+    saga = _retry_saga(device, _map, cached)
+
+    await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
+
+    assert device.line_info_requests == [[missing]]

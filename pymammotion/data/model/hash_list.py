@@ -16,6 +16,9 @@ from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 if TYPE_CHECKING:
     from pymammotion.data.model.location import LocationPoint
 
+#: ``todev_gethash`` sub_cmd whose list holds the current route's line hashes.
+LINE_HASH_SUB_CMD = 3
+
 
 class PathType(IntEnum):
     """``type`` field values for NavGetCommData / NavGetCommDataAck.
@@ -781,6 +784,10 @@ class HashList(DataClassORJSONMixin):
 
         Matching is by (total_frame, sub_cmd); within a match, by current_frame.
         """
+        if hash_list.sub_cmd == LINE_HASH_SUB_CMD and hash_list.current_frame == 1:
+            # A new line list replaces the old one outright (the APK clears lineHashList on
+            # frame 1); matching on total_frame would leave a stale list alongside it.
+            self.root_hash_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd != LINE_HASH_SUB_CMD]
         target_root_list = next(
             (
                 rhl
@@ -1124,17 +1131,72 @@ class HashList(DataClassORJSONMixin):
             self.generated_mow_progress_geojson = {}
             self.last_ub_path_hash = 0
 
-    def has_mow_path_for_hash(self, path_hash: int) -> bool:
-        """Return True if cover-path data for *path_hash* is already cached.
+    @property
+    def line_root_hashlist(self) -> list[int]:
+        """Return the route's line hashes (``sub_cmd == 3``) in device order, zeros kept in place."""
+        return [
+            i
+            for root_list in self.root_hash_lists
+            if root_list.sub_cmd == LINE_HASH_SUB_CMD
+            for obj in sorted(root_list.data, key=lambda d: d.current_frame)
+            for i in obj.data_couple
+        ]
 
-        Matches against ``path_packets[0].path_hash`` in any transaction's first
-        frame — equals ``work.path_hash`` (field 2) when the cached data is current.
+    @property
+    def computed_path_hash(self) -> int:
+        """Compute the route's ``path_hash`` from the stored line hash list.
+
+        Mirrors the APK's ``HashDataManager.getDBPathHash()``: MurMur-hash of every
+        line hash in position order, zero placeholders included.  Equals the
+        device's ``report_data.work.path_hash`` when the stored list is current.
+
+        Returns 0 when no line list has been fetched yet.
         """
-        for frames in self.current_mow_path.values():
+        hashes = self.line_root_hashlist
+        if not hashes:
+            return 0
+        return int(MurMurHashUtil.hash_unsigned_list(hashes))
+
+    def has_mow_path_for_hash(self, line_hash: int) -> bool:
+        """Return True if every packet of *line_hash*'s cover path is cached.
+
+        *line_hash* is one entry of the ``sub_cmd == 3`` line list (a packet's
+        ``path_hash``), not the report's ``work.path_hash`` — use
+        :meth:`is_mow_path_current` for that.  A line can span frames, so this
+        needs packets ``1..path_total``; only complete transactions count, since
+        the GeoJSON builders skip incomplete ones.
+        """
+        incomplete = self.find_missing_mow_path_frames()
+        received: set[int] = set()
+        path_total = 0
+        for transaction_id, frames in self.current_mow_path.items():
+            if transaction_id in incomplete:
+                continue
             for mow_path in frames.values():
-                if mow_path.path_packets and mow_path.path_packets[0].path_hash == path_hash:
-                    return True
-        return False
+                for packet in mow_path.path_packets:
+                    if packet.path_hash == line_hash:
+                        received.add(packet.path_cur)
+                        path_total = packet.path_total
+        if not received:
+            return False
+        return received >= set(range(1, path_total + 1))
+
+    def is_mow_path_current(self, path_hash: int) -> bool:
+        """Return True if the cached cover path is complete for the route *path_hash* identifies.
+
+        *path_hash* is the report's ``work.path_hash``.  The stored line list must
+        hash to it (see :attr:`computed_path_hash`) and every non-zero line in that
+        list needs its full cover path — the APK's ``getHashLineNew()`` check.
+        Values ``<= 1`` mean the device has no route.
+        """
+        if path_hash <= 1 or self.computed_path_hash != path_hash:
+            return False
+        return all(self.has_mow_path_for_hash(h) for h in self.line_root_hashlist if h)
+
+    def prune_incomplete_mow_paths(self) -> None:
+        """Drop transactions still missing frames, e.g. a request abandoned for a retry."""
+        for transaction_id in self.find_missing_mow_path_frames():
+            self.current_mow_path.pop(transaction_id, None)
 
     def invalidate_breakpoint_line(self, ub_path_hash: int) -> bool:
         """Sync ``self.line`` to the device's active breakpoint hash; return True if a fetch is needed.
