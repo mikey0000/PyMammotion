@@ -76,11 +76,15 @@ def unwrap_envelope(topic: str, raw: bytes) -> tuple[bytes, str] | None:
         if not content or not isinstance(content, str):
             continue
         try:
-            return base64.b64decode(content), iot_id
+            payload = base64.b64decode(content)
         except (binascii.Error, ValueError):
             # Try the other shape rather than giving up — a corrupt payload at one
             # path must not mask a good one at the other.
             _logger.debug("Undecodable base64 content in envelope on topic %s", topic)
+            continue
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug("Protobuf payload on %s (%d bytes): %s", topic, len(payload), payload.hex())
+        return payload, iot_id
 
     _logger.debug("No usable base64 content field in envelope on topic %s", topic)
     return None

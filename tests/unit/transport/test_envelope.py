@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+
+import pytest
 
 from pymammotion.transport.envelope import unwrap_envelope
 
@@ -30,9 +33,7 @@ def _aliyun_shape(payload: bytes, iot_id: str = "iot-1") -> bytes:
 
 def _direct_shape(payload: bytes, iot_id: str = "iot-2") -> bytes:
     """Mammotion direct-MQTT shape — content directly under params."""
-    return json.dumps(
-        {"params": {"iotId": iot_id, "content": base64.b64encode(payload).decode()}}
-    ).encode()
+    return json.dumps({"params": {"iotId": iot_id, "content": base64.b64encode(payload).decode()}}).encode()
 
 
 # The two envelope shapes
@@ -136,3 +137,20 @@ def test_falls_through_to_the_direct_shape_when_nested_content_is_corrupt() -> N
         }
     ).encode()
     assert unwrap_envelope("t", raw) == (b"good", "x")
+
+
+def test_the_raw_payload_is_logged_at_debug(caplog: pytest.LogCaptureFixture) -> None:
+    """The LubaMsg bytes are logged as hex, so a field's wire value can be checked."""
+    caplog.set_level(logging.DEBUG, logger="pymammotion.transport.envelope")
+
+    unwrap_envelope("t/event", _direct_shape(b"\x11\xa0\x62\x2c\x00\x00\x00\x00\x00"))
+
+    assert "Protobuf payload on t/event (9 bytes): 11a0622c0000000000" in caplog.text
+
+
+def test_the_raw_payload_is_not_logged_above_debug(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="pymammotion.transport.envelope")
+
+    unwrap_envelope("t/event", _direct_shape(b"\x08\x01"))
+
+    assert "Protobuf payload" not in caplog.text

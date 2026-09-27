@@ -162,7 +162,9 @@ class DeviceData(DataClassORJSONMixin):
     collector_status: CollectorStatus = field(default_factory=CollectorStatus)
     fpv_info: FpvInfo | None = None
     lock_state: LockStateT = field(default_factory=LockStateT)
-    # Hardware self-check bitmask (rpt_dev_status.self_check_status)
+    # rpt_dev_status.self_check_status: one code (not a bitmask) naming what stops the
+    # mower starting — 0/10 none, 20 rain, 23 non-working hours, … (the app's
+    # BlockErrorBeanChangeUtils)
     self_check_status: int = 0
     # Lifetime counters sourced from thing/properties deviceOtherInfo JSON
     mileage: int = 0  # lifetime distance travelled, metres
@@ -460,7 +462,8 @@ class HeadingState(DataClassORJSONMixin):
 class WorkData(DataClassORJSONMixin):
     """Active mowing session metrics: path, progress, area, and breakpoint info."""
 
-    path: int = 0
+    #: ``rpt_work.plan`` (field 1); its meaning is not established.
+    plan: int = 0
     path_hash: int = 0
     progress: int = 0
     area: int = 0

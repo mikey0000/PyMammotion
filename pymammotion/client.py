@@ -1649,6 +1649,7 @@ class MammotionClient(CloudAuthMixin):
                 device.map.replace_plans(saga.result)
                 device.map.plans_stale = False
                 device.map.plans_fetched = True
+                device.map.plans_fetched_job_id = device.work.job_id
 
         await handle.enqueue_saga(saga, on_complete=_on_plan_complete)
 

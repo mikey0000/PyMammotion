@@ -76,3 +76,16 @@ async def test_nothing_is_pruned_before_the_saga_completes() -> None:
     await client.start_plan_sync("Luba-TEST")
 
     assert set(device.map.plan) == {"818260"}
+
+
+async def test_the_fetch_records_the_job_it_ran_during() -> None:
+    """A later check can tell "fetched during this job" from "fetched before it"."""
+    device = MowingDevice()
+    device.work.job_id = 17905445326500320
+    client, captured = _client_with(device)
+
+    await client.start_plan_sync("Luba-TEST")
+    captured["saga"].result = {}
+    await captured["on_complete"]()
+
+    assert device.map.plans_fetched_job_id == 17905445326500320

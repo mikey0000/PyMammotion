@@ -237,7 +237,8 @@ class MowerStateReducer(StateReducer):
                         # only location is mutated in-place.
                         device.location = copy.deepcopy(current.location)
                     case "system_update_buf":
-                        # buffer() mutates location, errors, and events in-place.
+                        # buffer() mutates location, errors, and events in-place; it only
+                        # rebinds work (a cancelled job), which needs no copy.
                         device.location = copy.deepcopy(current.location)
                         device.errors = copy.deepcopy(current.errors)
                         device.events = copy.deepcopy(current.events)

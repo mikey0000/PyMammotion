@@ -325,14 +325,24 @@ class MowerDevice(Device):
                 for i in range(3, len(buffer_list.update_buf_data), 2):
                     area_id = buffer_list.update_buf_data[i]
 
+                aborted = 0
+                for i in range(3, len(buffer_list.update_buf_data), 2):
+                    area_id = buffer_list.update_buf_data[i]
+
                     if area_id != 0:
                         status = TaskAreaStatus(int(buffer_list.update_buf_data[i + 1]))
                         if status is TaskAreaStatus.ABORTED:
+                            aborted += 1
                             continue
                         task_area_map[area_id] = status
                         task_area_ids.append(area_id)
                 self.events.work_tasks_event.hash_area_map = task_area_map
                 self.events.work_tasks_event.ids = task_area_ids
+                if aborted and not task_area_ids:
+                    # Every zone aborted: the job was cancelled.  The mower may still
+                    # be heading home in a job status, so the report's no-job branch
+                    # below would not run yet — end the job's route settings here.
+                    self.work = CurrentTaskSettings()
 
     def update_report_data(self, toapp_report_data: ReportInfoData) -> None:
         """Set report data for the mower."""
@@ -373,7 +383,8 @@ class MowerDevice(Device):
             is_actively_mowing = sys_status in MOWING_ACTIVE_MODES
             if not is_actively_mowing:
                 if (toapp_report_data.work.area >> 16) == 0 and toapp_report_data.work.ub_path_hash == 0:
-                    self.work.zone_hashs = []
+                    # The job has ended; an empty ``work`` means no known job.
+                    self.work = CurrentTaskSettings()
                     self.events.work_tasks_event.hash_area_map = {}
                     self.events.work_tasks_event.ids = []
                     self.map.invalidate_breakpoint_line(0)
