@@ -2075,24 +2075,26 @@ class MammotionClient(CloudAuthMixin):
                 _logger.warning("shim_devices_from_records: failed to shim record %s", rec.device_name)
         return result
 
-    async def _fetch_stream_subscription(self, http: MammotionHTTP, iot_id: str, is_yuka: bool) -> Any:
+    async def _fetch_stream_subscription(
+        self, http: MammotionHTTP, iot_id: str, is_yuka: bool, *, all_cameras: bool = False
+    ) -> Any:
         """Fetch the stream subscription token, retrying once if the response carries no data.
 
         The Mammotion stream-token endpoint intermittently returns an empty ``data``
         payload; a single immediate retry usually succeeds.  The empty response is
         logged at error level so the failure is visible even when the retry recovers.
         """
-        subscription = await http.get_stream_subscription(iot_id, is_yuka)
+        subscription = await http.get_stream_subscription(iot_id, is_yuka, all_cameras=all_cameras)
         if subscription is None or subscription.data is None:
             _logger.error(
                 "get_stream_subscription for %s returned no data (response=%s) — retrying once",
                 iot_id,
                 subscription,
             )
-            subscription = await http.get_stream_subscription(iot_id, is_yuka)
+            subscription = await http.get_stream_subscription(iot_id, is_yuka, all_cameras=all_cameras)
         return subscription
 
-    async def get_stream_subscription(self, device_name: str, iot_id: str) -> Any:
+    async def get_stream_subscription(self, device_name: str, iot_id: str, *, all_cameras: bool = False) -> Any:
         """Fetch an Agora stream token for the named device and start it streaming.
 
         For old-firmware devices (those whose device state lacks ``fpv_info``,
@@ -2114,7 +2116,7 @@ class MammotionClient(CloudAuthMixin):
         if http is None:
             return None
         is_yuka = DeviceType.is_yuka(device_name)
-        subscription = await self._fetch_stream_subscription(http, iot_id, is_yuka)
+        subscription = await self._fetch_stream_subscription(http, iot_id, is_yuka, all_cameras=all_cameras)
 
         if handle := self._device_registry.get_by_name(device_name):
             try:
@@ -2126,7 +2128,7 @@ class MammotionClient(CloudAuthMixin):
 
         return subscription
 
-    async def refresh_stream_subscription(self, device_name: str, iot_id: str) -> Any:
+    async def refresh_stream_subscription(self, device_name: str, iot_id: str, *, all_cameras: bool = False) -> Any:
         """Renew the Agora stream token and rejoin the device's channel.
 
         Identical to :meth:`get_stream_subscription` — the APK re-runs the same
@@ -2134,7 +2136,7 @@ class MammotionClient(CloudAuthMixin):
         (STUN-timeout, ``on_p2p_lost``).  Kept as a separate name because hosts
         call it to express intent.
         """
-        return await self.get_stream_subscription(device_name, iot_id)
+        return await self.get_stream_subscription(device_name, iot_id, all_cameras=all_cameras)
 
     async def stop_stream(self, device_name: str) -> None:
         """Tell the device to stop publishing video (Agora ``vi_switch=0``).
