@@ -2076,7 +2076,7 @@ class MammotionClient(CloudAuthMixin):
         return result
 
     async def _fetch_stream_subscription(
-        self, http: MammotionHTTP, iot_id: str, is_yuka: bool, *, all_cameras: bool = False
+        self, http: MammotionHTTP, iot_id: str, has_rear_camera: bool, *, all_cameras: bool = False
     ) -> Any:
         """Fetch the stream subscription token, retrying once if the response carries no data.
 
@@ -2084,14 +2084,14 @@ class MammotionClient(CloudAuthMixin):
         payload; a single immediate retry usually succeeds.  The empty response is
         logged at error level so the failure is visible even when the retry recovers.
         """
-        subscription = await http.get_stream_subscription(iot_id, is_yuka, all_cameras=all_cameras)
+        subscription = await http.get_stream_subscription(iot_id, has_rear_camera, all_cameras=all_cameras)
         if subscription is None or subscription.data is None:
             _logger.error(
                 "get_stream_subscription for %s returned no data (response=%s) — retrying once",
                 iot_id,
                 subscription,
             )
-            subscription = await http.get_stream_subscription(iot_id, is_yuka, all_cameras=all_cameras)
+            subscription = await http.get_stream_subscription(iot_id, has_rear_camera, all_cameras=all_cameras)
         return subscription
 
     async def get_stream_subscription(self, device_name: str, iot_id: str, *, all_cameras: bool = False) -> Any:
@@ -2115,8 +2115,9 @@ class MammotionClient(CloudAuthMixin):
         http = self.mammotion_http
         if http is None:
             return None
-        is_yuka = DeviceType.is_yuka(device_name)
-        subscription = await self._fetch_stream_subscription(http, iot_id, is_yuka, all_cameras=all_cameras)
+        subscription = await self._fetch_stream_subscription(
+            http, iot_id, DeviceType.value_of_str(device_name).is_yu_ka(), all_cameras=all_cameras
+        )
 
         if handle := self._device_registry.get_by_name(device_name):
             try:

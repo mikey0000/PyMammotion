@@ -1475,7 +1475,7 @@ async def test_fetch_stream_subscription_retries_on_empty_data() -> None:
     good = MagicMock(data=MagicMock())
     http.get_stream_subscription = AsyncMock(side_effect=[empty, good])
 
-    result = await client._fetch_stream_subscription(http, "iot-1", is_yuka=False)
+    result = await client._fetch_stream_subscription(http, "iot-1", has_rear_camera=False)
 
     assert result is good
     assert http.get_stream_subscription.await_count == 2
@@ -1488,7 +1488,7 @@ async def test_fetch_stream_subscription_no_retry_when_data_present() -> None:
     good = MagicMock(data=MagicMock())
     http.get_stream_subscription = AsyncMock(return_value=good)
 
-    result = await client._fetch_stream_subscription(http, "iot-1", is_yuka=True)
+    result = await client._fetch_stream_subscription(http, "iot-1", has_rear_camera=True)
 
     assert result is good
     http.get_stream_subscription.assert_awaited_once()
@@ -1500,7 +1500,7 @@ async def test_fetch_stream_subscription_returns_empty_after_retry_exhausted() -
     http = MagicMock()
     http.get_stream_subscription = AsyncMock(side_effect=[None, MagicMock(data=None)])
 
-    result = await client._fetch_stream_subscription(http, "iot-1", is_yuka=False)
+    result = await client._fetch_stream_subscription(http, "iot-1", has_rear_camera=False)
 
     assert result.data is None
     assert http.get_stream_subscription.await_count == 2

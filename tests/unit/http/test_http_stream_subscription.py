@@ -22,21 +22,21 @@ def _states(session) -> list[int]:
     return [slot["cameraState"] for slot in session.post.call_args.kwargs["json"]["cameraStates"]]
 
 
-@pytest.mark.parametrize("is_yuka", [False, True])
-async def test_the_default_asks_for_the_front_camera_only(is_yuka: bool) -> None:
+@pytest.mark.parametrize("has_rear_camera", [False, True])
+async def test_the_default_asks_for_the_front_camera_only(has_rear_camera: bool) -> None:
     """As the app does."""
     http, session = _posting()
 
-    await http.get_stream_subscription("iot-1", is_yuka)
+    await http.get_stream_subscription("iot-1", has_rear_camera)
 
     assert _states(session) == [1, 0, 0]
 
 
-@pytest.mark.parametrize(("is_yuka", "states"), [(False, [1, 1, 0]), (True, [1, 1, 1])])
-async def test_all_cameras_adds_the_right_one_and_a_yukas_rear_one(is_yuka: bool, states: list[int]) -> None:
-    """Slots 1-3 are Agora uids 1-3; only a Yuka has the third, rear camera."""
+@pytest.mark.parametrize(("has_rear_camera", "states"), [(False, [1, 1, 0]), (True, [1, 1, 1])])
+async def test_all_cameras_adds_the_right_one_and_the_rear_one(has_rear_camera: bool, states: list[int]) -> None:
+    """Slots 1-3 are Agora uids 1-3; the third, rear slot only when the mower has one."""
     http, session = _posting()
 
-    await http.get_stream_subscription("iot-1", is_yuka, all_cameras=True)
+    await http.get_stream_subscription("iot-1", has_rear_camera, all_cameras=True)
 
     assert _states(session) == states
