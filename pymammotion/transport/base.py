@@ -41,6 +41,10 @@ class CommandTimeoutError(TransportError):
         super().__init__(f"No response for '{expected_field}' after {attempts} attempt(s)")
 
 
+class CommandRejectedError(TransportError):
+    """The device answered, but refused the command (e.g. a batch set acked with ``RES_FAILURE``)."""
+
+
 class NoTransportAvailableError(TransportError):
     """No connected transport available to send the command."""
 

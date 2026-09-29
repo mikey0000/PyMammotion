@@ -8,7 +8,7 @@ import pytest
 
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError
-from tests._helpers import block_forever, wait_until
+from tests._helpers import block_forever, let_others_run, wait_until
 
 
 def make_mock_message(field_name: str) -> MagicMock:
@@ -212,3 +212,27 @@ async def test_a_stalled_send_is_bounded_by_the_send_timeout() -> None:
         )
 
     assert "toapp_gethash_ack" not in broker._pending, "the pending slot must be released"
+
+
+async def test_callers_sharing_an_exclusive_key_take_turns() -> None:
+    """Every batch config type answers on one field, so its exchanges must queue, not collide."""
+    broker = DeviceMessageBroker()
+    order: list[str] = []
+
+    async def exchange(name: str) -> None:
+        async with broker.exclusive("batch_config"):
+            order.append(f"{name} start")
+            await let_others_run()
+            order.append(f"{name} end")
+
+    await asyncio.wait_for(asyncio.gather(exchange("read"), exchange("write")), timeout=5)
+
+    assert order == ["read start", "read end", "write start", "write end"]
+
+
+async def test_different_exclusive_keys_do_not_block_each_other() -> None:
+    broker = DeviceMessageBroker()
+
+    async with broker.exclusive("batch_config"):
+        assert not broker.exclusive("other").locked()
+        assert broker.exclusive("batch_config").locked()

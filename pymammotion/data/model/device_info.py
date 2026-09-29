@@ -2,6 +2,12 @@ from dataclasses import dataclass, field
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pymammotion.data.model.mowing_modes import (
+    RAIN_PROTECTION_DEFAULT_DELAY_HOURS,
+    RAIN_PROTECTION_DELAY_HOURS,
+    RainProtectionMode,
+)
+
 
 @dataclass
 class SideLight(DataClassORJSONMixin):
@@ -74,6 +80,39 @@ class ChargeSettings(DataClassORJSONMixin):
         return self.charge_limit != 0
 
 
+@dataclass
+class RainProtectionSettings(DataClassORJSONMixin):
+    """Rain protection (``CFG_TYPE_RAINPRO_CFG``), known only from a batch query reply or our own write.
+
+    ``supported`` is None until the device proves the feature (a RAINPRO reply, or
+    self-check 34) and ``mode`` is None until one is read or written.  ``mode`` is the
+    raw ``RainProtectionMode`` value, kept as an int so a firmware value the library
+    does not know survives.  ``delay_hours`` is the last Sensor-mode delay: the device
+    sends 0 in the other modes, so it is remembered here the way the app keeps it in
+    local storage, and switching back to Sensor sends it again.
+    """
+
+    supported: bool | None = None
+    mode: int | None = None
+    delay_hours: int = RAIN_PROTECTION_DEFAULT_DELAY_HOURS
+
+    @property
+    def reported(self) -> bool:
+        """Whether a mode has been read or written; the defaults are the app's, not the device's."""
+        return self.mode is not None
+
+    def with_mode(self, mode: int, delay_hours: int) -> "RainProtectionSettings":
+        """Return these settings holding *mode*, which the device reported or acknowledged.
+
+        *delay_hours* replaces the remembered delay only in Sensor mode and only when it
+        is one the app offers, as the app's ``applyPersistedDelay`` does.
+        """
+        keep_delay = mode != RainProtectionMode.sensor or delay_hours not in RAIN_PROTECTION_DELAY_HOURS
+        return RainProtectionSettings(
+            supported=True, mode=mode, delay_hours=self.delay_hours if keep_delay else delay_hours
+        )
+
+
 #: ``nav_sys_param_cmd`` context on ids 14 and 15 that leaves the level to the mower.
 SMART_CHARGE_LEVEL = -1
 #: The app's slider bounds, in percent, for ids 14 (return to charge at) and 15 (resume mowing at).
@@ -117,6 +156,7 @@ class MowerInfo(DataClassORJSONMixin):
     charge_settings: ChargeSettings = field(default_factory=ChargeSettings)
     recharge_level: int = 0  # ID 14 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
     resume_level: int = 0  # ID 15 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
+    rain_protection: RainProtectionSettings = field(default_factory=RainProtectionSettings)
 
 
 @dataclass

@@ -57,6 +57,16 @@ class DeviceMessageBroker:
         self._pending: dict[str, PendingRequest] = {}
         self._event_bus: EventBus[Any] = EventBus()
         self._lock = asyncio.Lock()
+        self._exclusive: dict[str, asyncio.Lock] = {}
+
+    def exclusive(self, key: str) -> asyncio.Lock:
+        """Return the lock that serializes the exchanges sharing *key*.
+
+        For requests whose replies share a field, e.g. every batch config type answers
+        on ``batch_query_resp``: holding it makes a second caller wait its turn instead
+        of hitting :class:`ConcurrentRequestError`.
+        """
+        return self._exclusive.setdefault(key, asyncio.Lock())
 
     async def send_and_wait(
         self,

@@ -41,6 +41,7 @@ from pymammotion.data.model.hash_list import (
     Plan,
     SvgMessage,
 )
+from pymammotion.data.model.mowing_modes import RAIN_PROTECTION_ACTIVE_SELF_CHECK
 from pymammotion.data.model.pool_state import (
     MapTrans,
     PoolBottomType,
@@ -56,11 +57,13 @@ from pymammotion.data.model.report_info import BaseScore
 from pymammotion.data.model.work import CurrentTaskSettings
 from pymammotion.data.mqtt.properties import OTAProgressItems
 from pymammotion.proto import (
+    AppBatchQueryResp,
     AppDownlinkCmdT,
     AppDownlinkCmdTypeE,
     AppGetAllAreaHashName,
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
+    BatchConfigType,
     BmsCtrlInfoMsg,
     CoverPathUploadT,
     DeviceFwInfo,
@@ -261,11 +264,13 @@ class MowerStateReducer(StateReducer):
                         | "toapp_lora_cfg_rsp"
                         | "device_product_type_info"
                         | "bms_ctrl_info_msg"
+                        | "batch_query_resp"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
-                    case "mow_to_app_info":
-                        pass  # mow_info() is a no-op — nothing to copy.
+                    case "mow_to_app_info" | "batch_set_resp":
+                        # mow_info() is a no-op; the batch ack carries no values.
+                        pass
                     case _:
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.device_firmwares = copy.deepcopy(current.device_firmwares)
@@ -549,6 +554,13 @@ class MowerStateReducer(StateReducer):
                     apply_area_geojson(device.map, device.location.RTK, device.location.dock)
             case "toapp_report_data":
                 device.update_report_data(sys_msg[1])  # type: ignore
+                if (
+                    device.report_data.dev.self_check_status == RAIN_PROTECTION_ACTIVE_SELF_CHECK
+                    and device.mower_state.rain_protection.supported is not True
+                ):
+                    # mower_state is shared with current on this hot path; copy only on the flip.
+                    device.mower_state = copy.deepcopy(device.mower_state)
+                    device.mower_state.rain_protection.supported = True
             case "mow_to_app_info":
                 device.mow_info(sys_msg[1])  # type: ignore
             case "system_tard_state_tunnel":
@@ -589,6 +601,14 @@ class MowerStateReducer(StateReducer):
                     bat_cycle_times=bms_info.bat_cycle_times,
                     bat_health_state=bms_info.bat_health_state,
                 )
+            case "batch_query_resp":
+                # Every batch config type replies here; only rain protection is modelled.
+                batch_reply: AppBatchQueryResp = sys_msg[1]  # type: ignore
+                for cfg in batch_reply.cfgs:
+                    if cfg.cfgtype == BatchConfigType.CFG_TYPE_RAINPRO_CFG and (rain_pro := cfg.rain_pro) is not None:
+                        device.mower_state.rain_protection = device.mower_state.rain_protection.with_mode(
+                            rain_pro.rain_protection_mode, rain_pro.custom_delay_hours
+                        )
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]  # type: ignore
                 if device_product_type.main_product_type != "" or device_product_type.sub_product_type != "":

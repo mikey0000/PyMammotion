@@ -5,13 +5,18 @@ import datetime
 import time
 
 from pymammotion import logger
+from pymammotion.data.model.mowing_modes import RAIN_PROTECTION_DELAY_HOURS, RainProtectionMode
 from pymammotion.data.model.pool_state import PoolPlan
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
     AckToAppTypeE,
+    AppBatchQueryReq,
+    AppBatchSetReq,
     AppDownlinkCmdT,
     AppDownlinkCmdTypeE,
     AppToDevSetMqttRtkT,
+    Batchcfg,
+    BatchConfigType,
     BmsCtrlInfoMsg,
     DebugCfgWriteT,
     DebugEnableT,
@@ -32,6 +37,7 @@ from pymammotion.proto import (
     PlanJobSet,
     PoolBottomTypeE,
     QcAppTestId,
+    RainProtection,
     RemoteResetReqT,
     ReportInfoCfg,
     RptAct,
@@ -203,6 +209,38 @@ class MessageSystem(AbstractMessage, ABC):
         build = MctlSys(bidire_comm_cmd=SysCommCmd(id=rw_id, context=context, rw=rw))
         logger.debug(f"Send command - 9 general read and write command id={rw_id}, context={context}, rw={rw}")
         return self.send_order_msg_sys(build)
+
+    @staticmethod
+    def _batch_req_id() -> int:
+        """Return a positive int32 request id, derived from the monotonic clock as the app does."""
+        return int(time.monotonic() * 1000) & 0x7FFFFFFF
+
+    def get_rain_protection(self) -> bytes:
+        """Read the rain-protection config (``batch_query_resp`` reply).
+
+        Mirrors ``MACommandApiHelper.queryX5RainyWeatherProtection``.  Every batch
+        config type answers on ``batch_query_resp``, so callers must not overlap it
+        with another batch query.
+        """
+        request = AppBatchQueryReq(req_id=self._batch_req_id(), type_list=[BatchConfigType.CFG_TYPE_RAINPRO_CFG])
+        return self.send_order_msg_sys(MctlSys(batch_query_req=request))
+
+    def set_rain_protection(self, mode: RainProtectionMode, delay_hours: int = 0) -> bytes:
+        """Write the rain-protection mode (``batch_set_resp`` reply, success or failure only).
+
+        Mirrors ``MACommandHelper.x5RainyWeatherProtectionSetting``: *delay_hours* is
+        sent, unconverted, only in Sensor mode.  It must be one the app offers
+        (``RAIN_PROTECTION_DELAY_HOURS``) either way.
+        """
+        mode = RainProtectionMode(mode)
+        if delay_hours not in RAIN_PROTECTION_DELAY_HOURS:
+            msg = f"Rain protection delay {delay_hours} h is not one of {RAIN_PROTECTION_DELAY_HOURS}"
+            raise ValueError(msg)
+        rain_pro = RainProtection(rain_protection_mode=mode.value)
+        if mode is RainProtectionMode.sensor:
+            rain_pro.custom_delay_hours = delay_hours
+        cfg = Batchcfg(cfgtype=BatchConfigType.CFG_TYPE_RAINPRO_CFG, rain_pro=rain_pro)
+        return self.send_order_msg_sys(MctlSys(batch_set_req=AppBatchSetReq(req_id=self._batch_req_id(), cfgs=[cfg])))
 
     def send_sys_set_date_time(self) -> bytes:
         """Synchronize the device clock with the current local date, time, timezone, and DST settings."""

@@ -64,6 +64,7 @@ from pymammotion.data.model.generate_geojson import (
     apply_mowing_geojson,
 )
 from pymammotion.data.model.hash_list import PathType, SvgMessage
+from pymammotion.data.model.mowing_modes import RainProtectionMode
 from pymammotion.data.model.svg import chunk_svg_messages
 from pymammotion.device.auto_fetch import AutoFetchWatchers, _should_fetch_mow_path
 from pymammotion.device.ble_inventory import BleInventory
@@ -72,6 +73,7 @@ from pymammotion.device.inbound_router import InboundRouter
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.device.state_reducer import apply_rtk_coordinate
 from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection, UnauthorizedExceptionError
+from pymammotion.http.model.rain_protection import WeatherServerSync
 from pymammotion.messaging.command_queue import Priority, execute_command
 from pymammotion.messaging.common_data_saga import CommonDataSaga
 from pymammotion.messaging.edge_saga import EdgeMappingSaga
@@ -80,10 +82,12 @@ from pymammotion.messaging.mow_path_saga import MowPathSaga
 from pymammotion.messaging.plan_saga import PlanFetchSaga
 from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
 from pymammotion.messaging.svg_saga import SvgSendSaga
-from pymammotion.proto import RptAct, RptInfoType
+from pymammotion.proto import BatchConfigType, ResResult, RptAct, RptInfoType
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import (
     AuthError,
+    CommandRejectedError,
+    CommandTimeoutError,
     NoTransportAvailableError,
     ReLoginRequiredError,
     SessionExpiredError,
@@ -110,6 +114,11 @@ _CONTINUOUS_STREAM_CHANNELS: list[RptInfoType] = [
 #: immediate).  The cloud-side migration after a firmware update can take minutes.
 _UNBOUND_MIGRATION_DELAYS: tuple[float, ...] = (0.0, 30.0, 60.0, 120.0, 180.0)
 
+#: Per-attempt reply wait for a batch-config exchange; the app's rain-protection module gives up after 8 s.
+_BATCH_CONFIG_TIMEOUT = 5.0
+#: Every batch config type answers on the same two fields, so their exchanges share one broker lock.
+_BATCH_CONFIG_EXCHANGE = "batch_config"
+
 _ONE_SHOT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
     RptInfoType.RIT_DEV_LOCAL,
@@ -131,6 +140,7 @@ if TYPE_CHECKING:
 
     from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
     from pymammotion.data.model.device import Device as DeviceModel
+    from pymammotion.data.model.device_info import RainProtectionSettings
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
@@ -2132,6 +2142,136 @@ class MammotionClient(CloudAuthMixin):
             _logger.warning("get_latest_work_report: '%s' failed: %s", device_name, response)
             return None
         return response.data.records[0] if response.data.records else None
+
+    async def read_rain_protection(
+        self, device_name: str, *, priority: Priority = Priority.NORMAL, account_id: str | None = None
+    ) -> RainProtectionSettings:
+        """Query the device's rain-protection config and return the settings the reply left in its state.
+
+        No report carries the mode or delay, so this is the only way to read them, and
+        also the probe for support: an answer with a RAINPRO entry sets ``supported``.
+        Batch-config exchanges are serialized per device (every type shares the reply
+        field), so a concurrent read or write waits its turn.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            CommandTimeoutError: The device did not answer; support is still unknown.
+
+        """
+        handle = self._device_registry.get_by_name(device_name, account_id)
+        if handle is None:
+            msg = f"Device '{device_name}' not registered"
+            raise KeyError(msg)
+        async with handle.broker.exclusive(_BATCH_CONFIG_EXCHANGE):
+            await self.send_command_and_wait(
+                device_name,
+                "get_rain_protection",
+                "batch_query_resp",
+                send_timeout=_BATCH_CONFIG_TIMEOUT,
+                priority=priority,
+                account_id=account_id,
+            )
+        return cast("MowingDevice", handle.snapshot.raw).mower_state.rain_protection
+
+    async def set_rain_protection(
+        self,
+        device_name: str,
+        mode: RainProtectionMode,
+        delay_hours: int | None = None,
+        *,
+        account_id: str | None = None,
+    ) -> WeatherServerSync:
+        """Set rain protection the way the app does: device, then the weather server, then a re-read.
+
+        A user command (``Priority.USER``: sent now, past the cloud's advisory offline
+        flag).  *delay_hours* only matters in Sensor mode; ``None`` resends the last
+        Sensor delay (``RainProtectionSettings.delay_hours``), as the app does when Sensor
+        is picked again.  The ack carries no values, so the ones sent are applied once it
+        reports success.  The weather-server copy is best effort: a failure is logged and
+        returned as ``FAILED``, never undoing the device, and a BLE-only device has none.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            ValueError: *mode* or *delay_hours* is not one the app offers; nothing is sent.
+            CommandRejectedError: The device refused the write; nothing changed.
+            CommandTimeoutError: The device did not acknowledge the write.
+            UnauthorizedExceptionError: The weather server still rejected the token after one refresh.
+            ReLoginRequiredError: The account's login is dead.
+
+        """
+        handle = self._device_registry.get_by_name(device_name, account_id)
+        if handle is None:
+            msg = f"Device '{device_name}' not registered"
+            raise KeyError(msg)
+        mode = RainProtectionMode(mode)
+        if delay_hours is None:
+            delay_hours = cast("MowingDevice", handle.snapshot.raw).mower_state.rain_protection.delay_hours
+        async with handle.broker.exclusive(_BATCH_CONFIG_EXCHANGE):
+            reply = await self.send_command_and_wait(
+                device_name,
+                "set_rain_protection",
+                "batch_set_resp",
+                send_timeout=_BATCH_CONFIG_TIMEOUT,
+                priority=Priority.USER,
+                account_id=account_id,
+                mode=mode,
+                delay_hours=delay_hours,
+            )
+        if not any(
+            result.type == BatchConfigType.CFG_TYPE_RAINPRO_CFG and result.res_result == ResResult.RES_SUCCESS
+            for result in reply.sys.batch_set_resp.res_data
+        ):
+            msg = f"{device_name} refused rain protection {mode.name}: {reply.sys.batch_set_resp.res_data}"
+            raise CommandRejectedError(msg)
+        device = cast("MowingDevice", handle.snapshot.raw)
+        applied = device.mower_state.rain_protection.with_mode(mode, delay_hours)
+        snapshot, _ = handle.state_machine.apply(
+            dataclasses.replace(device, mower_state=dataclasses.replace(device.mower_state, rain_protection=applied)),
+            handle.availability,
+        )
+        await handle.emit_state_changed(snapshot)
+        sync = await self._save_rain_protection_config(
+            handle, mode, delay_hours if mode is RainProtectionMode.sensor else 0
+        )
+        try:
+            await self.read_rain_protection(device_name, priority=Priority.USER, account_id=account_id)
+        except CommandTimeoutError:
+            _logger.debug("set_rain_protection: '%s' did not answer the re-read; keeping the values sent", device_name)
+        return sync
+
+    async def _save_rain_protection_config(
+        self, handle: DeviceHandle, mode: RainProtectionMode, delay_hours: int
+    ) -> WeatherServerSync:
+        session = self._get_session_for_handle(handle)
+        if session is None or (http := session.mammotion_http) is None:
+            _logger.debug(
+                "set_rain_protection: '%s' has no cloud login; skipping the weather server", handle.device_name
+            )
+            return WeatherServerSync.SKIPPED
+        sent_with_token = http.login_info.access_token if http.login_info is not None else None
+        try:
+            try:
+                response = await http.save_rain_protection_config(handle.device_name, mode.value, delay_hours)
+            except UnauthorizedExceptionError:
+                if session.token_manager is None:
+                    raise
+                await session.token_manager.refresh_invoke_token(stale_token=sent_with_token)
+                response = await http.save_rain_protection_config(handle.device_name, mode.value, delay_hours)
+        except _AUTH_REJECTED:
+            raise
+        except Exception:
+            _logger.warning(
+                "set_rain_protection: '%s' was set but the weather server was not updated",
+                handle.device_name,
+                exc_info=True,
+            )
+            return WeatherServerSync.FAILED
+        if response.code != 0:
+            _logger.warning(
+                "set_rain_protection: '%s' was set but the weather server refused it: %s", handle.device_name, response
+            )
+            return WeatherServerSync.FAILED
+        return WeatherServerSync.SAVED
 
     @property
     def cloud_http(self) -> MammotionHTTP | None:
