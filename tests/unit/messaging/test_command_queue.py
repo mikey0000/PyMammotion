@@ -1,13 +1,51 @@
 """Tests for DeviceCommandQueue."""
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+import logging
+import time
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pymammotion.messaging import command_queue
 from pymammotion.messaging.broker import DeviceMessageBroker
-from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
+from pymammotion.messaging.command_queue import _COMMAND_TTL, DeviceCommandQueue, Priority
 from pymammotion.messaging.saga import Saga
 from tests._helpers import wait_until
+
+_DRAIN_TIMEOUT = 2.0
+
+
+class _OffsetClock:
+    """Stands in for the queue module's ``time``: real monotonic plus a test-controlled offset."""
+
+    def __init__(self) -> None:
+        self.offset = 0.0
+
+    def monotonic(self) -> float:
+        return time.monotonic() + self.offset
+
+
+def _work_mock() -> AsyncMock:
+    async def work() -> None: ...
+
+    return AsyncMock(spec=work)
+
+
+async def _hold_one_item(
+    q: DeviceCommandQueue, hold: Callable[[], None], enqueue: Callable[[], Awaitable[None]]
+) -> None:
+    """Close a gate via *hold*, enqueue, and return once the processor has dequeued the item.
+
+    ``_process`` runs from ``get()`` to the first unset Event without yielding, so an empty
+    queue means the item passed the dequeue TTL check and is parked on that Event.
+    """
+    hold()
+    q.start()
+    await enqueue()
+    await wait_until(q._queue.empty, message="the processor never dequeued the item")
 
 
 async def test_is_saga_active_false_initially() -> None:
@@ -183,3 +221,107 @@ async def test_fifo_within_same_priority() -> None:
     await wait_until(lambda: len(order) == 3, message=f"only {order} ran")
     assert order == [0, 1, 2]
     await q.stop()
+
+
+class _RecordingSaga(Saga):
+    name = "recording"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ran = False
+
+    async def _run(self, b: DeviceMessageBroker) -> None:
+        self.ran = True
+
+
+@pytest.fixture
+async def queue() -> AsyncIterator[DeviceCommandQueue]:
+    q = DeviceCommandQueue(device_name="dev")
+    yield q
+    await q.stop()
+
+
+@pytest.fixture
+def clock() -> Iterator[_OffsetClock]:
+    c = _OffsetClock()
+    with patch.object(command_queue, "time", c):
+        yield c
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("priority", [Priority.NORMAL, Priority.BACKGROUND])
+async def test_command_held_at_reconnect_gate_past_ttl_is_dropped(
+    priority: Priority, queue: DeviceCommandQueue, clock: _OffsetClock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A queued command that outlives the TTL while parked on the reconnect gate must not run.
+
+    The age was checked only at dequeue, before the gate wait, so an item dequeued fresh
+    and held through a reconnect longer than the TTL was dispatched on resume anyway.
+    """
+    work = _work_mock()
+    await _hold_one_item(queue, queue.pause_for_reconnect, lambda: queue.enqueue(work, priority=priority))
+    clock.offset = _COMMAND_TTL + 1
+    with caplog.at_level(logging.DEBUG, logger=command_queue.__name__):
+        queue.resume_after_reconnect()
+        await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+
+    work.assert_not_awaited()
+    assert any("command expired" in r.getMessage() for r in caplog.records), "expiry was not logged"
+
+
+@pytest.mark.parametrize("priority", [Priority.NORMAL, Priority.BACKGROUND])
+async def test_command_held_at_reconnect_gate_within_ttl_runs(
+    priority: Priority, queue: DeviceCommandQueue, clock: _OffsetClock
+) -> None:
+    work = _work_mock()
+    await _hold_one_item(queue, queue.pause_for_reconnect, lambda: queue.enqueue(work, priority=priority))
+    clock.offset = _COMMAND_TTL - 1
+    queue.resume_after_reconnect()
+    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+
+    work.assert_awaited_once()
+
+
+async def test_command_stale_at_dequeue_is_dropped_without_parking_at_the_gate(
+    queue: DeviceCommandQueue, clock: _OffsetClock
+) -> None:
+    """An item already past the TTL when dequeued is dropped there, so it cannot hold the processor at a closed gate."""
+    work = _work_mock()
+    queue.pause_for_reconnect()
+    await queue.enqueue(work, priority=Priority.NORMAL)
+    clock.offset = _COMMAND_TTL + 1
+    queue.start()
+
+    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+
+    work.assert_not_awaited()
+    assert not queue._transport_gate.is_set(), "the queue drained only because the gate was opened"
+
+
+async def test_saga_held_at_reconnect_gate_past_ttl_still_runs(queue: DeviceCommandQueue, clock: _OffsetClock) -> None:
+    """Sagas are TTL-exempt: dropping one means on_complete never fires and the sync silently never happens."""
+    saga = _RecordingSaga()
+    await _hold_one_item(queue, queue.pause_for_reconnect, lambda: queue.enqueue_saga(saga, DeviceMessageBroker()))
+    clock.offset = _COMMAND_TTL + 1
+    queue.resume_after_reconnect()
+    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+
+    assert saga.ran
+
+
+@pytest.mark.regression
+async def test_command_held_behind_exclusive_slot_past_ttl_is_dropped(
+    queue: DeviceCommandQueue, clock: _OffsetClock
+) -> None:
+    """The exclusive-slot wait sits between the dequeue check and dispatch too.
+
+    An item that aged past the TTL waiting for the slot was dispatched once it freed.
+    """
+    work = _work_mock()
+    # Private: a real saga runs on the processor task, so nothing can be dequeued behind it publicly.
+    await _hold_one_item(queue, queue._exclusive_active.clear, lambda: queue.enqueue(work, priority=Priority.NORMAL))
+    clock.offset = _COMMAND_TTL + 1
+    queue._exclusive_active.set()
+    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+
+    work.assert_not_awaited()
