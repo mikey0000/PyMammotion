@@ -16,6 +16,8 @@ from __future__ import annotations
 import gc
 import tracemalloc
 
+import pytest
+
 from pymammotion.data.model.device import MowerDevice
 from pymammotion.data.model.hash_list import CommDataCouple, FrameList as _FL, NavGetCommData
 from pymammotion.data.model.report_info import (
@@ -31,7 +33,10 @@ from pymammotion.device.state_reducer import MowerStateReducer
 from pymammotion.proto import (
     AppGetAllAreaHashName as _AGAHN,
     AreaHashName as _AHName,
+    DrvSessionCtrlAck,
+    DrvSessionExitNfty,
     LubaMsg,
+    MctlDriver,
     MctlNav,
     MulSetVideoAck,
     MulVideoErrorCode,
@@ -120,6 +125,28 @@ def test_bidire_reqconver_path_copies_nothing_but_rebinds_work() -> None:
     # But device.work was rebuilt by the handler and current.work is untouched
     assert updated.work is not original_work
     assert current.work is original_work
+
+
+@pytest.mark.parametrize(
+    "driver",
+    [
+        MctlDriver(toapp_session_ctrl_ack=DrvSessionCtrlAck(ctrl_seq=4, vehicle_send_ts_ms=9)),
+        MctlDriver(toapp_session_exit_nfty=DrvSessionExitNfty(preempt_account=7)),
+    ],
+    ids=["session-ack", "session-exit"],
+)
+def test_remote_drive_session_frames_copy_nothing(driver: MctlDriver) -> None:
+    """Session acks arrive several times a second while driving and carry no device state.
+
+    They belong to ``RemoteDriveSession`` via the broker; the reducer must not deep-copy
+    ``mower_state`` and ``events`` for each one the way an unknown driver leaf does.
+    """
+    current = _make_device()
+
+    updated = MowerStateReducer().apply(current, LubaMsg(driver=driver))
+
+    _assert_sharing(current, updated, copied_fields=())
+    assert updated.events is current.events
 
 
 # Demonstrates the memory allocation growth bug from #125.

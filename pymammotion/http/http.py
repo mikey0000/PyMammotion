@@ -31,6 +31,7 @@ from pymammotion.const import (
 from pymammotion.data.error_codes import table_language
 from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
+from pymammotion.http.model.fpv_control import FpvControl
 from pymammotion.http.model.http import (
     CheckDeviceVersion,
     DeviceInfo,
@@ -906,6 +907,29 @@ class MammotionHTTP:
             Response[WorkReportPage],
             "work report page",
             payload={"deviceName": device_name, "pageNumber": page_number, "pageSize": page_size},
+        )
+
+    @refresh_token_decorator
+    async def request_fpv_control_token(self, iot_id: str) -> Response[FpvControl]:
+        """Ask for the remote-drive control token (``FpvDriveApiService.requestControlToken``).
+
+        Classify the answer with :func:`~pymammotion.http.model.fpv_control.fpv_control_outcome`.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/fpv/control/token",
+            Response[FpvControl],
+            "fpv control token",
+            payload={"deviceId": iot_id},
+        )
+
+    @refresh_token_decorator
+    async def refresh_fpv_control_token(self, iot_id: str, token: str) -> Response[FpvControl]:
+        """Renew a granted control token (``FpvDriveApiService.refreshControlToken``)."""
+        return await self._request_device_server(
+            "/device-server/v1/fpv/control/refresh-token",
+            Response[FpvControl],
+            "fpv control token refresh",
+            payload={"deviceId": iot_id, "token": token},
         )
 
     @refresh_token_decorator

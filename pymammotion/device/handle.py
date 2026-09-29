@@ -20,6 +20,7 @@ from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
 from pymammotion.device.dynamics_line_loop import dynamics_line_loop
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.device.mqtt_loop import mqtt_activity_loop
+from pymammotion.device.remote_drive import RemoteDriveSession
 from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
@@ -100,6 +101,7 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.device.readiness import ReadinessChecker, ReadinessStatus
+    from pymammotion.device.remote_drive import DriveClock, DriveSend, FpvTokenSource
     from pymammotion.messaging.saga import Saga
     from pymammotion.transport.ble import BLETransport
 
@@ -340,6 +342,7 @@ class DeviceHandle:
         self._last_report_data_at: float = 0.0
         #: Signalled on each such frame so waiters don't have to poll the timestamp.
         self._report_data_event: asyncio.Event = asyncio.Event()
+        self._remote_drive: RemoteDriveSession | None = None
         # Wire up critical error propagation from queue
         self.queue.on_critical_error = self._on_critical_error
 
@@ -984,16 +987,25 @@ class DeviceHandle:
         that cannot be reached.  ``mqtt_reported_offline`` blocks automatic
         sends only, and clears on the next inbound cloud frame or status push.
         """
+        already_offline = self._flag_device_offline(transport)
+        ble = self._transports.get(TransportType.BLE)
+        if ble is not None and ble.is_connected:
+            _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
+            return ble
+        self._log_device_offline(transport, already_offline=already_offline)
+        return None
+
+    def _flag_device_offline(self, transport: Transport) -> bool:
+        """Set ``mqtt_reported_offline`` for a cloud rejection on *transport*; returns whether it was already set."""
         already_offline = self._availability.mqtt_reported_offline
         self.update_availability(
             transport.transport_type,
             self._availability.mqtt,
             mqtt_reported_offline=True,
         )
-        ble = self._transports.get(TransportType.BLE)
-        if ble is not None and ble.is_connected:
-            _logger.warning("Device '%s' offline via MQTT, retrying over BLE", self.device_name)
-            return ble
+        return already_offline
+
+    def _log_device_offline(self, transport: Transport, *, already_offline: bool) -> None:
         # A powered-off device fails every queued send, so only the transition
         # into offline is worth a warning.
         log = _logger.debug if already_offline else _logger.warning
@@ -1002,7 +1014,6 @@ class DeviceHandle:
             self.device_name,
             transport.transport_type.value,
         )
-        return None
 
     async def _on_device_unbound(self, transport: Transport) -> Transport | None:
         """Handle a cloud "device is unbound" (Aliyun 29004) during a send.
@@ -1398,6 +1409,9 @@ class DeviceHandle:
 
     async def stop(self) -> None:
         """Stop the command queue, broker, debounce task, and disconnect all transports."""
+        if self._remote_drive is not None:
+            # Stop the mower and release its control token while the cloud transport is still wired.
+            await self._remote_drive.stop()
         self._stopping = True
         self._started = False
         if self._report_stream_timer is not None:
@@ -2146,6 +2160,59 @@ class DeviceHandle:
                 mqtt.transport_type.value,
             )
             await self._send_marked(mqtt, payload, user_initiated=user_initiated)
+
+    def usable_cloud_transport(self, *, user_initiated: bool = False) -> Transport:
+        """Return the cloud transport a cloud-only send would use, gated like :meth:`active_transport`.
+
+        Raises:
+            NoTransportAvailableError: no cloud transport is registered, or it is unusable
+                (terminal auth failure, or reported offline for a background send).
+
+        """
+        mqtt = self._pick_cloud_transport()
+        if mqtt is None or not self._cloud_transport_usable(mqtt, user_initiated=user_initiated):
+            msg = f"No usable cloud transport for device '{self.device_id}'"
+            raise NoTransportAvailableError(msg)
+        return mqtt
+
+    async def send_cloud(self, payload: bytes, *, user_initiated: bool = False) -> None:
+        """Send *payload* over the cloud only — never BLE, with no fallback either way.
+
+        For traffic the device accepts only over IoT: the remote-drive session frames
+        (``sendOrderMsg_DriverIotOnly`` in the app).  A connected BLE link does not win here.
+        """
+        transport = self.usable_cloud_transport(user_initiated=user_initiated)
+        try:
+            await self._send_marked(transport, payload, user_initiated=user_initiated)
+        except TooManyRequestsException:
+            if isinstance(transport, CloudTransport):
+                transport.set_rate_limited()
+            raise
+        except DeviceOfflineException:
+            self._log_device_offline(transport, already_offline=self._flag_device_offline(transport))
+            raise
+
+    @property
+    def remote_drive(self) -> RemoteDriveSession | None:
+        """Return the device's cloud remote-drive session, once one has been created."""
+        return self._remote_drive
+
+    def ensure_remote_drive(
+        self,
+        *,
+        tokens: FpvTokenSource,
+        send: DriveSend,
+        clock: DriveClock | None = None,
+    ) -> RemoteDriveSession:
+        """Return this device's remote-drive session, creating it on first use.
+
+        The handle owns the session so :meth:`stop` can halt the mower and release its
+        control token; the client supplies *tokens* and *send* because the account's HTTP
+        login and auth-retry live there.
+        """
+        if self._remote_drive is None:
+            self._remote_drive = RemoteDriveSession(self, tokens=tokens, send=send, clock=clock)
+        return self._remote_drive
 
     # ------------------------------------------------------------------
     # Error bus

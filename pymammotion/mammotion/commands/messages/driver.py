@@ -8,9 +8,12 @@ from pymammotion.proto import (
     AppGetCutterWorkMode,
     AppSetCutterWorkMode,
     DrvCollectCtrlByHand,
+    DrvCtrlLink,
     DrvKnifeHeight,
     DrvMotionCtrl,
     DrvMowCtrlByHand,
+    DrvSessionCtrlReq,
+    DrvSessionExitAppNfty,
     DrvSrSpeed,
     LubaMsg,
     MctlDriver,
@@ -121,6 +124,37 @@ class MessageDriver(AbstractMessage, ABC):
             MctlDriver(
                 todev_devmotion_ctrl=DrvMotionCtrl(set_linear_speed=linear_speed, set_angular_speed=angular_speed)
             )
+        )
+
+    def session_ctrl(
+        self,
+        *,
+        ctrl_seq: int,
+        linear_speed: int,
+        angular_speed: int,
+        app_send_ts_ms: int,
+        vehicle_send_ts_ms: int,
+        token: str,
+    ) -> bytes:
+        """One remote-drive session frame (``MACommandApiHelper.sendSessionControl``); always the IoT channel."""
+        return self.send_order_msg_driver(
+            MctlDriver(
+                todev_session_ctrl_req=DrvSessionCtrlReq(
+                    ctrl_seq=ctrl_seq,
+                    set_linear_speed=linear_speed,
+                    set_angular_speed=angular_speed,
+                    channel=DrvCtrlLink.DRV_CTRL_IOT,
+                    app_send_ts_ms=app_send_ts_ms,
+                    vehicle_send_ts_ms=vehicle_send_ts_ms,
+                    token=token,
+                )
+            )
+        )
+
+    def session_exit_notify(self, token: str, channel: DrvCtrlLink = DrvCtrlLink.DRV_CTRL_IOT) -> bytes:
+        """Release a remote-drive session (``MACommandApiHelper.sendSessionExitNotify``)."""
+        return self.send_order_msg_driver(
+            MctlDriver(todev_session_exit_nfty=DrvSessionExitAppNfty(token=token, channel=channel))
         )
 
     def manual_grass_collection(self, collect_ctrl: int) -> bytes:

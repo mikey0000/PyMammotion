@@ -71,6 +71,7 @@ from pymammotion.device.ble_inventory import BleInventory
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.inbound_router import InboundRouter
 from pymammotion.device.readiness import get_readiness_checker
+from pymammotion.device.remote_drive import HttpTokenSource
 from pymammotion.device.state_reducer import apply_rtk_coordinate
 from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection, UnauthorizedExceptionError
 from pymammotion.http.model.rain_protection import WeatherServerSync
@@ -144,6 +145,7 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
+    from pymammotion.device.remote_drive import RemoteDriveEvent, RemoteDriveSession
     from pymammotion.http.http import MammotionHTTP
     from pymammotion.http.model.work_report import WorkReportRecord
     from pymammotion.transport.base import Transport
@@ -543,7 +545,11 @@ class MammotionClient(CloudAuthMixin):
                 await handle.notify_critical_error(exc)
 
     async def _send_with_auth_retry(
-        self, send_fn: Callable[[], Awaitable[None]], session: AccountSession | None = None
+        self,
+        send_fn: Callable[[], Awaitable[None]],
+        session: AccountSession | None = None,
+        *,
+        swallow_transport_errors: bool = True,
     ) -> None:
         """Call *send_fn*; on an auth failure refresh that transport's credentials once and retry.
 
@@ -555,6 +561,9 @@ class MammotionClient(CloudAuthMixin):
         reaches the host, which prompts the user to re-authenticate.  Nothing here
         re-logins with a stored password — that would bypass the prompt and, during a
         server-side outage, fire a password grant per queued command.
+
+        Other transport errors are logged and dropped unless *swallow_transport_errors*
+        is False — a remote-drive frame must not look delivered when it was refused.
         """
         try:
             await send_fn()
@@ -570,6 +579,8 @@ class MammotionClient(CloudAuthMixin):
             # swallowed into a log line and the host would never prompt for re-auth.
             raise
         except TransportError as ex:
+            if not swallow_transport_errors:
+                raise
             _logger.warning(ex)
 
     # ------------------------------------------------------------------
@@ -2272,6 +2283,89 @@ class MammotionClient(CloudAuthMixin):
             )
             return WeatherServerSync.FAILED
         return WeatherServerSync.SAVED
+
+    def remote_drive_session(self, device_name: str, account_id: str | None = None) -> RemoteDriveSession:
+        """Return the device's cloud remote-drive session, creating it on first use.
+
+        Create it (or call :meth:`subscribe_remote_drive`) before starting, so a token refusal
+        during :meth:`start_remote_drive` reaches the subscriber.  The handle owns the session.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+
+        """
+        if (handle := self.mower(device_name, account_id)) is None:
+            msg = f"Device '{device_name}' not registered"
+            raise KeyError(msg)
+        return handle.ensure_remote_drive(
+            tokens=HttpTokenSource(partial(self._remote_drive_http, handle), handle.iot_id),
+            send=partial(self._send_remote_drive_frame, handle),
+        )
+
+    def _remote_drive_http(self, handle: DeviceHandle) -> MammotionHTTP | None:
+        # Looked up per call: the handle's account can change on re-key or re-login.
+        session = self._get_session_for_handle(handle)
+        return session.mammotion_http if session is not None else None
+
+    async def _send_remote_drive_frame(self, handle: DeviceHandle, payload: bytes, *, timeout: float) -> None:
+        # The timeout bounds each attempt, never the refresh between them (see DriveSend).
+        async def _attempt() -> None:
+            async with asyncio.timeout(timeout):
+                await handle.send_cloud(payload, user_initiated=True)
+
+        await self._send_with_auth_retry(_attempt, self._get_session_for_handle(handle), swallow_transport_errors=False)
+
+    async def start_remote_drive(
+        self, device_name: str, account_id: str | None = None, *, require_video: bool = False
+    ) -> bool:
+        """Request the control token and enter the safety notice; see :meth:`RemoteDriveSession.start`.
+
+        *require_video* applies the app's rule that nothing is driven before the host's video
+        has a frame; report it with :meth:`set_remote_drive_video_ready`.  Returns False when
+        the server refused the token.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            NoTransportAvailableError: no usable cloud transport (a BLE-only device drives with
+                ``send_movement`` instead).
+            RemoteDriveError: already running, or video required and not ready.
+            UnauthorizedExceptionError: the token endpoint rejected the login.
+
+        """
+        session = self.remote_drive_session(device_name, account_id)
+        session.require_video = require_video
+        return await session.start()
+
+    async def confirm_remote_drive(self, device_name: str, account_id: str | None = None) -> None:
+        """Leave the safety notice and accept input; see :meth:`RemoteDriveSession.confirm`."""
+        await self.remote_drive_session(device_name, account_id).confirm()
+
+    async def remote_drive(self, device_name: str, linear: int, angular: int, account_id: str | None = None) -> None:
+        """Feed joystick input in wire units; ``(0, 0)`` is hands off.  See :meth:`RemoteDriveSession.drive`."""
+        await self.remote_drive_session(device_name, account_id).drive(linear, angular)
+
+    async def stop_remote_drive(self, device_name: str, account_id: str | None = None) -> None:
+        """Stop the mower and release the control token.  A no-op when no session is running."""
+        await self.remote_drive_session(device_name, account_id).stop()
+
+    def subscribe_remote_drive(
+        self,
+        device_name: str,
+        handler: Callable[[RemoteDriveEvent], Awaitable[None]],
+        account_id: str | None = None,
+    ) -> Subscription:
+        """Receive the device's remote-drive faults and exits (:class:`RemoteDriveEvent`)."""
+        return self.remote_drive_session(device_name, account_id).subscribe(handler)
+
+    async def set_remote_drive_video_ready(
+        self, device_name: str, *, ready: bool, account_id: str | None = None
+    ) -> None:
+        """Report whether the host's video has a frame; see :meth:`RemoteDriveSession.set_video_ready`."""
+        await self.remote_drive_session(device_name, account_id).set_video_ready(ready=ready)
+
+    def acknowledge_remote_drive_fence(self, device_name: str, account_id: str | None = None) -> None:
+        """Resume input after an ``APPROACH_FENCE`` stop."""
+        self.remote_drive_session(device_name, account_id).acknowledge_fence_warning()
 
     @property
     def cloud_http(self) -> MammotionHTTP | None:

@@ -188,3 +188,31 @@ the cloud refused reported success and the host's `api_limit_exceeded` handler
 was unreachable. Both now propagate; the queue absorbs them in its WARNING
 bucket, the direct path surfaces them, and HA-Luba catches both under one
 message.
+
+## D15. Remote drive is a session object on the handle, not a queued command
+
+The app's cloud joystick is a stateful protocol. It has a control token, keep-alives, a
+single frame in flight gated on a matched `ctrlSeq`, and hold-repeat. It does not fit
+`send_command_with_args` or a saga.
+- **Not a command.** A command has no memory between calls.
+- **Not a saga.** A saga holds the queue's exclusive slot, and a drive session can run
+  for minutes while polls continue.
+
+So `RemoteDriveSession` (`device/remote_drive.py`) is owned by the `DeviceHandle`, so
+`stop()` can halt the mower. The client injects the token source and the send, because
+the login and `_send_with_auth_retry` live there.
+
+Rules the session keeps:
+- **Frames go cloud-only through `send_cloud`.** The app sends them IoT-only
+  (`sendOrderMsg_DriverIotOnly`), and over BLE it drives with `DrvMotionCtrl` instead.
+- **They take the user path.** Like D14, the quota and the offline flag are waived; the
+  429 ban is not.
+- **A refused frame must surface** (`swallow_transport_errors=False`). The session waits
+  on an ack that a dropped frame never produces, so a frame logged away as sent would
+  stall it.
+- **The control token never touches `TokenManager`.** It is not a login credential; a
+  401 on its endpoint propagates as `UnauthorizedExceptionError`.
+
+**Rejected:** holding a faulted session until the host acknowledges it, as the app does
+with its dialog. The library has no dialog, so it releases the token at once.
+

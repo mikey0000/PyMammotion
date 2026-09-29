@@ -285,6 +285,8 @@ class MowerStateReducer(StateReducer):
                         device.events = copy.deepcopy(current.events)
                     case "current_cutter_mode" | "cutter_mode_ctrl_by_hand" | "bidire_speed_read_set":
                         device.mower_state = copy.deepcopy(current.mower_state)
+                    case "toapp_session_ctrl_ack" | "toapp_session_exit_nfty":
+                        pass  # RemoteDriveSession's traffic via the broker; no device state.
                     case _:
                         device.mower_state = copy.deepcopy(current.mower_state)
                         device.events = copy.deepcopy(current.events)

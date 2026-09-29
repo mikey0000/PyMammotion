@@ -121,7 +121,7 @@ account per device.
 
 ---
 
-## 4. The four flows
+## 4. The four flows (plus remote drive, §4.5)
 
 ### 4.1 Inbound message
 
@@ -248,6 +248,22 @@ a rejected refresh token does not become valid by waiting.
 
 ---
 
+### 4.5 Remote drive (cloud joystick session)
+
+```
+MammotionClient.start_remote_drive / remote_drive / stop_remote_drive
+  └─ DeviceHandle.ensure_remote_drive() -> RemoteDriveSession   (device/remote_drive.py)
+       ├─ token: HttpTokenSource -> MammotionHTTP.request/refresh_fpv_control_token
+       ├─ frames: _send_with_auth_retry(swallow_transport_errors=False)
+       │            └─ DeviceHandle.send_cloud(user_initiated=True)   (cloud only, no BLE)
+       └─ acks: broker.subscribe_unsolicited -> toapp_session_ctrl_ack, matched by ctrlSeq
+```
+
+The session paces itself: at most one frame in flight, and 150 ms between frames. All
+of its timers go through an injected `DriveClock`. It never sends from inside the
+broker's handler; work is scheduled for the next clock turn instead. The protocol,
+phases and faults are in `docs/remote_drive.md`, and the reasoning is in D15.
+
 ## 5. Single homes — do not add a second one
 
 | Question | The one place that answers it |
@@ -262,6 +278,7 @@ a rejected refresh token does not become valid by waiting.
 | Is this exception expected by the queue? | the demotion buckets in `DeviceCommandQueue._process` |
 | What does this cloud error code mean? | `aliyun/exceptions.py` (`DEVICE_OFFLINE_CODES`, `DEVICE_UNBOUND_CODES`, `GATEWAY_TIMEOUT_CODES`) |
 | Which handle owns this device's BLE? | `DeviceRegistry.find_ble_owner` |
+| Which cloud transport would a cloud-only send use? | `DeviceHandle.usable_cloud_transport` |
 | Which handle does this cloud frame belong to? | `InboundRouter` |
 | What are this model's limits? | `data/model/device_capabilities.py::DeviceConfig` |
 | What device variant is this? | `utility/device_type.py::DeviceType` |
