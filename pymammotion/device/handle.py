@@ -1762,18 +1762,46 @@ class DeviceHandle:
 
         await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
 
+    def _one_shot_report_command(self) -> bytes:
+        """Build the count=1 ``RPT_START`` shared by :meth:`send_one_shot_report` and :meth:`refresh_status`."""
+        return self.commands.request_iot_sys(
+            rpt_act=RptAct.RPT_START,
+            rpt_info_type=_REPORT_CHANNELS,
+            timeout=10_000,
+            count=1,
+        )
+
+    async def refresh_status(self, send: Callable[[bytes], Awaitable[None]] | None = None) -> None:
+        """Send a one-shot report request now, on the caller's task, for a person waiting on it.
+
+        The user-initiated counterpart of :meth:`send_one_shot_report`: no debounce, no
+        queue, and the send is user-initiated, so the cloud's advisory offline flag does not
+        refuse it.  *send* defaults to a user-initiated :meth:`send_raw`;
+        ``MammotionClient.refresh_status`` passes one wrapped in its auth retry.
+
+        A live BLE continuous stream is left alone: its flag is set only on a verified
+        report and cleared by the BLE loop's stale watchdog, so it is already delivering
+        fresher data, and a count=1 ``RPT_START`` would reconfigure the subscription that
+        loop is renewing.
+
+        Raises whatever the send raises — ``NoTransportAvailableError``,
+        ``DeviceOfflineException`` and the rest — so the caller learns it did not land.
+        """
+        if self._ble_stream_active:
+            return
+
+        async def _user_send(payload: bytes) -> None:
+            await self.send_raw(payload, user_initiated=True)
+
+        await self._send_rpt_start_verified(self._one_shot_report_command(), send or _user_send)
+
     async def send_one_shot_report(self) -> None:
         """Enqueue a one-shot ``request_iot_sys(count=1)`` data refresh.
 
         Routes via the best available transport — BLE if connected and preferred,
         MQTT otherwise — matching the same transport-priority rules as user commands.
         """
-        cmd_bytes = self.commands.request_iot_sys(
-            rpt_act=RptAct.RPT_START,
-            rpt_info_type=_REPORT_CHANNELS,
-            timeout=10_000,
-            count=1,
-        )
+        cmd_bytes = self._one_shot_report_command()
 
         async def _send() -> None:
             await self._send_rpt_start_verified(cmd_bytes, self.send_raw)

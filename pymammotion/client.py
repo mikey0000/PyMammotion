@@ -369,6 +369,42 @@ class MammotionClient(CloudAuthMixin):
         if time.monotonic() - handle.last_report_at > max_age_s:
             await handle.request_report_snapshot()
 
+    async def refresh_status(self, device_name: str, account_id: str | None = None) -> None:
+        """Request a status report now, for a person who asked for one.
+
+        The user-initiated counterpart of :meth:`ensure_fresh_state`: no age check, no
+        debounce and no queue.  Dispatched on the caller's task with ``Priority.USER``
+        semantics, so the cloud's advisory offline flag does not refuse it and a running
+        saga does not hold it.  Returns once the device answered with a report or the
+        RPT_START verification window ran out.  A no-op while a BLE continuous stream is
+        live (see :meth:`DeviceHandle.refresh_status`).
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            NoTransportAvailableError: nothing can carry it, including a terminally failed
+                cloud transport.
+            DeviceOfflineException: the cloud rejected it because the device is offline.
+            Exception: anything else a direct send propagates (see
+                :meth:`send_command_with_args`).
+
+        """
+        handle = self._device_registry.get_by_name(device_name, account_id)
+        if handle is None:
+            msg = f"Device '{device_name}' not registered"
+            raise KeyError(msg)
+        handle.record_user_command()
+        session = self._get_session_for_handle(handle)
+
+        async def _send(payload: bytes) -> None:
+            await self._send_with_auth_retry(lambda: handle.send_raw(payload, user_initiated=True), session)
+
+        await execute_command(
+            lambda: handle.refresh_status(_send),
+            device_name=device_name,
+            on_critical_error=handle.queue.on_critical_error,
+            reraise=True,
+        )
+
     def subscribe_device_status(
         self,
         device_name: str,
