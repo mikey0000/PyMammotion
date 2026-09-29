@@ -64,13 +64,29 @@ LubaMBProductKey = ["a1pb9toor70", "3drMFnqGVNe"]
 
 LubaMEProductKey = ["HK8snDC8Kxh"]
 
+LubaHMProductKey = ["tBnCA8u2Aps", "jvEDnj42DRK"]
+
+LubaTRProductKey = ["z8Pu2TEeNZU"]
+
+LubaSPProductKey = ["SNvVHSxfU73"]
+
+LubaLSProductKey = ["k8H4M5KZ6Fn"]
+
+LubaMSProductKey = ["f4KFveHngnm"]
+
+YukaHSProductKey = ["h8ZyNy8FV3u"]
+
+YukaMN101ProductKey = ["rBGTwYhfhyY"]
+
+SpinoH1ProductKey = ["rbk9dxFBe6m", "xEBF8JsgVeR"]
+
 RTKNBProductKey = ["a1NfZqdSREf", "a1ZuQVL7UiN", "6DPytKe4pKz"]
 
 LubaLAProductKey = ["CDYuKXTYrSP", "a1YbcqQYFv2"]
 
 YukaMN100ProductKey = ["NnbeYtaEUGE"]
 
-Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m", "a1tyIkI4q0G"]
+Cm900ProductKey = ["zkRuTK9KsXG", "6DbgVh2Qs5m", "a1tyIkI4q0G", "1SCa3mAX6G"]
 
 # Observed on a Spino-E1 (PC100).  The app carries no product key for it — its
 # ``DeviceProductKey`` table stops at the PC210 pair below and the E1 is resolved
@@ -166,16 +182,15 @@ _CHARGE_LIMIT_FIRMWARE = "2.1.1.5"
 #: protection).  See ``DeviceType.supports_wildlife_safety``.
 _WILDLIFE_SAFETY_FIRMWARE = "1.13"
 
-#: Firmware above which the app replaces the on/off rain switch with the three-mode
-#: Rain Protection screen.  Unconfirmed — borrowed from ``_SMART_SLEEP_FIRMWARE``.
-#: Kept separate from it, with its own device tuple below, so confirming or
-#: correcting one capability cannot silently move the other.
-_RAIN_PROTECTION_MODES_FIRMWARE = "2.3.26.0"
-
 #: Firmware from which the app shows "Auto-reverse Mowing Direction".  Verbatim from
-#: the 2.3.18.21 RN bundle: ``compareVersion(device.firmwareVersion, "2.3.28.1") >= 0``.
+#: the 2.3.20.30 RN bundle: ``compareVersion(device.firmwareVersion, "2.3.28.1") >= 0``.
 #: See ``DeviceType.supports_auto_change_direction``.
 _AUTO_CHANGE_DIRECTION_FIRMWARE = "2.3.28.1"
+
+#: Firmware from which Mammotion's release note restores control over Wi-Fi, per model family.
+#: See ``DeviceType.supports_wifi_movement``.
+_WIFI_MOVEMENT_FIRMWARE_OLDER = "1.30.31.19"
+_WIFI_MOVEMENT_FIRMWARE_NEWER = "2.3.31.69"
 
 
 class DeviceType(Enum):
@@ -203,15 +218,24 @@ class DeviceType(Enum):
     LUBA_LA = (18, "Luba-LA", "HM432")
     SWIMMINGPOOL_S1 = (19, "Spino-S1", "Spino-S1")
     SWIMMINGPOOL_E1 = (20, "Spino-E1", "Spino-E1")
-    YUKA_MN100 = (21, "Ezy-VT", "MN100")
+    YUKA_MN100 = (21, "Ezy-VT,Yuka-CV", "MN100")
     RTKNB = (22, "NB", "NB")
     LUBA_MB = (23, "Luba-MB", "HM434")
     CM900 = (24, "Kumar-MK", "KM01")
     YUKA_MN101 = (25, "Ezy-LD", "MN101")
     SWIMMINGPOOL_SP = (26, "Spino-SP,Spino-S1", "Spino-SP")
     SD_PX = (27, "SDPX", "SDPX")
-    LUBA_HM = (28, "Luba-HM", "HM610")
+    LUBA_HM = (28, "Luba-HM,Luba-MH", "HM610")
     LUBA_ME = (29, "Luba-ME", "HM620")
+    # App 2.3.20.30 renumbered its whole enum; members it added carry its new ids, which
+    # clash with none of the ids above.
+    LUBA_SP = (2008, "Luba-SP", "HM435")
+    LUBA_TR = (2012, "Luba-TR", "HM436")
+    LUBA_LS = (2013, "Luba-LS", "HM432SE")
+    LUBA_MS = (2014, "Luba-MS", "HM434SE")
+    CM901 = (3001, "Maston-R", "CM901")
+    YUKA_HS = (4007, "Yuka-HS", "MN260")
+    SPINO_H1 = (5004, "Spino-H1", "IL100")
 
     def __init__(self, value: int, name: str, model: str) -> None:
         """Initialize device type with its integer id, short name, and model string."""
@@ -301,6 +325,11 @@ class DeviceType(Enum):
             DeviceType.LUBA_MB,
             DeviceType.LUBA_LA,
             DeviceType.CM900,
+            DeviceType.LUBA_TR,
+            DeviceType.LUBA_LS,
+            DeviceType.LUBA_MS,
+            DeviceType.LUBA_SP,
+            DeviceType.CM901,
         )
 
     def is_cm900(self) -> bool:
@@ -310,8 +339,8 @@ class DeviceType(Enum):
     def is_support_dynamics_line(self, firmware_version: str | None = None) -> bool:
         """Return True if this device supports the dynamics-line (live mow-progress) stream.
 
-        Mirrors ``DeviceType.isSupportDynamicsLine(ICarDevice)`` in APK 2.3.8.201
-        (`DeviceType.java:606-607`).  Supporting devices stream the actual cut
+        Mirrors ``DeviceType.isSupportDynamicsLine(ICarDevice)`` in APK 2.3.20.30
+        (`DeviceType.java:826-828`).  Supporting devices stream the actual cut
         path as a separate ``NavGetCommData(action=8, type=18)`` response that
         the APK polls every 10 s while the device is mowing.
 
@@ -337,6 +366,12 @@ class DeviceType(Enum):
             DeviceType.LUBA_LA,
             DeviceType.LUBA_MB,
             DeviceType.CM900,
+            DeviceType.LUBA_LS,
+            DeviceType.LUBA_MS,
+            DeviceType.YUKA_HS,
+            DeviceType.LUBA_TR,
+            DeviceType.CM901,
+            DeviceType.LUBA_SP,
         ):
             return True
         if self is DeviceType.LUBA_VA and firmware_version:
@@ -399,16 +434,7 @@ class DeviceType(Enum):
 
     def is_yu_ka_type(self) -> bool:
         """Return True if this is any Yuka-family device."""
-        return self in (
-            DeviceType.LUBA_YUKA,
-            DeviceType.YUKA_MINI,
-            DeviceType.YUKA_MINI2,
-            DeviceType.YUKA_VP,
-            DeviceType.YUKA_MINIV,
-            DeviceType.YUKA_MN100,
-            DeviceType.YUKA_MN101,
-            DeviceType.YUKA_ML,
-        )
+        return self in _YUKA_FAMILY
 
     def is_yu_ka_type1(self) -> bool:
         """Return True if this is a Yuka type 1 variant (original + mini variants + ML + MN101)."""
@@ -490,10 +516,10 @@ class DeviceType(Enum):
         """Whether the device exposes the Smart Sleep switches (EcoSleep / LiveSleep).
 
         Mirrors the gate on the app's battery page, which only offers the Smart
-        Sleep entry for the HM432/HM434/HM442 product keys above firmware
-        ``2.3.26.0`` (RN bundle ``assets/index.android.bundle`` in APK
-        2.3.18.21: ``[y.HM432, y.HM434, y.HM442].includes(productKey) &&
-        compareVersion(firmwareVersion, "2.3.26.0") > 0``).
+        Sleep entry for the HM432/HM434/HM442/HM434SE/HM432SE product keys above
+        firmware ``2.3.26.0`` (RN bundle ``assets/index.android.bundle`` in APK
+        2.3.20.30: ``[y.HM432, y.HM434, y.HM442, y.HM434SE, y.HM432SE].includes(productKey)
+        && compareVersion(firmwareVersion, "2.3.26.0") > 0``).
 
         The threshold is exclusive, matching the app's ``> 0`` comparison.  An
         empty ``firmware_version`` returns False — the switches write to device
@@ -543,43 +569,108 @@ class DeviceType(Enum):
         return not _version_less_than(firmware_version, _WILDLIFE_SAFETY_FIRMWARE)
 
     @staticmethod
-    def supports_rain_protection_modes(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:
-        """Whether the device exposes three-mode Rain Protection instead of an on/off switch.
+    def supports_rain_protection_modes(device_name: str, *, probed: bool | None) -> bool:
+        """Whether the device has three-mode Rain Protection (Off / Smart / Sensor plus a delay).
 
-        Off / Smart / Sensor plus a resume delay, new in app 2.3.18.  **The
-        threshold and device set here are unconfirmed**: the app's entry point for
-        this screen lives in native code that is packed in the 2.3.18.21 APK, so
-        the only thing recoverable was the screen itself (RN bundle
-        ``ScreenName.RainProtection``).  Its threshold and device tuple are borrowed
-        from ``supports_smart_sleep`` — the one gate of the same vintage that *is*
-        readable — but held separately so correcting either leaves the other alone.
-
-        Devices that return False use the plain rain switch
-        (``allpowerfull_rw`` id 3), which every supported mower has.
+        The app's gate is packed native code, so this is the part that can be read: every
+        entry point is named ``x5*``, so the model must be X5, and the device itself must
+        have proved it (*probed*: ``RainProtectionSettings.supported``, set by a RAINPRO
+        reply or self-check 34).  Which firmware added it is unknown.  Every mower keeps
+        the plain rain switch (``allpowerfull_rw`` id 3).
         """
-        if DeviceType.value_of_str(device_name, product_key) not in _RAIN_PROTECTION_MODE_DEVICES:
-            return False
-        return _version_greater_than(firmware_version, _RAIN_PROTECTION_MODES_FIRMWARE)
+        return probed is True and DeviceType.is_x5_series(device_name)
 
     @staticmethod
     def supports_auto_change_direction(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:
         """Whether the device offers "Auto-reverse Mowing Direction" (anti-matting).
 
-        The app gates the row on a server-supplied capability list
-        (``isShowCurrentModule(MAWorkSettingDetailCodeAUTOChangeDirection, detailVos)``)
-        *and* on ``compareVersion(firmwareVersion, "2.3.28.1") >= 0`` — 2.3.18.21 RN
-        bundle, work-settings screen.  pymammotion has no equivalent of ``detailVos``,
-        so the device half is taken from Mammotion's release notes instead
-        (``_AUTO_CHANGE_DIRECTION_DEVICES``).
+        App 2.3.20.30 has no native per-model gate.  Its RN work-settings screen shows the
+        row when ``isShowCurrentModule(MAWorkSettingDetailCodeAUTOChangeDirection = 23,
+        detailVos) && compareVersion(firmwareVersion, "2.3.28.1") >= 0``; ``is434Or432Device``
+        only swaps the description text, and nothing depends on border laps, job mode or
+        channel mode.  ``detailVos`` is a server capability list pymammotion never fetches,
+        so the firmware half is taken for every mower (not pools, RTK or UNKNOWN) and the
+        server half is stood in for by ``_AUTO_CHANGE_DIRECTION_EXCLUDED`` — Luba 1, Luba 2
+        and the original Yuka, which the product owner confirms never offer it.
 
         A firmware string without a dot — unknown — returns False: the toggle writes a
         setting to the device, so an unread version is the wrong thing to guess on.
         """
-        if DeviceType.value_of_str(device_name, product_key) not in _AUTO_CHANGE_DIRECTION_DEVICES:
+        device_type = DeviceType.value_of_str(device_name, product_key)
+        if not _is_mower(device_type) or device_type in _AUTO_CHANGE_DIRECTION_EXCLUDED:
             return False
         if "." not in firmware_version:
             return False
         return not _version_less_than(firmware_version, _AUTO_CHANGE_DIRECTION_FIRMWARE)
+
+    @staticmethod
+    def supports_wifi_movement(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:
+        """Whether a mower accepts manual movement commands over the cloud (Wi-Fi/4G) transport.
+
+        Only the models Mammotion's release note lists, each against its family's threshold on
+        the whole-device version.  A firmware string without a dot — unknown — returns False.
+        Hosts want :meth:`DeviceHandle.supports_wifi_movement`, which also covers unlisted mowers.
+        """
+        threshold = _wifi_movement_threshold(DeviceType.value_of_str(device_name, product_key))
+        if threshold is None or "." not in firmware_version:
+            return False
+        return not _version_less_than(firmware_version, threshold)
+
+    @staticmethod
+    def has_wifi_movement_threshold(device_name: str, product_key: str = "") -> bool:
+        """Whether the model is in one of the release note's Wi-Fi-movement family tables."""
+        return _wifi_movement_threshold(DeviceType.value_of_str(device_name, product_key)) is not None
+
+    @staticmethod
+    def supports_continue_last_job(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:  # noqa: ARG004
+        """Whether the app offers "continue last job" (``todev_work_report_start_working_msg``).
+
+        App 2.3.20.30 compares no model list and no firmware: the RN work-report screen
+        shows "Resume task" for ``record.continueWork && record.workType != DROPMOW`` (a
+        server flag on ``/device-server/v1/device/work-report/page``), and the home start
+        button asks the packed native ``checkContinueWorking()``.  Both live only on mower
+        screens.  ``firmware_version`` is accepted so this plugs in beside the other gates.
+        """
+        return _is_mower(DeviceType.value_of_str(device_name, product_key))
+
+    @staticmethod
+    def supports_ride_boundary_distance(device_name: str, product_key: str = "") -> bool:
+        """Whether the device offers the "Edge Coverage" setting (``NavReqCoverPath.ride_boundary_distance``).
+
+        Mirrors the app's native gate (2.3.20.30 ``SettingOptionsView.refreshData``): the row is hidden
+        unless the model is one of ``_RIDE_BOUNDARY_DISTANCE_DEVICES`` and border laps are on (the
+        caller's half).  No firmware compare.
+        """
+        return DeviceType.value_of_str(device_name, product_key) in _RIDE_BOUNDARY_DISTANCE_DEVICES
+
+    @staticmethod
+    def supports_vision_positioning(device_name: str, product_key: str = "") -> bool:
+        """Whether the app shows "Visual Positioning" (``vio_state``, camera brightness) for the device.
+
+        Mirrors 2.3.20.30 ``DeviceType.isSupportVision()``.  Other devices, the Luba 3 among them,
+        report an uninitialised ``vio_to_app_info`` block that means nothing.
+        """
+        return DeviceType.value_of_str(device_name, product_key) in _VISION_POSITIONING_DEVICES
+
+    @staticmethod
+    def supports_lidar_positioning(device_name: str, product_key: str = "") -> bool:
+        """Whether the app shows "LiDAR Positioning" (fuse status 1 is Good) for the device.
+
+        Mirrors 2.3.20.30 ``DeviceType.isSupportRadar()``.
+        """
+        return DeviceType.value_of_str(device_name, product_key) in _LIDAR_POSITIONING_DEVICES
+
+    @staticmethod
+    def ride_boundary_distance_to_send(
+        device_name: str, edge_mode: int, distance: float, product_key: str = ""
+    ) -> float:
+        """Return the ``ride_boundary_distance`` a route or schedule may carry: ``distance``, or 0.0 if gated off.
+
+        The gate is :meth:`supports_ride_boundary_distance` plus border laps on (``edge_mode != 0``).
+        """
+        if edge_mode == 0 or not DeviceType.supports_ride_boundary_distance(device_name, product_key):
+            return 0.0
+        return float(distance)
 
     @staticmethod
     def is_luba_pro(device_name: str, product_key: str = "") -> bool:
@@ -594,17 +685,7 @@ class DeviceType(Enum):
     @staticmethod
     def is_yuka(device_name: str) -> bool:
         """Check if the given device name corresponds to any Yuka-family device type."""
-        dt = DeviceType.value_of_str(device_name)
-        return dt in (
-            DeviceType.LUBA_YUKA,
-            DeviceType.YUKA_VP,
-            DeviceType.YUKA_MINI,
-            DeviceType.YUKA_MINI2,
-            DeviceType.YUKA_MINIV,
-            DeviceType.YUKA_ML,
-            DeviceType.YUKA_MN100,
-            DeviceType.YUKA_MN101,
-        )
+        return DeviceType.value_of_str(device_name) in _YUKA_FAMILY
 
     @staticmethod
     def is_yuka_mini(device_name: str) -> bool:
@@ -640,6 +721,12 @@ class DeviceType(Enum):
             DeviceType.LUBA_MD,
             DeviceType.LUBA_MB,
             DeviceType.LUBA_LD,
+            DeviceType.CM901,
+            DeviceType.LUBA_TR,
+            DeviceType.LUBA_LS,
+            DeviceType.LUBA_MS,
+            DeviceType.YUKA_HS,
+            DeviceType.LUBA_SP,
         )
 
     @staticmethod
@@ -668,13 +755,19 @@ class DeviceType(Enum):
             DeviceType.LUBA_ME,
             DeviceType.CM900,
             DeviceType.LUBA_VP,
+            DeviceType.LUBA_LS,
+            DeviceType.LUBA_MS,
+            DeviceType.YUKA_HS,
+            DeviceType.LUBA_SP,
+            DeviceType.LUBA_TR,
+            DeviceType.CM901,
         )
 
     @staticmethod
     def is_x5_series(device_name: str) -> bool:
         """Return True for the X5 platform, which is what offers map-free mowing.
 
-        Mirrors the app's ``DeviceType.isX5DeviceTyp()``.
+        Mirrors the app's ``DeviceType.isX5DeviceTyp()`` (2.3.20.30, which added the Ezy mowers).
         """
         return DeviceType.value_of_str(device_name) in (
             DeviceType.YUKA_MINIV,
@@ -686,6 +779,14 @@ class DeviceType(Enum):
             DeviceType.LUBA_LA,
             DeviceType.LUBA_MD,
             DeviceType.CM900,
+            DeviceType.YUKA_MN100,
+            DeviceType.YUKA_MN101,
+            DeviceType.LUBA_TR,
+            DeviceType.LUBA_LS,
+            DeviceType.LUBA_MS,
+            DeviceType.YUKA_HS,
+            DeviceType.LUBA_SP,
+            DeviceType.CM901,
         )
 
     @staticmethod
@@ -725,14 +826,7 @@ class DeviceType(Enum):
         *product_key* identifies the device when the name cannot — the pool models
         are sold under names the prefix table does not cover.
         """
-        device_type = DeviceType.value_of_str(device_name, product_key)
-        return device_type in (
-            DeviceType.SPINO,
-            DeviceType.SWIMMINGPOOL_S1,
-            DeviceType.SWIMMINGPOOL_E1,
-            DeviceType.SWIMMINGPOOL_SP,
-            DeviceType.SD_PX,
-        )
+        return DeviceType.value_of_str(device_name, product_key) in _POOL_FAMILY
 
     @staticmethod
     def is_yuka_ml(device_name: str) -> bool:
@@ -787,6 +881,46 @@ class DeviceType(Enum):
     def contain_luba_me_product_key(product_key: str) -> bool:
         """Return True if the product key belongs to a Luba ME device (HM620)."""
         return bool(product_key) and product_key in LubaMEProductKey
+
+    @staticmethod
+    def contain_luba_hm_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba HM device (HM610)."""
+        return bool(product_key) and product_key in LubaHMProductKey
+
+    @staticmethod
+    def contain_luba_tr_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba TR device (HM436)."""
+        return bool(product_key) and product_key in LubaTRProductKey
+
+    @staticmethod
+    def contain_luba_sp_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba SP device (HM435)."""
+        return bool(product_key) and product_key in LubaSPProductKey
+
+    @staticmethod
+    def contain_luba_ls_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba LS device (HM432SE)."""
+        return bool(product_key) and product_key in LubaLSProductKey
+
+    @staticmethod
+    def contain_luba_ms_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Luba MS device (HM434SE)."""
+        return bool(product_key) and product_key in LubaMSProductKey
+
+    @staticmethod
+    def contain_yuka_hs_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka HS device (MN260)."""
+        return bool(product_key) and product_key in YukaHSProductKey
+
+    @staticmethod
+    def contain_yuka_mn101_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Yuka MN101 device."""
+        return bool(product_key) and product_key in YukaMN101ProductKey
+
+    @staticmethod
+    def contain_spino_h1_product_key(product_key: str) -> bool:
+        """Return True if the product key belongs to a Spino-H1 (IL100) pool cleaner."""
+        return bool(product_key) and product_key in SpinoH1ProductKey
 
     @staticmethod
     def contain_luba_v_pro_product_key(product_key: str) -> bool:
@@ -888,8 +1022,8 @@ class DeviceType(Enum):
     def supports_battery_cycle_count(self) -> bool:
         """Return True if the device has a built-in (non-removable) battery and reports cycle count.
 
-        Mirrors APK ``DeviceType.isSupportBatteryLoopCount()``.  The 9 models
-        below use removable/detachable battery packs and do not report a
+        Mirrors APK ``DeviceType.isSupportBatteryLoopCount()`` (2.3.20.30).  The
+        models below use removable/detachable battery packs and do not report a
         meaningful ``bat_cycles`` value.
         """
         return self not in (
@@ -902,6 +1036,9 @@ class DeviceType(Enum):
             DeviceType.LUBA_LD,
             DeviceType.LUBA_LA,
             DeviceType.LUBA_MB,
+            DeviceType.LUBA_LS,
+            DeviceType.LUBA_MS,
+            DeviceType.YUKA_HS,
         )
 
 
@@ -912,34 +1049,138 @@ _SMART_SLEEP_DEVICES = (
     DeviceType.LUBA_LA,
     DeviceType.LUBA_MB,
     DeviceType.LUBA_VA,
+    DeviceType.LUBA_LS,
+    DeviceType.LUBA_MS,
 )
 
 # The app's is231SimilarParameterSettings() set: these share the 231 parameter
-# UI and never show Wildlife Safety regardless of firmware.
+# UI and never show Wildlife Safety regardless of firmware.  The app also counts
+# YUKA_HS when its runtime model is the vision variant, which a name cannot tell.
 _WILDLIFE_SAFETY_EXCLUDED_DEVICES = (
     DeviceType.YUKA_MINIV,
     DeviceType.YUKA_MN100,
     DeviceType.LUBA_MB,
+    DeviceType.LUBA_MS,
 )
 
-# Devices believed to offer three-mode Rain Protection. Unconfirmed, and separate
-# from _SMART_SLEEP_DEVICES on purpose — see _RAIN_PROTECTION_MODES_FIRMWARE.
-_RAIN_PROTECTION_MODE_DEVICES = (
-    DeviceType.LUBA_LA,
-    DeviceType.LUBA_MB,
-    DeviceType.LUBA_VA,
-)
-
-# Devices Mammotion lists for "Auto-reverse Mowing Direction" (release notes of
-# 2026-08-12): LUBA 3 AWD, LUBA mini 2 AWD 1000/1500 and YUKA mini 2 Vision/LiDAR.
-# LUBA_LA (HM432) and LUBA_MB (HM434) are the two the app describes as interior-routes
-# only — the app's own is434Or432Device() — but they still offer the toggle.
-_AUTO_CHANGE_DIRECTION_DEVICES = (
-    DeviceType.LUBA_VA,
-    DeviceType.LUBA_LA,
-    DeviceType.LUBA_MB,
+_YUKA_FAMILY = (
+    DeviceType.LUBA_YUKA,
+    DeviceType.YUKA_MINI,
+    DeviceType.YUKA_MINI2,
+    DeviceType.YUKA_VP,
     DeviceType.YUKA_MINIV,
+    DeviceType.YUKA_MN100,
+    DeviceType.YUKA_MN101,
     DeviceType.YUKA_ML,
+    DeviceType.YUKA_HS,
+)
+
+_POOL_FAMILY = (
+    DeviceType.SPINO,
+    DeviceType.SWIMMINGPOOL_S1,
+    DeviceType.SWIMMINGPOOL_E1,
+    DeviceType.SWIMMINGPOOL_SP,
+    DeviceType.SD_PX,
+    DeviceType.SPINO_H1,
+)
+
+
+def _is_mower(device_type: DeviceType) -> bool:
+    """Whether the type is a known mower: anything but UNKNOWN, a pool robot or an RTK base station."""
+    return device_type is not DeviceType.UNKNOWN and device_type not in _POOL_FAMILY and not device_type.is_rtk_type()
+
+
+# Release note for the Wi-Fi control fix; the app's own gate is server function code "002.002",
+# used for mowers not listed here.  Names mapped through the app's getExtMod product names.
+# "Applicable Models: LUBA 2, LUBA 2X, YUKA, LUBA mini Series, YUKA mini Series" (>= 1.30.31.19).
+_WIFI_MOVEMENT_OLDER_FAMILY = (
+    DeviceType.LUBA_2,
+    DeviceType.LUBA_VP,
+    DeviceType.LUBA_YUKA,
+    DeviceType.YUKA_VP,
+    DeviceType.LUBA_MN,
+    DeviceType.LUBA_LD,
+    DeviceType.YUKA_MINI,
+    DeviceType.YUKA_MINI2,
+)
+# "Applicable Models: LUBA 3, LUBA mini 2 Series, YUKA mini 2 Series" (>= 2.3.31.69).  YUKA_MINIV is the
+# "YUKA mini 2 Vision" (bind screen), grouped with LUBA_MB/LUBA_MS by APK 2.3.20.30 is231SimilarParameterSettings().
+_WIFI_MOVEMENT_NEWER_FAMILY = (
+    DeviceType.LUBA_VA,
+    DeviceType.LUBA_LA,
+    DeviceType.LUBA_MB,
+    DeviceType.LUBA_LS,
+    DeviceType.LUBA_MS,
+    DeviceType.YUKA_ML,
+    DeviceType.YUKA_MINIV,
+)
+
+
+def _wifi_movement_threshold(device_type: DeviceType) -> str | None:
+    """Return the release note's firmware threshold for *device_type*, or None when it is not listed."""
+    if device_type in _WIFI_MOVEMENT_OLDER_FAMILY:
+        return _WIFI_MOVEMENT_FIRMWARE_OLDER
+    if device_type in _WIFI_MOVEMENT_NEWER_FAMILY:
+        return _WIFI_MOVEMENT_FIRMWARE_NEWER
+    return None
+
+
+# User/product-confirmed: the app has no native model gate for auto-reverse; the server
+# capability code (MAWorkSettingDetailCode 23) filters these out.  LUBA_VP is the Luba 2 Pro
+# ("LUBA 2 AWD …X", the app's isLuba2Pro()).
+_AUTO_CHANGE_DIRECTION_EXCLUDED = (
+    DeviceType.LUBA,
+    DeviceType.LUBA_2,
+    DeviceType.LUBA_VP,
+    DeviceType.LUBA_YUKA,
+)
+
+
+# Models whose app shows the "Edge Coverage" row (SettingOptionsView.refreshData, 2.3.20.30); no firmware gate.
+_RIDE_BOUNDARY_DISTANCE_DEVICES = (
+    DeviceType.LUBA_VA,
+    DeviceType.LUBA_HM,
+    DeviceType.YUKA_MINIV,
+    DeviceType.LUBA_ME,
+    DeviceType.LUBA_TR,
+    DeviceType.LUBA_MB,
+    DeviceType.LUBA_LA,
+    DeviceType.YUKA_ML,
+    DeviceType.LUBA_SP,
+    DeviceType.CM900,
+    DeviceType.CM901,
+)
+
+# The app's isSupportVision() (2.3.20.30).
+_VISION_POSITIONING_DEVICES = (
+    DeviceType.LUBA_2,
+    DeviceType.LUBA_VP,
+    DeviceType.LUBA_MN,
+    DeviceType.LUBA_YUKA,
+    DeviceType.YUKA_MINI,
+    DeviceType.YUKA_MINI2,
+    DeviceType.YUKA_VP,
+    DeviceType.CM900,
+    DeviceType.CM901,
+    DeviceType.LUBA_MB,
+    DeviceType.LUBA_MS,
+)
+
+# The app's isSupportRadar() (2.3.20.30).  It counts YUKA_HS only for the non-vision runtime
+# variant, which a name cannot tell apart, so YUKA_HS is taken as LiDAR.
+_LIDAR_POSITIONING_DEVICES = (
+    DeviceType.LUBA_LD,
+    DeviceType.LUBA_VA,
+    DeviceType.LUBA_HM,
+    DeviceType.LUBA_ME,
+    DeviceType.LUBA_TR,
+    DeviceType.YUKA_ML,
+    DeviceType.YUKA_MN101,
+    DeviceType.YUKA_HS,
+    DeviceType.LUBA_MD,
+    DeviceType.LUBA_SP,
+    DeviceType.LUBA_LS,
+    DeviceType.LUBA_LA,
 )
 
 # Numeric id -> DeviceType, used by DeviceType.from_value. Built straight from the
@@ -954,7 +1195,7 @@ _VALUE_TO_DEVICE_TYPE: dict[int, "DeviceType"] = {
 # if-chain exactly, so specific "Luba-XX"/"Yuka-XX" prefixes are matched before the
 # generic "Luba", and the product-key checks fire at the same positions they did in the
 # chain. Most names are matched against device_name[:7]; RTK uses [:3] and the
-# swimming-pool models use [:8].
+# swimming-pool models, CM900 and CM901 use [:8].
 _VALUE_OF_STR_RULES: tuple[tuple["DeviceType", int, Callable[[str], bool] | None], ...] = (
     (DeviceType.RTK, 3, DeviceType.contain_rtk_product_key),
     (DeviceType.LUBA_2, 7, DeviceType.contain_luba_2_product_key),
@@ -972,6 +1213,9 @@ _VALUE_OF_STR_RULES: tuple[tuple["DeviceType", int, Callable[[str], bool] | None
     (DeviceType.YUKA_ML, 7, None),
     (DeviceType.LUBA_MD, 7, None),
     (DeviceType.LUBA_LA, 7, None),
+    (DeviceType.YUKA_HS, 7, DeviceType.contain_yuka_hs_product_key),
+    # Ahead of the generic "Yuka-": MN100's second prefix is "Yuka-CV".
+    (DeviceType.YUKA_MN100, 7, DeviceType.contain_yuka_mn100_product_key),
     (DeviceType.LUBA_YUKA, 7, None),
     # A ``Spino-S1`` *name* is a PC210, i.e. SWIMMINGPOOL_SP — the APK says so outright
     # (``DeviceType.java``: ``if (str.contains(SWIMMINGPOOL_S1.product_name)) return
@@ -981,14 +1225,20 @@ _VALUE_OF_STR_RULES: tuple[tuple["DeviceType", int, Callable[[str], bool] | None
     (DeviceType.SWIMMINGPOOL_SP, 8, DeviceType.contain_swimming_pool_sp_product_key),
     (DeviceType.SWIMMINGPOOL_S1, 8, None),
     (DeviceType.SWIMMINGPOOL_E1, 8, DeviceType.contain_swimming_pool_e1_product_key),
+    (DeviceType.SPINO_H1, 8, DeviceType.contain_spino_h1_product_key),
     (DeviceType.SPINO, 7, DeviceType.contain_swimming_pool_product_key),
-    (DeviceType.YUKA_MN100, 7, None),
-    (DeviceType.YUKA_MN101, 7, None),
+    (DeviceType.YUKA_MN101, 7, DeviceType.contain_yuka_mn101_product_key),
     (DeviceType.RTKNB, 7, None),
     (DeviceType.LUBA_MB, 7, None),
-    (DeviceType.CM900, 7, None),
+    # "Kumar-MK" is eight characters; the APK slices [:8] for it alone (valueOfStrByDeviceName).
+    (DeviceType.CM900, 8, DeviceType.contain_cm900_product_key),
+    (DeviceType.CM901, 8, None),
     (DeviceType.SD_PX, 7, DeviceType.contain_sd_px_product_key),
-    (DeviceType.LUBA_HM, 7, None),
+    (DeviceType.LUBA_HM, 7, DeviceType.contain_luba_hm_product_key),
     (DeviceType.LUBA_ME, 7, DeviceType.contain_luba_me_product_key),
+    (DeviceType.LUBA_TR, 7, DeviceType.contain_luba_tr_product_key),
+    (DeviceType.LUBA_LS, 7, DeviceType.contain_luba_ls_product_key),
+    (DeviceType.LUBA_MS, 7, DeviceType.contain_luba_ms_product_key),
+    (DeviceType.LUBA_SP, 7, DeviceType.contain_luba_sp_product_key),
     (DeviceType.LUBA, 7, DeviceType.contain_luba_product_key),
 )

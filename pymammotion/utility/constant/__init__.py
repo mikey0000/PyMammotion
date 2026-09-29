@@ -2,7 +2,7 @@
 
 from .ble_order import BleOrderCmd
 from .buffer_index import SystemRapidStateTunnelIndex, SystemTardStateTunnel, SystemUpdateBuf
-from .device_enums import AppConnectType, BreakPointReason, PosType, RTKPositionMode, VioState, WorkMode
+from .device_enums import AppConnectType, BreakPointReason, PosType, RTKPositionMode, VioBrightness, VioState, WorkMode
 from .display import camera_brightness, device_connection, device_mode
 from .poll_policy import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
 
@@ -17,6 +17,7 @@ __all__ = [
     "SystemRapidStateTunnelIndex",
     "SystemTardStateTunnel",
     "SystemUpdateBuf",
+    "VioBrightness",
     "VioState",
     "WorkMode",
     "camera_brightness",

@@ -120,18 +120,19 @@ class MnetLinkType(IntEnum):
     LINK_5G = 4
 
 
-class FuseLocalizationStatus(IntEnum):
-    """IMU + vision fusion localisation state.
+class FuseLocalizationStatus(UnknownTolerantIntEnum):
+    """Fused localisation state: ``rpt_dev_status.vslam_status`` bits 8-15, the value the app displays.
 
-    Extracted from rapid_state_data[16] bits [8:15].
-    Source: APK DeviceConstant.java fused localisation constants.
+    Source: APK ``DeviceConstant.FusedLocalizationStatus``.  The app also tests 5 in one
+    gate without naming it, so 5 is left to UNKNOWN.
     """
 
-    NO_POSE = 0  # No localisation
-    RTK_FIXED = 1  # Pure RTK fixed — normal operation
-    RTK_EXTENDED_VISION = 2  # RTK extended by visual odometry (kRTkExtended)
-    VISION_EXTENDED = 3  # Vision-only extension active
-    VISION_EXTENDED_FAILED = 4  # Vision extension attempted but failed
+    UNKNOWN = -1  # the app's value before any report
+    NO_POSE = 0  # kNoPose
+    RTK_FIXED = 1  # kRTKFixed; a LiDAR device's "LiDAR Positioning: Good"
+    RTK_EXTENDED_VISION = 2  # kRTkExtended
+    VISION_EXTENDED = 3  # kVisionExtended
+    VISION_EXTENDED_FAILED = 4  # kVisionExtendedFailed; the app treats it as no pose
 
 
 class WorkInterruptType(IntEnum):

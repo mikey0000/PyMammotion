@@ -23,6 +23,7 @@ from pymammotion.utility.constant.device_enums import (
     BreakPointReason,
     PosType,
     RTKPositionMode,
+    VioBrightness,
     VioState,
     WorkMode,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "SystemRapidStateTunnelIndex",
     "SystemTardStateTunnel",
     "SystemUpdateBuf",
+    "VioBrightness",
     "VioState",
     "WorkMode",
     "camera_brightness",

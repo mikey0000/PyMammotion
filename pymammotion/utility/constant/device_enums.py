@@ -14,14 +14,11 @@ class VioState(UnknownTolerantIntEnum):
     """Visual-inertial odometry signal quality.
 
     Surfaces on ``vio_to_app_info_msg.vio_state``.  Sourced from the APK's
-    ``SignalHelper.VioSignalType`` interface
-    (``newui/mvp/view/activity/status/newstatus/SignalHelper.java:265``).
-
-    The APK only recognises values 0-3; anything outside that range
-    (e.g. ``172`` observed when the camera pipeline is initialising) is
-    treated as unknown in both the app UI and this enum.  ``VioState(x)``
-    for any unrecognised ``x`` returns :data:`SIGNAL_UNKNOWN` instead of
-    raising :exc:`ValueError` (via ``UnknownTolerantIntEnum._missing_``).
+    ``SignalHelper.VioSignalType`` (``signal/newstatus/SignalHelper.java``), which
+    compares the value to 0-3 and shows "--" for anything else; so does this enum,
+    via :data:`SIGNAL_UNKNOWN`.  A device the app does not treat as a vision device
+    (e.g. LUBA_VA) reports uninitialised values here; gate on
+    ``DeviceType.supports_vision_positioning``.
     """
 
     SIGNAL_UNKNOWN = -1
@@ -30,6 +27,19 @@ class VioState(UnknownTolerantIntEnum):
     SIGNAL_INIT = 1
     SIGNAL_GOOD = 2
     SIGNAL_BAD = 3
+
+
+class VioBrightness(UnknownTolerantIntEnum):
+    """Camera brightness on ``vio_to_app_info_msg.brightness``.
+
+    The APK's ``SignalHelper.refreshVioBrightnessSignal``: anything outside 0-2 shows "--".
+    Meaningful only where ``DeviceType.supports_vision_positioning`` holds.
+    """
+
+    UNKNOWN = -1
+    DARK = 0
+    GOOD = 1
+    INTENSE = 2
 
 
 class RTKPositionMode(UnknownTolerantIntEnum):

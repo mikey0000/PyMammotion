@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from pymammotion.utility.constant.device_enums import WorkMode
+from pymammotion.utility.constant.device_enums import VioBrightness, WorkMode
 
 
 @runtime_checkable
@@ -59,15 +59,5 @@ def device_mode(value: int) -> str:
 
 
 def camera_brightness(value: int) -> str:
-    """Return the brightness corresponding to the given value."""
-
-    if value not in (0, 1):
-        if value > 45:
-            return "Light"
-        return "Dark"
-
-    modes = {
-        0: "Dark",
-        1: "Light",
-    }
-    return modes.get(value, "Invalid mode")
+    """Return the ``VioBrightness`` name for *value*, lower-cased: dark, good, intense or unknown."""
+    return VioBrightness(value).name.lower()

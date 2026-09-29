@@ -28,7 +28,7 @@ HA_DEVICE_CONSTANT_IMPORTS = [
 ]
 
 # Names it imports from the ``pymammotion.utility.constant`` barrel.
-HA_BARREL_IMPORTS = ["MOWING_ACTIVE_MODES", "VioState", "WorkMode"]
+HA_BARREL_IMPORTS = ["MOWING_ACTIVE_MODES", "VioBrightness", "VioState", "WorkMode"]
 
 
 @pytest.mark.parametrize("name", HA_DEVICE_CONSTANT_IMPORTS)

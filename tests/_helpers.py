@@ -275,3 +275,12 @@ async def advance_real_time(seconds: float) -> None:
     is driven by the event loop's own clock, which ``time_machine`` cannot move.
     """
     await asyncio.sleep(seconds)
+
+
+#: A Luba 1 by name.
+LUBA1_NAME = "Luba-ABCDEF"
+#: A Luba 3 (``LUBA_VA``): a model that keeps ``toward_mode`` in field 37 and offers Edge Coverage.
+NEWER_MODEL_NAME = "Luba-VA6ABCDE"
+#: A name no ``DeviceType`` rule recognises; with ``LUBA1_PRODUCT_KEY`` it is a Luba 1 by product key alone.
+UNRECOGNISED_NAME = "Mower-ABC123"
+LUBA1_PRODUCT_KEY = "a1UBFdq6nNz"

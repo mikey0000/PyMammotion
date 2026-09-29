@@ -146,6 +146,24 @@ Source: `device/source/device/enums/DeviceType.java:403-779`. Every predicate is
 | `isConditionToFPV(dev)` (DeviceUtils:629) | Combines `availableTime_service` + `isSupportFPVDownConversion` |
 | `isConditionToFPV4GTips(dev)` (DeviceUtils:648) | Shows 4G-required tip dialog |
 
+#### A.4.5 App 2.3.20.30 enum changes
+
+The tables above are 2.3.8.201. 2.3.20.30 (`device/source/device/enums/DeviceType.java`, readable Java) renumbers the whole enum (RTK 1001-1005, Luba 2000-2014, CM 3000-3001, Yuka 4000-4007, pools 5000-5004). pymammotion keeps the old ids for existing members and gives the added ones the new ids (no clash).
+
+| Added member | id | Name prefix | Code | `DeviceProductKey` |
+|---|---|---|---|---|
+| `LUBA_SP` | 2008 | `Luba-SP` | HM435 | `SNvVHSxfU73` |
+| `LUBA_TR` | 2012 | `Luba-TR` | HM436 | `z8Pu2TEeNZU` |
+| `LUBA_LS` | 2013 | `Luba-LS` | HM432SE | `k8H4M5KZ6Fn` |
+| `LUBA_MS` | 2014 | `Luba-MS` | HM434SE | `f4KFveHngnm` |
+| `CM901` | 3001 | `Maston-R` | CM901 | none (name only) |
+| `YUKA_HS` | 4007 | `Yuka-HS` | MN260 | `h8ZyNy8FV3u` |
+| `SPINO_H1` | 5004 | `Spino-H1` | IL100 | `rbk9dxFBe6m`, `xEBF8JsgVeR` |
+
+New prefixes on existing members: `LUBA_HM` `"Luba-HM,Luba-MH"`, `YUKA_MN100` `"Ezy-VT,Yuka-CV"`, `CM900` `"Kumar-MK,Maston-F"`. Name matching (`valueOfStrByDeviceName`) is `startsWith` for the comma lists; `Spino-H1` and `Maston-R` are checked before the generic `Spino` / `CM900` fallbacks.
+
+Predicate changes (2.3.20.30 line numbers): the new Luba/CM members join `isLubaType` (679), `isSupportDynamicsLine` (826), `isSupportFillLight` (830), `isSupportBladeSpeed` (803) and `isX5DeviceTyp` (914) — which also gains `YUKA_MN100` and `YUKA_MN101`. `YUKA_HS` joins `isYuKaType` (946) and the same capability lists. `LUBA_LS`/`LUBA_MS`/`YUKA_HS` join the `isSupportBatteryLoopCount` exclusion (799); `LUBA_MS` (and a vision `YUKA_HS`, a runtime flag) join `is231SimilarParameterSettings` (599); `SPINO_H1` joins `isSwimmingPool` (894). The RN Smart Sleep list adds HM434SE/HM432SE (bundle line 851).
+
 ### A.5 Firmware-version gating
 
 All firmware gates live in `device/source/device/utils/DeviceVersionUtils.java`. The key function is `DeviceVersionUtils.isLessThanInputVersion(ICarDevice, String semver)`. Returns true if device firmware older than threshold; the UI hides the action.

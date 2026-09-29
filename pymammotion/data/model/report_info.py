@@ -11,6 +11,7 @@ from pymammotion.data.model.enums import (
     BladeState,
     CollectorState,
     DumpState,
+    FuseLocalizationStatus,
     MnetLinkType,
     PositionMode,
     RTKStatus,
@@ -163,7 +164,7 @@ class DeviceData(DataClassORJSONMixin):
     fpv_info: FpvInfo | None = None
     lock_state: LockStateT = field(default_factory=LockStateT)
     # rpt_dev_status.self_check_status: one code (not a bitmask) naming what stops the
-    # mower starting — 0/10 none, 20 rain, 23 non-working hours, … (the app's
+    # mower starting — 0/10 none, 20 rain, 23 non-working hours, 34 rain protection, … (the app's
     # BlockErrorBeanChangeUtils)
     self_check_status: int = 0
     # Lifetime counters sourced from thing/properties deviceOtherInfo JSON
@@ -234,41 +235,50 @@ class DeviceData(DataClassORJSONMixin):
     # ------------------------------------------------------------------
     # vslam_status bit-field accessors
     #
-    # Packed 32-bit field: the APK splits it into three named sub-bytes at
-    # MACarDataManager.java:10561-10575 (byte 0 / ``raw & 0xFF`` is unused
-    # in the APK we have).  Value-space notes per property below.
+    # Packed 32-bit field, split by the APK's MACarDataManager for Luba 2 and later
+    # (byte 0 is unused there).
     # ------------------------------------------------------------------
 
     @property
     def fuse_status(self) -> int:
-        """Fuse-status sub-byte (vslam_status bits 8-15).
+        """Fused-localisation byte (vslam_status bits 8-15): a ``FuseLocalizationStatus`` value.
 
-        Stored as ``CarStatusBean.fuseStatus`` in the APK.  Observed values
-        0-5 in the APK code — does **not** share the 0-3 scheme used by
-        ``VioState``.  No named enum constants in the APK.
+        The app's displayed positioning state; it does not share ``VioState``'s 0-3 scheme.
         """
         return (self.vslam_status >> 8) & 0xFF
 
     @property
-    def vision_distance(self) -> int:
-        """Vision Distance sub-byte (vslam_status bits 16-23).
+    def fuse_localization_status(self) -> FuseLocalizationStatus:
+        """``fuse_status`` as the app's ``FusedLocalizationStatus``."""
+        return FuseLocalizationStatus(self.fuse_status)
 
-        Displayed in the app as "Vision Distance" — rendered as ``"(N)"``
-        next to the vision state on the RTK status screen
-        (``RTKStatusFragment.java:1181-1183`` via ``tvRtkVisionDis``).
-        Stored as ``CarStatusBean.dis`` in the APK; no enum — raw integer.
+    @property
+    def lidar_positioning_ok(self) -> bool:
+        """The app's "LiDAR Positioning: Good" (``refreshRadarStatusUI``: fuse status 1); otherwise "None"."""
+        return self.fuse_status == FuseLocalizationStatus.RTK_FIXED
+
+    @property
+    def vision_distance(self) -> int:
+        """Vision-survival percentage, 0-100 (vslam_status bits 16-23; the APK's ``dis``), despite the name.
+
+        Only meaningful while the fix is vision-extended; prefer :attr:`vision_survival`.  The distance
+        in metres is ``vio_survival_info.vio_survival_distance``.
         """
         return (self.vslam_status >> 16) & 0xFF
 
     @property
-    def vision_state(self) -> int:
-        """Vision / VSLAM-state sub-byte (vslam_status bits 24-31).
+    def vision_survival(self) -> int | None:
+        """Vision-survival percentage, or None unless fuse status is 2 or 3, the only states the app shows it in."""
+        if self.fuse_localization_status in (
+            FuseLocalizationStatus.RTK_EXTENDED_VISION,
+            FuseLocalizationStatus.VISION_EXTENDED,
+        ):
+            return self.vision_distance
+        return None
 
-        Stored as ``CarStatusBean.visionState`` in the APK.  No observed
-        comparisons in the APK code; value space unverified.  Consumers
-        that need named values should compare against the ``VioState``
-        enum cautiously (unconfirmed whether it uses the same 0-3 scheme).
-        """
+    @property
+    def vision_state(self) -> int:
+        """Vision-state byte (vslam_status bits 24-31); the app stores it and never reads it."""
         return (self.vslam_status >> 24) & 0xFF
 
 

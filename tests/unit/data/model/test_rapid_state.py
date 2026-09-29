@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from pymammotion.data.model.enums import RTKStatus
+from pymammotion.data.model.enums import FuseLocalizationStatus, RTKStatus
 from pymammotion.data.model.rapid_state import RapidState
 
 # tard_state_data is indexed positionally; anything past [0] is irrelevant here.
@@ -50,3 +50,8 @@ def test_from_raw_populates_the_positional_fields() -> None:
     assert state.pos_level == raw[1]
     assert state.satellites_total == raw[2]
     assert state.satellites_l2 == raw[6]
+
+
+def test_fuse_localization_status_reads_an_unnamed_value_as_unknown() -> None:
+    """5 is tested by one app gate and never named; it is not a missing pose."""
+    assert RapidState(fuse_status=5).fuse_localization_status is FuseLocalizationStatus.UNKNOWN

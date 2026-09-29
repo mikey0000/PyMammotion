@@ -35,10 +35,7 @@ class RapidState(DataClassORJSONMixin):
     @property
     def fuse_localization_status(self) -> FuseLocalizationStatus:
         """Return the IMU/vision fusion localisation state as a typed enum."""
-        try:
-            return FuseLocalizationStatus(self.fuse_status)
-        except ValueError:
-            return FuseLocalizationStatus.NO_POSE
+        return FuseLocalizationStatus(self.fuse_status)
 
     @classmethod
     def from_raw(cls, raw: list[int]) -> "RapidState":

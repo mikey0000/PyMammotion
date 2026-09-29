@@ -1,10 +1,11 @@
-"""Firmware gates for the Smart Sleep switches and three-mode Rain Protection.
+"""Gates for the Smart Sleep switches and three-mode Rain Protection.
 
 The Smart Sleep gate is read from the app's RN bundle (APK 2.3.18.21):
 ``[y.HM432, y.HM434, y.HM442].includes(productKey) &&
-compareVersion(firmwareVersion, "2.3.26.0") > 0``.  The Rain Protection gate is
-provisional — its entry point is in the packed native code — and these tests pin
-the shape of the gate rather than the threshold itself.
+compareVersion(firmwareVersion, "2.3.26.0") > 0``.  Rain Protection's entry point
+is packed native code, so its gate is the X5 family the app's ``x5*`` entry
+points are named for, confirmed at runtime by the device (a RAINPRO reply or
+self-check 34).
 """
 
 from __future__ import annotations
@@ -16,17 +17,13 @@ from pymammotion.data.model.mowing_modes import (
     RAIN_PROTECTION_DELAY_HOURS,
     RainProtectionMode,
 )
-from pymammotion.utility import device_type as dt_mod
 from pymammotion.utility.device_type import DeviceType, _version_greater_than
 
 # HM432 / HM434 / HM442 — the three product keys the RN bundle gates on.
 GATED = ["Luba-LA6ABCDE", "Luba-MB6ABCDE", "Luba-VA6ABCDE"]
 UNGATED = ["Luba-VS6ABCDE", "Yuka-116ABCD", "Luba-MN6ABCDE", "RTK6ABCDEF"]
 
-GATES = [DeviceType.supports_smart_sleep, DeviceType.supports_rain_protection_modes]
 
-
-@pytest.mark.parametrize("gate", GATES)
 @pytest.mark.parametrize("device_name", GATED)
 @pytest.mark.parametrize(
     ("firmware", "supported"),
@@ -39,30 +36,38 @@ GATES = [DeviceType.supports_smart_sleep, DeviceType.supports_rain_protection_mo
         ("", False),
     ],
 )
-def test_gate_follows_the_firmware_threshold(gate, device_name: str, firmware: str, supported: bool) -> None:
-    assert gate(device_name, firmware) is supported
+def test_smart_sleep_follows_the_firmware_threshold(device_name: str, firmware: str, supported: bool) -> None:
+    assert DeviceType.supports_smart_sleep(device_name, firmware) is supported
 
 
-@pytest.mark.parametrize("gate", GATES)
 @pytest.mark.parametrize("device_name", UNGATED)
-def test_other_devices_never_qualify(gate, device_name: str) -> None:
-    assert gate(device_name, "9.9.9.9") is False
+def test_other_devices_never_get_smart_sleep(device_name: str) -> None:
+    assert DeviceType.supports_smart_sleep(device_name, "9.9.9.9") is False
 
 
-def test_the_two_gates_are_independently_tunable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The rain threshold is a guess borrowed from the sleep gate, not the same fact.
+#: The user's Luba 3 (LUBA_VA, fw 2.3.30.39), which has reported self-check 34.
+LUBA_3 = "Luba-VAME9R5S"
+#: The app's ``isX5DeviceTyp`` family, one name per model.
+X5 = [LUBA_3, "Luba-LA6ABCDE", "Luba-MB6ABCDE", "Luba-HM6ABCDE", "Yuka-MV6ABCDE", "Ezy-VT6ABCDE"]
+#: Not X5: Luba 1, the user's Luba 2 (no rain settings), Luba 2 AWD X, the original Yuka, Yuka Mini, a pool robot.
+NOT_X5 = ["Luba-QXABCDEF", "Luba-VS563L6H", "Luba-MNABCDEF", "Yuka-116ABCD", "Yuka-MN6ABCDE", "Spino-S1ABCDE"]
 
-    Sharing one constant would mean confirming or correcting one capability
-    silently moved the other, so correcting the rain threshold must leave the
-    confirmed sleep gate alone.
-    """
-    device, firmware = GATED[0], "2.3.27.0"
-    assert DeviceType.supports_rain_protection_modes(device, firmware) is True
 
-    monkeypatch.setattr(dt_mod, "_RAIN_PROTECTION_MODES_FIRMWARE", "9.9.9.9")
+@pytest.mark.parametrize("device_name", X5)
+def test_an_x5_mower_qualifies_once_the_device_proved_support(device_name: str) -> None:
+    assert DeviceType.supports_rain_protection_modes(device_name, probed=True) is True
 
-    assert DeviceType.supports_rain_protection_modes(device, firmware) is False
-    assert DeviceType.supports_smart_sleep(device, firmware) is True
+
+@pytest.mark.parametrize("device_name", X5)
+@pytest.mark.parametrize("probed", [None, False], ids=["never-probed", "probe-failed"])
+def test_an_x5_mower_waits_for_the_device(device_name: str, probed: bool | None) -> None:
+    """The model list is only a precondition: which firmware has the feature is unknown."""
+    assert DeviceType.supports_rain_protection_modes(device_name, probed=probed) is False
+
+
+@pytest.mark.parametrize("device_name", NOT_X5)
+def test_other_mowers_never_qualify_even_if_something_claimed_support(device_name: str) -> None:
+    assert DeviceType.supports_rain_protection_modes(device_name, probed=True) is False
 
 
 @pytest.mark.parametrize(

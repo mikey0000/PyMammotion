@@ -11,7 +11,7 @@ import logging
 
 import pytest
 
-from pymammotion.data.model.enums import TaskAreaStatus
+from pymammotion.data.model.enums import FuseLocalizationStatus, TaskAreaStatus
 from pymammotion.data.model.pool_state import (
     PoolBottomType,
     SpinoSysStatus,
@@ -23,6 +23,7 @@ from pymammotion.utility.constant.device_constant import (
     AppConnectType,
     PosType,
     RTKPositionMode,
+    VioBrightness,
     VioState,
 )
 from pymammotion.utility.enum_base import UnknownTolerantIntEnum
@@ -37,6 +38,8 @@ MIGRATED = [
     PosType,
     AppConnectType,
     VioState,
+    VioBrightness,
+    FuseLocalizationStatus,
 ]
 
 
@@ -69,6 +72,24 @@ def test_vio_state_unknown_keeps_signal_unknown_name() -> None:
     # translation key in HA) stays "SIGNAL_UNKNOWN".
     assert VioState(172) is VioState.SIGNAL_UNKNOWN
     assert VioState(172).name == "SIGNAL_UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    ("raw", "member"),
+    [
+        (0, FuseLocalizationStatus.NO_POSE),
+        (1, FuseLocalizationStatus.RTK_FIXED),
+        (2, FuseLocalizationStatus.RTK_EXTENDED_VISION),
+        (3, FuseLocalizationStatus.VISION_EXTENDED),
+        (4, FuseLocalizationStatus.VISION_EXTENDED_FAILED),
+        (5, FuseLocalizationStatus.UNKNOWN),  # used in one app gate, never named
+        (0xFF, FuseLocalizationStatus.UNKNOWN),
+        (-1, FuseLocalizationStatus.UNKNOWN),  # the app's value before any report
+    ],
+)
+def test_fuse_localization_status_follows_the_app_s_constants(raw: int, member: FuseLocalizationStatus) -> None:
+    """``DeviceConstant.FusedLocalizationStatus``: kNoPose, kRTKFixed, kRTkExtended, kVisionExtended(Failed)."""
+    assert FuseLocalizationStatus(raw) is member
 
 
 def test_logs_once_per_value(caplog: pytest.LogCaptureFixture) -> None:

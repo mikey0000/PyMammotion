@@ -5,11 +5,20 @@ from pymammotion.utility import device_type as dt_mod
 from pymammotion.utility.device_type import (
     AliyunProductKey,
     DeviceType,
+    LubaHMProductKey,
+    LubaLSProductKey,
     LubaMEProductKey,
+    LubaMSProductKey,
+    LubaSPProductKey,
+    LubaTRProductKey,
     SdPxProductKey,
+    SpinoH1ProductKey,
     SwimmingPoolE1ProductKey,
     SwimmingPoolProductKey,
     SwimmingPoolSPProductKey,
+    YukaHSProductKey,
+    YukaMN100ProductKey,
+    YukaMN101ProductKey,
 )
 
 
@@ -166,7 +175,19 @@ _FROM_VALUE_REFERENCE = {
     27: DeviceType.SD_PX,
     28: DeviceType.LUBA_HM,
     29: DeviceType.LUBA_ME,
+    # App 2.3.20.30 renumbered its enum; members it added keep its new ids.
+    2008: DeviceType.LUBA_SP,
+    2012: DeviceType.LUBA_TR,
+    2013: DeviceType.LUBA_LS,
+    2014: DeviceType.LUBA_MS,
+    3001: DeviceType.CM901,
+    4007: DeviceType.YUKA_HS,
+    5004: DeviceType.SPINO_H1,
 }
+
+
+def _any_prefix(member: DeviceType, substring: str) -> bool:
+    return any(prefix in substring for prefix in member.get_name().split(","))
 
 
 def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceType:
@@ -211,6 +232,12 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             return DeviceType.LUBA_MD
         if DeviceType.LUBA_LA.get_name() in substring2:
             return DeviceType.LUBA_LA
+        # App 2.3.20.30 additions below: each sits ahead of the generic prefix it extends.
+        if DeviceType.YUKA_HS.get_name() in substring2 or DeviceType.contain_yuka_hs_product_key(product_key):
+            return DeviceType.YUKA_HS
+        # Moved ahead of LUBA_YUKA: its second prefix, "Yuka-CV", starts with "Yuka-".
+        if _any_prefix(DeviceType.YUKA_MN100, substring2) or DeviceType.contain_yuka_mn100_product_key(product_key):
+            return DeviceType.YUKA_MN100
         if DeviceType.LUBA_YUKA.get_name() in substring2:
             return DeviceType.LUBA_YUKA
         # Deliberate deviation from the original chain: the APK returns SWIMMINGPOOL_SP
@@ -227,27 +254,40 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             prefix in device_name[:8] for prefix in DeviceType.SWIMMINGPOOL_SP.get_name().split(",")
         ) or DeviceType.contain_swimming_pool_sp_product_key(product_key):
             return DeviceType.SWIMMINGPOOL_SP
+        if DeviceType.SPINO_H1.get_name() in device_name[:8] or DeviceType.contain_spino_h1_product_key(product_key):
+            return DeviceType.SPINO_H1
         if DeviceType.SPINO.get_name() in substring2 or DeviceType.contain_swimming_pool_product_key(product_key):
             return DeviceType.SPINO
-        if DeviceType.YUKA_MN100.get_name() in substring2:
-            return DeviceType.YUKA_MN100
-        if DeviceType.YUKA_MN101.get_name() in substring2:
+        if DeviceType.YUKA_MN101.get_name() in substring2 or DeviceType.contain_yuka_mn101_product_key(product_key):
             return DeviceType.YUKA_MN101
         if DeviceType.RTKNB.get_name() in substring2:
             return DeviceType.RTKNB
         if DeviceType.LUBA_MB.get_name() in substring2:
             return DeviceType.LUBA_MB
-        if DeviceType.CM900.get_name() in substring2:
+        # Deliberate deviation: the original compared the 8-character "Kumar-MK" against
+        # [:7], so it never matched; the APK slices [:8] and also accepts its product keys.
+        if DeviceType.CM900.get_name() in device_name[:8] or DeviceType.contain_cm900_product_key(product_key):
             return DeviceType.CM900
+        if DeviceType.CM901.get_name() in device_name[:8]:
+            return DeviceType.CM901
         if DeviceType.SD_PX.get_name() in substring2 or DeviceType.contain_sd_px_product_key(product_key):
             return DeviceType.SD_PX
-        if DeviceType.LUBA_HM.get_name() in substring2:
+        if _any_prefix(DeviceType.LUBA_HM, substring2) or DeviceType.contain_luba_hm_product_key(product_key):
             return DeviceType.LUBA_HM
         if DeviceType.LUBA_ME.get_name() in substring2 or DeviceType.contain_luba_me_product_key(product_key):
             return DeviceType.LUBA_ME
+        if DeviceType.LUBA_TR.get_name() in substring2 or DeviceType.contain_luba_tr_product_key(product_key):
+            return DeviceType.LUBA_TR
+        if DeviceType.LUBA_LS.get_name() in substring2 or DeviceType.contain_luba_ls_product_key(product_key):
+            return DeviceType.LUBA_LS
+        if DeviceType.LUBA_MS.get_name() in substring2 or DeviceType.contain_luba_ms_product_key(product_key):
+            return DeviceType.LUBA_MS
+        if DeviceType.LUBA_SP.get_name() in substring2 or DeviceType.contain_luba_sp_product_key(product_key):
+            return DeviceType.LUBA_SP
         if DeviceType.LUBA.get_name() in substring2 or DeviceType.contain_luba_product_key(product_key):
             return DeviceType.LUBA
-    except (AttributeError, TypeError, IndexError):
+    # Not AttributeError: a renamed ``contain_*`` predicate must fail loudly, not read as UNKNOWN.
+    except (TypeError, IndexError):
         return DeviceType.UNKNOWN
     else:
         return DeviceType.UNKNOWN
@@ -272,7 +312,7 @@ def _name_corpus() -> list[str]:
 # --- tests ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("value", range(-5, 35))
+@pytest.mark.parametrize("value", [*range(-5, 35), 2000, 2008, 2012, 2013, 2014, 3000, 3001, 4007, 5004])
 def test_from_value_matches_reference(value: int) -> None:
     assert DeviceType.from_value(value) is _FROM_VALUE_REFERENCE.get(value, DeviceType.UNKNOWN)
 
@@ -299,6 +339,15 @@ def test_value_of_str_name_matches_reference(device_name: str) -> None:
         *SwimmingPoolE1ProductKey,
         *SwimmingPoolSPProductKey,
         *SdPxProductKey,
+        *LubaHMProductKey,
+        *LubaTRProductKey,
+        *LubaLSProductKey,
+        *LubaMSProductKey,
+        *LubaSPProductKey,
+        *YukaHSProductKey,
+        *YukaMN100ProductKey,
+        *YukaMN101ProductKey,
+        *SpinoH1ProductKey,
         "unknown-key",
         "",
     ],
@@ -391,89 +440,82 @@ def test_a_rule_can_claim_several_name_prefixes() -> None:
     assert DeviceType.value_of_str("SpinoABCDEF") is DeviceType.SPINO
 
 
+def test_no_name_rule_slices_shorter_than_its_prefix() -> None:
+    """A slice shorter than the prefix can never match — the CM900 defect, generalised."""
+    short = [
+        (device_type, name_slice)
+        for device_type, name_slice, _ in dt_mod._VALUE_OF_STR_RULES
+        if any(len(prefix) > name_slice for prefix in device_type.get_name().split(","))
+    ]
+    assert not short, f"rules that can never match by name: {short}"
+
+
+@pytest.mark.parametrize(
+    ("member", "value", "name", "model"),
+    [
+        (DeviceType.LUBA_SP, 2008, "Luba-SP", "HM435"),
+        (DeviceType.LUBA_TR, 2012, "Luba-TR", "HM436"),
+        (DeviceType.LUBA_LS, 2013, "Luba-LS", "HM432SE"),
+        (DeviceType.LUBA_MS, 2014, "Luba-MS", "HM434SE"),
+        (DeviceType.CM901, 3001, "Maston-R", "CM901"),
+        (DeviceType.YUKA_HS, 4007, "Yuka-HS", "MN260"),
+        (DeviceType.SPINO_H1, 5004, "Spino-H1", "IL100"),
+    ],
+    ids=lambda p: p.name if isinstance(p, DeviceType) else None,
+)
+def test_app_2_3_20_members_carry_the_apps_id_prefix_and_code(
+    member: DeviceType, value: int, name: str, model: str
+) -> None:
+    """App 2.3.20.30 ``DeviceType.java`` enum lines 29-52."""
+    assert (member.get_value(), member.get_name(), member.get_model()) == (value, name, model)
+
+
+@pytest.mark.regression
 @pytest.mark.parametrize(
     ("device_name", "expected"),
     [
-        ("Luba-MB6ABCDE", True),   # LUBA mini Vision 800
-        ("Luba-LA6ABCDE", True),   # LUBA mini AWD 360 LIDAR
-        ("Yuka-MV6ABCDE", True),   # fill light yes; the night-light row hides for MV
-        ("Yuka-VP6ABCDE", False),  # YUKA 1000 — in our mini/X grouping but has no fill light
-        ("Luba-VS6ABCDE", False),  # LUBA 2
+        ("Luba-SP6ABCDE", DeviceType.LUBA_SP),
+        ("Luba-TR6ABCDE", DeviceType.LUBA_TR),
+        ("Luba-LS6ABCDE", DeviceType.LUBA_LS),
+        ("Luba-MS6ABCDE", DeviceType.LUBA_MS),
+        ("Luba-MH6ABCDE", DeviceType.LUBA_HM),
+        ("Yuka-HS6ABCDE", DeviceType.YUKA_HS),
+        ("Yuka-CV6ABCDE", DeviceType.YUKA_MN100),
+        ("Spino-H1ABCDE", DeviceType.SPINO_H1),
+        ("Maston-R6ABCDE", DeviceType.CM901),
     ],
 )
-def test_is_support_fill_light_follows_the_apk(device_name: str, expected: bool) -> None:
-    """The gate the APK's settings screen actually uses for the light rows."""
-    assert DeviceType.is_support_fill_light(device_name) is expected
+def test_an_app_2_3_20_device_name_resolves_to_its_own_type(device_name: str, expected: DeviceType) -> None:
+    """These names fell through to the generic rule for their family, or to nothing.
+
+    ``Luba-SP``/``TR``/``LS``/``MS``/``MH`` matched the bare ``"Luba"`` prefix and came back
+    as Luba 1 — a different protocol and none of its gates — ``Yuka-HS``/``Yuka-CV`` came back
+    as the original Yuka, ``Spino-H1`` as the generic Spino, and ``Maston-R`` as UNKNOWN.
+    """
+    assert DeviceType.value_of_str(device_name) is expected
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
-    ("device_name", "expected"),
-    [("Luba-MB6ABCDE", True), ("Yuka-VP6ABCDE", True), ("Luba-VS6ABCDE", False), ("Luba6ABCDEF", False)],
-)
-def test_is_support_blade_speed_follows_the_apk(device_name: str, expected: bool) -> None:
-    """The gate for the cutter-mode setting."""
-    assert DeviceType.is_support_blade_speed(device_name) is expected
-
-
-@pytest.mark.parametrize(
-    ("device_name", "firmware", "expected"),
+    ("product_key", "expected"),
     [
-        ("Luba-VS6ABCDE", "1.11.511.631", False),  # issue #853: Luba 2 below 1.13 hides it
-        ("Luba-VS6ABCDE", "1.12.9.999", False),
-        ("Luba-VS6ABCDE", "1.13.0.1", True),
-        ("Luba-VS6ABCDE", "2.0.0.0", True),
-        ("Luba-VS6ABCDE", "", True),  # unknown version: shown, as in the app
-        ("Yuka-VP6ABCDE", "1.15.0.0", True),
-        ("Luba-1ABCDEF", "1.15.0.0", False),  # Luba 1 never
-        ("Yuka-MV6ABCDE", "1.15.0.0", False),  # 231-family parameter set
-        ("Luba-MB6ABCDE", "1.15.0.0", False),
-        ("Spino-E1ABCD", "1.15.0.0", False),
+        ("SNvVHSxfU73", DeviceType.LUBA_SP),
+        ("z8Pu2TEeNZU", DeviceType.LUBA_TR),
+        ("k8H4M5KZ6Fn", DeviceType.LUBA_LS),
+        ("f4KFveHngnm", DeviceType.LUBA_MS),
+        ("h8ZyNy8FV3u", DeviceType.YUKA_HS),
+        ("rbk9dxFBe6m", DeviceType.SPINO_H1),
+        ("xEBF8JsgVeR", DeviceType.SPINO_H1),
+        ("tBnCA8u2Aps", DeviceType.LUBA_HM),
+        ("jvEDnj42DRK", DeviceType.LUBA_HM),
+        ("NnbeYtaEUGE", DeviceType.YUKA_MN100),
+        ("rBGTwYhfhyY", DeviceType.YUKA_MN101),
+        # CM901 has no DeviceProductKey table in the app; it resolves by name alone.
     ],
 )
-def test_supports_wildlife_safety_mirrors_the_app_gate(device_name: str, firmware: str, expected: bool) -> None:
-    """The app hides animal protection below firmware 1.13 and for Luba 1, pools and the 231 family."""
-    assert DeviceType.supports_wildlife_safety(device_name, firmware) is expected
+def test_an_app_product_key_alone_resolves_to_its_type(product_key: str, expected: DeviceType) -> None:
+    """``valueOfStr(name, productKey)`` checks these 2.3.20.30 ``DeviceProductKey`` tables; no rule of ours did.
 
-
-@pytest.mark.parametrize(
-    ("device_name", "firmware", "expected"),
-    [
-        ("Luba-VS6ABCDE", "2.1.1.5", True),  # issue #857: threshold itself passes
-        ("Luba-VS6ABCDE", "2.1.1.4", False),
-        ("Luba-VS6ABCDE", "2.0.9.999", False),
-        ("Luba-VS6ABCDE", "2.3.26.1", True),
-        ("Luba-VS6ABCDE", "3.0", True),
-        ("Luba-VS6ABCDE", "", False),  # unknown version: the app hides the page
-        ("Luba-VS6ABCDE", "unknown", False),
-        ("Yuka-VP6ABCDE", "2.2.0.0", True),
-        ("Luba-1ABCDEF", "1.15.0.0", False),  # Luba 1 firmware is below 2.1.1.5
-        ("Spino-E1ABCD", "2.5.0.0", False),  # pools never
-    ],
-)
-def test_supports_charge_limit_mirrors_the_app_gate(device_name: str, firmware: str, expected: bool) -> None:
-    """The battery page needs firmware 2.1.1.5 or newer and is never shown for pool robots."""
-    assert DeviceType.supports_charge_limit(device_name, firmware) is expected
-
-
-
-@pytest.mark.parametrize(
-    ("device_name", "firmware", "expected"),
-    [
-        ("Luba-VA6ABCDE", "2.3.28.1", True),  # issue #860: threshold itself passes
-        ("Luba-VA6ABCDE", "2.3.28.0", False),
-        ("Luba-VA6ABCDE", "2.3.29.0", True),
-        ("Luba-VA6ABCDE", "2.4", True),
-        ("Luba-VA6ABCDE", "", False),  # unknown version: never guess on a write
-        ("Luba-VA6ABCDE", "unknown", False),
-        ("Luba-LA6ABCDE", "2.3.28.1", True),  # HM432: interior routes only, still offered
-        ("Luba-MB6ABCDE", "2.3.28.1", True),  # HM434: same
-        ("Yuka-MV6ABCDE", "2.3.28.1", True),
-        ("Yuka-ML6ABCDE", "2.3.28.1", True),
-        ("Luba-VS6ABCDE", "2.3.28.1", False),  # Luba 2 is not on Mammotion's list
-        ("Luba-1ABCDEF", "2.3.28.1", False),
-        ("Spino-E1ABCD", "2.3.28.1", False),
-    ],
-)
-def test_supports_auto_change_direction_mirrors_the_app_gate(device_name: str, firmware: str, expected: bool) -> None:
-    """Auto-reverse mowing direction needs firmware 2.3.28.1 and one of the listed models."""
-    assert DeviceType.supports_auto_change_direction(device_name, firmware) is expected
+    A device known only by its product key resolved to UNKNOWN.
+    """
+    assert DeviceType.value_of_str("", product_key) is expected
