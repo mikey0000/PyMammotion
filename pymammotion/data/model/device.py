@@ -16,7 +16,7 @@ from pymammotion.data.model.device_info import DeviceFirmwares, DeviceNonWorking
 from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.data.model.enums import TaskAreaStatus
 from pymammotion.data.model.errors import DeviceErrors
-from pymammotion.data.model.events import OTA_RESULT_SUCCESS, Events, OTAProgress
+from pymammotion.data.model.events import OTA_RESULT_SUCCESS, Events, OTAProgress, is_zone_hash
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.pool_state import PoolMap, PoolPlan, PoolState
 from pymammotion.data.model.report_info import BaseScore, ReportData, WorkSessionResult
@@ -329,7 +329,7 @@ class MowerDevice(Device):
                 for i in range(3, len(buffer_list.update_buf_data), 2):
                     area_id = buffer_list.update_buf_data[i]
 
-                    if area_id != 0:
+                    if is_zone_hash(area_id):
                         status = TaskAreaStatus(int(buffer_list.update_buf_data[i + 1]))
                         if status is TaskAreaStatus.ABORTED:
                             aborted += 1

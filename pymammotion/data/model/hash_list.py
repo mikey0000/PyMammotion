@@ -1191,17 +1191,26 @@ class HashList(DataClassORJSONMixin):
         self.update_hash_lists(self.hashlist)
 
     def invalidate_mow_path(self, path_hash: int) -> None:
-        """Clear cached mow-path data once the job has ended.
+        """Clear the route (line list and cached cover paths) once the device reports none.
 
-        Only fires for ``path_hash in (0, 1)``.  Non-zero mid-job values must
+        Only fires for ``path_hash <= 1``.  Non-zero mid-job values must
         be preserved — the device advances ub_path_hash through segments during
         a mow and wiping on every change would discard live data.
         """
-        if path_hash == 0:
+        if path_hash <= 1:
+            self.root_hash_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd != LINE_HASH_SUB_CMD]
             self.current_mow_path = {}
             self.generated_mow_path_geojson = {}
             self.generated_mow_progress_geojson = {}
             self.last_ub_path_hash = 0
+
+    def invalidate_stale_route(self, path_hash: int) -> None:
+        """Drop the stored route when it does not hash to the device's live *path_hash*.
+
+        A matching line list is kept, so the next fetch only asks for the lines still absent.
+        """
+        if (self.current_mow_path or self.line_root_hashlist) and self.computed_path_hash != path_hash:
+            self.invalidate_mow_path(0)
 
     @property
     def line_root_hashlist(self) -> list[int]:

@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from pymammotion.data.model.device import MowingDevice
+import pytest
+
+from pymammotion.data.model.device import Device, MowerDevice, MowingDevice, RTKBaseStationDevice, create_device
+from pymammotion.data.model.enums import FuseLocalizationStatus, TaskAreaStatus
 from pymammotion.data.model.hash_list import FrameList, HashList, MowPath, NavGetCommData
+from pymammotion.http.model.http import CheckDeviceVersion
+from pymammotion.proto import SystemUpdateBufMsg
 
 
 def _make_hash_list_with_int_keys() -> HashList:
@@ -51,10 +57,7 @@ def test_empty_mowing_device_roundtrip() -> None:
     assert data["name"] == "empty"
 
 
-# The OTA check (CheckDeviceVersion.current_version) is the cloud's view of the
-from pymammotion.data.model.device import Device, MowerDevice, RTKBaseStationDevice, create_device
-from pymammotion.http.model.http import CheckDeviceVersion
-
+# The OTA check (CheckDeviceVersion.current_version) is the cloud's view of the installed firmware.
 
 def _check(version: str, *, device_id: str = "iot-1") -> CheckDeviceVersion:
     return CheckDeviceVersion(current_version=version, device_id=device_id)
@@ -96,3 +99,53 @@ def test_seeds_version_feeds_detection_gate() -> None:
     device.apply_version_check(_check("1.11.0"))  # below the 1.12.0 threshold
     options = DetectionStrategy.for_device(device.name, device.device_firmwares.device_version)
     assert DetectionStrategy.slow_touch in options  # old-firmware option set
+
+
+def _task_areas(*pairs: int) -> SystemUpdateBufMsg:
+    return SystemUpdateBufMsg(update_buf_data=[3, 0, len(pairs) // 2, *pairs])
+
+
+@pytest.mark.regression
+def test_the_task_area_placeholder_hash_is_not_a_zone() -> None:
+    """A Luba 3 sitting idle sent ``[3, 0, 1, 1, 2]``: one zone, hash ``1``, mowing.
+
+    ``1`` is the device's "no hash" placeholder (as for ``path_hash``), but it was
+    stored as a zone of the task, so Home Assistant showed a "Task area" sensor
+    with no job running.
+    """
+    device = MowerDevice(name="Luba-VAME9R5S")
+
+    device.buffer(_task_areas(1, 2))
+
+    assert device.events.work_tasks_event.ids == []
+    assert device.events.work_tasks_event.hash_area_map == {}
+
+
+def test_real_zones_are_kept_beside_the_placeholder() -> None:
+    zone = 8377881458226819852
+    device = MowerDevice(name="Luba-VAME9R5S")
+
+    device.buffer(_task_areas(1, 2, zone, 1))
+
+    assert device.events.work_tasks_event.ids == [zone]
+    assert device.events.work_tasks_event.hash_area_map == {zone: TaskAreaStatus.WAITING}
+
+
+#: ``tests/data``: saved HA states from before the positioning properties existed (location and IMEI zeroed).
+_DATA = Path(__file__).parents[3] / "data"
+
+
+def test_a_saved_luba_3_state_loads_and_reads_its_fuse_byte() -> None:
+    """``vslam_status`` 257 stored as a plain int is RTK fixed, so the LiDAR row reads Good."""
+    device = MowingDevice.from_dict(json.loads((_DATA / "saved_state_luba_3.json").read_text()))
+
+    assert device.report_data.dev.fuse_localization_status is FuseLocalizationStatus.RTK_FIXED
+    assert device.report_data.dev.lidar_positioning_ok is True
+
+
+def test_a_saved_luba_2_state_loads() -> None:
+    """Saved before any report arrived: only its identity is non-default."""
+    device = MowingDevice.from_dict(json.loads((_DATA / "saved_state_luba_2.json").read_text()))
+
+    assert device.mower_state.product_key == "a1LLmy1zc0j"
+    assert device.report_data.dev.fuse_localization_status is FuseLocalizationStatus.NO_POSE

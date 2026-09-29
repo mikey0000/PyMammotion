@@ -1158,6 +1158,40 @@ class DeviceHandle:
 
         return self._state_changed_bus.subscribe(_on_state)
 
+    def watch_until_handled(
+        self,
+        getter: Callable[[DeviceSnapshot], _T],
+        handler: Callable[[_T], Awaitable[bool]],
+    ) -> Subscription:
+        """Offer a changed value to *handler* on every snapshot until it returns True.
+
+        Unlike :meth:`watch_field`, a value the handler refuses stays pending and is offered
+        again — the APK's ``updateTotalHash`` only records a ``path_hash`` once its gate is open.
+        A handler that raises counts as having acted, so a failing one is not retried per report.
+        """
+        handled: list[object] = [self._UNSET]
+        in_flight = False
+
+        async def _on_state(snapshot: DeviceSnapshot) -> None:
+            nonlocal in_flight
+            new_val = getter(snapshot)
+            if handled[0] is self._UNSET:
+                handled[0] = new_val
+                return
+            if new_val == handled[0] or in_flight:
+                return
+            in_flight = True
+            try:
+                if await handler(new_val):
+                    handled[0] = new_val
+            except Exception:
+                handled[0] = new_val
+                raise
+            finally:
+                in_flight = False
+
+        return self._state_changed_bus.subscribe(_on_state)
+
     def subscribe_device_status(
         self,
         handler: Callable[[ThingStatusMessage], Awaitable[None]],

@@ -210,21 +210,28 @@ line segment group is assigned a hash ID.  These are the hashes you need to
 download to display the planned mow path overlay in the app.
 
 **How they are obtained:**
-1. Send `get_all_boundary_hash_list(sub_cmd=3)`.
-2. Device replies with `toapp_gethash_ack` frames containing the line hash list.
-3. Call `get_line_info_list(line_hashs, transaction_id)`.
-4. Device pushes `cover_path_upload` frames which form the drawable path.
+1. Planning a new route only: send `generate_route_information` and wait for the
+   `bidire_reqconver_path` confirmation, so the list below is the planned route's
+   (APK `routeResponse` → `getLineHashList`).
+2. Send `get_all_boundary_hash_list(sub_cmd=3)`.
+3. Device replies with `toapp_gethash_ack` frames containing the line hash list.
+4. Call `get_line_info_list(line_hashs, transaction_id)`.
+5. Device pushes `cover_path_upload` frames which form the drawable path.
 
 **Code reference:** `MowPathSaga` in
 `pymammotion/messaging/mow_path_saga.py`, `HashList.current_mow_path`.
 
-**Trigger:** When `device.work.path_hash` transitions from 0 to non-zero and
-`device.work.job_id` changes, a new mow plan is active.  `HomeAssistantMowerApi`
-auto-triggers `MowPathSaga(skip_planning=True)` to fetch the path for display.
+**Trigger:** `AutoFetchWatchers` watches `work.path_hash` with
+`DeviceHandle.watch_until_handled`.  Like the APK's `updateTotalHash`, a change is only
+consumed once its gate is open (no saga running, local map hash equals the reported
+`bol_hash`); until then it is offered again on every report.  Once open, it starts
+`MowPathSaga(skip_planning=True)`.  A `path_hash` of 0 or 1 has nothing to fetch.
 
-**Cleared:** When `bidire_reqconver_path.path_hash == 0` the device signals that
-the job has ended.  `StateReducer` automatically clears
-`device.map.current_mow_path` and `device.map.generated_mow_path_geojson`.
+**Cleared:** a reported `work.path_hash <= 1` means no route, and `HashList.invalidate_mow_path`
+drops the `sub_cmd=3` line list and every cached cover path (APK
+`deleteLineListDBAndHashDB`).  Before a fetch, `HashList.invalidate_stale_route` does the
+same when the stored route does not hash to the live `path_hash`; a matching list is kept so
+only missing lines are requested.  A new `sub_cmd=3` frame 1 replaces the list outright.
 
 ---
 

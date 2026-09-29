@@ -57,6 +57,7 @@ def _make_client_with_handle(
         return sub
 
     handle.watch_field = _watch_field
+    handle.watch_until_handled = _watch_field
 
     registry = MagicMock()
     registry.get_by_name.return_value = handle

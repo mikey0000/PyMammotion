@@ -30,10 +30,11 @@ class MowPathSaga(Saga):
     """Plan a mowing route and collect the resulting cover-path frames.
 
     Execution order — planning mode (skip_planning=False):
-      1. Send get_all_boundary_hash_list(sub_cmd=3) and collect all hash frames,
-         acknowledging each with get_hash_response.
-      2. Send generate_route_information (bidire_reqconver_path, sub_cmd=0)
+      1. Send generate_route_information (bidire_reqconver_path, sub_cmd=0)
          and wait for the device's sub_cmd=0 confirmation.
+      2. Send get_all_boundary_hash_list(sub_cmd=3) and collect all hash frames,
+         acknowledging each with get_hash_response.  Asked after the route so the
+         list is the planned route's, as in the APK's routeResponse.
       3. Send get_line_info_list (app_request_cover_paths) for up to 20 of the lines
          not yet cached, with a timestamp transaction_id.
       4. Collect that request's cover_path_upload frames, then repeat 3–4 until every
@@ -41,11 +42,9 @@ class MowPathSaga(Saga):
          ``first_frame_timeout``); after ``max_cover_path_retries`` the saga ends
          with ``failed`` set instead of raising.
 
-    Execution order — running task mode (skip_planning=True):
-      1. Same as planning mode step 1.
-      2. Send query_generate_route_information (bidire_reqconver_path, sub_cmd=2)
-         to retrieve the currently running job's route configuration (zone hashes).
-      3–4. Same as planning mode steps 3–4.
+    Execution order — running task mode (skip_planning=True): the route comes from
+    ``route_info`` (the running job's settings), so step 1 is skipped; steps 2–4 as above.
+    Without ``route_info`` the saga fails.
 
     result is a dict[transaction_id, dict[frame_num, MowPath]] on success,
     empty dict until then.
@@ -97,10 +96,12 @@ class MowPathSaga(Saga):
             zone_hashs: Area/zone hash IDs to mow (from HashList.area.keys()).
                         Used as fallback when the device returns an empty line hash list.
             route_info: Optional pre-built GenerateRouteInformation; defaults are
-                        used if not supplied.
-            skip_planning: When True, skip generate_route_information and instead query
-                           the currently running job's route info (sub_cmd=2) to obtain
-                           the zone hashes before fetching the line hash list.
+                        used if not supplied.  In planning mode it is the route to
+                        plan; with skip_planning it is the running job's route and
+                        is required.
+            skip_planning: When True, don't plan a route: the running job's route
+                           (``route_info``) is taken as known and only its line hash
+                           list and cover paths are fetched.
 
         """
         self._command_builder = command_builder
@@ -115,9 +116,9 @@ class MowPathSaga(Saga):
         #: True when the cover-path fetch gave up after ``max_cover_path_retries``.
         #: The saga still completes normally so partial lines stay usable.
         self.failed = False
-        self._route_val: GenerateRouteInformation | None = (
-            route_info  # persists across retries to skip step 2 if already fetched
-        )
+        #: The route to fetch cover paths for: known up front for a running job (skip_planning),
+        #: otherwise the device's confirmation of the planned one.  Persists across retries.
+        self._route_val: GenerateRouteInformation | None = route_info if skip_planning else None
 
     async def progress(self) -> Any:
         """Route resolution plus banked cover-path frames.
@@ -152,77 +153,32 @@ class MowPathSaga(Saga):
         # defeats the per-hash skip logic below and forces a full re-fetch on
         # every retry, mirroring what the APK's HashDataManager avoids.
 
-        # start with ble sync (immediately precedes the step-1 line-hash-list request below)
+        if self._route_val is None and self._skip_planning:
+            # A running job's route must already be known; fail loudly instead of
+            # returning silently (which left the caller with empty MowPath data).
+            _logger.warning("MowPathSaga: skip_planning=True but no _route_val available — failing saga")
+            raise SagaFailedError(self.name, self.max_attempts)
+
+        # start with ble sync (immediately precedes the first request below)
         await self._send_ble_sync()
 
         # ------------------------------------------------------------------
-        # Step 1: Request the line hash list (sub_cmd=3), collect all frames,
-        # send get_hash_response acks for each.
-        # ------------------------------------------------------------------
-        with self._collect_frames(broker, "toapp_gethash_ack", lambda v: v.sub_cmd == 3) as hash_ack_queue:
-            _logger.debug("MowPathSaga: requesting line hash list (sub_cmd=3)")
-            cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=3)
-            await self._send_command(cmd)
-
-            async def _ack(ack: Any) -> None:
-                # Acknowledge every frame, including the last one.
-                await self._send_command(
-                    self._command_builder.get_hash_response(
-                        total_frame=ack.total_frame, current_frame=ack.current_frame
-                    )
-                )
-
-            # allow_empty: no response at all means the device has no active
-            # breakpoint lines — a legitimate empty answer, not a failure.  We then
-            # fall through to the zone_hashs fallback at the sub_cmd=3 check below.
-            # Silence *mid*-stream still raises, since that is a real interruption.
-            line_frames = await ack_stream(
-                hash_ack_queue,
-                field="toapp_gethash_ack",
-                ack=_ack,
-                timeout=self.step_timeout,
-                allow_empty=True,
-            )
-            if not line_frames:
-                _logger.debug(
-                    "collecting mow path [%s]: no response to line hash list request (sub_cmd=3)"
-                    " — treating as empty and continuing",
-                    self._device_name,
-                )
-
-        # ------------------------------------------------------------------
-        # Step 2: Get route information (skip if already cached from a prior attempt).
+        # Step 1: Confirm the route (planning mode only; skipped when already
+        # confirmed by a prior attempt).  The line list is asked for afterwards,
+        # so it is the one the planned route produced.
         # ------------------------------------------------------------------
         if self._route_val is None:
-            if not self._skip_planning:
-                # planning mode: send generate_route_information, wait for sub_cmd=0 confirmation
-                route_info = self._route_info or GenerateRouteInformation(one_hashs=self._zone_hashs)
-                _logger.debug("MowPathSaga: sending generate_route_information for %d zone(s)", len(self._zone_hashs))
-                # Re-sync before the route request — the step-1 frame loop above can stale
-                # the run's initial sync.
-                await self._send_ble_sync()
-                cmd = self._command_builder.generate_route_information(route_info)
-                response = await broker.send_and_wait(
-                    send_fn=lambda: self._send_command(cmd),
-                    expected_field="bidire_reqconver_path",
-                    send_timeout=self.step_timeout,
-                )
-                route_frame = self.extract_nav_frame(response, "bidire_reqconver_path")
-                assert route_frame is not None  # noqa: S101 — send_and_wait already matched this field
-                self._route_val = route_frame[1]
-                _logger.debug(
-                    "MowPathSaga: route confirmed — sub_cmd=%d  path_hash=%d",
-                    self._route_val.sub_cmd,
-                    self._route_val.path_hash,
-                )
-            else:
-                # skip_planning=True: a running job's route info should already be cached.
-                # If it isn't, the saga cannot fetch cover paths — fail loudly instead of
-                # returning silently (which left the caller with empty MowPath data).
-                _logger.warning("MowPathSaga: skip_planning=True but no _route_val available — failing saga")
-                raise SagaFailedError(self.name, self.max_attempts)
+            await self._plan_route(broker)
+            # The route round trip can stale the run's initial sync.
+            await self._send_ble_sync()
         else:
-            _logger.debug("MowPathSaga: reusing cached route info — skipping step 2")
+            _logger.debug("MowPathSaga: route already known — skipping route planning")
+
+        # ------------------------------------------------------------------
+        # Step 2: Request the line hash list (sub_cmd=3), collect all frames,
+        # send get_hash_response acks for each.
+        # ------------------------------------------------------------------
+        await self._collect_line_hash_list(broker)
 
         line_hashes = [h for h in self._get_map().line_root_hashlist if h != 0]
         if not line_hashes:
@@ -292,6 +248,57 @@ class MowPathSaga(Saga):
             total_packets,
         )
         self._route_val = None
+
+    async def _plan_route(self, broker: DeviceMessageBroker) -> None:
+        """Send generate_route_information and wait for the device's sub_cmd=0 confirmation."""
+        route_info = self._route_info or GenerateRouteInformation(one_hashs=self._zone_hashs)
+        _logger.debug("MowPathSaga: sending generate_route_information for %d zone(s)", len(self._zone_hashs))
+        cmd = self._command_builder.generate_route_information(route_info)
+        response = await broker.send_and_wait(
+            send_fn=lambda: self._send_command(cmd),
+            expected_field="bidire_reqconver_path",
+            send_timeout=self.step_timeout,
+        )
+        route_frame = self.extract_nav_frame(response, "bidire_reqconver_path")
+        assert route_frame is not None  # noqa: S101 — send_and_wait already matched this field
+        self._route_val = route_frame[1]
+        _logger.debug(
+            "MowPathSaga: route confirmed — sub_cmd=%d  path_hash=%d",
+            self._route_val.sub_cmd,
+            self._route_val.path_hash,
+        )
+
+    async def _collect_line_hash_list(self, broker: DeviceMessageBroker) -> None:
+        """Request the line hash list (sub_cmd=3) and ack every frame."""
+        with self._collect_frames(broker, "toapp_gethash_ack", lambda v: v.sub_cmd == 3) as hash_ack_queue:
+            _logger.debug("MowPathSaga: requesting line hash list (sub_cmd=3)")
+            cmd = self._command_builder.get_all_boundary_hash_list(sub_cmd=3)
+            await self._send_command(cmd)
+
+            async def _ack(ack: Any) -> None:
+                # Acknowledge every frame, including the last one.
+                await self._send_command(
+                    self._command_builder.get_hash_response(
+                        total_frame=ack.total_frame, current_frame=ack.current_frame
+                    )
+                )
+
+            # allow_empty: no response at all means the device has no active
+            # breakpoint lines — a legitimate empty answer, not a failure.
+            # Silence *mid*-stream still raises, since that is a real interruption.
+            line_frames = await ack_stream(
+                hash_ack_queue,
+                field="toapp_gethash_ack",
+                ack=_ack,
+                timeout=self.step_timeout,
+                allow_empty=True,
+            )
+            if not line_frames:
+                _logger.debug(
+                    "collecting mow path [%s]: no response to line hash list request (sub_cmd=3)"
+                    " — treating as empty and continuing",
+                    self._device_name,
+                )
 
     async def _collect_transaction(
         self, path_queue: asyncio.Queue[Any], transaction_id: int, current_run_tx_ids: set[int]

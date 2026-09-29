@@ -74,3 +74,26 @@ async def test_skip_planning_with_no_route_val_raises_saga_failed() -> None:
 
 # Sanity import to keep linter quiet about unused imports
 _ = betterproto2
+
+
+async def test_skip_planning_without_a_route_fails_before_sending_anything() -> None:
+    """The route is checked up front, so a doomed run spends no sends on the line-list request."""
+    broker = DeviceMessageBroker()
+    sent: list[bytes] = []
+
+    async def send_command(cmd: bytes) -> None:
+        sent.append(cmd)
+
+    saga = MowPathSaga(
+        command_builder=_make_command_builder(),
+        send_command=send_command,
+        get_map=lambda: HashList(),
+        zone_hashs=[1234567890],
+        skip_planning=True,
+        device_name="Luba-Test",
+    )
+
+    with pytest.raises(SagaFailedError):
+        await saga.execute(broker)
+
+    assert sent == []

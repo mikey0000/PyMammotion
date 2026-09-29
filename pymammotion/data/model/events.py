@@ -4,6 +4,14 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.model.enums import TaskAreaStatus
 
+#: Hashes the device sends where it has no zone, as it does for ``path_hash``.
+_PLACEHOLDER_ZONE_HASHES = frozenset({0, 1})
+
+
+def is_zone_hash(zone_hash: int) -> bool:
+    """Return False for the device's "no zone" placeholder hashes."""
+    return zone_hash not in _PLACEHOLDER_ZONE_HASHES
+
 
 @dataclass
 class WorkTaskEvent(DataClassORJSONMixin):
@@ -11,6 +19,13 @@ class WorkTaskEvent(DataClassORJSONMixin):
 
     hash_area_map: dict[int, TaskAreaStatus] = field(default_factory=dict)
     ids: list[int] = field(default_factory=list)
+
+    @classmethod
+    def __post_deserialize__(cls, obj: "WorkTaskEvent") -> "WorkTaskEvent":
+        """Drop placeholder hashes a store saved before they were filtered on receipt."""
+        obj.ids = [h for h in obj.ids if is_zone_hash(h)]
+        obj.hash_area_map = {h: s for h, s in obj.hash_area_map.items() if is_zone_hash(h)}
+        return obj
 
 
 @dataclass

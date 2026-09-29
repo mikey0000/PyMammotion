@@ -98,15 +98,16 @@ class AutoFetchWatchers:
         if handle is None:
             return None
 
-        async def _on_path_hashes_changed(path_hash: int) -> None:
+        async def _on_path_hashes_changed(path_hash: int) -> bool:
+            """Return False while the fetch gate is shut, so the change is offered again."""
             device = cast("MowerDevice", handle.snapshot.raw)
             if device.map.is_mow_path_current(path_hash):
-                return
-            if device.map.current_mow_path and device.map.computed_path_hash != path_hash:
-                # Cached lines belong to another route — clear them before fetching.
-                device.map.invalidate_mow_path(0)
+                return True
+            device.map.invalidate_stale_route(path_hash)
+            if path_hash <= 1:
+                return True
             if not _should_fetch_mow_path(device, handle, path_hash):
-                return
+                return False
             _logger.debug(
                 "Device %s path_hash=%d — auto-fetching cover path",
                 device_name,
@@ -117,6 +118,7 @@ class AutoFetchWatchers:
                 await self.start_mow_path_saga(device_name, zone_hashs=[], route_info=current_work, skip_planning=True)
             except Exception:
                 _logger.warning("Auto-trigger MowPathSaga failed for %s", device_name, exc_info=True)
+            return True
 
         async def _on_mow_progress_changed(_pos: tuple[int, int]) -> None:
             apply_device_mow_progress_geojson(cast("MowerDevice", handle.snapshot.raw))
@@ -178,7 +180,7 @@ class AutoFetchWatchers:
             except Exception:
                 _logger.warning("Auto-trigger plan sync failed for %s", device_name, exc_info=True)
 
-        sub = handle.watch_field(
+        sub = handle.watch_until_handled(
             lambda s: s.raw.report_data.work.path_hash,  # type: ignore
             _on_path_hashes_changed,
         )

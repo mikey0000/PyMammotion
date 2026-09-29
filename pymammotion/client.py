@@ -1744,10 +1744,7 @@ class MammotionClient(CloudAuthMixin):
         if device.map.is_mow_path_current(path_hash):
             apply_device_mow_progress_geojson(device)
             return False
-        if device.map.current_mow_path and device.map.computed_path_hash != path_hash:
-            # Cached lines belong to another route; a matching list with lines still
-            # missing is kept so the fetch only asks for what is absent.
-            device.map.invalidate_mow_path(0)
+        device.map.invalidate_stale_route(path_hash)
         if not _should_fetch_mow_path(device, handle, path_hash):
             return False
         _logger.debug("Device %s path_hash=%d — fetching cover path", device_name, path_hash)

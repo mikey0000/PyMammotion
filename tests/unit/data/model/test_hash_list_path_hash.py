@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pymammotion.data.model.hash_list import (
     LINE_HASH_SUB_CMD,
     HashList,
@@ -144,3 +146,87 @@ def test_prune_incomplete_mow_paths_drops_only_unfinished_transactions() -> None
     hash_list.prune_incomplete_mow_paths()
 
     assert list(hash_list.current_mow_path) == [1]
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("path_hash", [0, 1], ids=["zero", "one"])
+def test_no_route_report_drops_the_stored_line_list(path_hash: int) -> None:
+    """``work.path_hash`` of 0 or 1 means no route, and the APK deletes every stored line then.
+
+    ``invalidate_mow_path`` only reacted to 0 and never touched the sub_cmd=3 root list, so a
+    device reporting 1 kept the previous route's line hashes; MowPathSaga then asked for their
+    cover paths.
+    """
+    hash_list = _map_with_lines(_LINES)
+    hash_list.update_mow_path(_cover_path(_LINES))
+
+    hash_list.invalidate_mow_path(path_hash)
+
+    assert hash_list.line_root_hashlist == []
+    assert hash_list.computed_path_hash == 0
+    assert hash_list.current_mow_path == {}
+
+
+@pytest.mark.parametrize("path_hash", [2, _REPORTED_PATH_HASH], ids=["just_above_no_route", "real_route"])
+def test_a_live_route_report_keeps_the_stored_line_list(path_hash: int) -> None:
+    hash_list = _map_with_lines(_LINES)
+    hash_list.update_mow_path(_cover_path(_LINES))
+
+    hash_list.invalidate_mow_path(path_hash)
+
+    assert hash_list.line_root_hashlist == _LINES
+    assert hash_list.current_mow_path
+
+
+def test_dropping_the_line_list_leaves_the_area_lists_alone() -> None:
+    hash_list = _map_with_lines(_LINES)
+    hash_list.update_root_hash_list(NavGetHashListData(sub_cmd=0, current_frame=1, total_frame=1, data_couple=[42]))
+
+    hash_list.invalidate_mow_path(1)
+
+    assert hash_list.area_root_hashlist == [42]
+
+
+@pytest.mark.regression
+def test_a_line_list_for_another_route_is_dropped_even_without_cover_paths() -> None:
+    """The stale-route check keyed on cached cover paths, so a line list with none survived a route change.
+
+    That state is reachable when every cover-path request of the old route timed out, or the
+    fetch was interrupted right after the line list arrived.  The next fetch then asked for the
+    old route's lines whenever the device did not answer the line-list request.
+    """
+    hash_list = _map_with_lines(_LINES)
+
+    hash_list.invalidate_stale_route(_REPORTED_PATH_HASH + 1)
+
+    assert hash_list.line_root_hashlist == []
+
+
+def test_cover_paths_for_another_route_are_dropped_when_no_line_list_is_stored() -> None:
+    hash_list = HashList()
+    hash_list.update_mow_path(_cover_path(_LINES))
+
+    hash_list.invalidate_stale_route(_REPORTED_PATH_HASH)
+
+    assert hash_list.current_mow_path == {}
+
+
+def test_a_line_list_matching_the_live_route_is_kept_while_lines_are_missing() -> None:
+    """A matching list is what lets the next fetch ask only for the lines still absent."""
+    hash_list = _map_with_lines(_LINES)
+    hash_list.update_mow_path(_cover_path(_LINES, skip=(_LINES[4], 2)))
+
+    hash_list.invalidate_stale_route(_REPORTED_PATH_HASH)
+
+    assert hash_list.line_root_hashlist == _LINES
+    assert hash_list.current_mow_path
+
+
+def test_an_empty_map_has_no_stale_route_to_drop() -> None:
+    """Nothing stored means nothing stale: the mow-path bookkeeping must not be reset either."""
+    hash_list = HashList()
+    hash_list.last_ub_path_hash = 7
+
+    hash_list.invalidate_stale_route(_REPORTED_PATH_HASH)
+
+    assert hash_list.last_ub_path_hash == 7
