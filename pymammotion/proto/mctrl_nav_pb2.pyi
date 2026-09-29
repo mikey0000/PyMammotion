@@ -15,13 +15,15 @@ class AppGetAllAreaHashName(_message.Message):
     def __init__(self, deviceId: _Optional[str] = ..., hashnames: _Optional[_Iterable[_Union[area_hash_name, _Mapping]]] = ...) -> None: ...
 
 class ManualElementMessage(_message.Message):
-    __slots__ = ["dataHash", "ifHide", "point1_center_x", "point1_center_y", "point2_height_y", "point2_width_x", "pver", "reserved", "result", "rotate_radius", "shape", "subCmd", "type"]
+    __slots__ = ["dataCouple", "dataHash", "ifHide", "point1_center_x", "point1_center_y", "point2_height_y", "point2_width_x", "point_count", "pver", "reserved", "result", "rotate_radius", "shape", "subCmd", "type"]
+    DATACOUPLE_FIELD_NUMBER: _ClassVar[int]
     DATAHASH_FIELD_NUMBER: _ClassVar[int]
     IFHIDE_FIELD_NUMBER: _ClassVar[int]
     POINT1_CENTER_X_FIELD_NUMBER: _ClassVar[int]
     POINT1_CENTER_Y_FIELD_NUMBER: _ClassVar[int]
     POINT2_HEIGHT_Y_FIELD_NUMBER: _ClassVar[int]
     POINT2_WIDTH_X_FIELD_NUMBER: _ClassVar[int]
+    POINT_COUNT_FIELD_NUMBER: _ClassVar[int]
     PVER_FIELD_NUMBER: _ClassVar[int]
     RESERVED_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
@@ -29,12 +31,14 @@ class ManualElementMessage(_message.Message):
     SHAPE_FIELD_NUMBER: _ClassVar[int]
     SUBCMD_FIELD_NUMBER: _ClassVar[int]
     TYPE_FIELD_NUMBER: _ClassVar[int]
+    dataCouple: _containers.RepeatedCompositeFieldContainer[_common_pb2.CommDataCouple]
     dataHash: int
     ifHide: bool
     point1_center_x: float
     point1_center_y: float
     point2_height_y: float
     point2_width_x: float
+    point_count: int
     pver: int
     reserved: str
     result: int
@@ -42,10 +46,10 @@ class ManualElementMessage(_message.Message):
     shape: int
     subCmd: int
     type: int
-    def __init__(self, pver: _Optional[int] = ..., type: _Optional[int] = ..., shape: _Optional[int] = ..., result: _Optional[int] = ..., subCmd: _Optional[int] = ..., dataHash: _Optional[int] = ..., ifHide: bool = ..., reserved: _Optional[str] = ..., point1_center_x: _Optional[float] = ..., point1_center_y: _Optional[float] = ..., point2_width_x: _Optional[float] = ..., point2_height_y: _Optional[float] = ..., rotate_radius: _Optional[float] = ...) -> None: ...
+    def __init__(self, pver: _Optional[int] = ..., type: _Optional[int] = ..., shape: _Optional[int] = ..., result: _Optional[int] = ..., subCmd: _Optional[int] = ..., dataHash: _Optional[int] = ..., ifHide: bool = ..., reserved: _Optional[str] = ..., point1_center_x: _Optional[float] = ..., point1_center_y: _Optional[float] = ..., point2_width_x: _Optional[float] = ..., point2_height_y: _Optional[float] = ..., rotate_radius: _Optional[float] = ..., point_count: _Optional[int] = ..., dataCouple: _Optional[_Iterable[_Union[_common_pb2.CommDataCouple, _Mapping]]] = ...) -> None: ...
 
 class MctlNav(_message.Message):
-    __slots__ = ["all_plan_task", "app_request_cover_paths", "bidire_reqconver_path", "bidire_taskid", "cover_path_upload", "nav_sys_param_cmd", "plan_task_execute", "plan_task_name_id", "simulation_cmd", "toapp_all_hash_name", "toapp_bp", "toapp_bstate", "toapp_chgpileto", "toapp_costmap", "toapp_edge_points", "toapp_edge_points_ack", "toapp_get_commondata_ack", "toapp_gethash_ack", "toapp_lat_up", "toapp_manual_element", "toapp_map_name_msg", "toapp_opt_border_info", "toapp_opt_line_up", "toapp_opt_obs_info", "toapp_pos_up", "toapp_svg_msg", "toapp_task_info", "toapp_work_report_ack", "toapp_work_report_update_ack", "toapp_work_report_upload", "toapp_zigzag", "todev_cancel_draw_cmd", "todev_cancel_suscmd", "todev_chl_line", "todev_chl_line_data", "todev_chl_line_end", "todev_draw_border", "todev_draw_border_end", "todev_draw_obs", "todev_draw_obs_end", "todev_edgecmd", "todev_get_commondata", "todev_gethash", "todev_lat_up_ack", "todev_mow_task", "todev_one_touch_leave_pile", "todev_opt_border_info_ack", "todev_opt_line_up_ack", "todev_opt_obs_info_ack", "todev_planjob_set", "todev_rechgcmd", "todev_reset_chg_pile", "todev_save_task", "todev_sustask", "todev_svg_msg", "todev_task_info_ack", "todev_taskctrl", "todev_taskctrl_ack", "todev_unable_time_set", "todev_work_report_cmd", "todev_work_report_update_cmd", "todev_zigzag_ack", "vision_ctrl", "zone_start_precent"]
+    __slots__ = ["all_plan_task", "app_request_cover_paths", "bidire_reqconver_path", "bidire_taskid", "cover_path_upload", "nav_sys_param_cmd", "plan_task_execute", "plan_task_name_id", "simulation_cmd", "toapp_all_hash_name", "toapp_bp", "toapp_bstate", "toapp_chgpileto", "toapp_costmap", "toapp_edge_points", "toapp_edge_points_ack", "toapp_get_commondata_ack", "toapp_gethash_ack", "toapp_lat_up", "toapp_manual_element", "toapp_map_name_msg", "toapp_opt_border_info", "toapp_opt_line_up", "toapp_opt_obs_info", "toapp_pos_up", "toapp_svg_msg", "toapp_task_info", "toapp_work_report_ack", "toapp_work_report_update_ack", "toapp_work_report_upload", "toapp_zigzag", "todev_cancel_draw_cmd", "todev_cancel_suscmd", "todev_chl_line", "todev_chl_line_data", "todev_chl_line_end", "todev_draw_border", "todev_draw_border_end", "todev_draw_obs", "todev_draw_obs_end", "todev_edgecmd", "todev_get_commondata", "todev_gethash", "todev_lat_up_ack", "todev_mow_task", "todev_one_touch_leave_pile", "todev_opt_border_info_ack", "todev_opt_line_up_ack", "todev_opt_obs_info_ack", "todev_planjob_set", "todev_rechgcmd", "todev_reset_chg_pile", "todev_save_task", "todev_sustask", "todev_svg_msg", "todev_task_info_ack", "todev_taskctrl", "todev_taskctrl_ack", "todev_unable_time_set", "todev_work_report_cmd", "todev_work_report_start_working_msg", "todev_work_report_update_cmd", "todev_zigzag_ack", "vision_ctrl", "zone_start_precent"]
     ALL_PLAN_TASK_FIELD_NUMBER: _ClassVar[int]
     APP_REQUEST_COVER_PATHS_FIELD_NUMBER: _ClassVar[int]
     BIDIRE_REQCONVER_PATH_FIELD_NUMBER: _ClassVar[int]
@@ -106,6 +110,7 @@ class MctlNav(_message.Message):
     TODEV_TASK_INFO_ACK_FIELD_NUMBER: _ClassVar[int]
     TODEV_UNABLE_TIME_SET_FIELD_NUMBER: _ClassVar[int]
     TODEV_WORK_REPORT_CMD_FIELD_NUMBER: _ClassVar[int]
+    TODEV_WORK_REPORT_START_WORKING_MSG_FIELD_NUMBER: _ClassVar[int]
     TODEV_WORK_REPORT_UPDATE_CMD_FIELD_NUMBER: _ClassVar[int]
     TODEV_ZIGZAG_ACK_FIELD_NUMBER: _ClassVar[int]
     VISION_CTRL_FIELD_NUMBER: _ClassVar[int]
@@ -170,11 +175,12 @@ class MctlNav(_message.Message):
     todev_taskctrl_ack: NavTaskCtrlAck
     todev_unable_time_set: NavUnableTimeSet
     todev_work_report_cmd: WorkReportCmdData
+    todev_work_report_start_working_msg: WorkReportStartWorkingMsg
     todev_work_report_update_cmd: WorkReportUpdateCmd
     todev_zigzag_ack: NavUploadZigZagResultAck
     vision_ctrl: vision_ctrl_msg
     zone_start_precent: zone_start_precent_t
-    def __init__(self, toapp_lat_up: _Optional[_Union[NavLatLonUp, _Mapping]] = ..., toapp_pos_up: _Optional[_Union[NavPosUp, _Mapping]] = ..., todev_chl_line_data: _Optional[_Union[NavCHlLineData, _Mapping]] = ..., toapp_task_info: _Optional[_Union[NavTaskInfo, _Mapping]] = ..., toapp_opt_line_up: _Optional[_Union[NavOptLineUp, _Mapping]] = ..., toapp_opt_border_info: _Optional[_Union[NavOptiBorderInfo, _Mapping]] = ..., toapp_opt_obs_info: _Optional[_Union[NavOptObsInfo, _Mapping]] = ..., todev_task_info_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., todev_opt_border_info_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., todev_opt_obs_info_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., todev_opt_line_up_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., toapp_chgpileto: _Optional[_Union[chargePileType, _Mapping]] = ..., todev_sustask: _Optional[int] = ..., todev_rechgcmd: _Optional[int] = ..., todev_edgecmd: _Optional[int] = ..., todev_draw_border: _Optional[int] = ..., todev_draw_border_end: _Optional[int] = ..., todev_draw_obs: _Optional[int] = ..., todev_draw_obs_end: _Optional[int] = ..., todev_chl_line: _Optional[int] = ..., todev_chl_line_end: _Optional[int] = ..., todev_save_task: _Optional[int] = ..., todev_cancel_suscmd: _Optional[int] = ..., todev_reset_chg_pile: _Optional[int] = ..., todev_cancel_draw_cmd: _Optional[int] = ..., todev_one_touch_leave_pile: _Optional[int] = ..., todev_mow_task: _Optional[_Union[NavStartJob, _Mapping]] = ..., toapp_bstate: _Optional[_Union[NavBorderState, _Mapping]] = ..., todev_lat_up_ack: _Optional[int] = ..., todev_gethash: _Optional[_Union[NavGetHashList, _Mapping]] = ..., toapp_gethash_ack: _Optional[_Union[NavGetHashListAck, _Mapping]] = ..., todev_get_commondata: _Optional[_Union[NavGetCommData, _Mapping]] = ..., toapp_get_commondata_ack: _Optional[_Union[NavGetCommDataAck, _Mapping]] = ..., bidire_reqconver_path: _Optional[_Union[NavReqCoverPath, _Mapping]] = ..., toapp_zigzag: _Optional[_Union[NavUploadZigZagResult, _Mapping]] = ..., todev_zigzag_ack: _Optional[_Union[NavUploadZigZagResultAck, _Mapping]] = ..., todev_taskctrl: _Optional[_Union[NavTaskCtrl, _Mapping]] = ..., bidire_taskid: _Optional[_Union[NavTaskIdRw, _Mapping]] = ..., toapp_bp: _Optional[_Union[NavTaskBreakPoint, _Mapping]] = ..., todev_planjob_set: _Optional[_Union[NavPlanJobSet, _Mapping]] = ..., todev_unable_time_set: _Optional[_Union[NavUnableTimeSet, _Mapping]] = ..., simulation_cmd: _Optional[_Union[SimulationCmdData, _Mapping]] = ..., todev_work_report_update_cmd: _Optional[_Union[WorkReportUpdateCmd, _Mapping]] = ..., toapp_work_report_update_ack: _Optional[_Union[WorkReportUpdateAck, _Mapping]] = ..., todev_work_report_cmd: _Optional[_Union[WorkReportCmdData, _Mapping]] = ..., toapp_work_report_ack: _Optional[_Union[WorkReportInfoAck, _Mapping]] = ..., toapp_work_report_upload: _Optional[_Union[WorkReportInfoAck, _Mapping]] = ..., app_request_cover_paths: _Optional[_Union[app_request_cover_paths_t, _Mapping]] = ..., cover_path_upload: _Optional[_Union[cover_path_upload_t, _Mapping]] = ..., zone_start_precent: _Optional[_Union[zone_start_precent_t, _Mapping]] = ..., vision_ctrl: _Optional[_Union[vision_ctrl_msg, _Mapping]] = ..., nav_sys_param_cmd: _Optional[_Union[nav_sys_param_msg, _Mapping]] = ..., plan_task_execute: _Optional[_Union[nav_plan_task_execute, _Mapping]] = ..., toapp_costmap: _Optional[_Union[costmap_t, _Mapping]] = ..., plan_task_name_id: _Optional[_Union[plan_task_name_id_t, _Mapping]] = ..., all_plan_task: _Optional[_Union[nav_get_all_plan_task, _Mapping]] = ..., todev_taskctrl_ack: _Optional[_Union[NavTaskCtrlAck, _Mapping]] = ..., toapp_map_name_msg: _Optional[_Union[NavMapNameMsg, _Mapping]] = ..., todev_svg_msg: _Optional[_Union[svg_message_ack_t, _Mapping]] = ..., toapp_svg_msg: _Optional[_Union[svg_message_ack_t, _Mapping]] = ..., toapp_all_hash_name: _Optional[_Union[AppGetAllAreaHashName, _Mapping]] = ..., toapp_edge_points: _Optional[_Union[NavEdgePoints, _Mapping]] = ..., toapp_edge_points_ack: _Optional[_Union[NavEdgePointsAck, _Mapping]] = ..., toapp_manual_element: _Optional[_Union[ManualElementMessage, _Mapping]] = ...) -> None: ...
+    def __init__(self, toapp_lat_up: _Optional[_Union[NavLatLonUp, _Mapping]] = ..., toapp_pos_up: _Optional[_Union[NavPosUp, _Mapping]] = ..., todev_chl_line_data: _Optional[_Union[NavCHlLineData, _Mapping]] = ..., toapp_task_info: _Optional[_Union[NavTaskInfo, _Mapping]] = ..., toapp_opt_line_up: _Optional[_Union[NavOptLineUp, _Mapping]] = ..., toapp_opt_border_info: _Optional[_Union[NavOptiBorderInfo, _Mapping]] = ..., toapp_opt_obs_info: _Optional[_Union[NavOptObsInfo, _Mapping]] = ..., todev_task_info_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., todev_opt_border_info_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., todev_opt_obs_info_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., todev_opt_line_up_ack: _Optional[_Union[NavResFrame, _Mapping]] = ..., toapp_chgpileto: _Optional[_Union[chargePileType, _Mapping]] = ..., todev_sustask: _Optional[int] = ..., todev_rechgcmd: _Optional[int] = ..., todev_edgecmd: _Optional[int] = ..., todev_draw_border: _Optional[int] = ..., todev_draw_border_end: _Optional[int] = ..., todev_draw_obs: _Optional[int] = ..., todev_draw_obs_end: _Optional[int] = ..., todev_chl_line: _Optional[int] = ..., todev_chl_line_end: _Optional[int] = ..., todev_save_task: _Optional[int] = ..., todev_cancel_suscmd: _Optional[int] = ..., todev_reset_chg_pile: _Optional[int] = ..., todev_cancel_draw_cmd: _Optional[int] = ..., todev_one_touch_leave_pile: _Optional[int] = ..., todev_mow_task: _Optional[_Union[NavStartJob, _Mapping]] = ..., toapp_bstate: _Optional[_Union[NavBorderState, _Mapping]] = ..., todev_lat_up_ack: _Optional[int] = ..., todev_gethash: _Optional[_Union[NavGetHashList, _Mapping]] = ..., toapp_gethash_ack: _Optional[_Union[NavGetHashListAck, _Mapping]] = ..., todev_get_commondata: _Optional[_Union[NavGetCommData, _Mapping]] = ..., toapp_get_commondata_ack: _Optional[_Union[NavGetCommDataAck, _Mapping]] = ..., bidire_reqconver_path: _Optional[_Union[NavReqCoverPath, _Mapping]] = ..., toapp_zigzag: _Optional[_Union[NavUploadZigZagResult, _Mapping]] = ..., todev_zigzag_ack: _Optional[_Union[NavUploadZigZagResultAck, _Mapping]] = ..., todev_taskctrl: _Optional[_Union[NavTaskCtrl, _Mapping]] = ..., bidire_taskid: _Optional[_Union[NavTaskIdRw, _Mapping]] = ..., toapp_bp: _Optional[_Union[NavTaskBreakPoint, _Mapping]] = ..., todev_planjob_set: _Optional[_Union[NavPlanJobSet, _Mapping]] = ..., todev_unable_time_set: _Optional[_Union[NavUnableTimeSet, _Mapping]] = ..., simulation_cmd: _Optional[_Union[SimulationCmdData, _Mapping]] = ..., todev_work_report_update_cmd: _Optional[_Union[WorkReportUpdateCmd, _Mapping]] = ..., toapp_work_report_update_ack: _Optional[_Union[WorkReportUpdateAck, _Mapping]] = ..., todev_work_report_cmd: _Optional[_Union[WorkReportCmdData, _Mapping]] = ..., toapp_work_report_ack: _Optional[_Union[WorkReportInfoAck, _Mapping]] = ..., toapp_work_report_upload: _Optional[_Union[WorkReportInfoAck, _Mapping]] = ..., app_request_cover_paths: _Optional[_Union[app_request_cover_paths_t, _Mapping]] = ..., cover_path_upload: _Optional[_Union[cover_path_upload_t, _Mapping]] = ..., zone_start_precent: _Optional[_Union[zone_start_precent_t, _Mapping]] = ..., vision_ctrl: _Optional[_Union[vision_ctrl_msg, _Mapping]] = ..., nav_sys_param_cmd: _Optional[_Union[nav_sys_param_msg, _Mapping]] = ..., plan_task_execute: _Optional[_Union[nav_plan_task_execute, _Mapping]] = ..., toapp_costmap: _Optional[_Union[costmap_t, _Mapping]] = ..., plan_task_name_id: _Optional[_Union[plan_task_name_id_t, _Mapping]] = ..., all_plan_task: _Optional[_Union[nav_get_all_plan_task, _Mapping]] = ..., todev_taskctrl_ack: _Optional[_Union[NavTaskCtrlAck, _Mapping]] = ..., toapp_map_name_msg: _Optional[_Union[NavMapNameMsg, _Mapping]] = ..., todev_svg_msg: _Optional[_Union[svg_message_ack_t, _Mapping]] = ..., toapp_svg_msg: _Optional[_Union[svg_message_ack_t, _Mapping]] = ..., toapp_all_hash_name: _Optional[_Union[AppGetAllAreaHashName, _Mapping]] = ..., toapp_edge_points: _Optional[_Union[NavEdgePoints, _Mapping]] = ..., toapp_edge_points_ack: _Optional[_Union[NavEdgePointsAck, _Mapping]] = ..., toapp_manual_element: _Optional[_Union[ManualElementMessage, _Mapping]] = ..., todev_work_report_start_working_msg: _Optional[_Union[WorkReportStartWorkingMsg, _Mapping]] = ...) -> None: ...
 
 class NavBorderDataGet(_message.Message):
     __slots__ = ["borderLen", "currentFrame", "jobId"]
@@ -449,8 +455,9 @@ class NavOptiBorderInfo(_message.Message):
     def __init__(self, jobId: _Optional[int] = ..., allFrame: _Optional[int] = ..., currentFrame: _Optional[int] = ..., borderDataLen: _Optional[int] = ..., dc: _Optional[_Iterable[_Union[_common_pb2.CommDataCouple, _Mapping]]] = ...) -> None: ...
 
 class NavPlanJobSet(_message.Message):
-    __slots__ = ["PlanIndex", "area", "day", "deviceId", "edgeMode", "endDate", "endTime", "id", "jobId", "jobName", "knifeHeight", "model", "planId", "pver", "remained_seconds", "requiredTime", "reserved", "result", "routeAngle", "routeModel", "routeSpacing", "speed", "startDate", "startTime", "subCmd", "taskId", "taskName", "totalPlanNum", "towardIncludedAngle", "towardMode", "triggerType", "ultrasonicBarrier", "userId", "version", "week", "weeks", "workTime", "zoneHashs"]
+    __slots__ = ["PlanIndex", "area", "auto_change_direction", "day", "deviceId", "edgeMode", "endDate", "endTime", "id", "jobId", "jobName", "knifeHeight", "model", "planId", "pver", "remained_seconds", "requiredTime", "reserved", "result", "ride_boundary_distance", "routeAngle", "routeModel", "routeSpacing", "speed", "startDate", "startTime", "subCmd", "taskId", "taskName", "task_settings_mode", "totalPlanNum", "towardIncludedAngle", "towardMode", "triggerType", "ultrasonicBarrier", "userId", "version", "week", "weeks", "workTime", "zoneHashs"]
     AREA_FIELD_NUMBER: _ClassVar[int]
+    AUTO_CHANGE_DIRECTION_FIELD_NUMBER: _ClassVar[int]
     DAY_FIELD_NUMBER: _ClassVar[int]
     DEVICEID_FIELD_NUMBER: _ClassVar[int]
     EDGEMODE_FIELD_NUMBER: _ClassVar[int]
@@ -469,6 +476,7 @@ class NavPlanJobSet(_message.Message):
     REQUIREDTIME_FIELD_NUMBER: _ClassVar[int]
     RESERVED_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
+    RIDE_BOUNDARY_DISTANCE_FIELD_NUMBER: _ClassVar[int]
     ROUTEANGLE_FIELD_NUMBER: _ClassVar[int]
     ROUTEMODEL_FIELD_NUMBER: _ClassVar[int]
     ROUTESPACING_FIELD_NUMBER: _ClassVar[int]
@@ -478,6 +486,7 @@ class NavPlanJobSet(_message.Message):
     SUBCMD_FIELD_NUMBER: _ClassVar[int]
     TASKID_FIELD_NUMBER: _ClassVar[int]
     TASKNAME_FIELD_NUMBER: _ClassVar[int]
+    TASK_SETTINGS_MODE_FIELD_NUMBER: _ClassVar[int]
     TOTALPLANNUM_FIELD_NUMBER: _ClassVar[int]
     TOWARDINCLUDEDANGLE_FIELD_NUMBER: _ClassVar[int]
     TOWARDMODE_FIELD_NUMBER: _ClassVar[int]
@@ -490,6 +499,7 @@ class NavPlanJobSet(_message.Message):
     WORKTIME_FIELD_NUMBER: _ClassVar[int]
     ZONEHASHS_FIELD_NUMBER: _ClassVar[int]
     area: int
+    auto_change_direction: _containers.RepeatedScalarFieldContainer[int]
     day: int
     deviceId: str
     edgeMode: int
@@ -506,6 +516,7 @@ class NavPlanJobSet(_message.Message):
     requiredTime: int
     reserved: str
     result: int
+    ride_boundary_distance: float
     routeAngle: int
     routeModel: int
     routeSpacing: int
@@ -515,6 +526,7 @@ class NavPlanJobSet(_message.Message):
     subCmd: int
     taskId: str
     taskName: str
+    task_settings_mode: int
     totalPlanNum: int
     towardIncludedAngle: int
     towardMode: int
@@ -526,7 +538,7 @@ class NavPlanJobSet(_message.Message):
     weeks: _containers.RepeatedScalarFieldContainer[int]
     workTime: int
     zoneHashs: _containers.RepeatedScalarFieldContainer[int]
-    def __init__(self, pver: _Optional[int] = ..., subCmd: _Optional[int] = ..., area: _Optional[int] = ..., workTime: _Optional[int] = ..., version: _Optional[str] = ..., id: _Optional[str] = ..., userId: _Optional[str] = ..., deviceId: _Optional[str] = ..., planId: _Optional[str] = ..., taskId: _Optional[str] = ..., jobId: _Optional[str] = ..., startTime: _Optional[str] = ..., endTime: _Optional[str] = ..., week: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., model: _Optional[int] = ..., edgeMode: _Optional[int] = ..., requiredTime: _Optional[int] = ..., routeAngle: _Optional[int] = ..., routeModel: _Optional[int] = ..., routeSpacing: _Optional[int] = ..., ultrasonicBarrier: _Optional[int] = ..., totalPlanNum: _Optional[int] = ..., PlanIndex: _Optional[int] = ..., result: _Optional[int] = ..., speed: _Optional[float] = ..., taskName: _Optional[str] = ..., jobName: _Optional[str] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., reserved: _Optional[str] = ..., startDate: _Optional[str] = ..., endDate: _Optional[str] = ..., triggerType: _Optional[int] = ..., day: _Optional[int] = ..., weeks: _Optional[_Iterable[int]] = ..., remained_seconds: _Optional[int] = ..., towardMode: _Optional[int] = ..., towardIncludedAngle: _Optional[int] = ...) -> None: ...
+    def __init__(self, pver: _Optional[int] = ..., subCmd: _Optional[int] = ..., area: _Optional[int] = ..., workTime: _Optional[int] = ..., version: _Optional[str] = ..., id: _Optional[str] = ..., userId: _Optional[str] = ..., deviceId: _Optional[str] = ..., planId: _Optional[str] = ..., taskId: _Optional[str] = ..., jobId: _Optional[str] = ..., startTime: _Optional[str] = ..., endTime: _Optional[str] = ..., week: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., model: _Optional[int] = ..., edgeMode: _Optional[int] = ..., requiredTime: _Optional[int] = ..., routeAngle: _Optional[int] = ..., routeModel: _Optional[int] = ..., routeSpacing: _Optional[int] = ..., ultrasonicBarrier: _Optional[int] = ..., totalPlanNum: _Optional[int] = ..., PlanIndex: _Optional[int] = ..., result: _Optional[int] = ..., speed: _Optional[float] = ..., taskName: _Optional[str] = ..., jobName: _Optional[str] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., reserved: _Optional[str] = ..., startDate: _Optional[str] = ..., endDate: _Optional[str] = ..., triggerType: _Optional[int] = ..., day: _Optional[int] = ..., weeks: _Optional[_Iterable[int]] = ..., remained_seconds: _Optional[int] = ..., towardMode: _Optional[int] = ..., towardIncludedAngle: _Optional[int] = ..., ride_boundary_distance: _Optional[float] = ..., task_settings_mode: _Optional[int] = ..., auto_change_direction: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class NavPosUp(_message.Message):
     __slots__ = ["age", "cHashId", "l2dfStars", "latStddev", "lonStddev", "posLevel", "posType", "stars", "status", "toward", "x", "y"]
@@ -557,7 +569,7 @@ class NavPosUp(_message.Message):
     def __init__(self, x: _Optional[float] = ..., y: _Optional[float] = ..., status: _Optional[int] = ..., toward: _Optional[int] = ..., stars: _Optional[int] = ..., age: _Optional[float] = ..., latStddev: _Optional[float] = ..., lonStddev: _Optional[float] = ..., l2dfStars: _Optional[int] = ..., posType: _Optional[int] = ..., cHashId: _Optional[int] = ..., posLevel: _Optional[int] = ...) -> None: ...
 
 class NavReqCoverPath(_message.Message):
-    __slots__ = ["UltraWave", "auto_change_direction", "channelMode", "channelWidth", "edgeMode", "jobId", "jobMode", "jobVer", "knifeHeight", "pathHash", "pver", "reserved", "result", "ride_boundary_distance", "speed", "subCmd", "toward", "toward_included_angle", "toward_mode", "unknown_21", "zoneHashs"]
+    __slots__ = ["UltraWave", "auto_change_direction", "channelMode", "channelWidth", "edgeMode", "jobId", "jobMode", "jobVer", "knifeHeight", "pathHash", "pver", "reserved", "result", "ride_boundary_distance", "speed", "subCmd", "task_settings_mode", "toward", "toward_included_angle", "toward_mode", "zoneHashs"]
     AUTO_CHANGE_DIRECTION_FIELD_NUMBER: _ClassVar[int]
     CHANNELMODE_FIELD_NUMBER: _ClassVar[int]
     CHANNELWIDTH_FIELD_NUMBER: _ClassVar[int]
@@ -573,14 +585,14 @@ class NavReqCoverPath(_message.Message):
     RIDE_BOUNDARY_DISTANCE_FIELD_NUMBER: _ClassVar[int]
     SPEED_FIELD_NUMBER: _ClassVar[int]
     SUBCMD_FIELD_NUMBER: _ClassVar[int]
+    TASK_SETTINGS_MODE_FIELD_NUMBER: _ClassVar[int]
     TOWARD_FIELD_NUMBER: _ClassVar[int]
     TOWARD_INCLUDED_ANGLE_FIELD_NUMBER: _ClassVar[int]
     TOWARD_MODE_FIELD_NUMBER: _ClassVar[int]
     ULTRAWAVE_FIELD_NUMBER: _ClassVar[int]
-    UNKNOWN_21_FIELD_NUMBER: _ClassVar[int]
     UltraWave: int
     ZONEHASHS_FIELD_NUMBER: _ClassVar[int]
-    auto_change_direction: int
+    auto_change_direction: _containers.RepeatedScalarFieldContainer[int]
     channelMode: int
     channelWidth: int
     edgeMode: int
@@ -595,12 +607,12 @@ class NavReqCoverPath(_message.Message):
     ride_boundary_distance: float
     speed: float
     subCmd: int
+    task_settings_mode: int
     toward: int
     toward_included_angle: int
     toward_mode: int
-    unknown_21: _containers.RepeatedScalarFieldContainer[int]
     zoneHashs: _containers.RepeatedScalarFieldContainer[int]
-    def __init__(self, pver: _Optional[int] = ..., jobId: _Optional[int] = ..., jobVer: _Optional[int] = ..., jobMode: _Optional[int] = ..., subCmd: _Optional[int] = ..., edgeMode: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., channelWidth: _Optional[int] = ..., UltraWave: _Optional[int] = ..., channelMode: _Optional[int] = ..., toward: _Optional[int] = ..., speed: _Optional[float] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., pathHash: _Optional[int] = ..., reserved: _Optional[str] = ..., result: _Optional[int] = ..., toward_mode: _Optional[int] = ..., toward_included_angle: _Optional[int] = ..., ride_boundary_distance: _Optional[float] = ..., auto_change_direction: _Optional[int] = ..., unknown_21: _Optional[_Iterable[int]] = ...) -> None: ...
+    def __init__(self, pver: _Optional[int] = ..., jobId: _Optional[int] = ..., jobVer: _Optional[int] = ..., jobMode: _Optional[int] = ..., subCmd: _Optional[int] = ..., edgeMode: _Optional[int] = ..., knifeHeight: _Optional[int] = ..., channelWidth: _Optional[int] = ..., UltraWave: _Optional[int] = ..., channelMode: _Optional[int] = ..., toward: _Optional[int] = ..., speed: _Optional[float] = ..., zoneHashs: _Optional[_Iterable[int]] = ..., pathHash: _Optional[int] = ..., reserved: _Optional[str] = ..., result: _Optional[int] = ..., toward_mode: _Optional[int] = ..., toward_included_angle: _Optional[int] = ..., ride_boundary_distance: _Optional[float] = ..., task_settings_mode: _Optional[int] = ..., auto_change_direction: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class NavResFrame(_message.Message):
     __slots__ = ["frameid"]
@@ -845,6 +857,20 @@ class WorkReportInfoAck(_message.Message):
     work_time_used: int
     work_type: int
     def __init__(self, interrupt_flag: bool = ..., start_work_time: _Optional[int] = ..., end_work_time: _Optional[int] = ..., work_time_used: _Optional[int] = ..., work_ares: _Optional[float] = ..., work_progress: _Optional[int] = ..., height_of_knife: _Optional[int] = ..., work_type: _Optional[int] = ..., work_result: _Optional[int] = ..., total_ack_num: _Optional[int] = ..., current_ack_num: _Optional[int] = ..., job_content: _Optional[int] = ...) -> None: ...
+
+class WorkReportStartWorkingMsg(_message.Message):
+    __slots__ = ["accountID", "result", "stamp", "type", "work_id"]
+    ACCOUNTID_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    STAMP_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    WORK_ID_FIELD_NUMBER: _ClassVar[int]
+    accountID: int
+    result: int
+    stamp: int
+    type: int
+    work_id: int
+    def __init__(self, accountID: _Optional[int] = ..., work_id: _Optional[int] = ..., stamp: _Optional[int] = ..., result: _Optional[int] = ..., type: _Optional[int] = ...) -> None: ...
 
 class WorkReportUpdateAck(_message.Message):
     __slots__ = ["info_num", "update_flag"]

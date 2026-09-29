@@ -2,7 +2,10 @@
 
 from dataclasses import dataclass, field
 
+from mashumaro import field_options
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+
+from pymammotion.data.model.hash_list import decode_auto_change_direction
 
 
 @dataclass
@@ -28,6 +31,8 @@ class CurrentTaskSettings(DataClassORJSONMixin):
     toward_mode: int = 0
     toward_included_angle: int = 0
     ride_boundary_distance: float = 0.0
-    auto_change_direction: int = 0
-    #: Unidentified. Surfaced so its values can be collected; see the proto comment.
-    unknown_21: list[int] = field(default_factory=list)
+    task_settings_mode: int = 0
+    #: "Auto-reverse Mowing Direction" (field 21, ``reserved2`` byte 0); None when the device reported none.
+    auto_change_direction: bool | None = field(
+        default=None, metadata=field_options(deserialize=decode_auto_change_direction)
+    )

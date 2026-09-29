@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+import "pymammotion/proto/luba_mul.proto";
+
+enum BATCH_CONFIG_TYPE {
+  CFG_TYPE_FORBID_WORK_TIME = 0;
+  CFG_TYPE_RAIN_STATUS = 1;
+  CFG_TYPE_SIDE_LAMP_SWITCH = 2;
+  CFG_TYPE_MEDIA_VOICE_CONFIG = 3;
+  CFG_TYPE_AUX_LIGHT_SWITCH = 4;
+  CFG_TYPE_TURN_AROUND_MODE = 5;
+  CFG_TYPE_RECHARGE_MODE = 6;
+  CFG_TYPE_SPEED_MODE = 7;
+  CFG_TYPE_LORA_CFG = 8;
+  CFG_TYPE_RAINPRO_CFG = 9;
+  CFG_TYPE_CHILD_PRO_CFG = 10;
+  CFG_TYPE_REVERSE_MODE_CFG = 11;
+  CFG_TYPE_MAX = 12;
+}
+
+enum ResResult {
+  RES_SUCCESS = 0;
+  RES_FAILURE = 1;
+}
+
+message LoraCfg {
+  int32 result = 1;
+  int32 op = 2;
+  string cfg = 3;
+  string fac_cfg = 4;
+}
+
+message SpeedModeCfg {
+  int32 result = 1;
+  int32 current_cutter_mode = 2;
+  int32 current_cutter_rpm = 3;
+}
+
+message ReturnChargeMode {
+  int32 result = 1;
+  int32 re_mode = 2;
+}
+
+message UturnMode {
+  int32 result = 1;
+  int32 turn_mode = 2;
+}
+
+message RainStateCfg {
+  int32 result = 1;
+  int32 rain_status = 2;
+}
+
+message FillLightState {
+  int32 result = 1;
+  int32 lamp_power_ctrl = 2;
+  lamp_ctrl_sta lamp_ctrl = 3;
+  bool ctrl_lamp_bright = 4;
+  int32 lamp_bright = 5;
+  lamp_manual_ctrl_sta lamp_manual_ctrl = 6;
+}
+
+message MulVoiceCfg {
+  int32 result = 1;
+  int32 audio_cfg_type = 2;
+  int32 au_switch = 3;
+  MUL_LANGUAGE au_language = 4;
+  MUL_SEX sex = 5;
+  int32 au_volume = 6;
+}
+
+message SideLedCfg {
+  int32 result = 1;
+  int32 operate = 2;
+  int32 enable = 3;
+  int32 start_hour = 4;
+  int32 start_min = 5;
+  int32 end_hour = 6;
+  int32 end_min = 7;
+  int32 action = 8;
+}
+
+message NavUnableTime {
+  int32 result = 1;
+  int32 subCmd = 2;
+  string deviceId = 3;
+  string unableStartTime = 4;
+  string unableEndTime = 5;
+  string reserved = 6;
+  int32 trigger = 7;
+}
+
+message RainProtection {
+  int32 result = 1;
+  int32 rainProtectionMode = 2;
+  int32 customDelayHours = 3;
+}
+
+message ChildProtection {
+  int32 result = 1;
+  int32 childProtectionMode = 2;
+}
+
+message ReverseMode {
+  int32 result = 1;
+  int32 reverseSafetyMode = 2;
+}
+
+message batchcfg {
+  BATCH_CONFIG_TYPE cfgtype = 1;
+  oneof SysCfg {
+    NavUnableTime time = 2;
+    RainStateCfg rain_cfg = 3;
+    SideLedCfg sideled = 4;
+    MulVoiceCfg mul_cfg = 5;
+    FillLightState light_sta = 6;
+    UturnMode u_mode = 7;
+    ReturnChargeMode re_mode = 8;
+    SpeedModeCfg mode = 9;
+    LoraCfg lora = 10;
+    RainProtection rain_pro = 11;
+    ChildProtection child_pro = 12;
+    ReverseMode reverse_mode = 13;
+  }
+}
+
+message batch_set_res {
+  BATCH_CONFIG_TYPE type = 1;
+  ResResult res_result = 2;
+}
+
+// Batch settings read/write, MctlSys fields 83-86.
+message app_batch_query_req {
+  int32 req_id = 1;
+  repeated BATCH_CONFIG_TYPE type_list = 2;
+}
+
+message app_batch_query_resp {
+  int32 req_id = 1;
+  repeated batchcfg cfgs = 2;
+}
+
+message app_batch_set_req {
+  int32 req_id = 1;
+  repeated batchcfg cfgs = 2;
+}
+
+message app_batch_set_resp {
+  int32 req_id = 1;
+  repeated batch_set_res res_data = 2;
+}

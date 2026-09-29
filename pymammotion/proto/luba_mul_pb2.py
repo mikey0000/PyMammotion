@@ -13,49 +13,49 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n pymammotion/proto/luba_mul.proto\"o\n\x0bMulSetAudio\x12\x13\n\tat_switch\x18\x01 \x01(\x05H\x00\x12$\n\x0b\x61u_language\x18\x02 \x01(\x0e\x32\r.MUL_LANGUAGEH\x00\x12\x17\n\x03sex\x18\x03 \x01(\x0e\x32\x08.MUL_SEXH\x00\x42\x0c\n\nAudioCfg_u\"H\n\x0bMulSetVideo\x12&\n\x08position\x18\x01 \x01(\x0e\x32\x14.MUL_CAMERA_POSITION\x12\x11\n\tvi_switch\x18\x02 \x01(\x05\";\n\x0eMulSetVideoAck\x12)\n\nerror_code\x18\x01 \x01(\x0e\x32\x15.MUL_VIDEO_ERROR_CODE\"[\n\x0bMulAudioCfg\x12\x11\n\tau_switch\x18\x01 \x01(\x05\x12\"\n\x0b\x61u_language\x18\x02 \x01(\x0e\x32\r.MUL_LANGUAGE\x12\x15\n\x03sex\x18\x03 \x01(\x0e\x32\x08.MUL_SEX\"\x1c\n\x0bMulSetWiper\x12\r\n\x05round\x18\x01 \x01(\x05\"\x1e\n\x0bGetHeadlamp\x12\x0f\n\x07get_ids\x18\x01 \x01(\x05\"\xba\x01\n\x0bSetHeadlamp\x12\x0f\n\x07set_ids\x18\x01 \x01(\x05\x12\x17\n\x0flamp_power_ctrl\x18\x02 \x01(\x05\x12!\n\tlamp_ctrl\x18\x03 \x01(\x0e\x32\x0e.lamp_ctrl_sta\x12\x18\n\x10\x63trl_lamp_bright\x18\x04 \x01(\x08\x12\x13\n\x0blamp_bright\x18\x05 \x01(\x05\x12/\n\x10lamp_manual_ctrl\x18\x06 \x01(\x0e\x32\x15.lamp_manual_ctrl_sta\"-\n\nSetlamprsp\x12\x0f\n\x07set_ids\x18\x01 \x01(\x05\x12\x0e\n\x06result\x18\x02 \x01(\x05\"\x96\x01\n\nGetlamprsp\x12\x0f\n\x07get_ids\x18\x01 \x01(\x05\x12\x0e\n\x06result\x18\x02 \x01(\x05\x12!\n\tlamp_ctrl\x18\x03 \x01(\x0e\x32\x0e.lamp_ctrl_sta\x12\x13\n\x0blamp_bright\x18\x04 \x01(\x05\x12/\n\x10lamp_manual_ctrl\x18\x05 \x01(\x0e\x32\x15.lamp_manual_ctrl_sta\";\n\x0eMulSetWiperAck\x12)\n\nerror_code\x18\x01 \x01(\x0e\x32\x15.MUL_WIPER_ERROR_CODE\"\x1e\n\x0cMulSetEncode\x12\x0e\n\x06\x65ncode\x18\x01 \x01(\x08\"\xa5\x03\n\x06SocMul\x12!\n\tset_audio\x18\x01 \x01(\x0b\x32\x0c.MulSetAudioH\x00\x12!\n\taudio_cfg\x18\x02 \x01(\x0b\x32\x0c.MulAudioCfgH\x00\x12!\n\tset_video\x18\x03 \x01(\x0b\x32\x0c.MulSetVideoH\x00\x12(\n\rset_video_ack\x18\x04 \x01(\x0b\x32\x0f.MulSetVideoAckH\x00\x12!\n\tset_wiper\x18\x05 \x01(\x0b\x32\x0c.MulSetWiperH\x00\x12(\n\rset_wiper_ack\x18\x06 \x01(\x0b\x32\x0f.MulSetWiperAckH\x00\x12 \n\x08get_lamp\x18\x07 \x01(\x0b\x32\x0c.GetHeadlampH\x00\x12 \n\x08set_lamp\x18\x08 \x01(\x0b\x32\x0c.SetHeadlampH\x00\x12#\n\x0cset_lamp_rsp\x18\t \x01(\x0b\x32\x0b.SetlamprspH\x00\x12#\n\x0cget_lamp_rsp\x18\n \x01(\x0b\x32\x0b.GetlamprspH\x00\x12#\n\nreq_encode\x18\x0b \x01(\x0b\x32\r.MulSetEncodeH\x00\x42\x08\n\x06SubMul*\x83\x01\n\x0cMUL_LANGUAGE\x12\x0b\n\x07\x45NGLISH\x10\x00\x12\n\n\x06GERMAN\x10\x01\x12\n\n\x06\x46RENCH\x10\x02\x12\x0b\n\x07ITALIAN\x10\x03\x12\x0b\n\x07SPANISH\x10\x04\x12\x0e\n\nPORTUGUESE\x10\x05\x12\t\n\x05\x44UTCH\x10\x06\x12\x0b\n\x07SWEDISH\x10\x07\x12\x0c\n\x08NONE_LAN\x10\x08*+\n\x07MUL_SEX\x12\x07\n\x03MAN\x10\x00\x12\t\n\x05WOMAN\x10\x01\x12\x0c\n\x08NONE_SEX\x10\x02*=\n\x13MUL_CAMERA_POSITION\x12\x08\n\x04LEFT\x10\x00\x12\t\n\x05RIGHT\x10\x01\x12\x08\n\x04REAR\x10\x02\x12\x07\n\x03\x41LL\x10\x03*\x83\x01\n\x14MUL_VIDEO_ERROR_CODE\x12\x0b\n\x07SUCCESS\x10\x00\x12\x15\n\x11\x41\x43TIVATION_FAILED\x10\x01\x12\x19\n\x15NETWORK_NOT_AVAILABLE\x10\x02\x12\x19\n\x15\x43REATE_CHANNEL_FAILED\x10\x03\x12\x11\n\rPARAM_INVAILD\x10\x04*Q\n\x14MUL_WIPER_ERROR_CODE\x12\x0f\n\x0bSET_SUCCESS\x10\x00\x12\x0c\n\x08HW_ERROR\x10\x01\x12\x1a\n\x16NAVIGATION_WORK_FORBID\x10\x02*?\n\rlamp_ctrl_sta\x12\r\n\tpower_off\x10\x00\x12\x0c\n\x08power_on\x10\x01\x12\x11\n\rpower_ctrl_on\x10\x02*A\n\x14lamp_manual_ctrl_sta\x12\x14\n\x10manual_power_off\x10\x00\x12\x13\n\x0fmanual_power_on\x10\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n pymammotion/proto/luba_mul.proto\"\x84\x01\n\x0bMulSetAudio\x12\x13\n\tat_switch\x18\x01 \x01(\x05H\x00\x12$\n\x0b\x61u_language\x18\x02 \x01(\x0e\x32\r.MUL_LANGUAGEH\x00\x12\x17\n\x03sex\x18\x03 \x01(\x0e\x32\x08.MUL_SEXH\x00\x12\x13\n\tau_volume\x18\x04 \x01(\x05H\x00\x42\x0c\n\nAudioCfg_u\"H\n\x0bMulSetVideo\x12&\n\x08position\x18\x01 \x01(\x0e\x32\x14.MUL_CAMERA_POSITION\x12\x11\n\tvi_switch\x18\x02 \x01(\x05\";\n\x0eMulSetVideoAck\x12)\n\nerror_code\x18\x01 \x01(\x0e\x32\x15.MUL_VIDEO_ERROR_CODE\"n\n\x0bMulAudioCfg\x12\x11\n\tau_switch\x18\x01 \x01(\x05\x12\"\n\x0b\x61u_language\x18\x02 \x01(\x0e\x32\r.MUL_LANGUAGE\x12\x15\n\x03sex\x18\x03 \x01(\x0e\x32\x08.MUL_SEX\x12\x11\n\tau_volume\x18\x04 \x01(\x05\"\x1c\n\x0bMulSetWiper\x12\r\n\x05round\x18\x01 \x01(\x05\"\x1e\n\x0bGetHeadlamp\x12\x0f\n\x07get_ids\x18\x01 \x01(\x05\"\xba\x01\n\x0bSetHeadlamp\x12\x0f\n\x07set_ids\x18\x01 \x01(\x05\x12\x17\n\x0flamp_power_ctrl\x18\x02 \x01(\x05\x12!\n\tlamp_ctrl\x18\x03 \x01(\x0e\x32\x0e.lamp_ctrl_sta\x12\x18\n\x10\x63trl_lamp_bright\x18\x04 \x01(\x08\x12\x13\n\x0blamp_bright\x18\x05 \x01(\x05\x12/\n\x10lamp_manual_ctrl\x18\x06 \x01(\x0e\x32\x15.lamp_manual_ctrl_sta\"-\n\nSetlamprsp\x12\x0f\n\x07set_ids\x18\x01 \x01(\x05\x12\x0e\n\x06result\x18\x02 \x01(\x05\"\x96\x01\n\nGetlamprsp\x12\x0f\n\x07get_ids\x18\x01 \x01(\x05\x12\x0e\n\x06result\x18\x02 \x01(\x05\x12!\n\tlamp_ctrl\x18\x03 \x01(\x0e\x32\x0e.lamp_ctrl_sta\x12\x13\n\x0blamp_bright\x18\x04 \x01(\x05\x12/\n\x10lamp_manual_ctrl\x18\x05 \x01(\x0e\x32\x15.lamp_manual_ctrl_sta\";\n\x0eMulSetWiperAck\x12)\n\nerror_code\x18\x01 \x01(\x0e\x32\x15.MUL_WIPER_ERROR_CODE\"\x1e\n\x0cMulSetEncode\x12\x0e\n\x06\x65ncode\x18\x01 \x01(\x08\"\xa5\x03\n\x06SocMul\x12!\n\tset_audio\x18\x01 \x01(\x0b\x32\x0c.MulSetAudioH\x00\x12!\n\taudio_cfg\x18\x02 \x01(\x0b\x32\x0c.MulAudioCfgH\x00\x12!\n\tset_video\x18\x03 \x01(\x0b\x32\x0c.MulSetVideoH\x00\x12(\n\rset_video_ack\x18\x04 \x01(\x0b\x32\x0f.MulSetVideoAckH\x00\x12!\n\tset_wiper\x18\x05 \x01(\x0b\x32\x0c.MulSetWiperH\x00\x12(\n\rset_wiper_ack\x18\x06 \x01(\x0b\x32\x0f.MulSetWiperAckH\x00\x12 \n\x08get_lamp\x18\x07 \x01(\x0b\x32\x0c.GetHeadlampH\x00\x12 \n\x08set_lamp\x18\x08 \x01(\x0b\x32\x0c.SetHeadlampH\x00\x12#\n\x0cset_lamp_rsp\x18\t \x01(\x0b\x32\x0b.SetlamprspH\x00\x12#\n\x0cget_lamp_rsp\x18\n \x01(\x0b\x32\x0b.GetlamprspH\x00\x12#\n\nreq_encode\x18\x0b \x01(\x0b\x32\r.MulSetEncodeH\x00\x42\x08\n\x06SubMul*\x83\x01\n\x0cMUL_LANGUAGE\x12\x0b\n\x07\x45NGLISH\x10\x00\x12\n\n\x06GERMAN\x10\x01\x12\n\n\x06\x46RENCH\x10\x02\x12\x0b\n\x07ITALIAN\x10\x03\x12\x0b\n\x07SPANISH\x10\x04\x12\x0e\n\nPORTUGUESE\x10\x05\x12\t\n\x05\x44UTCH\x10\x06\x12\x0b\n\x07SWEDISH\x10\x07\x12\x0c\n\x08NONE_LAN\x10\x08*+\n\x07MUL_SEX\x12\x07\n\x03MAN\x10\x00\x12\t\n\x05WOMAN\x10\x01\x12\x0c\n\x08NONE_SEX\x10\x02*=\n\x13MUL_CAMERA_POSITION\x12\x08\n\x04LEFT\x10\x00\x12\t\n\x05RIGHT\x10\x01\x12\x08\n\x04REAR\x10\x02\x12\x07\n\x03\x41LL\x10\x03*\x83\x01\n\x14MUL_VIDEO_ERROR_CODE\x12\x0b\n\x07SUCCESS\x10\x00\x12\x15\n\x11\x41\x43TIVATION_FAILED\x10\x01\x12\x19\n\x15NETWORK_NOT_AVAILABLE\x10\x02\x12\x19\n\x15\x43REATE_CHANNEL_FAILED\x10\x03\x12\x11\n\rPARAM_INVAILD\x10\x04*Q\n\x14MUL_WIPER_ERROR_CODE\x12\x0f\n\x0bSET_SUCCESS\x10\x00\x12\x0c\n\x08HW_ERROR\x10\x01\x12\x1a\n\x16NAVIGATION_WORK_FORBID\x10\x02*?\n\rlamp_ctrl_sta\x12\r\n\tpower_off\x10\x00\x12\x0c\n\x08power_on\x10\x01\x12\x11\n\rpower_ctrl_on\x10\x02*A\n\x14lamp_manual_ctrl_sta\x12\x14\n\x10manual_power_off\x10\x00\x12\x13\n\x0fmanual_power_on\x10\x01\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'pymammotion.proto.luba_mul_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _MUL_LANGUAGE._serialized_start=1346
-  _MUL_LANGUAGE._serialized_end=1477
-  _MUL_SEX._serialized_start=1479
-  _MUL_SEX._serialized_end=1522
-  _MUL_CAMERA_POSITION._serialized_start=1524
-  _MUL_CAMERA_POSITION._serialized_end=1585
-  _MUL_VIDEO_ERROR_CODE._serialized_start=1588
-  _MUL_VIDEO_ERROR_CODE._serialized_end=1719
-  _MUL_WIPER_ERROR_CODE._serialized_start=1721
-  _MUL_WIPER_ERROR_CODE._serialized_end=1802
-  _LAMP_CTRL_STA._serialized_start=1804
-  _LAMP_CTRL_STA._serialized_end=1867
-  _LAMP_MANUAL_CTRL_STA._serialized_start=1869
-  _LAMP_MANUAL_CTRL_STA._serialized_end=1934
-  _MULSETAUDIO._serialized_start=36
-  _MULSETAUDIO._serialized_end=147
-  _MULSETVIDEO._serialized_start=149
-  _MULSETVIDEO._serialized_end=221
-  _MULSETVIDEOACK._serialized_start=223
-  _MULSETVIDEOACK._serialized_end=282
-  _MULAUDIOCFG._serialized_start=284
-  _MULAUDIOCFG._serialized_end=375
-  _MULSETWIPER._serialized_start=377
-  _MULSETWIPER._serialized_end=405
-  _GETHEADLAMP._serialized_start=407
-  _GETHEADLAMP._serialized_end=437
-  _SETHEADLAMP._serialized_start=440
-  _SETHEADLAMP._serialized_end=626
-  _SETLAMPRSP._serialized_start=628
-  _SETLAMPRSP._serialized_end=673
-  _GETLAMPRSP._serialized_start=676
-  _GETLAMPRSP._serialized_end=826
-  _MULSETWIPERACK._serialized_start=828
-  _MULSETWIPERACK._serialized_end=887
-  _MULSETENCODE._serialized_start=889
-  _MULSETENCODE._serialized_end=919
-  _SOCMUL._serialized_start=922
-  _SOCMUL._serialized_end=1343
+  _MUL_LANGUAGE._serialized_start=1387
+  _MUL_LANGUAGE._serialized_end=1518
+  _MUL_SEX._serialized_start=1520
+  _MUL_SEX._serialized_end=1563
+  _MUL_CAMERA_POSITION._serialized_start=1565
+  _MUL_CAMERA_POSITION._serialized_end=1626
+  _MUL_VIDEO_ERROR_CODE._serialized_start=1629
+  _MUL_VIDEO_ERROR_CODE._serialized_end=1760
+  _MUL_WIPER_ERROR_CODE._serialized_start=1762
+  _MUL_WIPER_ERROR_CODE._serialized_end=1843
+  _LAMP_CTRL_STA._serialized_start=1845
+  _LAMP_CTRL_STA._serialized_end=1908
+  _LAMP_MANUAL_CTRL_STA._serialized_start=1910
+  _LAMP_MANUAL_CTRL_STA._serialized_end=1975
+  _MULSETAUDIO._serialized_start=37
+  _MULSETAUDIO._serialized_end=169
+  _MULSETVIDEO._serialized_start=171
+  _MULSETVIDEO._serialized_end=243
+  _MULSETVIDEOACK._serialized_start=245
+  _MULSETVIDEOACK._serialized_end=304
+  _MULAUDIOCFG._serialized_start=306
+  _MULAUDIOCFG._serialized_end=416
+  _MULSETWIPER._serialized_start=418
+  _MULSETWIPER._serialized_end=446
+  _GETHEADLAMP._serialized_start=448
+  _GETHEADLAMP._serialized_end=478
+  _SETHEADLAMP._serialized_start=481
+  _SETHEADLAMP._serialized_end=667
+  _SETLAMPRSP._serialized_start=669
+  _SETLAMPRSP._serialized_end=714
+  _GETLAMPRSP._serialized_start=717
+  _GETLAMPRSP._serialized_end=867
+  _MULSETWIPERACK._serialized_start=869
+  _MULSETWIPERACK._serialized_end=928
+  _MULSETENCODE._serialized_start=930
+  _MULSETENCODE._serialized_end=960
+  _SOCMUL._serialized_start=963
+  _SOCMUL._serialized_end=1384
 # @@protoc_insertion_point(module_scope)

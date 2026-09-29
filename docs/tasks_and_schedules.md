@@ -12,7 +12,7 @@ Decompiled APK reference: `/home/michael/Downloads/mammotion-2-3-8-201/agilex/ja
 
 ## 1. Mower — `NavPlanJobSet`
 
-Proto: `pymammotion/proto/__init__.py` `NavPlanJobSet` (38 fields).
+Proto: `pymammotion/proto/__init__.py` `NavPlanJobSet` (39 fields).
 Field path: `LubaMsg.nav.todev_planjob_set` (oneof `SubNavMsg`).
 APK builders: `command/MACommandHelper.java`, `command/app/MACommandApiHelper.java`.
 
@@ -59,7 +59,7 @@ Layout, from the encoder `HomeStateViewModule.getReserved` (`:998-1021`) and the
 | 1     | No-go zone mowing laps (`mowing_laps_obs`)    | value + 10                     |
 | **2** | **Enable flag**                                | **written 0/1, stored 10/11**  |
 | 3     | Job start progress (`start_progress`)         | value + 10                     |
-| 4     | Unused — written as literal 0                 | —                              |
+| 4     | Luba 1: path-angle mode (`toward_mode`); else literal 0 | value + 10          |
 | 5     | Yuka job config, else 8                       | value + 10                     |
 | 6     | Collect grass frequency                       | value + 10                     |
 | 7     | Unused — never written, always sent as 0      | —                              |
@@ -71,9 +71,20 @@ the offset: every enable/disable or rename shifts the settings another 10 until 
 (`JobScheduleActivity.java:848-866`, shared by rename and toggle): decrement bytes
 0, 1, 3, 4, 5, 6; write byte 2 raw; send byte 7 as 0.
 
-`Plan.reserved_for_send()` does exactly that, and `send_plan` / `send_schedule` apply it,
-so the normalisation happens once per transmission and cannot compound. `Plan.with_enabled`
+`Plan.reserved_for_send()` does exactly that, and `send_schedule` (every full plan write goes through it)
+applies it, so the normalisation happens once per transmission and cannot compound. `Plan.with_enabled`
 only sets byte 2 locally.
+
+**Luba 1: byte 4 is the path-angle mode.** On a Luba 1 (`DeviceType.is_luba1`, the app's
+`type().isLuba1()` = `DeviceType.LUBA`) the app writes `bArr[4] = towardMode` raw and leaves bytes
+5 and 6 at 0 (`WorkSettingViewModel.getReserved`, `:376-387`), and still sends the same value as
+field 37. Reading a stored plan back it takes `towardMode = reserved[4] − 10` and ignores field 37
+(`JobScheduleActivity.java:1039-1050`, `:1164-1175`, `:1240-1251`, only when `reserved` is longer
+than two bytes). pymammotion keeps both halves of that rule on `Plan`:
+`Plan.from_wire(wire, device_name, product_key)` decodes it (used by the reducer and
+`PlanFetchSaga`; clamped to 0–2, which the app does not do), and
+`reserved_for_send(device_name, product_key)` writes `Plan.toward_mode` into byte 4. Every other
+model keeps byte 4 out of it and reads/writes field 37 only.
 
 For full **create-from-scratch**, bytes 0, 1, 3, 4, 5, 6 must be derived from the plan's
 explicit fields (`knife_height`, `edge_mode`, etc.) using the +10 offset. **The exact mapping
@@ -93,7 +104,9 @@ produces match the app's bytes for an equivalent plan definition.
 | 3              | RUN      | one-off, immediate                                          |
 
 `start_time` / `end_time` are `HH:MM` strings. `week` (field 14) is legacy single-day; new
-firmware uses the repeated `weeks` list.
+firmware uses the repeated `weeks` list. On a Luba 1 the app sets `week = weeks[0]` when `weeks` is
+non-empty (`NewWorkSettingActivity.java:1289-1291`, `WorkSettingsView.java:906-908`) and sends
+`weeks` as well; `Plan.week_for_send` does the same. Elsewhere `week` is sent as held.
 
 ### 1.5 Other useful fields
 
@@ -104,8 +117,13 @@ firmware uses the repeated `weeks` list.
 | `speed`              | float     | Driving speed.                                           |
 | `route_angle`        | int32     | Mowing pattern angle (0–179 degrees).                   |
 | `route_spacing`      | int32     | Spacing between mow lines (cm).                          |
-| `edge_mode`          | int32     | Edge handling (0/1/2 → off / once / twice).             |
+| `edge_mode`          | int32     | Border laps (0/1/2 → off / once / twice); the app's `edgeMode` = `mowing_laps`. |
 | `ultrasonic_barrier` | int32     | Ultrasonic obstacle avoidance toggle.                   |
+| `toward_mode` | int32 (field 37) | Path-angle mode (`0` relative / `1` absolute / `2` random, as on a route). The app sends `planBean1.getTowardMode()` on every full plan write, ungated by model (`MACommandApiHelper.sendSchedule`); `send_schedule` sends `Plan.toward_mode`, so an edit/rename/toggle/copy of a read-back plan keeps it. On a Luba 1 the mode also lives in `reserved[4]`, which is where it is read back from — see §1.3. |
+| `toward_included_angle` | int32 (field 38) | The app's `demond_angle`, sent verbatim on every full write, ungated by model. |
+| `ride_boundary_distance` | float (field 39) | "Edge Coverage", as on a route (`NavReqCoverPath` 19). The app sets it on every full plan write (`MACommandApiHelper.sendSchedule`, create/edit/rename/toggle/copy) and reads it back into the edit screen (`TaskAssignmentManager.setPlanBean2`). `send_schedule` sends it through `DeviceType.ride_boundary_distance_to_send` — 0.0 unless the model supports it and `edge_mode != 0` — so an edit of a read-back `Plan` keeps the stored value. |
+| `app_display_mode` | int32 (field 40) | `task_settings_mode` in our proto. Never set by the app's schedule builder (`MACommandApiHelper.sendSchedule`), so it goes out as 0; `send_schedule` does not set it either. |
+| `reserved2` | repeated int32 (field 41) | `auto_change_direction` in our proto: "Auto-reverse Mowing Direction", a 32-byte buffer with the setting (0/1) in byte 0, sent on every full write even when off (`getReserved2`; `MowSettingsFragment`, `NewWorkSettingActivity`, `WorkSettingsView`). Read back, byte 0 arrives +10; the app takes 10 off when it is >= 10 and re-sends that on edit/toggle (`JobScheduleActivity.java:843-855`, `:1272-1284`). `Plan.from_wire` decodes it to `Plan.auto_change_direction` (same rule as a route's field 21) and `send_schedule` re-sends it. No builder-level gate. |
 
 ### 1.6 Starting a stored schedule on demand
 

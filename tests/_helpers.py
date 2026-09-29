@@ -20,6 +20,7 @@ from pymammotion.client import MammotionClient
 from pymammotion.device.auto_fetch import AutoFetchWatchers
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.inbound_router import InboundRouter
+from pymammotion.proto import NavPlanJobSet
 from pymammotion.state.device_state import TransportAvailability
 from pymammotion.transport.base import TransportType
 from pymammotion.transport.ble import BLETransport
@@ -284,3 +285,19 @@ NEWER_MODEL_NAME = "Luba-VA6ABCDE"
 #: A name no ``DeviceType`` rule recognises; with ``LUBA1_PRODUCT_KEY`` it is a Luba 1 by product key alone.
 UNRECOGNISED_NAME = "Mower-ABC123"
 LUBA1_PRODUCT_KEY = "a1UBFdq6nNz"
+
+
+def make_stored_plan_frame(byte_4: int = 10, field_37: int = 0, reserved2: list[int] | None = None) -> NavPlanJobSet:
+    """Return plan ``p1`` as the device stores it: every settings byte of ``reserved`` echoed +10.
+
+    *byte_4* is ``reserved[4]`` as stored (a Luba 1's ``toward_mode`` + 10); *field_37* is ``toward_mode``;
+    *reserved2* is field 41 as stored (auto-reverse in byte 0), absent by default.
+    """
+    reserved = bytes([11, 11, 10, 10, byte_4, 10, 10, 0]).decode("latin-1")
+    return NavPlanJobSet(
+        plan_id="p1",
+        total_plan_num=1,
+        reserved=reserved,
+        toward_mode=field_37,
+        auto_change_direction=reserved2 or [],
+    )

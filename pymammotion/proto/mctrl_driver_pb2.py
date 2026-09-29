@@ -13,45 +13,65 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n$pymammotion/proto/mctrl_driver.proto\"@\n\rDrvMotionCtrl\x12\x16\n\x0esetLinearSpeed\x18\x01 \x01(\x05\x12\x17\n\x0fsetAngularSpeed\x18\x02 \x01(\x05\"%\n\x0e\x44rvKnifeHeight\x12\x13\n\x0bknifeHeight\x18\x01 \x01(\x05\"\'\n\nDrvSrSpeed\x12\n\n\x02rw\x18\x01 \x01(\x05\x12\r\n\x05speed\x18\x02 \x01(\x02\"&\n\x0e\x44rvKnifeStatus\x12\x14\n\x0cknife_status\x18\x01 \x01(\x05\"f\n\x14\x44rvKnifeChangeReport\x12\x10\n\x08is_start\x18\x01 \x01(\x05\x12\x14\n\x0cstart_height\x18\x02 \x01(\x05\x12\x12\n\nend_height\x18\x03 \x01(\x05\x12\x12\n\ncur_height\x18\x04 \x01(\x05\"A\n\x14\x44rvCollectCtrlByHand\x12\x14\n\x0c\x63ollect_ctrl\x18\x01 \x01(\x05\x12\x13\n\x0bunload_ctrl\x18\x02 \x01(\x05\"n\n\x10\x44rvMowCtrlByHand\x12\x11\n\tmain_ctrl\x18\x01 \x01(\x05\x12\x16\n\x0e\x63ut_knife_ctrl\x18\x02 \x01(\x05\x12\x18\n\x10\x63ut_knife_height\x18\x03 \x01(\x05\x12\x15\n\rmax_run_speed\x18\x04 \x01(\x02\"4\n\rrtk_cfg_req_t\x12\x12\n\ncmd_length\x18\x01 \x01(\x05\x12\x0f\n\x07\x63md_req\x18\x02 \x01(\t\"=\n\x11rtk_cfg_req_ack_t\x12\x12\n\ncmd_length\x18\x01 \x01(\x05\x12\x14\n\x0c\x63md_response\x18\x02 \x01(\t\"*\n\x14rtk_sys_mask_query_t\x12\x12\n\nsat_system\x18\x01 \x01(\r\"H\n\x18rtk_sys_mask_query_ack_t\x12\x12\n\nsat_system\x18\x01 \x01(\r\x12\x18\n\x10system_mask_bits\x18\x02 \x03(\r\"=\n\x14\x41ppSetCutterWorkMode\x12\x12\n\nCutterMode\x18\x01 \x01(\x05\x12\x11\n\tSetResult\x18\x02 \x01(\x05\"d\n\x14\x41ppGetCutterWorkMode\x12\x1b\n\x13\x63urrent_cutter_mode\x18\x01 \x01(\x05\x12\x1a\n\x12\x63urrent_cutter_rpm\x18\x02 \x01(\x05\x12\x13\n\x0bQueryResult\x18\x03 \x01(\x05\"\xeb\x05\n\nMctlDriver\x12.\n\x14todev_devmotion_ctrl\x18\x01 \x01(\x0b\x32\x0e.DrvMotionCtrlH\x00\x12\x31\n\x16todev_knife_height_set\x18\x02 \x01(\x0b\x32\x0f.DrvKnifeHeightH\x00\x12,\n\x15\x62idire_speed_read_set\x18\x03 \x01(\x0b\x32\x0b.DrvSrSpeedH\x00\x12\x35\n\x1a\x62idire_knife_height_report\x18\x04 \x01(\x0b\x32\x0f.DrvKnifeHeightH\x00\x12-\n\x12toapp_knife_status\x18\x05 \x01(\x0b\x32\x0f.DrvKnifeStatusH\x00\x12-\n\x10mow_ctrl_by_hand\x18\x06 \x01(\x0b\x32\x11.DrvMowCtrlByHandH\x00\x12%\n\x0brtk_cfg_req\x18\x07 \x01(\x0b\x32\x0e.rtk_cfg_req_tH\x00\x12-\n\x0frtk_cfg_req_ack\x18\x08 \x01(\x0b\x32\x12.rtk_cfg_req_ack_tH\x00\x12\x33\n\x12rtk_sys_mask_query\x18\t \x01(\x0b\x32\x15.rtk_sys_mask_query_tH\x00\x12;\n\x16rtk_sys_mask_query_ack\x18\n \x01(\x0b\x32\x19.rtk_sys_mask_query_ack_tH\x00\x12:\n\x19toapp_knife_status_change\x18\x0b \x01(\x0b\x32\x15.DrvKnifeChangeReportH\x00\x12\x35\n\x14\x63ollect_ctrl_by_hand\x18\x0c \x01(\x0b\x32\x15.DrvCollectCtrlByHandH\x00\x12\x39\n\x18\x63utter_mode_ctrl_by_hand\x18\r \x01(\x0b\x32\x15.AppSetCutterWorkModeH\x00\x12\x34\n\x13\x63urrent_cutter_mode\x18\x0e \x01(\x0b\x32\x15.AppGetCutterWorkModeH\x00\x42\x0b\n\tSubDrvMsg*R\n\x0e\x43utterWorkMode\x12\x13\n\x0f\x43UTTER_STANDARD\x10\x00\x12\x13\n\x0f\x43UTTER_ECONOMIC\x10\x01\x12\x16\n\x12\x43UTTER_PERFORMANCE\x10\x02*a\n\x11\x43ollectMotorState\x12\x11\n\rCOLLECT_CLOSE\x10\x00\x12\x10\n\x0c\x43OLLECT_OPEN\x10\x01\x12\x11\n\rCOLLECT_STUCK\x10\x02\x12\x14\n\x10\x43OLLECT_ABNORMAL\x10\x03*Z\n\x10UnloadMotorState\x12\x10\n\x0cUNLOAD_CLOSE\x10\x00\x12\x0f\n\x0bUNLOAD_OPEN\x10\x01\x12\x0f\n\x0bUNLOAD_STOP\x10\x02\x12\x12\n\x0eUNLOAD_RUNNING\x10\x03\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n$pymammotion/proto/mctrl_driver.proto\"_\n\rDrvMotionCtrl\x12\x16\n\x0esetLinearSpeed\x18\x01 \x01(\x05\x12\x17\n\x0fsetAngularSpeed\x18\x02 \x01(\x05\x12\x1d\n\x07\x63hannel\x18\x03 \x01(\x0e\x32\x0c.DrvCtrlLink\"c\n\x11\x44rvMotionCtrlTest\x12\x16\n\x0esetLinearSpeed\x18\x01 \x01(\x05\x12\x17\n\x0fsetAngularSpeed\x18\x02 \x01(\x05\x12\x1d\n\x07\x63hannel\x18\x03 \x01(\x0e\x32\x0c.DrvCtrlLink\"H\n\x10\x44rvMotionCtrlAck\x12\x11\n\ttimestamp\x18\x01 \x01(\x04\x12\x0f\n\x07is_drop\x18\x02 \x01(\x05\x12\x10\n\x08\x64\x65lay_ms\x18\x03 \x01(\x04\"%\n\x0e\x44rvKnifeHeight\x12\x13\n\x0bknifeHeight\x18\x01 \x01(\x05\"\'\n\nDrvSrSpeed\x12\n\n\x02rw\x18\x01 \x01(\x05\x12\r\n\x05speed\x18\x02 \x01(\x02\"&\n\x0e\x44rvKnifeStatus\x12\x14\n\x0cknife_status\x18\x01 \x01(\x05\"f\n\x14\x44rvKnifeChangeReport\x12\x10\n\x08is_start\x18\x01 \x01(\x05\x12\x14\n\x0cstart_height\x18\x02 \x01(\x05\x12\x12\n\nend_height\x18\x03 \x01(\x05\x12\x12\n\ncur_height\x18\x04 \x01(\x05\"A\n\x14\x44rvCollectCtrlByHand\x12\x14\n\x0c\x63ollect_ctrl\x18\x01 \x01(\x05\x12\x13\n\x0bunload_ctrl\x18\x02 \x01(\x05\"\x81\x01\n\x10\x44rvMowCtrlByHand\x12\x11\n\tmain_ctrl\x18\x01 \x01(\x05\x12\x16\n\x0e\x63ut_knife_ctrl\x18\x02 \x01(\x05\x12\x18\n\x10\x63ut_knife_height\x18\x03 \x01(\x05\x12\x15\n\rmax_run_speed\x18\x04 \x01(\x02\x12\x11\n\tedge_ctrl\x18\x05 \x01(\x05\"$\n\rDrvBuzzEnable\x12\x13\n\x0b\x62uzz_enable\x18\x01 \x01(\x05\"4\n\rrtk_cfg_req_t\x12\x12\n\ncmd_length\x18\x01 \x01(\x05\x12\x0f\n\x07\x63md_req\x18\x02 \x01(\t\"=\n\x11rtk_cfg_req_ack_t\x12\x12\n\ncmd_length\x18\x01 \x01(\x05\x12\x14\n\x0c\x63md_response\x18\x02 \x01(\t\"*\n\x14rtk_sys_mask_query_t\x12\x12\n\nsat_system\x18\x01 \x01(\r\"H\n\x18rtk_sys_mask_query_ack_t\x12\x12\n\nsat_system\x18\x01 \x01(\r\x12\x18\n\x10system_mask_bits\x18\x02 \x03(\r\"=\n\x14\x41ppSetCutterWorkMode\x12\x12\n\nCutterMode\x18\x01 \x01(\x05\x12\x11\n\tSetResult\x18\x02 \x01(\x05\"d\n\x14\x41ppGetCutterWorkMode\x12\x1b\n\x13\x63urrent_cutter_mode\x18\x01 \x01(\x05\x12\x1a\n\x12\x63urrent_cutter_rpm\x18\x02 \x01(\x05\x12\x13\n\x0bQueryResult\x18\x03 \x01(\x05\"\xb1\x01\n\x11\x44rvSessionCtrlReq\x12\x0f\n\x07\x63trlSeq\x18\x01 \x01(\r\x12\x16\n\x0esetLinearSpeed\x18\x02 \x01(\x05\x12\x17\n\x0fsetAngularSpeed\x18\x03 \x01(\x05\x12\x1d\n\x07\x63hannel\x18\x04 \x01(\x0e\x32\x0c.DrvCtrlLink\x12\x13\n\x0b\x61ppSendTsMs\x18\x05 \x01(\x04\x12\x17\n\x0fvehicleSendTsMs\x18\x06 \x01(\x04\x12\r\n\x05token\x18\x07 \x01(\t\"\xe2\x01\n\x11\x44rvSessionCtrlAck\x12\x0f\n\x07\x63trlSeq\x18\x01 \x01(\r\x12\x13\n\x0b\x61ppSendTsMs\x18\x02 \x01(\x04\x12\x17\n\x0fvehicleSendTsMs\x18\x03 \x01(\x04\x12%\n\x06result\x18\x04 \x01(\x0e\x32\x15.DrvSessionCtrlResult\x12\x19\n\x11localizationValid\x18\x05 \x01(\x08\x12\x1b\n\x13\x66\x65nceExceedDistance\x18\x06 \x01(\x02\x12\x17\n\x0fmeasuredDelayMs\x18\x07 \x01(\r\x12\x16\n\x0epreemptAccount\x18\x08 \x01(\x05\"E\n\x15\x44rvSessionExitAppNfty\x12\r\n\x05token\x18\x01 \x01(\t\x12\x1d\n\x07\x63hannel\x18\x02 \x01(\x0e\x32\x0c.DrvCtrlLink\"S\n\x12\x44rvSessionExitNfty\x12%\n\x06reason\x18\x01 \x01(\x0e\x32\x15.DrvSessionExitReason\x12\x16\n\x0epreemptAccount\x18\x02 \x01(\x05\"\xe5\x08\n\nMctlDriver\x12.\n\x14todev_devmotion_ctrl\x18\x01 \x01(\x0b\x32\x0e.DrvMotionCtrlH\x00\x12\x31\n\x16todev_knife_height_set\x18\x02 \x01(\x0b\x32\x0f.DrvKnifeHeightH\x00\x12,\n\x15\x62idire_speed_read_set\x18\x03 \x01(\x0b\x32\x0b.DrvSrSpeedH\x00\x12\x35\n\x1a\x62idire_knife_height_report\x18\x04 \x01(\x0b\x32\x0f.DrvKnifeHeightH\x00\x12-\n\x12toapp_knife_status\x18\x05 \x01(\x0b\x32\x0f.DrvKnifeStatusH\x00\x12-\n\x10mow_ctrl_by_hand\x18\x06 \x01(\x0b\x32\x11.DrvMowCtrlByHandH\x00\x12%\n\x0brtk_cfg_req\x18\x07 \x01(\x0b\x32\x0e.rtk_cfg_req_tH\x00\x12-\n\x0frtk_cfg_req_ack\x18\x08 \x01(\x0b\x32\x12.rtk_cfg_req_ack_tH\x00\x12\x33\n\x12rtk_sys_mask_query\x18\t \x01(\x0b\x32\x15.rtk_sys_mask_query_tH\x00\x12;\n\x16rtk_sys_mask_query_ack\x18\n \x01(\x0b\x32\x19.rtk_sys_mask_query_ack_tH\x00\x12:\n\x19toapp_knife_status_change\x18\x0b \x01(\x0b\x32\x15.DrvKnifeChangeReportH\x00\x12\x35\n\x14\x63ollect_ctrl_by_hand\x18\x0c \x01(\x0b\x32\x15.DrvCollectCtrlByHandH\x00\x12\x39\n\x18\x63utter_mode_ctrl_by_hand\x18\r \x01(\x0b\x32\x15.AppSetCutterWorkModeH\x00\x12\x34\n\x13\x63urrent_cutter_mode\x18\x0e \x01(\x0b\x32\x15.AppGetCutterWorkModeH\x00\x12\x37\n\x19todev_devmotion_ctrl_test\x18\x0f \x01(\x0b\x32\x12.DrvMotionCtrlTestH\x00\x12\x35\n\x18toapp_devmotion_ctrl_ack\x18\x10 \x01(\x0b\x32\x11.DrvMotionCtrlAckH\x00\x12)\n\x0f\x64rv_buzz_enable\x18\x11 \x01(\x0b\x32\x0e.DrvBuzzEnableH\x00\x12\x34\n\x16todev_session_ctrl_req\x18\x12 \x01(\x0b\x32\x12.DrvSessionCtrlReqH\x00\x12\x34\n\x16toapp_session_ctrl_ack\x18\x13 \x01(\x0b\x32\x12.DrvSessionCtrlAckH\x00\x12\x39\n\x17todev_session_exit_nfty\x18\x14 \x01(\x0b\x32\x16.DrvSessionExitAppNftyH\x00\x12\x36\n\x17toapp_session_exit_nfty\x18\x15 \x01(\x0b\x32\x13.DrvSessionExitNftyH\x00\x42\x0b\n\tSubDrvMsg*R\n\x0e\x43utterWorkMode\x12\x13\n\x0f\x43UTTER_STANDARD\x10\x00\x12\x13\n\x0f\x43UTTER_ECONOMIC\x10\x01\x12\x16\n\x12\x43UTTER_PERFORMANCE\x10\x02*a\n\x11\x43ollectMotorState\x12\x11\n\rCOLLECT_CLOSE\x10\x00\x12\x10\n\x0c\x43OLLECT_OPEN\x10\x01\x12\x11\n\rCOLLECT_STUCK\x10\x02\x12\x14\n\x10\x43OLLECT_ABNORMAL\x10\x03*Z\n\x10UnloadMotorState\x12\x10\n\x0cUNLOAD_CLOSE\x10\x00\x12\x0f\n\x0bUNLOAD_OPEN\x10\x01\x12\x0f\n\x0bUNLOAD_STOP\x10\x02\x12\x12\n\x0eUNLOAD_RUNNING\x10\x03*X\n\x0b\x44rvCtrlLink\x12\x13\n\x0f\x44RV_CTRL_UNKNOW\x10\x00\x12\x10\n\x0c\x44RV_CTRL_BLE\x10\x01\x12\x10\n\x0c\x44RV_CTRL_IOT\x10\x02\x12\x10\n\x0c\x44RV_CTRL_LAN\x10\x03*\xae\x03\n\x14\x44rvSessionCtrlResult\x12\x17\n\x13\x44RV_SESSION_CTRL_OK\x10\x00\x12\"\n\x1e\x44RV_SESSION_CTRL_GENERAL_ERROR\x10\x01\x12\"\n\x1e\x44RV_SESSION_CTRL_INVALID_PARAM\x10\x02\x12 \n\x1c\x44RV_SESSION_CTRL_SEQ_INVALID\x10\x03\x12\x1a\n\x16\x44RV_SESSION_CTRL_DELAY\x10\x04\x12\x1a\n\x16\x44RV_SESSION_CTRL_BURST\x10\x05\x12\"\n\x1e\x44RV_SESSION_CTRL_TOKEN_EXPIRED\x10\x06\x12\"\n\x1e\x44RV_SESSION_CTRL_TOKEN_INVALID\x10\x07\x12!\n\x1d\x44RV_SESSION_CTRL_OUT_OF_FENCE\x10\x08\x12 \n\x1c\x44RV_SESSION_CTRL_BLE_PREEMPT\x10\t\x12\'\n#DRV_SESSION_CTRL_NO_LOC_MAX_MILEAGE\x10\n\x12%\n!DRV_SESSION_CTRL_FPV_STREAM_ERROR\x10\x0b*y\n\x14\x44rvSessionExitReason\x12!\n\x1d\x44RV_SESSION_EXIT_IDLE_TIMEOUT\x10\x00\x12 \n\x1c\x44RV_SESSION_EXIT_BLE_PREEMPT\x10\x01\x12\x1c\n\x18\x44RV_SESSION_EXIT_NEW_CFG\x10\x02\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'pymammotion.proto.mctrl_driver_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _CUTTERWORKMODE._serialized_start=1659
-  _CUTTERWORKMODE._serialized_end=1741
-  _COLLECTMOTORSTATE._serialized_start=1743
-  _COLLECTMOTORSTATE._serialized_end=1840
-  _UNLOADMOTORSTATE._serialized_start=1842
-  _UNLOADMOTORSTATE._serialized_end=1932
+  _CUTTERWORKMODE._serialized_start=2866
+  _CUTTERWORKMODE._serialized_end=2948
+  _COLLECTMOTORSTATE._serialized_start=2950
+  _COLLECTMOTORSTATE._serialized_end=3047
+  _UNLOADMOTORSTATE._serialized_start=3049
+  _UNLOADMOTORSTATE._serialized_end=3139
+  _DRVCTRLLINK._serialized_start=3141
+  _DRVCTRLLINK._serialized_end=3229
+  _DRVSESSIONCTRLRESULT._serialized_start=3232
+  _DRVSESSIONCTRLRESULT._serialized_end=3662
+  _DRVSESSIONEXITREASON._serialized_start=3664
+  _DRVSESSIONEXITREASON._serialized_end=3785
   _DRVMOTIONCTRL._serialized_start=40
-  _DRVMOTIONCTRL._serialized_end=104
-  _DRVKNIFEHEIGHT._serialized_start=106
-  _DRVKNIFEHEIGHT._serialized_end=143
-  _DRVSRSPEED._serialized_start=145
-  _DRVSRSPEED._serialized_end=184
-  _DRVKNIFESTATUS._serialized_start=186
-  _DRVKNIFESTATUS._serialized_end=224
-  _DRVKNIFECHANGEREPORT._serialized_start=226
-  _DRVKNIFECHANGEREPORT._serialized_end=328
-  _DRVCOLLECTCTRLBYHAND._serialized_start=330
-  _DRVCOLLECTCTRLBYHAND._serialized_end=395
-  _DRVMOWCTRLBYHAND._serialized_start=397
-  _DRVMOWCTRLBYHAND._serialized_end=507
-  _RTK_CFG_REQ_T._serialized_start=509
-  _RTK_CFG_REQ_T._serialized_end=561
-  _RTK_CFG_REQ_ACK_T._serialized_start=563
-  _RTK_CFG_REQ_ACK_T._serialized_end=624
-  _RTK_SYS_MASK_QUERY_T._serialized_start=626
-  _RTK_SYS_MASK_QUERY_T._serialized_end=668
-  _RTK_SYS_MASK_QUERY_ACK_T._serialized_start=670
-  _RTK_SYS_MASK_QUERY_ACK_T._serialized_end=742
-  _APPSETCUTTERWORKMODE._serialized_start=744
-  _APPSETCUTTERWORKMODE._serialized_end=805
-  _APPGETCUTTERWORKMODE._serialized_start=807
-  _APPGETCUTTERWORKMODE._serialized_end=907
-  _MCTLDRIVER._serialized_start=910
-  _MCTLDRIVER._serialized_end=1657
+  _DRVMOTIONCTRL._serialized_end=135
+  _DRVMOTIONCTRLTEST._serialized_start=137
+  _DRVMOTIONCTRLTEST._serialized_end=236
+  _DRVMOTIONCTRLACK._serialized_start=238
+  _DRVMOTIONCTRLACK._serialized_end=310
+  _DRVKNIFEHEIGHT._serialized_start=312
+  _DRVKNIFEHEIGHT._serialized_end=349
+  _DRVSRSPEED._serialized_start=351
+  _DRVSRSPEED._serialized_end=390
+  _DRVKNIFESTATUS._serialized_start=392
+  _DRVKNIFESTATUS._serialized_end=430
+  _DRVKNIFECHANGEREPORT._serialized_start=432
+  _DRVKNIFECHANGEREPORT._serialized_end=534
+  _DRVCOLLECTCTRLBYHAND._serialized_start=536
+  _DRVCOLLECTCTRLBYHAND._serialized_end=601
+  _DRVMOWCTRLBYHAND._serialized_start=604
+  _DRVMOWCTRLBYHAND._serialized_end=733
+  _DRVBUZZENABLE._serialized_start=735
+  _DRVBUZZENABLE._serialized_end=771
+  _RTK_CFG_REQ_T._serialized_start=773
+  _RTK_CFG_REQ_T._serialized_end=825
+  _RTK_CFG_REQ_ACK_T._serialized_start=827
+  _RTK_CFG_REQ_ACK_T._serialized_end=888
+  _RTK_SYS_MASK_QUERY_T._serialized_start=890
+  _RTK_SYS_MASK_QUERY_T._serialized_end=932
+  _RTK_SYS_MASK_QUERY_ACK_T._serialized_start=934
+  _RTK_SYS_MASK_QUERY_ACK_T._serialized_end=1006
+  _APPSETCUTTERWORKMODE._serialized_start=1008
+  _APPSETCUTTERWORKMODE._serialized_end=1069
+  _APPGETCUTTERWORKMODE._serialized_start=1071
+  _APPGETCUTTERWORKMODE._serialized_end=1171
+  _DRVSESSIONCTRLREQ._serialized_start=1174
+  _DRVSESSIONCTRLREQ._serialized_end=1351
+  _DRVSESSIONCTRLACK._serialized_start=1354
+  _DRVSESSIONCTRLACK._serialized_end=1580
+  _DRVSESSIONEXITAPPNFTY._serialized_start=1582
+  _DRVSESSIONEXITAPPNFTY._serialized_end=1651
+  _DRVSESSIONEXITNFTY._serialized_start=1653
+  _DRVSESSIONEXITNFTY._serialized_end=1736
+  _MCTLDRIVER._serialized_start=1739
+  _MCTLDRIVER._serialized_end=2864
 # @@protoc_insertion_point(module_scope)

@@ -13,14 +13,12 @@ from pymammotion.data.model.hash_list import (
     NavGetHashListData,
     RootHashList,
 )
+from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import CommandTimeoutError, DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.messaging.mow_path_saga import MowPathSaga
 from pymammotion.messaging.plan_saga import PlanFetchSaga
 from pymammotion.messaging.saga import SagaFailedError
-
-
-# Helpers
 
 
 def _make_hash_list_ack_response(
@@ -75,13 +73,14 @@ def _make_area_name_response(names: list[tuple[int, str]]) -> MagicMock:
 
 
 def _make_command_builder() -> MagicMock:
-    """Create a mock command builder that returns dummy bytes for every call."""
-    builder = MagicMock()
+    """Create a ``MammotionCommand``-specced builder: dummy bytes per command, a newer model's name and no key."""
+    builder = MagicMock(spec=MammotionCommand)
     builder.get_area_name_list.return_value = b"area_name_cmd"
     builder.get_all_boundary_hash_list.return_value = b"hash_list_cmd"
     builder.get_hash_response.return_value = b"hash_response_cmd"
-    builder.send_plan.return_value = b"plan_cmd"
     builder.read_plan.return_value = b"read_plan_cmd"
+    builder.get_device_name.return_value = "Luba-VA6ABCDE"
+    builder.get_device_product_key.return_value = ""
     return builder
 
 

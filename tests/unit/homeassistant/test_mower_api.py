@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import MowerDevice
 from pymammotion.device.auto_fetch import AutoFetchWatchers
@@ -375,8 +377,6 @@ async def test_async_wake_up_passes_through_a_refusal() -> None:
     assert await api.async_wake_up("Luba-Test") is False
 
 
-# generate_route_information gates the unconfirmed field 21 (issues #193, #860)
-
 
 def _make_api_for_route(firmware: str) -> tuple[HomeAssistantMowerApi, MowerDevice]:
     """Return an api whose single device reports *firmware*."""
@@ -389,22 +389,59 @@ def _make_api_for_route(firmware: str) -> tuple[HomeAssistantMowerApi, MowerDevi
     return api, device
 
 
-def _route_for(device_name: str, firmware: str) -> int:
-    settings = OperationSettings(auto_change_direction=1)
-    api, _ = _make_api_for_route(firmware)
-    return api.generate_route_information(device_name, settings).auto_change_direction
+def test_route_generation_reads_the_device_it_was_named_for() -> None:
+    """The gates follow the named device: its firmware, not another mower's, decides auto-reverse.
+
+    The gate rules themselves are pinned against ``build_route_information`` in
+    ``tests/unit/data/model/test_device_config.py``; this pins that the wrapper feeds it the right device.
+    """
+    api, target = _make_api_for_route("2.3.28.1")
+    other = MowerDevice()
+    other.device_firmwares.device_version = "1.0.0.0"
+    api._mammotion.get_device_by_name.side_effect = lambda name: target if name == "Luba-VA6ABCDE" else other
+
+    route = api.generate_route_information("Luba-VA6ABCDE", OperationSettings(auto_change_direction=1))
+
+    assert route.auto_change_direction == 1
 
 
-def test_route_keeps_auto_change_direction_on_a_supported_device() -> None:
-    """A Luba VA on new enough firmware is where the app offers the toggle."""
-    assert _route_for("Luba-VA6ABCDE", "2.3.28.1") == 1
+async def test_modifying_a_running_job_keeps_its_ride_boundary_distance() -> None:
+    """Modify re-sends the whole route, so the running job's value is seeded from ``work`` or it resets to 0."""
+    api, device = _make_api_for_route("")
+    device.work.edge_mode = 1
+    device.work.ride_boundary_distance = 0.5
+    api.async_send_command = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    await api.async_modify_plan_route("Luba-VA6ABCDE", OperationSettings())
+
+    route = api.async_send_command.await_args.kwargs["generate_route_information"]
+    assert route.ride_boundary_distance == 0.5
 
 
-def test_route_drops_auto_change_direction_on_old_firmware() -> None:
-    """The app hides this row below 2.3.28.1, so we must not write the setting either."""
-    assert _route_for("Luba-VA6ABCDE", "2.3.27.9") == 0
+@pytest.mark.regression
+async def test_modifying_a_running_job_keeps_its_auto_reverse_setting() -> None:
+    """A route write always carries the auto-reverse buffer, so a modify must copy the running job's setting.
+
+    Routes used to omit the field when off, leaving the running job untouched.  Now that they send explicit
+    zeros, a modify built from a default OperationSettings would switch auto-reverse off mid-job.
+    """
+    api, device = _make_api_for_route("2.3.28.1")
+    device.work.auto_change_direction = True
+    api.async_send_command = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    await api.async_modify_plan_route("Luba-VA6ABCDE", OperationSettings())
+
+    route = api.async_send_command.await_args.kwargs["generate_route_information"]
+    assert route.auto_change_direction == 1
 
 
-def test_route_drops_auto_change_direction_on_an_unsupported_model() -> None:
-    """Model gating matters as much as firmware: the app offers the row on neither."""
-    assert _route_for("Luba-VS6ABCDE", "2.3.28.1") == 0
+async def test_modifying_a_job_that_reports_no_auto_reverse_keeps_the_callers_choice() -> None:
+    """``None`` means the device did not report it, so the caller's setting is used unchanged."""
+    api, device = _make_api_for_route("2.3.28.1")
+    device.work.auto_change_direction = None
+    api.async_send_command = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    await api.async_modify_plan_route("Luba-VA6ABCDE", OperationSettings(auto_change_direction=1))
+
+    route = api.async_send_command.await_args.kwargs["generate_route_information"]
+    assert route.auto_change_direction == 1

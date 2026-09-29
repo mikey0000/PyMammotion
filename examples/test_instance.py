@@ -100,7 +100,6 @@ async def run():
 
     generate_route_information = GenerateRouteInformation(
         one_hashs=[8656065632562971511],
-        rain_tactics=1,
         speed=0.3,
         ultra_wave=2,  # touch no touch etc
         toward=0,  # is just angle

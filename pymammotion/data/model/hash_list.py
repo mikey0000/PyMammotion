@@ -8,9 +8,13 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
 
+import betterproto2
+from mashumaro import field_options
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, SvgMessageAckT
+from pymammotion.data.model.mowing_modes import PathAngleSetting
+from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, NavPlanJobSet, SvgMessageAckT
+from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 
 if TYPE_CHECKING:
@@ -265,13 +269,43 @@ class EdgePoints(DataClassORJSONMixin):
 #: Length of a plan's ``reserved`` buffer, as the APK builds it.
 _RESERVED_LENGTH = 8
 #: Offset the device adds to the settings bytes when it stores a plan.
-_RESERVED_ECHO_OFFSET = 10
+RESERVED_ECHO_OFFSET = 10
 #: Bytes carrying settings, which arrive with the offset applied.
 _RESERVED_ECHOED_BYTES = (0, 1, 3, 4, 5, 6)
 #: Enable flag — written raw (0/1), read back as 10/11.
 _RESERVED_ENABLE_BYTE = 2
 #: Never written by the app; always sent as 0.
 _RESERVED_UNUSED_BYTE = 7
+#: Luba 1 only: the path-angle mode, which the app reads from here rather than from field 37.
+_RESERVED_TOWARD_MODE_BYTE = 4
+#: Length of ``reserved2`` (route field 21 / plan field 41), as the app builds it.
+_RESERVED2_LENGTH = 32
+
+
+def decode_auto_change_direction(value: bool | int | list[int] | None) -> bool | None:
+    """Decode "auto-reverse mowing direction" from ``reserved2`` as the app does: byte 0, less 10 when >= 10.
+
+    So 1/11 is on and 0/10 off (``WorkingOptionView``, ``JobScheduleActivity``); anything else is not guessed at.
+    Already-decoded values pass through so a serialised model reloads as itself, and a bare int (saved by 0.9.9,
+    where ``CurrentTaskSettings`` held the settings-screen flag here) loads as not reported.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int) or not value:
+        return None
+    first = value[0]
+    match first - RESERVED_ECHO_OFFSET if first >= RESERVED_ECHO_OFFSET else first:
+        case 1:
+            return True
+        case 0:
+            return False
+        case _:
+            return None
+
+
+def encode_auto_change_direction(enabled: bool | int | None) -> list[int]:
+    """Return ``reserved2`` as the app sends it (``getReserved2``): the setting in byte 0, sent even when off."""
+    return [int(bool(enabled))] + [0] * (_RESERVED2_LENGTH - 1)
 
 
 @dataclass
@@ -316,13 +350,21 @@ class Plan(DataClassORJSONMixin):
     remained_seconds: int = 0
     toward_mode: int = 0
     toward_included_angle: int = 0
+    #: "Edge Coverage" distance (0.0 = inside the edge); an edit re-sends it, so keep the read-back value.
+    ride_boundary_distance: float = 0.0
+    #: "Auto-reverse Mowing Direction" (field 41, ``reserved2`` byte 0); None when the device reported none.
+    auto_change_direction: bool | None = field(
+        default=None, metadata=field_options(deserialize=decode_auto_change_direction)
+    )
 
     # --- enable / rename helpers -----------------------------------------
     # ``reserved`` is an 8-byte buffer the device stores alongside the plan:
     #
     #   0  path / bow order      3  job start progress    6  collect frequency
-    #   1  no-go zone laps       4  unused (written 0)    7  unused (sent 0)
+    #   1  no-go zone laps       4  Luba 1 toward_mode    7  unused (sent 0)
     #   2  enable flag           5  Yuka job config, else 8
+    #
+    # Byte 4 is written 0 on every other model.
     #
     # (``HomeStateViewModule.getReserved`` writes it;
     # ``MACarDataManager.setJobPlanDB`` reads bytes 0-2 back.)
@@ -333,6 +375,26 @@ class Plan(DataClassORJSONMixin):
     #
     # All bytes the APK writes are < 128, so latin-1 round-trips
     # losslessly between str and bytes.
+
+    @classmethod
+    def from_wire(cls, wire: NavPlanJobSet, device_name: str, product_key: str = "") -> Plan:
+        """Decode a stored plan the device returned, as the app does for *device_name*.
+
+        A Luba 1 keeps ``toward_mode`` in ``reserved[4]`` (echoed +10) and the app ignores field 37 there
+        (``JobScheduleActivity.java:1039-1050``); clamped to the defined modes, as the app does not.
+        """
+        plan = cls.from_dict(wire.to_dict(casing=betterproto2.Casing.SNAKE))
+        raw = plan.reserved.encode("latin-1")
+        if DeviceType.is_luba1(device_name, product_key) and len(raw) > 2:
+            stored = raw.ljust(_RESERVED_LENGTH, b"\x00")[_RESERVED_TOWARD_MODE_BYTE]
+            plan.toward_mode = min(max(stored - RESERVED_ECHO_OFFSET, 0), max(PathAngleSetting))
+        return plan
+
+    def week_for_send(self, device_name: str = "", product_key: str = "") -> int:
+        """Return ``week`` as the app sends it: ``weeks[0]`` on a Luba 1 (``NewWorkSettingActivity.sendSchedule``)."""
+        if DeviceType.is_luba1(device_name, product_key) and self.weeks:
+            return self.weeks[0]
+        return self.week
 
     def is_enabled(self) -> bool:
         """Return True when the plan's enable flag (``reserved[2]``) is set.
@@ -368,7 +430,7 @@ class Plan(DataClassORJSONMixin):
             raw.extend(b"\x00" * (_RESERVED_LENGTH - len(raw)))
         return raw[:_RESERVED_LENGTH]
 
-    def reserved_for_send(self) -> str:
+    def reserved_for_send(self, device_name: str = "", product_key: str = "") -> str:
         """Return ``reserved`` with the device's echo offset removed.
 
         The device adds +10 to the settings bytes when it stores a plan, so
@@ -380,19 +442,25 @@ class Plan(DataClassORJSONMixin):
         The app normalises on every write instead
         (``JobScheduleActivity.java:848-866``): subtract the offset from the
         settings bytes, write the enable flag raw, and send byte 7 as 0.
-        Bytes 4 and 7 are unused — written as 0 at creation and never decoded —
-        so whether they carry the echo does not matter; the app decrements 4
-        and zeroes 7, and this does the same.
+        Byte 7 is unused, as is byte 4 on every model but the Luba 1 — written
+        as 0 at creation and never decoded — so whether they carry the echo
+        does not matter; the app decrements 4 and zeroes 7, and this does the
+        same.
 
         Values below the offset clamp at 0 rather than wrapping.  The app never
         meets one because it only ever edits a plan it read back; a plan built
         locally has no offset to remove.
+
+        On a Luba 1 byte 4 is ``toward_mode``, written raw
+        (``WorkSettingViewModel.getReserved``).
         """
         raw = self._reserved_bytes()
         for index in _RESERVED_ECHOED_BYTES:
-            raw[index] = max(raw[index] - _RESERVED_ECHO_OFFSET, 0)
+            raw[index] = max(raw[index] - RESERVED_ECHO_OFFSET, 0)
         raw[_RESERVED_ENABLE_BYTE] = 0 if self.is_enabled() else 1
         raw[_RESERVED_UNUSED_BYTE] = 0
+        if DeviceType.is_luba1(device_name, product_key):
+            raw[_RESERVED_TOWARD_MODE_BYTE] = self.toward_mode
         return raw.decode("latin-1")
 
     def with_renamed(self, new_name: str) -> Plan:

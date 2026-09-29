@@ -55,6 +55,7 @@ message MulSetAudio {
     int32 at_switch = 1;
     MUL_LANGUAGE au_language = 2;
     MUL_SEX sex = 3;
+    int32 au_volume = 4;
   }
 }
 
@@ -71,6 +72,7 @@ message MulAudioCfg {
   int32 au_switch = 1;
   MUL_LANGUAGE au_language = 2;
   MUL_SEX sex = 3;
+  int32 au_volume = 4;
 }
 
 message MulSetWiper {

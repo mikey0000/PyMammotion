@@ -5,7 +5,8 @@ import logging
 import time
 
 from pymammotion.data.model import GenerateRouteInformation
-from pymammotion.data.model.hash_list import Plan, SvgMessage
+from pymammotion.data.model.generate_route_information import ADVANCED_TASK_SETTINGS
+from pymammotion.data.model.hash_list import Plan, SvgMessage, encode_auto_change_direction
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
@@ -34,6 +35,7 @@ from pymammotion.proto import (
     WorkReportCmdData,
     WorkReportUpdateCmd,
 )
+from pymammotion.utility.device_type import DeviceType
 
 logger = logging.getLogger(__name__)
 
@@ -162,48 +164,15 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug("Sync data ==================== Sending ============ Restore command")
         return self.send_order_msg_nav(build)
 
-    def send_plan(self, plan_bean: Plan) -> bytes:
-        """Send a mowing plan job configuration to the device."""
-        build = MctlNav(
-            todev_planjob_set=NavPlanJobSet(
-                pver=plan_bean.pver,
-                sub_cmd=plan_bean.sub_cmd,
-                area=plan_bean.area,
-                work_time=plan_bean.work_time,
-                version=plan_bean.version,
-                id=plan_bean.id,
-                user_id=plan_bean.user_id,
-                device_id=plan_bean.device_id,
-                plan_id=plan_bean.plan_id,
-                task_id=plan_bean.task_id,
-                job_id=plan_bean.job_id,
-                start_time=plan_bean.start_time,
-                end_time=plan_bean.end_time,
-                week=plan_bean.week,
-                knife_height=plan_bean.knife_height,
-                model=plan_bean.model,
-                edge_mode=plan_bean.edge_mode,
-                required_time=plan_bean.required_time,
-                route_angle=plan_bean.route_angle,
-                route_model=plan_bean.route_model,
-                route_spacing=plan_bean.route_spacing,
-                ultrasonic_barrier=plan_bean.ultrasonic_barrier,
-                total_plan_num=plan_bean.total_plan_num,
-                plan_index=plan_bean.plan_index,
-                result=plan_bean.result,
-                speed=plan_bean.speed,
-                task_name=plan_bean.task_name,
-                job_name=plan_bean.job_name,
-                zone_hashs=plan_bean.zone_hashs,
-                reserved=plan_bean.reserved_for_send(),
-            )
-        )
-        logger.debug(f"Send read job plan command planBean={plan_bean}")
-        return self.send_order_msg_nav(build)
-
     def send_schedule(self, plan_bean: Plan) -> bytes:
         """Send a scheduled mowing plan (including recurrence fields) to the device."""
-        build = NavPlanJobSet(
+        logger.debug(f"Send job plan command planBean={plan_bean}")
+        return self.send_order_msg_nav(MctlNav(todev_planjob_set=self._plan_job_set(plan_bean)))
+
+    def _plan_job_set(self, plan_bean: Plan) -> NavPlanJobSet:
+        """Build the full ``NavPlanJobSet`` for *plan_bean*, as ``MACommandApiHelper.sendSchedule`` does."""
+        device_name, product_key = self.get_device_name(), self.get_device_product_key()
+        return NavPlanJobSet(
             pver=plan_bean.pver,
             sub_cmd=plan_bean.sub_cmd,
             area=plan_bean.area,
@@ -217,7 +186,7 @@ class MessageNavigation(AbstractMessage, ABC):
             job_id=plan_bean.job_id,
             start_time=plan_bean.start_time,
             end_time=plan_bean.end_time,
-            week=plan_bean.week,
+            week=plan_bean.week_for_send(device_name, product_key),
             knife_height=plan_bean.knife_height,
             model=plan_bean.model,
             edge_mode=plan_bean.edge_mode,
@@ -233,16 +202,18 @@ class MessageNavigation(AbstractMessage, ABC):
             task_name=plan_bean.task_name,
             job_name=plan_bean.job_name,
             zone_hashs=plan_bean.zone_hashs,
-            reserved=plan_bean.reserved_for_send(),
+            reserved=plan_bean.reserved_for_send(device_name, product_key),
             weeks=plan_bean.weeks,
             start_date=plan_bean.start_date,
             trigger_type=plan_bean.trigger_type,
             day=plan_bean.day,
             toward_included_angle=plan_bean.toward_included_angle,
-            toward_mode=0,
+            toward_mode=plan_bean.toward_mode,
+            ride_boundary_distance=DeviceType.ride_boundary_distance_to_send(
+                device_name, plan_bean.edge_mode, plan_bean.ride_boundary_distance, product_key
+            ),
+            auto_change_direction=encode_auto_change_direction(plan_bean.auto_change_direction),
         )
-        logger.debug(f"Send read job plan command planBean={plan_bean}")
-        return self.send_order_msg_nav(MctlNav(todev_planjob_set=build))
 
     def single_schedule(self, plan_id: str) -> bytes:
         """Execute a single-run schedule task identified by plan_id."""
@@ -548,7 +519,9 @@ class MessageNavigation(AbstractMessage, ABC):
             toward_included_angle=int(generate_route_information.toward_included_angle),  # luba 2 yuka only
             toward_mode=int(generate_route_information.toward_mode),  # luba 2 yuka only
             reserved=generate_route_information.path_order,
-            auto_change_direction=int(generate_route_information.auto_change_direction),
+            task_settings_mode=ADVANCED_TASK_SETTINGS,
+            auto_change_direction=encode_auto_change_direction(generate_route_information.auto_change_direction),
+            ride_boundary_distance=float(generate_route_information.ride_boundary_distance),
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
         logger.debug(f"Send command--Generate route information generateRouteInformation={generate_route_information}")
@@ -568,9 +541,12 @@ class MessageNavigation(AbstractMessage, ABC):
             ultra_wave=int(generate_route_information.ultra_wave),
             channel_width=int(generate_route_information.channel_width),
             channel_mode=int(generate_route_information.channel_mode),
-            toward=int(generate_route_information.toward),
+            # The app's modify builder zeroes toward when toward_mode is 0; its plan builder does not.
+            toward=int(generate_route_information.toward) if generate_route_information.toward_mode != 0 else 0,
             reserved=generate_route_information.path_order,
-            auto_change_direction=int(generate_route_information.auto_change_direction),
+            task_settings_mode=ADVANCED_TASK_SETTINGS,
+            auto_change_direction=encode_auto_change_direction(generate_route_information.auto_change_direction),
+            ride_boundary_distance=float(generate_route_information.ride_boundary_distance),
         )
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")
         logger.debug(f"Send command -- Modify route parameters generate_route_information={generate_route_information}")

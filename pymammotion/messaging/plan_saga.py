@@ -65,7 +65,9 @@ class PlanFetchSaga(Saga):
                 total_of=lambda f: Plan.from_dict(f.to_dict(casing=betterproto2.Casing.SNAKE)).total_plan_num,
                 timeout=self.step_timeout,
             ):
-                plan = Plan.from_dict(wire.to_dict(casing=betterproto2.Casing.SNAKE))
+                plan = Plan.from_wire(
+                    wire, self._command_builder.get_device_name(), self._command_builder.get_device_product_key()
+                )
                 if plan.plan_id:
                     self.result[plan.plan_id] = plan
 

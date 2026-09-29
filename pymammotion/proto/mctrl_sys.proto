@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "pymammotion/proto/dev_net.proto";
+import "pymammotion/proto/mctrl_sys_config.proto";
 
 enum Operation {
   WRITE = 0;
@@ -66,12 +67,14 @@ enum rtk_used_type {
   RTK_USED_LORA = 0;
   RTK_USED_INTERNET = 1;
   RTK_USED_NRTK = 2;
+  RTK_USED_NRTK_BOX = 3;
 }
 
 enum net_used_type {
   NET_USED_TYPE_NONE = 0;
   NET_USED_TYPE_WIFI = 1;
   NET_USED_TYPE_MNET = 2;
+  NET_USED_TYPE_TC_MNET = 3;
 }
 
 enum rpt_info_type {
@@ -416,6 +419,7 @@ message rpt_rtk {
   rpt_lora lora_info = 12;
   mqtt_rtk_connect mqtt_rtk_info = 13;
   pos_score score_info = 14;
+  bool rtcm_ready = 15;
 }
 
 message rpt_dev_location {
@@ -453,6 +457,7 @@ message rpt_dev_status {
   lock_state_t lock_state = 11;
   uint32 self_check_status = 12;
   fpv_to_app_info_t fpv_info = 13;
+  int32 battery_heat_flag = 14;
   int32 headlamp_status = 15;
 }
 
@@ -505,6 +510,11 @@ message rpt_work {
   nav_heading_state_t nav_heading_state = 21;
   float cutter_offset = 22;
   float cutter_width = 23;
+  rpt_texture_map_info texture_map_info = 24;
+}
+
+message rpt_texture_map_info {
+  string file_hash = 1;
 }
 
 message blade_used {
@@ -666,6 +676,13 @@ enum SpinoSysStatus {
   SYS_STA_WORKING = 1;
   SYS_STA_WORKBACKING = 2;
   SYS_STA_CHARGEBACKING = 3;
+  SYS_STA_PAUSE_GO_CHARGE = 4;
+  SYS_STA_END_GO_CHARGE = 5;
+  SYS_STA_CHARGING = 6;
+  SYS_STA_LEAVE_DOCK = 7;
+  SYS_STA_RECALLING = 8;
+  SYS_STA_SILENT_WAIT = 9;
+  SYS_STA_BUILD_MAP = 10;
 }
 
 enum pool_bottom_type_e {
@@ -683,6 +700,7 @@ enum app_downlink_cmd_type_e {
   app_get_line_cmd = 4;
   app_docking_time_cmd = 5;
   app_area_clean_cmd = 6;
+  app_mapping_cmd = 7;
 }
 
 enum ack_to_app_type_e {
@@ -697,6 +715,7 @@ enum wall_material_e {
   WALL_GLASS = 0;
   WALL_CERAMICS = 1;
   WALL_SAND_STONE = 2;
+  WALL_PVC = 3;
 }
 
 message MapPoints {
@@ -727,6 +746,18 @@ message AreaClean {
   repeated MapPoints points = 2;
 }
 
+enum MappingType {
+  MAPPING_CLOSE = 0;
+  MAPPING_START = 1;
+  MAPPING_REBUILD = 2;
+  MAPPING_REUPLOAD = 3;
+}
+
+message Mapping {
+  MappingType type = 1;
+  int64 timestamp = 2;
+}
+
 message app_downlink_cmd_t {
   app_downlink_cmd_type_e cmd = 1;
   ack_to_app_type_e ack = 2;
@@ -738,6 +769,7 @@ message app_downlink_cmd_t {
     MapInfo line_info = 7;
     DockingTime docking_time = 8;
     AreaClean area_clean = 9;
+    Mapping mapping = 10;
   }
 }
 
@@ -839,6 +871,22 @@ message FileTransferResult {
   int32 result = 2;
 }
 
+message app_map_offset_data {
+  double offset_x = 1;
+  double offset_y = 2;
+  int32 req_id = 3;
+  int32 res_result = 4;
+  int32 offset_data_read_write = 5;
+}
+
+message message_reset_req {
+  int32 reset_command = 1;
+}
+
+message message_reset_resp {
+  int32 message_reset_status = 1;
+}
+
 message MctlSys {
   oneof SubSysMsg {
     SysBatUp toapp_batinfo = 1;
@@ -913,6 +961,13 @@ message MctlSys {
     dev_low_power_set_info to_set_dev_low_power_cmd = 79;
     dev_low_power_get to_get_dev_low_power_cmd = 80;
     gfsk_cfg_cmd_t gfsk_cfg_cmd = 81;
+    app_map_offset_data map_offset_data = 82;
+    app_batch_query_req batch_query_req = 83;
+    app_batch_query_resp batch_query_resp = 84;
+    app_batch_set_req batch_set_req = 85;
+    app_batch_set_resp batch_set_resp = 86;
+    message_reset_req to_dev_message_reset_req = 87;
+    message_reset_resp to_app_message_reset_resp = 88;
   }
 }
 

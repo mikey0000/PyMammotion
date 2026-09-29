@@ -194,19 +194,11 @@ message NavReqCoverPath {
   int32 toward_mode = 17;
   int32 toward_included_angle = 18;
   float ride_boundary_distance = 19;
-  // Confirmed by observation: toggling "Auto-reverse Mowing Direction" in the app
-  // sets this to 1. It was previously named app_display_mode, from the 2.3.8.201
-  // unpacked APK.
-  int32 auto_change_direction = 20;
-  // Field 21's meaning is unidentified. It was guessed to be auto_change_direction
-  // ("the next number after app_display_mode = 20"); that was wrong -- 20 is.
-  //
-  // Decoded under a neutral name so its values show up in state dumps while we work
-  // out what it is. Repeated because it arrives both ways: a Luba Mini AWD sends it
-  // length-delimited (issue #192 -- the "[10]" in that traceback is its single 0x0A
-  // payload byte read as packed varints), and 11 has been seen elsewhere. Declaring
-  // it int32 is what made that frame fail to parse at all.
-  repeated int32 unknown_21 = 21;
+  // App-side choice of the advanced (1) or basic (0) task settings screen; not mower behaviour.
+  int32 task_settings_mode = 20;
+  // "Auto-reverse Mowing Direction" (flip the mowing direction between runs): echoed as 11 on / 10 off,
+  // packed on some firmware and a bare varint on others.
+  repeated int32 auto_change_direction = 21;
 }
 
 message NavUploadZigZagResult {
@@ -312,6 +304,12 @@ message NavPlanJobSet {
   int64 remained_seconds = 36;
   int32 towardMode = 37;
   int32 towardIncludedAngle = 38;
+  // "Edge Coverage", as NavReqCoverPath field 19; the app sends it on every full plan write.
+  float ride_boundary_distance = 39;
+  // The app's app_display_mode, as NavReqCoverPath field 20.
+  int32 task_settings_mode = 40;
+  // The app's string reserved2, as NavReqCoverPath field 21 (wire-identical for values < 128).
+  repeated int32 auto_change_direction = 41;
 }
 
 message NavUnableTimeSet {
@@ -363,6 +361,15 @@ message WorkReportInfoAck {
   int32 total_ack_num = 10;
   int32 current_ack_num = 11;
   int32 job_content = 12;
+}
+
+// "Continue last job": resume the cloud work report work_id; the device echoes it with result set.
+message WorkReportStartWorkingMsg {
+  uint64 accountID = 1;
+  uint64 work_id = 2;
+  uint64 stamp = 3;
+  int32 result = 4;
+  int32 type = 5;
 }
 
 message app_request_cover_paths_t {
@@ -533,6 +540,8 @@ message ManualElementMessage {
   double point2_width_x = 11;
   double point2_height_y = 12;
   double rotate_radius = 13;
+  int32 point_count = 14;
+  repeated CommDataCouple dataCouple = 15;
 }
 
 message MctlNav {
@@ -601,5 +610,6 @@ message MctlNav {
     NavEdgePoints toapp_edge_points = 62;
     NavEdgePointsAck toapp_edge_points_ack = 63;
     ManualElementMessage toapp_manual_element = 64;
+    WorkReportStartWorkingMsg todev_work_report_start_working_msg = 65;
   }
 }

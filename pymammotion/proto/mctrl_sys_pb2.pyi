@@ -1,4 +1,5 @@
 from pymammotion.proto import dev_net_pb2 as _dev_net_pb2
+from pymammotion.proto import mctrl_sys_config_pb2 as _mctrl_sys_config_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -14,9 +15,14 @@ DESCRIPTOR: _descriptor.FileDescriptor
 ERASE: Operation
 INQUIRY: ack_to_app_type_e
 INQUIRY_ACK: ack_to_app_type_e
+MAPPING_CLOSE: MappingType
+MAPPING_REBUILD: MappingType
+MAPPING_REUPLOAD: MappingType
+MAPPING_START: MappingType
 NACK: ack_to_app_type_e
 NET_USED_TYPE_MNET: net_used_type
 NET_USED_TYPE_NONE: net_used_type
+NET_USED_TYPE_TC_MNET: net_used_type
 NET_USED_TYPE_WIFI: net_used_type
 OFF_PART_DEV_INFO: OffPartId
 OFF_PART_DL_IMG: OffPartId
@@ -89,13 +95,22 @@ RS_OK: Command_Result
 RTK_USED_INTERNET: rtk_used_type
 RTK_USED_LORA: rtk_used_type
 RTK_USED_NRTK: rtk_used_type
+RTK_USED_NRTK_BOX: rtk_used_type
+SYS_STA_BUILD_MAP: SpinoSysStatus
 SYS_STA_CHARGEBACKING: SpinoSysStatus
+SYS_STA_CHARGING: SpinoSysStatus
+SYS_STA_END_GO_CHARGE: SpinoSysStatus
+SYS_STA_LEAVE_DOCK: SpinoSysStatus
+SYS_STA_PAUSE_GO_CHARGE: SpinoSysStatus
 SYS_STA_READY: SpinoSysStatus
+SYS_STA_RECALLING: SpinoSysStatus
+SYS_STA_SILENT_WAIT: SpinoSysStatus
 SYS_STA_WORKBACKING: SpinoSysStatus
 SYS_STA_WORKING: SpinoSysStatus
 WAIT_ACK: ack_to_app_type_e
 WALL_CERAMICS: wall_material_e
 WALL_GLASS: wall_material_e
+WALL_PVC: wall_material_e
 WALL_SAND_STONE: wall_material_e
 WRITE: Operation
 app_area_clean_cmd: app_downlink_cmd_type_e
@@ -104,6 +119,7 @@ app_docking_time_cmd: app_downlink_cmd_type_e
 app_floor_speed_cmd: app_downlink_cmd_type_e
 app_get_line_cmd: app_downlink_cmd_type_e
 app_get_map_cmd: app_downlink_cmd_type_e
+app_mapping_cmd: app_downlink_cmd_type_e
 app_wall_material_cmd: app_downlink_cmd_type_e
 
 class AreaClean(_message.Message):
@@ -220,11 +236,23 @@ class MapPoints(_message.Message):
     y: float
     def __init__(self, x: _Optional[float] = ..., y: _Optional[float] = ...) -> None: ...
 
+class Mapping(_message.Message):
+    __slots__ = ["timestamp", "type"]
+    TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    timestamp: int
+    type: MappingType
+    def __init__(self, type: _Optional[_Union[MappingType, str]] = ..., timestamp: _Optional[int] = ...) -> None: ...
+
 class MctlSys(_message.Message):
-    __slots__ = ["app_downlink_cmd", "app_to_dev_get_mqtt_config_msg", "app_to_dev_set_mqtt_rtk_msg", "bidire_comm_cmd", "blade_used_warn_time", "bms_ctrl_info_msg", "border", "current_cutter_mode", "debug_cfg_read", "debug_cfg_write", "debug_common_report", "debug_enable", "debug_errocode_report", "debug_res_cfg_ability", "dev_to_app_get_mqtt_config_msg", "dev_to_app_set_mqtt_rtk_msg", "device_product_type_info", "gfsk_cfg_cmd", "iot_product_param_req", "iot_product_param_rsp", "job_plan", "mow_to_app_info", "mow_to_app_qctools_info", "plan_job_del", "report_info", "response_set_mode", "set_peripherals", "set_special_mode", "set_work_mode", "simulation_cmd", "systemRapidStateTunnel", "systemTardStateTunnel", "systemTmpCycleTx", "systemUpdateBuf", "task_report_interaction", "task_report_req", "task_report_resp", "task_report_result", "to_app_msgbus", "to_app_remote_reset", "to_app_self_check_info_rsp", "to_dev_msgbus", "to_dev_remote_reset", "to_dev_self_check_info_req", "to_dev_set_sun_time", "to_get_dev_low_power_cmd", "to_set_dev_low_power_cmd", "toapp_batinfo", "toapp_dev_fw_info", "toapp_err_code", "toapp_lora_cfg_rsp", "toapp_mow_info", "toapp_plan_status", "toapp_report_data", "toapp_ul_fprogress", "toapp_work_state", "todev_data_time", "todev_deljobplan", "todev_factor_reset_system", "todev_get_dev_fw_info", "todev_job_plan_time", "todev_knife_ctrl", "todev_lora_cfg_req", "todev_mow_info_up", "todev_off_chip_flash", "todev_report_cfg", "todev_reset_blade_used_time", "todev_reset_blade_used_time_status", "todev_reset_system", "todev_reset_system_status", "todev_time_ctrl_light", "todev_time_zone"]
+    __slots__ = ["app_downlink_cmd", "app_to_dev_get_mqtt_config_msg", "app_to_dev_set_mqtt_rtk_msg", "batch_query_req", "batch_query_resp", "batch_set_req", "batch_set_resp", "bidire_comm_cmd", "blade_used_warn_time", "bms_ctrl_info_msg", "border", "current_cutter_mode", "debug_cfg_read", "debug_cfg_write", "debug_common_report", "debug_enable", "debug_errocode_report", "debug_res_cfg_ability", "dev_to_app_get_mqtt_config_msg", "dev_to_app_set_mqtt_rtk_msg", "device_product_type_info", "gfsk_cfg_cmd", "iot_product_param_req", "iot_product_param_rsp", "job_plan", "map_offset_data", "mow_to_app_info", "mow_to_app_qctools_info", "plan_job_del", "report_info", "response_set_mode", "set_peripherals", "set_special_mode", "set_work_mode", "simulation_cmd", "systemRapidStateTunnel", "systemTardStateTunnel", "systemTmpCycleTx", "systemUpdateBuf", "task_report_interaction", "task_report_req", "task_report_resp", "task_report_result", "to_app_message_reset_resp", "to_app_msgbus", "to_app_remote_reset", "to_app_self_check_info_rsp", "to_dev_message_reset_req", "to_dev_msgbus", "to_dev_remote_reset", "to_dev_self_check_info_req", "to_dev_set_sun_time", "to_get_dev_low_power_cmd", "to_set_dev_low_power_cmd", "toapp_batinfo", "toapp_dev_fw_info", "toapp_err_code", "toapp_lora_cfg_rsp", "toapp_mow_info", "toapp_plan_status", "toapp_report_data", "toapp_ul_fprogress", "toapp_work_state", "todev_data_time", "todev_deljobplan", "todev_factor_reset_system", "todev_get_dev_fw_info", "todev_job_plan_time", "todev_knife_ctrl", "todev_lora_cfg_req", "todev_mow_info_up", "todev_off_chip_flash", "todev_report_cfg", "todev_reset_blade_used_time", "todev_reset_blade_used_time_status", "todev_reset_system", "todev_reset_system_status", "todev_time_ctrl_light", "todev_time_zone"]
     APP_DOWNLINK_CMD_FIELD_NUMBER: _ClassVar[int]
     APP_TO_DEV_GET_MQTT_CONFIG_MSG_FIELD_NUMBER: _ClassVar[int]
     APP_TO_DEV_SET_MQTT_RTK_MSG_FIELD_NUMBER: _ClassVar[int]
+    BATCH_QUERY_REQ_FIELD_NUMBER: _ClassVar[int]
+    BATCH_QUERY_RESP_FIELD_NUMBER: _ClassVar[int]
+    BATCH_SET_REQ_FIELD_NUMBER: _ClassVar[int]
+    BATCH_SET_RESP_FIELD_NUMBER: _ClassVar[int]
     BIDIRE_COMM_CMD_FIELD_NUMBER: _ClassVar[int]
     BLADE_USED_WARN_TIME_FIELD_NUMBER: _ClassVar[int]
     BMS_CTRL_INFO_MSG_FIELD_NUMBER: _ClassVar[int]
@@ -243,6 +271,7 @@ class MctlSys(_message.Message):
     IOT_PRODUCT_PARAM_REQ_FIELD_NUMBER: _ClassVar[int]
     IOT_PRODUCT_PARAM_RSP_FIELD_NUMBER: _ClassVar[int]
     JOB_PLAN_FIELD_NUMBER: _ClassVar[int]
+    MAP_OFFSET_DATA_FIELD_NUMBER: _ClassVar[int]
     MOW_TO_APP_INFO_FIELD_NUMBER: _ClassVar[int]
     MOW_TO_APP_QCTOOLS_INFO_FIELD_NUMBER: _ClassVar[int]
     PLAN_JOB_DEL_FIELD_NUMBER: _ClassVar[int]
@@ -285,9 +314,11 @@ class MctlSys(_message.Message):
     TODEV_RESET_SYSTEM_STATUS_FIELD_NUMBER: _ClassVar[int]
     TODEV_TIME_CTRL_LIGHT_FIELD_NUMBER: _ClassVar[int]
     TODEV_TIME_ZONE_FIELD_NUMBER: _ClassVar[int]
+    TO_APP_MESSAGE_RESET_RESP_FIELD_NUMBER: _ClassVar[int]
     TO_APP_MSGBUS_FIELD_NUMBER: _ClassVar[int]
     TO_APP_REMOTE_RESET_FIELD_NUMBER: _ClassVar[int]
     TO_APP_SELF_CHECK_INFO_RSP_FIELD_NUMBER: _ClassVar[int]
+    TO_DEV_MESSAGE_RESET_REQ_FIELD_NUMBER: _ClassVar[int]
     TO_DEV_MSGBUS_FIELD_NUMBER: _ClassVar[int]
     TO_DEV_REMOTE_RESET_FIELD_NUMBER: _ClassVar[int]
     TO_DEV_SELF_CHECK_INFO_REQ_FIELD_NUMBER: _ClassVar[int]
@@ -297,6 +328,10 @@ class MctlSys(_message.Message):
     app_downlink_cmd: app_downlink_cmd_t
     app_to_dev_get_mqtt_config_msg: app_to_dev_get_mqtt_config_t
     app_to_dev_set_mqtt_rtk_msg: app_to_dev_set_mqtt_rtk_t
+    batch_query_req: _mctrl_sys_config_pb2.app_batch_query_req
+    batch_query_resp: _mctrl_sys_config_pb2.app_batch_query_resp
+    batch_set_req: _mctrl_sys_config_pb2.app_batch_set_req
+    batch_set_resp: _mctrl_sys_config_pb2.app_batch_set_resp
     bidire_comm_cmd: SysCommCmd
     blade_used_warn_time: user_set_blade_used_warn_time
     bms_ctrl_info_msg: BmsCtrlInfoMsg
@@ -315,6 +350,7 @@ class MctlSys(_message.Message):
     iot_product_param_req: iot_product_param_req_t
     iot_product_param_rsp: iot_product_param_rsp_t
     job_plan: SysJobPlan
+    map_offset_data: app_map_offset_data
     mow_to_app_info: mow_to_app_info_t
     mow_to_app_qctools_info: mow_to_app_qctools_info_t
     plan_job_del: int
@@ -332,9 +368,11 @@ class MctlSys(_message.Message):
     task_report_req: FileTransferRequest
     task_report_resp: FileTransferResponse
     task_report_result: FileTransferResult
+    to_app_message_reset_resp: message_reset_resp
     to_app_msgbus: msgbus_pkt
     to_app_remote_reset: remote_reset_rsp_t
     to_app_self_check_info_rsp: self_check_info_rsp
+    to_dev_message_reset_req: message_reset_req
     to_dev_msgbus: msgbus_pkt
     to_dev_remote_reset: remote_reset_req_t
     to_dev_self_check_info_req: self_check_info_req
@@ -366,7 +404,7 @@ class MctlSys(_message.Message):
     todev_reset_system_status: SysResetSystemStatus
     todev_time_ctrl_light: TimeCtrlLight
     todev_time_zone: SysSetTimeZone
-    def __init__(self, toapp_batinfo: _Optional[_Union[SysBatUp, _Mapping]] = ..., toapp_work_state: _Optional[_Union[SysWorkState, _Mapping]] = ..., todev_time_zone: _Optional[_Union[SysSetTimeZone, _Mapping]] = ..., todev_data_time: _Optional[_Union[SysSetDateTime, _Mapping]] = ..., job_plan: _Optional[_Union[SysJobPlan, _Mapping]] = ..., toapp_err_code: _Optional[_Union[SysDevErrCode, _Mapping]] = ..., todev_job_plan_time: _Optional[_Union[SysJobPlanTime, _Mapping]] = ..., toapp_mow_info: _Optional[_Union[SysMowInfo, _Mapping]] = ..., bidire_comm_cmd: _Optional[_Union[SysCommCmd, _Mapping]] = ..., plan_job_del: _Optional[int] = ..., border: _Optional[_Union[SysBorder, _Mapping]] = ..., toapp_plan_status: _Optional[_Union[SysPlanJobStatus, _Mapping]] = ..., toapp_ul_fprogress: _Optional[_Union[SysUploadFileProgress, _Mapping]] = ..., todev_deljobplan: _Optional[_Union[SysDelJobPlan, _Mapping]] = ..., todev_mow_info_up: _Optional[int] = ..., todev_knife_ctrl: _Optional[_Union[SysKnifeControl, _Mapping]] = ..., todev_reset_system: _Optional[int] = ..., todev_reset_system_status: _Optional[_Union[SysResetSystemStatus, _Mapping]] = ..., systemRapidStateTunnel: _Optional[_Union[systemRapidStateTunnel_msg, _Mapping]] = ..., systemTardStateTunnel: _Optional[_Union[systemTardStateTunnel_msg, _Mapping]] = ..., systemUpdateBuf: _Optional[_Union[systemUpdateBuf_msg, _Mapping]] = ..., todev_time_ctrl_light: _Optional[_Union[TimeCtrlLight, _Mapping]] = ..., systemTmpCycleTx: _Optional[_Union[systemTmpCycleTx_msg, _Mapping]] = ..., todev_off_chip_flash: _Optional[_Union[SysOffChipFlash, _Mapping]] = ..., todev_get_dev_fw_info: _Optional[int] = ..., toapp_dev_fw_info: _Optional[_Union[device_fw_info, _Mapping]] = ..., todev_lora_cfg_req: _Optional[_Union[LoraCfgReq, _Mapping]] = ..., toapp_lora_cfg_rsp: _Optional[_Union[LoraCfgRsp, _Mapping]] = ..., mow_to_app_info: _Optional[_Union[mow_to_app_info_t, _Mapping]] = ..., device_product_type_info: _Optional[_Union[device_product_type_info_t, _Mapping]] = ..., mow_to_app_qctools_info: _Optional[_Union[mow_to_app_qctools_info_t, _Mapping]] = ..., todev_report_cfg: _Optional[_Union[report_info_cfg, _Mapping]] = ..., toapp_report_data: _Optional[_Union[report_info_data, _Mapping]] = ..., simulation_cmd: _Optional[_Union[mCtrlSimulationCmdData, _Mapping]] = ..., app_to_dev_get_mqtt_config_msg: _Optional[_Union[app_to_dev_get_mqtt_config_t, _Mapping]] = ..., dev_to_app_get_mqtt_config_msg: _Optional[_Union[dev_to_app_get_mqtt_config_t, _Mapping]] = ..., app_to_dev_set_mqtt_rtk_msg: _Optional[_Union[app_to_dev_set_mqtt_rtk_t, _Mapping]] = ..., dev_to_app_set_mqtt_rtk_msg: _Optional[_Union[dev_to_app_set_mqtt_rtk_t, _Mapping]] = ..., todev_reset_blade_used_time: _Optional[int] = ..., todev_reset_blade_used_time_status: _Optional[_Union[SysResetBladeUsedTimeStatus, _Mapping]] = ..., todev_factor_reset_system: _Optional[int] = ..., blade_used_warn_time: _Optional[_Union[user_set_blade_used_warn_time, _Mapping]] = ..., debug_common_report: _Optional[_Union[debug_common_report_t, _Mapping]] = ..., debug_errocode_report: _Optional[_Union[debug_errocode_report_t, _Mapping]] = ..., debug_enable: _Optional[_Union[debug_enable_t, _Mapping]] = ..., debug_cfg_read: _Optional[_Union[debug_cfg_read_t, _Mapping]] = ..., debug_cfg_write: _Optional[_Union[debug_cfg_write_t, _Mapping]] = ..., debug_res_cfg_ability: _Optional[_Union[debug_res_cfg_ability_t, _Mapping]] = ..., to_dev_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., to_app_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., response_set_mode: _Optional[_Union[response_set_mode_t, _Mapping]] = ..., report_info: _Optional[_Union[report_info_t, _Mapping]] = ..., set_work_mode: _Optional[_Union[work_mode_t, _Mapping]] = ..., set_special_mode: _Optional[_Union[special_mode_t, _Mapping]] = ..., set_peripherals: _Optional[_Union[set_peripherals_t, _Mapping]] = ..., to_dev_set_sun_time: _Optional[_Union[debug_sun_time_t, _Mapping]] = ..., to_dev_remote_reset: _Optional[_Union[remote_reset_req_t, _Mapping]] = ..., to_app_remote_reset: _Optional[_Union[remote_reset_rsp_t, _Mapping]] = ..., current_cutter_mode: _Optional[_Union[rpt_cutter_rpm, _Mapping]] = ..., app_downlink_cmd: _Optional[_Union[app_downlink_cmd_t, _Mapping]] = ..., to_dev_self_check_info_req: _Optional[_Union[self_check_info_req, _Mapping]] = ..., to_app_self_check_info_rsp: _Optional[_Union[self_check_info_rsp, _Mapping]] = ..., iot_product_param_req: _Optional[_Union[iot_product_param_req_t, _Mapping]] = ..., iot_product_param_rsp: _Optional[_Union[iot_product_param_rsp_t, _Mapping]] = ..., task_report_interaction: _Optional[_Union[task_report_interaction_t, _Mapping]] = ..., task_report_req: _Optional[_Union[FileTransferRequest, _Mapping]] = ..., task_report_resp: _Optional[_Union[FileTransferResponse, _Mapping]] = ..., task_report_result: _Optional[_Union[FileTransferResult, _Mapping]] = ..., bms_ctrl_info_msg: _Optional[_Union[BmsCtrlInfoMsg, _Mapping]] = ..., to_set_dev_low_power_cmd: _Optional[_Union[dev_low_power_set_info, _Mapping]] = ..., to_get_dev_low_power_cmd: _Optional[_Union[dev_low_power_get, _Mapping]] = ..., gfsk_cfg_cmd: _Optional[_Union[gfsk_cfg_cmd_t, _Mapping]] = ...) -> None: ...
+    def __init__(self, toapp_batinfo: _Optional[_Union[SysBatUp, _Mapping]] = ..., toapp_work_state: _Optional[_Union[SysWorkState, _Mapping]] = ..., todev_time_zone: _Optional[_Union[SysSetTimeZone, _Mapping]] = ..., todev_data_time: _Optional[_Union[SysSetDateTime, _Mapping]] = ..., job_plan: _Optional[_Union[SysJobPlan, _Mapping]] = ..., toapp_err_code: _Optional[_Union[SysDevErrCode, _Mapping]] = ..., todev_job_plan_time: _Optional[_Union[SysJobPlanTime, _Mapping]] = ..., toapp_mow_info: _Optional[_Union[SysMowInfo, _Mapping]] = ..., bidire_comm_cmd: _Optional[_Union[SysCommCmd, _Mapping]] = ..., plan_job_del: _Optional[int] = ..., border: _Optional[_Union[SysBorder, _Mapping]] = ..., toapp_plan_status: _Optional[_Union[SysPlanJobStatus, _Mapping]] = ..., toapp_ul_fprogress: _Optional[_Union[SysUploadFileProgress, _Mapping]] = ..., todev_deljobplan: _Optional[_Union[SysDelJobPlan, _Mapping]] = ..., todev_mow_info_up: _Optional[int] = ..., todev_knife_ctrl: _Optional[_Union[SysKnifeControl, _Mapping]] = ..., todev_reset_system: _Optional[int] = ..., todev_reset_system_status: _Optional[_Union[SysResetSystemStatus, _Mapping]] = ..., systemRapidStateTunnel: _Optional[_Union[systemRapidStateTunnel_msg, _Mapping]] = ..., systemTardStateTunnel: _Optional[_Union[systemTardStateTunnel_msg, _Mapping]] = ..., systemUpdateBuf: _Optional[_Union[systemUpdateBuf_msg, _Mapping]] = ..., todev_time_ctrl_light: _Optional[_Union[TimeCtrlLight, _Mapping]] = ..., systemTmpCycleTx: _Optional[_Union[systemTmpCycleTx_msg, _Mapping]] = ..., todev_off_chip_flash: _Optional[_Union[SysOffChipFlash, _Mapping]] = ..., todev_get_dev_fw_info: _Optional[int] = ..., toapp_dev_fw_info: _Optional[_Union[device_fw_info, _Mapping]] = ..., todev_lora_cfg_req: _Optional[_Union[LoraCfgReq, _Mapping]] = ..., toapp_lora_cfg_rsp: _Optional[_Union[LoraCfgRsp, _Mapping]] = ..., mow_to_app_info: _Optional[_Union[mow_to_app_info_t, _Mapping]] = ..., device_product_type_info: _Optional[_Union[device_product_type_info_t, _Mapping]] = ..., mow_to_app_qctools_info: _Optional[_Union[mow_to_app_qctools_info_t, _Mapping]] = ..., todev_report_cfg: _Optional[_Union[report_info_cfg, _Mapping]] = ..., toapp_report_data: _Optional[_Union[report_info_data, _Mapping]] = ..., simulation_cmd: _Optional[_Union[mCtrlSimulationCmdData, _Mapping]] = ..., app_to_dev_get_mqtt_config_msg: _Optional[_Union[app_to_dev_get_mqtt_config_t, _Mapping]] = ..., dev_to_app_get_mqtt_config_msg: _Optional[_Union[dev_to_app_get_mqtt_config_t, _Mapping]] = ..., app_to_dev_set_mqtt_rtk_msg: _Optional[_Union[app_to_dev_set_mqtt_rtk_t, _Mapping]] = ..., dev_to_app_set_mqtt_rtk_msg: _Optional[_Union[dev_to_app_set_mqtt_rtk_t, _Mapping]] = ..., todev_reset_blade_used_time: _Optional[int] = ..., todev_reset_blade_used_time_status: _Optional[_Union[SysResetBladeUsedTimeStatus, _Mapping]] = ..., todev_factor_reset_system: _Optional[int] = ..., blade_used_warn_time: _Optional[_Union[user_set_blade_used_warn_time, _Mapping]] = ..., debug_common_report: _Optional[_Union[debug_common_report_t, _Mapping]] = ..., debug_errocode_report: _Optional[_Union[debug_errocode_report_t, _Mapping]] = ..., debug_enable: _Optional[_Union[debug_enable_t, _Mapping]] = ..., debug_cfg_read: _Optional[_Union[debug_cfg_read_t, _Mapping]] = ..., debug_cfg_write: _Optional[_Union[debug_cfg_write_t, _Mapping]] = ..., debug_res_cfg_ability: _Optional[_Union[debug_res_cfg_ability_t, _Mapping]] = ..., to_dev_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., to_app_msgbus: _Optional[_Union[msgbus_pkt, _Mapping]] = ..., response_set_mode: _Optional[_Union[response_set_mode_t, _Mapping]] = ..., report_info: _Optional[_Union[report_info_t, _Mapping]] = ..., set_work_mode: _Optional[_Union[work_mode_t, _Mapping]] = ..., set_special_mode: _Optional[_Union[special_mode_t, _Mapping]] = ..., set_peripherals: _Optional[_Union[set_peripherals_t, _Mapping]] = ..., to_dev_set_sun_time: _Optional[_Union[debug_sun_time_t, _Mapping]] = ..., to_dev_remote_reset: _Optional[_Union[remote_reset_req_t, _Mapping]] = ..., to_app_remote_reset: _Optional[_Union[remote_reset_rsp_t, _Mapping]] = ..., current_cutter_mode: _Optional[_Union[rpt_cutter_rpm, _Mapping]] = ..., app_downlink_cmd: _Optional[_Union[app_downlink_cmd_t, _Mapping]] = ..., to_dev_self_check_info_req: _Optional[_Union[self_check_info_req, _Mapping]] = ..., to_app_self_check_info_rsp: _Optional[_Union[self_check_info_rsp, _Mapping]] = ..., iot_product_param_req: _Optional[_Union[iot_product_param_req_t, _Mapping]] = ..., iot_product_param_rsp: _Optional[_Union[iot_product_param_rsp_t, _Mapping]] = ..., task_report_interaction: _Optional[_Union[task_report_interaction_t, _Mapping]] = ..., task_report_req: _Optional[_Union[FileTransferRequest, _Mapping]] = ..., task_report_resp: _Optional[_Union[FileTransferResponse, _Mapping]] = ..., task_report_result: _Optional[_Union[FileTransferResult, _Mapping]] = ..., bms_ctrl_info_msg: _Optional[_Union[BmsCtrlInfoMsg, _Mapping]] = ..., to_set_dev_low_power_cmd: _Optional[_Union[dev_low_power_set_info, _Mapping]] = ..., to_get_dev_low_power_cmd: _Optional[_Union[dev_low_power_get, _Mapping]] = ..., gfsk_cfg_cmd: _Optional[_Union[gfsk_cfg_cmd_t, _Mapping]] = ..., map_offset_data: _Optional[_Union[app_map_offset_data, _Mapping]] = ..., batch_query_req: _Optional[_Union[_mctrl_sys_config_pb2.app_batch_query_req, _Mapping]] = ..., batch_query_resp: _Optional[_Union[_mctrl_sys_config_pb2.app_batch_query_resp, _Mapping]] = ..., batch_set_req: _Optional[_Union[_mctrl_sys_config_pb2.app_batch_set_req, _Mapping]] = ..., batch_set_resp: _Optional[_Union[_mctrl_sys_config_pb2.app_batch_set_resp, _Mapping]] = ..., to_dev_message_reset_req: _Optional[_Union[message_reset_req, _Mapping]] = ..., to_app_message_reset_resp: _Optional[_Union[message_reset_resp, _Mapping]] = ...) -> None: ...
 
 class QCAppTestConditions(_message.Message):
     __slots__ = ["cond_type", "double_val", "float_val", "int_val", "string_val"]
@@ -621,7 +659,7 @@ class TimeCtrlLight(_message.Message):
     def __init__(self, operate: _Optional[int] = ..., enable: _Optional[int] = ..., start_hour: _Optional[int] = ..., start_min: _Optional[int] = ..., end_hour: _Optional[int] = ..., end_min: _Optional[int] = ..., action: _Optional[int] = ...) -> None: ...
 
 class app_downlink_cmd_t(_message.Message):
-    __slots__ = ["ack", "area_clean", "bottom_type", "cmd", "docking_time", "floor_speed", "line_info", "map_info", "wall_material"]
+    __slots__ = ["ack", "area_clean", "bottom_type", "cmd", "docking_time", "floor_speed", "line_info", "map_info", "mapping", "wall_material"]
     ACK_FIELD_NUMBER: _ClassVar[int]
     AREA_CLEAN_FIELD_NUMBER: _ClassVar[int]
     BOTTOM_TYPE_FIELD_NUMBER: _ClassVar[int]
@@ -629,6 +667,7 @@ class app_downlink_cmd_t(_message.Message):
     DOCKING_TIME_FIELD_NUMBER: _ClassVar[int]
     FLOOR_SPEED_FIELD_NUMBER: _ClassVar[int]
     LINE_INFO_FIELD_NUMBER: _ClassVar[int]
+    MAPPING_FIELD_NUMBER: _ClassVar[int]
     MAP_INFO_FIELD_NUMBER: _ClassVar[int]
     WALL_MATERIAL_FIELD_NUMBER: _ClassVar[int]
     ack: ack_to_app_type_e
@@ -639,8 +678,23 @@ class app_downlink_cmd_t(_message.Message):
     floor_speed: float
     line_info: MapInfo
     map_info: MapInfo
+    mapping: Mapping
     wall_material: int
-    def __init__(self, cmd: _Optional[_Union[app_downlink_cmd_type_e, str]] = ..., ack: _Optional[_Union[ack_to_app_type_e, str]] = ..., wall_material: _Optional[int] = ..., bottom_type: _Optional[_Union[pool_bottom_type_e, str]] = ..., floor_speed: _Optional[float] = ..., map_info: _Optional[_Union[MapInfo, _Mapping]] = ..., line_info: _Optional[_Union[MapInfo, _Mapping]] = ..., docking_time: _Optional[_Union[DockingTime, _Mapping]] = ..., area_clean: _Optional[_Union[AreaClean, _Mapping]] = ...) -> None: ...
+    def __init__(self, cmd: _Optional[_Union[app_downlink_cmd_type_e, str]] = ..., ack: _Optional[_Union[ack_to_app_type_e, str]] = ..., wall_material: _Optional[int] = ..., bottom_type: _Optional[_Union[pool_bottom_type_e, str]] = ..., floor_speed: _Optional[float] = ..., map_info: _Optional[_Union[MapInfo, _Mapping]] = ..., line_info: _Optional[_Union[MapInfo, _Mapping]] = ..., docking_time: _Optional[_Union[DockingTime, _Mapping]] = ..., area_clean: _Optional[_Union[AreaClean, _Mapping]] = ..., mapping: _Optional[_Union[Mapping, _Mapping]] = ...) -> None: ...
+
+class app_map_offset_data(_message.Message):
+    __slots__ = ["offset_data_read_write", "offset_x", "offset_y", "req_id", "res_result"]
+    OFFSET_DATA_READ_WRITE_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_X_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_Y_FIELD_NUMBER: _ClassVar[int]
+    REQ_ID_FIELD_NUMBER: _ClassVar[int]
+    RES_RESULT_FIELD_NUMBER: _ClassVar[int]
+    offset_data_read_write: int
+    offset_x: float
+    offset_y: float
+    req_id: int
+    res_result: int
+    def __init__(self, offset_x: _Optional[float] = ..., offset_y: _Optional[float] = ..., req_id: _Optional[int] = ..., res_result: _Optional[int] = ..., offset_data_read_write: _Optional[int] = ...) -> None: ...
 
 class app_to_dev_get_mqtt_config_t(_message.Message):
     __slots__ = ["get_mqtt_config"]
@@ -909,6 +963,18 @@ class mCtrlSimulationCmdData(_message.Message):
     param_value: _containers.RepeatedScalarFieldContainer[int]
     subCmd: int
     def __init__(self, subCmd: _Optional[int] = ..., param_id: _Optional[int] = ..., param_value: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class message_reset_req(_message.Message):
+    __slots__ = ["reset_command"]
+    RESET_COMMAND_FIELD_NUMBER: _ClassVar[int]
+    reset_command: int
+    def __init__(self, reset_command: _Optional[int] = ...) -> None: ...
+
+class message_reset_resp(_message.Message):
+    __slots__ = ["message_reset_status"]
+    MESSAGE_RESET_STATUS_FIELD_NUMBER: _ClassVar[int]
+    message_reset_status: int
+    def __init__(self, message_reset_status: _Optional[int] = ...) -> None: ...
 
 class mod_fw_info(_message.Message):
     __slots__ = ["identify", "type", "version"]
@@ -1180,7 +1246,8 @@ class rpt_dev_location(_message.Message):
     def __init__(self, real_pos_x: _Optional[int] = ..., real_pos_y: _Optional[int] = ..., real_toward: _Optional[int] = ..., pos_type: _Optional[int] = ..., zone_hash: _Optional[int] = ..., bol_hash: _Optional[int] = ...) -> None: ...
 
 class rpt_dev_status(_message.Message):
-    __slots__ = ["battery_val", "charge_state", "collector_status", "fpv_info", "headlamp_status", "last_status", "lock_state", "mnet_info", "self_check_status", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
+    __slots__ = ["battery_heat_flag", "battery_val", "charge_state", "collector_status", "fpv_info", "headlamp_status", "last_status", "lock_state", "mnet_info", "self_check_status", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
+    BATTERY_HEAT_FLAG_FIELD_NUMBER: _ClassVar[int]
     BATTERY_VAL_FIELD_NUMBER: _ClassVar[int]
     CHARGE_STATE_FIELD_NUMBER: _ClassVar[int]
     COLLECTOR_STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -1195,6 +1262,7 @@ class rpt_dev_status(_message.Message):
     SYS_TIME_STAMP_FIELD_NUMBER: _ClassVar[int]
     VIO_SURVIVAL_INFO_FIELD_NUMBER: _ClassVar[int]
     VSLAM_STATUS_FIELD_NUMBER: _ClassVar[int]
+    battery_heat_flag: int
     battery_val: int
     charge_state: int
     collector_status: collector_status_t
@@ -1209,7 +1277,7 @@ class rpt_dev_status(_message.Message):
     sys_time_stamp: int
     vio_survival_info: vio_survival_info_t
     vslam_status: int
-    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ..., self_check_status: _Optional[int] = ..., fpv_info: _Optional[_Union[fpv_to_app_info_t, _Mapping]] = ..., headlamp_status: _Optional[int] = ...) -> None: ...
+    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ..., self_check_status: _Optional[int] = ..., fpv_info: _Optional[_Union[fpv_to_app_info_t, _Mapping]] = ..., battery_heat_flag: _Optional[int] = ..., headlamp_status: _Optional[int] = ...) -> None: ...
 
 class rpt_lora(_message.Message):
     __slots__ = ["lora_connection_status", "pair_code_channel", "pair_code_locid", "pair_code_netid", "pair_code_scan"]
@@ -1238,7 +1306,7 @@ class rpt_maintain(_message.Message):
     def __init__(self, mileage: _Optional[int] = ..., work_time: _Optional[int] = ..., bat_cycles: _Optional[int] = ..., blade_used_time: _Optional[_Union[blade_used, _Mapping]] = ...) -> None: ...
 
 class rpt_rtk(_message.Message):
-    __slots__ = ["age", "co_view_stars", "dis_status", "gps_stars", "l2_stars", "lat_std", "lon_std", "lora_info", "mqtt_rtk_info", "pos_level", "reset", "score_info", "status", "top4_total_mean"]
+    __slots__ = ["age", "co_view_stars", "dis_status", "gps_stars", "l2_stars", "lat_std", "lon_std", "lora_info", "mqtt_rtk_info", "pos_level", "reset", "rtcm_ready", "score_info", "status", "top4_total_mean"]
     AGE_FIELD_NUMBER: _ClassVar[int]
     CO_VIEW_STARS_FIELD_NUMBER: _ClassVar[int]
     DIS_STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -1250,6 +1318,7 @@ class rpt_rtk(_message.Message):
     MQTT_RTK_INFO_FIELD_NUMBER: _ClassVar[int]
     POS_LEVEL_FIELD_NUMBER: _ClassVar[int]
     RESET_FIELD_NUMBER: _ClassVar[int]
+    RTCM_READY_FIELD_NUMBER: _ClassVar[int]
     SCORE_INFO_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     TOP4_TOTAL_MEAN_FIELD_NUMBER: _ClassVar[int]
@@ -1264,13 +1333,20 @@ class rpt_rtk(_message.Message):
     mqtt_rtk_info: mqtt_rtk_connect
     pos_level: int
     reset: int
+    rtcm_ready: bool
     score_info: pos_score
     status: int
     top4_total_mean: int
-    def __init__(self, status: _Optional[int] = ..., pos_level: _Optional[int] = ..., gps_stars: _Optional[int] = ..., age: _Optional[int] = ..., lat_std: _Optional[int] = ..., lon_std: _Optional[int] = ..., l2_stars: _Optional[int] = ..., dis_status: _Optional[int] = ..., top4_total_mean: _Optional[int] = ..., co_view_stars: _Optional[int] = ..., reset: _Optional[int] = ..., lora_info: _Optional[_Union[rpt_lora, _Mapping]] = ..., mqtt_rtk_info: _Optional[_Union[mqtt_rtk_connect, _Mapping]] = ..., score_info: _Optional[_Union[pos_score, _Mapping]] = ...) -> None: ...
+    def __init__(self, status: _Optional[int] = ..., pos_level: _Optional[int] = ..., gps_stars: _Optional[int] = ..., age: _Optional[int] = ..., lat_std: _Optional[int] = ..., lon_std: _Optional[int] = ..., l2_stars: _Optional[int] = ..., dis_status: _Optional[int] = ..., top4_total_mean: _Optional[int] = ..., co_view_stars: _Optional[int] = ..., reset: _Optional[int] = ..., lora_info: _Optional[_Union[rpt_lora, _Mapping]] = ..., mqtt_rtk_info: _Optional[_Union[mqtt_rtk_connect, _Mapping]] = ..., score_info: _Optional[_Union[pos_score, _Mapping]] = ..., rtcm_ready: bool = ...) -> None: ...
+
+class rpt_texture_map_info(_message.Message):
+    __slots__ = ["file_hash"]
+    FILE_HASH_FIELD_NUMBER: _ClassVar[int]
+    file_hash: str
+    def __init__(self, file_hash: _Optional[str] = ...) -> None: ...
 
 class rpt_work(_message.Message):
-    __slots__ = ["area", "bp_hash", "bp_info", "bp_pos_x", "bp_pos_y", "cutter_offset", "cutter_width", "init_cfg_hash", "knife_height", "man_run_speed", "nav_edit_status", "nav_heading_state", "nav_run_mode", "path_hash", "path_pos_x", "path_pos_y", "plan", "progress", "real_path_num", "test_mode_status", "ub_ecode_hash", "ub_path_hash", "ub_zone_hash"]
+    __slots__ = ["area", "bp_hash", "bp_info", "bp_pos_x", "bp_pos_y", "cutter_offset", "cutter_width", "init_cfg_hash", "knife_height", "man_run_speed", "nav_edit_status", "nav_heading_state", "nav_run_mode", "path_hash", "path_pos_x", "path_pos_y", "plan", "progress", "real_path_num", "test_mode_status", "texture_map_info", "ub_ecode_hash", "ub_path_hash", "ub_zone_hash"]
     AREA_FIELD_NUMBER: _ClassVar[int]
     BP_HASH_FIELD_NUMBER: _ClassVar[int]
     BP_INFO_FIELD_NUMBER: _ClassVar[int]
@@ -1291,6 +1367,7 @@ class rpt_work(_message.Message):
     PROGRESS_FIELD_NUMBER: _ClassVar[int]
     REAL_PATH_NUM_FIELD_NUMBER: _ClassVar[int]
     TEST_MODE_STATUS_FIELD_NUMBER: _ClassVar[int]
+    TEXTURE_MAP_INFO_FIELD_NUMBER: _ClassVar[int]
     UB_ECODE_HASH_FIELD_NUMBER: _ClassVar[int]
     UB_PATH_HASH_FIELD_NUMBER: _ClassVar[int]
     UB_ZONE_HASH_FIELD_NUMBER: _ClassVar[int]
@@ -1314,10 +1391,11 @@ class rpt_work(_message.Message):
     progress: int
     real_path_num: int
     test_mode_status: int
+    texture_map_info: rpt_texture_map_info
     ub_ecode_hash: int
     ub_path_hash: int
     ub_zone_hash: int
-    def __init__(self, plan: _Optional[int] = ..., path_hash: _Optional[int] = ..., progress: _Optional[int] = ..., area: _Optional[int] = ..., bp_info: _Optional[int] = ..., bp_hash: _Optional[int] = ..., bp_pos_x: _Optional[int] = ..., bp_pos_y: _Optional[int] = ..., real_path_num: _Optional[int] = ..., path_pos_x: _Optional[int] = ..., path_pos_y: _Optional[int] = ..., ub_zone_hash: _Optional[int] = ..., ub_path_hash: _Optional[int] = ..., init_cfg_hash: _Optional[int] = ..., ub_ecode_hash: _Optional[int] = ..., nav_run_mode: _Optional[int] = ..., test_mode_status: _Optional[int] = ..., man_run_speed: _Optional[int] = ..., nav_edit_status: _Optional[int] = ..., knife_height: _Optional[int] = ..., nav_heading_state: _Optional[_Union[nav_heading_state_t, _Mapping]] = ..., cutter_offset: _Optional[float] = ..., cutter_width: _Optional[float] = ...) -> None: ...
+    def __init__(self, plan: _Optional[int] = ..., path_hash: _Optional[int] = ..., progress: _Optional[int] = ..., area: _Optional[int] = ..., bp_info: _Optional[int] = ..., bp_hash: _Optional[int] = ..., bp_pos_x: _Optional[int] = ..., bp_pos_y: _Optional[int] = ..., real_path_num: _Optional[int] = ..., path_pos_x: _Optional[int] = ..., path_pos_y: _Optional[int] = ..., ub_zone_hash: _Optional[int] = ..., ub_path_hash: _Optional[int] = ..., init_cfg_hash: _Optional[int] = ..., ub_ecode_hash: _Optional[int] = ..., nav_run_mode: _Optional[int] = ..., test_mode_status: _Optional[int] = ..., man_run_speed: _Optional[int] = ..., nav_edit_status: _Optional[int] = ..., knife_height: _Optional[int] = ..., nav_heading_state: _Optional[_Union[nav_heading_state_t, _Mapping]] = ..., cutter_offset: _Optional[float] = ..., cutter_width: _Optional[float] = ..., texture_map_info: _Optional[_Union[rpt_texture_map_info, _Mapping]] = ...) -> None: ...
 
 class self_check_info_req(_message.Message):
     __slots__ = ["self_check_reqid"]
@@ -1516,4 +1594,7 @@ class ack_to_app_type_e(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = []
 
 class wall_material_e(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class MappingType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = []

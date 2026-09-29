@@ -469,6 +469,13 @@ class HeadingState(DataClassORJSONMixin):
 
 
 @dataclass
+class TextureMapInfo(DataClassORJSONMixin):
+    """``rpt_work.texture_map_info`` (field 24): hash of the device's texture map file."""
+
+    file_hash: str = ""
+
+
+@dataclass
 class WorkData(DataClassORJSONMixin):
     """Active mowing session metrics: path, progress, area, and breakpoint info."""
 
@@ -501,6 +508,7 @@ class WorkData(DataClassORJSONMixin):
     nav_heading_state: HeadingState = field(default_factory=HeadingState)
     cutter_offset: float = 0.0
     cutter_width: float = 0.0
+    texture_map_info: TextureMapInfo = field(default_factory=TextureMapInfo)
 
     @property
     def mow_percent(self) -> int:

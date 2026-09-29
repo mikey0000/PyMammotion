@@ -190,7 +190,7 @@ All `pver=1`. Most are BLE-or-IOT (`isIotable=true`); some are forced BLE (`fals
 | `queryGenerateRouteInformation` | `bidire_reqconver_path` | pver=1, sub_cmd=2 | Query route config | 1075 |
 | `endGenerateRouteInformation` | `bidire_reqconver_path` | pver=1, sub_cmd=9 | End route generation | 533 |
 
-`NavReqCoverPath` fields used by `GenerateRouteInformation`: `pver, sub_cmd, zone_hashs[], job_mode, edge_mode, knife_height, speed, ultra_wave, channel_width, channel_mode, toward, toward_included_angle, toward_mode, reserved (=path_order), ride_boundary_distance, app_display_mode`.
+`NavReqCoverPath` fields used by `GenerateRouteInformation`: `pver, sub_cmd, zone_hashs[], job_mode, edge_mode, knife_height, speed, ultra_wave, channel_width, channel_mode, toward, toward_included_angle, toward_mode, reserved (=path_order), ride_boundary_distance, app_display_mode` (field 20, `task_settings_mode` here: the app's basic/advanced task settings screen), `reserved2` (field 21, `auto_change_direction` here: 32 bytes, auto-reverse in byte 0).
 
 ---
 
@@ -237,7 +237,7 @@ All `pver=1`. Most are BLE-or-IOT (`isIotable=true`); some are forced BLE (`fals
 | Method | sub_cmd | Notes | Line |
 |---|---|---|---|
 | `deletePlan(i3, str)` (app) | i3 | Delete schedule by planId | app 562 |
-| `sendSchedule(planBean1)` (app) | bean.subCmd | Full plan set; uses pver, area, device_id, work_time, version, id, user_id, plan_id, task_id, job_id, start_time/end_time, week, knife_height, model, edge_mode, required_time, route_angle, route_model, route_spacing, ultrasonic_barrier, total_plan_num, plan_index, result, speed, ride_boundary_distance, task_name, zone_hashs[], reserved, weeks[], start_date, trigger_type, day=interval_days, toward_mode, toward_included_angle | app 1461 |
+| `sendSchedule(planBean1)` (app) | bean.subCmd | Full plan set; uses pver, area, device_id, work_time, version, id, user_id, plan_id, task_id, job_id, start_time/end_time, week, knife_height, model, edge_mode, required_time, route_angle, route_model, route_spacing, ultrasonic_barrier, total_plan_num, plan_index, result, speed, ride_boundary_distance, task_name, zone_hashs[], reserved, weeks[], start_date, trigger_type, day=interval_days, toward_mode, toward_included_angle, reserved2 (field 41, auto-reverse; field 40 never set) | app 1461 |
 | `readPlan(i3, i4, i5)` (app) | i3 | Read plan by index | app 1171 |
 
 ### Plan task execute — `MctlNav.plan_task_execute` (`nav_plan_task_execute`)

@@ -55,24 +55,28 @@ class Getlamprsp(_message.Message):
     def __init__(self, get_ids: _Optional[int] = ..., result: _Optional[int] = ..., lamp_ctrl: _Optional[_Union[lamp_ctrl_sta, str]] = ..., lamp_bright: _Optional[int] = ..., lamp_manual_ctrl: _Optional[_Union[lamp_manual_ctrl_sta, str]] = ...) -> None: ...
 
 class MulAudioCfg(_message.Message):
-    __slots__ = ["au_language", "au_switch", "sex"]
+    __slots__ = ["au_language", "au_switch", "au_volume", "sex"]
     AU_LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     AU_SWITCH_FIELD_NUMBER: _ClassVar[int]
+    AU_VOLUME_FIELD_NUMBER: _ClassVar[int]
     SEX_FIELD_NUMBER: _ClassVar[int]
     au_language: MUL_LANGUAGE
     au_switch: int
+    au_volume: int
     sex: MUL_SEX
-    def __init__(self, au_switch: _Optional[int] = ..., au_language: _Optional[_Union[MUL_LANGUAGE, str]] = ..., sex: _Optional[_Union[MUL_SEX, str]] = ...) -> None: ...
+    def __init__(self, au_switch: _Optional[int] = ..., au_language: _Optional[_Union[MUL_LANGUAGE, str]] = ..., sex: _Optional[_Union[MUL_SEX, str]] = ..., au_volume: _Optional[int] = ...) -> None: ...
 
 class MulSetAudio(_message.Message):
-    __slots__ = ["at_switch", "au_language", "sex"]
+    __slots__ = ["at_switch", "au_language", "au_volume", "sex"]
     AT_SWITCH_FIELD_NUMBER: _ClassVar[int]
     AU_LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    AU_VOLUME_FIELD_NUMBER: _ClassVar[int]
     SEX_FIELD_NUMBER: _ClassVar[int]
     at_switch: int
     au_language: MUL_LANGUAGE
+    au_volume: int
     sex: MUL_SEX
-    def __init__(self, at_switch: _Optional[int] = ..., au_language: _Optional[_Union[MUL_LANGUAGE, str]] = ..., sex: _Optional[_Union[MUL_SEX, str]] = ...) -> None: ...
+    def __init__(self, at_switch: _Optional[int] = ..., au_language: _Optional[_Union[MUL_LANGUAGE, str]] = ..., sex: _Optional[_Union[MUL_SEX, str]] = ..., au_volume: _Optional[int] = ...) -> None: ...
 
 class MulSetEncode(_message.Message):
     __slots__ = ["encode"]

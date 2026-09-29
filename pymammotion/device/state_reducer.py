@@ -402,7 +402,7 @@ class MowerStateReducer(StateReducer):
                     apply_device_mow_progress_geojson(device)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]  # type: ignore
-                device.map.update_plan(Plan.from_dict(planjob.to_dict(casing=betterproto2.Casing.SNAKE)))
+                device.map.update_plan(Plan.from_wire(planjob, device.name, device.mower_state.product_key))
             case "all_plan_task":
                 all_tasks: NavGetAllPlanTask = nav_msg[1]  # type: ignore
                 incoming_ids = {t.id for t in all_tasks.tasks}
@@ -470,7 +470,7 @@ class MowerStateReducer(StateReducer):
                 #  6   turning_mode                   0=zero-turn, 1=multipoint turn
                 #  7   traversal_mode                 0=direct to dock, 1=follow perimeter
                 #  8   (X3 adapter only, no known caller — ignore)
-                # 10   boundary_ride_distance         0=0%, 25=25%, 50=50%
+                # 10   boundary_ride_distance         0/50/25: mapping-screen mode picker, meaning unknown
                 # 11   collect_grass_enable           0=disabled, 1=enabled
                 # 12   animal_protection.mode         0/1/2 (mode enum)
                 # 13   animal_protection.status       0=disabled, 1=enabled

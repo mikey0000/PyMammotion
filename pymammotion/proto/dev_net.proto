@@ -62,6 +62,7 @@ message DrvWifiUpload {
 
 message DrvWifiList {
   int32 nvs_wifi_upload = 1;
+  WifilistVersion version = 2;
 }
 
 message DrvWifiSet {
@@ -154,11 +155,27 @@ message DrvUpgradeReport {
   int32 recv_cnt = 8;
 }
 
+enum WifilistVersion {
+  VERSION_UNSPECIFIED = 0;
+  VERSION_1 = 1;
+}
+
+enum BleEncryptStatus {
+  BLE_S_UNKNOWN = 0;
+  BLE_S_ENCRYPT = 42189;
+  BLE_S_UNENCRYPT = 15730;
+}
+
+message BleEncrypt {
+  BleEncryptStatus ble_encrypt_status = 1;
+}
+
 message WifiIotStatusReport {
   bool wifi_connected = 1;
   bool iot_connected = 2;
   string productkey = 3;
   string devicename = 4;
+  BleEncrypt ble_encrypt = 5;
 }
 
 message BleTestBytes {
@@ -285,6 +302,130 @@ message BleLogUploadUpdateProgress {
   int32 fSize = 10;
 }
 
+enum WifiConnectVersion {
+  CONNECT_VERSION_Default = 0;
+}
+
+enum WifiMode {
+  WIFI_MODE_NULL = 0;
+  WIFI_MODE_STA = 1;
+  WIFI_MODE_AP = 2;
+  WIFI_MODE_APSTA = 3;
+}
+
+enum WifiConnect_Result {
+  CONNECT_SUCCESS = 0;
+  FAIL_PASSWORD = 1;
+  FAIL_SSID = 2;
+  FAIL_CONNECT_CANCELLED = 3;
+  FAIL_CONNECT_WRONG_KEY = 4;
+  FAIL_CONNECT_MAX_CONN = 5;
+  FAIL_BLACK_LIST = 6;
+  FAIL_CONNECT_FAIL = 7;
+  FAIL_NOT_FIND_AP = 8;
+  FAIL_WIFI_MODE_FAIL = 9;
+  FAIL_UNKNOWN = 10;
+}
+
+enum WifiScanVersion {
+  SCAN_VERSION_Default = 0;
+}
+
+enum Band_Mode {
+  FEQ_UNKNOWN_ = 0;
+  FEQ_2_4G = 1;
+  FEQ_5G = 2;
+  FEQ_2_4G_AND_5G = 3;
+}
+
+enum BlePairAction {
+  UNKNOWN_ACTION = 0;
+  REQUEST_PAIR = 1;
+  DELETE_BOND = 2;
+  QUERY_PAIR_STATUS = 3;
+}
+
+enum BlePairStatus {
+  UNKNOWN_STATUS = 0;
+  NOT_PAIRED = 1;
+  ALREADY_PAIRED = 2;
+  PAIRING_STARTED = 3;
+  PAIRING_IN_PROGRESS = 4;
+  PAIR_SUCCESS = 5;
+  PAIR_FAILED = 6;
+  DELETE_BOND_SUCCESS = 7;
+  DELETE_BOND_FAILED = 8;
+  PAIR_SUCCESS_IOTONLINE = 9;
+}
+
+message DrvNewListUpload {
+  repeated DrvListUpload wifilist = 1;
+}
+
+message DrvWificonnectReq {
+  WifiConnectVersion version = 1;
+  int32 bizid = 2;
+  WifiMode wifimode = 3;
+  string wifi_ssid = 4;
+  int32 has_password = 5;
+  string wifi_password = 6;
+}
+
+message DrvWificonnectRsp {
+  int32 bizid = 1;
+  WifiConnect_Result connect_state = 2;
+}
+
+message DrvWifiscanReq {
+  WifiScanVersion version = 1;
+  int32 bizid = 2;
+}
+
+message WiFilist {
+  int32 has_password = 1;
+  Band_Mode band_mode = 2;
+  string ssid = 3;
+  int32 rssi = 4;
+}
+
+message DrvWifiscanRsp {
+  int32 bizid = 1;
+  repeated WiFilist wifilist = 2;
+}
+
+message GetIdentityReq {
+  int32 req_id = 1;
+  string device_name = 2;
+}
+
+message GetIdentityRsp {
+  int32 req_id = 1;
+  int32 result = 2;
+  string identity_data = 3;
+  string decryption_key = 4;
+}
+
+message GetIotStateReq {
+  int32 req_id = 1;
+}
+
+message GetIotStateRsp {
+  int32 req_id = 1;
+  int32 result = 2;
+  bool has_ever_connected = 3;
+}
+
+message BlePairReq {
+  int32 req_id = 1;
+  BlePairAction action = 2;
+}
+
+message BlePairRsp {
+  int32 req_id = 1;
+  BlePairStatus status = 2;
+  string device_name = 3;
+}
+
 message DevNet {
   oneof NetSubType {
     int32 todev_ble_sync = 1;
@@ -317,5 +458,16 @@ message DevNet {
     iot_conctrl_type todev_set_iot_offline_req = 28;
     BleSignatureReq todev_verify_signature_req = 29;
     BleLogUploadUpdateProgress toapp_log_upload_update_progress = 30;
+    DrvNewListUpload toapp_allListUpload = 31;
+    DrvWificonnectReq todev_wificonnect = 32;
+    DrvWificonnectRsp toapp_wificonnect = 33;
+    DrvWifiscanReq todev_wifiscan = 34;
+    DrvWifiscanRsp toapp_wifiscan = 35;
+    GetIdentityReq toapp_get_identity_req = 36;
+    GetIdentityRsp todev_get_identity_rsp = 37;
+    GetIotStateReq todev_get_iot_state_req = 38;
+    GetIotStateRsp toapp_get_iot_state_rsp = 39;
+    BlePairReq todev_ble_pair_req = 40;
+    BlePairRsp toapp_ble_pair_rsp = 41;
   }
 }

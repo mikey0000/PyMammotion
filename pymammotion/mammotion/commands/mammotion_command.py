@@ -52,10 +52,10 @@ class MammotionCommand(
         return self.read_write_device(6, context, 1)
 
     def boundary_ride_distance(self, context: int) -> bytes:
-        """Set the boundary ride percentage before mowing starts (Luba Pro only).
+        """Write read/write parameter ID 10: the mapping screen's three-way mode option (context 0, 50 or 25).
 
-        context: 0=none, 25=25%, 50=50%
-        Sent via nav_sys_param_cmd ID 10 on Pro/X3 devices.
+        The app sends it only from the self-built-map mode picker (``PlanMapLandFragment``), whose options are
+        images with no stated meaning; via ``nav_sys_param_cmd`` on a Luba Pro, else ``SysCommCmd``.
         """
         return self.read_write_device(10, context, 1)
 

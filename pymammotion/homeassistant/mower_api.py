@@ -8,15 +8,15 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Any
 
 from pymammotion.client import MammotionClient
-from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device_capabilities import DeviceConfig
-from pymammotion.data.model.device_config import OperationSettings, create_path_order
+from pymammotion.data.model.device_config import OperationSettings, build_route_information
 from pymammotion.transport.base import CommandTimeoutError, ConcurrentRequestError, TransportType
 from pymammotion.utility.device_type import DeviceType
 
 if TYPE_CHECKING:
     from aiohttp import ClientSession
 
+    from pymammotion.data.model import GenerateRouteInformation
     from pymammotion.data.model.device import MowingDevice
     from pymammotion.data.model.device_limits import DeviceLimits
     from pymammotion.data.model.hash_list import Plan
@@ -368,43 +368,7 @@ class HomeAssistantMowerApi:
         self, device_name: str, operation_settings: OperationSettings
     ) -> GenerateRouteInformation:
         """Generate route information."""
-        device = self._mammotion.get_device_by_name(device_name)
-        if device is not None and device.report_data.dev:
-            dev = device.report_data.dev
-            if dev.collector_status.collector_installation_status == 0:
-                operation_settings.is_dump = False
-
-        if DeviceType.is_yuka(device_name):
-            operation_settings.blade_height = -10
-
-        route_information = GenerateRouteInformation(
-            one_hashs=list(operation_settings.areas),
-            rain_tactics=operation_settings.rain_tactics,
-            speed=operation_settings.speed,
-            ultra_wave=operation_settings.ultra_wave,  # touch no touch etc
-            toward=operation_settings.toward,  # is just angle (route angle)
-            toward_included_angle=operation_settings.toward_included_angle  # demond_angle
-            if operation_settings.channel_mode == 1
-            else 0,  # crossing angle relative to grid
-            toward_mode=operation_settings.toward_mode,
-            blade_height=operation_settings.blade_height,
-            channel_mode=operation_settings.channel_mode,  # single, double, segment or none (route mode)
-            channel_width=operation_settings.channel_width,  # path space
-            job_mode=operation_settings.job_mode,  # taskMode grid or border first
-            edge_mode=operation_settings.mowing_laps,  # perimeter/mowing laps
-            path_order=create_path_order(operation_settings, device_name),
-            obstacle_laps=operation_settings.obstacle_laps,
-            auto_change_direction=operation_settings.auto_change_direction,
-        )
-
-        if DeviceType.is_luba1(device_name):
-            route_information.toward_mode = 0
-            route_information.toward_included_angle = 0
-        firmware = device.device_firmwares.device_version if device is not None else ""
-        if not DeviceType.supports_auto_change_direction(device_name, firmware):
-            # The app gates this row on a capability list and firmware; match it.
-            route_information.auto_change_direction = 0
-        return route_information
+        return build_route_information(device_name, self._mammotion.get_device_by_name(device_name), operation_settings)
 
     async def async_plan_route(self, device_name: str, operation_settings: OperationSettings) -> bool | None:
         """Plan mow route and enqueue MowPathSaga to fetch the resulting cover path.
@@ -439,14 +403,14 @@ class HomeAssistantMowerApi:
             operation_settings.toward_mode = work.toward_mode
             operation_settings.toward_included_angle = work.toward_included_angle
             operation_settings.mowing_laps = work.edge_mode
+            operation_settings.ride_boundary_distance = work.ride_boundary_distance
+            if work.auto_change_direction is not None:
+                operation_settings.auto_change_direction = int(work.auto_change_direction)
             operation_settings.job_mode = work.job_mode
             operation_settings.job_id = work.job_id
             operation_settings.job_version = work.job_ver
 
         route_information = self.generate_route_information(device_name, operation_settings)
-        if route_information.toward_mode == 0:
-            route_information.toward = 0
-
         return await self.async_send_command(
             device_name, "modify_route_information", generate_route_information=route_information
         )
