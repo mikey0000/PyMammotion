@@ -53,6 +53,7 @@ from pymammotion.http.model.map_backup import (
     BackupMapResult,
     BackupProgressType,
 )
+from pymammotion.http.model.product_functions import ProductFunctionsData
 from pymammotion.http.model.product_params import ProductParamData
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
@@ -697,6 +698,23 @@ class MammotionHTTP:
         """
         return await self._request_device_server(
             "/device-server/v1/product/product/list", Response[list[Product]], "product list"
+        )
+
+    @refresh_token_decorator
+    async def get_product_version_functions(
+        self, product_key: str, product_version: str
+    ) -> Response[ProductFunctionsData]:
+        """Fetch the function codes the cloud lists for *product_key* at firmware *product_version*.
+
+        ``product_version`` is the main firmware version (``device_current_version_<name>``
+        in the app).  The response carries no refresh hint; the app caches it per
+        ``(productKey, productVersion)`` forever and refetches only for a new pair.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/product-version-function/list",
+            Response[ProductFunctionsData],
+            "product version functions",
+            payload={"productKey": product_key, "productVersion": product_version},
         )
 
     async def get_all_error_codes_paged(

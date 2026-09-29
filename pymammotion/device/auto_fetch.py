@@ -11,6 +11,7 @@ that has already arrived.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 
     from pymammotion.data.model.device import MowerDevice
     from pymammotion.device.handle import DeviceHandle, DeviceRegistry
+    from pymammotion.state.device_state import DeviceSnapshot
     from pymammotion.transport.base import Subscription
 
 _logger = logging.getLogger(__name__)
@@ -60,13 +62,55 @@ class AutoFetchWatchers:
         start_map_sync: Callable[..., Awaitable[Any]],
         start_plan_sync: Callable[..., Awaitable[Any]],
         start_mow_path_saga: Callable[..., Awaitable[Any]],
+        refresh_function_codes: Callable[[str], Awaitable[Any]] | None = None,
+        function_codes_ready: Callable[[DeviceHandle], bool] | None = None,
     ) -> None:
         self._device_registry = registry
         self.start_map_sync = start_map_sync
         self.start_plan_sync = start_plan_sync
         self.start_mow_path_saga = start_mow_path_saga
+        self.refresh_function_codes = refresh_function_codes
+        self.function_codes_ready = function_codes_ready
         #: device_name -> the subscriptions set up for it, so teardown is exact.
         self._watcher_subscriptions: dict[str, list[Subscription]] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
+
+    async def drain(self) -> None:
+        """Wait for any fetch the watchers started in the background."""
+        # A finished task leaves the set only on a later loop turn; gathering it again would never yield.
+        while pending := [task for task in self._background_tasks if not task.done()]:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    def _function_code_watcher(self, handle: DeviceHandle) -> Subscription | None:
+        """Fetch the function set once per (product key, firmware) the device reports.
+
+        Subscribes to every snapshot, the first included, so a restored device whose
+        firmware is already known still fetches.  One attempt per pair, failed or not; a
+        snapshot that arrives before ``function_codes_ready`` holds (no login yet) is not one.
+        """
+        if (refresh := self.refresh_function_codes) is None:
+            return None
+        device_name = handle.device_name
+        attempted: list[tuple[str, str] | None] = [None]
+
+        async def _refresh_quietly() -> None:
+            try:
+                await refresh(device_name)
+            except Exception:
+                _logger.warning("Function-code fetch failed for %s", device_name, exc_info=True)
+
+        async def _on_state(snapshot: DeviceSnapshot) -> None:
+            key = (handle.resolved_product_key, snapshot.raw.main_firmware_version)
+            if not all(key) or key == attempted[0] or snapshot.raw.function_codes.is_current_for(*key):
+                return
+            if (ready := self.function_codes_ready) is not None and not ready(handle):
+                return
+            attempted[0] = key
+            task = asyncio.create_task(_refresh_quietly())
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
+        return handle.subscribe_state_changed(_on_state)
 
     def setup_device_watchers(self, device_name: str) -> Subscription | None:
         """Register auto-fetch / auto-subscribe watchers for *device_name*.
@@ -86,6 +130,8 @@ class AutoFetchWatchers:
           ``PlanFetchSaga`` when the device reports a changed plan config hash,
           mirroring the APK's ``initCfgHash``-driven ``allpowerfullRW(5,1,1)``
           trigger in ``DeviceInitializationManager``.
+        * ``(product key, main firmware)`` — fetches the cloud function set once per
+          pair when ``refresh_function_codes`` is wired.
 
         Cadence/streaming for ``sys_status`` lives in
         :class:`~pymammotion.device.handle.DeviceHandle` (BLE polling loop +
@@ -196,6 +242,7 @@ class AutoFetchWatchers:
             lambda s: s.raw.report_data.work.init_cfg_hash,  # type: ignore
             _on_init_cfg_hash_changed,
         )
+        function_code_sub = self._function_code_watcher(handle)
 
         # Cancel any previous watchers first: a plain overwrite leaves the old
         # Subscriptions live on the handle's state bus, double-firing every
@@ -207,6 +254,7 @@ class AutoFetchWatchers:
             progress_sub,
             bol_hash_sub,
             init_cfg_hash_sub,
+            *([function_code_sub] if function_code_sub is not None else []),
         ]
         return sub
 

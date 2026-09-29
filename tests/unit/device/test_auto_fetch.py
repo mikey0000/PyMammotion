@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, create_autospec, p
 import pytest
 
 from pymammotion.data.model.device import MowerDevice
+from pymammotion.data.model.function_codes import FunctionCodes
 from pymammotion.data.model.hash_list import LINE_HASH_SUB_CMD, MowPath, MowPathPacket, NavGetHashListData
 from pymammotion.data.model.report_info import LocationData
 from pymammotion.device.auto_fetch import AutoFetchWatchers
@@ -221,3 +222,106 @@ async def test_a_fetch_that_fails_to_start_is_still_handled() -> None:
     handle_change, _, _ = _path_hash_watcher(start_saga=AsyncMock(side_effect=RuntimeError("no transport")))
 
     assert await handle_change(_LIVE_PATH_HASH) is True
+
+
+_PK = "a1BmXWlsdbA"
+_FW = "1.12.3.10"
+_DRAIN_TIMEOUT = 1.0
+
+
+def _function_code_watchers(
+    *, firmware: str = _FW, refresh: AsyncMock | None = None, ready: Callable[[DeviceHandle], bool] | None = None
+) -> tuple[AutoFetchWatchers, DeviceHandle, AsyncMock]:
+    """Watchers over a real handle whose device reports *firmware*, with a canned refresh entry point."""
+    device = MowerDevice(name="Luba-Test")
+    device.device_firmwares.device_version = firmware
+    handle = make_mock_handle("dev1", "Luba-Test", device=device)
+    handle.product_key = _PK
+    registry = create_autospec(DeviceRegistry, instance=True)
+    registry.get_by_name.return_value = handle
+    refresh = refresh or AsyncMock(return_value=True)
+    watchers = AutoFetchWatchers(
+        registry,
+        start_map_sync=AsyncMock(),
+        start_plan_sync=AsyncMock(),
+        start_mow_path_saga=AsyncMock(),
+        refresh_function_codes=refresh,
+        **({} if ready is None else {"function_codes_ready": ready}),
+    )
+    watchers.setup_device_watchers("Luba-Test")
+    return watchers, handle, refresh
+
+
+async def _emit(watchers: AutoFetchWatchers, handle: DeviceHandle) -> None:
+    await handle.emit_state_changed(handle.snapshot)
+    await asyncio.wait_for(watchers.drain(), timeout=_DRAIN_TIMEOUT)
+
+
+async def test_the_first_snapshot_with_a_known_firmware_fetches_the_function_set() -> None:
+    """Unlike ``watch_field``, the first snapshot counts: a restored device already knows its firmware."""
+    watchers, handle, refresh = _function_code_watchers()
+
+    await _emit(watchers, handle)
+
+    refresh.assert_awaited_once_with("Luba-Test")
+
+
+async def test_the_same_firmware_is_fetched_once_even_when_the_fetch_failed() -> None:
+    """One attempt per (product key, firmware), like the app: nothing may retry it on every report."""
+    watchers, handle, refresh = _function_code_watchers(refresh=AsyncMock(side_effect=ConnectionError("down")))
+
+    await _emit(watchers, handle)
+    await _emit(watchers, handle)
+
+    refresh.assert_awaited_once()
+
+
+async def test_a_firmware_change_fetches_again() -> None:
+    watchers, handle, refresh = _function_code_watchers()
+    await _emit(watchers, handle)
+
+    handle.snapshot.raw.device_firmwares.device_version = "1.12.4.0"
+    await _emit(watchers, handle)
+
+    assert refresh.await_count == 2
+
+
+async def test_an_unknown_firmware_fetches_nothing() -> None:
+    watchers, handle, refresh = _function_code_watchers(firmware="")
+
+    await _emit(watchers, handle)
+
+    refresh.assert_not_awaited()
+
+
+async def test_a_set_already_current_fetches_nothing() -> None:
+    watchers, handle, refresh = _function_code_watchers()
+    handle.snapshot.raw.function_codes = FunctionCodes(_PK, _FW, ["002.002"])
+
+    await _emit(watchers, handle)
+
+    refresh.assert_not_awaited()
+
+
+async def test_a_fetch_that_cannot_be_attempted_yet_is_offered_again_once_it_can() -> None:
+    """No login yet is not an attempt: the pair must still be fetched once one exists."""
+    logged_in: list[bool] = []
+    watchers, handle, refresh = _function_code_watchers(ready=lambda _handle: bool(logged_in))
+    await _emit(watchers, handle)
+    refresh.assert_not_awaited()
+
+    logged_in.append(True)
+    await _emit(watchers, handle)
+    await _emit(watchers, handle)
+
+    refresh.assert_awaited_once_with("Luba-Test")
+
+
+async def test_a_failed_automatic_fetch_is_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+    watchers, handle, _ = _function_code_watchers(refresh=AsyncMock(side_effect=ConnectionError("down")))
+
+    with caplog.at_level(logging.WARNING, logger="pymammotion.device.auto_fetch"):
+        await _emit(watchers, handle)
+        await _emit(watchers, handle)
+
+    assert [r.levelno for r in caplog.records] == [logging.WARNING]

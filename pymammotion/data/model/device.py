@@ -17,6 +17,7 @@ from pymammotion.data.model.device_limits import DeviceLimits
 from pymammotion.data.model.enums import TaskAreaStatus
 from pymammotion.data.model.errors import DeviceErrors
 from pymammotion.data.model.events import OTA_RESULT_SUCCESS, Events, OTAProgress, is_zone_hash
+from pymammotion.data.model.function_codes import FunctionCodes
 from pymammotion.data.model.location import Location
 from pymammotion.data.model.pool_state import PoolMap, PoolPlan, PoolState
 from pymammotion.data.model.report_info import BaseScore, ReportData, WorkSessionResult
@@ -66,6 +67,24 @@ class Device(DataClassORJSONMixin):
     #: (0.0 = never).  Only meaningful within one process — see
     #: :meth:`has_live_ota_push`.
     ota_progress_at: float = 0.0
+    #: Cloud ``product-version-function/list`` answer; see :meth:`supports_function_code`.
+    function_codes: FunctionCodes = field(default_factory=FunctionCodes)
+
+    @property
+    def main_firmware_version(self) -> str:
+        """The main firmware version: what the app stores as ``device_current_version_<name>``."""
+        device_firmwares = getattr(self, "device_firmwares", None)
+        if version := getattr(device_firmwares, "device_version", ""):
+            return str(version)
+        return str(getattr(self, "device_version", "") or "")
+
+    def supports_function_code(self, code: str) -> bool:
+        """Return True when the cloud lists *code* for this device's current firmware.
+
+        Mirrors ``FunctionsConfigFacade.hasFunctionCode``: a set fetched for another
+        firmware is a miss, so it answers False until the current one is fetched.
+        """
+        return self.function_codes.supports(code, self.main_firmware_version)
 
     def has_live_ota_push(self) -> bool:
         """Return True when a device-pushed OTA frame is recent enough to still be trusted.

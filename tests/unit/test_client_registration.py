@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from http import HTTPStatus
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountSession
+from pymammotion.auth.token_manager import TokenManager
 from pymammotion.client import MammotionClient, _CloudBinding
+from pymammotion.data.model.device import MowerDevice
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.transport.base import TransportAvailability, TransportType
 from pymammotion.transport.ble import BLETransport
-from tests._helpers import make_mock_mowing_device, make_mock_transport
+from tests._helpers import make_account_session, make_mock_mowing_device, make_mock_transport, wait_until
+from tests.unit._helpers import make_http_posting
 
 NAME = "Luba-ADOPT"
+#: Upper bound on draining the watchers' background fetches; only reached if one hangs.
+_DRAIN_BOUND_S = 1.0
 
 
 def _cloud(transport: MagicMock | None = None, *, iot_id: str = "iot-1", token_manager: MagicMock | None = None) -> _CloudBinding:
@@ -79,6 +86,36 @@ async def test_cloud_login_adopts_ble_only_handle(client: MammotionClient) -> No
     assert adopted.prefer_ble is True
     assert session.device_ids == {NAME}
     assert len(client._device_registry.all_devices) == 1
+
+
+@pytest.mark.regression
+async def test_an_adopted_ble_only_handle_fetches_its_function_set(client: MammotionClient) -> None:
+    """With no login the function-code watcher spent its one attempt on a fetch that could not run,
+    and adoption by an account never offered the pair again, so the set was never fetched."""
+    device = MowerDevice(name=NAME)
+    device.device_firmwares.device_version = "1.12.3.10"
+    device.mower_state.product_key = "pk"
+    ble_handle = await client.add_ble_only_device(NAME, NAME, device, ble_address="AA:BB:CC:DD:EE:FF")
+    client.setup_device_watchers(NAME)
+    await ble_handle.emit_state_changed(ble_handle.snapshot)
+    await asyncio.wait_for(client._watchers.drain(), _DRAIN_BOUND_S)
+    body = {
+        "code": 0,
+        "msg": "success",
+        "data": {"productKey": "pk", "productVersion": "1.12.3.10", "functions": [{"id": "0", "functionCode": "002.002"}]},
+    }
+    http, http_session = make_http_posting(HTTPStatus.OK.value, body)
+    session = make_account_session("acct", http=http, token_manager=create_autospec(TokenManager, instance=True))
+    await client.account_registry.register(session)
+    http_session.post.assert_not_awaited()
+
+    await client._ensure_device_handle(
+        acct_session=session, device_id=NAME, device_name=NAME, initial_device=make_mock_mowing_device(), cloud=_cloud()
+    )
+
+    await wait_until(lambda: ble_handle.snapshot.raw.function_codes.codes == ["002.002"])
+    await asyncio.wait_for(client._watchers.drain(), _DRAIN_BOUND_S)
+    http_session.post.assert_awaited_once()
 
 
 async def test_registering_twice_on_the_same_account_is_idempotent(client: MammotionClient) -> None:
@@ -188,7 +225,7 @@ async def test_move_ble_to_account_hands_over_without_disconnecting(client: Mamm
 
 async def test_sign_out_rekeys_ble_owner_to_sentinel_and_stops_cloud_only_handles(client: MammotionClient) -> None:
     session = _session()
-    await client._account_registry.register(session)
+    await client.account_registry.register(session)
     shared = make_mock_transport(TransportType.CLOUD_MAMMOTION, availability=TransportAvailability.UNKNOWN)
     session.mammotion_transport = shared
     hybrid = await client._ensure_device_handle(
@@ -214,13 +251,13 @@ async def test_sign_out_rekeys_ble_owner_to_sentinel_and_stops_cloud_only_handle
     assert cloud_only.is_started is False
     assert client._device_registry.get_any("Luba-CO") == []
     assert session.device_ids == set()
-    assert client._account_registry.all_sessions == []
+    assert client.account_registry.all_sessions == []
     assert not shared.add_availability_listener.call_args_list or shared.remove_availability_listener.call_count == 2
 
 
 async def test_quiesce_detaches_cloud_but_keeps_the_account_key(client: MammotionClient) -> None:
     session = _session()
-    await client._account_registry.register(session)
+    await client.account_registry.register(session)
     shared = make_mock_transport(TransportType.CLOUD_MAMMOTION, availability=TransportAvailability.UNKNOWN)
     session.mammotion_transport = shared
     hybrid = await client._ensure_device_handle(

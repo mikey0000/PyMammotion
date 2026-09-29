@@ -77,6 +77,9 @@ _RPT_ACK_TIMEOUT: float = 5.0
 #: gets polled for data it just sent.
 _REPORT_SNAPSHOT_DEBOUNCE: float = 15.0
 
+#: Server function code the app gates remote driving (manual movement over the cloud) on.
+_REMOTE_DRIVE_FUNCTION_CODE = "002.002"
+
 #: Channels sent in one-shot (count=1) polls AND in the BLE continuous stream.
 _REPORT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
@@ -362,8 +365,13 @@ class DeviceHandle:
         command = MammotionCommand(self.device_name, self.user_account)
         # NAV routing (get_msg_device) keys off this; without it every device falls
         # back to name-only detection.
-        command.set_device_product_key(self.product_key or self._reported_product_key())
+        command.set_device_product_key(self.resolved_product_key)
         return command
+
+    @property
+    def resolved_product_key(self) -> str:
+        """The cloud product key, else the one the device reported itself."""
+        return self.product_key or self._reported_product_key()
 
     def _reported_product_key(self) -> str:
         """Product key as the device itself reported it (``net.toapp_wifi_iot_status``).
@@ -2198,6 +2206,22 @@ class DeviceHandle:
     def ble_heartbeat_failures(self, value: int) -> None:
         """Setter so the BLE loop can update the counter without reaching into ``_ble_heartbeat_failures`` directly."""
         self._ble_heartbeat_failures = value
+
+    def supports_wifi_movement(self) -> bool:
+        """Whether the mower accepts manual movement over the cloud, from its live state.
+
+        A model in the release note's family tables follows its firmware threshold
+        (:meth:`DeviceType.supports_wifi_movement`); any other mower needs the server's
+        function list, fetched for its current firmware, to include ``002.002`` — the
+        app's own gate.  Non-mowers never qualify.
+        """
+        product_key = self.resolved_product_key
+        device = self.snapshot.raw
+        if DeviceType.has_wifi_movement_threshold(self.device_name, product_key):
+            return DeviceType.supports_wifi_movement(self.device_name, device.main_firmware_version, product_key)
+        if self._is_rtk or self._is_swimming_pool:
+            return False
+        return device.supports_function_code(_REMOTE_DRIVE_FUNCTION_CODE)
 
     @property
     def has_usable_transport(self) -> bool:

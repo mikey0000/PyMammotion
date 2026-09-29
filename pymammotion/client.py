@@ -56,6 +56,7 @@ from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.client_auth import _AUTH_REJECTED, CloudAuthMixin
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowerDevice, MowingDevice, RTKBaseStationDevice, create_device
+from pymammotion.data.model.function_codes import FunctionCodes
 from pymammotion.data.model.generate_geojson import (
     apply_area_geojson,
     apply_device_mow_progress_geojson,
@@ -178,6 +179,8 @@ class MammotionClient(CloudAuthMixin):
             start_map_sync=self.start_map_sync,
             start_plan_sync=self.start_plan_sync,
             start_mow_path_saga=self.start_mow_path_saga,
+            refresh_function_codes=self.refresh_function_codes,
+            function_codes_ready=lambda handle: self._function_codes_http(handle) is not None,
         )
         self._ha_version: str | None = ha_version
         #: Fired when all automatic auth recovery attempts (relogin, token refresh,
@@ -674,6 +677,53 @@ class MammotionClient(CloudAuthMixin):
         except Exception:
             _logger.warning("fetch_rtk_properties: failed for %s", device_name, exc_info=True)
 
+    async def refresh_function_codes(
+        self, device_name: str, *, force: bool = False, account_id: str | None = None
+    ) -> bool:
+        """Fetch the cloud's function set for the device's product key and firmware, and store it.
+
+        Mirrors the app's ``FunctionsConfigRepository``: the set is cached per
+        ``(productKey, productVersion)`` with no expiry, so nothing is requested while the
+        stored set matches unless *force* is given.  Returns True when a set was stored.
+        Failures are logged and leave the state alone; this path never refreshes a token.
+
+        Raises:
+            UnauthorizedExceptionError: The server rejected the access token.
+            ReLoginRequiredError: The account's login is already known to be dead.
+
+        """
+        handle = self._device_registry.get_by_name(device_name, account_id)
+        if handle is None:
+            return False
+        product_key = handle.resolved_product_key
+        firmware = handle.snapshot.raw.main_firmware_version
+        if not (product_key and firmware):
+            return False
+        if not force and handle.snapshot.raw.function_codes.is_current_for(product_key, firmware):
+            return False
+        if (http := self._function_codes_http(handle)) is None:
+            return False
+        try:
+            response = await http.get_product_version_functions(product_key, firmware)
+        except _AUTH_REJECTED:
+            raise
+        except Exception:
+            _logger.warning("refresh_function_codes: fetch failed for %s", device_name, exc_info=True)
+            return False
+        if response.code != 0 or response.data is None:
+            _logger.debug("refresh_function_codes: '%s' answered %s", device_name, response)
+            return False
+        stored = FunctionCodes(product_key=product_key, product_version=firmware, codes=response.data.codes())
+        snapshot, _ = handle.state_machine.apply(
+            dataclasses.replace(handle.snapshot.raw, function_codes=stored), handle.availability
+        )
+        await handle.emit_state_changed(snapshot)
+        return True
+
+    def _function_codes_http(self, handle: DeviceHandle) -> MammotionHTTP | None:
+        session = self._get_session_for_handle(handle) or self._get_default_session()
+        return session.mammotion_http if session is not None else None
+
     async def apply_device_properties(self, device_name: str, properties: ThingPropertiesMessage) -> None:
         """Apply a thing/properties message to the named device's state machine.
 
@@ -809,6 +859,7 @@ class MammotionClient(CloudAuthMixin):
         account_id = BLE_ONLY_ACCOUNT if acct_session is None else acct_session.account_id
         registry = self._device_registry
         handle = registry.get(account_id, device_id)
+        existing = handle
         if handle is None and cloud is not None and (orphan := registry.get(BLE_ONLY_ACCOUNT, device_id)) is not None:
             await registry.rekey(orphan, account_id)
             handle = orphan
@@ -870,6 +921,9 @@ class MammotionClient(CloudAuthMixin):
 
         if not handle.is_started:
             await handle.start()
+        if cloud is not None and not created and existing is None:
+            # Adopted onto the account: re-offer the snapshot so work deferred for want of a login runs now.
+            await handle.emit_state_changed(handle.snapshot)
         return handle
 
     async def _detach_cloud_from_account(self, session: AccountSession, *, rekey: bool) -> None:

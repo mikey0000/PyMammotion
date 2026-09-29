@@ -1,4 +1,4 @@
-"""The ``device-server/v1`` endpoints: the paged error-code table and the product list.
+"""The ``device-server/v1`` endpoints: the paged error-code table, the product list and the function set.
 
 These sit under a different prefix from the rest of the client — the CSV export in
 ``get_all_error_codes`` is ``user-server`` — and they share one POST helper, so their
@@ -232,6 +232,41 @@ async def test_a_401_on_the_product_list_is_raised() -> None:
 
     with pytest.raises(UnauthorizedExceptionError):
         await http.get_product_list()
+
+
+async def test_the_function_list_sends_the_apps_body_and_parses_codes() -> None:
+    body = {
+        "code": 0,
+        "msg": "success",
+        "data": {
+            "productKey": "a1BmXWlsdbA",
+            "productVersion": "1.12.3.10",
+            "functions": [{"id": "1", "functionCode": "002.002"}, {"id": "2", "functionCode": "003.001"}],
+        },
+    }
+    http, session = make_http_posting(HTTPStatus.OK.value, body)
+
+    response = await http.get_product_version_functions("a1BmXWlsdbA", "1.12.3.10")
+
+    assert response.data is not None and response.data.codes() == ["002.002", "003.001"]
+    assert session.post.await_args.args[0].endswith("/device-server/v1/product-version-function/list")
+    assert session.post.await_args.kwargs["json"] == {"productKey": "a1BmXWlsdbA", "productVersion": "1.12.3.10"}
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (HTTPStatus.UNAUTHORIZED.value, {"code": 401, "msg": "unauthorized"}),
+        (HTTPStatus.OK.value, {"code": 401, "msg": "unauthorized"}),
+    ],
+    ids=["status-401", "in-body-401"],
+)
+async def test_a_401_on_the_function_list_is_raised(status: int, body: dict) -> None:
+    """An empty function set would otherwise read as "this firmware supports nothing"."""
+    http, _ = make_http_posting(status, body)
+
+    with pytest.raises(UnauthorizedExceptionError):
+        await http.get_product_version_functions("pk", "1.0.0")
 
 
 async def test_a_page_returning_more_rows_than_asked_for_terminates() -> None:
