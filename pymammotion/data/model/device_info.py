@@ -68,6 +68,18 @@ class ChargeSettings(DataClassORJSONMixin):
     bat_cycle_times: int = 0
     bat_health_state: int = 0
 
+    @property
+    def reported(self) -> bool:
+        """Whether the device has sent these settings: it always reports a limit of 80-100."""
+        return self.charge_limit != 0
+
+
+#: ``nav_sys_param_cmd`` context on ids 14 and 15 that leaves the level to the mower.
+SMART_CHARGE_LEVEL = -1
+#: The app's slider bounds, in percent, for ids 14 (return to charge at) and 15 (resume mowing at).
+RECHARGE_LEVEL_RANGE = range(15, 31)
+RESUME_LEVEL_RANGE = range(40, 101)
+
 
 @dataclass
 class MowerInfo(DataClassORJSONMixin):
@@ -103,6 +115,8 @@ class MowerInfo(DataClassORJSONMixin):
     battery_hardware: str = ""  # thing/properties bmsHardwareVersion (e.g. "BW_BATTERY_25P_6S1P")
     lamp_info: LampInfo = field(default_factory=LampInfo)
     charge_settings: ChargeSettings = field(default_factory=ChargeSettings)
+    recharge_level: int = 0  # ID 14 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
+    resume_level: int = 0  # ID 15 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
 
 
 @dataclass

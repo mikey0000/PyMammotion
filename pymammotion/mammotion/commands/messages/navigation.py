@@ -5,6 +5,7 @@ import logging
 import time
 
 from pymammotion.data.model import GenerateRouteInformation
+from pymammotion.data.model.device_info import RECHARGE_LEVEL_RANGE, RESUME_LEVEL_RANGE, SMART_CHARGE_LEVEL
 from pymammotion.data.model.generate_route_information import ADVANCED_TASK_SETTINGS
 from pymammotion.data.model.hash_list import Plan, SvgMessage, encode_auto_change_direction
 from pymammotion.data.model.region_data import RegionData
@@ -39,6 +40,14 @@ from pymammotion.proto import (
 from pymammotion.utility.device_type import DeviceType
 
 logger = logging.getLogger(__name__)
+
+
+def _checked_charge_level(level: int, allowed: range) -> int:
+    """Return *level* if the app could send it, else raise ``ValueError``."""
+    if level != SMART_CHARGE_LEVEL and level not in allowed:
+        msg = f"charge level {level} is neither smart ({SMART_CHARGE_LEVEL}) nor {allowed.start}-{allowed.stop - 1}"
+        raise ValueError(msg)
+    return level
 
 
 class MessageNavigation(AbstractMessage, ABC):
@@ -970,6 +979,28 @@ class MessageNavigation(AbstractMessage, ABC):
         """Write the animal-avoidance setting; ``context`` carries the value to apply."""
         build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=12, context=context, rw=1))
         logger.debug(f"Send command - Set animal avoidance context={context}")
+        return self.send_order_msg_nav(build)
+
+    def read_recharge_level(self) -> bytes:
+        """Read the battery level the mower returns to charge at (id 14)."""
+        return self._charge_level_param(14, 0, 0)
+
+    def set_recharge_level(self, level: int) -> bytes:
+        """Set the return-to-charge level: a percent in ``RECHARGE_LEVEL_RANGE`` or ``SMART_CHARGE_LEVEL``."""
+        return self._charge_level_param(14, _checked_charge_level(level, RECHARGE_LEVEL_RANGE), 1)
+
+    def read_resume_level(self) -> bytes:
+        """Read the battery level the mower resumes mowing at (id 15)."""
+        return self._charge_level_param(15, 0, 0)
+
+    def set_resume_level(self, level: int) -> bytes:
+        """Set the resume-mowing level: a percent in ``RESUME_LEVEL_RANGE`` or ``SMART_CHARGE_LEVEL``."""
+        return self._charge_level_param(15, _checked_charge_level(level, RESUME_LEVEL_RANGE), 1)
+
+    def _charge_level_param(self, param_id: int, context: int, rw: int) -> bytes:
+        # The app sends ids 14/15 on nav_sys_param_cmd on every device (setRechargeAndContinueWorking).
+        build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=param_id, context=context, rw=rw))
+        logger.debug(f"Send command - charge level id={param_id} context={context} rw={rw}")
         return self.send_order_msg_nav(build)
 
     # === Radar test ===

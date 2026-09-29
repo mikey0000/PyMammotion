@@ -138,17 +138,19 @@ class MessageSystem(AbstractMessage, ABC):
         self,
         smart_charge: bool,
         charge_limit: int,
-        peak_valley_charge: bool = False,
-        valley_charge_start_time: int = 0,
-        valley_charge_end_time: int = 0,
+        *,
+        peak_valley_charge: bool,
+        valley_charge_start_time: int,
+        valley_charge_end_time: int,
     ) -> bytes:
         """Set the battery charge limit and off-peak charging window.
 
         Mirrors ``MACommandHelper.setBatteryInfo``: ``smart_charge_switch`` is 0 for
         smart charging and 1 for a fixed ``charge_limit`` (percent, 80-100 in the
         app), which is forced to 100 while smart charging is on.  The message
-        carries every setting, so callers must pass the current off-peak values or
-        they are overwritten.  Times are minutes since midnight.
+        carries every setting, so the off-peak values are required: pass the ones
+        last read, or the device's window is overwritten.  Times are minutes since
+        midnight.
         """
         bms_info = BmsCtrlInfoMsg(
             smart_charge_switch=0 if smart_charge else 1,

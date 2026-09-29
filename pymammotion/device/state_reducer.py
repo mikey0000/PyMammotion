@@ -474,6 +474,8 @@ class MowerStateReducer(StateReducer):
                 # 11   collect_grass_enable           0=disabled, 1=enabled
                 # 12   animal_protection.mode         0/1/2 (mode enum)
                 # 13   animal_protection.status       0=disabled, 1=enabled
+                # 14   recharge_level                 percent 15-30 (return to charge at), -1=smart
+                # 15   resume_level                   percent 40-100 (resume mowing at), -1=smart
                 # 20   grass-catcher bin open/close   0=close, 1=open (transient action, no state)
                 settings: NavSysParamMsg = nav_msg[1]  # type: ignore
                 match settings.id:
@@ -495,6 +497,10 @@ class MowerStateReducer(StateReducer):
                             device.mower_state.animal_protection.status = 0
                     case 13:
                         device.mower_state.animal_protection.status = settings.context
+                    case 14:
+                        device.mower_state.recharge_level = settings.context
+                    case 15:
+                        device.mower_state.resume_level = settings.context
             case "todev_unable_time_set":
                 nav_non_work_time: NavUnableTimeSet = nav_msg[1]  # type: ignore
                 device.non_work_hours.non_work_sub_cmd = nav_non_work_time.sub_cmd  # type: ignore

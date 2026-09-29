@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import betterproto2
+import pytest
 
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.proto import BmsCtrlInfoMsg, LubaMsg, MsgAttr, MsgCmdType
@@ -43,7 +44,29 @@ def test_set_battery_info_custom_limit_uses_inverted_smart_switch() -> None:
 
 def test_set_battery_info_smart_forces_threshold_to_100() -> None:
     """The app overwrites the threshold with 100 whenever smart charging is on."""
-    _, info = _bms_info(MammotionCommand("Luba-VS6ABCDE", 1).set_battery_info(smart_charge=True, charge_limit=80))
+    _, info = _bms_info(
+        MammotionCommand("Luba-VS6ABCDE", 1).set_battery_info(
+            smart_charge=True,
+            charge_limit=80,
+            peak_valley_charge=False,
+            valley_charge_start_time=1320,
+            valley_charge_end_time=360,
+        )
+    )
     assert info.smart_charge_switch == 0
     assert info.charge_soc_threshold == 100
     assert info.peak_valley_charge_switch == 0
+
+
+@pytest.mark.regression
+def test_set_battery_info_refuses_to_default_the_off_peak_window() -> None:
+    """The window defaulted to 0/0, so a caller that left it out reset the device's real one.
+
+    ``bms_ctrl_info_msg`` carries every battery setting; a write built without the
+    values last read sent 00:00-00:00 over, e.g., the 22:00-06:00 (1320/360) window.
+    """
+    command = MammotionCommand("Luba-VS6ABCDE", 1)
+    with pytest.raises(TypeError):
+        command.set_battery_info(smart_charge=False, charge_limit=90)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        command.set_battery_info(False, 90, True, 1320, 360)  # type: ignore[misc]

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pymammotion.data.model.device import MowerDevice
 from pymammotion.device.state_reducer import MowerStateReducer
-from pymammotion.proto import BmsCtrlInfoMsg, LubaMsg, MctlSys
+from pymammotion.proto import BmsCtrlInfoMsg, LubaMsg, MctlNav, MctlSys, NavSysParamMsg
 from tests.unit.device._helpers import make_reducer_device as _make_device
 
 _ALL_FIELDS = ("map", "work", "mower_state", "non_work_hours", "work_session_result")
@@ -54,3 +56,20 @@ def test_bms_ctrl_info_smart_charge_switch_zero_means_smart_on() -> None:
     updated = reducer.apply(_make_device(), msg)
     assert updated.mower_state.charge_settings.smart_charge is True
     assert updated.mower_state.charge_settings.charge_limit == 100
+
+
+@pytest.mark.parametrize(
+    ("param_id", "context", "field"),
+    [(14, 25, "recharge_level"), (14, -1, "recharge_level"), (15, 60, "resume_level"), (15, -1, "resume_level")],
+)
+def test_nav_sys_param_charge_levels_update_mower_state(param_id: int, context: int, field: str) -> None:
+    """Ids 14 (return to charge at) and 15 (resume mowing at) are percentages, -1 meaning smart."""
+    reducer = MowerStateReducer()
+    current = _make_device()
+    msg = LubaMsg(nav=MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=param_id, context=context, rw=0)))
+
+    updated = reducer.apply(current, msg)
+
+    _assert_sharing(current, updated, copied_fields=("mower_state",))
+    assert getattr(updated.mower_state, field) == context
+    assert getattr(current.mower_state, field) == 0
