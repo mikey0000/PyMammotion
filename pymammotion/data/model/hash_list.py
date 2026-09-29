@@ -982,7 +982,7 @@ class HashList(DataClassORJSONMixin):
             self.current_mow_path[transaction_id] = {}
         self.current_mow_path[transaction_id][path.current_frame] = path
 
-    def upsert_edge_frame(
+    def upsert_edge_frame(  # noqa: PLR0917
         self,
         hash_key: int,
         action: int,

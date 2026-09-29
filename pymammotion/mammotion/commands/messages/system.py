@@ -250,7 +250,7 @@ class MessageSystem(AbstractMessage, ABC):
 
     # === sendOrderMsg_Sys2 ===
 
-    def request_iot_sys(
+    def request_iot_sys(  # noqa: PLR0917
         self,
         rpt_act: RptAct,
         rpt_info_type: list[RptInfoType],

@@ -14,7 +14,6 @@ from mashumaro.exceptions import InvalidFieldValue, MissingField
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
-from pymammotion.data.model.device import MowerDevice
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
@@ -44,7 +43,6 @@ from pymammotion.transport.base import (
     TransportError,
     TransportType,
 )
-from pymammotion.transport.ble import BLETransport
 from pymammotion.transport.cloud import CloudTransport
 from pymammotion.utility.constant.device_enums import WorkMode
 from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES, NO_REQUEST_MODES
@@ -94,12 +92,13 @@ _REPORT_CHANNELS: list[RptInfoType] = [
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from pymammotion.data.model.device import Device, MowingDevice
+    from pymammotion.data.model.device import Device, MowerDevice, MowingDevice
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.device.readiness import ReadinessChecker, ReadinessStatus
     from pymammotion.messaging.saga import Saga
+    from pymammotion.transport.ble import BLETransport
 
 _logger = logging.getLogger(__name__)
 

@@ -202,7 +202,7 @@ class Subscription:
         self.cancel()
 
 
-class EventBus(Generic[T]):
+class EventBus(Generic[T]):  # noqa: UP046
     """Type-safe event bus with RAII subscriptions.
 
     Handlers are called concurrently on emit(). An exception in one handler

@@ -832,7 +832,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     # === Visual safety zones (manual elements) ===
 
-    def add_manual_element(
+    def add_manual_element(  # noqa: PLR0917
         self,
         shape: int,
         type: int,
@@ -877,7 +877,7 @@ class MessageNavigation(AbstractMessage, ABC):
 
     # === Edgewise mapping response ===
 
-    def response_edgewise_mapping(
+    def response_edgewise_mapping(  # noqa: PLR0917
         self, action: int, hash_num: int, result: int, type: int, total_frame: int, current_frame: int
     ) -> bytes:
         """Acknowledge edgewise mapping data received from device."""
