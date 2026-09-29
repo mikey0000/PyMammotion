@@ -33,6 +33,7 @@ from pymammotion.proto import (
     SvgMessageT,
     VisionCtrlMsg,
     WorkReportCmdData,
+    WorkReportStartWorkingMsg,
     WorkReportUpdateCmd,
 )
 from pymammotion.utility.device_type import DeviceType
@@ -346,6 +347,19 @@ class MessageNavigation(AbstractMessage, ABC):
     def request_job_history(self, num: int) -> bytes:
         """Fetch up to num historical mowing job records from the device."""
         return self.send_order_msg_nav(MctlNav(todev_work_report_cmd=WorkReportCmdData(sub_cmd=1, get_info_num=num)))
+
+    def continue_last_job(self, work_id: int) -> bytes:
+        """Resume the interrupted job ``work_id``, the ``workId`` of the cloud's latest work report.
+
+        The device echoes the message back with ``result`` set.
+        """
+        build = MctlNav(
+            todev_work_report_start_working_msg=WorkReportStartWorkingMsg(
+                account_id=self.user_account, work_id=work_id, stamp=round(time.time() * 1000), result=1
+            )
+        )
+        logger.debug(f"Send command - continue last job work_id={work_id}")
+        return self.send_order_msg_nav(build)
 
     def leave_dock(self) -> bytes:
         """Send one-touch command to automatically undock the mower from the charging station."""

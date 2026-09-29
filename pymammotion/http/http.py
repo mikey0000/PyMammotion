@@ -56,6 +56,7 @@ from pymammotion.http.model.map_backup import (
 from pymammotion.http.model.product_params import ProductParamData
 from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
+from pymammotion.http.model.work_report import WorkReportPage
 from pymammotion.transport.base import AuthError, ReLoginRequiredError
 
 if TYPE_CHECKING:
@@ -869,6 +870,22 @@ class MammotionHTTP:
         """Delete a stored backup."""
         return await self._request_device_server(
             f"/device-server/v1/map/backup/{biz_id}", Response[bool], "map backup delete", method="DELETE"
+        )
+
+    @refresh_token_decorator
+    async def get_work_report_page(
+        self, device_name: str, page_number: int = 1, page_size: int = 10
+    ) -> Response[WorkReportPage]:
+        """Fetch one page of *device_name*'s job history, newest first.
+
+        The app's ``CommonApiService.getReportsByPage``; its report list asks for
+        pages of 10.  ``records[0]`` is the job "continue last job" resumes.
+        """
+        return await self._request_device_server(
+            "/device-server/v1/device/work-report/page",
+            Response[WorkReportPage],
+            "work report page",
+            payload={"deviceName": device_name, "pageNumber": page_number, "pageSize": page_size},
         )
 
     @refresh_token_decorator

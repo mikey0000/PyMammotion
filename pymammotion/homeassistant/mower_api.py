@@ -419,6 +419,13 @@ class HomeAssistantMowerApi:
         """Start task."""
         await self.async_send_command(device_name, "single_schedule", plan_id=plan_id)
 
+    async def async_continue_last_job(self, device_name: str, work_id: int) -> bool | None:
+        """Resume the interrupted job ``work_id`` (the latest cloud work report's ``workId``).
+
+        The app offers this only in standby (MODE_READY) with at least 30 % battery.
+        """
+        return await self.async_send_command(device_name, "continue_last_job", work_id=work_id)
+
     # ------------------------------------------------------------------
     # Task / schedule CRUD — mower (Luba / Yuka).  See
     # ``docs/tasks_and_schedules.md`` § 1 for the wire protocol.

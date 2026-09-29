@@ -70,7 +70,7 @@ from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.inbound_router import InboundRouter
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.device.state_reducer import apply_rtk_coordinate
-from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection
+from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection, UnauthorizedExceptionError
 from pymammotion.messaging.command_queue import Priority, execute_command
 from pymammotion.messaging.common_data_saga import CommonDataSaga
 from pymammotion.messaging.edge_saga import EdgeMappingSaga
@@ -134,6 +134,7 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.properties import ThingPropertiesMessage
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.http.http import MammotionHTTP
+    from pymammotion.http.model.work_report import WorkReportRecord
     from pymammotion.transport.base import Transport
     from pymammotion.transport.ble import BLETransport
 
@@ -2008,6 +2009,39 @@ class MammotionClient(CloudAuthMixin):
             return False
         handle.record_user_command()
         return True
+
+    async def get_latest_work_report(self, device_name: str, account_id: str | None = None) -> WorkReportRecord | None:
+        """Return the device's newest job-history record, the one "continue last job" resumes.
+
+        A cloud HTTP call (``device-server/v1/device/work-report/page``) made on demand;
+        nothing polls it.  ``record.can_resume`` is the app's resume-button rule and
+        ``record.resume_work_id`` the id ``continue_last_job`` takes.
+
+        Returns ``None`` when the device has no owning cloud account, no jobs, or the
+        server answers with an error code.
+
+        Raises:
+            UnauthorizedExceptionError: The token was still rejected after one refresh.
+            ReLoginRequiredError: The account's login is dead; re-authentication is required.
+            Transient network errors propagate as-is, so they never read as "no jobs".
+
+        """
+        handle = self.mower(device_name, account_id)
+        session = self._get_session_for_handle(handle) if handle is not None else None
+        if handle is None or session is None or (http := session.mammotion_http) is None:
+            return None
+        sent_with_token = http.login_info.access_token if http.login_info is not None else None
+        try:
+            response = await http.get_work_report_page(handle.device_name)
+        except UnauthorizedExceptionError:
+            if session.token_manager is None:
+                raise
+            await session.token_manager.refresh_invoke_token(stale_token=sent_with_token)
+            response = await http.get_work_report_page(handle.device_name)
+        if response.code != 0 or response.data is None:
+            _logger.warning("get_latest_work_report: '%s' failed: %s", device_name, response)
+            return None
+        return response.data.records[0] if response.data.records else None
 
     @property
     def cloud_http(self) -> MammotionHTTP | None:
