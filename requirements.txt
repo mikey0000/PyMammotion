@@ -96,7 +96,7 @@ pure-eval==0.2.3
 pycparser==3.0
 pygments==2.20.0
 pyjoystick==1.2.4
-pyjwt==2.12.1
+pyjwt==2.15.1
 pylint==4.0.5
 -e file:///home/michael/git/Luba-API
 pymap3d==3.2.0
@@ -131,7 +131,7 @@ types-protobuf==6.32.1.20260221
 typing-extensions==4.15.0
 tzlocal==5.3.1
 uart-devices==0.1.1
-urllib3==2.6.3
+urllib3==2.8.0
 usb-devices==0.4.5
 virtualenv==21.2.4
 vulture==2.16
