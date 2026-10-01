@@ -377,7 +377,9 @@ class MammotionClient(CloudAuthMixin):
         if handle := self._device_registry.get_by_name(device_name):
             await handle.start_report_stream(duration_ms)
 
-    async def ensure_fresh_state(self, device_name: str, *, max_age_s: float = 120.0, wait: bool = False) -> None:
+    async def ensure_fresh_state(
+        self, device_name: str, *, max_age_s: float = 120.0, wait: bool = False, account_id: str | None = None
+    ) -> None:
         """Request a one-shot snapshot if the last inbound report is older than ``max_age_s`` seconds.
 
         Intended for use at the top of user-action handlers (start/dock/pause/cancel)
@@ -386,18 +388,23 @@ class MammotionClient(CloudAuthMixin):
         With ``wait=False`` (the default) it is fire-and-forget: a BACKGROUND queued
         poll that a running saga or the offline flag may skip.  With ``wait=True`` it is
         :meth:`refresh_status` — the user path, unqueued — and returns only once the
-        report has landed.
+        report has landed.  While a BLE continuous stream is live nothing is sent (a
+        count=1 RPT_START would reconfigure it); the wait is for the stream's next frame.
 
         Raises (``wait=True`` only):
             DeviceStateTimeoutError: the device sent no report within the RPT_START window.
             Exception: anything :meth:`refresh_status` raises.
 
         """
-        handle = self._device_registry.get_by_name(device_name)
+        handle = self._device_registry.get_by_name(device_name, account_id)
         if handle is None or time.monotonic() - handle.last_report_at <= max_age_s:
             return
         if not wait:
             await handle.request_report_snapshot()
+            return
+        if handle.ble_stream_active:
+            if not await handle.wait_for_next_report():
+                raise DeviceStateTimeoutError(device_name)
             return
         before = handle.last_report_data_at
         await self.refresh_status(device_name, handle.account_id)

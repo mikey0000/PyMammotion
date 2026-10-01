@@ -245,7 +245,7 @@ a rejected refresh token does not become valid by waiting.
 | account   | `refresh_token_v2` rejected      | `reauth_required`        | `ReLoginRequiredError`, `on_unrecoverable_auth_error` fires, host prompts |
 | transport | Aliyun/JWT unrenewable, login OK | `aliyun_unavailable` / `mqtt_unavailable` | that transport only; per-device bus signalled, global callback does **not** fire |
 | neither   | transient network error          | none                     | propagates by type (`is_transient_network_error`) so callers back off |
-| neither   | Aliyun bind_reply 2152 (account lock held by the app) | `AliyunMQTTTransport.account_in_use` | Aliyun unusable; retried every `ACCOUNT_IN_USE_RETRY_SEC`; `on_account_in_use_changed` fires per transition, no auth callback |
+| neither   | Aliyun bind_reply 2152 (account lock held by the app) | `AliyunMQTTTransport.account_in_use` | Aliyun unusable (a user send gets `AccountInUseError`); retried every `ACCOUNT_IN_USE_RETRY_SEC`; `on_account_in_use_changed` fires per transition and `False` on `disconnect()`, no auth callback |
 
 ---
 

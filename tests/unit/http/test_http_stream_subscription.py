@@ -64,7 +64,7 @@ class TestRedactSecrets:
         assert redact_secrets('{"code":50504,"msg":"device offline"}') == '{"code":50504,"msg":"device offline"}'
 
     def test_keeps_the_aliyun_identifiers(self) -> None:
-        body = '{"iotId":"iot-1","identityId":"identity-1","productKey":"pk-1","deviceName":"dn-1","vid":"vid-1"}'
+        body = '{"iotId":"iot-1","identityId":"identity-1","productKey":"pk-1","deviceName":"dn-1"}'
 
         assert redact_secrets(body) == body
 
@@ -85,10 +85,18 @@ class TestRedactSecrets:
             "sid",
             "uidToken",
             "authCode",
+            "vid",
         ],
     )
     def test_blanks_each_credential_key(self, key: str) -> None:
         assert redact_secrets(f'{{"{key}": "secret-value"}}') == f'{{"{key}":"<redacted>"}}'
+
+    @pytest.mark.regression
+    def test_blanks_a_value_holding_an_escaped_quote_entirely(self) -> None:
+        """``"[^"]*"`` stopped at the escaped quote and left the rest of the secret in the output."""
+        redacted = redact_secrets('{"token":"abc\\"def-tail","code":0}')
+
+        assert redacted == '{"token":"<redacted>","code":0}'
 
     @pytest.mark.parametrize("key", ["appId", "Token", "AccessToken", "REFRESH_TOKEN", "IotToken", "SID"])
     def test_matches_keys_in_any_case(self, key: str) -> None:

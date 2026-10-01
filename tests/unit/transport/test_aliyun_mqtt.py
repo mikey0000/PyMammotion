@@ -13,7 +13,7 @@ from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransp
 from pymammotion.transport.base import ReLoginRequiredError, TransportError, TransportType
 from tests._helpers import wait_until
 from tests.unit._helpers import make_aliyun_cloud_gateway, make_aliyun_session
-from tests.unit.transport._helpers import make_aliyun_config
+from tests.unit.transport._helpers import make_aliyun_config, make_bind_reply
 from tests.unit.transport._fakes import (
     AuthFailMQTTClient as _AuthFailMQTTClient,
     FakeMessage as _FakeMessage,
@@ -61,9 +61,9 @@ def test_is_connected_initially_false(transport: AliyunMQTTTransport) -> None:
 
 
 async def test_connect_sets_is_connected(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
-    """connect() should set is_connected to True once the MQTT loop is running."""
+    """connect() should set is_connected to True once the broker accepts the bind."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
-    fake_client = _FakeMQTTClient()
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(200)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
@@ -75,7 +75,7 @@ async def test_connect_sets_is_connected(config: AliyunMQTTConfig, cloud_gateway
 async def test_disconnect_sets_is_connected_false(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """disconnect() should leave is_connected as False."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
-    fake_client = _FakeMQTTClient()
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(200)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
@@ -87,7 +87,7 @@ async def test_disconnect_sets_is_connected_false(config: AliyunMQTTConfig, clou
 async def test_connect_idempotent(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """Calling connect() twice should not create a second task."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
-    fake_client = _FakeMQTTClient()
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(200)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
@@ -471,15 +471,6 @@ def test_update_iot_token_stores_new_value(config: AliyunMQTTConfig, cloud_gatew
     assert transport._config.iot_token == "tok"  # frozen config is not mutated
 
 
-# Helpers for bind_reply tests
-
-
-def _bind_reply_msg(code: int) -> _FakeMessage:
-    topic = "/sys/pk/dn/app/down/account/bind_reply"
-    payload = json.dumps({"code": code, "id": "msgid1", "message": "check iotToken failed" if code != 200 else "ok"}).encode()
-    return _FakeMessage(topic, payload)
-
-
 # bind_reply 2043 — SessionExpiredError cascade (transport level)
 
 
@@ -488,7 +479,7 @@ async def test_bind_reply_2043_no_callback_raises_relogin_required(
 ) -> None:
     """bind_reply 2043 with no on_auth_failure → ReLoginRequiredError propagates out of _run()."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
-    fake_client = _FakeMQTTClient(messages=[_bind_reply_msg(2043)])
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
         with pytest.raises(ReLoginRequiredError):
@@ -504,7 +495,7 @@ async def test_bind_reply_2043_callback_returns_false_raises_relogin_required(
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_auth_failure = AsyncMock(return_value=False)
 
-    fake_client = _FakeMQTTClient(messages=[_bind_reply_msg(2043)])
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
     with patch("aiomqtt.Client", return_value=fake_client):
         with pytest.raises(ReLoginRequiredError):
             await transport._run()
@@ -520,7 +511,7 @@ async def test_bind_reply_2043_callback_raises_nonfatal_exception_raises_relogin
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_auth_failure = AsyncMock(side_effect=RuntimeError("refresh exploded"))
 
-    fake_client = _FakeMQTTClient(messages=[_bind_reply_msg(2043)])
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
     with patch("aiomqtt.Client", return_value=fake_client):
         with pytest.raises(ReLoginRequiredError):
             await transport._run()
@@ -543,10 +534,10 @@ async def test_bind_reply_2043_callback_returns_true_reconnects(
 
     transport.on_auth_failure = _refresh
 
-    # First connect: sends 2043; second: blocks with no messages (cancelled by disconnect)
+    # First connect: sends 2043; second: the bind is accepted, then blocks (cancelled by disconnect)
     clients = [
-        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),
-        _FakeMQTTClient(messages=[]),
+        _FakeMQTTClient(messages=[make_bind_reply(2043)]),
+        _FakeMQTTClient(messages=[make_bind_reply(200)]),
     ]
 
     with patch("aiomqtt.Client", side_effect=clients):
@@ -577,7 +568,7 @@ async def test_bind_reply_2043_new_token_sent_on_reconnect(
 
     second_client = _FakeMQTTClient(messages=[])
     clients = [
-        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),
+        _FakeMQTTClient(messages=[make_bind_reply(2043)]),
         second_client,
     ]
 
@@ -607,7 +598,7 @@ async def test_bind_reply_200_no_auth_failure(
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_auth_failure = AsyncMock(return_value=True)
 
-    fake_client = _FakeMQTTClient(messages=[_bind_reply_msg(200)])
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(200)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
         await transport.connect()
@@ -740,7 +731,7 @@ async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_en
     session.mammotion_http.login_v2 = AsyncMock()
     session.mammotion_http.logout = AsyncMock()
 
-    fake_client = _FakeMQTTClient(messages=[_bind_reply_msg(2043)])
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
         with pytest.raises(ReLoginRequiredError):
@@ -773,7 +764,7 @@ async def test_bind_reply_2043_relogin_success_fires_on_fatal_auth_and_reconnect
     login_resp_fail.msg = "server error"
     session.mammotion_http.login_v2 = AsyncMock(return_value=login_resp_fail)
 
-    fake_client = _FakeMQTTClient(messages=[_bind_reply_msg(2043)])
+    fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
         with pytest.raises(ReLoginRequiredError):
@@ -836,7 +827,7 @@ async def test_bind_reply_2043_replay_is_bounded(config: AliyunMQTTConfig, cloud
 
     transport.on_fatal_auth_error = _fatal
 
-    clients = [_FakeMQTTClient(messages=[_bind_reply_msg(2043)]) for _ in range(10)]
+    clients = [_FakeMQTTClient(messages=[make_bind_reply(2043)]) for _ in range(10)]
 
     real_sleep = asyncio.sleep
 
@@ -864,12 +855,12 @@ async def test_accepted_bind_reply_resets_refresh_budget(config: AliyunMQTTConfi
     transport.on_fatal_auth_error = _fatal
 
     clients = [
-        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 1
-        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 2
-        _FakeMQTTClient(messages=[_bind_reply_msg(200), _bind_reply_msg(2043)]),  # accepted → reset; then cycle 1
-        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 2
-        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # cycle 3
-        _FakeMQTTClient(messages=[_bind_reply_msg(2043)]),  # budget exhausted → fatal
+        _FakeMQTTClient(messages=[make_bind_reply(2043)]),  # cycle 1
+        _FakeMQTTClient(messages=[make_bind_reply(2043)]),  # cycle 2
+        _FakeMQTTClient(messages=[make_bind_reply(200), make_bind_reply(2043)]),  # accepted → reset; then cycle 1
+        _FakeMQTTClient(messages=[make_bind_reply(2043)]),  # cycle 2
+        _FakeMQTTClient(messages=[make_bind_reply(2043)]),  # cycle 3
+        _FakeMQTTClient(messages=[make_bind_reply(2043)]),  # budget exhausted → fatal
     ]
 
     real_sleep = asyncio.sleep

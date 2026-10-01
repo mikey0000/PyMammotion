@@ -250,6 +250,11 @@ class CloudTransport(Transport, ABC):
         return max(cloud_remaining, quota_remaining)
 
     @property
+    def account_in_use(self) -> bool:
+        """True while another session holds the account lock; only the Aliyun broker has one."""
+        return False
+
+    @property
     def is_usable(self) -> bool:
         """False once an auth failure has been recorded on this transport.
 

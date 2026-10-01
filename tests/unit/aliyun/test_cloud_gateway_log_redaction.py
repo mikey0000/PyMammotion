@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from collections.abc import Awaitable, Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +18,7 @@ from Tea.response import TeaResponse
 
 from pymammotion.aliyun import cloud_gateway
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.aliyun.exceptions import CloudSetupError, FailedRequestException
+from pymammotion.aliyun.exceptions import CloudSetupError, FailedRequestException, LoginException
 from pymammotion.aliyun.model.connect_response import ConnectResponse
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.http.http import MammotionHTTP
@@ -33,6 +34,8 @@ _OAUTH_TOKEN = "SECRET-oauth-token-31cd"
 _OAUTH_REFRESH = "SECRET-oauth-refresh-c0de"
 _UID_TOKEN = "SECRET-uid-token-5e5e"
 _DEVICE_SECRET = "SECRET-device-secret-ab12"
+
+_VID = "SECRET-vid-0d0d"
 
 _IDENTITY_ID = "identity-visible-1"
 _IOT_ID = "iot-visible-1"
@@ -57,8 +60,8 @@ class _FakeGatewayClient:
 
 
 class _FakeAiohttpResponse:
-    def __init__(self, data: dict[str, Any]) -> None:
-        self.status = 200
+    def __init__(self, data: dict[str, Any], status: int = 200) -> None:
+        self.status = status
         self._data = data
 
     async def json(self) -> dict[str, Any]:
@@ -74,14 +77,15 @@ class _FakeAiohttpResponse:
 class _FakeClientSession:
     """Stands in for ``aiohttp.ClientSession`` on the openaccount endpoints, which bypass the Tea client."""
 
-    def __init__(self, data: dict[str, Any]) -> None:
+    def __init__(self, data: dict[str, Any], status: int = 200) -> None:
         self._data = data
+        self._status = status
 
     def __call__(self) -> _FakeClientSession:
         return self
 
     def post(self, *_args: object, **_kwargs: object) -> _FakeAiohttpResponse:
-        return _FakeAiohttpResponse(self._data)
+        return _FakeAiohttpResponse(self._data, self._status)
 
     async def __aenter__(self) -> _FakeClientSession:
         return self
@@ -97,7 +101,7 @@ def _connect_payload() -> dict[str, Any]:
         "api": "connect",
         "data": {
             **status,
-            "vid": "vid-1",
+            "vid": _VID,
             "data": {"device": {**status, "data": {"deviceId": "device-id-1"}}, "config": status},
         },
     }
@@ -110,7 +114,7 @@ def _login_by_oauth_payload() -> dict[str, Any]:
         "errorMsg": "",
         "data": {
             "traceId": "t",
-            "vid": "vid-1",
+            "vid": _VID,
             "code": 1,
             "subCode": 0,
             "message": "ok",
@@ -295,3 +299,59 @@ async def test_send_cloud_command_22000_error_log_omits_the_iot_token(caplog: py
         await gateway.send_cloud_command(_IOT_ID, b"\x00\x01")
 
     _assert_redacted(caplog, (_IOT_TOKEN,), (_IOT_ID,))
+
+
+@pytest.mark.parametrize(
+    ("call", "payload"),
+    [
+        (lambda gateway: gateway.connect(), _connect_payload),
+        (lambda gateway: gateway.login_by_oauth("GB"), _login_by_oauth_payload),
+    ],
+    ids=["connect", "login_by_oauth"],
+)
+async def test_openaccount_login_failure_omits_the_session_credentials_from_the_error(
+    call: Callable[[CloudIOTGateway], Awaitable[object]], payload: Callable[[], dict[str, Any]]
+) -> None:
+    """A non-200 openaccount response was raised as ``LoginException(data)``, its whole dict in the message."""
+    gateway = _gateway()
+
+    with (
+        patch.object(cloud_gateway, "ClientSession", _FakeClientSession(payload(), status=500)),
+        pytest.raises(LoginException) as excinfo,
+    ):
+        await call(gateway)
+
+    leaked = [secret for secret in (_VID, _SID, _OAUTH_TOKEN, _OAUTH_REFRESH, _UID_TOKEN) if secret in str(excinfo.value)]
+    assert not leaked, f"credentials reached the exception message: {leaked}"
+
+
+async def _get_uncached_region(gateway: CloudIOTGateway) -> object:
+    gateway._region_response = None  # noqa: SLF001 — _gateway() seeds the region the other calls need
+    return await gateway.get_region("GB")
+
+
+@pytest.mark.parametrize(
+    ("call", "error"),
+    [
+        (_get_uncached_region, CloudSetupError),
+        (lambda gateway: gateway.list_binding_by_account(), CloudSetupError),
+        (lambda gateway: gateway.get_device_properties(_IOT_ID), FailedRequestException),
+        (lambda gateway: gateway.get_device_status(_IOT_ID), FailedRequestException),
+    ],
+    ids=["get_region", "list_binding_by_account", "get_device_properties", "get_device_status"],
+)
+async def test_api_gateway_failure_omits_the_tokens_from_the_error(
+    call: Callable[[CloudIOTGateway], Awaitable[object]], error: type[Exception]
+) -> None:
+    """A non-200 body with no ``msg`` was formatted into the raised message unredacted."""
+    gateway = _gateway()
+    body = {"code": 500, "request": {"iotToken": _IOT_TOKEN}, "data": {"identityId": _IDENTITY_ID}}
+
+    with (
+        patch.object(cloud_gateway, "Client", return_value=_FakeGatewayClient(body)),
+        pytest.raises(error) as excinfo,
+    ):
+        await call(gateway)
+
+    assert _IOT_TOKEN not in str(excinfo.value)
+    assert _IDENTITY_ID in str(excinfo.value), "the redacted body must still be in the message"

@@ -20,6 +20,7 @@ from pymammotion.data.mqtt.status import Params, Status, StatusType, ThingStatus
 from pymammotion.messaging.command_queue import Priority
 from pymammotion.transport.ble import BLETransport
 from pymammotion.transport.base import (
+    AccountInUseError,
     NoTransportAvailableError,
     ReLoginRequiredError,
     TransportRateLimitedError,
@@ -385,6 +386,58 @@ async def test_a_connected_ble_wins_outright_so_the_flag_never_matters() -> None
     await handle.add_transport(mqtt)
     await handle.add_transport(ble)
     _cloud_says_offline(handle, mqtt)
+
+    await handle.send_raw(b"\x01", user_initiated=True)
+
+    ble.send.assert_awaited_once()
+    mqtt.send_user.assert_not_awaited()
+    await handle.stop()
+
+
+def _account_lock_held(mqtt: MagicMock) -> None:
+    """Shape the mock like an Aliyun transport refused with bind_reply 2152: healthy login, no session."""
+    mqtt.account_in_use = True
+    mqtt.is_usable = False
+
+
+async def test_a_user_command_while_another_session_holds_the_account_lock_says_so() -> None:
+    """Still refused, but with a reason the host can word: a generic "no transport" sends the user hunting."""
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
+    _account_lock_held(mqtt)
+    mqtt.send_user = AsyncMock()
+    handle = make_mock_handle(device_name="Luba-L1")
+    await handle.add_transport(mqtt)
+    client = await _client_with(handle)
+
+    with pytest.raises(AccountInUseError):
+        await client.send_command_with_args("Luba-L1", "start_job", priority=Priority.USER)
+
+    mqtt.send_user.assert_not_awaited()
+    await handle.stop()
+
+
+async def test_a_queued_command_while_the_account_lock_is_held_is_dropped_silently() -> None:
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
+    _account_lock_held(mqtt)
+    handle = make_mock_handle(device_name="Luba-L2")
+    await handle.add_transport(mqtt)
+    client = await _client_with(handle)
+
+    await client.send_command_with_args("Luba-L2", "start_job")  # must not raise
+
+    mqtt.send.assert_not_awaited()
+    await handle.stop()
+
+
+async def test_a_usable_ble_still_carries_a_user_command_while_the_account_lock_is_held() -> None:
+    """The lock is a cloud fact; refusing it must not cost the Bluetooth fallback."""
+    mqtt = make_mock_transport(TransportType.CLOUD_ALIYUN)
+    _account_lock_held(mqtt)
+    mqtt.send_user = AsyncMock()
+    ble = make_mock_transport(TransportType.BLE, connected=False)
+    handle = make_mock_handle(device_name="Luba-L3")
+    await handle.add_transport(mqtt)
+    await handle.add_transport(ble)
 
     await handle.send_raw(b"\x01", user_initiated=True)
 

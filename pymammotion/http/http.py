@@ -130,8 +130,9 @@ _SECRET_KEYS = (
     "sid",
     "uidToken",
     "authCode",
+    "vid",
 )
-_SECRET_VALUE_RE = re.compile(r'"(' + "|".join(_SECRET_KEYS) + r')"\s*:\s*"[^"]*"', re.IGNORECASE)
+_SECRET_VALUE_RE = re.compile(r'"(' + "|".join(_SECRET_KEYS) + r')"\s*:\s*"(?:[^"\\]|\\.)*"', re.IGNORECASE)
 
 
 def redact_secrets(body: str) -> str:

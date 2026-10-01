@@ -13,15 +13,18 @@ mower straight into the device registry as the other client tests do.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+import aiomqtt
 import pytest
 
 from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
-from tests._helpers import make_mock_handle
+from tests._helpers import make_mock_handle, wait_until
 from tests.unit._helpers import make_aliyun_session
+from tests.unit.transport._fakes import FakeMQTTClient
+from tests.unit.transport._helpers import make_bind_reply
 
 _ACCOUNT = "a@example.com"
 
@@ -78,3 +81,28 @@ async def test_account_lock_without_a_host_callback_is_a_no_op() -> None:
     await transport.on_account_in_use_changed(True)
 
     client.on_unrecoverable_auth_error.assert_not_awaited()
+
+
+@pytest.mark.regression
+async def test_signing_out_a_session_whose_account_lock_is_held_tells_the_host_it_ended() -> None:
+    """A re-login replaces the session without revoking it; the old transport's held lock must not outlive it.
+
+    The held state lived only on the transport, and nothing sent the ``held=False``
+    transition when it was torn down, so the host's account-in-use repair stayed up
+    for a session that no longer existed.
+    """
+    client, session, transport = make_aliyun_session(account_id=_ACCOUNT)
+    changes: list[tuple[str, bool]] = []
+
+    async def _on_change(account_id: str, held: bool) -> None:
+        changes.append((account_id, held))
+
+    client.on_account_in_use_changed = _on_change
+    locked = FakeMQTTClient(messages=[make_bind_reply(2152)])
+
+    with patch.object(aiomqtt, "Client", return_value=locked):
+        await transport.connect()
+        await wait_until(lambda: transport.account_in_use, message="the bind was never refused")
+        await client._sign_out_session(session, revoke=False)  # noqa: SLF001
+
+    assert changes == [(_ACCOUNT, True), (_ACCOUNT, False)]

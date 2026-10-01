@@ -263,7 +263,7 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code") or 0) != 200:
-            raise CloudSetupError(f"Error in getting regions: {response_body_dict}")
+            raise CloudSetupError(f"Error in getting regions: {_redacted(response_body_dict)}")
 
         self._region_response = RegionResponse.from_dict(response_body_dict)
         logger.debug("Endpoint: %s", self._region_response.data.mqttEndpoint)
@@ -392,7 +392,7 @@ class CloudIOTGateway:
                 if resp.status == 200:
                     self._connect_response = ConnectResponse.from_dict(data)
                     return self._connect_response
-                raise LoginException(data)
+                raise LoginException(_redacted(data))
 
     async def login_by_oauth(self, country_code: str):
         """Login by OAuth."""
@@ -465,7 +465,7 @@ class CloudIOTGateway:
                 if resp.status == 200:
                     self._login_by_oauth_response = LoginByOAuthResponse.from_dict(data)
                     return self._login_by_oauth_response
-                raise LoginException(data)
+                raise LoginException(_redacted(data))
 
     async def session_by_auth_code(self) -> SessionByAuthCodeResponse:
         """Create a session by auth code."""
@@ -708,9 +708,9 @@ class CloudIOTGateway:
 
         try:
             code = response_body_dict.get("code", -1)
-            msg = response_body_dict.get("msg") or response_body_dict.get("message") or str(response_body_dict)
+            msg = response_body_dict.get("msg") or response_body_dict.get("message") or _redacted(response_body_dict)
         except (AttributeError, TypeError):
-            raise CloudSetupError(f"Error listing devices by account: {response_body_dict}") from None
+            raise CloudSetupError(f"Error listing devices by account: {_redacted(response_body_dict)}") from None
         if int(code) != 200:
             account = getattr(self.mammotion_http, "account", "?")
             session = self._session_by_authcode_response
@@ -803,7 +803,9 @@ class CloudIOTGateway:
         response_body_dict = self.parse_json_response(response_body_str)
 
         if int(response_body_dict.get("code") or 0) != 200:
-            raise CloudSetupError(f"Error accepting share: {response_body_dict.get('msg', response_body_dict)}")
+            raise CloudSetupError(
+                f"Error accepting share: {response_body_dict.get('msg') or _redacted(response_body_dict)}"
+            )
 
         return True
 
@@ -1024,7 +1026,7 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code") or 0) != 200:
             if msg := response_body_dict.get("msg"):
                 raise FailedRequestException("Error in getting properties: " + msg)
-            raise FailedRequestException(f"Error in getting properties: {response_body_dict}")
+            raise FailedRequestException(f"Error in getting properties: {_redacted(response_body_dict)}")
 
         return ThingPropertiesResponse.from_dict(response_body_dict)
 
@@ -1067,7 +1069,7 @@ class CloudIOTGateway:
         if int(response_body_dict.get("code") or 0) != 200:
             if msg := response_body_dict.get("msg"):
                 raise FailedRequestException("Error in getting properties: " + msg)
-            raise FailedRequestException(f"Error in getting properties: {response_body_dict}")
+            raise FailedRequestException(f"Error in getting properties: {_redacted(response_body_dict)}")
         return ThingPropertiesResponse.from_dict(response_body_dict)
 
     @property

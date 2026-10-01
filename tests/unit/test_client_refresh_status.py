@@ -26,7 +26,13 @@ from pymammotion.device.handle import DeviceHandle, DeviceStateTimeoutError
 from pymammotion.proto import LubaMsg, MctlSys, ReportInfoCfg, ReportInfoData, RptAct
 from pymammotion.transport.base import NoTransportAvailableError, SessionExpiredError, TransportType
 from pymammotion.utility.constant.device_enums import WorkMode
-from tests._helpers import make_account_session, make_bare_client, make_mock_handle, make_mock_transport
+from tests._helpers import (
+    let_others_run,
+    make_account_session,
+    make_bare_client,
+    make_mock_handle,
+    make_mock_transport,
+)
 from tests.unit._helpers import is_ready, make_sys_status_report
 
 _SEND_TIMEOUT = 1.0
@@ -328,3 +334,54 @@ async def test_client_wait_for_raises_for_an_unregistered_device() -> None:
 
     with pytest.raises(KeyError):
         await client.wait_for("Luba-missing", is_ready, timeout=_SEND_TIMEOUT)
+
+
+async def test_ensure_fresh_state_with_wait_requests_via_the_named_accounts_handle() -> None:
+    """One mower bound to two accounts: *account_id* picks which handle is refreshed."""
+    client = make_bare_client()
+    handle_a, mqtt_a = await _cloud_handle("Luba-R15", reported_offline=False)
+    handle_b, mqtt_b = await _cloud_handle("Luba-R15", reported_offline=False)
+    await client._device_registry.register(handle_a, account_id="acct-a")  # noqa: SLF001
+    await client._device_registry.register(handle_b, account_id="acct-b")  # noqa: SLF001
+
+    await asyncio.wait_for(client.ensure_fresh_state("Luba-R15", wait=True, account_id="acct-b"), _SEND_TIMEOUT)
+
+    mqtt_b.send_user.assert_awaited_once()
+    mqtt_a.send_user.assert_not_awaited()
+    await handle_a.stop()
+    await handle_b.stop()
+
+
+@pytest.mark.regression
+async def test_ensure_fresh_state_with_wait_returns_on_the_next_stream_frame_without_sending() -> None:
+    """A live BLE stream answers with its next frame; a count=1 RPT_START would reconfigure it.
+
+    ``refresh_status`` is a no-op while the stream is live, so the stale-state check
+    found no new report and raised DeviceStateTimeoutError at once, having sent nothing.
+    """
+    handle, mqtt = await _cloud_handle("Luba-R16", reported_offline=False)
+    # The flag alone: registering a BLE transport queues the handle's own background report.
+    handle.ble_stream_active = True
+    client = await _registered(handle)
+
+    waiter = asyncio.create_task(client.ensure_fresh_state("Luba-R16", wait=True))
+    await let_others_run()
+    assert not waiter.done(), "returned before the stream delivered a frame"
+    mqtt.send_user.assert_not_awaited()
+    await handle.on_raw_message(_REPORT_FRAME)
+
+    await asyncio.wait_for(waiter, _SEND_TIMEOUT)
+    await handle.stop()
+
+
+async def test_ensure_fresh_state_with_wait_raises_when_a_live_stream_sends_no_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(handle_module, "_RPT_ACK_TIMEOUT", 0.01)
+    handle, _mqtt = await _cloud_handle("Luba-R17", reported_offline=False)
+    handle.ble_stream_active = True
+    client = await _registered(handle)
+
+    with pytest.raises(DeviceStateTimeoutError):
+        await asyncio.wait_for(client.ensure_fresh_state("Luba-R17", wait=True), _SEND_TIMEOUT)
+    await handle.stop()

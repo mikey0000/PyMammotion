@@ -16,6 +16,7 @@ from pymammotion.transport.base import TransportType
 from tests._helpers import make_mock_transport, wait_until
 from tests.unit._helpers import make_aliyun_session
 from tests.unit.transport._fakes import FakeMQTTClient
+from tests.unit.transport._helpers import make_bind_reply
 
 
 @pytest.mark.regression
@@ -27,7 +28,7 @@ async def test_stop_disconnects_an_account_transport_no_device_handle_holds() ->
     so the task outlived the client.
     """
     client, _session, transport = make_aliyun_session()
-    with patch.object(aiomqtt, "Client", return_value=FakeMQTTClient()):
+    with patch.object(aiomqtt, "Client", return_value=FakeMQTTClient(messages=[make_bind_reply(200)])):
         await transport.connect()
         await wait_until(lambda: transport.is_connected, message="transport never connected")
 

@@ -91,6 +91,7 @@ def make_mock_transport(
     if transport_type is not TransportType.BLE:
         t.is_cloud_banned = False
         t.is_quota_exhausted = False
+        t.account_in_use = False
         # Bind the *real* refusal so a double cannot quietly neuter the gate: it is a
         # method now, and a plain MagicMock attribute would return a Mock and let every
         # blocked send through.  Bound to the mock, so it reads the mock's

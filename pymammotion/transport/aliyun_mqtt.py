@@ -267,6 +267,8 @@ class AliyunMQTTTransport(CloudTransport):
                 await self._task
         self._availability = TransportAvailability.DISCONNECTED
         self._client = None
+        # Nothing reports a transition once the loop is gone, so a held lock ends here.
+        await self._set_account_in_use(False)
 
     async def _invoke(self, payload: bytes, iot_id: str) -> None:
         """Send *payload* via the Aliyun cloud command API (shared by send/send_heartbeat)."""
@@ -390,8 +392,6 @@ class AliyunMQTTTransport(CloudTransport):
                 "sign out of the Mammotion app; retrying every %ds",
                 ACCOUNT_IN_USE_RETRY_SEC,
             )
-        else:
-            _logger.info("Aliyun account lock released — bind accepted")
         if self.on_account_in_use_changed is not None:
             try:
                 await self.on_account_in_use_changed(held)
@@ -444,9 +444,7 @@ class AliyunMQTTTransport(CloudTransport):
                     # Only the reconnect backoff resets on a handshake; the auth
                     # refresh budget waits for the broker to accept the bind.
                     backoff = MQTT_RECONNECT_MIN_SEC
-                    # While the lock is held a handshake is not a usable session; the accepted bind announces it.
-                    if not self._account_in_use:
-                        await self._notify_availability(TransportAvailability.CONNECTED)
+                    # A handshake is not a usable session (the bind may yet be 2152/2043); bind 200 announces it.
 
                     for topic in self._effective_subscribe_topics():
                         await client.subscribe(topic, qos=1)
@@ -485,7 +483,9 @@ class AliyunMQTTTransport(CloudTransport):
                             if code == 200:
                                 auth_refresh_cycles = 0
                                 if self._account_in_use:
+                                    _logger.info("Aliyun account lock released — bind accepted")
                                     await self._set_account_in_use(False)
+                                if self._availability is not TransportAvailability.CONNECTED:
                                     await self._notify_availability(TransportAvailability.CONNECTED)
                             continue
                         # A non-bind message means the broker is serving this session.
@@ -544,6 +544,10 @@ class AliyunMQTTTransport(CloudTransport):
                 account_locked = True
                 self._client = None
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
+                if self._account_in_use:
+                    _logger.debug(
+                        "Aliyun account lock still held (bind_reply 2152) — retrying in %ds", ACCOUNT_IN_USE_RETRY_SEC
+                    )
                 await self._set_account_in_use(True)
             except SessionExpiredError as exc:
                 _logger.warning("Aliyun bind token expired — attempting credential refresh: %s", exc)
