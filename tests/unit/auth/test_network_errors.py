@@ -15,6 +15,8 @@ import socket
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from Tea.exceptions import RetryError, TeaException, UnretryableException
+from Tea.request import TeaRequest
 
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.transport.base import (
@@ -82,6 +84,69 @@ def test_classifier_rejects_unrelated_exceptions() -> None:
     assert is_transient_network_error(KeyError("missing")) is False
     assert is_transient_network_error(ReLoginRequiredError("acc", "expired token")) is False
     assert is_transient_network_error(AuthError("forbidden")) is False
+
+
+def _tea_exhausted_retries(cause: Exception) -> UnretryableException:
+    """Build the exception Tea raises once its retry loop runs out, the way Tea builds it.
+
+    ``TeaCore.async_do_action`` raises ``RetryError(str(e))`` inside ``except IOError`` (so
+    the socket error survives only as ``__context__``), and ``aliyun/client.py`` stores that
+    RetryError in ``inner_exception``, not ``__cause__``.
+    """
+    try:
+        try:
+            raise cause
+        except OSError as io_err:
+            raise RetryError(str(io_err))  # noqa: B904
+    except RetryError as retry_err:
+        return UnretryableException(TeaRequest(), retry_err)
+
+
+@pytest.mark.regression
+def test_classifier_sees_the_network_error_inside_teas_unretryable_wrapper() -> None:
+    """An Aliyun call that exhausted Tea's retries on a DNS failure was classified as non-transient.
+
+    The classifier only looked one ``__cause__`` deep, and Tea keeps the cause in
+    ``inner_exception``, so a network blip during Aliyun setup marked the transport unavailable.
+    """
+    exc = _tea_exhausted_retries(socket.gaierror(-3, "Temporary failure in name resolution"))
+    assert is_transient_network_error(exc) is True
+
+
+def test_classifier_rejects_tea_wrapper_around_a_server_error() -> None:
+    exc = UnretryableException(TeaRequest(), TeaException({"code": "500", "message": "boom"}))
+    assert is_transient_network_error(exc) is False
+
+
+def test_classifier_walks_implicit_context_chain() -> None:
+    try:
+        try:
+            raise ConnectionResetError("reset")
+        except ConnectionResetError:
+            raise RuntimeError("raised while handling")  # noqa: B904
+    except RuntimeError as exc:
+        assert is_transient_network_error(exc) is True
+
+
+def test_classifier_ignores_context_suppressed_with_from_none() -> None:
+    try:
+        try:
+            raise ConnectionResetError("reset")
+        except ConnectionResetError:
+            raise ValueError("unrelated") from None
+    except ValueError as exc:
+        assert is_transient_network_error(exc) is False
+
+
+def test_classifier_never_treats_an_auth_verdict_as_transient() -> None:
+    """An auth rejection raised while handling a socket error is still a rejection."""
+    try:
+        try:
+            raise ConnectionResetError("reset")
+        except ConnectionResetError:
+            raise AuthError("401")  # noqa: B904
+    except AuthError as exc:
+        assert is_transient_network_error(exc) is False
 
 
 # token_manager.refresh_http — DNS failure must propagate, not become

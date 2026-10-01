@@ -48,6 +48,8 @@ def make_bare_client(session: AccountSession | None = None) -> MammotionClient:
     set up because the client's own methods delegate straight into them.
     """
     client = MammotionClient.__new__(MammotionClient)
+    client._stopped = False
+    client._lock = asyncio.Lock()
     client._account_registry = AccountRegistry()
     client._device_registry = DeviceRegistry()
     client._inbound = InboundRouter(client._device_registry)

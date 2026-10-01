@@ -68,7 +68,7 @@ from pymammotion.data.model.mowing_modes import RainProtectionMode
 from pymammotion.data.model.svg import chunk_svg_messages
 from pymammotion.device.auto_fetch import AutoFetchWatchers, _should_fetch_mow_path
 from pymammotion.device.ble_inventory import BleInventory
-from pymammotion.device.handle import DeviceHandle, DeviceRegistry
+from pymammotion.device.handle import DeviceHandle, DeviceRegistry, DeviceStateTimeoutError
 from pymammotion.device.inbound_router import InboundRouter
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.device.remote_drive import HttpTokenSource
@@ -233,7 +233,7 @@ class MammotionClient(CloudAuthMixin):
     # ------------------------------------------------------------------
 
     async def stop(self) -> None:
-        """Idempotent shutdown: stop all registered device handles.
+        """Idempotent shutdown: stop all device handles, then every account session's cloud transports.
 
         Safe to call multiple times (e.g. from both unload callback and HA
         shutdown event).
@@ -249,6 +249,11 @@ class MammotionClient(CloudAuthMixin):
                 await session.token_manager.stop_refresh_scheduler()
         for handle in self._device_registry.all_devices:
             await handle.stop()
+        # Session-owned: a transport no handle holds (an account with no devices on it) still runs.
+        for session in self._account_registry.all_sessions:
+            for transport in (session.aliyun_transport, session.mammotion_transport):
+                if transport is not None:
+                    await transport.disconnect()
 
     async def remove_device(self, name: str, account_id: str | None = None) -> None:
         """Stop and remove the named device from the registry.
@@ -372,18 +377,60 @@ class MammotionClient(CloudAuthMixin):
         if handle := self._device_registry.get_by_name(device_name):
             await handle.start_report_stream(duration_ms)
 
-    async def ensure_fresh_state(self, device_name: str, *, max_age_s: float = 120.0) -> None:
-        """Fire a one-shot snapshot if the last inbound report is older than ``max_age_s`` seconds.
+    async def ensure_fresh_state(self, device_name: str, *, max_age_s: float = 120.0, wait: bool = False) -> None:
+        """Request a one-shot snapshot if the last inbound report is older than ``max_age_s`` seconds.
 
         Intended for use at the top of user-action handlers (start/dock/pause/cancel)
-        to avoid acting on stale state after a long idle period.  Fire-and-forget:
-        the response arrives asynchronously.
+        to avoid acting on stale state after a long idle period.
+
+        With ``wait=False`` (the default) it is fire-and-forget: a BACKGROUND queued
+        poll that a running saga or the offline flag may skip.  With ``wait=True`` it is
+        :meth:`refresh_status` — the user path, unqueued — and returns only once the
+        report has landed.
+
+        Raises (``wait=True`` only):
+            DeviceStateTimeoutError: the device sent no report within the RPT_START window.
+            Exception: anything :meth:`refresh_status` raises.
+
         """
         handle = self._device_registry.get_by_name(device_name)
-        if handle is None:
+        if handle is None or time.monotonic() - handle.last_report_at <= max_age_s:
             return
-        if time.monotonic() - handle.last_report_at > max_age_s:
+        if not wait:
             await handle.request_report_snapshot()
+            return
+        before = handle.last_report_data_at
+        await self.refresh_status(device_name, handle.account_id)
+        if handle.last_report_data_at == before:
+            raise DeviceStateTimeoutError(device_name)
+
+    async def wait_for(
+        self,
+        device_name: str,
+        predicate: Callable[[DeviceModel], bool],
+        *,
+        timeout: float,
+        account_id: str | None = None,
+    ) -> DeviceModel:
+        """Return the device state once *predicate* holds — see :meth:`DeviceHandle.wait_for`.
+
+        Reports are requested through :meth:`refresh_status`: user-initiated, unqueued and
+        wrapped in the auth retry, so neither a running saga nor the advisory offline flag
+        holds the wait up.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            DeviceStateTimeoutError: *predicate* did not hold within *timeout* seconds.
+            Exception: anything :meth:`refresh_status` raises.
+
+        """
+        handle = self._device_registry.get_by_name(device_name, account_id)
+        if handle is None:
+            msg = f"Device '{device_name}' not registered"
+            raise KeyError(msg)
+        return await handle.wait_for(
+            predicate, timeout=timeout, refresh=partial(self.refresh_status, device_name, handle.account_id)
+        )
 
     async def refresh_status(self, device_name: str, account_id: str | None = None) -> None:
         """Request a status report now, for a person who asked for one.
@@ -2524,6 +2571,7 @@ class MammotionClient(CloudAuthMixin):
         self,
         name: str,
         key: str,
+        /,
         *,
         prefer_ble: bool | None = None,
         skip_if_saga_active: bool = False,
@@ -2652,6 +2700,7 @@ class MammotionClient(CloudAuthMixin):
         name: str,
         key: str,
         expected_field: str,
+        /,
         *,
         send_timeout: float = 5.0,
         prefer_ble: bool | None = None,

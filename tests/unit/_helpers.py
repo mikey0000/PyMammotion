@@ -20,9 +20,12 @@ from pymammotion.account.registry import AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.client import MammotionClient
+from pymammotion.data.model.device import Device
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import JWTTokenInfo
+from pymammotion.proto import LubaMsg, MctlSys, ReportInfoData, RptDevStatus
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
+from pymammotion.utility.constant.device_enums import WorkMode
 from tests._helpers import make_bare_client
 
 
@@ -115,3 +118,13 @@ def make_aliyun_session(
     transport = client._setup_aliyun_transport(make_aliyun_cloud_gateway(iot_token), session)
     session.aliyun_transport = transport
     return client, session, transport
+
+
+def make_sys_status_report(sys_status: WorkMode) -> bytes:
+    """A ``toapp_report_data`` frame carrying only *sys_status*."""
+    return bytes(LubaMsg(sys=MctlSys(toapp_report_data=ReportInfoData(dev=RptDevStatus(sys_status=sys_status)))))
+
+
+def is_ready(device: Device) -> bool:
+    """A ``wait_for`` predicate: the device reports ``MODE_READY``."""
+    return device.report_data.dev.sys_status == WorkMode.MODE_READY  # type: ignore[attr-defined]

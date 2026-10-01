@@ -1,11 +1,13 @@
-"""The report model: ``ReportData.update`` frame mapping and the ``DeviceData`` bit-field accessors."""
+"""The report model: ``ReportData.update`` frame mapping, the ``DeviceData`` bit-field accessors and parsed times."""
 
 from __future__ import annotations
+
+from datetime import UTC, datetime
 
 import pytest
 
 from pymammotion.data.model.enums import FuseLocalizationStatus
-from pymammotion.data.model.report_info import DeviceData, ReportData
+from pymammotion.data.model.report_info import DeviceData, ReportData, WorkSessionResult
 from pymammotion.proto import ReportInfoData, RptTextureMapInfo, RptWork
 
 
@@ -57,3 +59,14 @@ def test_an_unnamed_fuse_byte_is_unknown_and_not_a_good_fix(fuse: int) -> None:
 
     assert dev.fuse_localization_status is FuseLocalizationStatus.UNKNOWN
     assert dev.lidar_positioning_ok is False
+
+
+def test_work_session_times_parse_to_utc() -> None:
+    session = WorkSessionResult(start_work_time=1_725_159_492, end_work_time=1_725_163_092)
+    assert session.started_at == datetime(2024, 9, 1, 2, 58, 12, tzinfo=UTC)
+    assert session.ended_at == datetime(2024, 9, 1, 3, 58, 12, tzinfo=UTC)
+
+
+def test_work_session_times_are_none_before_a_session_has_been_reported() -> None:
+    session = WorkSessionResult()
+    assert (session.started_at, session.ended_at) == (None, None)

@@ -98,6 +98,24 @@ _TRANSIENT_AIOHTTP_ERRORS = frozenset(
 )
 
 
+def _is_transient_link(exc: BaseException) -> bool:
+    if isinstance(exc, (socket.gaierror, ConnectionError, TimeoutError, OSError, json.JSONDecodeError)):
+        return True
+    return any(cls.__name__ in _TRANSIENT_AIOHTTP_ERRORS for cls in type(exc).__mro__)
+
+
+def _wrapped_causes(exc: BaseException) -> list[BaseException]:
+    linked: list[BaseException] = []
+    # Tea's UnretryableException keeps the last retryable error here, not on __cause__.
+    if isinstance(inner := getattr(exc, "inner_exception", None), BaseException):
+        linked.append(inner)
+    if exc.__cause__ is not None:
+        linked.append(exc.__cause__)
+    if exc.__context__ is not None and not exc.__suppress_context__:
+        linked.append(exc.__context__)
+    return linked
+
+
 def is_transient_network_error(exc: BaseException) -> bool:
     """Return True if *exc* is a transient connectivity failure rather than an auth one.
 
@@ -117,14 +135,22 @@ def is_transient_network_error(exc: BaseException) -> bool:
       * aiohttp connection, disconnect and payload errors, matched by class name
         anywhere in the MRO (so we don't introduce a hard runtime dep on aiohttp
         from this module)
-      * The ``__cause__`` chain for any of the above (aiohttp wraps OSError)
+      * any of the above anywhere in the ``__cause__`` / unsuppressed ``__context__``
+        chain, or in Tea's ``UnretryableException.inner_exception``
+
+    An ``AuthError`` is a verdict: neither it nor anything it wraps counts as transient.
     """
-    if isinstance(exc, (socket.gaierror, ConnectionError, TimeoutError, OSError, json.JSONDecodeError)):
-        return True
-    if any(cls.__name__ in _TRANSIENT_AIOHTTP_ERRORS for cls in type(exc).__mro__):
-        return True
-    cause = exc.__cause__
-    return cause is not None and isinstance(cause, (socket.gaierror, OSError, ConnectionError, TimeoutError))
+    seen: set[int] = set()
+    pending: list[BaseException] = [exc]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen or isinstance(current, AuthError):
+            continue
+        seen.add(id(current))
+        if _is_transient_link(current):
+            return True
+        pending.extend(_wrapped_causes(current))
+    return False
 
 
 class NoBLEAddressKnownError(TransportError):

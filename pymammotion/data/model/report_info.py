@@ -20,8 +20,11 @@ from pymammotion.data.model.enums import (
     SimCardStatus,
 )
 from pymammotion.utility.constant.device_enums import BreakPointReason
+from pymammotion.utility.device_time import device_epoch
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from pymammotion.proto import ReportInfoData
 
 
@@ -656,6 +659,16 @@ class WorkSessionResult(DataClassORJSONMixin):
     height_of_knife: int = 0  # blade height during the session
     work_type: int = 0
     work_result: int = 0
+
+    @property
+    def started_at(self) -> datetime | None:
+        """``start_work_time`` as UTC, or None before a session has been reported."""
+        return device_epoch(self.start_work_time)
+
+    @property
+    def ended_at(self) -> datetime | None:
+        """``end_work_time`` as UTC, or None before a session has been reported."""
+        return device_epoch(self.end_work_time)
 
 
 @dataclass

@@ -78,6 +78,9 @@ _RPT_ACK_TIMEOUT: float = 5.0
 #: gets polled for data it just sent.
 _REPORT_SNAPSHOT_DEBOUNCE: float = 15.0
 
+#: How often :meth:`DeviceHandle.wait_for` re-requests a report while the device is silent.
+_STATE_WAIT_POLL_INTERVAL: float = 5.0
+
 #: Server function code the app gates remote driving (manual movement over the cloud) on.
 _REMOTE_DRIVE_FUNCTION_CODE = "002.002"
 
@@ -106,6 +109,17 @@ if TYPE_CHECKING:
     from pymammotion.transport.ble import BLETransport
 
 _logger = logging.getLogger(__name__)
+
+
+class DeviceStateTimeoutError(TimeoutError):
+    """The device did not report the awaited state within the deadline."""
+
+    def __init__(self, device_name: str, timeout: float | None = None) -> None:
+        """Store the device name and deadline (None: the RPT_START verification window), then format the message."""
+        self.device_name = device_name
+        self.timeout = timeout
+        within = "" if timeout is None else f" within {timeout:g}s"
+        super().__init__(f"'{device_name}' did not report the awaited state{within}")
 
 
 class _DebouncedBus:
@@ -1151,6 +1165,47 @@ class DeviceHandle:
     ) -> Subscription:
         """Subscribe to state changes. Returns RAII Subscription handle."""
         return self._state_changed_bus.subscribe(handler)
+
+    async def wait_for(
+        self,
+        predicate: Callable[[Device], bool],
+        *,
+        timeout: float,
+        refresh: Callable[[], Awaitable[None]] | None = None,
+        poll_interval: float = _STATE_WAIT_POLL_INTERVAL,
+    ) -> Device:
+        """Return the device state once *predicate* holds, re-evaluated on every state change.
+
+        The current state is checked first.  While the device has sent no report for
+        *poll_interval* seconds, *refresh* requests one — it defaults to
+        :meth:`refresh_status` (user-initiated, unqueued, so a saga cannot skip it);
+        ``MammotionClient.wait_for`` passes one wrapped in its auth retry.  A device that
+        is already reporting is left alone.
+
+        Raises:
+            DeviceStateTimeoutError: *predicate* did not hold within *timeout* seconds.
+            Exception: whatever *refresh* raises (e.g. ``NoTransportAvailableError``).
+
+        """
+        request = self.refresh_status if refresh is None else refresh
+        reached: asyncio.Future[Device] = asyncio.get_running_loop().create_future()
+
+        async def _on_state(snapshot: DeviceSnapshot) -> None:
+            if not reached.done() and predicate(snapshot.raw):
+                reached.set_result(snapshot.raw)
+
+        with self._state_changed_bus.subscribe(_on_state):
+            if predicate(current := self.snapshot.raw):
+                return current
+            try:
+                async with asyncio.timeout(timeout):
+                    while not reached.done():
+                        if time.monotonic() - self._last_report_data_at >= poll_interval:
+                            await request()
+                        await asyncio.wait({reached}, timeout=poll_interval)
+            except TimeoutError:
+                raise DeviceStateTimeoutError(self.device_name, timeout) from None
+            return reached.result()
 
     _UNSET: object = object()
 
