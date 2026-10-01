@@ -201,6 +201,10 @@ class MammotionClient(CloudAuthMixin):
         #: exactly the affected account's mowers-on-that-transport as needing
         #: re-auth.  HA-Luba wires this to ``entry.async_start_reauth()``.
         self.on_unrecoverable_auth_error: Callable[[str, TransportType, Exception], Awaitable[None]] | None = None
+        #: Fired with ``(account_id, held)`` when another session (the Mammotion app) takes or
+        #: releases the account's Aliyun lock (bind_reply 2152).  Transport-scoped and not an
+        #: auth failure: the login is healthy and the transport retries until the lock is free.
+        self.on_account_in_use_changed: Callable[[str, bool], Awaitable[None]] | None = None
         #: Fired (async) with ``(device_name, iot_id)`` when a device is unbound from
         #: the cloud (Aliyun 29004) and is no longer present on EITHER cloud after
         #: re-discovery — i.e. genuinely removed from the account.  HA-Luba wires this
@@ -1082,6 +1086,12 @@ class MammotionClient(CloudAuthMixin):
             await self._signal_transport_unrecoverable(acct_session, TransportType.CLOUD_ALIYUN, exc)
 
         transport.on_fatal_auth_error = _on_aliyun_fatal_auth
+
+        async def _on_aliyun_account_in_use(held: bool) -> None:
+            if self.on_account_in_use_changed is not None:
+                await self.on_account_in_use_changed(acct_session.account_id, held)
+
+        transport.on_account_in_use_changed = _on_aliyun_account_in_use
 
         # Keep the transport's bind token current on every proactive refresh so that
         # reconnects after a network blip don't carry a stale iotToken.

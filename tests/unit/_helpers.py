@@ -16,8 +16,14 @@ import time
 import zlib
 from unittest.mock import AsyncMock, MagicMock
 
+from pymammotion.account.registry import AccountSession
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.auth.token_manager import TokenManager
+from pymammotion.client import MammotionClient
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import JWTTokenInfo
+from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
+from tests._helpers import make_bare_client
 
 
 def make_http_posting(
@@ -83,3 +89,29 @@ def agora_service(service_type: int, privileges: dict[int, int], *strings: str) 
     for key, value in privileges.items():
         block += struct.pack("<H", key) + struct.pack("<I", value)
     return block + b"".join(_agora_string(text) for text in strings)
+
+
+def make_aliyun_cloud_gateway(iot_token: str = "initial-tok") -> MagicMock:
+    """A CloudIOTGateway with the login responses ``_setup_aliyun_transport`` reads and a succeeding cloud send."""
+    gateway = MagicMock(spec=CloudIOTGateway)
+    gateway.send_cloud_command = AsyncMock()
+    gateway.client_id = "client-id-base"
+    gateway.aep_response.data.productKey = "pk"
+    gateway.aep_response.data.deviceName = "dn"
+    gateway.aep_response.data.deviceSecret = "secret"
+    gateway.region_response.data.regionId = "cn-shanghai"
+    gateway.session_by_authcode_response.data.iotToken = iot_token
+    return gateway
+
+
+def make_aliyun_session(
+    iot_token: str = "initial-tok", account_id: str = "test@example.com"
+) -> tuple[MammotionClient, AccountSession, AliyunMQTTTransport]:
+    """Return ``(client, session, transport)`` with the transport wired by the client's own ``_setup_aliyun_transport``."""
+    session = AccountSession(account_id=account_id, email=account_id, password="secret")
+    session.mammotion_http = AsyncMock(spec=MammotionHTTP)
+    session.token_manager = AsyncMock(spec=TokenManager)
+    client = make_bare_client(session)
+    transport = client._setup_aliyun_transport(make_aliyun_cloud_gateway(iot_token), session)
+    session.aliyun_transport = transport
+    return client, session, transport

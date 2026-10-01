@@ -59,6 +59,10 @@ MQTT_RECONNECT_MIN_SEC = 1
 MQTT_RECONNECT_MAX_SEC_ALIYUN = 60
 MQTT_RECONNECT_MAX_SEC_MAMMOTION = 120
 
+#: Fixed Aliyun retry while another session holds the account lock (bind_reply 2152).
+#: Retrying cannot evict that session, so one handshake per interval only polls for its release.
+ACCOUNT_IN_USE_RETRY_SEC = 300
+
 
 class CloudTransport(Transport, ABC):
     """A Transport that talks to a broker: send quota, broker credentials, ``thing/*`` messages.

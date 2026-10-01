@@ -12,7 +12,8 @@ import pytest
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport, _STALE_EVENT_THRESHOLD_MS
 from pymammotion.transport.base import ReLoginRequiredError, TransportError, TransportType
 from tests._helpers import wait_until
-from tests._helpers import make_bare_client
+from tests.unit._helpers import make_aliyun_cloud_gateway, make_aliyun_session
+from tests.unit.transport._helpers import make_aliyun_config
 from tests.unit.transport._fakes import (
     AuthFailMQTTClient as _AuthFailMQTTClient,
     FakeMessage as _FakeMessage,
@@ -26,22 +27,12 @@ from tests.unit.transport._fakes import (
 
 @pytest.fixture
 def config() -> AliyunMQTTConfig:
-    return AliyunMQTTConfig(
-        host="pk.iot-as-mqtt.cn-shanghai.aliyuncs.com",
-        client_id_base="pk&dn",
-        username="dn&pk",
-        device_name="dn",
-        product_key="pk",
-        device_secret="secret",
-        iot_token="tok",
-    )
+    return make_aliyun_config()
 
 
 @pytest.fixture
 def cloud_gateway() -> MagicMock:
-    gw = MagicMock()
-    gw.send_cloud_command = AsyncMock()
-    return gw
+    return make_aliyun_cloud_gateway()
 
 
 @pytest.fixture
@@ -629,38 +620,6 @@ async def test_bind_reply_200_no_auth_failure(
 # Client _on_aliyun_auth_failure callback (integration)
 
 
-def _make_mock_cloud_client(iot_token: str = "initial-tok") -> MagicMock:
-    """Build a minimal mock CloudIOTGateway sufficient for _setup_aliyun_transport."""
-    gw = MagicMock()
-    gw.client_id = "client-id-base"
-    gw.aep_response.data.productKey = "pk"
-    gw.aep_response.data.deviceName = "dn"
-    gw.aep_response.data.deviceSecret = "secret"
-    gw.region_response.data.regionId = "cn-shanghai"
-    gw.session_by_authcode_response.data.iotToken = iot_token
-    return gw
-
-
-def _make_aliyun_session(iot_token: str = "initial-tok") -> tuple:
-    """Return (MammotionClient, AccountSession, AliyunMQTTTransport) wired via _setup_aliyun_transport."""
-    from pymammotion.account.registry import AccountSession
-
-    session = AccountSession(
-        account_id="test@example.com",
-        email="test@example.com",
-        password="secret",
-    )
-    session.mammotion_http = AsyncMock()
-    session.token_manager = AsyncMock()
-
-    client = make_bare_client(session)
-
-    cloud_client = _make_mock_cloud_client(iot_token)
-    transport = client._setup_aliyun_transport(cloud_client, session)
-    session.aliyun_transport = transport
-    return client, session, transport
-
-
 async def test_on_aliyun_auth_failure_targeted_refresh_succeeds_no_full_relogin() -> None:
     """Happy path: targeted refresh succeeds → token pushed → True, login_v2 NOT called.
 
@@ -668,7 +627,7 @@ async def test_on_aliyun_auth_failure_targeted_refresh_succeeds_no_full_relogin(
     check_or_refresh_session is sufficient.  _full_relogin (login_v2) must NOT fire
     because that would hammer the API unnecessarily and risk triggering an account block.
     """
-    client, session, transport = _make_aliyun_session("old-tok")
+    client, session, transport = make_aliyun_session("old-tok")
 
     new_creds = MagicMock()
     new_creds.iot_token = "fresh-tok"
@@ -693,7 +652,7 @@ async def test_on_aliyun_auth_failure_gives_up_without_password_login() -> None:
     was very likely already blocked, and tore down a perfectly good HTTP login and
     Mammotion MQTT transport to fix a problem confined to Aliyun.
     """
-    client, session, transport = _make_aliyun_session("old-tok")
+    client, session, transport = make_aliyun_session("old-tok")
 
     session.token_manager.refresh_aliyun_credentials = AsyncMock(
         side_effect=ReLoginRequiredError("test@example.com", "refreshToken exhausted")
@@ -710,7 +669,7 @@ async def test_on_aliyun_auth_failure_gives_up_without_password_login() -> None:
 
 async def test_on_aliyun_auth_failure_keeps_http_login_intact() -> None:
     """Giving up on Aliyun must not log the account out or clear its credentials."""
-    client, session, transport = _make_aliyun_session("old-tok")
+    client, session, transport = make_aliyun_session("old-tok")
 
     session.token_manager.refresh_aliyun_credentials = AsyncMock(
         side_effect=ReLoginRequiredError("test@example.com", "refreshToken exhausted")
@@ -732,7 +691,7 @@ async def test_on_aliyun_auth_failure_calls_targeted_refresh_before_full_relogin
     Skipping it and going straight to _full_relogin (login_v2) fires unnecessary
     API calls that can trigger an account block on Aliyun.
     """
-    client, session, transport = _make_aliyun_session("old-tok")
+    client, session, transport = make_aliyun_session("old-tok")
 
     new_creds = MagicMock()
     new_creds.iot_token = "renewed-tok"
@@ -749,13 +708,13 @@ async def test_on_aliyun_auth_failure_calls_targeted_refresh_before_full_relogin
 
 async def test_on_aliyun_auth_failure_no_token_manager_returns_false() -> None:
     """When token_manager is None (edge case), on_auth_failure returns False immediately."""
-    client, session, transport = _make_aliyun_session()
+    client, session, transport = make_aliyun_session()
     session.token_manager = None
 
     # Re-wire with no token manager
-    _client2, session2, transport2 = _make_aliyun_session()
+    _client2, session2, transport2 = make_aliyun_session()
     session2.token_manager = None
-    cloud_client = _make_mock_cloud_client()
+    cloud_client = make_aliyun_cloud_gateway()
     transport2 = client._setup_aliyun_transport(cloud_client, session2)
 
     result = await transport2.on_auth_failure()
@@ -773,7 +732,7 @@ async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_en
     raises ReLoginRequiredError and stops — without ever reaching for the stored
     password, no matter how many times the broker rejects the bind.
     """
-    client, session, transport = _make_aliyun_session("stale-tok")
+    client, session, transport = make_aliyun_session("stale-tok")
 
     session.token_manager.refresh_aliyun_credentials = AsyncMock(
         side_effect=ReLoginRequiredError("test@example.com", "refreshToken exhausted")
@@ -796,7 +755,7 @@ async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_en
 
 async def test_bind_reply_2043_relogin_success_fires_on_fatal_auth_and_reconnects() -> None:
     """bind_reply 2043 → targeted refresh fails → _full_relogin fails → on_fatal_auth_error fires."""
-    client, session, transport = _make_aliyun_session("stale-tok")
+    client, session, transport = make_aliyun_session("stale-tok")
 
     fatal_calls: list[ReLoginRequiredError] = []
 

@@ -42,7 +42,7 @@ OVERSIZED = {
     "unit/data/model/test_hash_list.py": 790,
     "unit/device/test_handle.py": 1682,
     "unit/test_client.py": 2016,  # +15 pinning mqtt_loop's clock in the poll-loop tests; they belong in a split
-    "unit/transport/test_aliyun_mqtt.py": 1153,
+    "unit/transport/test_aliyun_mqtt.py": 1112,
 }
 
 #: Builders defined in more than one test module instead of the package ``_helpers.py``.

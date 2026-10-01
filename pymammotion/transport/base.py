@@ -63,13 +63,12 @@ class ReLoginRequiredError(AuthError):
         super().__init__(f"Re-login required for account '{account_id}': {reason}")
 
 
-class AccountInUseError(ReLoginRequiredError):
-    """The Aliyun account is already active in another session (distributed lock held).
+class AccountInUseError(TransportError):
+    """The Aliyun account is held by another session (bind_reply 2152, "distributed lock failed").
 
-    Code 2152 / "distributed lock failed" from the broker means another app or
-    device has an exclusive session lock on this account.  Re-login will not help
-    until the other session releases the lock or times out.  HA-Luba should catch
-    this separately and surface a user-visible message rather than silently retrying.
+    Transport-scoped and not an auth failure: the login is healthy and re-login cannot
+    release the lock.  ``AliyunMQTTTransport`` handles it inside its receive loop by
+    retrying every ``ACCOUNT_IN_USE_RETRY_SEC`` and signalling ``on_account_in_use_changed``.
     """
 
 
