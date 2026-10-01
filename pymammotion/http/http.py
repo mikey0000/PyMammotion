@@ -125,6 +125,11 @@ _SECRET_KEYS = (
     "refreshToken",
     "access_token",
     "refresh_token",
+    "iotToken",
+    "deviceSecret",
+    "sid",
+    "uidToken",
+    "authCode",
 )
 _SECRET_VALUE_RE = re.compile(r'"(' + "|".join(_SECRET_KEYS) + r')"\s*:\s*"[^"]*"', re.IGNORECASE)
 

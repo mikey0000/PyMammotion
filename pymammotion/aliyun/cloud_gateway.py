@@ -44,10 +44,13 @@ from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthC
 from pymammotion.aliyun.model.thing_response import ThingPropertiesResponse
 from pymammotion.aliyun.regions import region_mappings
 from pymammotion.const import ALIYUN_DOMAIN, APP_KEY, APP_SECRET, APP_VERSION
+from pymammotion.http.http import redact_secrets
 from pymammotion.transport.base import SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 if TYPE_CHECKING:
+    from Tea.response import TeaResponse
+
     # The gateway no longer builds a login session — it is handed one — so this is
     # a type-only dependency now.
     from pymammotion.http.http import MammotionHTTP
@@ -77,6 +80,26 @@ def _credential_fingerprint(secret: str | None) -> str:
         return "none"
     digest = hashlib.sha1(secret.encode(), usedforsecurity=False).hexdigest()[:8]
     return f"sha1:{digest}(len={len(secret)})"
+
+
+def _redacted(body: bytes | str | dict | None) -> str:
+    """Return *body* as JSON text with its credential values blanked; a dict repr would slip past the regex."""
+    if isinstance(body, bytes):
+        return redact_secrets(body.decode("utf-8", errors="replace"))
+    if isinstance(body, str):
+        return redact_secrets(body)
+    return redact_secrets(json.dumps(body, default=str))
+
+
+def _log_response(path: str, response: TeaResponse) -> None:
+    logger.debug(
+        "%s -> %s %s headers=%s body=%s",
+        path,
+        response.status_code,
+        response.status_message,
+        response.headers,
+        _redacted(response.body),
+    )
 
 
 class CloudIOTGateway:
@@ -216,10 +239,7 @@ class CloudIOTGateway:
             response = await client.async_do_request(
                 "/living/account/region/get", "https", "POST", {}, body, RuntimeOptions()
             )
-            logger.debug(response.status_message)
-            logger.debug(response.headers)
-            logger.debug(response.status_code)
-            logger.debug(response.body)
+            _log_response("/living/account/region/get", response)
         except ConnectionTimeoutError:
             body = {"data": {}, "code": 200}
 
@@ -286,10 +306,7 @@ class CloudIOTGateway:
 
         # send request
         response = await client.async_do_request("/app/aepauth/handle", "https", "POST", {}, body, RuntimeOptions())
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/app/aepauth/handle", response)
 
         response_body_str = response.body.decode("utf-8")
 
@@ -301,8 +318,6 @@ class CloudIOTGateway:
             )
 
         self._aep_response = AepResponse.from_dict(response_body_dict)
-
-        logger.debug(response_body_dict)
 
         return self._aep_response
 
@@ -373,7 +388,7 @@ class CloudIOTGateway:
                 params={"request": json.dumps(_bodyParam, separators=(",", ":"))},
             ) as resp:
                 data = await resp.json()
-                logger.debug(data)
+                logger.debug("/api/prd/connect.json -> %s %s", resp.status, _redacted(data))
                 if resp.status == 200:
                     self._connect_response = ConnectResponse.from_dict(data)
                     return self._connect_response
@@ -446,7 +461,7 @@ class CloudIOTGateway:
                 data={"loginByOauthRequest": json.dumps(_bodyParam, separators=(",", ":"))},
             ) as resp:
                 data = await resp.json()
-                logger.debug(data)
+                logger.debug("/api/prd/loginbyoauth.json -> %s %s", resp.status, _redacted(data))
                 if resp.status == 200:
                     self._login_by_oauth_response = LoginByOAuthResponse.from_dict(data)
                     return self._login_by_oauth_response
@@ -486,10 +501,7 @@ class CloudIOTGateway:
             body,
             RuntimeOptions(),
         )
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/account/createSessionByAuthCode", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -500,10 +512,10 @@ class CloudIOTGateway:
         session_by_auth = SessionByAuthCodeResponse.from_dict(response_body_dict)
 
         if int(session_by_auth.code) != 200:
-            raise CloudSetupError(f"Error in creating session: {response_body_str}")
+            raise CloudSetupError(f"Error in creating session: {_redacted(response_body_str)}")
 
         if session_by_auth.data.identityId is None:  # type: ignore
-            raise CloudSetupError(f"Error in creating session (missing identityId): {response_body_str}")
+            raise CloudSetupError(f"Error in creating session (missing identityId): {_redacted(response_body_str)}")
 
         self._session_by_authcode_response = session_by_auth
         self._iot_token_issued_at = int(time.time())
@@ -544,10 +556,7 @@ class CloudIOTGateway:
             body,
             RuntimeOptions(),
         )
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/iotx/account/invalidSession", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -624,10 +633,7 @@ class CloudIOTGateway:
                 body,
                 RuntimeOptions(),
             )
-            logger.debug(response.status_message)
-            logger.debug(response.headers)
-            logger.debug(response.status_code)
-            logger.debug(response.body)
+            _log_response("/account/checkOrRefreshSession", response)
 
             response_body_str = response.body.decode("utf-8")
             response_body_dict = self.parse_json_response(response_body_str)
@@ -639,13 +645,13 @@ class CloudIOTGateway:
                 # that recovery might have reused, and destroys a possibly-working
                 # session before we know the replacement can be established.
                 raise SessionExpiredError(
-                    TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
+                    TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + _redacted(response_body_dict)
                 )
 
             if int(response_body_dict.get("code") or 0) != 200:
-                logger.error(response_body_dict)
+                logger.error("check_or_refresh_session failed: %s", _redacted(response_body_dict))
                 raise SessionExpiredError(
-                    TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + response_body_dict.__str__()
+                    TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + _redacted(response_body_dict)
                 )
 
             session = SessionByAuthCodeResponse.from_dict(response_body_dict)
@@ -692,10 +698,7 @@ class CloudIOTGateway:
         response = await client.async_do_request(
             "/uc/listBindingByAccount", "https", "POST", {}, body, RuntimeOptions()
         )
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/uc/listBindingByAccount", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -749,10 +752,7 @@ class CloudIOTGateway:
 
         # send request
         response = await client.async_do_request("/uc/listBindingByDev", "https", "POST", {}, body, RuntimeOptions())
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/uc/listBindingByDev", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -794,10 +794,7 @@ class CloudIOTGateway:
 
         # send request
         response = await client.async_do_request("/uc/confirmShare", "https", "POST", {}, body, RuntimeOptions())
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/uc/confirmShare", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -837,10 +834,7 @@ class CloudIOTGateway:
 
         # send request
         response = await client.async_do_request("/uc/getShareNoticeList", "https", "POST", {}, body, RuntimeOptions())
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/uc/getShareNoticeList", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -931,16 +925,11 @@ class CloudIOTGateway:
             request=request,
             version="1.0",
         )
-        logger.debug(self.converter.printBase64Binary(command))
-        logger.debug(body)
+        logger.debug("invoke iot_id=%s message_id=%s params=%s", iot_id, message_id, body.params)
         # send request
         runtime_options = RuntimeOptions(autoretry=True, backoff_policy="yes")
         response = await client.async_do_request("/thing/service/invoke", "https", "POST", {}, body, runtime_options)
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
-        logger.debug(iot_id)
+        _log_response("/thing/service/invoke", response)
 
         if response.status_code == 429:
             logger.debug("too many requests — arming rate-limit circuit breaker for %.0f s", self._rate_limit_backoff)
@@ -972,7 +961,7 @@ class CloudIOTGateway:
                     str(response_body_dict.get("message")),
                 )
             if response_body_dict.get("code") == 22000:
-                logger.error(response.body)
+                logger.error("Cloud command failed for %s: %s", iot_id, _redacted(response.body))
                 raise FailedRequestException(iot_id)
             if response_body_dict.get("code") in GATEWAY_TIMEOUT_CODES:
                 logger.debug("Gateway timeout.")
@@ -1024,10 +1013,7 @@ class CloudIOTGateway:
 
         # send request
         response = await client.async_do_request("/thing/properties/get", "https", "POST", {}, body, RuntimeOptions())
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/thing/properties/get", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -1070,10 +1056,7 @@ class CloudIOTGateway:
 
         # send request
         response = await client.async_do_request("/thing/status/get", "https", "POST", {}, body, RuntimeOptions())
-        logger.debug(response.status_message)
-        logger.debug(response.headers)
-        logger.debug(response.status_code)
-        logger.debug(response.body)
+        _log_response("/thing/status/get", response)
 
         # Decode the response body
         response_body_str = response.body.decode("utf-8")
@@ -1085,7 +1068,6 @@ class CloudIOTGateway:
             if msg := response_body_dict.get("msg"):
                 raise FailedRequestException("Error in getting properties: " + msg)
             raise FailedRequestException(f"Error in getting properties: {response_body_dict}")
-        logger.debug(response_body_dict)
         return ThingPropertiesResponse.from_dict(response_body_dict)
 
     @property
