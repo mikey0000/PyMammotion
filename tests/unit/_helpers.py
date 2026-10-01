@@ -9,8 +9,11 @@ about).
 
 from __future__ import annotations
 
+import base64
 from contextlib import asynccontextmanager
+import struct
 import time
+import zlib
 from unittest.mock import AsyncMock, MagicMock
 
 from pymammotion.http.http import MammotionHTTP
@@ -48,3 +51,35 @@ def make_http_posting(
 
     http._client_session = _fake_session  # type: ignore[method-assign]
     return http, session
+
+
+def _agora_string(value: str) -> bytes:
+    raw = value.encode()
+    return struct.pack("<H", len(raw)) + raw
+
+
+def make_agora_token(
+    *,
+    app_id: str = "app",
+    channel: str = "chan",
+    uid: str = "42",
+    issued_at: int = 1_700_000_000,
+    leading_services: tuple[bytes, ...] = (),
+) -> str:
+    """Pack an AccessToken2 the way Agora's builder does (little-endian, length-prefixed strings).
+
+    ``leading_services`` are pre-packed service blocks placed before the RTC one; use
+    ``agora_service`` to build them.
+    """
+    rtc = agora_service(1, {1: 3600, 2: 3600}, channel, uid)
+    services = struct.pack("<H", len(leading_services) + 1) + b"".join(leading_services) + rtc
+    content = _agora_string("sig-bytes") + _agora_string(app_id) + struct.pack("<III", issued_at, 3600, 12345) + services
+    return "007" + base64.b64encode(zlib.compress(content)).decode()
+
+
+def agora_service(service_type: int, privileges: dict[int, int], *strings: str) -> bytes:
+    """One AccessToken2 service block: type, privilege map, then the service's own strings."""
+    block = struct.pack("<H", service_type) + struct.pack("<H", len(privileges))
+    for key, value in privileges.items():
+        block += struct.pack("<H", key) + struct.pack("<I", value)
+    return block + b"".join(_agora_string(text) for text in strings)

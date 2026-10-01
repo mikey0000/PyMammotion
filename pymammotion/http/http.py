@@ -10,6 +10,7 @@ import hmac
 from http import HTTPStatus
 import json
 import logging
+import re
 import secrets
 import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -61,6 +62,7 @@ from pymammotion.http.model.response_factory import response_factory
 from pymammotion.http.model.rtk import RTK
 from pymammotion.http.model.work_report import WorkReportPage
 from pymammotion.transport.base import AuthError, ReLoginRequiredError
+from pymammotion.utility.agora_token import describe_agora_token
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -110,6 +112,30 @@ def _decode_cached[ModelT: DataClassORJSONMixin](value: Any, model: type[ModelT]
         with suppress(*_CACHE_DECODE_ERRORS):
             return model.from_dict(value)
     return None
+
+
+#: JSON keys (matched case-insensitively) whose string values are credentials; ``redact_secrets`` blanks them.
+_SECRET_KEYS = (
+    "token",
+    "appid",
+    "license",
+    "key",
+    "salt",
+    "accessToken",
+    "refreshToken",
+    "access_token",
+    "refresh_token",
+)
+_SECRET_VALUE_RE = re.compile(r'"(' + "|".join(_SECRET_KEYS) + r')"\s*:\s*"[^"]*"', re.IGNORECASE)
+
+
+def redact_secrets(body: str) -> str:
+    """Return *body* with every credential-bearing JSON string value replaced by ``<redacted>``.
+
+    Whole bodies are logged at DEBUG so response shapes (for example the per-camera list in a
+    stream token) stay visible; the values that would let anyone use the response do not.
+    """
+    return _SECRET_VALUE_RE.sub(lambda m: f'"{m.group(1)}":"<redacted>"', body)
 
 
 def _token_fingerprint(token: str | None) -> str:
@@ -1129,13 +1155,19 @@ class MammotionHTTP:
             content_type = resp.headers.get("Content-Type") or ""
             body = await resp.text()
             _LOGGER.debug(
-                "stream/token response: status=%s content-type=%s body=%.500s",
+                "stream/token response: status=%s content-type=%s body=%s",
                 resp.status,
                 content_type,
-                body,
+                redact_secrets(body),
             )
             if content_type.startswith("application/json"):
                 response = response_factory(Response[StreamSubscriptionResponse], json.loads(body))
+                if response.data is not None:
+                    _LOGGER.debug(
+                        "stream/token claims: viewer %s; cameras %s",
+                        describe_agora_token(response.data.token),
+                        ", ".join(f"{c.cameraId}: {describe_agora_token(c.token)}" for c in response.data.cameras),
+                    )
                 if response.data is None:
                     _LOGGER.warning(
                         "stream/token returned JSON with no stream data (code=%s msg=%s)",
