@@ -409,7 +409,12 @@ class MowerStateReducer(StateReducer):
                     apply_device_mow_progress_geojson(device)
             case "todev_planjob_set":
                 planjob: NavPlanJobSet = nav_msg[1]  # type: ignore
-                device.map.update_plan(Plan.from_wire(planjob, device.name, device.mower_state.product_key))
+                if planjob.sub_cmd == 3:
+                    # sub_cmd 3 is Delete (the value the app sends to request one); the device
+                    # echoes it when a stored schedule is deleted, and only the id is meaningful.
+                    device.map.remove_plan(planjob.plan_id)
+                else:
+                    device.map.update_plan(Plan.from_wire(planjob, device.name, device.mower_state.product_key))
             case "all_plan_task":
                 all_tasks: NavGetAllPlanTask = nav_msg[1]  # type: ignore
                 incoming_ids = {t.id for t in all_tasks.tasks}

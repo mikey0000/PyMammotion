@@ -923,6 +923,16 @@ class HashList(DataClassORJSONMixin):
         if plan.total_plan_num != 0:
             self.plan[plan.plan_id] = plan
 
+    def remove_plan(self, plan_id: str) -> None:
+        """Forget the stored plan *plan_id*; unknown ids are ignored.
+
+        The device announces a schedule deleted from the app, or by any other client, as a
+        ``todev_planjob_set`` frame with ``sub_cmd`` 3 carrying only the plan id, then
+        re-broadcasts the remaining plans.  Neither frame lets :meth:`update_plan` drop the
+        plan, so without this the deleted schedule lingered until the next full fetch.
+        """
+        self.plan.pop(plan_id, None)
+
     def replace_plans(self, plans: dict[str, Plan]) -> None:
         """Make *plans* the entire stored set.
 

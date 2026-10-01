@@ -71,3 +71,45 @@ def test_planjob_set_stores_the_schedules_auto_change_direction() -> None:
     updated = MowerStateReducer().apply(_make_device(), LubaMsg(nav=MctlNav(todev_planjob_set=frame)))
 
     assert updated.map.plan["p1"].auto_change_direction is True
+
+
+def _device_with_plans(*plan_ids: str) -> MowerDevice:
+    """A device already holding the stored schedules *plan_ids*, as after a completed fetch."""
+    device = _make_device()
+    for plan_id in plan_ids:
+        frame = NavPlanJobSet(plan_id=plan_id, total_plan_num=len(plan_ids), sub_cmd=2)
+        device = MowerStateReducer().apply(device, LubaMsg(nav=MctlNav(todev_planjob_set=frame)))
+    return device
+
+
+@pytest.mark.regression
+def test_planjob_set_delete_notice_drops_the_deleted_schedule() -> None:
+    """Deleting a schedule elsewhere sends ``sub_cmd`` 3 with just the plan id; the plan used to stay stored."""
+    device = _device_with_plans("keep", "gone")
+    delete_notice = NavPlanJobSet(plan_id="gone", sub_cmd=3, reserved="\n" * 8)
+
+    updated = MowerStateReducer().apply(device, LubaMsg(nav=MctlNav(todev_planjob_set=delete_notice)))
+
+    assert set(updated.map.plan) == {"keep"}
+
+
+def test_planjob_set_delete_notice_for_an_unknown_schedule_is_ignored() -> None:
+    device = _device_with_plans("keep")
+    delete_notice = NavPlanJobSet(plan_id="never-seen", sub_cmd=3)
+
+    updated = MowerStateReducer().apply(device, LubaMsg(nav=MctlNav(todev_planjob_set=delete_notice)))
+
+    assert set(updated.map.plan) == {"keep"}
+
+
+def test_planjob_set_rebroadcast_after_a_delete_does_not_bring_the_schedule_back() -> None:
+    """The device re-sends the remaining schedules after a delete; those frames only ever add."""
+    device = _device_with_plans("keep", "gone")
+    delete_notice = NavPlanJobSet(plan_id="gone", sub_cmd=3)
+    rebroadcast = NavPlanJobSet(plan_id="keep", total_plan_num=1, sub_cmd=2)
+    reducer = MowerStateReducer()
+
+    device = reducer.apply(device, LubaMsg(nav=MctlNav(todev_planjob_set=delete_notice)))
+    device = reducer.apply(device, LubaMsg(nav=MctlNav(todev_planjob_set=rebroadcast)))
+
+    assert set(device.map.plan) == {"keep"}
