@@ -175,7 +175,7 @@ _OPTION_KEYS: dict[DetectionStrategy, str] = {
 class WildlifeSafety(IntEnum):
     """Wildlife / animal protection behaviour when an animal is detected.
 
-    Combines rw_id=13 (status: 0=off, 1=on) and rw_id=12 (mode):
+    The mode written to ``nav_sys_param_cmd`` id 12; the read-only status (id 13: 0=off, 1=on) follows it:
       0  off             — animal protection disabled (status=0)
       1  stop_mowing     — stop the current task (title_wildguard_no_task)
       2  low_speed_mowing — reduce speed (title_wildguard_safety_speed)

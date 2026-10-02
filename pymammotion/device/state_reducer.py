@@ -467,7 +467,7 @@ class MowerStateReducer(StateReducer):
                 device.work = current_task
             case "nav_sys_param_cmd":
                 # General read/write parameter channel (nav_sys_param_msg).
-                # Routed via nav on Luba Pro/X3; via sys.bidire_comm_cmd on older devices.
+                # Routed via nav on Luba Pro/X3 (ids 12-15 on every device); via sys.bidire_comm_cmd otherwise.
                 # rw=0 → device reporting current value, rw=1 → app setting a new value.
                 #
                 # ID  Field                          context values
