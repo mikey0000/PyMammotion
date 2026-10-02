@@ -32,8 +32,8 @@ class MammotionCommand(
         return self._device_name
 
     def read_write_device(self, rw_id: int, context: int, rw: int) -> bytes:
-        """Dispatch a read/write device command, routing to the X3 adapter for Luba Pro devices."""
-        if rw_id in (3, 6, 7, 8, 10, 11) and DeviceType.is_luba_pro(self.get_device_name()):
+        """Dispatch a read/write device command: WildGuard ids 12/13 always on nav, ids 3-11 on nav for Luba Pro."""
+        if rw_id in (12, 13) or (rw_id in (3, 6, 7, 8, 10, 11) and DeviceType.is_luba_pro(self.get_device_name())):
             return self.allpowerfull_rw_adapter_x3(rw_id, context, rw)
         return self.allpowerfull_rw(rw_id, context, rw)
 

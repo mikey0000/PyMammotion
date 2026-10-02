@@ -1,9 +1,11 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
 from pymammotion.data.error_codes import describe, get_error_info, solution
 from pymammotion.http.model.http import ErrorInfo
+from pymammotion.utility.device_time import device_epoch
 
 
 @dataclass
@@ -29,6 +31,25 @@ class DeviceErrors(DataClassORJSONMixin):
         several times over.
         """
         return [code for code in self.err_code_list if code != 0]
+
+    @property
+    def logged_at(self) -> list[datetime | None]:
+        """``err_code_list_time`` parsed, slot for slot; None for padding and uptime stamps."""
+        return [device_epoch(stamp, millis=False) for stamp in self.err_code_list_time]
+
+    @property
+    def latest_logged_at(self) -> datetime | None:
+        """When the newest entry was logged, or None until the firmware has given it a real time."""
+        return next(iter(self.logged_at), None)
+
+    @property
+    def dated_codes(self) -> list[tuple[int, datetime]]:
+        """``(code, logged_at)`` for every reported code that already carries a real time, newest first."""
+        return [
+            (code, logged)
+            for code, logged in zip(self.err_code_list, self.logged_at, strict=False)
+            if code != 0 and logged is not None
+        ]
 
     def info(self, code: int | str) -> ErrorInfo | None:
         """Return the table entry for *code*, preferring a fetched table over the bundle."""

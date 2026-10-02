@@ -1,5 +1,6 @@
 from base64 import b64decode
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from google.protobuf import json_format
@@ -8,6 +9,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 from mashumaro.types import Alias, SerializableType
 
 from pymammotion.proto import luba_msg_pb2
+from pymammotion.utility.device_time import device_epoch
 
 
 class Base64EncodedProtobuf(SerializableType):
@@ -69,6 +71,11 @@ class DeviceNotificationEventCode(DataClassORJSONMixin):
 
     localTime: int
     code: str
+
+    @property
+    def local_time(self) -> datetime | None:
+        """``localTime`` (seconds or milliseconds, by firmware) as UTC, or None when the device sent 0."""
+        return device_epoch(self.localTime)
 
 
 @dataclass

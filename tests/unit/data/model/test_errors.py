@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
+from datetime import UTC, datetime
 
 from pymammotion.data.error_codes import set_fetched_error_codes
 from pymammotion.data.model.errors import DeviceErrors
@@ -101,3 +102,29 @@ def test_a_cache_written_before_error_codes_existed_still_loads() -> None:
     restored = DeviceErrors.from_dict({"err_code_list": [-1005], "err_code_list_time": [123]})
 
     assert restored.describe(-1005), "the bundle still answers when the cache had no table"
+
+
+def test_logged_at_is_none_for_uptime_stamps_and_padding() -> None:
+    """A fresh entry carries uptime seconds until the firmware rewrites it; rendering it showed 1970."""
+    errors = DeviceErrors(err_code_list=[-1005, -2701, 0], err_code_list_time=[1_725_159_492, 3_600, 0])
+    assert errors.logged_at == [datetime(2024, 9, 1, 2, 58, 12, tzinfo=UTC), None, None]
+
+
+def test_latest_logged_at_is_the_newest_slot() -> None:
+    errors = DeviceErrors(err_code_list=[-1005, -2701], err_code_list_time=[1_725_159_492, 1_700_000_000])
+    assert errors.latest_logged_at == datetime(2024, 9, 1, 2, 58, 12, tzinfo=UTC)
+
+
+def test_latest_logged_at_is_none_until_the_newest_entry_has_a_real_time() -> None:
+    assert DeviceErrors(err_code_list=[-1005], err_code_list_time=[42]).latest_logged_at is None
+    assert DeviceErrors().latest_logged_at is None
+
+
+def test_dated_codes_pairs_each_code_with_its_time_and_skips_undated_ones() -> None:
+    errors = DeviceErrors(
+        err_code_list=[-1005, -2701, 0, -1201], err_code_list_time=[1_725_159_492, 3_600, 0, 1_700_000_000]
+    )
+    assert errors.dated_codes == [
+        (-1005, datetime(2024, 9, 1, 2, 58, 12, tzinfo=UTC)),
+        (-1201, datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)),
+    ]

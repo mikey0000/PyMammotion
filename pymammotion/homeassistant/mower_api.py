@@ -149,7 +149,7 @@ class HomeAssistantMowerApi:
 
         return device
 
-    async def async_send_command(self, device_name: str, command: str, **kwargs: Any) -> bool | None:
+    async def async_send_command(self, device_name: str, command: str, /, **kwargs: Any) -> bool | None:
         """Enqueue a command via MammotionClient.
 
         Commands are queued and executed in order, yielding to any active saga
@@ -351,7 +351,7 @@ class HomeAssistantMowerApi:
         """Delete non work hours."""
         await self.async_send_command(device_name, "job_do_not_disturb", sub_cmd=1, trigger=0)
 
-    async def send_command_and_update(self, device_name: str, command_str: str, **kwargs: Any) -> None:
+    async def send_command_and_update(self, device_name: str, command_str: str, /, **kwargs: Any) -> None:
         """Send a command then fire a single one-shot report to refresh state."""
         await self.async_send_command(device_name, command_str, **kwargs)
         await self._mammotion.request_iot_sync(device_name)

@@ -17,11 +17,16 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
+from pymammotion.utility.device_time import device_epoch
 from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.enum_base import UnknownTolerantIntEnum
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class MapTrans(IntEnum):
@@ -179,6 +184,11 @@ class SpinoErrorEntry(DataClassORJSONMixin):
 
     timestamp: int = 0
     """Unix timestamp (seconds) when the fault occurred."""
+
+    @property
+    def logged_at(self) -> datetime | None:
+        """``timestamp`` as UTC, or None while it is still an uptime stamp."""
+        return device_epoch(self.timestamp, millis=False)
 
 
 @dataclass

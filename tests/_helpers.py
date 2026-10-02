@@ -48,6 +48,8 @@ def make_bare_client(session: AccountSession | None = None) -> MammotionClient:
     set up because the client's own methods delegate straight into them.
     """
     client = MammotionClient.__new__(MammotionClient)
+    client._stopped = False
+    client._lock = asyncio.Lock()
     client._account_registry = AccountRegistry()
     client._device_registry = DeviceRegistry()
     client._inbound = InboundRouter(client._device_registry)
@@ -89,6 +91,7 @@ def make_mock_transport(
     if transport_type is not TransportType.BLE:
         t.is_cloud_banned = False
         t.is_quota_exhausted = False
+        t.account_in_use = False
         # Bind the *real* refusal so a double cannot quietly neuter the gate: it is a
         # method now, and a plain MagicMock attribute would return a Mock and let every
         # blocked send through.  Bound to the mock, so it reads the mock's

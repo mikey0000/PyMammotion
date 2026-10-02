@@ -54,7 +54,7 @@ exists to suppress itself is the tell that the design is wrong.
 
 The two MQTT transports share ~30 lines of envelope handling and two constants;
 their reconnect loops share nothing (Aliyun has bind replies, auth-refresh
-cycles and `AccountInUseError`; Mammotion has the creds refresher and give-up
+cycles and the bind-2152 account-lock retry; Mammotion has the creds refresher and give-up
 semantics). A base class would have to accommodate both credential models to
 share very little, and D2 already showed what happens to optional shared
 machinery on a base. What is shared lives in `transport/envelope.py`

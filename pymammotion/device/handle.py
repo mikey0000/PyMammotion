@@ -35,6 +35,7 @@ from pymammotion.state.device_state import (
     DeviceStateMachine,
 )
 from pymammotion.transport.base import (
+    AccountInUseError,
     BLEUnavailableError,
     EventBus,
     NoTransportAvailableError,
@@ -78,6 +79,14 @@ _RPT_ACK_TIMEOUT: float = 5.0
 #: gets polled for data it just sent.
 _REPORT_SNAPSHOT_DEBOUNCE: float = 15.0
 
+#: How often :meth:`DeviceHandle.wait_for` re-requests a report while the device is silent;
+#: above the two-attempt RPT_START verification window so requests never overlap.
+_STATE_WAIT_POLL_INTERVAL: float = 15.0
+
+#: Report requests per :meth:`DeviceHandle.wait_for`: each is up to two counted RPT_START sends
+#: against the 600-per-12 h cloud budget, so past this the wait relies on the stream.
+_STATE_WAIT_MAX_REQUESTS: int = 2
+
 #: Server function code the app gates remote driving (manual movement over the cloud) on.
 _REMOTE_DRIVE_FUNCTION_CODE = "002.002"
 
@@ -106,6 +115,17 @@ if TYPE_CHECKING:
     from pymammotion.transport.ble import BLETransport
 
 _logger = logging.getLogger(__name__)
+
+
+class DeviceStateTimeoutError(TimeoutError):
+    """The device did not report the awaited state within the deadline."""
+
+    def __init__(self, device_name: str, timeout: float | None = None) -> None:
+        """Store the device name and deadline (None: the RPT_START verification window), then format the message."""
+        self.device_name = device_name
+        self.timeout = timeout
+        within = "" if timeout is None else f" within {timeout:g}s"
+        super().__init__(f"'{device_name}' did not report the awaited state{within}")
 
 
 class _DebouncedBus:
@@ -1152,6 +1172,69 @@ class DeviceHandle:
         """Subscribe to state changes. Returns RAII Subscription handle."""
         return self._state_changed_bus.subscribe(handler)
 
+    async def wait_for(
+        self,
+        predicate: Callable[[Device], bool],
+        *,
+        timeout: float,
+        refresh: Callable[[], Awaitable[None]] | None = None,
+        poll_interval: float = _STATE_WAIT_POLL_INTERVAL,
+    ) -> Device:
+        """Return the device state once *predicate* holds, re-evaluated on every state change.
+
+        The current state is checked first.  While the device has sent no report for
+        *poll_interval* seconds, *refresh* requests one — it defaults to
+        :meth:`refresh_status` (user-initiated, unqueued, so a saga cannot skip it);
+        ``MammotionClient.wait_for`` passes one wrapped in its auth retry.  A device that
+        is already reporting is left alone, and at most ``_STATE_WAIT_MAX_REQUESTS``
+        requests are made per wait.  A state that arrives before a failed request
+        returns normally.
+
+        Raises:
+            DeviceStateTimeoutError: *predicate* did not hold within *timeout* seconds.
+            Exception: whatever *predicate* or *refresh* raises (e.g. ``NoTransportAvailableError``).
+
+        """
+        request = self.refresh_status if refresh is None else refresh
+        reached: asyncio.Future[Device] = asyncio.get_running_loop().create_future()
+
+        async def _on_state(snapshot: DeviceSnapshot) -> None:
+            if reached.done():
+                return
+            # The bus swallows handler errors; carry the predicate's to the waiter.
+            try:
+                if predicate(snapshot.raw):
+                    reached.set_result(snapshot.raw)
+            except Exception as exc:  # noqa: BLE001
+                reached.set_exception(exc)
+
+        with self._state_changed_bus.subscribe(_on_state):
+            if predicate(current := self.snapshot.raw):
+                return current
+            deadline = asyncio.timeout(timeout)
+            requests = 0
+            try:
+                async with deadline:
+                    while not reached.done():
+                        if (
+                            requests < _STATE_WAIT_MAX_REQUESTS
+                            and time.monotonic() - self._last_report_data_at >= poll_interval
+                        ):
+                            requests += 1
+                            try:
+                                await request()
+                            except Exception:
+                                if not reached.done():
+                                    raise
+                                break
+                        await asyncio.wait({reached}, timeout=poll_interval)
+            except TimeoutError:
+                if not deadline.expired():
+                    raise
+                if not reached.done():
+                    raise DeviceStateTimeoutError(self.device_name, timeout) from None
+            return reached.result()
+
     _UNSET: object = object()
 
     def watch_field(
@@ -1558,6 +1641,14 @@ class DeviceHandle:
         "some frame arrived".
         """
         return self._last_report_data_at
+
+    async def wait_for_next_report(self, timeout: float | None = None) -> bool:
+        """Return True once a report frame lands within *timeout* seconds, without requesting one.
+
+        *timeout* defaults to the two-attempt RPT_START verification window.
+        """
+        window = 2 * _RPT_ACK_TIMEOUT if timeout is None else timeout
+        return await self._wait_for_report_data(window, since=self._last_report_data_at)
 
     async def _wait_for_report_data(self, ack_timeout: float, *, since: float) -> bool:
         """Return True once ``_last_report_data_at`` moves off *since*, within *ack_timeout*.
@@ -2167,6 +2258,7 @@ class DeviceHandle:
         Raises:
             NoTransportAvailableError: no cloud transport is registered, or it is unusable
                 (terminal auth failure, or reported offline for a background send).
+            AccountInUseError: a user send while another session holds the account lock.
 
         """
         mqtt = self._pick_cloud_transport()
@@ -2363,7 +2455,10 @@ class DeviceHandle:
         either half at a call site.
 
         *user_initiated* drops the offline half, and only that half: a transport that is
-        unusable in its own right (terminal auth failure) stays unusable for everyone.
+        unusable in its own right — a terminal auth failure, or another session holding
+        the Aliyun account lock (bind_reply 2152) — stays unusable for everyone.  The lock
+        is refused loudly for a user send, so the host can tell the person why; replies
+        ride the MQTT session the lock denies us, so sending anyway would answer nothing.
 
         This is not a fire-and-forget publish into a broker queue.  A cloud send is a
         synchronous HTTPS POST — ``CloudIOTGateway.send_cloud_command`` to
@@ -2378,8 +2473,16 @@ class DeviceHandle:
         command can be delivered, and the flag is only ever as fresh as the last thing
         the cloud chose to tell us.  Background traffic keeps the strict gate — nobody is
         waiting on it, so it has no reason to spend sends probing.
+
+        Raises:
+            AccountInUseError: *user_initiated* and the account lock is held; background
+                callers get False.
+
         """
         if not mqtt.is_usable:
+            if user_initiated and isinstance(mqtt, CloudTransport) and mqtt.account_in_use:
+                msg = f"Mammotion account for '{self.device_name}' is in use by another session (Mammotion app)"
+                raise AccountInUseError(msg)
             return False
         return user_initiated or not self._availability.mqtt_reported_offline
 
@@ -2414,6 +2517,7 @@ class DeviceHandle:
 
         Raises:
             NoTransportAvailableError: if nothing usable is registered.
+            AccountInUseError: *user_initiated*, nothing else usable, and the account lock is held.
 
         """
         use_ble_first = self._prefer_ble if prefer_ble is None else prefer_ble
@@ -2424,7 +2528,12 @@ class DeviceHandle:
 
         mqtt_reported_offline = self._availability.mqtt_reported_offline
         mqtt = self._pick_cloud_transport()
-        mqtt_usable = mqtt is not None and self._cloud_transport_usable(mqtt, user_initiated=user_initiated)
+        lock_refusal: AccountInUseError | None = None
+        try:
+            mqtt_usable = mqtt is not None and self._cloud_transport_usable(mqtt, user_initiated=user_initiated)
+        except AccountInUseError as exc:
+            # Kept until a usable BLE has had its turn.
+            mqtt_usable, lock_refusal = False, exc
 
         def _log_selection(path: str, *args: Any) -> None:
             """Log only when the (path, prefer_ble, ble_usable, mqtt_usable) tuple changes.
@@ -2458,6 +2567,8 @@ class DeviceHandle:
         # Same de-dup as the selection paths: a cloud-offline device is asked on every
         # poll and every gate check, and each one logged this line unconditionally.
         _log_selection("active_transport '%s': %s", msg)
+        if lock_refusal is not None:
+            raise lock_refusal
         raise NoTransportAvailableError(msg)
 
 

@@ -967,18 +967,32 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Send command - Set edgewise mapping action={action}")
         return self.send_order_msg_nav(build)
 
-    # === Animal avoidance ===
+    # === Animal protection (WildGuard) ===
+
+    def set_animal_protection_mode(self, mode: int) -> bytes:
+        """Set the WildGuard mode (id 12): 0 off, 1 stop mowing, 2 slow mowing; the status (id 13) follows it."""
+        return self._animal_protection_param(12, mode, 1)
+
+    def read_animal_protection_mode(self) -> bytes:
+        """Read the WildGuard mode (id 12)."""
+        return self._animal_protection_param(12, 0, 0)
+
+    def read_animal_protection_status(self) -> bytes:
+        """Read the WildGuard on/off status (id 13); the app never writes it."""
+        return self._animal_protection_param(13, 0, 0)
 
     def read_animal_avoidance(self) -> bytes:
-        """Read the current animal-avoidance configuration from the device."""
-        build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=13, rw=0))
-        logger.debug("Send command - Read animal avoidance")
-        return self.send_order_msg_nav(build)
+        """Read the WildGuard status; prefer ``read_animal_protection_status``."""
+        return self.read_animal_protection_status()
 
     def set_animal_avoidance(self, context: int) -> bytes:
-        """Write the animal-avoidance setting; ``context`` carries the value to apply."""
-        build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=12, context=context, rw=1))
-        logger.debug(f"Send command - Set animal avoidance context={context}")
+        """Write the WildGuard mode; prefer ``set_animal_protection_mode``."""
+        return self.set_animal_protection_mode(context)
+
+    def _animal_protection_param(self, param_id: int, context: int, rw: int) -> bytes:
+        # The app sends ids 12/13 on nav_sys_param_cmd on every device (allAnimalProtect / getAllAnimalProtect).
+        build = MctlNav(nav_sys_param_cmd=NavSysParamMsg(id=param_id, context=context, rw=rw))
+        logger.debug(f"Send command - animal protection id={param_id} context={context} rw={rw}")
         return self.send_order_msg_nav(build)
 
     def read_recharge_level(self) -> bytes:

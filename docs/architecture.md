@@ -245,6 +245,7 @@ a rejected refresh token does not become valid by waiting.
 | account   | `refresh_token_v2` rejected      | `reauth_required`        | `ReLoginRequiredError`, `on_unrecoverable_auth_error` fires, host prompts |
 | transport | Aliyun/JWT unrenewable, login OK | `aliyun_unavailable` / `mqtt_unavailable` | that transport only; per-device bus signalled, global callback does **not** fire |
 | neither   | transient network error          | none                     | propagates by type (`is_transient_network_error`) so callers back off |
+| neither   | Aliyun bind_reply 2152 (account lock held by the app) | `AliyunMQTTTransport.account_in_use` | Aliyun unusable (a user send gets `AccountInUseError`); retried every `ACCOUNT_IN_USE_RETRY_SEC`; `on_account_in_use_changed` fires per transition and `False` on `disconnect()`, no auth callback |
 
 ---
 
@@ -283,6 +284,9 @@ phases and faults are in `docs/remote_drive.md`, and the reasoning is in D15.
 | What are this model's limits? | `data/model/device_capabilities.py::DeviceConfig` |
 | What device variant is this? | `utility/device_type.py::DeviceType` |
 | Is this work mode "active"/"no-request"? | `utility/constant/poll_policy.py` |
+| Wait for the device to report a state | `DeviceHandle.wait_for(predicate, timeout=...)` (`MammotionClient.wait_for` by name); "fresh before acting" is `ensure_fresh_state(wait=True)` — never a host-side listener + future |
+| Is this device timestamp a real time? | `utility/device_time.py::device_epoch` |
+| Is this failure a transient network error? | `transport/base.py::is_transient_network_error` (walks `__cause__`/`__context__` and Tea's `inner_exception`) |
 
 **Never send MQTT to a device the cloud reported offline.** Four gates enforce
 it — `active_transport()`, `_mqtt_activity_loop`'s pre-flight,

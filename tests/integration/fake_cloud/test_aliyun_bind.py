@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pymammotion.transport import aliyun_mqtt
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import ReLoginRequiredError
 from tests.fakeserver.cloud import FakeMammotionCloud
@@ -84,9 +85,20 @@ async def test_bind_2043_replay_is_bounded_to_three_refreshes(
     assert scenario.counters.get("aliyun_mqtt_connects") == connects
 
 
-async def test_bind_2152_account_in_use_is_immediately_fatal(
+@pytest.mark.regression
+async def test_bind_2152_account_in_use_retries_until_the_lock_is_released(
     fake_cloud: FakeMammotionCloud, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A held account lock must be waited out, not treated as a dead login.
+
+    The transport raised AccountInUseError as a ReLoginRequiredError through the fatal
+    auth path: it was marked auth-failed and never reconnected, so the mowers stayed
+    unavailable after the Mammotion app signed out and released the lock.
+
+    The lock retry is an event-loop timer, which time_machine cannot move, so the
+    delay is shortened the way ``fast_backoff`` shortens the reconnect backoff.
+    """
+    monkeypatch.setattr(aliyun_mqtt, "ACCOUNT_IN_USE_RETRY_SEC", 0.1)
     scenario = fake_cloud.scenario
     scenario.bind_reply_code = 2152
     transport = _make_aliyun_transport(fake_cloud, monkeypatch)
@@ -94,10 +106,29 @@ async def test_bind_2152_account_in_use_is_immediately_fatal(
     transport.on_auth_failure = refreshes
     fatal = AsyncMock()
     transport.on_fatal_auth_error = fatal
+    changes: list[bool] = []
 
-    with pytest.raises(Exception, match="another session"):
-        await asyncio.wait_for(transport._run(), timeout=10)
+    async def _on_change(held: bool) -> None:
+        changes.append(held)
 
-    assert refreshes.await_count == 0  # no refresh can fix a held account lock
-    assert scenario.counters.get("aliyun_binds") == 1
-    assert fatal.await_count == 1
+    transport.on_account_in_use_changed = _on_change
+
+    await transport.connect()
+    try:
+        await wait_for(lambda: changes == [True])
+        await wait_for(lambda: scenario.counters.get("aliyun_binds", 0) >= 2)  # it retried
+        assert transport.account_in_use is True
+        assert not transport.is_connected
+        assert not transport.is_usable
+        assert not transport.is_unrecoverable_auth_failure
+        assert refreshes.await_count == 0  # no refresh can fix a held account lock
+        assert fatal.await_count == 0
+
+        scenario.bind_reply_code = 200
+        await wait_for(lambda: changes == [True, False])
+        await wait_for(lambda: transport.is_connected)
+        assert transport.account_in_use is False
+        assert transport.is_usable
+        assert fatal.await_count == 0
+    finally:
+        await transport.disconnect()

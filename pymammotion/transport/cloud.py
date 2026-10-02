@@ -59,6 +59,10 @@ MQTT_RECONNECT_MIN_SEC = 1
 MQTT_RECONNECT_MAX_SEC_ALIYUN = 60
 MQTT_RECONNECT_MAX_SEC_MAMMOTION = 120
 
+#: Fixed Aliyun retry while another session holds the account lock (bind_reply 2152).
+#: Retrying cannot evict that session, so one handshake per interval only polls for its release.
+ACCOUNT_IN_USE_RETRY_SEC = 300
+
 
 class CloudTransport(Transport, ABC):
     """A Transport that talks to a broker: send quota, broker credentials, ``thing/*`` messages.
@@ -244,6 +248,11 @@ class CloudTransport(Transport, ABC):
             quota_remaining = max(0.0, in_window[idx] + self._SEND_WINDOW - now)
 
         return max(cloud_remaining, quota_remaining)
+
+    @property
+    def account_in_use(self) -> bool:
+        """True while another session holds the account lock; only the Aliyun broker has one."""
+        return False
 
     @property
     def is_usable(self) -> bool:
