@@ -1,7 +1,7 @@
 """Dataclass models for Mammotion direct-MQTT device properties payloads."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Annotated, Any
 
@@ -48,13 +48,13 @@ class Coordinate(DataClassORJSONMixin):
 class InternalNavigation(DataClassORJSONMixin):
     """Internal navigation subsystem bandwidth breakdown."""
 
-    nav: Annotated[str, Alias("NAV")]
-    pau: Annotated[str, Alias("Pau")]
-    r_pau: Annotated[str, Alias("rPau")]
-    mcu: Annotated[str, Alias("MCU")]
-    app: Annotated[str, Alias("APP")]
-    w_slp: Annotated[str, Alias("wSlp")]
-    i_slp: Annotated[str, Alias("iSlp")]
+    nav: Annotated[str, Alias("NAV")] = ""
+    pau: Annotated[str, Alias("Pau")] = ""
+    r_pau: Annotated[str, Alias("rPau")] = ""
+    mcu: Annotated[str, Alias("MCU")] = ""
+    app: Annotated[str, Alias("APP")] = ""
+    w_slp: Annotated[str, Alias("wSlp")] = ""
+    i_slp: Annotated[str, Alias("iSlp")] = ""
 
     class Config(BaseConfig):
         """Mashumaro config: accept both aliased and raw field names on deserialize."""
@@ -66,10 +66,10 @@ class InternalNavigation(DataClassORJSONMixin):
 class BandwidthTraffic(DataClassORJSONMixin):
     """Per-channel bandwidth traffic measurements for IoT, RoI, FPV, and internal navigation."""
 
-    iot: Annotated[str, Alias("IoT")]
-    roi: Annotated[str, Alias("RoI")]
-    fpv: Annotated[str, Alias("FPV")]
-    inav: InternalNavigation
+    iot: Annotated[str, Alias("IoT")] = ""
+    roi: Annotated[str, Alias("RoI")] = ""
+    fpv: Annotated[str, Alias("FPV")] = ""
+    inav: InternalNavigation = field(default_factory=InternalNavigation)
 
     class Config(BaseConfig):
         """Mashumaro config: accept both aliased and raw field names on deserialize."""
@@ -81,19 +81,19 @@ class BandwidthTraffic(DataClassORJSONMixin):
 class TrafficPeriod(DataClassORJSONMixin):
     """Network traffic statistics for a single time period (received, transmitted, speed)."""
 
-    r: str
-    t: str
-    s: str
+    r: str = ""
+    t: str = ""
+    s: str = ""
 
 
 @dataclass
 class TrafficData(DataClassORJSONMixin):
     """Aggregated traffic statistics grouped by hour, day, and month."""
 
-    upt: str
-    hour: Annotated[dict[str, TrafficPeriod], Alias("Hour")]
-    day: Annotated[dict[str, TrafficPeriod], Alias("Day")]
-    mon: Annotated[dict[str, TrafficPeriod], Alias("Mon")]
+    upt: str = ""
+    hour: Annotated[dict[str, TrafficPeriod], Alias("Hour")] = field(default_factory=dict)
+    day: Annotated[dict[str, TrafficPeriod], Alias("Day")] = field(default_factory=dict)
+    mon: Annotated[dict[str, TrafficPeriod], Alias("Mon")] = field(default_factory=dict)
 
     class Config(BaseConfig):
         """Mashumaro config: accept both aliased and raw field names on deserialize."""
@@ -103,7 +103,11 @@ class TrafficData(DataClassORJSONMixin):
 
 @dataclass
 class NetworkInfo(DataClassORJSONMixin):
-    """Comprehensive network information including WiFi, cellular, and traffic statistics."""
+    """Comprehensive network information including WiFi, cellular, and traffic statistics.
+
+    The traffic blocks are posted empty (``{}``) or partial by some firmware, so every
+    field in them is defaulted: one of them must not drop the whole object.
+    """
 
     ssid: str = ""
     wifi_sta_mac: str = ""

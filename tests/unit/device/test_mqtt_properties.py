@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from pymammotion.data.mqtt.mammotion_properties import DeviceProperties, NetworkInfo
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage
 
@@ -123,6 +125,40 @@ def test_wifi_only_network_info_omitting_cellular_fields_parses() -> None:
     assert ni.mnet_rssi == 0
     assert ni.mnet_rx == "0"  # int coerced to str
     assert ni.work_time == "6 h 42 min 37 s"
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("key", ["mTra", "bTra", "bwTra"])
+def test_network_info_with_an_empty_traffic_block_keeps_the_rest(key: str) -> None:
+    """A device posted ``"mTra": {}``; the required traffic fields failed the whole networkInfo.
+
+    The decoder then logged "Dropping unparseable NetworkInfo" and the RSSI and
+    connection fields in the same object were lost with it.
+    """
+    payload = json.dumps({"params": {"networkInfo": {"wifi_rssi": -61, "used_net": 1, key: {}}}})
+
+    ni = MammotionPropertiesMessage.from_json(payload).params.network_info
+
+    assert ni is not None
+    assert ni.wifi_rssi == -61
+    assert ni.used_net == 1
+
+
+@pytest.mark.regression
+def test_a_partial_traffic_block_decodes_what_it_has() -> None:
+    """Missing hour/day/month buckets, or a bucket missing a counter, default instead of failing."""
+    ni = NetworkInfo.from_dict(
+        {"mTra": {"upt": "2026-10-03 10:00", "Day": {"03": {"r": "1MB"}}}, "bTra": {"IoT": "2KB", "inav": {}}}
+    )
+
+    assert ni.m_tra is not None
+    assert ni.m_tra.upt == "2026-10-03 10:00"
+    assert ni.m_tra.day["03"].r == "1MB"
+    assert ni.m_tra.day["03"].t == ""
+    assert ni.m_tra.hour == {}
+    assert ni.b_tra is not None
+    assert ni.b_tra.iot == "2KB"
+    assert ni.b_tra.inav.nav == ""
 
 
 # Regression tests for partial ``thing.event.property.post`` payloads.
