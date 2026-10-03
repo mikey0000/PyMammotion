@@ -68,9 +68,9 @@ def test_the_table_is_not_serialised_per_device() -> None:
 
 
 def test_an_unknown_code_still_renders() -> None:
-    errors = DeviceErrors(err_code_list=[5004])
-    assert errors.describe(5004) == "Unknown error 5004"
-    assert errors.info(5004) is None
+    errors = DeviceErrors(err_code_list=[99999])
+    assert errors.describe(99999) == "Unknown error 99999"
+    assert errors.info(99999) is None
 
 
 def test_it_round_trips_through_json() -> None:
