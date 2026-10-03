@@ -6,7 +6,9 @@ states into a single integer using bitwise fields.
 
 Source: `MACarDataManager.java` in Mammotion APK 2.2.4.13 —
 `setUlt_Status()`, `setBumperState()`, and the "刀盘逻辑" knife-state extraction;
-`SelfCheckFragment.java` `setCheckState()` for the 3-state display mapping.
+`SelfCheckFragment.java` `setCheckState()` for the 3-state display mapping, and
+`MapManualActivityNew.java` `lambda$initCarWorkState$7` for the grass-collector
+and bin-tipping fields.
 
 ---
 
@@ -22,7 +24,9 @@ Bit position  Width  Field                   Sensor ID (app-internal)
  15 – 17        3    Left-front ultrasonic    111
  18 – 20        3    Right-front ultrasonic   112
  21 – 23        3    Right ultrasonic         113
- 24 – 63       40    (reserved)               —
+ 24 – 26        3    Grass collector (sweep)  —
+ 27 – 29        3    Bin tipping (dump)       —
+ 30 – 63       34    (reserved)               —
 ```
 
 ---
@@ -59,6 +63,38 @@ logic: is blade open?)
 
 ---
 
+## Grass-collector state values (`CollectorState`) — bits 24–26
+
+The app's `colloctState`.  It stops collection and shows the upload-failed warning
+for anything above `COLLECTING`, so the accessor clamps 3–7 to `FAULT`.
+
+| Value | `CollectorState` | Meaning                                |
+|------:|------------------|----------------------------------------|
+|     0 | `IDLE`           | Collector not running                  |
+|     1 | `COLLECTING`     | Sweeping clippings into the bin        |
+| 2 – 7 | `FAULT`          | Collection failed (3–7 clamp to 2)     |
+
+---
+
+## Bin-tipping state values (`DumpState`) — bits 27–29
+
+The app's `pourState`.  Unlike the fields above, values the library does not model
+(4–7) resolve to `UNKNOWN` (−1) rather than clamping, and are logged once per value.
+
+| Value | `DumpState`  | Meaning                                                   |
+|------:|--------------|-----------------------------------------------------------|
+|     0 | `LOWERED`    | Bin stowed                                                |
+|     1 | `RAISED`     | Bin lifted and ready to tip                               |
+|     2 | `ADJUSTING`  | Collect-mode adjustment running; must be turned off first |
+|     3 | `POURING`    | Clippings being tipped out                                |
+| 4 – 7 | `UNKNOWN`    | Not modelled                                              |
+
+Whether a collector is fitted is **not** in `sensor_status`: it is
+`collector_status.collector_installation_status` (non-zero = fitted), exposed as
+`collector_installed`.  The app hides every sweep and dump control while it is zero.
+
+---
+
 ## Python accessors (`DeviceData`)
 
 `DeviceData` exposes read-only properties that decode each field directly:
@@ -70,6 +106,9 @@ device.report_data.dev.ult_left          # SensorCheckState  (bits 12-14)
 device.report_data.dev.ult_left_front    # SensorCheckState  (bits 15-17)
 device.report_data.dev.ult_right_front   # SensorCheckState  (bits 18-20)
 device.report_data.dev.ult_right         # SensorCheckState  (bits 21-23)
+device.report_data.dev.collector_state   # CollectorState    (bits 24-26)
+device.report_data.dev.dump_state        # DumpState         (bits 27-29)
+device.report_data.dev.collector_installed  # bool, from collector_status (not a sensor_status bit)
 ```
 
 Raw integer access is always available via `device.report_data.dev.sensor_status`.

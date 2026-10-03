@@ -81,10 +81,10 @@ def test_the_bundle_carries_codes_only_page_lan_publishes() -> None:
 
 
 def test_an_unknown_code_resolves_to_nothing_rather_than_raising() -> None:
-    # 11133 was reported by a real Yuka and is in neither the export nor the APK asset.
-    assert get_error_info(-11133) is None
-    assert describe(-11133) == "Unknown error -11133"
-    assert solution(-11133) == ""
+    # No source, vendor or firmware, has this code.
+    assert get_error_info(-99999) is None
+    assert describe(-99999) == "Unknown error -99999"
+    assert solution(-99999) == ""
 
 
 def test_a_fetched_table_takes_precedence_over_the_bundle() -> None:
