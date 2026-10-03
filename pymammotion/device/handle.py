@@ -7,6 +7,7 @@ import base64
 import contextlib
 import dataclasses
 import logging
+import math
 import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -115,6 +116,11 @@ if TYPE_CHECKING:
     from pymammotion.transport.ble import BLETransport
 
 _logger = logging.getLogger(__name__)
+
+
+def _age(stamp: float) -> float:
+    # 0.0 means "never": monotonic() counts from boot, so it can be small enough to look recent.
+    return time.monotonic() - stamp if stamp else math.inf
 
 
 class DeviceStateTimeoutError(TimeoutError):
@@ -867,7 +873,7 @@ class DeviceHandle:
         was_offline = self._availability.mqtt_reported_offline
 
         if was_offline and online:
-            if not self._stopping and time.monotonic() - self._last_report_at > self._REPORT_STALE_THRESHOLD:
+            if not self._stopping and self.report_age > self._REPORT_STALE_THRESHOLD:
                 await self.request_report_cfg(dedup_key="report_cfg_on_status")
 
         # Keep the offline gate in sync with thing/status in BOTH directions: an
@@ -1216,10 +1222,7 @@ class DeviceHandle:
             try:
                 async with deadline:
                     while not reached.done():
-                        if (
-                            requests < _STATE_WAIT_MAX_REQUESTS
-                            and time.monotonic() - self._last_report_data_at >= poll_interval
-                        ):
+                        if requests < _STATE_WAIT_MAX_REQUESTS and self.report_data_age >= poll_interval:
                             requests += 1
                             try:
                                 await request()
@@ -1641,6 +1644,16 @@ class DeviceHandle:
         "some frame arrived".
         """
         return self._last_report_data_at
+
+    @property
+    def report_age(self) -> float:
+        """Seconds since :attr:`last_report_at`; ``inf`` if no frame has arrived yet."""
+        return _age(self._last_report_at)
+
+    @property
+    def report_data_age(self) -> float:
+        """Seconds since :attr:`last_report_data_at`; ``inf`` if no report frame has arrived yet."""
+        return _age(self._last_report_data_at)
 
     async def wait_for_next_report(self, timeout: float | None = None) -> bool:
         """Return True once a report frame lands within *timeout* seconds, without requesting one.

@@ -13,6 +13,7 @@ for the device by feeding a ``toapp_report_data`` frame back through
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
@@ -273,6 +274,27 @@ async def test_ensure_fresh_state_still_skips_a_device_the_cloud_reported_offlin
 
     mqtt.send_user.assert_not_awaited()
     mqtt.send.assert_not_awaited()
+    await handle.stop()
+
+
+@pytest.mark.regression
+async def test_ensure_fresh_state_polls_a_device_that_never_reported_on_a_just_booted_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``last_report_at`` is 0.0 until a frame lands, and ``time.monotonic()`` counts from boot.
+
+    Within ``max_age_s`` of boot ``monotonic() - 0.0`` looked recent, so a device that had
+    never reported was treated as fresh and nothing was sent (seen on fresh CI runners).
+    """
+    real_monotonic = time.monotonic
+    origin = real_monotonic()
+    monkeypatch.setattr(time, "monotonic", lambda: real_monotonic() - origin + 30.0)
+    handle, mqtt = await _cloud_handle("Luba-R18", reported_offline=False)
+    client = await _registered(handle)
+
+    await asyncio.wait_for(client.ensure_fresh_state("Luba-R18", wait=True), _SEND_TIMEOUT)
+
+    mqtt.send_user.assert_awaited_once()
     await handle.stop()
 
 

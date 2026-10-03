@@ -397,7 +397,7 @@ class MammotionClient(CloudAuthMixin):
 
         """
         handle = self._device_registry.get_by_name(device_name, account_id)
-        if handle is None or time.monotonic() - handle.last_report_at <= max_age_s:
+        if handle is None or handle.report_age <= max_age_s:
             return
         if not wait:
             await handle.request_report_snapshot()
