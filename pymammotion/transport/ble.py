@@ -147,6 +147,9 @@ class BLETransport(Transport):
         #: so a write that triggers reconnect doesn't deadlock when ``connect()``
         #: runs from inside the operation lock.
         self._connect_lock: asyncio.Lock = asyncio.Lock()
+        #: Bumped by ``disconnect()``; a ``connect()`` that started under an older value
+        #: drops the link it gets, since ``establish_connection`` cannot be interrupted.
+        self._disconnect_epoch: int = 0
         #: Consecutive ``BleakError`` failures from ``establish_connection``.  Reset on
         #: successful connect or explicit ``clear_ble_device()``.  At
         #: ``config.connect_failure_threshold`` the transport self-clears and starts a cooldown.
@@ -283,6 +286,7 @@ class BLETransport(Transport):
                 disabled (or address is missing for the scan).
 
         """
+        epoch = self._disconnect_epoch
         # Fast cooldown gate — refuse immediately without taking the lock so the
         # caller falls back to MQTT rather than burning a connection slot.
         self._raise_if_cooling_down()
@@ -295,6 +299,7 @@ class BLETransport(Transport):
             # Re-check cooldown under the lock — another caller may have tripped
             # the threshold while we were waiting.
             self._raise_if_cooling_down()
+            await self._drop_if_disconnected(epoch)
 
             if self._ble_device is None:
                 if self._config.self_managed_scanning:
@@ -321,7 +326,7 @@ class BLETransport(Transport):
 
             connected = False
             try:
-                connected = await self._connect_passes(self._ble_device)
+                connected = await self._connect_passes(self._ble_device, epoch)
             finally:
                 # Announced here rather than at each raise so an unanticipated exception
                 # or a cancellation cannot strand availability at CONNECTING.  Runs before
@@ -329,7 +334,7 @@ class BLETransport(Transport):
                 if not connected and self._availability is not TransportAvailability.DISCONNECTED:
                     await self._notify_availability(TransportAvailability.DISCONNECTED)
 
-    async def _connect_passes(self, ble_device: BLEDevice) -> bool:
+    async def _connect_passes(self, ble_device: BLEDevice, epoch: int) -> bool:
         """Run the connect/setup attempts, returning True once the link is usable.
 
         Caller holds ``_connect_lock`` and has already announced CONNECTING.
@@ -357,6 +362,7 @@ class BLETransport(Transport):
             except BleakError as exc:
                 self._record_connect_failure(exc)
                 raise BLEUnavailableError(f"BLE connection failed for {self._config.device_id!r}: {exc}") from exc
+            await self._drop_if_disconnected(epoch)
 
             if purge_pending:
                 # A proxy only accepts a purge over a live link, and the one that hit
@@ -396,6 +402,7 @@ class BLETransport(Transport):
                         self._config.device_id,
                     )
 
+                await self._drop_if_disconnected(epoch)
                 await self._notify_availability(TransportAvailability.CONNECTED)
                 _logger.debug("BLETransport connected to %s", self._config.device_id)
 
@@ -406,6 +413,7 @@ class BLETransport(Transport):
                 # DeviceHandle._keep_alive_loop (20 s).
                 step = "initial sync"
                 await self._ble_sync()
+                await self._drop_if_disconnected(epoch)
                 return True
             except (BleakError, TimeoutError, OSError) as exc:
                 # The link is up but unusable; leaving it connected would let writes
@@ -443,6 +451,15 @@ class BLETransport(Transport):
         # Unreachable while the flags stay monotone; guards a future recovery path.
         raise BLEUnavailableError(
             f"BLE connect for {self._config.device_id!r} gave up after {_MAX_CONNECT_PASSES} attempts"
+        )
+
+    async def _drop_if_disconnected(self, epoch: int) -> None:
+        """Tear down the link being set up if ``disconnect()`` ran since *epoch*."""
+        if epoch == self._disconnect_epoch:
+            return
+        await self._teardown_client()
+        raise BLEUnavailableError(
+            f"BLE for {self._config.device_id!r} disconnected while connecting; dropped the new link"
         )
 
     def _raise_if_cooling_down(self) -> None:
@@ -561,7 +578,11 @@ class BLETransport(Transport):
         self._ble_device = device
 
     async def disconnect(self) -> None:
-        """Gracefully disconnect the BLE client."""
+        """Gracefully disconnect the BLE client, including one ``connect()`` is still setting up."""
+        self._disconnect_epoch += 1
+        if self._connect_lock.locked():
+            # connect() owns the client until it returns; it drops the link itself.
+            return
         if self._client is not None and self._client.is_connected:
             try:
                 await self._client.disconnect()
