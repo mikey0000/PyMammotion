@@ -30,6 +30,7 @@ from pymammotion.data.model.events import OTAProgress
 from pymammotion.data.model.generate_geojson import (
     apply_area_geojson,
     apply_device_mow_progress_geojson,
+    apply_dynamics_line_geojson,
     apply_mowing_geojson,
 )
 from pymammotion.data.model.hash_list import (
@@ -38,6 +39,7 @@ from pymammotion.data.model.hash_list import (
     MowPath,
     NavGetCommData,
     NavGetHashListData,
+    PathType,
     Plan,
     SvgMessage,
 )
@@ -393,7 +395,11 @@ class MowerStateReducer(StateReducer):
                 )
             case "toapp_get_commondata_ack":
                 common_data: NavGetCommDataAck = nav_msg[1]  # type: ignore
-                device.map.update(NavGetCommData.from_dict(common_data.to_dict(casing=betterproto2.Casing.SNAKE)))
+                if (
+                    device.map.update(NavGetCommData.from_dict(common_data.to_dict(casing=betterproto2.Casing.SNAKE)))
+                    and common_data.type == PathType.DYNAMICS_LINE
+                ):
+                    apply_dynamics_line_geojson(device.map, device.location.RTK)
                 # Skip eager geojson regen during sagas — the saga's on_complete
                 # handler regenerates once after all frames arrive instead of
                 # paying the O(N) cost on every frame.

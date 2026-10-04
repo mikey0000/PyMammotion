@@ -37,6 +37,7 @@ def _handle() -> DeviceHandle:
     handle._ble_keep_alive_task = None  # noqa: SLF001
     handle._ble_polling_task = None  # noqa: SLF001
     handle._dynamics_line_task = None  # noqa: SLF001
+    handle._dynamics_line_watch_until = 0.0  # noqa: SLF001
     handle._transports = {}  # noqa: SLF001
     handle.device_name = "Luba-TEST"
     return handle
@@ -45,10 +46,11 @@ def _handle() -> DeviceHandle:
 async def test_stop_polling_cancels_the_ble_loops_as_well() -> None:
     """A BLE-connected device must actually go quiet, not just stop MQTT polls."""
     handle = _handle()
-    loops = [_Sleeper() for _ in range(3)]
+    loops = [_Sleeper() for _ in range(4)]
     handle._keep_alive_task = asyncio.create_task(loops[0].run(handle))  # noqa: SLF001
     handle._ble_keep_alive_task = asyncio.create_task(loops[1].run(handle))  # noqa: SLF001
     handle._ble_polling_task = asyncio.create_task(loops[2].run(handle))  # noqa: SLF001
+    handle._dynamics_line_task = asyncio.create_task(loops[3].run(handle))  # noqa: SLF001
     await asyncio.sleep(0)
 
     await handle.stop_polling()
@@ -57,6 +59,7 @@ async def test_stop_polling_cancels_the_ble_loops_as_well() -> None:
     assert handle._keep_alive_task is None  # noqa: SLF001
     assert handle._ble_keep_alive_task is None  # noqa: SLF001
     assert handle._ble_polling_task is None  # noqa: SLF001
+    assert handle._dynamics_line_task is None  # noqa: SLF001
 
 
 async def test_restart_keep_alive_still_respects_a_stop() -> None:
@@ -106,7 +109,7 @@ async def test_resume_polling_is_inert_while_stopping() -> None:
 
 
 async def test_a_ble_reconnect_does_not_resurrect_stopped_loops() -> None:
-    """_on_ble_connected restarts all three loops; the stop has to survive that."""
+    """The loop starters run on reconnects and map polls; the stop has to survive them."""
     handle = _handle()
     await handle.stop_polling()
 

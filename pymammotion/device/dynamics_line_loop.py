@@ -1,27 +1,15 @@
-"""Dynamics-line poll loop — mirrors APK ``HashDataManager`` 100003 timer.
+"""Dynamics-line poll loop — the APK ``HashDataManager`` 100003 timer.
 
-The APK polls ``NavGetCommData(action=8, type=18)`` every 10 s while the
-device is mowing/returning, for devices where
-``DeviceType.isSupportDynamicsLine()`` is true (LUBA_HM included).  The
-response carries the live cut-path so far, which the UI overlays as the
-mower's progress.
+The APK polls ``NavGetCommData(action=8, type=18)`` every 10 s for the whole job on
+devices where ``DeviceType.isSupportDynamicsLine()`` holds (the lidar models).  Over
+BLE, which has no send quota, so does this loop: it starts on BLE connect and is
+cancelled on disconnect.  Over the cloud a fetch costs a request plus one ack per
+frame from the 600-send quota, so it polls only inside the viewing window that
+``DeviceHandle.watch_dynamics_line`` opens each time the map asks for mow progress.
 
-This loop replicates that behaviour for pymammotion.  **BLE-gated** — the
-loop is started from ``DeviceHandle._on_ble_connected`` and cancelled when
-BLE disconnects, mirroring the ``_ble_polling_task`` lifecycle.  The 10 s
-cadence would be MQTT-quota-expensive, and BLE is where the responsiveness
-matters anyway (HA users watching live mow progress are typically nearby).
-
-Per-tick gates:
-
-* device is in ACTIVE mode (``LoopHost.cadence_mode``)
-* BLE transport is still connected
-* device type supports dynamics line (re-checked because LUBA_VA is
-  firmware-gated and firmware may not be known at loop-start)
-* no other saga is currently running on the device queue
-
-When all gates pass, a ``CommonDataSaga`` is enqueued; on completion the
-assembled point list is stored on ``device.map.dynamics_line``.
+Per-tick gates: a job is running, the model supports the line (LUBA_VA is firmware
+gated, so re-checked each tick), no saga is running, a transport is usable, and over
+the cloud ``mow_path_fetch_enabled`` is on.  The state reducer stores what arrives.
 """
 
 from __future__ import annotations
@@ -31,7 +19,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from pymammotion.data.model.device import MowerDevice
-from pymammotion.data.model.generate_geojson import apply_dynamics_line_geojson
 from pymammotion.data.model.hash_list import PathType
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.messaging.common_data_saga import CommonDataSaga
@@ -43,58 +30,38 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-#: Poll cadence — matches APK ``HashDataManager.handlerType_getDynamicsLine``
-#: (10 000 ms, see ``HashDataManager.java:133, :873``).
-_DYNAMICS_LINE_POLL_INTERVAL: float = 10.0
+#: How long one map poll keeps the dynamics line polled.
+DYNAMICS_LINE_WATCH_SECONDS: float = 300.0
+
+#: Poll cadence while watched.  BLE matches the APK's 10 s timer
+#: (``HashDataManager.java:133, :873``); the cloud is slower to spare the send quota.
+_BLE_POLL_INTERVAL: float = 10.0
+_CLOUD_POLL_INTERVAL: float = 60.0
 
 
 async def dynamics_line_loop(handle: LoopHost) -> None:
-    """Periodic dynamics-line poll loop — BLE-gated.
-
-    Started from ``DeviceHandle._on_ble_connected``; cancelled from the BLE
-    availability handler when state transitions to DISCONNECTED.  Self-exits
-    if it observes BLE disconnected mid-tick (defensive against any path that
-    drops BLE without going through the availability handler).
-
-    LUBA_VA is firmware-gated (must be >= 1.15.3.4422 per APK
-    ``DeviceType.isSupportDynamicsLine``).  Because the device version isn't
-    known until the device reports it, the loop re-checks
-    ``is_support_dynamics_line(fw)`` on every tick using the current
-    ``device_firmwares.device_version``.
-    """
+    """Poll while BLE is connected or a viewing window is open, fetching once on entry."""
     device_type = DeviceType.value_of_str(handle.device_name)
+    while not handle.is_stopping and (_ble_connected(handle) or handle.dynamics_line_watched):
+        ble_connected = _ble_connected(handle)
+        if _should_poll(handle, device_type, ble_connected=ble_connected):
+            await _enqueue_dynamics_line_saga(handle)
+        # Plain sleep, not sleep_or_rearm: on_saga_end sets the shared rearm event after
+        # this loop's own saga, which would collapse the interval into back-to-back polls.
+        await asyncio.sleep(_BLE_POLL_INTERVAL if ble_connected else _CLOUD_POLL_INTERVAL)
 
-    while not handle.is_stopping:
-        # Plain sleep, not sleep_or_rearm: the shared _rearm_event is set by
-        # on_saga_end after this loop's own poll saga finishes, so sleep_or_rearm
-        # returned immediately and collapsed the interval into a back-to-back
-        # retrigger. BLE-disconnect still exits via the task cancel in handle.py
-        # plus the is_connected gate below, so the rearm wake isn't needed here.
-        await asyncio.sleep(_DYNAMICS_LINE_POLL_INTERVAL)
 
-        if handle.is_stopping:
-            return
+def _ble_connected(handle: LoopHost) -> bool:
+    ble = handle.get_transport(TransportType.BLE)
+    return ble is not None and ble.is_connected
 
-        # BLE-only gate.  If BLE went away without the availability handler
-        # cancelling us (shouldn't happen, but defensive), exit cleanly so
-        # the next _on_ble_connected can start a fresh loop.
-        ble = handle.get_transport(TransportType.BLE)
-        if ble is None or not ble.is_connected:
-            _logger.debug("dynamics_line_loop [%s]: BLE not connected — loop exiting", handle.device_name)
-            return
 
-        if handle.cadence_mode() != _DeviceMode.ACTIVE:
-            continue
-
-        if handle.queue.is_saga_active:
-            continue
-
-        # Re-check on every tick — LUBA_VA depends on firmware version which
-        # may not be known until reports start arriving.
-        if not device_type.is_support_dynamics_line(_device_version(handle)):
-            continue
-
-        await _enqueue_dynamics_line_saga(handle)
+def _should_poll(handle: LoopHost, device_type: DeviceType, *, ble_connected: bool) -> bool:
+    if handle.cadence_mode() != _DeviceMode.ACTIVE or handle.queue.is_saga_active:
+        return False
+    if not handle.has_usable_transport or not (ble_connected or handle.mow_path_fetch_enabled):
+        return False
+    return device_type.is_support_dynamics_line(_device_version(handle))
 
 
 def _device_version(handle: LoopHost) -> str | None:
@@ -112,29 +79,14 @@ def _device_version(handle: LoopHost) -> str | None:
 
 
 async def _enqueue_dynamics_line_saga(handle: LoopHost) -> None:
-    """Enqueue a ``CommonDataSaga`` for the dynamics line and wire the update.
-
-    On successful completion the assembled point list is stored on
-    ``device.map.dynamics_line`` and the WGS-84 geojson is regenerated using
-    the current RTK location, mirroring ``MammotionClient.get_dynamics_line``.
-    """
+    """Enqueue a ``CommonDataSaga`` for the dynamics line; the state reducer stores what it receives."""
     saga = CommonDataSaga(
         command_builder=handle.commands,
         send_command=handle.send_raw,
         action=8,
         type=PathType.DYNAMICS_LINE,
     )
-
-    async def _on_complete() -> None:
-        if not saga.result:
-            return
-        raw = handle.snapshot.raw
-        if not isinstance(raw, MowerDevice):
-            return
-        raw.map.update_dynamics_line(saga.result)
-        apply_dynamics_line_geojson(raw.map, raw.location.RTK)
-
     try:
-        await handle.enqueue_saga(saga, on_complete=_on_complete)
+        await handle.enqueue_saga(saga)
     except Exception:
         _logger.debug("dynamics_line_loop [%s]: enqueue failed", handle.device_name, exc_info=True)

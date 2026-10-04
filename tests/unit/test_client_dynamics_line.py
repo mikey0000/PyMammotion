@@ -74,3 +74,18 @@ async def test_luba_va_ignores_the_main_controller_version() -> None:
 
 async def test_an_unknown_device_is_not_fetched() -> None:
     assert not await MammotionClient().check_and_get_dynamics_line("Luba-LA999")
+
+
+async def test_watching_opens_the_handles_viewing_window() -> None:
+    client = await _client("Luba-LA123", sys_status=WorkMode.MODE_READY)
+    handle = client._device_registry.get_by_name("Luba-LA123")  # noqa: SLF001
+    assert handle is not None
+
+    client.watch_dynamics_line("Luba-LA123")
+
+    assert handle.dynamics_line_watched
+    await handle.stop()
+
+
+def test_watching_an_unknown_device_is_a_noop() -> None:
+    MammotionClient().watch_dynamics_line("Luba-LA999")

@@ -33,9 +33,8 @@ class CommonDataSaga(Saga):
     3. Stops once ``current_frame == total_frame`` for all collected frames.
     4. Assembles frames in ascending frame-number order into ``self.result``.
 
-    Frame 1 of a dynamics-line response signals a new mowing session on the
-    device; the caller (``MammotionClient.get_dynamics_line``) replaces the
-    stored ``device.map.dynamics_line`` list with the assembled result.
+    The saga only drives the request/ack exchange: the state reducer applies
+    the same frames to the device state (``HashList.update``).
 
     Attributes:
         result: Assembled list of ``CommDataCouple`` points from all frames,

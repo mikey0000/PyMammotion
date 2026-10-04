@@ -551,6 +551,10 @@ class HashList(DataClassORJSONMixin):
     """
     generated_dynamics_line_geojson: dict[str, Any] = field(default_factory=dict)
     """WGS-84 LineString of ``dynamics_line``, regenerated after each fetch."""
+    _dynamics_line_frames: dict[tuple[int, int], list[CommDataCouple]] = field(
+        default_factory=dict, metadata=field_options(serialize="omit")
+    )
+    """Type-18 frames of the set in flight, keyed ``(hash, current_frame)`` as the APK keys them."""
     generated_mow_progress_geojson: dict[str, Any] = field(default_factory=dict)
     """Completed portion of the planned mow path, sliced to ``now_index``."""
 
@@ -972,8 +976,8 @@ class HashList(DataClassORJSONMixin):
         """Route *hash_data* into the appropriate per-type dict and return whether it was new.
 
         AREA frames also auto-assign an ``area_name`` ("Area N") if none exists
-        for the hash yet.  DYNAMICS_LINE (type 18) is keyed by frame order and
-        resets on ``current_frame == 1``.
+        for the hash yet.  DYNAMICS_LINE (type 18) returns True only when a
+        complete set has replaced ``dynamics_line``.
 
         Unknown types (e.g. radar-specific 23 we've seen on LUBA_VA) are stored
         in ``unknown_type_frames`` so the hash is still tracked as "received".
@@ -992,13 +996,8 @@ class HashList(DataClassORJSONMixin):
             self.update_hash_lists(self.hashlist)
             return result
 
-        # DYNAMICS_LINE is normally assembled by CommonDataSaga and stored via
-        # update_dynamics_line; handle direct arrivals defensively here.
         if hash_data.type == PathType.DYNAMICS_LINE:
-            if hash_data.current_frame == 1:
-                self.dynamics_line = []
-            self.dynamics_line.extend(hash_data.data_couple)
-            return True
+            return self._add_dynamics_line_frame(hash_data)
 
         # NavGetCommData with type=SVG carries no geometry — real SVG geometry only
         # arrives as SvgMessage (toapp_svg_msg).  Discard rather than storing it as a
@@ -1017,6 +1016,31 @@ class HashList(DataClassORJSONMixin):
         # so the hash is still considered "received" by find_incomplete_hashes.
         bucket = self.unknown_type_frames.setdefault(hash_data.type, {})
         return self._add_hash_data(bucket, hash_data)
+
+    def _add_dynamics_line_frame(self, frame: NavGetCommData) -> bool:
+        """Bank a type-18 frame; replace ``dynamics_line`` and return True once its set is complete.
+
+        Port of APK ``HashDataManager.updateDynamicsLine``.
+        """
+        if frame.result != 0:
+            return False
+        if frame.current_frame == 1:
+            self._dynamics_line_frames = {}
+        self._dynamics_line_frames.setdefault((frame.hash, frame.current_frame), list(frame.data_couple))
+        if frame.current_frame != frame.total_frame:
+            return False
+        keys = [(frame.hash, n) for n in range(1, frame.total_frame + 1)]
+        if not all(key in self._dynamics_line_frames for key in keys):
+            return False
+        self.dynamics_line = [point for key in keys for point in self._dynamics_line_frames[key]]
+        self._dynamics_line_frames = {}
+        return True
+
+    def clear_dynamics_line(self) -> None:
+        """Drop the dynamics line, its GeoJSON and any partly received set."""
+        self.dynamics_line = []
+        self.generated_dynamics_line_geojson = {}
+        self._dynamics_line_frames = {}
 
     def update_dynamics_line(self, points: list[CommDataCouple]) -> None:
         """Replace ``dynamics_line`` with *points*.

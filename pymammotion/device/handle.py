@@ -18,7 +18,7 @@ from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundE
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
-from pymammotion.device.dynamics_line_loop import dynamics_line_loop
+from pymammotion.device.dynamics_line_loop import DYNAMICS_LINE_WATCH_SECONDS, dynamics_line_loop
 from pymammotion.device.modes import _DeviceMode
 from pymammotion.device.mqtt_loop import mqtt_activity_loop
 from pymammotion.device.remote_drive import RemoteDriveSession
@@ -321,11 +321,10 @@ class DeviceHandle:
         #: Task running the BLE polling/streaming loop (renews continuous stream while
         #: mowing, falls back to count=1 polls when docked).
         self._ble_polling_task: asyncio.Task[None] | None = None
-        #: Task running the dynamics-line poll loop — sends NavGetCommData(action=8,
-        #: type=18) every 10 s while the device is in ACTIVE mode, for device types
-        #: where DeviceType.is_support_dynamics_line() is true.  Mirrors APK
-        #: HashDataManager.handlerType_getDynamicsLine.
+        #: Task running the dynamics-line poll loop: while BLE is connected or the map is watched.
         self._dynamics_line_task: asyncio.Task[None] | None = None
+        #: Monotonic time the dynamics-line viewing window closes (see watch_dynamics_line).
+        self._dynamics_line_watch_until: float = 0.0
         #: Background BLE-connect task and its single-flight lock.  ``send_raw`` / ``_do_send``
         #: kick a background reconnect when BLE is preferred-but-disconnected; the lock keeps
         #: only one connect running at a time (bursts of sends must not spawn concurrent
@@ -494,11 +493,7 @@ class DeviceHandle:
                         task = self._ble_polling_task
                         if task is not None and not task.done():
                             task.cancel()
-                        # Dynamics-line polling is BLE-only — cancel here so it
-                        # restarts cleanly on the next _on_ble_connected.
-                        dl_task = self._dynamics_line_task
-                        if dl_task is not None and not dl_task.done():
-                            dl_task.cancel()
+                        self._restart_dynamics_line_loop_for_cloud()
                         self._ble_stream_active = False
                         # BLE was the fallback that opened the gate on CONNECTED.  With it
                         # gone, re-close the gate if MQTT is still mid-reconnect — otherwise
@@ -1393,9 +1388,6 @@ class DeviceHandle:
         self.queue.start()
         if not self._skips_activity_loops and (self._keep_alive_task is None or self._keep_alive_task.done()):
             self._keep_alive_task = asyncio.get_running_loop().create_task(mqtt_activity_loop(self))
-        # _dynamics_line_task is BLE-gated and starts/stops from _on_ble_connected
-        # / the BLE availability handler — not from start().  Dynamics-line polling
-        # only makes sense over BLE (10 s cadence would be MQTT-quota-expensive).
 
     def _start_ble_loop(self) -> None:
         """Start (or restart) the BLE heartbeat task if not already running.
@@ -1421,13 +1413,32 @@ class DeviceHandle:
             _logger.debug("start_ble_polling_loop [%s]: starting BLE polling loop", self.device_name)
             self._ble_polling_task = asyncio.get_running_loop().create_task(ble_polling_loop(self))
 
-    def _start_dynamics_line_loop(self) -> None:
-        """Start (or restart) the dynamics-line poll loop if the device type supports it.
+    def watch_dynamics_line(self, duration: float = DYNAMICS_LINE_WATCH_SECONDS) -> None:
+        """Poll the dynamics line for *duration* seconds from now, extending an open window.
 
-        BLE-gated — only called from ``_on_ble_connected``.  Skipped entirely for
-        device types that can never support dynamics line; LUBA_VA is included
-        because its eligibility flips on firmware >= 1.15.3.4422, which the loop
-        re-checks on every tick using the live ``main_controller`` version.
+        Called whenever the map asks for mow progress, so a cloud-only mower is polled only
+        while someone is looking.  Over BLE the line is polled for the whole job regardless.
+        """
+        self._dynamics_line_watch_until = max(self._dynamics_line_watch_until, time.monotonic() + duration)
+        self._start_dynamics_line_loop()
+
+    @property
+    def dynamics_line_watched(self) -> bool:
+        """Whether a map viewer's dynamics-line window is open."""
+        return time.monotonic() < self._dynamics_line_watch_until
+
+    def _restart_dynamics_line_loop_for_cloud(self) -> None:
+        """Stop the BLE-driven dynamics-line poll; carry on over the cloud only for an open window."""
+        if (task := self._dynamics_line_task) is not None and not task.done():
+            task.cancel()
+        self._dynamics_line_task = None
+        if self.dynamics_line_watched:
+            self._start_dynamics_line_loop()
+
+    def _start_dynamics_line_loop(self) -> None:
+        """Start the dynamics-line poll loop unless it is running or can never apply to this model.
+
+        LUBA_VA is let through because its support depends on firmware, which the loop checks per tick.
         """
         if self._skips_activity_loops or self._stopping or self._polling_stopped:
             return
@@ -1465,7 +1476,12 @@ class DeviceHandle:
         full cadence while its host believed polling was off.
         """
         self._polling_stopped = True
-        for task in (self._keep_alive_task, self._ble_keep_alive_task, self._ble_polling_task):
+        for task in (
+            self._keep_alive_task,
+            self._ble_keep_alive_task,
+            self._ble_polling_task,
+            self._dynamics_line_task,
+        ):
             if task is not None and not task.done():
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -1473,6 +1489,7 @@ class DeviceHandle:
         self._keep_alive_task = None
         self._ble_keep_alive_task = None
         self._ble_polling_task = None
+        self._dynamics_line_task = None
 
     async def resume_polling(self) -> None:
         """Undo :meth:`stop_polling`, restarting whatever the live transports support.
@@ -1491,6 +1508,8 @@ class DeviceHandle:
         if ble is not None and ble.is_connected:
             self._start_ble_loop()
             self._start_ble_polling_loop()
+            self._start_dynamics_line_loop()
+        elif self.dynamics_line_watched:
             self._start_dynamics_line_loop()
 
     async def stop(self) -> None:

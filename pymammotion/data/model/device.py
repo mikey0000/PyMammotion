@@ -408,6 +408,8 @@ class MowerDevice(Device):
                     self.events.work_tasks_event.ids = []
                     self.map.invalidate_breakpoint_line(0)
                 self.map.invalidate_mow_path(toapp_report_data.work.path_hash)
+                if toapp_report_data.work.ub_path_hash == 0:
+                    self.map.clear_dynamics_line()
             self.map.invalidate_breakpoint_line(toapp_report_data.work.ub_path_hash)
 
         self.report_data.update(toapp_report_data)

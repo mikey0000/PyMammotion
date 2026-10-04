@@ -60,7 +60,6 @@ from pymammotion.data.model.function_codes import FunctionCodes
 from pymammotion.data.model.generate_geojson import (
     apply_area_geojson,
     apply_device_mow_progress_geojson,
-    apply_dynamics_line_geojson,
     apply_mowing_geojson,
 )
 from pymammotion.data.model.hash_list import PathType, SvgMessage
@@ -1995,10 +1994,10 @@ class MammotionClient(CloudAuthMixin):
 
         The gates mirror the APK's ``HashDataManager.getDynamicsLine()``: dynamics-line
         models only (LUBA_VA by firmware), and only while a job is in progress.  Over
-        MQTT it also needs ``mow_path_fetch_enabled``, like :meth:`start_mow_path_saga`
-        — BLE is already polled every 10 s by ``dynamics_line_loop``.  Unlike that
-        loop it queues behind a running saga rather than skipping, so it can follow
-        a cover-path fetch.  Returns True only when a fetch was enqueued.
+        MQTT it also needs ``mow_path_fetch_enabled``, like :meth:`start_mow_path_saga`.
+        Unlike :meth:`watch_dynamics_line` it queues behind a running saga rather than
+        skipping, so it can follow a cover-path fetch.  Returns True only when a fetch
+        was enqueued.
         """
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
@@ -2014,13 +2013,22 @@ class MammotionClient(CloudAuthMixin):
         await self.get_dynamics_line(device_name)
         return True
 
+    def watch_dynamics_line(self, device_name: str, account_id: str | None = None) -> None:
+        """Keep the live dynamics line polled over the cloud for five more minutes; call it on every map poll.
+
+        Cloud polling stops once the map stops asking, so a job nobody watches spends no quota.
+        Over BLE the line is polled for the whole job regardless.
+        """
+        if (handle := self._device_registry.get_by_name(device_name, account_id)) is not None:
+            handle.watch_dynamics_line()
+
     async def get_dynamics_line(self, device_name: str) -> None:
         """Fetch the live mow-progress path for *device_name* via a CommonDataSaga.
 
         Sends ``NavGetCommData(action=8, type=18)`` to the device and collects
-        the multi-frame ``toapp_get_commondata_ack`` response.  On completion the
-        assembled ``list[CommDataCouple]`` is stored in
-        ``device.map.dynamics_line``, replacing any previous value.
+        the multi-frame ``toapp_get_commondata_ack`` response.  The state reducer
+        assembles those frames into ``device.map.dynamics_line``, replacing the
+        previous line once a complete set has arrived.
 
         The saga is enqueued on the device's command queue, so it will not
         interrupt other in-progress commands.  Callers should rate-limit
@@ -2043,14 +2051,7 @@ class MammotionClient(CloudAuthMixin):
             action=8,
             type=PathType.DYNAMICS_LINE,
         )
-
-        async def _on_complete() -> None:
-            device = self.get_device_by_name(device_name)
-            if device is not None and saga.result:
-                device.map.update_dynamics_line(saga.result)
-                apply_dynamics_line_geojson(device.map, device.location.RTK)
-
-        await handle.enqueue_saga(saga, on_complete=_on_complete)
+        await handle.enqueue_saga(saga)
 
     async def start_edge_mapping(
         self,

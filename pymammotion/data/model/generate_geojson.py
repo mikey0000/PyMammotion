@@ -1340,9 +1340,12 @@ def apply_device_mow_progress_geojson(device: "MowerDevice") -> None:
 def apply_dynamics_line_geojson(hash_list: HashList, rtk: LocationPoint) -> None:
     """Convert ``dynamics_line`` to a WGS-84 LineString GeoJSON.
 
-    No-op when RTK isn't fixed or fewer than two points have been received.
+    Clears the GeoJSON when fewer than two points remain; no-op when RTK isn't fixed.
     """
-    if rtk.latitude == 0.0 or len(hash_list.dynamics_line) < 2:
+    if len(hash_list.dynamics_line) < 2:
+        hash_list.generated_dynamics_line_geojson = {}
+        return
+    if rtk.latitude == 0.0:
         return
 
     conv = CoordinateConverter(rtk.latitude, rtk.longitude)
