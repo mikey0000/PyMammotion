@@ -17,8 +17,11 @@ An account's export is not complete either: on some accounts it lists every code
 but fills text for fewer than half, so :func:`set_fetched_error_codes` overlays a
 fetched row on the bundled one instead of replacing it.
 
-Codes a device reports that appear in no source are firmware-side and documented
-nowhere upstream: ``5004``, ``11133`` and ``11134`` have all been seen from mowers.
+Codes a device reports that appear in no vendor source are firmware-side and
+documented nowhere upstream: ``5004``, ``11133`` and ``11134`` have all been seen
+from mowers.  The ones read out of the firmware are folded in as rows with no
+``level`` and no translations; their English text is this library's wording, not the
+vendor's.
 
 The device reports a fault as a **negative** code (``-1005``) while the table keys
 it positively (``1005``), which is why :func:`get_error_info` normalises through
