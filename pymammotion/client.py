@@ -1226,8 +1226,17 @@ class MammotionClient(CloudAuthMixin):
         product_key: str = "",
         *,
         acct_session: AccountSession,
-    ) -> None:
-        """Register a single Aliyun device in the device registry."""
+    ) -> bool:
+        """Register a single Aliyun device in the device registry; False when it was skipped.
+
+        Aliyun's binding listing keeps a device after it migrates to Mammotion MQTT, so
+        one the Mammotion device page owns is never bound here — it would only 29004.
+        """
+        if acct_session.mammotion_http is not None and any(
+            r.device_name == device_name for r in acct_session.mammotion_http.device_records.records
+        ):
+            _logger.debug("Aliyun device %s is on Mammotion MQTT — not binding it to Aliyun", device_name)
+            return False
         await self._register_device_on_transport(
             device_name=device_name,
             iot_id=iot_id,
@@ -1237,6 +1246,7 @@ class MammotionClient(CloudAuthMixin):
             acct_session=acct_session,
         )
         _logger.info("Aliyun device registered: %s (iot_id=%s)", device_name, iot_id)
+        return True
 
     async def _register_mammotion_device(
         self,
@@ -1371,10 +1381,12 @@ class MammotionClient(CloudAuthMixin):
         """
         if session is None or session.cloud_client is None:
             return
-        if not session.cloud_client.forget_device(iot_id=handle.iot_id, device_name=handle.device_name):
-            return
+        if session.cloud_client.forget_device(iot_id=handle.iot_id, device_name=handle.device_name):
+            await self._persist_credentials()
+
+    async def _persist_credentials(self) -> None:
+        """Ask the host to rewrite the credential cache; a change lives in memory until then."""
         if self._on_credentials_updated is not None:
-            # The trimmed listing only survives a restart once the host rewrites the cache.
             with contextlib.suppress(Exception):
                 await self._on_credentials_updated()
 
@@ -1442,6 +1454,8 @@ class MammotionClient(CloudAuthMixin):
             initial_device=create_device(device_name, record.product_key),
             cloud=_CloudBinding(transport, iot_id, record.product_key, session.user_account, session.token_manager),
         )
+        # The device page fetched above is what keeps a restore from binding it to Aliyun again.
+        await self._persist_credentials()
         _logger.info("Device '%s' migrated from Aliyun to Mammotion MQTT (iot_id=%s)", device_name, iot_id)
         return True
 
@@ -1532,17 +1546,6 @@ class MammotionClient(CloudAuthMixin):
         except Exception:
             _logger.warning("restore_credentials: failed to fetch device iot_id map (Aliyun restore)", exc_info=True)
 
-        known_ids: set[str] = set()
-        ua = acct_session.user_account
-        if cloud_client.devices_by_account_response is not None and cloud_client.devices_by_account_response.data:
-            for device in cloud_client.devices_by_account_response.data.data:
-                if device.device_name:
-                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                    await self._register_aliyun_device(
-                        device.device_name, iot_id, transport, ua, device.product_key, acct_session=acct_session
-                    )
-                    known_ids.add(device.device_name)
-
         discovery_failed = False
         if check_for_new_devices:
             try:
@@ -1566,27 +1569,27 @@ class MammotionClient(CloudAuthMixin):
                         " (credentials not fully restored)"
                     )
                 else:
-                    fresh = await cloud_client.list_binding_by_account()
-                    if fresh.data:
-                        for device in fresh.data.data:
-                            if device.device_name and device.device_name not in known_ids:
-                                iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                                await self._register_aliyun_device(
-                                    device.device_name,
-                                    iot_id,
-                                    transport,
-                                    ua,
-                                    device.product_key,
-                                    acct_session=acct_session,
-                                )
-                                known_ids.add(device.device_name)
+                    # Replaces the cached listing: a device unbound from Aliyun since the
+                    # cache was written must not be bound again from the stale copy.
+                    await cloud_client.list_binding_by_account()
             except Exception:
                 discovery_failed = True
                 _logger.warning(
-                    "restore_credentials: new-device discovery failed for account %s (Aliyun)",
+                    "restore_credentials: Aliyun device discovery failed for account %s — using the cached listing",
                     account,
                     exc_info=True,
                 )
+
+        known_ids: set[str] = set()
+        ua = acct_session.user_account
+        if cloud_client.devices_by_account_response is not None and cloud_client.devices_by_account_response.data:
+            for device in cloud_client.devices_by_account_response.data.data:
+                if device.device_name:
+                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                    if await self._register_aliyun_device(
+                        device.device_name, iot_id, transport, ua, device.product_key, acct_session=acct_session
+                    ):
+                        known_ids.add(device.device_name)
 
         if not known_ids:
             if discovery_failed:

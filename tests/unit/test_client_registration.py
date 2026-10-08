@@ -15,7 +15,14 @@ from pymammotion.data.model.device import MowerDevice
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.transport.base import TransportAvailability, TransportType
 from pymammotion.transport.ble import BLETransport
-from tests._helpers import make_account_session, make_mock_mowing_device, make_mock_transport, wait_until
+from tests._helpers import (
+    make_account_session,
+    make_device_record,
+    make_mock_http,
+    make_mock_mowing_device,
+    make_mock_transport,
+    wait_until,
+)
 from tests.unit._helpers import make_http_posting
 
 NAME = "Luba-ADOPT"
@@ -116,6 +123,25 @@ async def test_an_adopted_ble_only_handle_fetches_its_function_set(client: Mammo
     await wait_until(lambda: ble_handle.snapshot.raw.function_codes.codes == ["002.002"])
     await asyncio.wait_for(client._watchers.drain(), _DRAIN_BOUND_S)
     http_session.post.assert_awaited_once()
+
+
+@pytest.mark.regression
+async def test_aliyun_listing_does_not_bind_a_device_that_is_on_mammotion_mqtt(client: MammotionClient) -> None:
+    """Aliyun's binding listing keeps a device after it migrates to Mammotion MQTT.
+
+    Binding it anyway gave every restore an Aliyun transport that 29004'd on first send,
+    failing the command, before the runtime migration put the device back on MQTT.
+    """
+    session = make_account_session("acct", http=make_mock_http())
+    session.mammotion_http.device_records.records = [make_device_record("Yuka-MOVED")]
+    aliyun = make_mock_transport(TransportType.CLOUD_ALIYUN)
+
+    moved = await client._register_aliyun_device("Yuka-MOVED", "iot-moved", aliyun, acct_session=session)
+    kept = await client._register_aliyun_device("Luba-OLD", "iot-old", aliyun, acct_session=session)
+
+    assert (moved, kept) == (False, True)
+    assert client._device_registry.get_by_name("Yuka-MOVED") is None
+    assert client._device_registry.get_by_name("Luba-OLD") is not None
 
 
 async def test_registering_twice_on_the_same_account_is_idempotent(client: MammotionClient) -> None:

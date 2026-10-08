@@ -1036,24 +1036,21 @@ class DeviceHandle:
             transport.transport_type.value,
         )
 
-    async def _on_device_unbound(self, transport: Transport) -> Transport | None:
+    async def _on_device_unbound(self, transport: Transport) -> None:
         """Handle a cloud "device is unbound" (Aliyun 29004) during a send.
 
         Detaches *transport* from this handle WITHOUT disconnecting it (it is the
         account-shared Aliyun connection serving other devices), then triggers the
         client's re-discovery hook once — which migrates the device to Mammotion MQTT
-        or removes it entirely.  Returns a connected BLE transport so the in-flight
-        command can still complete locally, or ``None`` if there is no BLE fallback.
+        or removes it entirely.  The caller re-picks from what is left.
 
         Unlike ``_on_device_offline`` this does NOT set ``mqtt_reported_offline``:
         that flag marks a recoverable offline cleared by inbound frames, whereas an
         unbind is a permanent detach with no Aliyun transport left to clear it.
         """
-        removed = self.detach_transport(transport.transport_type)
-        if removed is None:
+        if self.detach_transport(transport.transport_type) is None:
             # Already detached by an earlier 29004 — don't re-trigger migration.
-            ble = self._transports.get(TransportType.BLE)
-            return ble if ble is not None and ble.is_connected else None
+            return
 
         _logger.warning(
             "Device '%s' unbound from cloud (%s) — detaching transport and re-discovering",
@@ -1064,12 +1061,6 @@ class DeviceHandle:
             self._unbound_migrating = True
             # Fire-and-forget so the send path isn't blocked by network re-discovery.
             self._spawn(self.on_device_unbound(self))
-
-        ble = self._transports.get(TransportType.BLE)
-        if ble is not None and ble.is_connected:
-            _logger.warning("Device '%s' unbound via cloud, retrying over BLE", self.device_name)
-            return ble
-        return None
 
     def reset_unbound_migration(self) -> None:
         """Re-arm the unbound hook so a future 29004 can trigger migration again.
@@ -2262,11 +2253,19 @@ class DeviceHandle:
             if ble is None:
                 raise
             await self._send_marked(ble, payload, user_initiated=user_initiated)
-        except DeviceUnboundException:
-            ble = await self._on_device_unbound(transport)
-            if ble is None:
-                raise
-            await self._send_marked(ble, payload, user_initiated=user_initiated)
+        except DeviceUnboundException as unbound:
+            await self._on_device_unbound(transport)
+            try:
+                fallback = self.active_transport(prefer_ble=prefer_ble, user_initiated=user_initiated)
+            except NoTransportAvailableError:
+                raise unbound from None
+            _logger.warning(
+                "Device '%s' unbound via %s, retrying over %s",
+                self.device_name,
+                transport.transport_type.value,
+                fallback.transport_type.value,
+            )
+            await self._send_marked(fallback, payload, user_initiated=user_initiated)
         except TransportError:
             if transport.transport_type is not TransportType.BLE:
                 raise

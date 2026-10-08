@@ -91,7 +91,7 @@ class CloudAuthMixin:
             product_key: str = "",
             *,
             acct_session: AccountSession,
-        ) -> None: ...
+        ) -> bool: ...
         async def _restore_aliyun(
             self,
             account: str,

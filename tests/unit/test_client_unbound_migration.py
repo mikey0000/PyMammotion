@@ -15,7 +15,7 @@ from pymammotion.account.registry import AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle
-from tests._helpers import make_bare_client, make_mock_handle
+from tests._helpers import make_bare_client, make_device_record, make_mock_handle, make_mock_http
 from tests.unit.aliyun._helpers import make_gateway, make_listing_device, seed_listing
 
 ACCOUNT = "user@test.com"
@@ -144,3 +144,24 @@ async def test_an_unbind_on_a_device_with_no_cloud_session_is_a_no_op() -> None:
     await client._forget_aliyun_binding(handle, session)  # noqa: SLF001
 
     persist.assert_not_awaited()
+
+
+@pytest.mark.regression
+async def test_a_successful_migration_persists_the_cache() -> None:
+    """The device page fetched during migration is what stops the next restore re-binding to Aliyun.
+
+    Without a write here it lived only in memory, so every restart bound the device to
+    Aliyun again and its first send 29004'd.
+    """
+    client, handle, persist = make_client_with_listing(("Luba-KEEP", "iot-keep"))
+    session = client._get_session_for_handle(handle)  # noqa: SLF001
+    session.mammotion_http = make_mock_http(device_records=[make_device_record("Luba-GONE", "iot-gone")])
+
+    with (
+        patch.object(MammotionClient, "_ensure_mammotion_transport", autospec=True, return_value=AsyncMock()),
+        patch.object(MammotionClient, "_ensure_device_handle", autospec=True),
+    ):
+        settled = await client._try_migrate_unbound(handle, session, final_attempt=False)  # noqa: SLF001
+
+    assert settled is True
+    persist.assert_awaited_once()

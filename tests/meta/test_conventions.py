@@ -40,7 +40,7 @@ OVERSIZED = {
     "unit/auth/test_token_manager.py": 712,
     "unit/data/model/test_generate_geojson.py": 1201,
     "unit/data/model/test_hash_list.py": 790,
-    "unit/device/test_handle.py": 1682,
+    "unit/device/test_handle.py": 1580,
     "unit/test_client.py": 2016,  # +15 pinning mqtt_loop's clock in the poll-loop tests; they belong in a split
     "unit/transport/test_aliyun_mqtt.py": 1103,
 }
