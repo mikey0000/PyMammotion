@@ -19,7 +19,7 @@ jobs:
       BRANCH_NAME: ${{ env.BRANCH_NAME }}
       ENCODED_BRANCH_NAME: ${{ steps.branchname.outputs.ENCODED_BRANCH_NAME }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history is needed to diff against the PR base / previous push.
           fetch-depth: 0
@@ -28,7 +28,7 @@ jobs:
         with:
           enable-cache: true
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: pyproject.toml
       - name: Install dependencies
@@ -66,7 +66,7 @@ jobs:
     # sagas via renamed protobuf oneof fields.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install protoc
         run: |
           sudo apt-get update
@@ -76,7 +76,7 @@ jobs:
         with:
           enable-cache: true
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: pyproject.toml
       - name: Install dependencies
