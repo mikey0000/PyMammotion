@@ -95,7 +95,6 @@ from pymammotion.proto import (
     NavPlanJobSet,
     NavReqCoverPath,
     NavSysParamMsg,
-    NavTaskCtrlAck,
     NavUnableTimeSet,
     PlanJobSet,
     ReportInfoData,
@@ -213,7 +212,7 @@ class MowerStateReducer(StateReducer):
                     ):
                         device.map = copy.deepcopy(current.map)
                     case "todev_taskctrl_ack":
-                        device.report_data = copy.deepcopy(current.report_data)
+                        pass  # its nav_state is the target mode; reports carry the actual one
                     case "bidire_reqconver_path":
                         pass  # handler wholesale-rebinds device.work
                     case "nav_sys_param_cmd":
@@ -524,9 +523,6 @@ class MowerStateReducer(StateReducer):
                 device.non_work_hours.non_work_sub_cmd = nav_non_work_time.sub_cmd  # type: ignore
                 device.non_work_hours.start_time = nav_non_work_time.unable_start_time
                 device.non_work_hours.end_time = nav_non_work_time.unable_end_time
-            case "todev_taskctrl_ack":
-                task_ctrl_ack: NavTaskCtrlAck = nav_msg[1]  # type: ignore
-                device.report_data.dev.sys_status = task_ctrl_ack.nav_state
             case "toapp_edge_points":
                 edge_msg: NavEdgePoints = nav_msg[1]  # type: ignore
                 device.map.upsert_edge_frame(
