@@ -96,7 +96,7 @@ pure-eval==0.2.3
 pycparser==3.0
 pygments==2.20.0
 pyjoystick==1.2.4
-pyjwt==2.12.1
+pyjwt==2.15.1
 pylint==4.0.5
 -e file:///home/michael/git/Luba-API
 pymap3d==3.2.0
