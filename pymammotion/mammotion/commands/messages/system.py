@@ -18,6 +18,7 @@ from pymammotion.proto import (
     Batchcfg,
     BatchConfigType,
     BmsCtrlInfoMsg,
+    ChildProtection,
     DebugCfgWriteT,
     DebugEnableT,
     DebugResCfgAbilityT,
@@ -40,6 +41,7 @@ from pymammotion.proto import (
     RainProtection,
     RemoteResetReqT,
     ReportInfoCfg,
+    ReverseMode,
     RptAct,
     RptInfoType,
     RtkUsedType,
@@ -224,6 +226,19 @@ class MessageSystem(AbstractMessage, ABC):
         """
         request = AppBatchQueryReq(req_id=self._batch_req_id(), type_list=[BatchConfigType.CFG_TYPE_RAINPRO_CFG])
         return self.send_order_msg_sys(MctlSys(batch_query_req=request))
+
+    def _read_write_safety_x5(self, rw_id: int, context: int, rw: int) -> bytes:
+        """Translate safety parameter 17/18 to X5 batch config; writes acknowledge without readback values."""
+        cfgtype = BatchConfigType.CFG_TYPE_CHILD_PRO_CFG if rw_id == 17 else BatchConfigType.CFG_TYPE_REVERSE_MODE_CFG
+        if rw == 0:
+            request = AppBatchQueryReq(req_id=self._batch_req_id(), type_list=[cfgtype])
+            return self.send_order_msg_sys(MctlSys(batch_query_req=request))
+        cfg = Batchcfg(cfgtype=cfgtype)
+        if rw_id == 17:
+            cfg.child_pro = ChildProtection(child_protection_mode=context)
+        else:
+            cfg.reverse_mode = ReverseMode(reverse_safety_mode=context)
+        return self.send_order_msg_sys(MctlSys(batch_set_req=AppBatchSetReq(req_id=self._batch_req_id(), cfgs=[cfg])))
 
     def set_rain_protection(self, mode: RainProtectionMode, delay_hours: int = 0) -> bytes:
         """Write the rain-protection mode (``batch_set_resp`` reply, success or failure only).

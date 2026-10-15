@@ -32,7 +32,9 @@ class MammotionCommand(
         return self._device_name
 
     def read_write_device(self, rw_id: int, context: int, rw: int) -> bytes:
-        """Route WildGuard IDs to nav and model-dependent settings to nav on Luba Pro, otherwise sys."""
+        """Route X5 safety settings to batch config, WildGuard to nav, and other settings by mower type."""
+        if rw_id in (17, 18) and DeviceType.is_x5_series(self.get_device_name()):
+            return self._read_write_safety_x5(rw_id, context, rw)
         if rw_id in (12, 13) or (
             rw_id in (3, 6, 7, 8, 10, 11, 17, 18) and DeviceType.is_luba_pro(self.get_device_name())
         ):
