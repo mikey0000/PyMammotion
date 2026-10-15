@@ -42,22 +42,6 @@ PyMammotion uses `betterproto2` and `protoc` for generating protobuf models. To 
 2. poetry install --with=dev
 3. Profit
 
-## Safety settings
-
-The existing client command API accepts `read_child_safety`, `set_child_safety`,
-`read_reverse_safety_mode` and `set_reverse_safety_mode`. Both setters take `enabled: bool`.
-They use navigation registers 17/18 through the normal transport selection, including cloud:
-
-```python
-await client.send_command_with_args(device_name, "set_child_safety", enabled=True)
-await client.send_command_and_wait(device_name, "read_child_safety", "nav_sys_param_cmd")
-```
-
-The corresponding `mower_state.child_safety` and `mower_state.reverse_safety_mode` fields are
-`None` until read back. Write acknowledgements do not update them. These registers were traced
-in YKX3 firmware; support varies by model and firmware. Cloud delivery and physical safety
-behavior remain unverified; a readback confirms only the stored setting.
-
 ## Contributing 🤝
 
 Contributions are welcome! Please check the [issues](https://github.com/mikey0000/pymammotion/issues) for ways you can help improve PyMammotion.
