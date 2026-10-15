@@ -78,20 +78,20 @@ class MessageNavigation(AbstractMessage, ABC):
         return self.send_order_msg_nav(build)
 
     def read_child_safety(self) -> bytes:
-        """Request the stored child-safety flag (navigation register 17)."""
-        return self.allpowerfull_rw_adapter_x3(17, 0, 0)
+        """Request the stored child-safety flag (parameter 17) using the mower's settings carrier."""
+        return self.read_write_device(17, 0, 0)
 
     def set_child_safety(self, enabled: bool) -> bytes:
         """Write the child-safety flag; read it back separately to confirm the stored value."""
-        return self.allpowerfull_rw_adapter_x3(17, int(enabled), 1)
+        return self.read_write_device(17, int(enabled), 1)
 
     def read_reverse_safety_mode(self) -> bytes:
-        """Request the stored reverse-safety flag (navigation register 18)."""
-        return self.allpowerfull_rw_adapter_x3(18, 0, 0)
+        """Request the stored reverse-safety flag (parameter 18) using the mower's settings carrier."""
+        return self.read_write_device(18, 0, 0)
 
     def set_reverse_safety_mode(self, enabled: bool) -> bytes:
         """Write the reverse-safety flag; read it back separately to confirm the stored value."""
-        return self.allpowerfull_rw_adapter_x3(18, int(enabled), 1)
+        return self.read_write_device(18, int(enabled), 1)
 
     def along_border(self) -> bytes:
         """Send command to drive the mower along the boundary edge."""

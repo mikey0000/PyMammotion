@@ -582,7 +582,7 @@ class MowerStateReducer(StateReducer):
                 device.run_state_update(sys_msg[1])  # type: ignore
             case "bidire_comm_cmd":
                 # General read/write channel for non-Pro (Luba 1) devices — mirrors
-                # nav_sys_param_cmd for Pro/X3.  Same ID table applies; IDs 6/7/10/11
+                # nav_sys_param_cmd for Pro/X3.  Same ID table applies; IDs 6/7/10/11/17/18
                 # are only sent here on devices where is_luba_pro() is False.
                 comm_cmd: SysCommCmd = sys_msg[1]  # type: ignore
                 match comm_cmd.id:
@@ -598,6 +598,9 @@ class MowerStateReducer(StateReducer):
                         device.mower_state.animal_protection.mode = comm_cmd.context
                     case 13:
                         device.mower_state.animal_protection.status = comm_cmd.context
+                    case 17 | 18 if comm_cmd.rw == 0:
+                        field = "child_safety" if comm_cmd.id == 17 else "reverse_safety_mode"
+                        setattr(device.mower_state, field, bool(comm_cmd.context))
             case "todev_time_ctrl_light":
                 ctrl_light: TimeCtrlLight = sys_msg[1]  # type: ignore
                 side_led: SideLight = SideLight.from_dict(ctrl_light.to_dict(casing=betterproto2.Casing.SNAKE))
