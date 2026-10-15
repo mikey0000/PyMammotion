@@ -122,7 +122,7 @@ RESUME_LEVEL_RANGE = range(40, 101)
 
 @dataclass
 class MowerInfo(DataClassORJSONMixin):
-    """Aggregated mower configuration including blade, navigation, and peripheral settings."""
+    """Aggregated mower configuration; safety flags remain unknown until a device readback arrives."""
 
     blade_status: bool = False
     rain_detection: bool = False
@@ -157,6 +157,8 @@ class MowerInfo(DataClassORJSONMixin):
     recharge_level: int = 0  # ID 14 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
     resume_level: int = 0  # ID 15 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
     rain_protection: RainProtectionSettings = field(default_factory=RainProtectionSettings)
+    child_safety: bool | None = None
+    reverse_safety_mode: bool | None = None
 
 
 @dataclass
