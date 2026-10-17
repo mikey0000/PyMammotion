@@ -52,6 +52,7 @@ from urllib.parse import urlparse
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.exceptions import DeviceRemovedFromAccountError, DeviceUnboundException
 from pymammotion.aliyun.model.dev_by_account_response import Device
 from pymammotion.client_auth import _AUTH_REJECTED, CloudAuthMixin
 from pymammotion.data.model import GenerateRouteInformation
@@ -1336,15 +1337,18 @@ class MammotionClient(CloudAuthMixin):
         acct_session.mammotion_transport = transport
         return transport
 
-    async def _on_device_unbound(self, handle: DeviceHandle) -> None:
-        """Re-discover an unbound device (Aliyun 29004) and migrate it, or remove it.
+    async def _on_device_unbound(self, handle: DeviceHandle, exc: DeviceUnboundException) -> None:
+        """Re-discover an unbound device and migrate it, or remove it.
 
-        Fired by ``DeviceHandle._on_device_unbound`` after the Aliyun transport has
-        been detached (non-disconnecting) from the device.  Re-fetches the Mammotion
+        Fired by ``DeviceHandle._on_device_unbound`` after the rejecting cloud transport
+        has been detached (non-disconnecting) from the device.  Re-fetches the Mammotion
         device list: if the device now lives on Mammotion MQTT, attach that transport
         to the SAME handle (keeping its state/history); if it is gone from the account
         entirely, remove it.
         """
+        if isinstance(exc, DeviceRemovedFromAccountError):
+            await self._on_device_removed_from_account(handle)
+            return
         device_name = handle.device_name
         session = self._get_session_for_handle(handle)
         await self._forget_aliyun_binding(handle, session)
@@ -1368,6 +1372,24 @@ class MammotionClient(CloudAuthMixin):
                         attempt,
                         len(_UNBOUND_MIGRATION_DELAYS),
                     )
+        finally:
+            handle.reset_unbound_migration()
+
+    async def _on_device_removed_from_account(self, handle: DeviceHandle) -> None:
+        """Confirm a Mammotion 50101 against the account's device list, then drop the device.
+
+        No migration window applies — there is no other cloud for it to move to — so one
+        attempt settles it; a listing that cannot be fetched leaves it detached until reload.
+        """
+        session = self._get_session_for_handle(handle)
+        try:
+            await self._try_migrate_unbound(handle, session, final_attempt=True)
+        except _AUTH_REJECTED:
+            raise
+        except Exception:
+            _logger.exception(
+                "Device '%s' removed from account: could not confirm against the device list", handle.device_name
+            )
         finally:
             handle.reset_unbound_migration()
 
@@ -1428,7 +1450,13 @@ class MammotionClient(CloudAuthMixin):
             d.device_name: d.iot_id for d in (device_list_resp.data or []) if d.device_name and d.iot_id
         }
         page_resp = await mammotion_http.get_user_device_page()
-        records = (page_resp.data.records if page_resp.data else []) or []
+        if page_resp.data is None:
+            # A failed fetch is not proof the device is gone.
+            _logger.warning(
+                "Device '%s' unbound: device list unavailable (code=%s) — will retry", device_name, page_resp.code
+            )
+            return False
+        records = page_resp.data.records or []
         record = next((r for r in records if r.device_name == device_name), None)
         if record is None:
             settled = _keep_or_remove("not on Mammotion MQTT yet")
@@ -1473,6 +1501,8 @@ class MammotionClient(CloudAuthMixin):
             session.device_ids.discard(device_name)
         await self.remove_device(device_name, account_id=handle.account_id)
         _logger.warning("Device '%s' unbound from all clouds — removed", device_name)
+        # The device page fetched before removal no longer lists it; persist that so a restore doesn't bring it back.
+        await self._persist_credentials()
         if self.on_device_removed is not None:
             with contextlib.suppress(Exception):
                 await self.on_device_removed(device_name, iot_id)
@@ -1698,7 +1728,10 @@ class MammotionClient(CloudAuthMixin):
                 await mammotion_http.confirm_share(batch_id, record_ids)
 
         page_resp = await mammotion_http.get_user_device_page()
-        mammotion_records = (page_resp.data.records if page_resp.data else []) or []
+        if page_resp.data is None:
+            return
+        mammotion_records = page_resp.data.records or []
+        await self._drop_unlisted_mammotion_devices(acct_session, {r.device_name for r in mammotion_records})
         if not mammotion_records:
             return
 
@@ -1713,6 +1746,23 @@ class MammotionClient(CloudAuthMixin):
             if record.device_name and record.device_name not in already_known:
                 iot_id_override = owned_iot_id_map.get(record.device_name, "")
                 await self._register_mammotion_device(record, transport, ua, iot_id_override, acct_session=acct_session)
+
+    async def _drop_unlisted_mammotion_devices(self, acct_session: AccountSession, listed: set[str]) -> None:
+        """Drop Mammotion MQTT devices the account's fresh device page no longer lists.
+
+        A restore registers from the cached page first, so a device removed from the
+        account since the cache was written would otherwise come back on every reload.
+        """
+        for handle in self._device_registry.for_account(acct_session.account_id):
+            if handle.device_name in listed or handle.get_transport(TransportType.CLOUD_MAMMOTION) is None:
+                continue
+            if handle.get_transport(TransportType.CLOUD_ALIYUN) is not None:
+                continue
+            _logger.warning("Device '%s' is no longer in account %s", handle.device_name, acct_session.account_id)
+            if handle.get_transport(TransportType.BLE) is not None:
+                await self._release_to_ble_only(handle, acct_session)
+            else:
+                await self._remove_unbound_device(handle, acct_session)
 
     @staticmethod
     async def _connect_iot(cloud_client: CloudIOTGateway) -> None:

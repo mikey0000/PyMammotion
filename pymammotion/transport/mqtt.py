@@ -18,8 +18,10 @@ import jwt
 
 from pymammotion.aliyun.exceptions import (
     DEVICE_OFFLINE_CODES,
+    DEVICE_REMOVED_CODES,
     GATEWAY_TIMEOUT_CODES,
     DeviceOfflineException,
+    DeviceRemovedFromAccountError,
     GatewayTimeoutException,
 )
 from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
@@ -390,6 +392,8 @@ class MQTTTransport(CloudTransport):
             raise DeviceOfflineException(res.code, iot_id)
         if res.code in GATEWAY_TIMEOUT_CODES:
             raise GatewayTimeoutException(res.code, iot_id)
+        if res.code in DEVICE_REMOVED_CODES:
+            raise DeviceRemovedFromAccountError(res.code, iot_id)
         if res.code not in (0, 200):
             msg = f"mqtt_invoke failed: code={res.code} msg={res.msg} iot_id={iot_id}"
             raise TransportError(msg)

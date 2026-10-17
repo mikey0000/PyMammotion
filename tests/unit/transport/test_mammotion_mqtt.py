@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pymammotion.aliyun.exceptions import DeviceRemovedFromAccountError
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.transport.base import TransportError, TransportType
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
@@ -337,9 +338,7 @@ async def test_send_raises_device_offline_for_every_offline_code(
         await transport.send(b"\x00", iot_id="iot-1")
 
 
-async def test_send_raises_gateway_timeout_for_20056(
-    config: MQTTTransportConfig, mammotion_http: MagicMock
-) -> None:
+async def test_send_raises_gateway_timeout_for_20056(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
     from pymammotion.aliyun.exceptions import GatewayTimeoutException
 
     mammotion_http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=20056))
@@ -347,6 +346,16 @@ async def test_send_raises_gateway_timeout_for_20056(
 
     with pytest.raises(GatewayTimeoutException):
         await transport.send(b"\x00", iot_id="iot-1")
+
+
+async def test_send_raises_device_removed_for_50101(config: MQTTTransportConfig, mammotion_http: MagicMock) -> None:
+    """50101 "Invalid device" means the device left the account, not a generic transport failure."""
+    mammotion_http.mqtt_invoke = AsyncMock(return_value=MagicMock(code=50101, msg="Invalid device"))
+    transport = MQTTTransport(config, mammotion_http, AsyncMock())
+
+    with pytest.raises(DeviceRemovedFromAccountError, match="no longer in this account") as excinfo:
+        await transport.send(b"\x00", iot_id="iot-1")
+    assert excinfo.value.iot_id == "iot-1"
 
 
 async def test_send_raises_transport_error_for_unknown_code(
@@ -480,6 +489,7 @@ def test_apply_credentials_does_not_clear_stop_event(transport: MQTTTransport) -
         MQTTCredentials(host="plain.broker", client_id="c", username="u", jwt="j", expires_at=0.0)
     )
     assert transport._stop_event.is_set()
+
 
 # _dispatch_mammotion_event — notifications carry their params.value through
 

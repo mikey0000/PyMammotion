@@ -355,10 +355,11 @@ class DeviceHandle:
         #: Timer handle for the transient continuous-stream auto-stop.
         self._report_stream_timer: asyncio.TimerHandle | None = None
         #: Client-wired hook invoked once when the cloud reports this device unbound
-        #: (Aliyun 29004).  The client re-discovers the device and either migrates it
-        #: to Mammotion MQTT or removes it entirely.  Guarded by ``_unbound_migrating``
-        #: so repeated 29004s don't launch concurrent migrations.
-        self.on_device_unbound: Callable[[DeviceHandle], Awaitable[None]] | None = None
+        #: (Aliyun 29004, or Mammotion 50101 — removed from the account).  The client
+        #: re-discovers the device and either migrates it to Mammotion MQTT or removes
+        #: it entirely.  Guarded by ``_unbound_migrating`` so repeated unbinds don't
+        #: launch concurrent migrations.
+        self.on_device_unbound: Callable[[DeviceHandle, DeviceUnboundException], Awaitable[None]] | None = None
         self._unbound_migrating: bool = False
         #: Monotonic timestamp of the last inbound frame carrying ``sys.toapp_report_data``.
         #: Distinct from ``_last_report_at``, which stamps *every* LubaMsg — a map frame or
@@ -1036,8 +1037,8 @@ class DeviceHandle:
             transport.transport_type.value,
         )
 
-    async def _on_device_unbound(self, transport: Transport) -> None:
-        """Handle a cloud "device is unbound" (Aliyun 29004) during a send.
+    async def _on_device_unbound(self, transport: Transport, exc: DeviceUnboundException) -> None:
+        """Handle a cloud "device is unbound" (Aliyun 29004 / Mammotion 50101) during a send.
 
         Detaches *transport* from this handle WITHOUT disconnecting it (it is the
         account-shared Aliyun connection serving other devices), then triggers the
@@ -1060,7 +1061,7 @@ class DeviceHandle:
         if self.on_device_unbound is not None and not self._unbound_migrating:
             self._unbound_migrating = True
             # Fire-and-forget so the send path isn't blocked by network re-discovery.
-            self._spawn(self.on_device_unbound(self))
+            self._spawn(self.on_device_unbound(self, exc))
 
     def reset_unbound_migration(self) -> None:
         """Re-arm the unbound hook so a future 29004 can trigger migration again.
@@ -2254,7 +2255,7 @@ class DeviceHandle:
                 raise
             await self._send_marked(ble, payload, user_initiated=user_initiated)
         except DeviceUnboundException as unbound:
-            await self._on_device_unbound(transport)
+            await self._on_device_unbound(transport, unbound)
             try:
                 fallback = self.active_transport(prefer_ble=prefer_ble, user_initiated=user_initiated)
             except NoTransportAvailableError:

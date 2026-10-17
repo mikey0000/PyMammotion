@@ -7,18 +7,27 @@ otherwise the trim lives in memory and dies at shutdown.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.aliyun.exceptions import DeviceUnboundException
 from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle
-from tests._helpers import make_bare_client, make_device_record, make_mock_handle, make_mock_http
+from pymammotion.transport.base import TransportAvailability, TransportType
+from tests._helpers import (
+    make_bare_client,
+    make_device_record,
+    make_mock_handle,
+    make_mock_http,
+    make_mock_transport,
+)
 from tests.unit.aliyun._helpers import make_gateway, make_listing_device, seed_listing
 
 ACCOUNT = "user@test.com"
+UNBIND = DeviceUnboundException(29004, "iot-gone")
 
 
 def make_client_with_listing(
@@ -58,7 +67,7 @@ async def test_an_unbind_removes_the_device_from_the_listing_and_persists_it() -
     # Settle migration at once; the real loop sleeps 30/60/120/180s between attempts.
     with patch.object(MammotionClient, "_try_migrate_unbound", autospec=True) as migrate:
         migrate.return_value = True
-        await client._on_device_unbound(handle)  # noqa: SLF001
+        await client._on_device_unbound(handle, UNBIND)  # noqa: SLF001
 
     assert listing_of(client, handle) == ["Luba-KEEP"]
     persist.assert_awaited_once()  # the trim only survives once the host rewrites the cache
@@ -79,7 +88,7 @@ async def test_the_device_is_forgotten_before_migration_is_attempted() -> None:
         return True
 
     with patch.object(MammotionClient, "_try_migrate_unbound", autospec=True, side_effect=_record):
-        await client._on_device_unbound(handle)  # noqa: SLF001
+        await client._on_device_unbound(handle, UNBIND)  # noqa: SLF001
 
     assert listing_when_migration_ran == [["Luba-KEEP"]], "migration ran before the listing was trimmed"
 
@@ -95,7 +104,7 @@ async def test_the_device_is_forgotten_even_when_it_migrates_to_mammotion_mqtt()
 
     with patch.object(MammotionClient, "_try_migrate_unbound", autospec=True) as migrate:
         migrate.return_value = True
-        await client._on_device_unbound(handle)  # noqa: SLF001
+        await client._on_device_unbound(handle, UNBIND)  # noqa: SLF001
 
     assert listing_of(client, handle) == []
 
@@ -165,3 +174,82 @@ async def test_a_successful_migration_persists_the_cache() -> None:
 
     assert settled is True
     persist.assert_awaited_once()
+
+
+async def test_device_unbound_migrates_to_mammotion() -> None:
+    """When an unbound device now appears on Mammotion MQTT, attach that transport to the
+    SAME handle (no new handle), remap the iot_id, and never disconnect the shared Aliyun.
+    """
+    client = MammotionClient()
+    handle = make_mock_handle("Luba-MIG", "Luba-MIG")
+    handle.iot_id = "iot-old"
+    await client._device_registry.register(handle, "user@test.com")
+    client._inbound.bind("user@test.com", "iot-old", ("user@test.com", "Luba-MIG"))
+
+    record = make_device_record(device_name="Luba-MIG", iot_id="iot-new", product_key="pkNEW")
+    http = make_mock_http(device_records=[record])
+    http.get_user_device_list = AsyncMock(
+        return_value=MagicMock(data=[MagicMock(device_name="Luba-MIG", iot_id="iot-new")])
+    )
+    session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
+    session.mammotion_http = http
+    session.aliyun_transport = make_mock_transport(
+        TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN
+    )
+    session.device_ids.add("Luba-MIG")
+    await client._account_registry.register(session)
+
+    mammotion_transport = make_mock_transport(TransportType.CLOUD_MAMMOTION, availability=TransportAvailability.UNKNOWN)
+    mammotion_transport.add_topic = AsyncMock()
+    # The transport owns the topic layout now (MQTTTransport.subscribe_device); the
+    # client only decides *when* a device gets subscribed.
+    mammotion_transport.subscribe_device = AsyncMock()
+
+    with patch.object(client, "_ensure_mammotion_transport", AsyncMock(return_value=mammotion_transport)):
+        await client._on_device_unbound(handle, DeviceUnboundException(29004, handle.iot_id))
+
+    # Same handle reused; Mammotion attached; iot_id remapped; shared Aliyun untouched.
+    assert client._device_registry.get_by_name("Luba-MIG") is handle
+    assert handle.get_transport(TransportType.CLOUD_MAMMOTION) is mammotion_transport
+    assert handle.iot_id == "iot-new"
+    # Asserted through the router: what matters is that a frame for the new iot_id
+    # reaches this handle, and one for the old id no longer reaches anything.
+    assert client._inbound.handle_for("user@test.com", "iot-new", "test") is handle
+    assert client._inbound.handle_for("user@test.com", "iot-old", "test") is None
+    mammotion_transport.subscribe_device.assert_awaited_once_with("pkNEW", "Luba-MIG", "iot-new")
+    session.aliyun_transport.disconnect.assert_not_awaited()
+    await handle.stop()
+
+
+async def test_device_unbound_removed_when_on_no_cloud() -> None:
+    """When the unbound device is on neither cloud, remove it entirely and fire on_device_removed.
+
+    The account-shared Aliyun transport must NOT be disconnected (other devices use it).
+    """
+    client = MammotionClient()
+    handle = make_mock_handle("Luba-GONE", "Luba-GONE")
+    handle.iot_id = "iot-gone"
+    await client._device_registry.register(handle, "user@test.com")
+    client._inbound.bind("user@test.com", "iot-gone", ("user@test.com", "Luba-GONE"))
+
+    http = make_mock_http(device_records=[])  # not present on Mammotion either
+    session = AccountSession(account_id="user@test.com", email="user@test.com", password="pw")
+    session.mammotion_http = http
+    session.aliyun_transport = make_mock_transport(
+        TransportType.CLOUD_ALIYUN, availability=TransportAvailability.UNKNOWN
+    )
+    session.device_ids.add("Luba-GONE")
+    await client._account_registry.register(session)
+
+    removed = AsyncMock()
+    client.on_device_removed = removed
+
+    # Collapse the multi-minute migration retry backoff so the test runs instantly.
+    with patch("pymammotion.client._UNBOUND_MIGRATION_DELAYS", (0.0, 0.0)):
+        await client._on_device_unbound(handle, DeviceUnboundException(29004, handle.iot_id))
+
+    assert client._device_registry.get_by_name("Luba-GONE") is None
+    assert client._inbound.handle_for("user@test.com", "iot-gone", "test") is None
+    assert "Luba-GONE" not in session.device_ids
+    removed.assert_awaited_once_with("Luba-GONE", "iot-gone")
+    session.aliyun_transport.disconnect.assert_not_awaited()
