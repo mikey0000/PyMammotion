@@ -1,4 +1,4 @@
-"""Safety state stays unknown until read back; write echoes cannot confirm a setting."""
+"""Safety state stays unknown until the mower reports it; X5 write acknowledgements carry no value."""
 
 from __future__ import annotations
 
@@ -149,7 +149,7 @@ def test_x5_safety_batch_readback_ignores_unknown_modes(mode: int) -> None:
 @pytest.mark.parametrize(("param_id", "field"), [(17, "child_safety"), (18, "reverse_safety_mode")])
 @pytest.mark.parametrize("reported", [None, False, True])
 @pytest.mark.parametrize("enabled", [False, True])
-def test_safety_write_echo_preserves_the_last_readback(
+def test_safety_write_echo_updates_the_reported_setting(
     carrier: str, param_id: int, field: str, reported: bool | None, enabled: bool
 ) -> None:
     current = make_reducer_device()
@@ -159,7 +159,7 @@ def test_safety_write_echo_preserves_the_last_readback(
 
     updated = MowerStateReducer().apply(current, msg)
 
-    assert getattr(updated.mower_state, field) is reported
+    assert getattr(updated.mower_state, field) is enabled
     assert getattr(current.mower_state, field) is reported
     other = "reverse_safety_mode" if field == "child_safety" else "child_safety"
     assert getattr(updated.mower_state, other) is None

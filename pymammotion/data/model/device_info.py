@@ -122,7 +122,7 @@ RESUME_LEVEL_RANGE = range(40, 101)
 
 @dataclass
 class MowerInfo(DataClassORJSONMixin):
-    """Aggregated mower configuration; safety flags remain unknown until a device readback arrives."""
+    """Aggregated mower configuration including blade, navigation, and peripheral settings."""
 
     blade_status: bool = False
     rain_detection: bool = False

@@ -493,8 +493,8 @@ class MowerStateReducer(StateReducer):
                 # 13   animal_protection.status       0=disabled, 1=enabled
                 # 14   recharge_level                 percent 15-30 (return to charge at), -1=smart
                 # 15   resume_level                   percent 40-100 (resume mowing at), -1=smart
-                # 17   child_safety                   0=disabled, 1=enabled; only rw=0 confirms stored state
-                # 18   reverse_safety_mode            0=disabled, 1=enabled; rw=1 only echoes the request
+                # 17   child_safety                   0=disabled, 1=enabled
+                # 18   reverse_safety_mode            0=disabled, 1=enabled
                 # 20   grass-catcher bin open/close   0=close, 1=open (transient action, no state)
                 settings: NavSysParamMsg = nav_msg[1]  # type: ignore
                 match settings.id:
@@ -520,9 +520,9 @@ class MowerStateReducer(StateReducer):
                         device.mower_state.recharge_level = settings.context
                     case 15:
                         device.mower_state.resume_level = settings.context
-                    case 17 if settings.rw == 0:
+                    case 17:
                         device.mower_state.child_safety = bool(settings.context)
-                    case 18 if settings.rw == 0:
+                    case 18:
                         device.mower_state.reverse_safety_mode = bool(settings.context)
             case "todev_unable_time_set":
                 nav_non_work_time: NavUnableTimeSet = nav_msg[1]  # type: ignore
@@ -598,9 +598,10 @@ class MowerStateReducer(StateReducer):
                         device.mower_state.animal_protection.mode = comm_cmd.context
                     case 13:
                         device.mower_state.animal_protection.status = comm_cmd.context
-                    case 17 | 18 if comm_cmd.rw == 0:
-                        field = "child_safety" if comm_cmd.id == 17 else "reverse_safety_mode"
-                        setattr(device.mower_state, field, bool(comm_cmd.context))
+                    case 17:
+                        device.mower_state.child_safety = bool(comm_cmd.context)
+                    case 18:
+                        device.mower_state.reverse_safety_mode = bool(comm_cmd.context)
             case "todev_time_ctrl_light":
                 ctrl_light: TimeCtrlLight = sys_msg[1]  # type: ignore
                 side_led: SideLight = SideLight.from_dict(ctrl_light.to_dict(casing=betterproto2.Casing.SNAKE))
