@@ -23,6 +23,9 @@ DEVICE_OFFLINE_CODES = frozenset({6205, 6221, 50103, 50104})
 #: Aliyun platform to Mammotion direct MQTT.
 DEVICE_UNBOUND_CODES = frozenset({29004})
 
+#: Mammotion-direct "Invalid device": the device has been removed from this account.
+DEVICE_REMOVED_CODES = frozenset({50101})
+
 #: The cloud reached the device but it did not answer in time.
 GATEWAY_TIMEOUT_CODES = frozenset({20056})
 
@@ -65,6 +68,17 @@ class DeviceUnboundException(Exception):
     def __init__(self, message: object, iot_id: str) -> None:
         super().__init__(message)
         self.iot_id = iot_id
+
+
+class DeviceRemovedFromAccountError(DeviceUnboundException):
+    """Raise when the Mammotion cloud no longer knows the device on this account (50101).
+
+    Unlike an Aliyun 29004 there is no other cloud to migrate to: the device was
+    removed from the account, so the client drops it and tells the host.
+    """
+
+    def __str__(self) -> str:
+        return f"Device is no longer in this account (code={self.args[0]}, iot_id={self.iot_id})"
 
 
 class FailedRequestException(Exception):

@@ -45,9 +45,8 @@ async def test_device_unbound_detaches_aliyun_and_schedules_hook() -> None:
     hook = AsyncMock()
     handle.on_device_unbound = hook
 
-    handle._send_marked = AsyncMock(  # type: ignore[method-assign]
-        side_effect=DeviceUnboundException(29004, "iot-id")
-    )
+    unbound = DeviceUnboundException(29004, "iot-id")
+    handle._send_marked = AsyncMock(side_effect=unbound)  # type: ignore[method-assign]
 
     with pytest.raises(DeviceUnboundException):
         await handle.send_raw(b"\x01")
@@ -55,7 +54,7 @@ async def test_device_unbound_detaches_aliyun_and_schedules_hook() -> None:
 
     assert handle.get_transport(TransportType.CLOUD_ALIYUN) is None
     aliyun.disconnect.assert_not_awaited()
-    hook.assert_awaited_once_with(handle)
+    hook.assert_awaited_once_with(handle, unbound)
     assert handle.availability.mqtt_reported_offline is False
     await handle.stop()
 
@@ -135,8 +134,9 @@ async def test_device_unbound_hook_fires_only_once() -> None:
     hook = AsyncMock()
     handle.on_device_unbound = hook
 
-    await handle._on_device_unbound(aliyun)  # noqa: SLF001
-    await handle._on_device_unbound(aliyun)  # noqa: SLF001 — already detached
+    unbound = DeviceUnboundException(29004, "iot-id")
+    await handle._on_device_unbound(aliyun, unbound)  # noqa: SLF001
+    await handle._on_device_unbound(aliyun, unbound)  # noqa: SLF001 — already detached
     await asyncio.sleep(0)
 
-    hook.assert_awaited_once_with(handle)
+    hook.assert_awaited_once_with(handle, unbound)
