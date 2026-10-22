@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import time_machine
 
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.proto import LubaMsg
@@ -29,8 +30,17 @@ def test_animal_protection_ids_never_go_out_on_bidire_comm_cmd(
     assert (param.id, param.context, param.rw) == (rw_id, context, rw)
 
 
-@pytest.mark.parametrize("rw_id", [3, 6, 7, 8, 10, 11])
+@pytest.mark.parametrize("rw_id", [3, 6, 7, 8, 10, 11, 16])
 @pytest.mark.parametrize(("device_name", "on_nav"), [(LUBA_1, False), (LUBA_2, True), (YUKA_MINI, True)])
 def test_generic_ids_route_to_nav_only_on_luba_pro(rw_id: int, device_name: str, on_nav: bool) -> None:
-    msg = LubaMsg().parse(MammotionCommand(device_name, 1).read_write_device(rw_id, 1, 1))
+    with time_machine.travel("2026-01-01", tick=False):
+        msg = LubaMsg().parse(MammotionCommand(device_name, 1).read_write_device(rw_id, 1, 1))
     assert (msg.nav is not None and msg.nav.nav_sys_param_cmd is not None) is on_nav
+
+
+@pytest.mark.parametrize("rw_id", [17, 18])
+@pytest.mark.parametrize("device_name", [LUBA_1, "RTK12345", "Spino-ABC123"])
+def test_safety_ids_are_refused_off_x3_and_x5(rw_id: int, device_name: str) -> None:
+    """Child/reverse safety exist only on X3 (nav) and X5 (batch config); nothing is sent elsewhere."""
+    with pytest.raises(ValueError, match="only supported on X3 and X5"):
+        MammotionCommand(device_name, 1).read_write_device(rw_id, 1, 1)

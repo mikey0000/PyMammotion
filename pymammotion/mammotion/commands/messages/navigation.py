@@ -77,6 +77,30 @@ class MessageNavigation(AbstractMessage, ABC):
         logger.debug(f"Send command--x3 general read and write command id={rw_id}, context={context}, rw={rw}")
         return self.send_order_msg_nav(build)
 
+    def read_child_safety(self) -> bytes:
+        """Request the stored child-safety flag (parameter 17) using the mower's settings carrier."""
+        return self.read_write_device(17, 1, 0)
+
+    def set_child_safety(self, enabled: bool) -> bytes:
+        """Write the child-safety flag; read it back separately to confirm the stored value."""
+        return self.read_write_device(17, int(enabled), 1)
+
+    def read_reverse_safety_mode(self) -> bytes:
+        """Request the stored reverse-safety flag (parameter 18) using the mower's settings carrier."""
+        return self.read_write_device(18, 1, 0)
+
+    def set_reverse_safety_mode(self, enabled: bool) -> bytes:
+        """Write the reverse-safety flag; read it back separately to confirm the stored value."""
+        return self.read_write_device(18, int(enabled), 1)
+
+    def read_autonomous_drive_speed(self) -> bytes:
+        """Request the X5 autonomous drive speed (parameter 16, tenths of m/s)."""
+        return self.read_write_device(16, 0, 0)
+
+    def set_autonomous_drive_speed(self, speed: float) -> bytes:
+        """Set the X5 autonomous drive speed in m/s; sent in tenths, as the app's slider does."""
+        return self.read_write_device(16, round(speed * 10), 1)
+
     def along_border(self) -> bytes:
         """Send command to drive the mower along the boundary edge."""
         build = MctlNav(todev_edgecmd=1)

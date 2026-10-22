@@ -156,7 +156,10 @@ class MowerInfo(DataClassORJSONMixin):
     charge_settings: ChargeSettings = field(default_factory=ChargeSettings)
     recharge_level: int = 0  # ID 14 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
     resume_level: int = 0  # ID 15 — percent, SMART_CHARGE_LEVEL for smart, 0 until read
+    autonomous_drive_speed: float | None = None  # ID 16 — m/s, None until read
     rain_protection: RainProtectionSettings = field(default_factory=RainProtectionSettings)
+    child_safety: bool | None = None
+    reverse_safety_mode: bool | None = None
 
 
 @dataclass

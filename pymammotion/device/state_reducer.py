@@ -493,6 +493,9 @@ class MowerStateReducer(StateReducer):
                 # 13   animal_protection.status       0=disabled, 1=enabled
                 # 14   recharge_level                 percent 15-30 (return to charge at), -1=smart
                 # 15   resume_level                   percent 40-100 (resume mowing at), -1=smart
+                # 16   autonomous_drive_speed         tenths of m/s
+                # 17   child_safety                   0=disabled, 1=enabled
+                # 18   reverse_safety_mode            0=disabled, 1=enabled
                 # 20   grass-catcher bin open/close   0=close, 1=open (transient action, no state)
                 settings: NavSysParamMsg = nav_msg[1]  # type: ignore
                 match settings.id:
@@ -518,6 +521,12 @@ class MowerStateReducer(StateReducer):
                         device.mower_state.recharge_level = settings.context
                     case 15:
                         device.mower_state.resume_level = settings.context
+                    case 16:
+                        device.mower_state.autonomous_drive_speed = settings.context / 10
+                    case 17:
+                        device.mower_state.child_safety = bool(settings.context)
+                    case 18:
+                        device.mower_state.reverse_safety_mode = bool(settings.context)
             case "todev_unable_time_set":
                 nav_non_work_time: NavUnableTimeSet = nav_msg[1]  # type: ignore
                 device.non_work_hours.non_work_sub_cmd = nav_non_work_time.sub_cmd  # type: ignore
@@ -545,7 +554,7 @@ class MowerStateReducer(StateReducer):
                 device.work_session_result.work_type = work_report.work_type
                 device.work_session_result.work_result = work_report.work_result
 
-    def _update_sys_data(self, device: MowingDevice, message: LubaMsg) -> None:
+    def _update_sys_data(self, device: MowingDevice, message: LubaMsg) -> None:  # noqa: C901
         """Update system data fields on *device* in-place."""
         sys_msg = betterproto2.which_one_of(message.sys, "SubSysMsg")  # type: ignore
         match sys_msg[0]:
@@ -592,6 +601,10 @@ class MowerStateReducer(StateReducer):
                         device.mower_state.animal_protection.mode = comm_cmd.context
                     case 13:
                         device.mower_state.animal_protection.status = comm_cmd.context
+                    case 17:
+                        device.mower_state.child_safety = bool(comm_cmd.context)
+                    case 18:
+                        device.mower_state.reverse_safety_mode = bool(comm_cmd.context)
             case "todev_time_ctrl_light":
                 ctrl_light: TimeCtrlLight = sys_msg[1]  # type: ignore
                 side_led: SideLight = SideLight.from_dict(ctrl_light.to_dict(casing=betterproto2.Casing.SNAKE))
@@ -611,13 +624,25 @@ class MowerStateReducer(StateReducer):
                     bat_health_state=bms_info.bat_health_state,
                 )
             case "batch_query_resp":
-                # Every batch config type replies here; only rain protection is modelled.
+                # Every batch config type replies here
                 batch_reply: AppBatchQueryResp = sys_msg[1]  # type: ignore
                 for cfg in batch_reply.cfgs:
                     if cfg.cfgtype == BatchConfigType.CFG_TYPE_RAINPRO_CFG and (rain_pro := cfg.rain_pro) is not None:
                         device.mower_state.rain_protection = device.mower_state.rain_protection.with_mode(
                             rain_pro.rain_protection_mode, rain_pro.custom_delay_hours
                         )
+                    elif (
+                        cfg.cfgtype == BatchConfigType.CFG_TYPE_CHILD_PRO_CFG
+                        and (child_pro := cfg.child_pro) is not None
+                        and child_pro.child_protection_mode in (0, 1)
+                    ):
+                        device.mower_state.child_safety = bool(child_pro.child_protection_mode)
+                    elif (
+                        cfg.cfgtype == BatchConfigType.CFG_TYPE_REVERSE_MODE_CFG
+                        and (reverse_mode := cfg.reverse_mode) is not None
+                        and reverse_mode.reverse_safety_mode in (0, 1)
+                    ):
+                        device.mower_state.reverse_safety_mode = bool(reverse_mode.reverse_safety_mode)
             case "device_product_type_info":
                 device_product_type: DeviceProductTypeInfoT = sys_msg[1]  # type: ignore
                 if device_product_type.main_product_type != "" or device_product_type.sub_product_type != "":

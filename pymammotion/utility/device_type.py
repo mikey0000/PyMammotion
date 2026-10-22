@@ -178,6 +178,10 @@ _SMART_SLEEP_FIRMWARE = "2.3.26.0"
 #: off-peak charging).  See ``DeviceType.supports_charge_limit``.
 _CHARGE_LIMIT_FIRMWARE = "2.1.1.5"
 
+#: Firmware from which the app shows the X5 autonomous drive speed.
+#: See ``DeviceType.supports_autonomous_drive_speed``.
+_AUTONOMOUS_DRIVE_SPEED_FIRMWARE = "2.3.28"
+
 #: Firmware (major.minor) from which the app offers Wildlife Safety (animal
 #: protection).  See ``DeviceType.supports_wildlife_safety``.
 _WILDLIFE_SAFETY_FIRMWARE = "1.13"
@@ -545,6 +549,17 @@ class DeviceType(Enum):
         if "." not in firmware_version:
             return False
         return not _version_less_than(firmware_version, _CHARGE_LIMIT_FIRMWARE)
+
+    @staticmethod
+    def supports_autonomous_drive_speed(device_name: str, firmware_version: str = "") -> bool:
+        """Whether the device exposes the autonomous drive speed (read/write id 16, tenths of m/s).
+
+        Mirrors ``CarDrivingActivity.initAutonomousDriveSpeedSection``: X5 only, hidden while
+        ``isLessThanInputVersion(dev, "2.3.28")`` holds, which includes a version without a dot.
+        """
+        if not DeviceType.is_x5_series(device_name) or "." not in firmware_version:
+            return False
+        return not _version_less_than(firmware_version, _AUTONOMOUS_DRIVE_SPEED_FIRMWARE)
 
     @staticmethod
     def supports_wildlife_safety(device_name: str, firmware_version: str = "", product_key: str = "") -> bool:
