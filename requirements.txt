@@ -1,6 +1,6 @@
 aioesphomeapi==44.23.0
 aiohappyeyeballs==2.6.1
-aiohttp==3.13.5
+aiohttp==3.14.5
 aiomqtt==2.5.1
 aiooui==0.1.9
 aiosignal==1.4.0
@@ -23,7 +23,7 @@ bluetooth-auto-recovery==1.5.3
 bluetooth-data-tools==1.28.4
 btsocket==0.3.0
 bumpver==2025.1131
-certifi==2026.4.22
+certifi==2026.10.19
 cffi==2.0.0
 cfgv==3.5.0
 chacha20poly1305-reuseable==0.13.2
@@ -35,7 +35,7 @@ cryptography==47.0.0
 dbus-fast==4.0.4
 decorator==5.2.1
 dill==0.4.1
-distlib==0.4.0
+distlib==0.4.4
 docutils==0.22.4
 executing==2.2.1
 filelock==3.29.0
@@ -70,7 +70,7 @@ matplotlib-inline==0.2.1
 mccabe==0.7.0
 mdurl==0.1.2
 more-itertools==11.0.2
-multidict==6.7.1
+multidict==7.1.0
 mypy-protobuf==3.7.0
 nest-asyncio==1.6.0
 nh3==0.3.5
@@ -78,7 +78,7 @@ nodeenv==1.10.0
 noiseprotocol==0.3.1
 numpy==2.4.4
 orjson==3.11.8
-packaging==26.2
+packaging==26.3
 paho-mqtt==2.1.0
 parso==0.8.6
 pexpect==4.9.0
@@ -133,11 +133,11 @@ tzlocal==5.3.1
 uart-devices==0.1.1
 urllib3==2.8.0
 usb-devices==0.4.5
-virtualenv==21.7.16
+virtualenv==21.14.12
 vulture==2.16
 wcwidth==0.6.0
 webrtc-models==0.3.0
 websockets==13.1
-yarl==1.23.0
-zeroconf==0.148.0
+yarl==1.25.1
+zeroconf==0.151.5
 zipp==3.23.1
