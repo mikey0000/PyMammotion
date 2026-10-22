@@ -737,7 +737,7 @@ class RemoteDriveSession:
         timer: DriveTimer | None = None
 
         async def _run() -> None:
-            self._oneshots.discard(timer)  # type: ignore[arg-type]
+            self._oneshots.discard(timer)
             await callback()
 
         timer = self._clock.call_later(0, _run)

@@ -24,7 +24,7 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import DeviceOfflineException
 from pymammotion.client import MammotionClient
 from pymammotion.const import MAMMOTION_DOMAIN
-from pymammotion.data.model import GenerateRouteInformation, hash_list
+from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device_config import OperationSettings, create_path_order
 from pymammotion.data.model.hash_list import HashList
 from pymammotion.device.handle import DeviceHandle

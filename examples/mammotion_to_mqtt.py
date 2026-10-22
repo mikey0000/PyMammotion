@@ -152,17 +152,15 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Protocol
+from typing import Any
 
 import IPython
-from rich.console import Console
 from rich.logging import RichHandler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pymammotion.client import MammotionClient
-from pymammotion.messaging.broker import _LUBA_SUB_GROUP
-from pymammotion.transport.base import Subscription, TransportType
+from pymammotion.transport.base import TransportType
 
 sys.path.insert(0, str(Path(__file__).parent))
 from importlib.metadata import version
