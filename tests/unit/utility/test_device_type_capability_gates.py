@@ -437,3 +437,24 @@ def test_positioning_gates_resolve_through_the_product_key() -> None:
     assert DeviceType.supports_vision_positioning(UNRECOGNISED_NAME) is False
     assert DeviceType.supports_vision_positioning(UNRECOGNISED_NAME, luba_2_product_key) is True
     assert DeviceType.supports_lidar_positioning(UNRECOGNISED_NAME, luba_2_product_key) is False
+
+
+@pytest.mark.parametrize(
+    ("device_name", "firmware", "expected"),
+    [
+        ("Luba-VA6ABCDE", "2.3.28", True),
+        ("Luba-VA6ABCDE", "2.3.28.1", True),
+        ("Yuka-MV6ABCDE", "2.4.0", True),
+        ("Ezy-VT6ABCDE", "2.3.28", True),
+        ("Luba-VA6ABCDE", "2.3.27.9", False),
+        ("Luba-VA6ABCDE", "", False),  # unknown version: the app hides the row
+        ("Luba-VA6ABCDE", "unknown", False),
+        ("Luba-VS6ABCDE", "2.3.28", False),  # X3 never shows it
+        ("Yuka-MN12345", "2.3.28", False),
+        ("Luba-1ABCDEF", "2.3.28", False),
+        ("Spino-E1ABCD", "2.3.28", False),
+    ],
+)
+def test_supports_autonomous_drive_speed_mirrors_the_app_gate(device_name: str, firmware: str, expected: bool) -> None:
+    """The driving page's speed slider: X5 on firmware 2.3.28 or newer."""
+    assert DeviceType.supports_autonomous_drive_speed(device_name, firmware) is expected

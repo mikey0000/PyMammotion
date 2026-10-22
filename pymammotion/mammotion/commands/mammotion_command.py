@@ -33,10 +33,13 @@ class MammotionCommand(
 
     def read_write_device(self, rw_id: int, context: int, rw: int) -> bytes:
         """Route X5 safety settings to batch config, WildGuard to nav, and other settings by mower type."""
-        if rw_id in (17, 18) and DeviceType.is_x5_series(self.get_device_name()):
-            return self._read_write_safety_x5(rw_id, context, rw)
+        if rw_id in (17, 18):
+            if DeviceType.is_x5_series(self.get_device_name()):
+                return self._read_write_safety_x5(rw_id, context, rw)
+            if not DeviceType.is_luba_pro(self.get_device_name()):
+                raise ValueError(f"Read/write id {rw_id} is only supported on X3 and X5 mowers")
         if rw_id in (12, 13) or (
-            rw_id in (3, 6, 7, 8, 10, 11, 17, 18) and DeviceType.is_luba_pro(self.get_device_name())
+            rw_id in (3, 6, 7, 8, 10, 11, 16, 17, 18) and DeviceType.is_luba_pro(self.get_device_name())
         ):
             return self.allpowerfull_rw_adapter_x3(rw_id, context, rw)
         return self.allpowerfull_rw(rw_id, context, rw)

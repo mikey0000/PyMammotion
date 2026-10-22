@@ -493,6 +493,7 @@ class MowerStateReducer(StateReducer):
                 # 13   animal_protection.status       0=disabled, 1=enabled
                 # 14   recharge_level                 percent 15-30 (return to charge at), -1=smart
                 # 15   resume_level                   percent 40-100 (resume mowing at), -1=smart
+                # 16   autonomous_drive_speed         tenths of m/s
                 # 17   child_safety                   0=disabled, 1=enabled
                 # 18   reverse_safety_mode            0=disabled, 1=enabled
                 # 20   grass-catcher bin open/close   0=close, 1=open (transient action, no state)
@@ -520,6 +521,8 @@ class MowerStateReducer(StateReducer):
                         device.mower_state.recharge_level = settings.context
                     case 15:
                         device.mower_state.resume_level = settings.context
+                    case 16:
+                        device.mower_state.autonomous_drive_speed = settings.context / 10
                     case 17:
                         device.mower_state.child_safety = bool(settings.context)
                     case 18:
@@ -582,7 +585,7 @@ class MowerStateReducer(StateReducer):
                 device.run_state_update(sys_msg[1])  # type: ignore
             case "bidire_comm_cmd":
                 # General read/write channel for non-Pro (Luba 1) devices — mirrors
-                # nav_sys_param_cmd for Pro/X3.  Same ID table applies; IDs 6/7/10/11/17/18
+                # nav_sys_param_cmd for Pro/X3.  Same ID table applies; IDs 6/7/10/11
                 # are only sent here on devices where is_luba_pro() is False.
                 comm_cmd: SysCommCmd = sys_msg[1]  # type: ignore
                 match comm_cmd.id:
