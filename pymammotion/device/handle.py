@@ -274,6 +274,7 @@ class DeviceHandle:
         #: Emits the raw command bytes of every outbound payload (excludes heartbeats).
         #: Subscribers can decode to LubaMsg for tracing/debug purposes.
         self._sent_bus: EventBus[bytes] = EventBus()
+        self._received_bus: EventBus[LubaMsg] = EventBus()
         self._prefer_ble: bool = prefer_ble
         self._mow_path_fetch_enabled: bool = True
         # Pick a reducer matching the device kind. PoolCleanerDevice instances
@@ -791,6 +792,7 @@ class DeviceHandle:
         # state_changed subscribers) or saga ack latency stretches into
         # seconds per frame and map fetches take minutes.
         await self.broker.on_message(luba_msg)
+        await self._received_bus.emit(luba_msg)
 
         # 4. Apply to state via reducer (returns a new MowingDevice copy).
         # A corrupt frame can parse as a LubaMsg yet carry a field of the wrong
@@ -1327,6 +1329,17 @@ class DeviceHandle:
         ``which_one_of`` field name. Returns RAII Subscription handle.
         """
         return self._sent_bus.subscribe(handler)
+
+    def subscribe_received(
+        self,
+        handler: Callable[[LubaMsg], Awaitable[None]],
+    ) -> Subscription:
+        """Subscribe to every decoded inbound ``LubaMsg`` for tracing/debug purposes.
+
+        Unlike ``broker.subscribe_unsolicited`` this includes solicited replies,
+        which the broker hands only to their waiter. Returns RAII Subscription handle.
+        """
+        return self._received_bus.subscribe(handler)
 
     def subscribe_map_updated(
         self,

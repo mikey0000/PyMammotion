@@ -1803,7 +1803,7 @@ class MammotionClient(CloudAuthMixin):
             )
             commands = handle.commands
             saga = MapFetchSaga(
-                device_id=handle.device_id,
+                device_id=handle.iot_id or handle.device_id,
                 device_name=handle.device_name,
                 is_luba1=DeviceType.is_luba1(device_name),
                 command_builder=commands,

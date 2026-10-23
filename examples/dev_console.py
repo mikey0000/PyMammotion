@@ -478,9 +478,9 @@ class DevConsole:
         return sub_name
 
     def _make_notification_cb(self, device_name: str) -> Callable[[Any], Awaitable[None]]:
-        """Return an async callback for broker.subscribe_unsolicited.
+        """Return an async callback for handle.subscribe_received.
 
-        Called with a LubaMsg on every unsolicited incoming message.
+        Called with every decoded incoming LubaMsg, including solicited replies.
         """
 
         async def _on_message(msg: Any) -> None:
@@ -836,12 +836,12 @@ class DevConsole:
         if handle is None:
             return
         cb = self._make_notification_cb(device_name)
-        sub = handle.broker.subscribe_unsolicited(cb)
+        sub = handle.subscribe_received(cb)
         self._notification_cbs[device_name] = (cb, sub)  # keep both alive
         sent_cb = self._make_sent_cb(device_name)
         sent_sub = handle.subscribe_sent(sent_cb)
         self._sent_cbs[device_name] = (sent_cb, sent_sub)
-        _LOGGER.info("Hooked broker + sent callbacks for [bold]%s[/bold]", device_name)
+        _LOGGER.info("Hooked received + sent callbacks for [bold]%s[/bold]", device_name)
 
     def hook_all_devices(self) -> None:
 
