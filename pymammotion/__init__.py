@@ -21,7 +21,7 @@ with contextlib.suppress(ImportError):
 from pymammotion.bluetooth.ble import MammotionBLE
 from pymammotion.http.http import MammotionHTTP
 
-__version__ = "0.10.12"
+__version__ = "0.10.13"
 
 logger = logging.getLogger(__name__)
 
