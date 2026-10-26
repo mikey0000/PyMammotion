@@ -12,7 +12,7 @@ import betterproto2
 from mashumaro import field_options
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.data.model.mowing_modes import PathAngleSetting
+from pymammotion.data.model.mowing_modes import MowOrder, ObstacleLapsMode, PathAngleSetting
 from pymammotion.proto import NavGetCommDataAck, NavGetHashListAck, NavPlanJobSet, SvgMessageAckT
 from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.mur_mur_hash import MurMurHashUtil
@@ -270,6 +270,10 @@ class EdgePoints(DataClassORJSONMixin):
 _RESERVED_LENGTH = 8
 #: Offset the device adds to the settings bytes when it stores a plan.
 RESERVED_ECHO_OFFSET = 10
+#: Mow order (``MowOrder``): border or grid first.
+_RESERVED_BORDER_MODE_BYTE = 0
+#: Laps around no-go zones (``ObstacleLapsMode``).
+_RESERVED_OBSTACLE_LAPS_BYTE = 1
 #: Bytes carrying settings, which arrive with the offset applied.
 _RESERVED_ECHOED_BYTES = (0, 1, 3, 4, 5, 6)
 #: Enable flag — written raw (0/1), read back as 10/11.
@@ -421,6 +425,25 @@ class Plan(DataClassORJSONMixin):
         """
         raw = self._reserved_bytes()
         raw[_RESERVED_ENABLE_BYTE] = 0 if enabled else 1
+        return dataclasses.replace(self, reserved=raw.decode("latin-1"))
+
+    def with_path_order(
+        self,
+        *,
+        border_mode: MowOrder | int | None = None,
+        obstacle_laps: ObstacleLapsMode | int | None = None,
+    ) -> Plan:
+        """Return a copy of this plan with the mow order (``reserved[0]``) and no-go zone laps (``reserved[1]``) set.
+
+        A setting left as None keeps its stored value. The values are written as the device echoes them (+10), the
+        encoding the rest of the buffer is held in, so :meth:`reserved_for_send` sends them as given. Read them back
+        with ``GenerateRouteInformation.decode_path_order``. Raises ValueError for a value outside the enum.
+        """
+        raw = self._reserved_bytes()
+        if border_mode is not None:
+            raw[_RESERVED_BORDER_MODE_BYTE] = MowOrder(border_mode) + RESERVED_ECHO_OFFSET
+        if obstacle_laps is not None:
+            raw[_RESERVED_OBSTACLE_LAPS_BYTE] = ObstacleLapsMode(obstacle_laps) + RESERVED_ECHO_OFFSET
         return dataclasses.replace(self, reserved=raw.decode("latin-1"))
 
     def _reserved_bytes(self) -> bytearray:
