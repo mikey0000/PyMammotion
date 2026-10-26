@@ -14,7 +14,9 @@ from __future__ import annotations
 import betterproto2
 import pytest
 
+from pymammotion.data.model.generate_route_information import GenerateRouteInformation
 from pymammotion.data.model.hash_list import Plan
+from pymammotion.data.model.mowing_modes import MowOrder
 from pymammotion.proto import NavPlanJobSet
 from pymammotion.utility.device_type import DeviceType
 from tests._helpers import (
@@ -211,3 +213,51 @@ def test_a_luba1_known_only_by_product_key_sends_the_first_of_weeks_as_week() ->
 
 def test_an_unrecognised_device_sends_week_as_held() -> None:
     assert Plan(week=6, weeks=[3, 5]).week_for_send(_UNNAMED) == 6
+
+
+def test_with_path_order_sends_the_mow_order_and_no_go_laps_as_given() -> None:
+    """Written in the echo encoding, so reserved_for_send removes exactly the offset it added."""
+    stored = Plan(reserved=_buffer(10, 12, 10, 10, 10, 18, 20, 10))
+
+    edited = stored.with_path_order(border_mode=MowOrder.grid_first, obstacle_laps=3)
+
+    assert _sent(edited) == [1, 3, 0, 0, 0, 8, 10, 0]
+
+
+def test_with_path_order_reads_back_through_decode_path_order() -> None:
+    edited = Plan(reserved=_buffer(10, 12, 10, 10, 10, 18, 20, 10)).with_path_order(border_mode=1, obstacle_laps=4)
+
+    decoded = GenerateRouteInformation.decode_path_order(edited.reserved)
+
+    assert (decoded.edge_mode, decoded.obstacle_laps) == (1, 4)
+
+
+def test_with_path_order_keeps_a_setting_left_out() -> None:
+    stored = Plan(reserved=_buffer(11, 12, 11, 10, 10, 18, 20, 10))
+
+    edited = stored.with_path_order(obstacle_laps=0)
+
+    assert _sent(edited)[:3] == [1, 0, 1]
+
+
+def test_with_path_order_on_a_new_plan_sends_the_values() -> None:
+    """A plan built locally has an empty buffer; the written bytes still arrive unclamped."""
+    assert _sent(Plan().with_path_order(border_mode=1, obstacle_laps=2))[:2] == [1, 2]
+
+
+def test_with_path_order_survives_the_device_echo() -> None:
+    """Sent, stored (+10) and edited again, the settings do not drift."""
+    plan = Plan().with_path_order(border_mode=1, obstacle_laps=2)
+    for _ in range(3):
+        plan = Plan(reserved=_device_echo(plan.reserved_for_send())).with_enabled(True)
+
+    assert _sent(plan)[:2] == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [pytest.param("border_mode", 2, id="mow-order"), pytest.param("obstacle_laps", 5, id="no-go-laps")],
+)
+def test_with_path_order_refuses_a_value_outside_the_enum(setting: str, value: int) -> None:
+    with pytest.raises(ValueError):
+        Plan().with_path_order(**{setting: value})
