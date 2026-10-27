@@ -147,6 +147,7 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.device.remote_drive import RemoteDriveEvent, RemoteDriveSession
     from pymammotion.http.http import MammotionHTTP
+    from pymammotion.http.model.http import DeviceRecords
     from pymammotion.http.model.work_report import WorkReportRecord
     from pymammotion.transport.base import Transport
     from pymammotion.transport.ble import BLETransport
@@ -1663,17 +1664,23 @@ class MammotionClient(CloudAuthMixin):
 
             # Fetch the authoritative iot_id map so stale cached iot_ids are corrected.
             owned_iot_id_map: dict[str, str] = {}
+            owned_names: set[str] | None = None
             try:
                 owned_resp = await mammotion_http.get_user_device_list()
                 owned_iot_id_map = {
                     d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id
                 }
+                if owned_resp.code == 0:
+                    owned_names = {d.device_name for d in owned_resp.data or [] if d.device_name}
             except _AUTH_REJECTED:
                 raise
             except Exception:
                 _logger.warning(
                     "restore_credentials: failed to fetch device iot_id map (Mammotion restore)", exc_info=True
                 )
+
+            if owned_names is not None:
+                await self._drop_unowned_cached_records(cached_records, owned_names)
 
             ua = acct_session.user_account
             for record in cached_records.records:
@@ -1682,6 +1689,23 @@ class MammotionClient(CloudAuthMixin):
                     await self._register_mammotion_device(
                         record, transport, ua, iot_id_override, acct_session=acct_session
                     )
+
+    async def _drop_unowned_cached_records(self, cached_records: DeviceRecords, owned_names: set[str]) -> None:
+        """Drop cached owned records the account's fresh owned list no longer has.
+
+        The owned list leaves out shared devices, so only records marked owned are
+        checked; shared ones wait for the device page in ``_bootstrap_mammotion_mqtt``.
+        """
+        stale = [r for r in cached_records.records if r.owned == 1 and r.device_name not in owned_names]
+        if not stale:
+            return
+        cached_records.records = [r for r in cached_records.records if r not in stale]
+        cached_records.total = len(cached_records.records)
+        for record in stale:
+            _logger.warning("Device '%s' is no longer owned by the account — not restoring it", record.device_name)
+            if self.on_device_removed is not None:
+                with contextlib.suppress(Exception):
+                    await self.on_device_removed(record.device_name, record.iot_id)
 
     async def _bootstrap_mammotion_mqtt(
         self,

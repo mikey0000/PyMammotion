@@ -10,7 +10,7 @@ on every restore — a mower the user could never remove.
 from __future__ import annotations
 
 from http import HTTPStatus
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -191,3 +191,70 @@ async def test_a_reload_of_an_emptied_account_removes_the_device_restored_from_c
         assert client.to_cache()["mammotion_device_records"].records == []
     finally:
         await handle.stop()
+
+
+def _owned_list(*names: str) -> dict:
+    return {"code": 0, "msg": "success", "data": [{"deviceName": n, "iotId": f"iot-{n}"} for n in names]}
+
+
+async def _restore(
+    body: dict, status: int = HTTPStatus.OK.value
+) -> tuple[MammotionClient, MammotionHTTP, AsyncMock, AsyncMock]:
+    """Run the Mammotion MQTT restore over a cached owned ``STALE`` and a shared ``Luba-SHARED``."""
+    client = MammotionClient()
+    http, _ = make_http_posting(status, body)
+    http.mqtt_credentials = MQTTConnection(host="h", jwt="j", client_id="c", username="u")
+    shared = _record_json("Luba-SHARED", "iot-shared") | {"owned": 0}
+    http.device_records = DeviceRecords(
+        records=[DeviceRecord.from_dict(_record_json(STALE, "iot-stale")), DeviceRecord.from_dict(shared)],
+        total=2,
+        size=100,
+        current=1,
+        pages=1,
+    )
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+    session.mammotion_http = http
+    removed = AsyncMock()
+    client.on_device_removed = removed
+    transport = make_mock_transport(TransportType.CLOUD_MAMMOTION)
+    with (
+        patch.object(client, "_ensure_token_manager", AsyncMock()),
+        patch.object(client, "_setup_mammotion_transport", return_value=transport),
+        patch.object(client, "_register_mammotion_device", AsyncMock()) as register,
+    ):
+        await client._restore_mammotion_mqtt(ACCOUNT, session)  # noqa: SLF001
+    return client, http, register, removed
+
+
+@pytest.mark.regression
+async def test_a_restore_drops_a_cached_owned_device_the_account_no_longer_owns() -> None:
+    """The restore registered every cached record, so an unbound mower came back until the device page ran."""
+    _, http, register, removed = await _restore(_owned_list())
+
+    assert [c.args[0].device_name for c in register.await_args_list] == ["Luba-SHARED"]
+    assert [r.device_name for r in http.device_records.records] == ["Luba-SHARED"]
+    removed.assert_awaited_once_with(STALE, "iot-stale")
+
+
+async def test_a_restore_keeps_a_cached_device_the_account_still_owns() -> None:
+    _, http, register, removed = await _restore(_owned_list(STALE))
+
+    assert [c.args[0].device_name for c in register.await_args_list] == [STALE, "Luba-SHARED"]
+    assert len(http.device_records.records) == 2
+    removed.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        pytest.param(HTTPStatus.INTERNAL_SERVER_ERROR.value, {"code": 500, "msg": "boom"}, id="http-error"),
+        pytest.param(HTTPStatus.OK.value, {"code": 500, "msg": "boom"}, id="in-body-error"),
+    ],
+)
+async def test_a_restore_with_a_failed_owned_list_keeps_the_cached_devices(status: int, body: dict) -> None:
+    """A failed owned-list fetch answers with ``data=[]``; that is not proof the account is empty."""
+    _, http, register, removed = await _restore(body, status)
+
+    assert [c.args[0].device_name for c in register.await_args_list] == [STALE, "Luba-SHARED"]
+    assert len(http.device_records.records) == 2
+    removed.assert_not_awaited()
