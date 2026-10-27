@@ -314,10 +314,10 @@ class CloudAuthMixin:
                 raw["mammotion_data"] = session.mammotion_http.response
             if session.mammotion_http.mqtt_credentials is not None:
                 raw["mammotion_mqtt"] = session.mammotion_http.mqtt_credentials
+                # Written even when empty: leaving the key out keeps the old records in the host's cache.
+                raw["mammotion_device_records"] = session.mammotion_http.device_records
             if session.mammotion_http.jwt_info is not None:
                 raw["mammotion_jwt_info"] = session.mammotion_http.jwt_info
-            if session.mammotion_http.device_records.records:
-                raw["mammotion_device_records"] = session.mammotion_http.device_records
         return raw
 
     async def restore_credentials(

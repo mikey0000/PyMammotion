@@ -11,16 +11,12 @@ import asyncio
 import itertools
 from unittest.mock import AsyncMock
 
-from pymammotion.data.model.device import MowerDevice
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.proto import LubaMsg, MctlSys, ReportInfoData, RptWork
 from pymammotion.state.device_state import DeviceSnapshot
+from tests.unit.device._helpers import make_handle
 
 _TIMEOUT = 2.0
-
-
-def _handle() -> DeviceHandle:
-    return DeviceHandle(device_id="dev-w", device_name="Luba-Watch", initial_device=MowerDevice(name="Luba-Watch"))
 
 
 def _path_hash(snapshot: DeviceSnapshot) -> int:
@@ -37,7 +33,7 @@ def _report(path_hash: int) -> bytes:
 
 
 async def _seeded(handler: AsyncMock) -> DeviceHandle:
-    handle = _handle()
+    handle = make_handle("Luba-Watch")
     handle.watch_until_handled(_path_hash, handler)
     await handle.on_raw_message(_report(1))
     return handle
@@ -116,7 +112,7 @@ async def test_a_snapshot_arriving_mid_handler_does_not_start_a_second_attempt()
 
 async def test_cancelling_the_subscription_stops_the_watcher() -> None:
     handler = AsyncMock(return_value=True)
-    handle = _handle()
+    handle = make_handle("Luba-Watch")
     subscription = handle.watch_until_handled(_path_hash, handler)
     await handle.on_raw_message(_report(1))
 

@@ -1322,7 +1322,10 @@ class MammotionHTTP:
                 return Response(code=resp.status, msg="get device list failed", data=[])
             if resp_dict:
                 response = response_factory(Response[list[DeviceInfo]], resp_dict)
-                self.device_info = response.data or self.device_info
+                if response.code == 0:
+                    # An account with no devices answers with no data; that empties the list.
+                    response.data = response.data or []
+                    self.device_info = response.data
                 return response
 
         return Response(code=200, msg="success", data=[])
@@ -1404,7 +1407,11 @@ class MammotionHTTP:
             if (resp.headers.get("Content-Type") or "").startswith("application/json"):
                 resp_dict = await resp.json()
                 response = response_factory(Response[DeviceRecords], resp_dict)
-                self.device_records = response.data or self.device_records
+                if response.code == 0:
+                    # An account with no devices answers with no data; that empties the
+                    # records, so a device removed from the account is not kept from the cache.
+                    response.data = response.data or DeviceRecords()
+                    self.device_records = response.data
                 return response
 
         return Response(code=200, msg="success")
