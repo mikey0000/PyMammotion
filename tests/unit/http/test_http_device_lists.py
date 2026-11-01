@@ -10,17 +10,20 @@ on every restore — a mower the user could never remove.
 from __future__ import annotations
 
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
-from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import DeviceInfo, DeviceRecord, DeviceRecords, MQTTConnection
 from pymammotion.transport.base import TransportAvailability, TransportType
-from tests._helpers import make_mock_handle, make_mock_transport
-from tests.unit._helpers import make_http_posting
+from tests._helpers import make_mock_handle, make_mock_http, make_mock_transport
+from tests.unit._helpers import device_record_json, make_http_posting
+
+if TYPE_CHECKING:
+    from pymammotion.http.http import MammotionHTTP
 
 ACCOUNT = "user@test.com"
 STALE = "Luba-VAME9R5S"
@@ -44,22 +47,9 @@ EMPTY_LIST_BODIES = [
 ]
 
 
-def _record_json(device_name: str, iot_id: str) -> dict:
-    """Build a device-page record in the shape the server sends (see ``DeviceRecord``)."""
-    return {
-        "identityId": "819056836211638272",
-        "iotId": iot_id,
-        "productKey": "ATyVu9QkAdX",
-        "deviceName": device_name,
-        "owned": 1,
-        "bindTime": 1780498106000,
-        "createTime": "2026-06-03T14:48:26",
-    }
-
-
 def _stale_records() -> DeviceRecords:
     return DeviceRecords(
-        records=[DeviceRecord.from_dict(_record_json(STALE, "iot-stale"))],
+        records=[DeviceRecord.from_dict(device_record_json(STALE, "iot-stale"))],
         total=1,
         size=100,
         current=1,
@@ -88,7 +78,7 @@ async def test_a_listed_device_replaces_the_held_device_records() -> None:
             "code": 0,
             "msg": "success",
             "data": {
-                "records": [_record_json("Luba-NEW", "iot-new")],
+                "records": [device_record_json("Luba-NEW", "iot-new")],
                 "total": 1,
                 "size": 100,
                 "current": 1,
@@ -144,20 +134,39 @@ async def test_a_failed_owned_device_list_keeps_the_held_owned_devices() -> None
     assert http.device_info == held
 
 
-@pytest.mark.regression
-async def test_an_emptied_device_page_is_written_to_the_cache() -> None:
-    """The host merges the cache into what it stored, so a missing key keeps the old records."""
+async def _cache_after_page(status: int, body: dict) -> dict:
+    """Fetch the device page on a fresh session, then serialise the client."""
     client = MammotionClient()
-    http = MammotionHTTP()
+    http, _ = make_http_posting(status, body)
     http.mqtt_credentials = MQTTConnection(host="h", jwt="j", client_id="c", username="u")
-    http.device_records = DeviceRecords()
     session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
     session.mammotion_http = http
     await client._account_registry.register(session)  # noqa: SLF001
+    await http.get_user_device_page()
+    return client.to_cache()
 
-    cache = client.to_cache()
+
+@pytest.mark.regression
+@pytest.mark.parametrize("body", EMPTY_PAGE_BODIES)
+async def test_an_emptied_device_page_is_written_to_the_cache(body: dict) -> None:
+    """The host merges the cache into what it stored, so a missing key keeps the old records."""
+    cache = await _cache_after_page(HTTPStatus.OK.value, body)
 
     assert cache["mammotion_device_records"].records == []
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        pytest.param(HTTPStatus.INTERNAL_SERVER_ERROR.value, {"code": 500, "msg": "boom"}, id="http-error"),
+        pytest.param(HTTPStatus.OK.value, {"code": 500, "msg": "boom"}, id="in-body-error"),
+    ],
+)
+async def test_a_failed_device_page_leaves_the_cached_records_to_the_host(status: int, body: dict) -> None:
+    """With no successful fetch the records are unknown; leaving the key out keeps the host's copy."""
+    cache = await _cache_after_page(status, body)
+
+    assert "mammotion_device_records" not in cache
 
 
 @pytest.mark.regression
@@ -198,24 +207,30 @@ def _owned_list(*names: str) -> dict:
 
 
 async def _restore(
-    body: dict, status: int = HTTPStatus.OK.value
+    body: dict, status: int = HTTPStatus.OK.value, removed: AsyncMock | None = None, *, records_known: bool = True
 ) -> tuple[MammotionClient, MammotionHTTP, AsyncMock, AsyncMock]:
-    """Run the Mammotion MQTT restore over a cached owned ``STALE`` and a shared ``Luba-SHARED``."""
+    """Run the Mammotion MQTT restore over a cached owned ``STALE`` and a shared ``Luba-SHARED``.
+
+    ``records_known=False`` starts from a cache whose records could not be decoded.
+    """
     client = MammotionClient()
     http, _ = make_http_posting(status, body)
     http.mqtt_credentials = MQTTConnection(host="h", jwt="j", client_id="c", username="u")
-    shared = _record_json("Luba-SHARED", "iot-shared") | {"owned": 0}
+    shared = device_record_json("Luba-SHARED", "iot-shared") | {"owned": 0}
     http.device_records = DeviceRecords(
-        records=[DeviceRecord.from_dict(_record_json(STALE, "iot-stale")), DeviceRecord.from_dict(shared)],
+        records=[DeviceRecord.from_dict(device_record_json(STALE, "iot-stale")), DeviceRecord.from_dict(shared)],
         total=2,
         size=100,
         current=1,
         pages=1,
     )
+    if not records_known:
+        http.device_records = None
     session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
     session.mammotion_http = http
-    removed = AsyncMock()
+    removed = removed or AsyncMock()
     client.on_device_removed = removed
+    client.on_credentials_updated = AsyncMock()
     transport = make_mock_transport(TransportType.CLOUD_MAMMOTION)
     with (
         patch.object(client, "_ensure_token_manager", AsyncMock()),
@@ -223,7 +238,23 @@ async def _restore(
         patch.object(client, "_register_mammotion_device", AsyncMock()) as register,
     ):
         await client._restore_mammotion_mqtt(ACCOUNT, session)  # noqa: SLF001
+    assert session.mammotion_transport is transport
     return client, http, register, removed
+
+
+async def test_a_restore_with_unknown_records_connects_without_registering_or_dropping() -> None:
+    """Nothing is known to register or drop, and the unknown records must stay out of the cache."""
+    client, http, register, removed = await _restore(_owned_list(), records_known=False)
+
+    register.assert_not_awaited()
+    removed.assert_not_awaited()
+    assert http.device_records is None
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+    session.mammotion_http = http
+    await client._account_registry.register(session)  # noqa: SLF001
+    cache = client.to_cache()
+    assert "mammotion_mqtt" in cache  # the session serialised, so the absent records key means something
+    assert "mammotion_device_records" not in cache
 
 
 @pytest.mark.regression
@@ -234,6 +265,46 @@ async def test_a_restore_drops_a_cached_owned_device_the_account_no_longer_owns(
     assert [c.args[0].device_name for c in register.await_args_list] == ["Luba-SHARED"]
     assert [r.device_name for r in http.device_records.records] == ["Luba-SHARED"]
     removed.assert_awaited_once_with(STALE, "iot-stale")
+
+
+async def test_a_dropped_cached_device_is_written_to_the_cache() -> None:
+    """Held only in memory, the drop would repeat, and notify the host again, on every restore."""
+    client, _, _, _ = await _restore(_owned_list())
+
+    client.on_credentials_updated.assert_awaited()  # type: ignore[union-attr]
+
+
+async def test_a_host_failing_to_remove_a_dropped_device_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    _, _, register, _ = await _restore(_owned_list(), removed=AsyncMock(side_effect=RuntimeError("store")))
+
+    assert f"Host failed to remove device '{STALE}'" in caplog.text
+    assert [c.args[0].device_name for c in register.await_args_list] == ["Luba-SHARED"]
+
+
+async def test_a_failed_owned_list_does_not_correct_the_cached_iot_ids() -> None:
+    """An error response's devices are not the account's; their iot_ids must not override the cache."""
+    body = {"code": 500, "msg": "boom", "data": [{"deviceName": STALE, "iotId": "iot-wrong"}]}
+    _, _, register, _ = await _restore(body)
+
+    assert [c.args[3] for c in register.await_args_list] == ["", ""]
+
+
+async def test_a_restore_hands_its_owned_list_to_the_bootstrap() -> None:
+    """The restore and the new-device check used to fetch the owned list one after the other."""
+    client = MammotionClient()
+    http = make_mock_http()
+    owned = [DeviceInfo(device_name=STALE, iot_id="iot-owned")]
+    bootstrap = AsyncMock()
+    cached = {"mammotion_mqtt": {}, "mammotion_device_records": {}}
+    with (
+        patch("pymammotion.client_auth.MammotionHTTP.from_cache", return_value=http),
+        patch.object(client, "_restore_mammotion_mqtt", AsyncMock(return_value=owned)),
+        patch.object(client, "_bootstrap_mammotion_mqtt", bootstrap),
+    ):
+        await client.restore_credentials(ACCOUNT, "pw", cached, check_for_new_devices=True)
+
+    http.get_user_device_list.assert_not_awaited()
+    assert bootstrap.await_args.args[3] == {STALE: "iot-owned"}
 
 
 async def test_a_restore_keeps_a_cached_device_the_account_still_owns() -> None:
@@ -258,3 +329,39 @@ async def test_a_restore_with_a_failed_owned_list_keeps_the_cached_devices(statu
     assert [c.args[0].device_name for c in register.await_args_list] == [STALE, "Luba-SHARED"]
     assert len(http.device_records.records) == 2
     removed.assert_not_awaited()
+
+
+async def test_a_failed_shared_device_page_does_not_stop_the_device_page() -> None:
+    """Share invitations are best effort; the device page is still fetched and acted on."""
+    client = MammotionClient()
+    http, _ = make_http_posting(HTTPStatus.OK.value, {"code": 0, "msg": "success"})
+    http.get_user_shared_device_page = AsyncMock(side_effect=TimeoutError)  # type: ignore[method-assign]
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+    session.mammotion_http = http
+    await client._account_registry.register(session)  # noqa: SLF001
+    dropped = AsyncMock()
+
+    with patch.object(client, "_drop_unlisted_mammotion_devices", dropped):
+        await client._bootstrap_mammotion_mqtt(ACCOUNT, http, session, {})  # noqa: SLF001
+
+    dropped.assert_awaited_once_with(session, set())
+
+
+async def test_a_device_page_that_raises_keeps_the_restored_devices() -> None:
+    """A network error on the device page is not proof the account is empty."""
+    client = MammotionClient()
+    http, _ = make_http_posting(HTTPStatus.OK.value, {"code": 0, "msg": "success"})
+    http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=None))  # type: ignore[method-assign]
+    http.get_user_device_page = AsyncMock(side_effect=TimeoutError)  # type: ignore[method-assign]
+    http.device_records = _stale_records()
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+    session.mammotion_http = http
+    await client._account_registry.register(session)  # noqa: SLF001
+    dropped = AsyncMock()
+
+    with patch.object(client, "_drop_unlisted_mammotion_devices", dropped):
+        await client._bootstrap_mammotion_mqtt(ACCOUNT, http, session, {})  # noqa: SLF001
+
+    dropped.assert_not_awaited()
+    assert [r.device_name for r in http.device_records.records] == [STALE]
+

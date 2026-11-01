@@ -246,7 +246,9 @@ class MammotionHTTP:
     ) -> None:
         self.device_info: list[DeviceInfo] = []
         self.mqtt_credentials: MQTTConnection | None = None
-        self.device_records: DeviceRecords = DeviceRecords(records=[], current=0, total=0, size=0, pages=0)
+        # None until the cache or a successful page fetch supplies them: a failed fetch
+        # must never be written to the cache as an emptied account.
+        self.device_records: DeviceRecords | None = None
         self.expires_in = 0.0
         self.code = 0
         self.msg = None

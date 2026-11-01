@@ -29,6 +29,19 @@ from pymammotion.utility.constant.device_enums import WorkMode
 from tests._helpers import make_bare_client
 
 
+def device_record_json(device_name: str, iot_id: str) -> dict:
+    """Build a device-page record in the shape the server sends (see ``DeviceRecord``)."""
+    return {
+        "identityId": "819056836211638272",
+        "iotId": iot_id,
+        "productKey": "ATyVu9QkAdX",
+        "deviceName": device_name,
+        "owned": 1,
+        "bindTime": 1780498106000,
+        "createTime": "2026-06-03T14:48:26",
+    }
+
+
 def make_http_posting(
     status: int,
     body: dict,

@@ -150,7 +150,7 @@ def test_optional_fields_may_all_be_absent() -> None:
     assert http is not None
     assert http.login_info is not None
     assert http.mqtt_credentials is None
-    assert http.device_records.records == []
+    assert http.device_records is None  # unknown, so it is never cached as an emptied account
 
 
 # from_cache — a bad cache degrades, it never raises
@@ -205,12 +205,12 @@ def test_malformed_mqtt_credentials_cost_only_the_mqtt_credentials() -> None:
 
 
 def test_malformed_optional_fields_leave_the_rest_intact() -> None:
-    """A bad JWT block keeps the token-derived one; bad records keep the empty default."""
+    """A bad JWT block keeps the token-derived one; bad records stay unknown."""
     http = MammotionHTTP.from_cache(_cache(mammotion_jwt_info={"bogus": 1}, mammotion_device_records="nope"))
 
     assert http is not None
     assert http.jwt_info.iot == "token-iot"  # derived from the access token
-    assert http.device_records.records == []
+    assert http.device_records is None
     assert http.mqtt_credentials is not None  # untouched by its neighbours' failures
 
 

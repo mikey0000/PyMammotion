@@ -144,6 +144,19 @@ async def test_aliyun_listing_does_not_bind_a_device_that_is_on_mammotion_mqtt(c
     assert client._device_registry.get_by_name("Luba-OLD") is not None
 
 
+async def test_aliyun_listing_binds_a_device_while_the_mammotion_records_are_unknown(client: MammotionClient) -> None:
+    """With no device page yet there is no evidence the device moved, so the Aliyun binding stands."""
+    session = make_account_session("acct", http=make_mock_http())
+    session.mammotion_http.device_records = None
+
+    bound = await client._register_aliyun_device(
+        "Luba-OLD", "iot-old", make_mock_transport(TransportType.CLOUD_ALIYUN), acct_session=session
+    )
+
+    assert bound is True
+    assert client._device_registry.get_by_name("Luba-OLD") is not None
+
+
 async def test_registering_twice_on_the_same_account_is_idempotent(client: MammotionClient) -> None:
     """Same shared transport twice: no re-wire, no disconnect, one token-manager subscription."""
     session = _session()
