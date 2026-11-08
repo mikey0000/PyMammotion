@@ -124,3 +124,15 @@ async def test_256_byte_payload_splits_into_two_frames() -> None:
     assert not FrameCtrlData(last[1]).hasFrag()
     assert last[3] == 256 - FRAG_CONTENT_LEN
     assert await _reassemble(frames) == payload
+
+
+async def test_lower_max_data_len_fragments_into_smaller_frames() -> None:
+    """BluFi Wi-Fi provisioning sends the app's 20-byte frames; a lower limit must still round-trip."""
+    sender, frames = _make_sender()
+    sender.max_data_len = 16
+    payload = bytes(range(50))
+
+    await sender.post_custom_data_bytes(payload)
+
+    assert max(len(frame) for frame in frames) == HEADER_LEN + 16
+    assert await _reassemble(frames) == payload

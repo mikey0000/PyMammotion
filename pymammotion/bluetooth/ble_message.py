@@ -313,6 +313,8 @@ class BleMessage:
         self.mReadSequence = AtomicInteger(-1)
         self.mAck: queue.Queue[int] = queue.Queue()
         self.notification = BlufiNotifyData()
+        #: Largest data section per outbound frame, fragmentation prefix included.
+        self.max_data_len = MAX_DATA_LEN
 
     async def get_task(self) -> None:
         """Request the current task status from the device over BLE."""
@@ -574,7 +576,7 @@ class BleMessage:
         """Split data into BluFi frames and write each one as a BLE packet, handling fragmentation.
 
         The data-length field in the BluFi header is one byte, so each frame's
-        data section is capped at ``MAX_DATA_LEN``.  When the payload does not
+        data section is capped at ``max_data_len`` (``MAX_DATA_LEN`` unless set lower).  When the payload does not
         fit in a single frame, every fragment except the last carries the FRAG
         frame-control bit plus a 2-byte little-endian prefix holding the total
         remaining content length (this fragment's content included) — exactly
@@ -582,12 +584,13 @@ class BleMessage:
         consumes its own send sequence number.
         """
         total_length = len(data)
+        content_len = self.max_data_len - FRAG_LENGTH_PREFIX_LEN
         offset = 0
         while offset < total_length:
             remaining = total_length - offset
-            if frag := remaining > MAX_DATA_LEN:
-                chunk = remaining.to_bytes(FRAG_LENGTH_PREFIX_LEN, "little") + data[offset : offset + FRAG_CONTENT_LEN]
-                offset += FRAG_CONTENT_LEN
+            if frag := remaining > self.max_data_len:
+                chunk = remaining.to_bytes(FRAG_LENGTH_PREFIX_LEN, "little") + data[offset : offset + content_len]
+                offset += content_len
             else:
                 chunk = data[offset:]
                 offset = total_length
@@ -603,7 +606,7 @@ class BleMessage:
 
         return True
 
-    def getPostBytes(
+    def getPostBytes(  # noqa: PLR0917
         self,
         type: int,
         encrypt: bool,
