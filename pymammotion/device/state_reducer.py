@@ -101,6 +101,7 @@ from pymammotion.proto import (
     ReportInfoT,
     ResponseBasestationInfoT,
     ResponseSetModeT,
+    Setlamprsp,
     SvgMessageAckT,
     SysCommCmd,
     SystemUpdateBufMsg,
@@ -117,6 +118,9 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
 
 _logger = logging.getLogger(__name__)
+
+# SetHeadlamp.set_ids for the manual light -> the state that id asks for.
+_MANUAL_LIGHT_SET_IDS = {1125: True, 1127: False}
 
 
 class StateReducer(ABC):
@@ -769,6 +773,12 @@ class MowerStateReducer(StateReducer):
                         "MowerStateReducer: device rejected the Agora video command (%s)",
                         video_ack.error_code.name,
                     )
+            case "set_lamp_rsp":
+                # The app reads the manual light off the acked set id; the reply
+                # carries no state, and 1121 (night light) is the same id either way.
+                set_resp: Setlamprsp = mul_msg[1]  # type: ignore
+                if set_resp.result == 0 and set_resp.set_ids in _MANUAL_LIGHT_SET_IDS:
+                    device.mower_state.lamp_info.manual_light = _MANUAL_LIGHT_SET_IDS[set_resp.set_ids]
             case "get_lamp_rsp":
                 lamp_resp: Getlamprsp = mul_msg[1]  # type: ignore
                 device.mower_state.lamp_info.lamp_bright = lamp_resp.lamp_bright
