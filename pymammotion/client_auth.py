@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
 
     from pymammotion.account.registry import AccountRegistry
+    from pymammotion.http.model.http import DeviceInfo, DeviceRecords
     from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
 
 
@@ -52,6 +53,59 @@ _logger = logging.getLogger(__name__)
 #: but must re-raise these: a restore that swallowed one would report success on a
 #: login the server has already invalidated.
 _AUTH_REJECTED = (UnauthorizedExceptionError, ReLoginRequiredError, AuthError)
+
+
+async def _accept_pending_mammotion_shares(mammotion_http: MammotionHTTP) -> None:
+    """Accept pending Mammotion share invitations; a failure leaves them for the next fetch."""
+    try:
+        shared_resp = await mammotion_http.get_user_shared_device_page()
+        if not (shared_resp.data and shared_resp.data.records):
+            return
+        pending_by_batch: dict[str, list[int]] = {}
+        for record in shared_resp.data.records:
+            if record.is_receiver == 1 and record.status == -1:
+                pending_by_batch.setdefault(record.batch_id, []).append(int(record.record_id))
+        for batch_id, record_ids in pending_by_batch.items():
+            await mammotion_http.confirm_share(batch_id, record_ids)
+    except _AUTH_REJECTED:
+        raise
+    except Exception:
+        _logger.warning("Could not accept pending Mammotion share invitations — continuing", exc_info=True)
+
+
+async def _fetch_owned_devices(mammotion_http: MammotionHTTP) -> list[DeviceInfo] | None:
+    """Fetch the devices the account owns, or ``None`` when the fetch failed."""
+    try:
+        owned_resp = await mammotion_http.get_user_device_list()
+    except _AUTH_REJECTED:
+        raise
+    except Exception:
+        _logger.warning("Owned device list fetch failed", exc_info=True)
+        return None
+    if owned_resp.code != 0:
+        _logger.warning("Owned device list fetch failed (code=%s)", owned_resp.code)
+        return None
+    return owned_resp.data or []
+
+
+def _owned_iot_id_map(owned_devices: list[DeviceInfo] | None) -> dict[str, str]:
+    """Map each owned device's name to its canonical iot_id."""
+    return {d.device_name: d.iot_id for d in owned_devices or [] if d.device_name and d.iot_id}
+
+
+async def _fetch_mammotion_device_page(mammotion_http: MammotionHTTP) -> DeviceRecords | None:
+    """Fetch the account's device page, or ``None`` when the fetch failed and the held records stand."""
+    try:
+        page_resp = await mammotion_http.get_user_device_page()
+    except _AUTH_REJECTED:
+        raise
+    except Exception:
+        _logger.warning("Mammotion device page fetch failed — keeping the cached devices", exc_info=True)
+        return None
+    if page_resp.code != 0 or page_resp.data is None:
+        _logger.warning("Mammotion device page fetch failed (code=%s) — keeping the cached devices", page_resp.code)
+        return None
+    return page_resp.data
 
 
 class CloudAuthMixin:
@@ -100,7 +154,9 @@ class CloudAuthMixin:
             *,
             check_for_new_devices: bool,
         ) -> None: ...
-        async def _restore_mammotion_mqtt(self, account: str, acct_session: AccountSession) -> None: ...
+        async def _restore_mammotion_mqtt(
+            self, account: str, acct_session: AccountSession
+        ) -> list[DeviceInfo] | None: ...
         async def _bootstrap_mammotion_mqtt(
             self,
             account: str,
@@ -201,26 +257,17 @@ class CloudAuthMixin:
         if login_resp.code != 0:
             raise LoginFailedError(account, login_resp.msg)
 
-        device_list_owned_resp = await mammotion_http.get_user_device_list()
-        device_list_resp = await mammotion_http.get_user_shared_device_page()
-        if device_list_resp.data and device_list_resp.data.records:
-            pending_by_batch: dict[str, list[int]] = {}
-            for record in device_list_resp.data.records:
-                if record.is_receiver == 1 and record.status == -1:
-                    pending_by_batch.setdefault(record.batch_id, []).append(int(record.record_id))
-            for batch_id, record_ids in pending_by_batch.items():
-                await mammotion_http.confirm_share(batch_id, record_ids)
+        owned_devices = await _fetch_owned_devices(mammotion_http)
+        await _accept_pending_mammotion_shares(mammotion_http)
 
-        device_page_resp = await mammotion_http.get_user_device_page()
-        mammotion_records = (device_page_resp.data.records if device_page_resp.data else []) or []
+        device_page = await _fetch_mammotion_device_page(mammotion_http)
+        mammotion_records = (device_page.records if device_page else []) or []
 
         # Build an authoritative device_name→iot_id map from /device-server/v1/device/list.
         # This endpoint returns the canonical Mammotion iot_id for every owned device and
         # is used to correct stale or wrong iot_ids that may appear in the Aliyun binding
         # list or the Mammotion device-page records (particularly for RTK base stations).
-        owned_iot_id_map: dict[str, str] = {
-            d.device_name: d.iot_id for d in (device_list_owned_resp.data or []) if d.device_name and d.iot_id
-        }
+        owned_iot_id_map = _owned_iot_id_map(owned_devices)
 
         acct_session = AccountSession(
             account_id=account,
@@ -314,10 +361,11 @@ class CloudAuthMixin:
                 raw["mammotion_data"] = session.mammotion_http.response
             if session.mammotion_http.mqtt_credentials is not None:
                 raw["mammotion_mqtt"] = session.mammotion_http.mqtt_credentials
+                # An empty list is written (a missing key keeps the host's cached records); unknown is not.
+                if (records := session.mammotion_http.device_records) is not None:
+                    raw["mammotion_device_records"] = records
             if session.mammotion_http.jwt_info is not None:
                 raw["mammotion_jwt_info"] = session.mammotion_http.jwt_info
-            if session.mammotion_http.device_records.records:
-                raw["mammotion_device_records"] = session.mammotion_http.device_records
         return raw
 
     async def restore_credentials(
@@ -418,8 +466,9 @@ class CloudAuthMixin:
         if "aep_data" in cached_data:
             await self._restore_aliyun(account, cached_data, acct_session, check_for_new_devices=check_for_new_devices)
 
+        owned_devices: list[DeviceInfo] | None = None
         if "mammotion_mqtt" in cached_data and "mammotion_device_records" in cached_data:
-            await self._restore_mammotion_mqtt(account, acct_session)
+            owned_devices = await self._restore_mammotion_mqtt(account, acct_session)
 
         # Accept pending shares, check for new post-2025 devices, and bootstrap/extend the
         # Mammotion MQTT transport as needed.  _bootstrap_mammotion_mqtt handles both
@@ -427,26 +476,13 @@ class CloudAuthMixin:
         # connected" (register only devices not in skip_ids) transparently.
         if check_for_new_devices and acct_session.mammotion_http is not None:
             try:
-                owned_iot_id_map: dict[str, str] = {}
-                try:
-                    owned_resp = await acct_session.mammotion_http.get_user_device_list()
-                    owned_iot_id_map = {
-                        d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id
-                    }
-                except _AUTH_REJECTED:
-                    # A rejected session is not a "couldn't fetch the map" problem —
-                    # swallowing it here would let the restore finish and report
-                    # success on a login the server has already invalidated.
-                    raise
-                except Exception:
-                    _logger.warning(
-                        "restore_credentials: failed to fetch iot_id map for Mammotion bootstrap", exc_info=True
-                    )
+                if owned_devices is None:
+                    owned_devices = await _fetch_owned_devices(acct_session.mammotion_http)
                 await self._bootstrap_mammotion_mqtt(
                     account,
                     acct_session.mammotion_http,
                     acct_session,
-                    owned_iot_id_map,
+                    _owned_iot_id_map(owned_devices),
                     skip_ids=set(acct_session.device_ids),
                 )
             except _AUTH_REJECTED:

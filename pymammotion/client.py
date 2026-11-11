@@ -54,7 +54,14 @@ from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, Acco
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import DeviceRemovedFromAccountError, DeviceUnboundException
 from pymammotion.aliyun.model.dev_by_account_response import Device
-from pymammotion.client_auth import _AUTH_REJECTED, CloudAuthMixin
+from pymammotion.client_auth import (
+    _AUTH_REJECTED,
+    CloudAuthMixin,
+    _accept_pending_mammotion_shares,
+    _fetch_mammotion_device_page,
+    _fetch_owned_devices,
+    _owned_iot_id_map,
+)
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device import MowerDevice, MowingDevice, RTKBaseStationDevice, create_device
 from pymammotion.data.model.function_codes import FunctionCodes
@@ -147,6 +154,7 @@ if TYPE_CHECKING:
     from pymammotion.data.mqtt.status import ThingStatusMessage
     from pymammotion.device.remote_drive import RemoteDriveEvent, RemoteDriveSession
     from pymammotion.http.http import MammotionHTTP
+    from pymammotion.http.model.http import DeviceInfo, DeviceRecords
     from pymammotion.http.model.work_report import WorkReportRecord
     from pymammotion.transport.base import Transport
     from pymammotion.transport.ble import BLETransport
@@ -1233,8 +1241,10 @@ class MammotionClient(CloudAuthMixin):
         Aliyun's binding listing keeps a device after it migrates to Mammotion MQTT, so
         one the Mammotion device page owns is never bound here — it would only 29004.
         """
-        if acct_session.mammotion_http is not None and any(
-            r.device_name == device_name for r in acct_session.mammotion_http.device_records.records
+        if (
+            acct_session.mammotion_http is not None
+            and (records := acct_session.mammotion_http.device_records) is not None
+            and any(r.device_name == device_name for r in records.records)
         ):
             _logger.debug("Aliyun device %s is on Mammotion MQTT — not binding it to Aliyun", device_name)
             return False
@@ -1503,9 +1513,7 @@ class MammotionClient(CloudAuthMixin):
         _logger.warning("Device '%s' unbound from all clouds — removed", device_name)
         # The device page fetched before removal no longer lists it; persist that so a restore doesn't bring it back.
         await self._persist_credentials()
-        if self.on_device_removed is not None:
-            with contextlib.suppress(Exception):
-                await self.on_device_removed(device_name, iot_id)
+        await self._notify_device_removed(device_name, iot_id)
 
     async def _restore_aliyun(
         self,
@@ -1638,8 +1646,11 @@ class MammotionClient(CloudAuthMixin):
 
         await transport.connect()
 
-    async def _restore_mammotion_mqtt(self, account: str, acct_session: AccountSession) -> None:
+    async def _restore_mammotion_mqtt(self, account: str, acct_session: AccountSession) -> list[DeviceInfo] | None:
         """Restore a Mammotion MQTT session and register all known devices.
+
+        Returns the account's owned devices, or ``None`` when they could not be
+        fetched, so the bootstrap that follows does not fetch them again.
 
         Reads the login session, MQTT credentials and device records off the account's
         :class:`MammotionHTTP` — ``restore_credentials`` has already hydrated it from
@@ -1661,18 +1672,14 @@ class MammotionClient(CloudAuthMixin):
             await transport.connect()
             acct_session.mammotion_transport = transport
 
-            # Fetch the authoritative iot_id map so stale cached iot_ids are corrected.
-            owned_iot_id_map: dict[str, str] = {}
-            try:
-                owned_resp = await mammotion_http.get_user_device_list()
-                owned_iot_id_map = {
-                    d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id
-                }
-            except _AUTH_REJECTED:
-                raise
-            except Exception:
-                _logger.warning(
-                    "restore_credentials: failed to fetch device iot_id map (Mammotion restore)", exc_info=True
+            # The authoritative iot_id map corrects stale cached iot_ids.
+            owned_devices = await _fetch_owned_devices(mammotion_http)
+            owned_iot_id_map = _owned_iot_id_map(owned_devices)
+            if cached_records is None:
+                return owned_devices
+            if owned_devices is not None:
+                await self._drop_unowned_cached_records(
+                    cached_records, {d.device_name for d in owned_devices if d.device_name}
                 )
 
             ua = acct_session.user_account
@@ -1682,6 +1689,33 @@ class MammotionClient(CloudAuthMixin):
                     await self._register_mammotion_device(
                         record, transport, ua, iot_id_override, acct_session=acct_session
                     )
+            return owned_devices
+        return None
+
+    async def _drop_unowned_cached_records(self, cached_records: DeviceRecords, owned_names: set[str]) -> None:
+        """Drop cached owned records the account's fresh owned list no longer has.
+
+        The owned list leaves out shared devices, so only records marked owned are
+        checked; shared ones wait for the device page in ``_bootstrap_mammotion_mqtt``.
+        """
+        stale = [r for r in cached_records.records if r.owned == 1 and r.device_name not in owned_names]
+        if not stale:
+            return
+        cached_records.records = [r for r in cached_records.records if r not in stale]
+        cached_records.total = len(cached_records.records)
+        await self._persist_credentials()
+        for record in stale:
+            _logger.warning("Device '%s' is no longer owned by the account — not restoring it", record.device_name)
+            await self._notify_device_removed(record.device_name, record.iot_id)
+
+    async def _notify_device_removed(self, device_name: str, iot_id: str) -> None:
+        """Tell the host a device has left the account; its failure is logged, not raised."""
+        if self.on_device_removed is None:
+            return
+        try:
+            await self.on_device_removed(device_name, iot_id)
+        except Exception:
+            _logger.warning("Host failed to remove device '%s'", device_name, exc_info=True)
 
     async def _bootstrap_mammotion_mqtt(
         self,
@@ -1718,19 +1752,12 @@ class MammotionClient(CloudAuthMixin):
 
         """
         # Accept any pending Mammotion-side share invitations before fetching the list.
-        shared_resp = await mammotion_http.get_user_shared_device_page()
-        if shared_resp.data and shared_resp.data.records:
-            pending_by_batch: dict[str, list[int]] = {}
-            for record in shared_resp.data.records:
-                if record.is_receiver == 1 and record.status == -1:
-                    pending_by_batch.setdefault(record.batch_id, []).append(int(record.record_id))
-            for batch_id, record_ids in pending_by_batch.items():
-                await mammotion_http.confirm_share(batch_id, record_ids)
+        await _accept_pending_mammotion_shares(mammotion_http)
 
-        page_resp = await mammotion_http.get_user_device_page()
-        if page_resp.data is None:
+        device_page = await _fetch_mammotion_device_page(mammotion_http)
+        if device_page is None:
             return
-        mammotion_records = page_resp.data.records or []
+        mammotion_records = device_page.records or []
         await self._drop_unlisted_mammotion_devices(acct_session, {r.device_name for r in mammotion_records})
         if not mammotion_records:
             return
@@ -2514,7 +2541,7 @@ class MammotionClient(CloudAuthMixin):
     def mammotion_device_list(self) -> list[Any]:
         """Return Mammotion-direct devices as shimmed Device objects."""
         session = self._get_default_session()
-        if session is None or session.mammotion_http is None:
+        if session is None or session.mammotion_http is None or session.mammotion_http.device_records is None:
             return []
         return self.shim_devices_from_records(session.mammotion_http.device_records.records)
 

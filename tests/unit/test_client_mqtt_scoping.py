@@ -106,6 +106,7 @@ async def test_bootstrap_skips_post_2025_devices_without_propagating() -> None:
     # AsyncMock so every HTTP call on the way to the transport is awaitable; the
     # records only have to be non-empty to reach _ensure_mammotion_transport.
     http = AsyncMock()
+    http.get_user_device_page.return_value.code = 0
 
     await client._bootstrap_mammotion_mqtt("a@example.com", http, _session(), {})  # must not raise
 

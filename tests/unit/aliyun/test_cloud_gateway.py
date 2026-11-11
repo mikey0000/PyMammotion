@@ -17,6 +17,8 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
 from pymammotion.aliyun.model.regions_response import RegionResponse
 from pymammotion.aliyun.model.session_by_authcode_response import SessionByAuthCodeResponse
+from pymammotion.http.http import MammotionHTTP
+from pymammotion.http.model.http import DeviceRecords
 from tests._helpers import let_others_run
 from tests.unit.aliyun._helpers import make_gateway, make_region, make_session
 
@@ -39,6 +41,19 @@ def test_to_cache_stamps_token_issued_at() -> None:
     raw = gateway.to_cache()
 
     assert raw["session_data"].token_issued_at == issued
+
+
+@pytest.mark.parametrize(
+    ("records", "written"),
+    [pytest.param(None, False, id="unknown"), pytest.param(DeviceRecords(), True, id="emptied-account")],
+)
+def test_to_cache_writes_device_records_only_when_known(records: DeviceRecords | None, written: bool) -> None:
+    """A missing key keeps the host's cached records; an unknown list must not overwrite them as empty."""
+    http = MammotionHTTP()
+    http.device_records = records
+    gateway = CloudIOTGateway(mammotion_http=http, session_by_authcode_response=_session())
+
+    assert ("mammotion_device_records" in gateway.to_cache()) is written
 
 
 def test_cache_round_trip_preserves_token_issued_at() -> None:

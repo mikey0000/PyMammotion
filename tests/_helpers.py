@@ -178,7 +178,7 @@ def make_mock_http(
     http = MagicMock()
     http.get_user_device_list = AsyncMock(return_value=MagicMock(data=[]))
     http.get_user_shared_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=share_records or [])))
-    page = MagicMock()
+    page = MagicMock(code=0)
     page.data = MagicMock()
     page.data.records = device_records or []
     http.get_user_device_page = AsyncMock(return_value=page)

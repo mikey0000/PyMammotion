@@ -13,8 +13,11 @@ import base64
 from contextlib import asynccontextmanager
 import struct
 import time
+from http import HTTPStatus
 import zlib
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
@@ -22,11 +25,54 @@ from pymammotion.auth.token_manager import TokenManager
 from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import Device
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import JWTTokenInfo
+from pymammotion.http.model.http import DeviceRecord, DeviceRecords, JWTTokenInfo
 from pymammotion.proto import LubaMsg, MctlSys, ReportInfoData, RptDevStatus
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
 from pymammotion.utility.constant.device_enums import WorkMode
 from tests._helpers import make_bare_client
+
+
+def device_record_json(device_name: str, iot_id: str) -> dict:
+    """Build a device-page record in the shape the server sends (see ``DeviceRecord``)."""
+    return {
+        "identityId": "819056836211638272",
+        "iotId": iot_id,
+        "productKey": "ATyVu9QkAdX",
+        "deviceName": device_name,
+        "owned": 1,
+        "bindTime": 1780498106000,
+        "createTime": "2026-06-03T14:48:26",
+    }
+
+
+#: The shapes an account with no devices can answer the device page in: no ``data``
+#: at all (what the fake server's ``_ok()`` sends for an empty payload), ``data: null``,
+#: and an empty page.
+EMPTY_PAGE_BODIES = [
+    pytest.param({"code": 0, "msg": "success"}, id="no-data"),
+    pytest.param({"code": 0, "msg": "success", "data": None}, id="null-data"),
+    pytest.param(
+        {"code": 0, "msg": "success", "data": {"records": [], "total": 0, "size": 100, "current": 1, "pages": 0}},
+        id="empty-records",
+    ),
+]
+
+#: ``(status, body)`` pairs for a device-server fetch that failed.
+FAILED_FETCHES = [
+    pytest.param(HTTPStatus.INTERNAL_SERVER_ERROR.value, {"code": 500, "msg": "boom"}, id="http-error"),
+    pytest.param(HTTPStatus.OK.value, {"code": 500, "msg": "boom"}, id="in-body-error"),
+]
+
+
+def device_records(*names: str) -> DeviceRecords:
+    """A held device page listing *names*, each owned, with ``iot-<name>`` iot_ids."""
+    return DeviceRecords(
+        records=[DeviceRecord.from_dict(device_record_json(n, f"iot-{n}")) for n in names],
+        total=len(names),
+        size=100,
+        current=1,
+        pages=1,
+    )
 
 
 def make_http_posting(

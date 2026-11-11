@@ -13,22 +13,18 @@ from unittest.mock import AsyncMock
 import aiohttp
 import pytest
 
-from pymammotion.data.model.device import MowerDevice
 from pymammotion.device import handle as handle_module
-from pymammotion.device.handle import DeviceHandle, DeviceStateTimeoutError
+from pymammotion.device.handle import DeviceStateTimeoutError
 from pymammotion.utility.constant.device_enums import WorkMode
 from tests._helpers import wait_until
 from tests.unit._helpers import is_ready, make_sys_status_report
+from tests.unit.device._helpers import make_handle
 
 _TIMEOUT = 2.0
 
 
-def _handle() -> DeviceHandle:
-    return DeviceHandle(device_id="dev-s", device_name="Luba-Wait", initial_device=MowerDevice(name="Luba-Wait"))
-
-
 async def test_wait_for_returns_the_current_state_without_requesting_a_report_when_it_already_matches() -> None:
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     await handle.on_raw_message(make_sys_status_report(WorkMode.MODE_READY))
     refresh = AsyncMock()
 
@@ -39,7 +35,7 @@ async def test_wait_for_returns_the_current_state_without_requesting_a_report_wh
 
 
 async def test_wait_for_requests_a_report_and_returns_the_state_it_brings() -> None:
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
 
     async def _device_answers() -> None:
         await handle.on_raw_message(make_sys_status_report(WorkMode.MODE_READY))
@@ -53,7 +49,7 @@ async def test_wait_for_requests_a_report_and_returns_the_state_it_brings() -> N
 
 
 async def test_wait_for_resolves_on_a_later_report_that_matches() -> None:
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
 
     async def _device_still_paused() -> None:
         await handle.on_raw_message(make_sys_status_report(WorkMode.MODE_PAUSE))
@@ -71,7 +67,7 @@ async def test_wait_for_resolves_on_a_later_report_that_matches() -> None:
 
 async def test_wait_for_does_not_request_a_report_while_the_device_is_already_reporting() -> None:
     """A fresh report means the device is talking; a one-shot RPT_START would reconfigure its stream."""
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     await handle.on_raw_message(make_sys_status_report(WorkMode.MODE_PAUSE))
     refresh = AsyncMock()
 
@@ -84,7 +80,7 @@ async def test_wait_for_does_not_request_a_report_while_the_device_is_already_re
 
 
 async def test_wait_for_requests_again_when_no_report_arrives_within_the_poll_interval() -> None:
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     refresh = AsyncMock()
 
     waiter = asyncio.create_task(handle.wait_for(is_ready, timeout=_TIMEOUT, refresh=refresh, poll_interval=0.01))
@@ -95,7 +91,7 @@ async def test_wait_for_requests_again_when_no_report_arrives_within_the_poll_in
 
 
 async def test_wait_for_raises_a_timeout_error_naming_the_device_when_the_state_never_arrives() -> None:
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
 
     with pytest.raises(DeviceStateTimeoutError) as exc_info:
         await handle.wait_for(is_ready, timeout=0.01, refresh=AsyncMock(), poll_interval=60.0)
@@ -105,7 +101,7 @@ async def test_wait_for_raises_a_timeout_error_naming_the_device_when_the_state_
 
 
 async def test_wait_for_unsubscribes_from_the_state_bus_when_it_returns() -> None:
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     await handle.on_raw_message(make_sys_status_report(WorkMode.MODE_READY))
     before = len(handle._state_changed_bus._bus._handlers)
 
@@ -115,7 +111,7 @@ async def test_wait_for_unsubscribes_from_the_state_bus_when_it_returns() -> Non
 
 
 async def test_wait_for_propagates_a_failed_report_request_and_releases_its_subscription() -> None:
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     before = len(handle._state_changed_bus._bus._handlers)
     refresh = AsyncMock(side_effect=ConnectionError("no route"))
 
@@ -133,7 +129,7 @@ async def test_wait_for_raises_the_predicates_own_error_at_once_rather_than_timi
     the caller sat out the whole deadline, then got a DeviceStateTimeoutError that
     named the wrong problem.
     """
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     calls = 0
 
     def _breaks_on_the_first_report(device: object) -> bool:
@@ -160,7 +156,7 @@ async def test_wait_for_propagates_a_timeout_raised_by_the_report_request_with_i
     ``except TimeoutError`` covered the request too, so aiohttp's ServerTimeoutError
     (a TimeoutError) became DeviceStateTimeoutError with its cause dropped.
     """
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     refresh = AsyncMock(side_effect=aiohttp.ServerTimeoutError("read timed out"))
 
     with pytest.raises(aiohttp.ServerTimeoutError):
@@ -173,7 +169,7 @@ async def test_wait_for_returns_the_state_that_arrived_before_the_report_request
 
     The request's error was raised even though the matching report had already resolved the wait.
     """
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
 
     async def _answers_then_fails() -> None:
         await handle.on_raw_message(make_sys_status_report(WorkMode.MODE_READY))
@@ -188,7 +184,7 @@ async def test_wait_for_returns_the_state_that_arrived_before_the_report_request
 
 async def test_wait_for_requests_at_most_twice_per_wait_while_the_device_stays_silent() -> None:
     """Each request is counted RPT_START sends against the 600-per-12 h budget; after two, the stream must answer."""
-    handle = _handle()
+    handle = make_handle("Luba-Wait")
     refresh = AsyncMock()
 
     with pytest.raises(DeviceStateTimeoutError):

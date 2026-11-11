@@ -867,7 +867,7 @@ async def test_relogin_does_not_revoke_the_session_it_is_replacing() -> None:
     new_http.login_v2 = AsyncMock(return_value=MagicMock(code=0))
     # No Aliyun session and no Mammotion records: this test is about the teardown,
     # not about what gets registered afterwards.
-    new_http.get_user_device_page = AsyncMock(return_value=MagicMock(data=MagicMock(records=[])))
+    new_http.get_user_device_page = AsyncMock(return_value=MagicMock(code=0, data=MagicMock(records=[])))
 
     with (
         patch("pymammotion.client_auth.MammotionHTTP", return_value=new_http),
