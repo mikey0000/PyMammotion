@@ -111,7 +111,7 @@ class CloudIOTGateway:
 
     converter = DatatypeConverter()
 
-    def __init__(
+    def __init__(  # noqa: PLR0917 — preserve the existing positional constructor API
         self,
         mammotion_http: MammotionHTTP,
         connect_response: ConnectResponse | None = None,
@@ -1177,9 +1177,9 @@ class CloudIOTGateway:
         and validated, so an account has exactly one login session no matter how many
         transports are restored from the same cache.
 
-        Returns None if any required Aliyun field is missing or if an error occurs
-        during reconstruction or session refresh — the login itself survives, and only
-        this transport is given up.
+        Returns None if a required Aliyun field is missing, reconstruction fails,
+        or the cached IoT session is rejected, so the caller can rebuild it from
+        the validated HTTP login. Network failures during refresh propagate.
 
         Args:
             data: Cache dictionary previously produced by :meth:`to_cache`.
@@ -1233,5 +1233,10 @@ class CloudIOTGateway:
             logger.exception("Error while restoring cloud data")
             return None
 
-        await cloud_client.check_or_refresh_session()
+        try:
+            await cloud_client.check_or_refresh_session()
+        except SessionExpiredError:
+            # The HTTP login is still valid. Let _restore_aliyun rebuild this IoT
+            # session instead of aborting before the other transport can restore.
+            return None
         return cloud_client
