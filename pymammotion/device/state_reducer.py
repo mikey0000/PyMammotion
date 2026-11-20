@@ -488,7 +488,7 @@ class MowerStateReducer(StateReducer):
                 # ---  -----------------------------  ------------------------------------------
                 #  3   rain_detection                 0=disabled, 1=enabled
                 #  5   error queries (read-only)      2=error code, 3=error timestamp — not state
-                #  6   turning_mode                   0=zero-turn, 1=multipoint turn
+                #  6   turning_mode                   0=zero-turn, 1=multipoint turn, 2=U-turn
                 #  7   traversal_mode                 0=direct to dock, 1=follow perimeter
                 #  8   (X3 adapter only, no known caller — ignore)
                 # 10   boundary_ride_distance         0/50/25: mapping-screen mode picker, meaning unknown

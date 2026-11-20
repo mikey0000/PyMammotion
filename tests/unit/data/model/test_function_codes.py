@@ -75,3 +75,13 @@ def test_the_function_set_round_trips_through_to_dict() -> None:
     device = _mower(codes=FunctionCodes(product_key=PRODUCT_KEY, product_version=FIRMWARE, codes=["003.001"]))
 
     assert MowerDevice.from_dict(device.to_dict()).supports_function_code("003.001")
+
+
+def test_u_turn_is_offered_only_once_the_cloud_lists_its_function_code() -> None:
+    """The app shows the U-turn row for ``SUPPORT_U_TURN_CODE`` (003.007) alone."""
+    listed = FunctionCodes(product_key=PRODUCT_KEY, product_version=FIRMWARE, codes=["003.007"])
+    other = FunctionCodes(product_key=PRODUCT_KEY, product_version=FIRMWARE, codes=["003.001"])
+
+    assert _mower(codes=listed).supports_u_turn()
+    assert not _mower(codes=other).supports_u_turn()
+    assert not _mower().supports_u_turn()

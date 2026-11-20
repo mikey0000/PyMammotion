@@ -63,6 +63,7 @@ class TurningMode(IntEnum):
 
     zero_turn = 0
     multipoint = 1
+    u_turn = 2
 
 
 class BoundaryRideDistance(IntEnum):

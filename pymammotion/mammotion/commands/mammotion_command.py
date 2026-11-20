@@ -52,10 +52,11 @@ class MammotionCommand(
         return self.read_write_device(7, context, 1)
 
     def turning_mode(self, context: int) -> bytes:
-        """Set the traversal mode back to charger."""
+        """Set how the mower turns around at the end of a row."""
         # setTurnAroundMode
         # 0 zero turn
         # 1 multipoint turn
+        # 2 U-turn
         return self.read_write_device(6, context, 1)
 
     def boundary_ride_distance(self, context: int) -> bytes:

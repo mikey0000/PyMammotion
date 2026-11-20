@@ -46,6 +46,9 @@ _device_config = DeviceConfig()
 #: 1003), widened to tolerate a BLE stall mid-upgrade without handing back prematurely.
 _OTA_PUSH_STALE_AFTER: float = 60.0
 
+#: The app's ``SUPPORT_U_TURN_CODE``: shows the U-turn option of the turnaround setting.
+_U_TURN_FUNCTION_CODE = "003.007"
+
 
 @dataclass
 class Device(DataClassORJSONMixin):
@@ -277,6 +280,10 @@ class MowerDevice(Device):
         if limits is None:
             limits = _device_config.get_best_default(self.mower_state.product_key)
         return limits
+
+    def supports_u_turn(self) -> bool:
+        """Return True when the cloud lists the U-turn turnaround mode for the current firmware."""
+        return self.supports_function_code(_U_TURN_FUNCTION_CODE)
 
     def clear_version_info(self) -> None:
         """Clear all cached firmware version info so it will be re-fetched after an OTA update."""
