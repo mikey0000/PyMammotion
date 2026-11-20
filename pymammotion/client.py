@@ -126,6 +126,10 @@ _UNBOUND_MIGRATION_DELAYS: tuple[float, ...] = (0.0, 30.0, 60.0, 120.0, 180.0)
 _BATCH_CONFIG_TIMEOUT = 5.0
 #: Every batch config type answers on the same two fields, so their exchanges share one broker lock.
 _BATCH_CONFIG_EXCHANGE = "batch_config"
+#: Per-attempt reply wait for a Smart Sleep exchange.
+_SMART_SLEEP_TIMEOUT = 5.0
+#: Both sleep switches are written and read on the same two fields.
+_SMART_SLEEP_EXCHANGE = "smart_sleep"
 
 _ONE_SHOT_CHANNELS: list[RptInfoType] = [
     RptInfoType.RIT_DEV_STA,
@@ -2268,6 +2272,78 @@ class MammotionClient(CloudAuthMixin):
             return False
         handle.record_user_command()
         return True
+
+    async def read_smart_sleep(
+        self, device_name: str, *, priority: Priority = Priority.NORMAL, account_id: str | None = None
+    ) -> None:
+        """Read the EcoSleep and LiveSleep switches into the device's state.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            CommandTimeoutError: The device did not answer; the switches stay as they were.
+
+        """
+        handle = self._registered_handle(device_name, account_id)
+        async with handle.broker.exclusive(_SMART_SLEEP_EXCHANGE):
+            await self._query_smart_sleep(device_name, priority, account_id)
+
+    async def set_eco_sleep(self, device_name: str, enabled: bool, *, account_id: str | None = None) -> None:
+        """Switch EcoSleep, the sleep a docked mower takes; see :meth:`set_live_sleep` for the flow."""
+        await self._set_smart_sleep(device_name, "eco_sleep", enabled, account_id)
+
+    async def set_live_sleep(self, device_name: str, enabled: bool, *, account_id: str | None = None) -> None:
+        """Switch LiveSleep, the sleep an idle mower off its dock takes.
+
+        A user command.  The ack carries a result code rather than the switches, so
+        the value sent is applied once it arrives and both are then re-read; an
+        unanswered re-read keeps the value sent.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            CommandTimeoutError: The device did not acknowledge the write.
+
+        """
+        await self._set_smart_sleep(device_name, "live_sleep", enabled, account_id)
+
+    async def _set_smart_sleep(self, device_name: str, switch: str, enabled: bool, account_id: str | None) -> None:
+        handle = self._registered_handle(device_name, account_id)
+        async with handle.broker.exclusive(_SMART_SLEEP_EXCHANGE):
+            await self.send_command_and_wait(
+                device_name,
+                f"set_{switch}",
+                "to_set_dev_low_power_cmd",
+                send_timeout=_SMART_SLEEP_TIMEOUT,
+                priority=Priority.USER,
+                account_id=account_id,
+                enabled=enabled,
+            )
+            device = cast("MowingDevice", handle.snapshot.raw)
+            applied = dataclasses.replace(device.mower_state, **{switch: enabled})
+            snapshot, _ = handle.state_machine.apply(
+                dataclasses.replace(device, mower_state=applied), handle.availability
+            )
+            await handle.emit_state_changed(snapshot)
+            try:
+                await self._query_smart_sleep(device_name, Priority.USER, account_id)
+            except CommandTimeoutError:
+                _logger.debug("set_%s: '%s' did not answer the re-read; keeping the value sent", switch, device_name)
+
+    async def _query_smart_sleep(self, device_name: str, priority: Priority, account_id: str | None) -> None:
+        await self.send_command_and_wait(
+            device_name,
+            "get_smart_sleep",
+            "to_get_dev_low_power_cmd",
+            send_timeout=_SMART_SLEEP_TIMEOUT,
+            priority=priority,
+            account_id=account_id,
+        )
+
+    def _registered_handle(self, device_name: str, account_id: str | None) -> DeviceHandle:
+        """Return the handle for *device_name*, raising ``KeyError`` when it is not registered."""
+        if (handle := self._device_registry.get_by_name(device_name, account_id)) is None:
+            msg = f"Device '{device_name}' not registered"
+            raise KeyError(msg)
+        return handle
 
     async def get_latest_work_report(self, device_name: str, account_id: str | None = None) -> WorkReportRecord | None:
         """Return the device's newest job-history record, the one "continue last job" resumes.

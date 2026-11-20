@@ -23,6 +23,8 @@ from pymammotion.proto import (
     DebugEnableT,
     DebugResCfgAbilityT,
     DeviceProductTypeInfoT,
+    DevLowPowerGet,
+    DevLowPowerSetInfo,
     FileTransferResponse,
     FileTransferResult,
     LoraCfgReq,
@@ -168,6 +170,24 @@ class MessageSystem(AbstractMessage, ABC):
             valley_charge_end_time=valley_charge_end_time,
         )
         return self.send_order_msg_sys(MctlSys(bms_ctrl_info_msg=bms_info))
+
+    def get_smart_sleep(self) -> bytes:
+        """Read both Smart Sleep switches (``to_get_dev_low_power_cmd`` reply carries the pair).
+
+        Mirrors ``MACommandHelper.getChargingSleepStatus`` / ``getUnChargingSleepStatus``,
+        which send the same empty request.
+        """
+        return self.send_order_msg_sys(MctlSys(to_get_dev_low_power_cmd=DevLowPowerGet()))
+
+    def set_eco_sleep(self, enabled: bool) -> bytes:
+        """Switch EcoSleep, the sleep a docked mower takes (``MACommandHelper.setChargingSleepStatus``)."""
+        request = DevLowPowerSetInfo(set_charging_lowpower_sta=True, charging_low_power=int(enabled))
+        return self.send_order_msg_sys(MctlSys(to_set_dev_low_power_cmd=request))
+
+    def set_live_sleep(self, enabled: bool) -> bytes:
+        """Switch LiveSleep, the sleep an idle mower off its dock takes (``setUnChargingSleepStatus``)."""
+        request = DevLowPowerSetInfo(set_uncharging_lowpower_sta=True, uncharging_low_power=int(enabled))
+        return self.send_order_msg_sys(MctlSys(to_set_dev_low_power_cmd=request))
 
     def get_device_product_model(self) -> bytes:
         """Request the device product type and model information."""

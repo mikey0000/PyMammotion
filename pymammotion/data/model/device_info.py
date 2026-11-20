@@ -160,6 +160,8 @@ class MowerInfo(DataClassORJSONMixin):
     rain_protection: RainProtectionSettings = field(default_factory=RainProtectionSettings)
     child_safety: bool | None = None
     reverse_safety_mode: bool | None = None
+    eco_sleep: bool | None = None  # docked sleep; None until read
+    live_sleep: bool | None = None  # idle off-dock sleep; None until read
 
 
 @dataclass

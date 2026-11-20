@@ -70,6 +70,7 @@ from pymammotion.proto import (
     CoverPathUploadT,
     DeviceFwInfo,
     DeviceProductTypeInfoT,
+    DevLowPowerGet,
     DrvDevInfoResp,
     DrvDevInfoResult,
     DrvKnifeChangeReport,
@@ -270,11 +271,12 @@ class MowerStateReducer(StateReducer):
                         | "device_product_type_info"
                         | "bms_ctrl_info_msg"
                         | "batch_query_resp"
+                        | "to_get_dev_low_power_cmd"
                     ):
                         # These handlers only touch mower_state.
                         device.mower_state = copy.deepcopy(current.mower_state)
-                    case "mow_to_app_info" | "batch_set_resp":
-                        # mow_info() is a no-op; the batch ack carries no values.
+                    case "mow_to_app_info" | "batch_set_resp" | "to_set_dev_low_power_cmd":
+                        # mow_info() is a no-op; the two write acks carry no values.
                         pass
                     case _:
                         device.mower_state = copy.deepcopy(current.mower_state)
@@ -627,6 +629,10 @@ class MowerStateReducer(StateReducer):
                     bat_cycle_times=bms_info.bat_cycle_times,
                     bat_health_state=bms_info.bat_health_state,
                 )
+            case "to_get_dev_low_power_cmd":
+                low_power: DevLowPowerGet = sys_msg[1]  # type: ignore
+                device.mower_state.eco_sleep = bool(low_power.charging_low_power)
+                device.mower_state.live_sleep = bool(low_power.uncharging_low_power)
             case "batch_query_resp":
                 # Every batch config type replies here
                 batch_reply: AppBatchQueryResp = sys_msg[1]  # type: ignore
