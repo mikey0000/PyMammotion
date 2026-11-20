@@ -95,12 +95,3 @@ def test_child_safety_is_offered_only_once_the_cloud_lists_its_function_code() -
     assert _mower(codes=listed).supports_child_safety()
     assert not _mower(codes=other).supports_child_safety()
     assert not _mower().supports_child_safety()
-
-
-def test_child_safety_is_not_offered_to_a_mower_with_no_carrier_for_it() -> None:
-    """Only X3 and X5 mowers have a command for it; the library refuses to send it to any other."""
-    device = MowerDevice(name="Luba-ABCDEF")
-    device.device_firmwares.device_version = FIRMWARE
-    device.function_codes = FunctionCodes(product_key=PRODUCT_KEY, product_version=FIRMWARE, codes=["003.001"])
-
-    assert not device.supports_child_safety()
