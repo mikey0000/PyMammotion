@@ -2100,7 +2100,7 @@ wheels = [
 
 [[package]]
 name = "pymammotion"
-version = "0.10.18"
+version = "0.10.19"
 source = { editable = "." }
 default-groups = ["dev", "extras"]
 dependencies = [
