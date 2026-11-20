@@ -48,6 +48,7 @@ _OTA_PUSH_STALE_AFTER: float = 60.0
 
 #: The app's ``SUPPORT_U_TURN_CODE``: shows the U-turn option of the turnaround setting.
 _U_TURN_FUNCTION_CODE = "003.007"
+_CHILD_SAFETY_FUNCTION_CODE = "003.001"
 
 
 @dataclass
@@ -284,6 +285,10 @@ class MowerDevice(Device):
     def supports_u_turn(self) -> bool:
         """Return True when the cloud lists the U-turn turnaround mode for the current firmware."""
         return self.supports_function_code(_U_TURN_FUNCTION_CODE)
+
+    def supports_child_safety(self) -> bool:
+        """Return True when the cloud lists child safety for the current firmware of an X3 or X5 mower."""
+        return DeviceType.is_luba_pro(self.name) and self.supports_function_code(_CHILD_SAFETY_FUNCTION_CODE)
 
     def clear_version_info(self) -> None:
         """Clear all cached firmware version info so it will be re-fetched after an OTA update."""

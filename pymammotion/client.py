@@ -90,7 +90,7 @@ from pymammotion.messaging.mow_path_saga import MowPathSaga
 from pymammotion.messaging.plan_saga import PlanFetchSaga
 from pymammotion.messaging.spino_plan_saga import SpinoPlanFetchSaga
 from pymammotion.messaging.svg_saga import SvgSendSaga
-from pymammotion.proto import BatchConfigType, ResResult, RptAct, RptInfoType
+from pymammotion.proto import BatchConfigType, BatchSetRes, ResResult, RptAct, RptInfoType
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import (
     AuthError,
@@ -164,6 +164,11 @@ if TYPE_CHECKING:
     from pymammotion.transport.ble import BLETransport
 
 _logger = logging.getLogger(__name__)
+
+
+def _batch_set_succeeded(results: list[BatchSetRes], config_type: BatchConfigType) -> bool:
+    """Whether a ``batch_set_resp`` reports success for *config_type*."""
+    return any(result.type == config_type and result.res_result == ResResult.RES_SUCCESS for result in results)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2317,12 +2322,7 @@ class MammotionClient(CloudAuthMixin):
                 account_id=account_id,
                 enabled=enabled,
             )
-            device = cast("MowingDevice", handle.snapshot.raw)
-            applied = dataclasses.replace(device.mower_state, **{switch: enabled})
-            snapshot, _ = handle.state_machine.apply(
-                dataclasses.replace(device, mower_state=applied), handle.availability
-            )
-            await handle.emit_state_changed(snapshot)
+            await self._apply_mower_state(handle, **{switch: enabled})
             try:
                 await self._query_smart_sleep(device_name, Priority.USER, account_id)
             except CommandTimeoutError:
@@ -2337,6 +2337,74 @@ class MammotionClient(CloudAuthMixin):
             priority=priority,
             account_id=account_id,
         )
+
+    async def read_child_safety(
+        self, device_name: str, *, priority: Priority = Priority.NORMAL, account_id: str | None = None
+    ) -> None:
+        """Read the child-safety switch into the device's state.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            ValueError: The mower is neither an X3 nor an X5; nothing is sent.
+            CommandTimeoutError: The device did not answer; the switch stays as it was.
+
+        """
+        handle = self._registered_handle(device_name, account_id)
+        async with handle.broker.exclusive(_BATCH_CONFIG_EXCHANGE):
+            await self._query_child_safety(device_name, priority, account_id)
+
+    async def set_child_safety(self, device_name: str, enabled: bool, *, account_id: str | None = None) -> None:
+        """Switch child safety, then re-read it; an unanswered re-read keeps the value sent.
+
+        A user command.  An X5 answers on the shared batch-config fields with a result
+        code only, so the value sent is applied once the mower reports success.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+            ValueError: The mower is neither an X3 nor an X5; nothing is sent.
+            CommandRejectedError: The device refused the write; nothing changed.
+            CommandTimeoutError: The device did not acknowledge the write.
+
+        """
+        handle = self._registered_handle(device_name, account_id)
+        x5 = DeviceType.is_x5_series(device_name)
+        async with handle.broker.exclusive(_BATCH_CONFIG_EXCHANGE):
+            reply = await self.send_command_and_wait(
+                device_name,
+                "set_child_safety",
+                "batch_set_resp" if x5 else "nav_sys_param_cmd",
+                send_timeout=_BATCH_CONFIG_TIMEOUT,
+                priority=Priority.USER,
+                account_id=account_id,
+                enabled=enabled,
+            )
+            if x5:
+                if not _batch_set_succeeded(reply.sys.batch_set_resp.res_data, BatchConfigType.CFG_TYPE_CHILD_PRO_CFG):
+                    msg = f"{device_name} refused child safety {enabled}: {reply.sys.batch_set_resp.res_data}"
+                    raise CommandRejectedError(msg)
+                await self._apply_mower_state(handle, child_safety=enabled)
+            try:
+                await self._query_child_safety(device_name, Priority.USER, account_id)
+            except CommandTimeoutError:
+                _logger.debug("set_child_safety: '%s' did not answer the re-read; keeping the value sent", device_name)
+
+    async def _query_child_safety(self, device_name: str, priority: Priority, account_id: str | None) -> None:
+        await self.send_command_and_wait(
+            device_name,
+            "read_child_safety",
+            "batch_query_resp" if DeviceType.is_x5_series(device_name) else "nav_sys_param_cmd",
+            send_timeout=_BATCH_CONFIG_TIMEOUT,
+            priority=priority,
+            account_id=account_id,
+        )
+
+    @staticmethod
+    async def _apply_mower_state(handle: DeviceHandle, **changes: Any) -> None:
+        """Apply values the device acknowledged without echoing, and publish the new state."""
+        device = cast("MowingDevice", handle.snapshot.raw)
+        applied = dataclasses.replace(device.mower_state, **changes)
+        snapshot, _ = handle.state_machine.apply(dataclasses.replace(device, mower_state=applied), handle.availability)
+        await handle.emit_state_changed(snapshot)
 
     def _registered_handle(self, device_name: str, account_id: str | None) -> DeviceHandle:
         """Return the handle for *device_name*, raising ``KeyError`` when it is not registered."""
@@ -2452,19 +2520,11 @@ class MammotionClient(CloudAuthMixin):
                 mode=mode,
                 delay_hours=delay_hours,
             )
-        if not any(
-            result.type == BatchConfigType.CFG_TYPE_RAINPRO_CFG and result.res_result == ResResult.RES_SUCCESS
-            for result in reply.sys.batch_set_resp.res_data
-        ):
+        if not _batch_set_succeeded(reply.sys.batch_set_resp.res_data, BatchConfigType.CFG_TYPE_RAINPRO_CFG):
             msg = f"{device_name} refused rain protection {mode.name}: {reply.sys.batch_set_resp.res_data}"
             raise CommandRejectedError(msg)
-        device = cast("MowingDevice", handle.snapshot.raw)
-        applied = device.mower_state.rain_protection.with_mode(mode, delay_hours)
-        snapshot, _ = handle.state_machine.apply(
-            dataclasses.replace(device, mower_state=dataclasses.replace(device.mower_state, rain_protection=applied)),
-            handle.availability,
-        )
-        await handle.emit_state_changed(snapshot)
+        current = cast("MowingDevice", handle.snapshot.raw).mower_state.rain_protection
+        await self._apply_mower_state(handle, rain_protection=current.with_mode(mode, delay_hours))
         sync = await self._save_rain_protection_config(
             handle, mode, delay_hours if mode is RainProtectionMode.sensor else 0
         )
