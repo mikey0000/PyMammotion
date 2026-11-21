@@ -17,6 +17,9 @@ import jwt as pyjwt
 
 from pymammotion.account.registry import AccountRegistry, AccountSession
 from pymammotion.client import MammotionClient
+from pymammotion.data.model.device import MowerDevice
+from pymammotion.data.model.hash_list import NavGetCommData, NavGetHashListData, PathType
+from pymammotion.data.model.report_info import LocationData
 from pymammotion.device.auto_fetch import AutoFetchWatchers
 from pymammotion.device.handle import DeviceHandle, DeviceRegistry
 from pymammotion.device.inbound_router import InboundRouter
@@ -25,10 +28,14 @@ from pymammotion.state.device_state import TransportAvailability
 from pymammotion.transport.base import TransportType
 from pymammotion.transport.ble import BLETransport
 from pymammotion.transport.cloud import CloudTransport
+from pymammotion.utility.constant.device_enums import WorkMode
 
 #: Signing key for test JWTs.  The library decodes with verify_signature=False,
 #: so the key is irrelevant — it just has to satisfy pyjwt's minimum length.
 JWT_TEST_KEY = "x" * 32
+
+#: The one area :func:`make_mower_with_synced_map` holds.
+SYNCED_AREA_HASH = 4053101126662577264
 
 
 def encode_jwt(claims: dict[str, Any] | None = None, **extra: Any) -> str:
@@ -304,3 +311,17 @@ def make_stored_plan_frame(byte_4: int = 10, field_37: int = 0, reserved2: list[
         toward_mode=field_37,
         auto_change_direction=reserved2 or [],
     )
+
+
+def make_mower_with_synced_map(name: str = "Luba-Test", *, sys_status: int = WorkMode.MODE_READY) -> MowerDevice:
+    """A mower holding one complete area whose report's ``bol_hash`` matches it, in *sys_status*."""
+    device = MowerDevice(name=name)
+    device.map.update_root_hash_list(
+        NavGetHashListData(pver=1, sub_cmd=0, total_frame=1, current_frame=1, data_couple=[SYNCED_AREA_HASH])
+    )
+    device.map.update(
+        NavGetCommData(pver=1, action=8, type=PathType.AREA, hash=SYNCED_AREA_HASH, total_frame=1, current_frame=1)
+    )
+    device.report_data.locations = [LocationData(bol_hash=device.map.computed_bol_hash)]
+    device.report_data.dev.sys_status = sys_status
+    return device

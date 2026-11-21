@@ -165,12 +165,13 @@ These still apply to Luba 1/2, Yuka and RTK:
 4. **Route zone ids.** pymammotion sends area hashes in `zone_hashs` (`pymammotion/messaging/mow_path_saga.py:96`, `:254`; `pymammotion/homeassistant/mower_api.py:391`). On X5 firmware ≥ 2.1.3.45 the app sends each area's `paternal_hash_b` when it is non-zero (§3b).
 5. **Plans dropped on re-hash.** `update_hash_lists` deletes any local plan whose `zone_hashs` reference a hash missing from `area` (`hash_list.py:648-653`). The app keeps plans (no equivalent found).
 6. **Root list not checked against `bol_hash`.** The app rejects an assembled list whose MurMur hash ≠ the reported `bol_hash` and re-requests it once. `MapFetchSaga` accepts whatever arrives (`map_saga.py:197-216`). Related (inferred): `update_root_hash_list` matches lists by `(total_frame, sub_cmd)` (`hash_list.py:890-902`), so a list whose `total_frame` changed sits beside the stale one when `invalidate_maps` was skipped (`bol_hash` unknown); `hashlist`/`area_root_hashlist` then concatenate both.
-7. **No `bol_hash == 1` guard.** `_on_bol_hash_changed` (`pymammotion/device/auto_fetch.py:172-206`) and `invalidate_maps` (`hash_list.py:1245`) treat 1 as an ordinary hash. Both app paths ignore it.
+7. **No `bol_hash == 1` guard.** `_on_map_state_changed` (`pymammotion/device/auto_fetch.py`) and `invalidate_maps` (`hash_list.py:1245`) treat 1 as an ordinary hash. Both app paths ignore it.
 8. **Requests the dump list on every run** (`map_saga.py:231-248`). The X5 sync never sends `sub_cmd=4`.
 9. **Acks root-list frames** (`map_saga.py:204-216`). 2.3.28.31 sends no such ack from either manager. The dispatcher could not be decompiled, so whether the ack is still sent elsewhere is undetermined. Harmless unless a device rejects it (inferred).
 10. **Channel re-fetch.** The X5 sync always re-fetches type-2 elements whose parent hashes are both 0. pymammotion trusts its cache by hash. `PathType.PATH` is documented as "Luba 1 path-mode" (`hash_list.py:39-40`); on X5, type 2 is a channel.
 11. **Timeouts.** App: 20 s inactivity, 2 retries per element, then keep the current map and do not retry that `bol_hash` until it changes. pymammotion: 5 s step timeout, a 10-step no-progress limit and `max_attempts = 2` (`map_saga.py:49-53`, `:278`, `:368-369`).
 12. **Type 31 (edge line)** has no `PathType` entry. Its frames land in `unknown_type_frames` (`hash_list.py:1038-1041`), keyed by hash, and are never cleared.
+13. **Work/pause suspension** (resolved). Automatic syncs wait while `sys_status` is in `MOWING_ACTIVE_MODES` and run once when the job ends, on every link (`MowerDevice.map_sync_due`, `docs/decisions.md` D16). The app suspends through `setCompareSuspended` (callers not visible; its abort message names work or pause) and re-checks `lastReportedBolHash` on resume.
 
 ## Not determined
 

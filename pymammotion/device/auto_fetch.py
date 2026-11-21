@@ -123,9 +123,9 @@ class AutoFetchWatchers:
           is cached.
         * ``(path_pos_x, path_pos_y)`` — rebuilds ``generated_mow_progress_geojson``
           as the mower progresses along the path.
-        * ``bol_hash`` (from ``report_data.locations[0].bol_hash``) — fires
-          ``MapFetchSaga`` when the device reports a different map hash,
-          replacing the old ``MapStalenessWatcher`` for the maps case.
+        * ``(bol_hash, job active)`` — fires ``MapFetchSaga`` when
+          ``MowerDevice.map_sync_due``: the map is stale and no job is active.  Changes
+          during a job are coalesced into one sync when it ends.
         * ``init_cfg_hash`` (from ``report_data.work.init_cfg_hash``) — fires
           ``PlanFetchSaga`` when the device reports a changed plan config hash,
           mirroring the APK's ``initCfgHash``-driven ``allpowerfullRW(5,1,1)``
@@ -169,43 +169,18 @@ class AutoFetchWatchers:
         async def _on_mow_progress_changed(_pos: tuple[int, int]) -> None:
             apply_device_mow_progress_geojson(cast("MowerDevice", handle.snapshot.raw))
 
-        async def _on_bol_hash_changed(bol_hash: int) -> None:
-            # bol_hash changes when the device's map element DB has been edited —
-            # trigger a re-fetch so our cached HashList stays current.
-            #
-            # Dynamics-line devices (lidar-enabled: LUBA_HM, ME, MB, LA, CM900, …)
-            # continuously detect new obstacles (type=1 elements) during mowing,
-            # so bol_hash changes every few seconds while running.  We still need
-            # to pick up those new obstacle hashes — we just skip the area-name
-            # step (step 1) because area names don't change during mowing and the
-            # device may not respond to that query while busy.
+        async def _on_map_state_changed(_state: tuple[int, bool]) -> bool:
+            """Return False while a saga runs, so the change is offered again."""
             if handle.queue.is_saga_active:
-                _logger.debug(
-                    "Device %s bol_hash changed to %d but saga active — skipping map sync", device_name, bol_hash
-                )
-                return
-
-            device_snapshot = cast("MowerDevice", handle.snapshot.raw)
-            device_type = DeviceType.value_of_str(device_name)
-            is_mowing = device_snapshot.report_data.dev.sys_status in MOWING_ACTIVE_MODES
-            incremental = (
-                device_type.is_support_dynamics_line(device_snapshot.device_firmwares.device_version or None)
-                and is_mowing
-            )
-            _logger.debug(
-                "Device %s bol_hash changed to %d — syncing map if not mowing for lidar versions (incremental=%s)",
-                device_name,
-                bol_hash,
-                incremental,
-            )
-            if incremental:
-                # bol hash can change quite frequently for lidar machines
-                return
-
+                return False
+            if not cast("MowerDevice", handle.snapshot.raw).map_sync_due:
+                return True
+            _logger.debug("Device %s map is stale and no job is active — syncing map", device_name)
             try:
-                await self.start_map_sync(device_name, skip_area_names=incremental)
+                await self.start_map_sync(device_name)
             except Exception:
                 _logger.warning("Auto-trigger map sync failed for %s", device_name, exc_info=True)
+            return True
 
         async def _on_init_cfg_hash_changed(cfg_hash: int) -> None:
             # init_cfg_hash changes when the device's plan/schedule configuration
@@ -234,9 +209,13 @@ class AutoFetchWatchers:
             lambda s: (s.raw.report_data.work.path_pos_x, s.raw.report_data.work.path_pos_y),  # type: ignore
             _on_mow_progress_changed,
         )
-        bol_hash_sub = handle.watch_field(
-            lambda s: s.raw.report_data.locations[0].bol_hash if s.raw.report_data.locations else 0,  # type: ignore
-            _on_bol_hash_changed,
+        # Keyed on the job too, so a change deferred during a job is synced once when it ends.
+        map_sub = handle.watch_until_handled(
+            lambda s: (
+                s.raw.report_data.locations[0].bol_hash if s.raw.report_data.locations else 0,  # type: ignore
+                s.raw.report_data.dev.sys_status in MOWING_ACTIVE_MODES,  # type: ignore
+            ),
+            _on_map_state_changed,
         )
         init_cfg_hash_sub = handle.watch_field(
             lambda s: s.raw.report_data.work.init_cfg_hash,  # type: ignore
@@ -252,7 +231,7 @@ class AutoFetchWatchers:
         self._watcher_subscriptions[device_name] = [
             sub,
             progress_sub,
-            bol_hash_sub,
+            map_sub,
             init_cfg_hash_sub,
             *([function_code_sub] if function_code_sub is not None else []),
         ]

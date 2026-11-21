@@ -11,6 +11,9 @@ from pymammotion.data.model.enums import FuseLocalizationStatus, TaskAreaStatus
 from pymammotion.data.model.hash_list import FrameList, HashList, MowPath, NavGetCommData
 from pymammotion.http.model.http import CheckDeviceVersion
 from pymammotion.proto import SystemUpdateBufMsg
+from pymammotion.utility.constant.device_enums import WorkMode
+from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES
+from tests._helpers import make_mower_with_synced_map
 
 
 def _make_hash_list_with_int_keys() -> HashList:
@@ -149,3 +152,32 @@ def test_a_saved_luba_2_state_loads() -> None:
 
     assert device.mower_state.product_key == "a1LLmy1zc0j"
     assert device.report_data.dev.fuse_localization_status is FuseLocalizationStatus.NO_POSE
+
+
+@pytest.mark.parametrize("sys_status", sorted(MOWING_ACTIVE_MODES))
+def test_a_stale_map_is_not_due_for_an_automatic_sync_during_a_job(sys_status: int) -> None:
+    """A job re-hashes the map as it mows; the sync waits for the job to end."""
+    device = make_mower_with_synced_map(sys_status=sys_status)
+    device.report_data.locations[0].bol_hash += 1
+
+    assert not device.map_sync_due
+
+
+def test_a_stale_map_is_due_once_no_job_is_active() -> None:
+    device = make_mower_with_synced_map(sys_status=WorkMode.MODE_READY)
+    device.report_data.locations[0].bol_hash += 1
+
+    assert device.map_sync_due
+
+
+def test_a_synced_map_is_never_due() -> None:
+    assert not make_mower_with_synced_map(sys_status=WorkMode.MODE_READY).map_sync_due
+
+
+def test_a_map_with_no_report_yet_is_due_while_idle() -> None:
+    """Without a reported hash the map cannot be confirmed in sync, so an idle mower fetches it."""
+    device = make_mower_with_synced_map(sys_status=WorkMode.MODE_READY)
+    device.report_data.locations = []
+
+    assert device.map_sync_due
+

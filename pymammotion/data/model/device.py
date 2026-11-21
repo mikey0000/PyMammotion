@@ -282,6 +282,18 @@ class MowerDevice(Device):
             limits = _device_config.get_best_default(self.mower_state.product_key)
         return limits
 
+    @property
+    def map_sync_due(self) -> bool:
+        """Whether an automatic map sync should run: the map is stale and no job is active.
+
+        A job re-hashes the map as it mows, so syncing waits for it to end (the app suspends its compare
+        while working too); user-requested syncs do not consult this.
+        """
+        locations = self.report_data.locations
+        return self.report_data.dev.sys_status not in MOWING_ACTIVE_MODES and not self.map.is_map_synced(
+            locations[0].bol_hash if locations else 0
+        )
+
     def supports_u_turn(self) -> bool:
         """Return True when the cloud lists the U-turn turnaround mode for the current firmware."""
         return self.supports_function_code(_U_TURN_FUNCTION_CODE)

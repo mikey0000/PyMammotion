@@ -216,3 +216,25 @@ Rules the session keeps:
 **Rejected:** holding a faulted session until the host acknowledges it, as the app does
 with its dialog. The library has no dialog, so it releases the token at once.
 
+## D16. Automatic map syncs wait for the job to end
+
+A mower re-hashes its map as it mows (X5 models redraw an area; lidar models add
+obstacles every few seconds), and each `bol_hash` change cost a whole `MapFetchSaga`
+— over the cloud, one send per frame against the 600-per-12 h quota. Automatic syncs
+now ask `MowerDevice.map_sync_due`: the map is stale *and* `sys_status` is outside
+`MOWING_ACTIVE_MODES`. The watcher is keyed on `(bol_hash, job active)`, so any number
+of changes during a job collapse into one sync when it ends, and none if the hash came
+back to the synced value. This is the app's rule: `HorseMapHashSyncManager` suspends its
+compare while working and re-checks the last reported hash once on resume.
+
+- **Every link, BLE included.** The app's suspension is link-agnostic, the saga holds
+  the queue's exclusive slot (stalling the job's cover-path and dynamics-line fetches),
+  and a lidar mower would sync near-continuously.
+- **A user's sync is never deferred.** `start_map_sync` itself is ungated.
+- **The cover path still follows the job,** but its own gate (`bol_hash` must match the
+  synced map, as in the app) means a route change after a mid-job re-hash waits too.
+- **"Synced" stays truthful:** `is_map_synced` is False while a sync is deferred.
+
+`invalidate_maps` no longer prunes geometry: while a route or dump list was held it
+wiped every cached area, so each sync re-fetched the whole map instead of the changed
+elements.
