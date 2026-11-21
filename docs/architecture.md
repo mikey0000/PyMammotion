@@ -28,7 +28,7 @@ every structural decision downstream follows from that one fact — see §4.2.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ HOST FACADE                                                               │
+│ HOST FACADE  (unused: the HA integration calls MammotionClient directly)  │
 │   homeassistant/mower_api.py   HomeAssistantMowerApi — call pacing,       │
 │                                plan locking, HA-shaped accessors          │
 ├───────────────────────────────────────────────────────────────────────────┤
@@ -151,7 +151,7 @@ traffic re-arms sending with no manual reset.
 ### 4.2 Outbound command
 
 ```
-HomeAssistantMowerApi                     (call pacing, dedupe)
+host (the HA coordinator)                 (call pacing)
   └─ MammotionClient.send_command_with_args(name, key, **kwargs)
        ├─ resolve handle; record_user_command()
        ├─ build bytes: getattr(handle.commands, key)(**kwargs)
@@ -275,6 +275,7 @@ phases and faults are in `docs/remote_drive.md`, and the reasoning is in D15.
 | Is a send within quota? | `CloudTransport.is_send_blocked(firmware, user_initiated=...)` — never `is_rate_limited`, `is_cloud_banned` or `is_quota_exhausted` directly |
 | Should this exception be treated as expected? | `messaging.command_queue.execute_command` — the queue and the direct path share it |
 | Does this command queue at all? | `Priority.is_direct` |
+| Is the same fetch already queued? | the `dedup_key` on `DeviceCommandQueue.enqueue` / `enqueue_saga` — `is_saga_active` sees only a *running* saga |
 | What cadence does this device need? | `DeviceHandle.cadence_mode()` + the `_MQTT_POLL_INTERVAL` / `_BLE_POLL_INTERVAL` tables |
 | Is this exception expected by the queue? | the demotion buckets in `DeviceCommandQueue._process` |
 | What does this cloud error code mean? | `aliyun/exceptions.py` (`DEVICE_OFFLINE_CODES`, `DEVICE_UNBOUND_CODES`, `GATEWAY_TIMEOUT_CODES`) |
