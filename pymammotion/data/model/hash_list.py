@@ -706,54 +706,51 @@ class HashList(DataClassORJSONMixin):
     def computed_areas(self) -> list[AreaHashNameList]:
         """Merge area_name and area into a fully-named list.
 
-        For every hash in self.area:
-        * If area_name already has an entry with a non-empty name → keep it.
-        * If area_name has an entry but name is empty → fill from FrameList.name,
-          or auto-assign the lowest unused "Area N" number.
-        * If area_name has no entry at all → same as above but also add one.
+        An area's name is its ``area_name`` entry, else the frame's ``name_time.name``, else "Area N" where N is its
+        1-based position among the areas of the device's root hash list, the label the app's map gives it
+        (``MapDataManager.resolveAreaDisplayName``).  Orphaned ``area_name`` entries are kept.
 
-        Returns a fresh list of fresh AreaHashNameList objects, so the caller
-        may mutate without affecting ``self.area_name``.
+        Returns fresh objects, so the caller may mutate them without affecting ``self.area_name``.
         """
-        # O(A) — one pass to clone entries and build a hash → entry index, plus
-        # one pass to compute the initial set of used "Area N" numbers.  The
-        # main loop is then O(A) with O(1) lookups, replacing the previous
-        # O(A²) next()/comprehension-per-area pattern.
-        area_name_list: list[AreaHashNameList] = [AreaHashNameList(name=a.name, hash=a.hash) for a in self.area_name]
-        by_hash: dict[int, AreaHashNameList] = {a.hash: a for a in area_name_list}
-        # Only a name belonging to a live area reserves its number.  ``update_hash_lists``
-        # deliberately keeps orphaned ``area_name`` entries (hash no longer in ``self.area``),
-        # so any map edit leaves the pre-edit fallback names behind — counting those would
-        # renumber every surviving area past them ("Area 1-3" → "Area 4-6").
-        used_numbers: set[int] = {
-            int(a.name.split()[-1])
-            for a in area_name_list
-            if a.hash in self.area and a.name.lower().startswith("area ") and a.name.split()[-1].isdigit()
-        }
-        next_n = 1
-
-        def _take_next_number() -> int:
-            nonlocal next_n
-            while next_n in used_numbers:
-                next_n += 1
-            used_numbers.add(next_n)
-            return next_n
-
+        positions = self._area_positions()
+        area_name_list = [AreaHashNameList(name=a.name, hash=a.hash) for a in self.area_name]
+        by_hash = {a.hash: a for a in area_name_list}
         for hash_id, area in self.area.items():
-            existing_area = by_hash.get(hash_id)
-            if existing_area is None:
-                if area.name:
-                    entry = AreaHashNameList(name=area.name, hash=hash_id)
-                else:
-                    entry = AreaHashNameList(name=f"Area {_take_next_number()}", hash=hash_id)
+            if (entry := by_hash.get(hash_id)) is None:
+                entry = by_hash[hash_id] = AreaHashNameList(name="", hash=hash_id)
                 area_name_list.append(entry)
-                by_hash[hash_id] = entry
-            elif not existing_area.name and area.name:
-                existing_area.name = area.name
-            elif not existing_area.name:
-                existing_area.name = f"Area {_take_next_number()}"
-
+            if not entry.name:
+                entry.name = area.name or f"Area {positions[hash_id]}"
         return area_name_list
+
+    def _area_positions(self) -> dict[int, int]:
+        """Return each stored area's 1-based position in the root hash list; unlisted areas follow in arrival order."""
+        listed = dict.fromkeys(h for h in self.area_root_hashlist if h in self.area)
+        ordered = [*listed, *(h for h in self.area if h not in listed)]
+        return {hash_id: position for position, hash_id in enumerate(ordered, 1)}
+
+    def area_id(self, hash_id: int) -> int | None:
+        """Return the identity the area *hash_id* keeps when the mower re-hashes it, or None when it has none.
+
+        That is ``paternal_hash_b`` where the mower sets it (X5 models, the app's ``HorseMapHashSyncManager.areaIdOf``),
+        else ``name_time.create_time`` while no other stored area shares it (older models).
+        """
+        if not (frames := self.area.get(hash_id)) or not frames.data:
+            return None
+        first = frames.data[0]
+        if first.paternal_hash_b:
+            return first.paternal_hash_b
+        created = first.name_time.create_time
+        if created and [f.data[0].name_time.create_time for f in self.area.values() if f.data].count(created) == 1:
+            return created
+        return None
+
+    def fill_area_names_from_frames(self) -> None:
+        """Set ``area_name`` from each stored area's ``name_time.name``, for a device that sent no name list.
+
+        An unnamed area gets an empty name, which ``computed_areas`` fills in.
+        """
+        self.area_name = [AreaHashNameList(name=frames.name, hash=hash_id) for hash_id, frames in self.area.items()]
 
     def upsert_area_name(self, hash_id: int, name: str) -> None:
         """Set (or insert) the display name for a single area hash.
@@ -998,9 +995,8 @@ class HashList(DataClassORJSONMixin):
     def update(self, hash_data: NavGetCommData | SvgMessage) -> bool:
         """Route *hash_data* into the appropriate per-type dict and return whether it was new.
 
-        AREA frames also auto-assign an ``area_name`` ("Area N") if none exists
-        for the hash yet.  DYNAMICS_LINE (type 18) returns True only when a
-        complete set has replaced ``dynamics_line``.
+        DYNAMICS_LINE (type 18) returns True only when a complete set has
+        replaced ``dynamics_line``.
 
         Unknown types (e.g. radar-specific 23 we've seen on LUBA_VA) are stored
         in ``unknown_type_frames`` so the hash is still tracked as "received".

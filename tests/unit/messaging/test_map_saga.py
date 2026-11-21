@@ -1,18 +1,19 @@
 """Tests for MapFetchSaga — type=26 (VISUAL_OBSTACLE_ZONE) must be stored, not skipped."""
+
 from __future__ import annotations
 
 import asyncio
 import contextlib
 
 import betterproto2
+import pytest
 
-from pymammotion.data.model.hash_list import HashList, NavGetCommData, NavGetHashListData
+from pymammotion.data.model.hash_list import AreaHashNameList, HashList, NavGetCommData, NavGetHashListData
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.proto import LubaMsg
 from tests.unit.messaging._helpers import (
     apply_msg_to_map as _apply_msg_to_map,
-    area_frame_named as _area_frame_named,
     comm_data_frame as _comm_data_msg,
     hash_list_msg as _hash_list_msg,
     make_command_builder as _make_command_builder,
@@ -145,7 +146,7 @@ async def test_saga_stores_known_and_skips_unknown_types() -> None:
             messages=[
                 _hash_list_msg([area_hash, unknown_hash]),
                 _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
-                _comm_data_msg(area_hash, type_code=0),    # PathType.AREA — stored
+                _comm_data_msg(area_hash, type_code=0),  # PathType.AREA — stored
                 _comm_data_msg(unknown_hash, type_code=26),  # unknown — skipped
             ],
             map_update=_map,
@@ -197,9 +198,9 @@ async def test_saga_stores_virtual_wall_and_corridor_types() -> None:
             messages=[
                 _hash_list_msg([corridor_line_hash, corridor_point_hash, virtual_wall_hash]),
                 _hash_list_msg([], sub_cmd=4),  # empty dump list — step 3b resolves immediately
-                _comm_data_msg(corridor_line_hash, type_code=19),   # CORRIDOR_LINE
+                _comm_data_msg(corridor_line_hash, type_code=19),  # CORRIDOR_LINE
                 _comm_data_msg(corridor_point_hash, type_code=20),  # CORRIDOR_POINT
-                _comm_data_msg(virtual_wall_hash, type_code=21),    # VIRTUAL_WALL
+                _comm_data_msg(virtual_wall_hash, type_code=21),  # VIRTUAL_WALL
             ],
             map_update=_map,
         ),
@@ -383,46 +384,57 @@ async def test_saga_advances_on_radar_no_go_zone_single_frame() -> None:
     assert cb.synchronize_hash_data.call_count == 2
 
 
-# Area-name fallback after a full sync (name_time.name preferred over "area N")
+# Area names when the device sent no name list
 
-from pymammotion.data.model.hash_list import (  # noqa: E402
-    AreaHashNameList as _AHN,
-    FrameList as _FL,
-    HashList as _HL,
+
+_NAMED_AREA = 1640341264244214677
+
+
+@pytest.mark.parametrize(
+    ("is_luba1", "stored", "expected"),
+    [
+        pytest.param(True, "area 3", "Area 1", id="luba1-replaces-an-old-label"),
+        pytest.param(False, None, "Area 1", id="no-name-list-names-from-frames"),
+        pytest.param(False, "Front", "Front", id="names-the-device-sent-are-kept"),
+    ],
 )
+async def test_a_sync_names_its_areas_from_their_frames_only_when_it_has_no_name_list(
+    is_luba1: bool, stored: str | None, expected: str
+) -> None:
+    """A Luba 1 never sends a name list, so a label an older version stored gives way to the frames."""
+    broker = DeviceMessageBroker()
+    _map = HashList(area_name=[] if stored is None else [AreaHashNameList(name=stored, hash=_NAMED_AREA)])
 
+    async def send_command(cmd: bytes) -> None:
+        pass
 
-def _fallback_area_names(current_map: _HL) -> None:
-    """Replicate MapFetchSaga._run's post-sync fallback (name_time.name or 'area N')."""
-    current_map.area_name = [
-        _AHN(name=current_map.area[h].name or f"area {i + 1}", hash=h)
-        for i, h in enumerate(sorted(current_map.area.keys()))
-    ]
+    saga = MapFetchSaga(
+        device_id="dev-1",
+        device_name="Luba-Test",
+        is_luba1=is_luba1,
+        skip_area_names=True,
+        command_builder=_make_command_builder(),
+        send_command=send_command,
+        get_map=lambda: _map,
+    )
 
+    await asyncio.wait_for(
+        _run_saga_with_messages(
+            broker,
+            saga,
+            messages=[
+                _hash_list_msg([_NAMED_AREA]),
+                _hash_list_msg([], sub_cmd=4),
+                _comm_data_msg(_NAMED_AREA, type_code=0),
+            ],
+            map_update=_map,
+        ),
+        timeout=5.0,
+    )
 
-class TestAreaNameFallbackAfterSync:
-    def test_uses_name_time_name_when_area_name_empty(self) -> None:
-        m = _HL()
-        m.area[111] = _FL(data=[_area_frame_named(111, "Voor")])
-        m.area[222] = _FL(data=[_area_frame_named(222, "Achter")])
-        assert not m.area_name
-        _fallback_area_names(m)
-        assert {a.hash: a.name for a in m.area_name} == {111: "Voor", 222: "Achter"}
-
-    def test_numbered_fallback_when_name_time_empty(self) -> None:
-        m = _HL()
-        m.area[111] = _FL(data=[_area_frame_named(111, "")])
-        m.area[222] = _FL(data=[_area_frame_named(222, "")])
-        _fallback_area_names(m)
-        assert {a.hash: a.name for a in m.area_name} == {111: "area 1", 222: "area 2"}
-
-    def test_skips_fallback_when_area_name_already_set(self) -> None:
-        m = _HL()
-        m.area[111] = _FL(data=[_area_frame_named(111, "Voor")])
-        m.area_name = [_AHN(name="Existing", hash=111)]
-        if not m.area_name and m.area:  # the saga's guard
-            _fallback_area_names(m)
-        assert m.area_name[0].name == "Existing"
+    assert saga.result is not None
+    assert _NAMED_AREA in {a.hash for a in saga.result.area_name}, "the area has no stored name entry"
+    assert {a.hash: a.name for a in saga.result.computed_areas} == {_NAMED_AREA: expected}
 
 
 # BLE-sync ordering: a sync must precede the root-list AND the per-hash request

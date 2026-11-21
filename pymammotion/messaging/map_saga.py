@@ -376,18 +376,10 @@ class MapFetchSaga(Saga):
                     cmd = self._command_builder.synchronize_hash_data(hash_num=current_hash)
                     await self._send_command(cmd)
 
-        # If the device never returned area names and no names have been set yet,
-        # fill in fallbacks from fetched area hashes.
+        # A Luba 1 never sends a name list, so its names only ever come from the frames.
         current_map = self._get_map()
-        if not current_map.area_name and current_map.area:
-            current_map.area_name = [
-                AreaHashNameList(name=f"area {i + 1}", hash=h) for i, h in enumerate(sorted(current_map.area.keys()))
-            ]
-            _logger.debug(
-                "MapFetchSaga[%s]: generated %d fallback area name(s) after full sync",
-                self._device_name,
-                len(current_map.area_name),
-            )
+        if (self._is_luba1 or not current_map.area_name) and current_map.area:
+            current_map.fill_area_names_from_frames()
 
         _logger.debug(
             "MapFetchSaga[%s]: map fetch complete — areas=%d obstacles=%d paths=%d dumps=%d",

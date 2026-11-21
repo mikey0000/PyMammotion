@@ -6,8 +6,8 @@ handler actually mutates.  Fields that are not copied must be shared by
 identity between ``current`` and the returned snapshot; copied fields must
 be distinct instances so mutations through one do not leak to the other.
 
-Also covered: ``ReportData.update()`` partial-field semantics, the area-name
-fallback (``name_time.name`` over numbered labels), and how the reducer applies
+Also covered: ``ReportData.update()`` partial-field semantics, the area names
+stored when the device sends an empty name list, and how the reducer applies
 Mammotion flat-property pushes.
 """
 
@@ -19,7 +19,7 @@ import tracemalloc
 import pytest
 
 from pymammotion.data.model.device import MowerDevice
-from pymammotion.data.model.hash_list import CommDataCouple, FrameList as _FL, NavGetCommData
+from pymammotion.data.model.hash_list import AreaHashNameList as _AHN, CommDataCouple, FrameList as _FL, NavGetCommData
 from pymammotion.data.model.report_info import (
     ConnectData,
     DeviceData,
@@ -342,19 +342,10 @@ class TestStateReducerAreaNameFallback:
         by_hash = {a.hash: a.name for a in result.map.area_name}
         assert by_hash == {111: "Voor", 222: "Achter"}
 
-    def test_falls_back_to_numbered_when_name_time_empty(self) -> None:
-        result = self._apply_empty(_device_with_named_areas({111: "", 222: ""}))
-        by_hash = {a.hash: a.name for a in result.map.area_name}
-        assert by_hash == {111: "area 1", 222: "area 2"}
-
-    def test_mixed_named_and_unnamed_areas(self) -> None:
-        """A real name reserves no number, so the unnamed area takes the lowest free
-        one — matching HashList.computed_areas' gap-fill rather than numbering by
-        position, which would make the label depend on how many areas precede it.
-        """
+    def test_leaves_unnamed_areas_for_computed_areas_to_label(self) -> None:
         result = self._apply_empty(_device_with_named_areas({111: "Voor", 222: ""}))
-        by_hash = {a.hash: a.name for a in result.map.area_name}
-        assert by_hash == {111: "Voor", 222: "area 1"}
+        assert {a.hash: a.name for a in result.map.area_name} == {111: "Voor", 222: ""}
+        assert {a.hash: a.name for a in result.map.computed_areas} == {111: "Voor", 222: "Area 2"}
 
     def test_explicit_hashnames_win_over_name_time(self) -> None:
         device = _device_with_named_areas({111: "Voor"})
@@ -363,38 +354,11 @@ class TestStateReducerAreaNameFallback:
         )
         assert {a.hash: a.name for a in result.map.area_name}[111] == "Front Lawn"
 
-    def test_existing_numbers_survive_a_new_area_arriving(self) -> None:
-        """A fallback label is baked into the HA entity_id at registration, so an
-        area that already has one must keep it.  Numbering by position in
-        sorted(map.area) renumbers every area above a newly-arrived hash.
-        """
-        device = _device_with_named_areas({111: "", 222: ""})
-        device = self._apply_empty(device)
-        assert {a.hash: a.name for a in device.map.area_name} == {111: "area 1", 222: "area 2"}
-
-        # A third area arrives whose hash sorts BELOW the other two.
-        device.map.area[10] = _FL(data=[_area_frame_named(10, "")])
-        device = self._apply_empty(device)
-        by_hash = {a.hash: a.name for a in device.map.area_name}
-        assert by_hash[111] == "area 1", "existing area was renumbered"
-        assert by_hash[222] == "area 2", "existing area was renumbered"
-        assert by_hash[10] == "area 3", "new area must take the lowest free number"
-
-    def test_transient_areas_do_not_shift_the_real_ones(self) -> None:
-        """Real hashes from a Luba 3 that displayed as area 4/5/6: three extra
-        hashes arrived mid-fetch, were numbered ahead of the real areas, then
-        pruned — leaving the real areas permanently labelled from 4.
-        """
-        real = [507072516911571140, 1231479802544112924, 2094378125895869177]
-        device = _device_with_named_areas(dict.fromkeys(real, ""))
-        device = self._apply_empty(device)
-        assert [a.name for a in device.map.area_name] == ["area 1", "area 2", "area 3"]
-
-        for extra in (101, 202, 303):  # sort below every real hash
-            device.map.area[extra] = _FL(data=[_area_frame_named(extra, "")])
-        device = self._apply_empty(device)
-        by_hash = {a.hash: a.name for a in device.map.area_name}
-        assert [by_hash[h] for h in real] == ["area 1", "area 2", "area 3"]
+    def test_replaces_a_label_an_older_version_stored(self) -> None:
+        """Older versions stored lowercase "area N" labels here; the next empty list drops them."""
+        device = _device_with_named_areas({111: ""})
+        device.map.area_name = [_AHN(name="area 3", hash=111)]
+        assert {a.hash: a.name for a in self._apply_empty(device).map.computed_areas} == {111: "Area 1"}
 
     def test_name_does_not_flip_on_repeated_empty_hash_name(self) -> None:
         device = _device_with_named_areas({111: "Voor", 222: "Achter"})

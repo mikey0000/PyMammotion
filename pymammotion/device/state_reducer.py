@@ -347,38 +347,6 @@ class MowerStateReducer(StateReducer):
     # without the callback invocations.
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _fallback_area_names(device: MowingDevice) -> list[AreaHashNameList]:
-        """Name every area in ``device.map.area`` when the device sent no hash names.
-
-        Prefers the frame's ``name_time.name``, then any label the area already
-        carries, and only then mints ``area N`` from the lowest free number.
-
-        A minted label must be stable for the life of the area: consumers bake it
-        into a durable identity (Home Assistant derives the area switch's entity_id
-        from it, fixed at registration).  Numbering by position in
-        ``sorted(map.area)`` renumbered every area above a newly-arrived hash, so
-        areas present during a map sync ended up permanently labelled from "area 4"
-        once the transient extras were pruned.
-        """
-        named = {a.hash: a.name for a in device.map.area_name if a.name}
-        used = {
-            int(name.split()[-1])
-            for name in named.values()
-            if name.lower().startswith("area ") and name.split()[-1].isdigit()
-        }
-        next_n = 1
-        area_names: list[AreaHashNameList] = []
-        for hash_id in sorted(device.map.area.keys()):
-            name = named.get(hash_id) or device.map.area[hash_id].name
-            if not name:
-                while next_n in used:
-                    next_n += 1
-                used.add(next_n)
-                name = f"area {next_n}"
-            area_names.append(AreaHashNameList(name=name, hash=hash_id))
-        return area_names
-
     def _update_nav_data(self, device: MowingDevice, message: LubaMsg) -> None:  # noqa: C901
         """Update navigation data fields on *device* in-place."""
         # Pool cleaners (Spino) reuse the LubaMsg envelope but do not have a
@@ -466,9 +434,7 @@ class MowerStateReducer(StateReducer):
                         AreaHashNameList(name=item.name, hash=item.hash) for item in hash_names.hashnames
                     ]
                 elif device.map.area:
-                    device.map.area_name = self._fallback_area_names(device)
-                # else: no areas fetched yet — leave area_name alone; HashList.update()
-                # will generate fallback names as each area chunk arrives.
+                    device.map.fill_area_names_from_frames()
             case "toapp_map_name_msg":
                 # Single-area rename echo (NavMapNameMsg, one per area) — the
                 # device acks set_area_name with the hash + new name rather than

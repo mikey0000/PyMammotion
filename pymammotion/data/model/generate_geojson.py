@@ -340,7 +340,7 @@ class GeojsonGenerator:
             :param dock_location:
 
         """
-        area_names = GeojsonGenerator._build_area_name_lookup(hash_list.area_name)
+        area_names = GeojsonGenerator._build_area_name_lookup(hash_list.computed_areas)
 
         geo_json: GeoJSONCollection = {"type": "FeatureCollection", "name": "Lawn Areas", "features": []}
         GeojsonGenerator._add_rtk_and_dock(rtk_location, dock_location, dock_rotation, geo_json)
@@ -895,7 +895,7 @@ class GeojsonGenerator:
             index: 1-based sequence number within *type_name* — used for
                 fallback names like "Virtual Wall 2" when the device has
                 not stored a user label for this type.
-            area_names: hash → name lookup built from ``HashList.area_name``.
+            area_names: hash → name lookup built from ``HashList.computed_areas``.
                 Used to name area features and to qualify obstacles with
                 their parent zone.
 

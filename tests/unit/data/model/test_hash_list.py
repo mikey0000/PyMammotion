@@ -229,57 +229,6 @@ class TestAreaNameHashesNotInArea:
         assert next(a.name for a in result if a.hash == 99) == "Stale"
 
 
-# Tests: gap-fill numbering
-
-
-class TestGapFillNumbering:
-    """Only names held by a live area reserve their number, so every "Area N"
-    used here belongs to a hash that is also present in ``self.area``.
-    """
-
-    def test_gap_filled_when_area_1_and_area_3_present(self) -> None:
-        """When 'Area 1' and 'Area 3' exist, next unnamed gets 'Area 2'."""
-        hl = _make_hash_list(
-            area={1: _make_empty_frame_list(), 3: _make_empty_frame_list(), 10: _make_empty_frame_list()},
-            area_name=[
-                AreaHashNameList(name="Area 1", hash=1),
-                AreaHashNameList(name="Area 3", hash=3),
-            ],
-        )
-        result = hl.computed_areas
-        new_entry = next(a for a in result if a.hash == 10)
-        assert new_entry.name == "Area 2"
-
-    def test_next_after_1_and_2_is_3(self) -> None:
-        hl = _make_hash_list(
-            area={1: _make_empty_frame_list(), 2: _make_empty_frame_list(), 10: _make_empty_frame_list()},
-            area_name=[
-                AreaHashNameList(name="Area 1", hash=1),
-                AreaHashNameList(name="Area 2", hash=2),
-            ],
-        )
-        result = hl.computed_areas
-        new_entry = next(a for a in result if a.hash == 10)
-        assert new_entry.name == "Area 3"
-
-    def test_multiple_unnamed_fill_gaps_in_order(self) -> None:
-        """Two unnamed areas fill the two lowest available gaps."""
-        hl = _make_hash_list(
-            area={
-                2: _make_empty_frame_list(),
-                10: _make_empty_frame_list(),
-                20: _make_empty_frame_list(),
-            },
-            area_name=[
-                AreaHashNameList(name="Area 2", hash=2),
-            ],
-        )
-        result = hl.computed_areas
-        auto_names = {a.name for a in result if a.hash in (10, 20)}
-        # Area 1 and Area 3 are the two lowest available numbers
-        assert auto_names == {"Area 1", "Area 3"}
-
-
 # Tests: immutability — computed_areas must never mutate self.area_name
 
 
@@ -337,7 +286,7 @@ class TestMixedScenarios:
         name_for_1 = next(a.name for a in result if a.hash == 1)
         assert name_for_1 == "Front Lawn"
         auto_names = {a.name for a in result if a.hash in (2, 3)}
-        assert auto_names == {"Area 1", "Area 2"}
+        assert auto_names == {"Area 2", "Area 3"}, "a named area still holds its place"
 
     def test_area_name_entry_without_matching_area_hash_preserved(self) -> None:
         """area_name entries with no corresponding area hash pass through unchanged."""
