@@ -19,9 +19,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from pymammotion.data.model.device import MowerDevice
-from pymammotion.data.model.hash_list import PathType
 from pymammotion.device.modes import _DeviceMode
-from pymammotion.messaging.common_data_saga import CommonDataSaga
 from pymammotion.transport.base import TransportType
 from pymammotion.utility.device_type import DeviceType
 
@@ -79,14 +77,7 @@ def _device_version(handle: LoopHost) -> str | None:
 
 
 async def _enqueue_dynamics_line_saga(handle: LoopHost) -> None:
-    """Enqueue a ``CommonDataSaga`` for the dynamics line; the state reducer stores what it receives."""
-    saga = CommonDataSaga(
-        command_builder=handle.commands,
-        send_command=handle.send_raw,
-        action=8,
-        type=PathType.DYNAMICS_LINE,
-    )
     try:
-        await handle.enqueue_saga(saga)
+        await handle.fetch_dynamics_line()
     except Exception:
         _logger.debug("dynamics_line_loop [%s]: enqueue failed", handle.device_name, exc_info=True)

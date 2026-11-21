@@ -265,10 +265,13 @@ class DeviceCommandQueue:
         broker: DeviceMessageBroker,
         on_complete: Callable[[], Awaitable[None]] | None = None,
         done: asyncio.Event | None = None,
+        dedup_key: str | None = None,
     ) -> None:
         """Enqueue a saga as an exclusive blocking operation.
 
         *done* is set once the saga has ended, however it ended, after *on_complete*.
+        *dedup_key* drops this saga while one with the same key is still waiting to start,
+        so its *on_complete* and *done* never fire — a caller waiting on *done* must not pass one.
         """
 
         async def _run() -> None:
@@ -321,7 +324,7 @@ class DeviceCommandQueue:
                 except Exception:
                     _logger.exception("on_complete callback failed for saga '%s'", saga.name)
 
-        await self.enqueue(_run, priority=Priority.EXCLUSIVE)
+        await self.enqueue(_run, priority=Priority.EXCLUSIVE, dedup_key=dedup_key)
 
     def _is_expired(self, item: _QueueItem) -> bool:
         """Report, and log, whether a queued command has outlived ``_COMMAND_TTL`` undispatched.

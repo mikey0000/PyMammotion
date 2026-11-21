@@ -15,6 +15,7 @@ from mashumaro.exceptions import InvalidFieldValue, MissingField
 
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.aliyun.exceptions import DeviceOfflineException, DeviceUnboundException, TooManyRequestsException
+from pymammotion.data.model.hash_list import PathType
 from pymammotion.data.mqtt.event import DeviceProtobufMsgEventParams
 from pymammotion.data.mqtt.status import StatusType
 from pymammotion.device.ble_loop import ble_activity_loop, ble_polling_loop
@@ -26,6 +27,7 @@ from pymammotion.device.state_reducer import StateReducer, get_state_reducer
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import DeviceCommandQueue, Priority
+from pymammotion.messaging.common_data_saga import CommonDataSaga
 from pymammotion.proto import LubaMsg, MsgDevice, RptAct, RptInfoType
 from pymammotion.state.device_state import (
     DeviceAvailability,
@@ -1077,9 +1079,10 @@ class DeviceHandle:
         saga: Saga,
         on_complete: Callable[[], Awaitable[None]] | None = None,
         done: asyncio.Event | None = None,
+        dedup_key: str | None = None,
     ) -> None:
-        """Enqueue a saga for exclusive execution; *done* is set once it has ended, however it ended."""
-        await self.queue.enqueue_saga(saga, self.broker, on_complete=on_complete, done=done)
+        """Enqueue a saga for exclusive execution — see :meth:`DeviceCommandQueue.enqueue_saga`."""
+        await self.queue.enqueue_saga(saga, self.broker, on_complete=on_complete, done=done, dedup_key=dedup_key)
 
     def has_queued_commands(self) -> bool:
         """Return True if the queue has pending work or a saga is active."""
@@ -1455,6 +1458,13 @@ class DeviceHandle:
             return
         _logger.debug("start_dynamics_line_loop [%s]: starting dynamics-line poll loop", self.device_name)
         self._dynamics_line_task = asyncio.get_running_loop().create_task(dynamics_line_loop(self))
+
+    async def fetch_dynamics_line(self) -> None:
+        """Queue one dynamics-line fetch unless one is already waiting; the state reducer stores the line."""
+        saga = CommonDataSaga(
+            command_builder=self.commands, send_command=self.send_raw, action=8, type=PathType.DYNAMICS_LINE
+        )
+        await self.enqueue_saga(saga, dedup_key="dynamics_line")
 
     async def restart_keep_alive(self) -> None:
         """Restart the MQTT activity loop if it has exited or was never started.
@@ -1957,7 +1967,12 @@ class DeviceHandle:
         )
 
     async def request_reports(self, count: int = 1, timeout: int = 10_000) -> None:
-        """Enqueue a one-shot "request_iot_sys(count=count)" data refresh."""
+        """Enqueue a ``request_iot_sys(count=count)`` burst unless one is queued or the BLE stream is live.
+
+        A live stream is left alone for the reason :meth:`refresh_status` gives.
+        """
+        if self._ble_stream_active:
+            return
         cmd_bytes = self.commands.request_iot_sys(
             rpt_act=RptAct.RPT_START,
             rpt_info_type=_REPORT_CHANNELS,
@@ -1968,7 +1983,9 @@ class DeviceHandle:
         async def _send() -> None:
             await self._send_rpt_start_verified(cmd_bytes, self.send_raw)
 
-        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
+        await self.queue.enqueue(
+            _send, priority=Priority.BACKGROUND, skip_if_saga_active=True, dedup_key="report_burst"
+        )
 
     async def enqueue_ble_stream_command(self, act: RptAct, count: int) -> None:
         """Enqueue a BLE-pinned ``request_iot_sys`` config command.

@@ -23,7 +23,7 @@ def _client_with(device: MowingDevice) -> tuple[MammotionClient, dict[str, Any]]
     """A client wired to a fake handle that captures the enqueued saga."""
     captured: dict[str, Any] = {}
 
-    async def _enqueue_saga(saga: Any, on_complete: Any = None) -> None:
+    async def _enqueue_saga(saga: Any, on_complete: Any = None, **_: Any) -> None:
         captured["saga"] = saga
         captured["on_complete"] = on_complete
 

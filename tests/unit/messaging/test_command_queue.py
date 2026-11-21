@@ -234,6 +234,39 @@ class _RecordingSaga(Saga):
         self.ran = True
 
 
+async def test_saga_with_the_dedup_key_of_one_still_queued_is_dropped(queue: DeviceCommandQueue) -> None:
+    first, second = _RecordingSaga(), _RecordingSaga()
+    await queue.enqueue_saga(first, DeviceMessageBroker(), dedup_key="plan_sync")
+    await queue.enqueue_saga(second, DeviceMessageBroker(), dedup_key="plan_sync")
+    queue.start()
+    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+
+    assert first.ran
+    assert not second.ran, "a duplicate of a saga still waiting to start was queued behind it"
+
+
+async def test_saga_with_the_dedup_key_of_a_running_one_is_queued(queue: DeviceCommandQueue) -> None:
+    """The key frees once its saga starts: state may have moved on since it read it."""
+    started, release = asyncio.Event(), asyncio.Event()
+
+    class _BlockingSaga(Saga):
+        name = "blocking"
+
+        async def _run(self, b: DeviceMessageBroker) -> None:
+            started.set()
+            await release.wait()
+
+    follow_up = _RecordingSaga()
+    queue.start()
+    await queue.enqueue_saga(_BlockingSaga(), DeviceMessageBroker(), dedup_key="map_sync")
+    await asyncio.wait_for(started.wait(), _DRAIN_TIMEOUT)
+    await queue.enqueue_saga(follow_up, DeviceMessageBroker(), dedup_key="map_sync")
+    release.set()
+    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+
+    assert follow_up.ran
+
+
 @pytest.fixture
 async def queue() -> AsyncIterator[DeviceCommandQueue]:
     q = DeviceCommandQueue(device_name="dev")
