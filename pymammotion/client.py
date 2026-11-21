@@ -398,7 +398,10 @@ class MammotionClient(CloudAuthMixin):
     async def ensure_fresh_state(
         self, device_name: str, *, max_age_s: float = 120.0, wait: bool = False, account_id: str | None = None
     ) -> None:
-        """Request a one-shot snapshot if the last inbound report is older than ``max_age_s`` seconds.
+        """Request a one-shot snapshot if the last telemetry report is older than ``max_age_s`` seconds.
+
+        Age is :attr:`DeviceHandle.report_data_age`: a command ack or map frame proves the
+        link is up, not that ``sys_status`` and the rest are current.
 
         Intended for use at the top of user-action handlers (start/dock/pause/cancel)
         to avoid acting on stale state after a long idle period.
@@ -415,7 +418,7 @@ class MammotionClient(CloudAuthMixin):
 
         """
         handle = self._device_registry.get_by_name(device_name, account_id)
-        if handle is None or handle.report_age <= max_age_s:
+        if handle is None or handle.report_data_age <= max_age_s:
             return
         if not wait:
             await handle.request_report_snapshot()

@@ -24,7 +24,7 @@ from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.device import handle as handle_module
 from pymammotion.device.handle import DeviceHandle, DeviceStateTimeoutError
-from pymammotion.proto import LubaMsg, MctlSys, ReportInfoCfg, ReportInfoData, RptAct
+from pymammotion.proto import DevNet, LubaMsg, MctlSys, ReportInfoCfg, ReportInfoData, RptAct
 from pymammotion.transport.base import NoTransportAvailableError, SessionExpiredError, TransportType
 from pymammotion.utility.constant.device_enums import WorkMode
 from tests._helpers import (
@@ -38,6 +38,7 @@ from tests.unit._helpers import is_ready, make_answering_send, make_sys_status_r
 
 _SEND_TIMEOUT = 1.0
 _REPORT_FRAME = bytes(LubaMsg(sys=MctlSys(toapp_report_data=ReportInfoData())))
+_NON_REPORT_FRAME = bytes(LubaMsg(net=DevNet(todev_ble_sync=1)))
 
 
 async def _registered(handle: DeviceHandle) -> MammotionClient:
@@ -111,7 +112,7 @@ async def test_refresh_status_is_not_held_behind_a_running_saga() -> None:
         handle.queue._exclusive_active.set()  # noqa: SLF001
 
     mqtt.send_user.assert_awaited_once()
-    assert handle.queue._queue.empty(), "a direct send must never touch the queue"  # noqa: SLF001
+    assert handle.queue.pending_count == 0, "a direct send must never touch the queue"
     await handle.stop()
 
 
@@ -261,7 +262,7 @@ async def test_ensure_fresh_state_still_skips_a_device_the_cloud_reported_offlin
 
     await client.ensure_fresh_state("Luba-R9")
     # The processor calls task_done() per item, so join() means processed-and-skipped, not not-yet-run.
-    await asyncio.wait_for(handle.queue._queue.join(), _SEND_TIMEOUT)  # noqa: SLF001
+    await asyncio.wait_for(handle.queue.join(), _SEND_TIMEOUT)
 
     mqtt.send_user.assert_not_awaited()
     mqtt.send.assert_not_awaited()
@@ -311,6 +312,22 @@ async def test_ensure_fresh_state_with_wait_raises_when_the_device_never_reports
 
     with pytest.raises(DeviceStateTimeoutError):
         await asyncio.wait_for(client.ensure_fresh_state("Luba-R12", wait=True), _SEND_TIMEOUT)
+    await handle.stop()
+
+
+@pytest.mark.regression
+async def test_ensure_fresh_state_requests_a_report_although_a_non_report_frame_just_arrived() -> None:
+    """Staleness was measured from any frame, so a command ack hid telemetry of any age.
+
+    A user action right after an ack then acted on a ``sys_status`` that could be hours old.
+    """
+    handle, mqtt = await _cloud_handle("Luba-R19", reported_offline=False)
+    client = await _registered(handle)
+    await handle.on_raw_message(_NON_REPORT_FRAME)
+
+    await asyncio.wait_for(client.ensure_fresh_state("Luba-R19", wait=True), _SEND_TIMEOUT)
+
+    mqtt.send_user.assert_awaited_once()
     await handle.stop()
 
 
