@@ -2007,18 +2007,14 @@ class MammotionClient(CloudAuthMixin):
             return False
         device = cast("MowerDevice", handle.snapshot.raw)
         path_hash = device.report_data.work.path_hash
-        if device.map.is_mow_path_current(path_hash):
+        if self._prune_stale_cover_path(device, path_hash):
             apply_device_mow_progress_geojson(device)
             return False
-        device.map.invalidate_stale_route(path_hash)
         if not _should_fetch_mow_path(device, handle, path_hash):
             return False
         _logger.debug("Device %s path_hash=%d — fetching cover path", device_name, path_hash)
         try:
-            current_work = GenerateRouteInformation.from_current_task_settings(device.work)
-            return await self.start_mow_path_saga(
-                device_name, zone_hashs=[], route_info=current_work, skip_planning=True
-            )
+            return await self._fetch_cover_path(device_name, device)
         except Exception:
             _logger.warning("MowPathSaga for %s failed to start", device_name, exc_info=True)
             return False
@@ -2042,14 +2038,10 @@ class MammotionClient(CloudAuthMixin):
         device = cast("MowerDevice", handle.snapshot.raw)
         if (path_hash := device.work.path_hash or device.report_data.work.path_hash) <= 1:
             return 0
-        if device.map.is_mow_path_current(path_hash):
+        if self._prune_stale_cover_path(device, path_hash):
             return path_hash
-        device.map.invalidate_stale_route(path_hash)
         completed = asyncio.Event()
-        route = GenerateRouteInformation.from_current_task_settings(device.work)
-        if not await self.start_mow_path_saga(
-            device_name, zone_hashs=[], route_info=route, skip_planning=True, completed=completed
-        ):
+        if not await self._fetch_cover_path(device_name, device, completed=completed):
             return 0
         try:
             await asyncio.wait_for(completed.wait(), timeout)
@@ -2057,6 +2049,26 @@ class MammotionClient(CloudAuthMixin):
             return 0
         current = cast("MowerDevice", handle.snapshot.raw).map.is_mow_path_current(path_hash)
         return path_hash if current else 0
+
+    @staticmethod
+    def _prune_stale_cover_path(device: MowerDevice, path_hash: int) -> bool:
+        """Drop a route cached for anything but *path_hash*; return True when the path left is complete for it.
+
+        Edits the live map in place, as the auto-fetch watcher and the saga completion hooks do.
+        Every snapshot since the last nav frame shares that map, so a copy-on-write apply would
+        deep-copy the whole map per call; the fetch that follows publishes through the reducer.
+        """
+        device.map.invalidate_stale_route(path_hash)
+        return device.map.is_mow_path_current(path_hash)
+
+    async def _fetch_cover_path(
+        self, device_name: str, device: MowerDevice, *, completed: asyncio.Event | None = None
+    ) -> bool:
+        """Enqueue the fetch-only MowPathSaga for the route ``device.work`` describes; True when enqueued."""
+        route = GenerateRouteInformation.from_current_task_settings(device.work)
+        return await self.start_mow_path_saga(
+            device_name, zone_hashs=[], route_info=route, skip_planning=True, completed=completed
+        )
 
     async def start_mow_path_saga(
         self,
