@@ -128,6 +128,8 @@ _BATCH_CONFIG_TIMEOUT = 5.0
 _BATCH_CONFIG_EXCHANGE = "batch_config"
 #: Per-attempt reply wait for a Smart Sleep exchange.
 _SMART_SLEEP_TIMEOUT = 5.0
+#: A large lawn's cover path is hundreds of frames, slower still over the cloud.
+_PLANNED_PATH_TIMEOUT = 180.0
 #: Both sleep switches are written and read on the same two fields.
 _SMART_SLEEP_EXCHANGE = "smart_sleep"
 
@@ -2024,6 +2026,40 @@ class MammotionClient(CloudAuthMixin):
             _logger.warning("MowPathSaga for %s failed to start", device_name, exc_info=True)
             return False
 
+    async def fetch_planned_mow_path(
+        self, device_name: str, *, timeout: float = _PLANNED_PATH_TIMEOUT, account_id: str | None = None
+    ) -> bool:
+        """Collect the cover path of the route the device last confirmed, and wait for it.
+
+        The plan reply's ``path_hash`` (``work.path_hash``) identifies that route, so a
+        path cached for any other route is dropped first and cannot be returned for it.
+        Returns True once the cached path is complete for that route; False when the
+        device confirmed no route, the fetch is gated off over MQTT, or it did not
+        finish within *timeout*.
+
+        Raises:
+            KeyError: *device_name* is not registered.
+
+        """
+        handle = self._registered_handle(device_name, account_id)
+        device = cast("MowerDevice", handle.snapshot.raw)
+        if (path_hash := device.work.path_hash) <= 1:
+            return False
+        if device.map.is_mow_path_current(path_hash):
+            return True
+        device.map.invalidate_stale_route(path_hash)
+        completed = asyncio.Event()
+        route = GenerateRouteInformation.from_current_task_settings(device.work)
+        if not await self.start_mow_path_saga(
+            device_name, zone_hashs=[], route_info=route, skip_planning=True, completed=completed
+        ):
+            return False
+        try:
+            await asyncio.wait_for(completed.wait(), timeout)
+        except TimeoutError:
+            return False
+        return cast("MowerDevice", handle.snapshot.raw).map.is_mow_path_current(path_hash)
+
     async def start_mow_path_saga(
         self,
         device_name: str,
@@ -2031,6 +2067,7 @@ class MammotionClient(CloudAuthMixin):
         route_info: GenerateRouteInformation | None = None,
         *,
         skip_planning: bool = False,
+        completed: asyncio.Event | None = None,
     ) -> bool:
         """Enqueue a MowPathSaga to plan a route and collect the cover path.
 
@@ -2041,6 +2078,8 @@ class MammotionClient(CloudAuthMixin):
             skip_planning: When True, skip the generate_route_information step.
                            Use this to fetch an already-computed path (e.g. when
                            the device started working externally).
+            completed:     Set once the saga has ended without raising and the
+                           route geojson is rebuilt.
 
         Returns:
             True when the saga was enqueued; False for an unknown device or when
@@ -2073,6 +2112,8 @@ class MammotionClient(CloudAuthMixin):
                 if device is not None and device.location.RTK.latitude != 0.0:
                     apply_mowing_geojson(device.map, device.location.RTK)
                     apply_device_mow_progress_geojson(device)
+                if completed is not None:
+                    completed.set()
 
             await handle.enqueue_saga(saga, on_complete=_on_mow_path_complete)
             return True
