@@ -2643,6 +2643,13 @@ class DeviceAlreadyRegisteredError(RuntimeError):
     """A different DeviceHandle already holds this (account, device) key."""
 
 
+class DeviceNotRegisteredError(KeyError):
+    """No handle is registered under this device name.
+
+    A ``KeyError`` so callers written against the earlier contract keep catching it.
+    """
+
+
 class DeviceRegistry:
     """Maps ``(account_id, device_id)`` → DeviceHandle.  Coroutine-safe via asyncio.Lock.
 

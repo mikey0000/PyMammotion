@@ -75,7 +75,7 @@ from pymammotion.data.model.mowing_modes import RainProtectionMode
 from pymammotion.data.model.svg import chunk_svg_messages
 from pymammotion.device.auto_fetch import AutoFetchWatchers, _should_fetch_mow_path
 from pymammotion.device.ble_inventory import BleInventory
-from pymammotion.device.handle import DeviceHandle, DeviceRegistry, DeviceStateTimeoutError
+from pymammotion.device.handle import DeviceHandle, DeviceNotRegisteredError, DeviceRegistry, DeviceStateTimeoutError
 from pymammotion.device.inbound_router import InboundRouter
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.device.remote_drive import HttpTokenSource
@@ -2435,10 +2435,10 @@ class MammotionClient(CloudAuthMixin):
         await handle.emit_state_changed(snapshot)
 
     def _registered_handle(self, device_name: str, account_id: str | None) -> DeviceHandle:
-        """Return the handle for *device_name*, raising ``KeyError`` when it is not registered."""
+        """Return the handle for *device_name*, raising ``DeviceNotRegisteredError`` when it is not registered."""
         if (handle := self._device_registry.get_by_name(device_name, account_id)) is None:
             msg = f"Device '{device_name}' not registered"
-            raise KeyError(msg)
+            raise DeviceNotRegisteredError(msg)
         return handle
 
     async def get_latest_work_report(self, device_name: str, account_id: str | None = None) -> WorkReportRecord | None:
@@ -2998,6 +2998,47 @@ class MammotionClient(CloudAuthMixin):
             send_fn=_send,
             expected_field=expected_field,
             send_timeout=send_timeout,
+        )
+
+    async def queue_command_and_wait(
+        self,
+        name: str,
+        key: str,
+        expected_field: str,
+        /,
+        *,
+        send_timeout: float = 5.0,
+        priority: Priority = Priority.BACKGROUND,
+        account_id: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """:meth:`send_command_and_wait` run through the device's command queue.
+
+        For background reads: the exchange waits its turn behind a running or queued saga
+        instead of interleaving with it, where the saga's traffic could hold the same reply
+        field and raise ``ConcurrentRequestError``.  Like any queued send it is refused while
+        no transport is usable (``NoTransportAvailableError`` from ``active_transport()``).
+
+        Raises:
+            DeviceNotRegisteredError: *name* is not registered.
+            ValueError: *priority* is a direct level; use :meth:`send_command_and_wait`.
+            CommandDroppedError: it waited out the queue's TTL behind other work.
+            CommandTimeoutError: the device did not answer.
+
+        """
+        handle = self._registered_handle(name, account_id)
+        return await handle.queue.enqueue_and_wait(
+            partial(
+                self.send_command_and_wait,
+                name,
+                key,
+                expected_field,
+                send_timeout=send_timeout,
+                priority=priority,
+                account_id=handle.account_id,
+                **kwargs,
+            ),
+            priority,
         )
 
     def set_prefer_ble(self, device_id: str, *, prefer_ble: bool, account_id: str | None = None) -> None:
