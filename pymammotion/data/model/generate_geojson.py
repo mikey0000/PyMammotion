@@ -415,7 +415,7 @@ class GeojsonGenerator:
         return geo_json
 
     @staticmethod
-    def generate_mow_progress_geojson(
+    def generate_mow_progress_geojson(  # noqa: PLR0917
         hash_list: HashList,
         now_index: int,
         rtk_location: Point,
@@ -521,8 +521,9 @@ class GeojsonGenerator:
 
             if is_active:
                 if path_pos is not None and (path_pos[0] != 0.0 or path_pos[1] != 0.0):
-                    remaining: list[CommDataCouple] = [CommDataCouple(x=path_pos[0], y=path_pos[1])] + all_points[
-                        now_index:
+                    remaining: list[CommDataCouple] = [
+                        CommDataCouple(x=path_pos[0], y=path_pos[1]),
+                        *all_points[now_index:],
                     ]
                 else:
                     remaining = all_points[max(0, now_index - 1) :]
@@ -873,7 +874,7 @@ class GeojsonGenerator:
         return lonlat_coords
 
     @staticmethod
-    def _create_feature(
+    def _create_feature(  # noqa: PLR0917
         hash_key: int,
         frame_list: FrameList,
         type_name: str,
@@ -1046,7 +1047,7 @@ class GeojsonGenerator:
         }
 
     @staticmethod
-    def _create_feature_properties(
+    def _create_feature_properties(  # noqa: PLR0917
         hash_key: int,
         type_id: int,
         type_name: str,
@@ -1282,7 +1283,7 @@ def apply_mowing_geojson(hash_list: HashList, rtk: LocationPoint) -> Any:
     return hash_list.generated_mow_path_geojson
 
 
-def apply_mow_progress_geojson(
+def apply_mow_progress_geojson(  # noqa: PLR0917
     hash_list: HashList,
     rtk: LocationPoint,
     now_index: int,
