@@ -14,6 +14,7 @@ from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.transport.base import TransportType
 from tests._helpers import (
+    make_account_session,
     make_bare_client,
     make_mock_handle,
     make_device_record,
@@ -1438,10 +1439,11 @@ async def _stream_client(*, new_firmware: bool) -> tuple[MammotionClient, AsyncM
     what ``get_stream_subscription`` uses to decide if the device needs an
     explicit ``vi_switch=1``.
     """
-    client = make_bare_client()
+    session = make_account_session("stream@example.com")
+    client = make_bare_client(session)
     handle = make_mock_handle(device_name="Yuka-Test")
     handle.snapshot.raw.report_data.dev.fpv_info = MagicMock() if new_firmware else None
-    await client._device_registry.register(handle)
+    await client._device_registry.register(handle, session.account_id)
 
     client._fetch_stream_subscription = AsyncMock(return_value=MagicMock(data=MagicMock()))
     send = AsyncMock()
@@ -1457,8 +1459,7 @@ async def test_get_stream_subscription_sends_no_leave_on_new_firmware() -> None:
     """
     client, send = await _stream_client(new_firmware=True)
 
-    with patch.object(type(client), "mammotion_http", PropertyMock(return_value=MagicMock())):
-        await client.get_stream_subscription("Yuka-Test", "iot-1")
+    await client.get_stream_subscription("Yuka-Test", "iot-1")
 
     send.assert_not_awaited()
     client._fetch_stream_subscription.assert_awaited_once()
@@ -1473,8 +1474,7 @@ async def test_get_stream_subscription_starts_old_firmware_after_token_fetch() -
     )
     send.side_effect = lambda *a, **k: order.append("command")
 
-    with patch.object(type(client), "mammotion_http", PropertyMock(return_value=MagicMock())):
-        await client.get_stream_subscription("Yuka-Test", "iot-1")
+    await client.get_stream_subscription("Yuka-Test", "iot-1")
 
     send.assert_awaited_once_with("Yuka-Test", "device_agora_join_channel_with_position", enter_state=1)
     assert order == ["token", "command"]
@@ -1484,8 +1484,7 @@ async def test_refresh_stream_subscription_matches_get() -> None:
     """The refresh path re-runs the same flow — no leave command of its own."""
     client, send = await _stream_client(new_firmware=True)
 
-    with patch.object(type(client), "mammotion_http", PropertyMock(return_value=MagicMock())):
-        await client.refresh_stream_subscription("Yuka-Test", "iot-1")
+    await client.refresh_stream_subscription("Yuka-Test", "iot-1")
 
     send.assert_not_awaited()
     client._fetch_stream_subscription.assert_awaited_once()

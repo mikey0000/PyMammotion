@@ -45,11 +45,11 @@ def encode_jwt(claims: dict[str, Any] | None = None, **extra: Any) -> str:
     return pyjwt.encode(payload, JWT_TEST_KEY, algorithm="HS256")
 
 
-def make_bare_client(session: AccountSession | None = None) -> MammotionClient:
+def make_bare_client(*sessions: AccountSession) -> MammotionClient:
     """A MammotionClient with only the registries and the inbound router initialised.
 
     For tests that exercise one client method in isolation: ``__new__`` skips
-    the constructor's transports/loops, and *session* (if given) is registered
+    the constructor's transports/loops, and each of *sessions* is registered
     directly — ``AccountRegistry.register`` is async and its lock is never
     contended here.  The device registry, inbound router and auto-fetch watchers are
     set up because the client's own methods delegate straight into them.
@@ -66,7 +66,7 @@ def make_bare_client(session: AccountSession | None = None) -> MammotionClient:
         start_plan_sync=client.start_plan_sync,
         start_mow_path_saga=client.start_mow_path_saga,
     )
-    if session is not None:
+    for session in sessions:
         client._account_registry._sessions[session.account_id] = session
     return client
 

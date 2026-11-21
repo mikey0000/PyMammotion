@@ -2295,11 +2295,7 @@ class MammotionClient(CloudAuthMixin):
         if handle is None:
             _logger.error("wake_device: device '%s' not found", name)
             return False
-        # The handle's own account, not cloud_http's default session: waking with
-        # another account's bearer token is rejected by the cloud.
-        session = self._get_session_for_handle(handle)
-        http = session.mammotion_http if session is not None else None
-        if http is None:
+        if (http := self._http_for_handle(handle)) is None:
             _logger.warning("wake_device: no cloud session available for '%s'", name)
             return False
         response = await http.wake_up_device(handle.device_name)
@@ -2605,14 +2601,26 @@ class MammotionClient(CloudAuthMixin):
         """
         handle = self._registered_handle(device_name, account_id)
         return handle.ensure_remote_drive(
-            tokens=HttpTokenSource(partial(self._remote_drive_http, handle), handle.iot_id),
+            tokens=HttpTokenSource(partial(self._http_for_handle, handle), handle.iot_id),
             send=partial(self._send_remote_drive_frame, handle),
         )
 
-    def _remote_drive_http(self, handle: DeviceHandle) -> MammotionHTTP | None:
+    def _http_for_handle(self, handle: DeviceHandle) -> MammotionHTTP | None:
         # Looked up per call: the handle's account can change on re-key or re-login.
         session = self._get_session_for_handle(handle)
         return session.mammotion_http if session is not None else None
+
+    def http_for_device(self, device_name: str, account_id: str | None = None) -> MammotionHTTP | None:
+        """Return the HTTP session of the account that owns *device_name*; ``None`` for a BLE-only device.
+
+        Use this, not :attr:`cloud_http`, for any per-device call: ``cloud_http`` is the first
+        account's session, and the cloud rejects another account's bearer token.
+
+        Raises:
+            DeviceNotRegisteredError: *device_name* is not registered.
+
+        """
+        return self._http_for_handle(self._registered_handle(device_name, account_id))
 
     async def _send_remote_drive_frame(self, handle: DeviceHandle, payload: bytes, *, timeout: float) -> None:
         # The timeout bounds each attempt, never the refresh between them (see DriveSend).
@@ -2773,22 +2781,22 @@ class MammotionClient(CloudAuthMixin):
         channel and immediately quits.  The APK's only two ``vi_switch=0`` sends
         are terminal (``onDestroy``, the idle timeout), both after leaving the
         channel; its reconnect path re-runs this same flow with no leave.
+
+        The token is fetched with the device's own account session; ``None`` when the
+        device is not registered or has no cloud account.
         """
-        http = self.mammotion_http
-        if http is None:
+        handle = self._device_registry.get_by_name(device_name)
+        if handle is None or (http := self._http_for_handle(handle)) is None:
             return None
         subscription = await self._fetch_stream_subscription(
             http, iot_id, DeviceType.value_of_str(device_name).is_yu_ka(), all_cameras=all_cameras
         )
-
-        if handle := self._device_registry.get_by_name(device_name):
-            try:
-                new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None  # type: ignore
-            except AttributeError:
-                new_fpv = False
-            if not new_fpv:
-                await self.send_command_with_args(device_name, "device_agora_join_channel_with_position", enter_state=1)
-
+        try:
+            new_fpv = handle.snapshot.raw.report_data.dev.fpv_info is not None  # type: ignore
+        except AttributeError:
+            new_fpv = False
+        if not new_fpv:
+            await self.send_command_with_args(device_name, "device_agora_join_channel_with_position", enter_state=1)
         return subscription
 
     async def refresh_stream_subscription(self, device_name: str, iot_id: str, *, all_cameras: bool = False) -> Any:
