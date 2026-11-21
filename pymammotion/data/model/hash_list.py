@@ -1241,7 +1241,6 @@ class HashList(DataClassORJSONMixin):
         if bol_hash is None or self.computed_bol_hash == bol_hash:
             return
         self.root_hash_lists = [rl for rl in self.root_hash_lists if rl.sub_cmd != 0]
-        self.update_hash_lists(self.hashlist)
 
     def invalidate_mow_path(self, path_hash: int) -> None:
         """Clear the route (line list and cached cover paths) once the device reports none.
