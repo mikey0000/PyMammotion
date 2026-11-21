@@ -1883,7 +1883,9 @@ class DeviceHandle:
         async def _send() -> None:
             await self._send_rpt_start_verified(cmd_bytes, self.send_raw)
 
-        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
+        await self.queue.enqueue(
+            _send, priority=Priority.BACKGROUND, skip_if_saga_active=True, dedup_key="report_stream_start"
+        )
 
     async def send_report_stream_keep(self) -> None:
         """Enqueue RPT_KEEP to refresh an already-active continuous stream."""
@@ -1899,7 +1901,9 @@ class DeviceHandle:
             # rather than holding the broker's toapp_report_data key on its own.
             await self._send_rpt_start_verified(cmd_bytes, self.send_raw)
 
-        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
+        await self.queue.enqueue(
+            _send, priority=Priority.BACKGROUND, skip_if_saga_active=True, dedup_key="report_stream_keep"
+        )
 
     async def _send_report_stream_stop(self) -> None:
         """Enqueue RPT_STOP count=1 to tear down the continuous stream."""

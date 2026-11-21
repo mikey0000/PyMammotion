@@ -1,4 +1,4 @@
-"""``DeviceHandle.request_reports`` — the queued multi-report burst a host asks for after a command.
+"""``DeviceHandle``'s queued report requests: the burst a host asks for after a command, and stream keep-alives.
 
 The cloud transport's ``send`` stands in for the device, answering each request with
 a report frame, so one request is exactly one send and the send count is the contract.
@@ -55,6 +55,16 @@ async def test_request_reports_twice_before_it_runs_sends_once(handle: DeviceHan
     """Every call queued its own request, so commands sent back to back each paid for a burst."""
     await handle.request_reports(count=5)
     await handle.request_reports(count=5)
+    await _drain(handle)
+
+    handle.get_transport(TransportType.CLOUD_ALIYUN).send.assert_awaited_once()
+
+
+@pytest.mark.regression
+async def test_send_report_stream_keep_twice_before_it_runs_sends_once(handle: DeviceHandle) -> None:
+    """Each call queued its own RPT_KEEP, so a dashboard re-arming the stream paid one send per call."""
+    await handle.send_report_stream_keep()
+    await handle.send_report_stream_keep()
     await _drain(handle)
 
     handle.get_transport(TransportType.CLOUD_ALIYUN).send.assert_awaited_once()
