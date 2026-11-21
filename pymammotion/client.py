@@ -2344,7 +2344,8 @@ class MammotionClient(CloudAuthMixin):
 
         A user command.  The ack carries a result code rather than the switches, so
         the value sent is applied once it arrives and both are then re-read; an
-        unanswered re-read keeps the value sent.
+        unanswered re-read keeps the value sent.  Two sends per toggle (write, re-read),
+        as the app does; callers must not add a read of their own.
 
         Raises:
             KeyError: *device_name* is not registered.
@@ -2400,7 +2401,8 @@ class MammotionClient(CloudAuthMixin):
         """Switch child safety, then re-read it; an unanswered re-read keeps the value sent.
 
         A user command.  An X5 answers on the shared batch-config fields with a result
-        code only, so the value sent is applied once the mower reports success.
+        code only, so the value sent is applied once the mower reports success.  Two sends
+        per toggle (write, re-read), as the app does; callers must not add a read of their own.
 
         Raises:
             KeyError: *device_name* is not registered.
@@ -2532,6 +2534,8 @@ class MammotionClient(CloudAuthMixin):
         is picked again.  The ack carries no values, so the ones sent are applied once it
         reports success.  The weather-server copy is best effort: a failure is logged and
         returned as ``FAILED``, never undoing the device, and a BLE-only device has none.
+        Two device sends (write, re-read) and one HTTP call per change; callers must not
+        add a read of their own.
 
         Raises:
             KeyError: *device_name* is not registered.
