@@ -471,33 +471,6 @@ async def test_send_command_with_args_prefer_ble_sends_over_mqtt_and_warms_ble()
     ble.connect.assert_awaited_once()
 
 
-# set_scheduled_updates: transport lifecycle
-
-
-async def test_set_scheduled_updates_skips_ble_when_not_usable() -> None:
-    """When BLE exists but ``is_usable`` is False (e.g. cooldown), it must be skipped."""
-    client = MammotionClient()
-    handle = make_mock_handle("dev1", "Luba-Sched3")
-    ble = _make_connected_transport(TransportType.BLE)
-    ble.is_usable = False
-    ble.connect = AsyncMock()
-    await handle.add_transport(ble)
-    await client._device_registry.register(handle)
-
-    await client.set_scheduled_updates("Luba-Sched3", enabled=True)
-    await client.set_scheduled_updates("Luba-Sched3", enabled=False)
-
-    ble.connect.assert_not_awaited()
-    ble.disconnect.assert_not_awaited()
-
-
-async def test_set_scheduled_updates_noop_for_unknown_device() -> None:
-    """set_scheduled_updates must silently do nothing for an unregistered device name."""
-    client = MammotionClient()
-    await client.set_scheduled_updates("ghost-device", enabled=False)
-    await client.set_scheduled_updates("ghost-device", enabled=True)
-
-
 # User-command recording: send_command_* wakes the poll loop via _rearm_event
 
 

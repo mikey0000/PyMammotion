@@ -2245,14 +2245,18 @@ class MammotionClient(CloudAuthMixin):
         When *enabled* is True, BLE is reconnected and the account's cloud
         transports are re-attached.  The activity loop restarts automatically via
         ``update_availability`` once a transport reports CONNECTED.
-        When *enabled* is False, BLE is disconnected and cloud is detached from
+        When *enabled* is False, BLE is disconnected — usable or not, since a link in
+        cooldown or below the RSSI floor can still be up — and cloud is detached from
         this handle, which exits the activity loop automatically.
         """
         handle = self._device_registry.get_by_name(device_name)
         if handle is None:
             return
-        if (ble_transport := handle.get_transport(TransportType.BLE)) and ble_transport.is_usable:
-            await ble_transport.connect() if enabled else await ble_transport.disconnect()
+        if ble_transport := handle.get_transport(TransportType.BLE):
+            if not enabled:
+                await ble_transport.disconnect()
+            elif ble_transport.is_usable:
+                await ble_transport.connect()
 
         # Cloud transports are account-shared — detach this handle rather than
         # disconnecting them out from under the account's other devices.

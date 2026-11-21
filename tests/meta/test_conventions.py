@@ -41,7 +41,7 @@ OVERSIZED = {
     "unit/data/model/test_generate_geojson.py": 1201,
     "unit/data/model/test_hash_list.py": 739,
     "unit/device/test_handle.py": 1580,
-    "unit/test_client.py": 1937,
+    "unit/test_client.py": 1910,
     "unit/transport/test_aliyun_mqtt.py": 1103,
 }
 
