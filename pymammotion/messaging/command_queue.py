@@ -243,6 +243,7 @@ class DeviceCommandQueue:
         while not self._queue.empty():
             self._queue.get_nowait().drop()
             self._queue.task_done()
+        self._pending_dedup_keys.clear()
 
     async def enqueue(
         self,

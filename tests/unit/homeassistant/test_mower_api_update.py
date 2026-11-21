@@ -14,6 +14,7 @@ import pytest
 
 from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import MowerDevice
+from pymammotion.data.model.hash_list import FrameList
 from pymammotion.data.model.report_info import LocationData
 from pymammotion.homeassistant import mower_api
 from pymammotion.utility.constant.device_constant import WorkMode
@@ -65,8 +66,9 @@ def _known_device(device: MowerDevice | None = None) -> MowerDevice:
 
 
 def _stale_map(sys_status: WorkMode) -> MowerDevice:
-    """A device whose report names a map hash we do not hold."""
+    """A device holding one area whose report names a map hash that area does not make."""
     device = _known_device(MowerDevice(name=NAME))
+    device.map.area = {1: FrameList()}
     device.report_data.locations = [LocationData(bol_hash=12345)]
     device.report_data.dev.sys_status = sys_status
     return device

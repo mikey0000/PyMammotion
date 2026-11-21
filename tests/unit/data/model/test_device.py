@@ -1,4 +1,5 @@
 """Tests for MowingDevice JSON serialization with int-keyed HashList fields."""
+
 from __future__ import annotations
 
 import json
@@ -61,6 +62,7 @@ def test_empty_mowing_device_roundtrip() -> None:
 
 
 # The OTA check (CheckDeviceVersion.current_version) is the cloud's view of the installed firmware.
+
 
 def _check(version: str, *, device_id: str = "iot-1") -> CheckDeviceVersion:
     return CheckDeviceVersion(current_version=version, device_id=device_id)
@@ -163,6 +165,15 @@ def test_a_stale_map_is_not_due_for_an_automatic_sync_during_a_job(sys_status: i
     assert not device.map_sync_due
 
 
+def test_a_map_never_fetched_is_due_even_during_a_job() -> None:
+    """Deferring it too left a fresh install with no areas until the job ended, days for a paused one."""
+    device = make_mower_with_synced_map(sys_status=WorkMode.MODE_PAUSE)
+    device.report_data.locations[0].bol_hash += 1
+    device.map.area = {}
+
+    assert device.map_sync_due
+
+
 def test_a_stale_map_is_due_once_no_job_is_active() -> None:
     device = make_mower_with_synced_map(sys_status=WorkMode.MODE_READY)
     device.report_data.locations[0].bol_hash += 1
@@ -180,4 +191,3 @@ def test_a_map_with_no_report_yet_is_due_while_idle() -> None:
     device.report_data.locations = []
 
     assert device.map_sync_due
-
