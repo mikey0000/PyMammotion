@@ -136,7 +136,7 @@ async def test_saga_blocks_normal_commands() -> None:
         await queue.enqueue(_normal_work, priority=Priority.NORMAL, skip_if_saga_active=True)
 
     # All three items should have been silently dropped — queue should still be empty
-    assert queue._queue.qsize() == 0
+    assert queue.pending_count == 0
     assert len(executed_normal) == 0
 
 

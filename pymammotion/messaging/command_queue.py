@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pymammotion.aliyun.exceptions import (
     DeviceOfflineException,
@@ -17,7 +17,13 @@ from pymammotion.aliyun.exceptions import (
     TooManyRequestsException,
 )
 from pymammotion.transport import TransportError
-from pymammotion.transport.base import AuthError, NoTransportAvailableError, SagaFailedError, TransportRateLimitedError
+from pymammotion.transport.base import (
+    AuthError,
+    CommandDroppedError,
+    NoTransportAvailableError,
+    SagaFailedError,
+    TransportRateLimitedError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -56,6 +62,12 @@ _COMMAND_TTL = 120.0  # 2 minutes
 
 #: Attempts allowed for a work item that keeps hitting a cloud gateway timeout.
 _GATEWAY_TIMEOUT_MAX = 3
+
+
+def _refuse_direct(priority: Priority) -> None:
+    if priority.is_direct:
+        msg = f"{priority.name} is a direct-send priority and must not be queued"
+        raise ValueError(msg)
 
 
 async def execute_command(
@@ -137,6 +149,13 @@ class _QueueItem:
     skip_if_saga_active: bool = field(compare=False, default=False)
     dedup_key: str | None = field(compare=False, default=None)
     enqueued_at: float = field(compare=False, default_factory=time.monotonic)
+    #: Resolved by the work itself; failed with ``CommandDroppedError`` if the item never runs.
+    outcome: asyncio.Future[Any] | None = field(compare=False, default=None)
+
+    def drop(self) -> None:
+        """Fail the caller still waiting on an item that ended without running; a no-op once it ran."""
+        if self.outcome is not None and not self.outcome.done():
+            self.outcome.set_exception(CommandDroppedError(f"queued command dropped (priority {self.priority})"))
 
 
 class DeviceCommandQueue:
@@ -181,6 +200,15 @@ class DeviceCommandQueue:
         """True when an exclusive saga is currently running."""
         return not self._exclusive_active.is_set()
 
+    @property
+    def pending_count(self) -> int:
+        """Number of items waiting to be dispatched; the one being run is not counted."""
+        return self._queue.qsize()
+
+    async def join(self) -> None:
+        """Return once every item enqueued so far has been run or dropped."""
+        await self._queue.join()
+
     def start(self) -> None:
         """Start the background queue processor task."""
         if self._task is None or self._task.done():
@@ -203,7 +231,7 @@ class DeviceCommandQueue:
         self._transport_gate.set()
 
     async def stop(self) -> None:
-        """Stop the queue processor and release any held exclusive lock."""
+        """Stop the queue processor, release any held exclusive lock and drop everything still queued."""
         self._running = False
         self._exclusive_active.set()  # release any waiters
         self._transport_gate.set()  # release any gate-blocked waiters
@@ -212,6 +240,9 @@ class DeviceCommandQueue:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._task
         self._task = None
+        while not self._queue.empty():
+            self._queue.get_nowait().drop()
+            self._queue.task_done()
 
     async def enqueue(
         self,
@@ -237,9 +268,7 @@ class DeviceCommandQueue:
                 one would reintroduce exactly the waiting it exists to avoid.
 
         """
-        if priority.is_direct:
-            msg = f"{priority.name} is a direct-send priority and must not be queued"
-            raise ValueError(msg)
+        _refuse_direct(priority)
 
         if skip_if_saga_active and self.is_saga_active and priority > Priority.EXCLUSIVE:
             return
@@ -247,17 +276,41 @@ class DeviceCommandQueue:
         if dedup_key is not None and dedup_key in self._pending_dedup_keys:
             return
 
-        self._seq += 1
-        item = _QueueItem(
-            priority=int(priority),
-            sequence=self._seq,
-            work=work,
-            skip_if_saga_active=skip_if_saga_active,
-            dedup_key=dedup_key,
-        )
         if dedup_key is not None:
             self._pending_dedup_keys.add(dedup_key)
-        await self._queue.put(item)
+        await self._put(work, priority, skip_if_saga_active=skip_if_saga_active, dedup_key=dedup_key)
+
+    async def enqueue_and_wait[T](self, work: Callable[[], Awaitable[T]], priority: Priority = Priority.NORMAL) -> T:
+        """Queue *work* and return its result once the processor has run it.
+
+        For a request whose reply the caller needs but which must not interleave with a
+        running saga.  Never await it from queued work: the processor would wait on itself.
+
+        Raises:
+            ValueError: *priority* is a direct-send level.
+            CommandDroppedError: the item outlived ``_COMMAND_TTL`` before it ran, or the queue stopped.
+            Exception: whatever *work* raised.
+
+        """
+        _refuse_direct(priority)
+        outcome: asyncio.Future[T] = asyncio.get_running_loop().create_future()
+
+        async def _run() -> None:
+            try:
+                result = await work()
+            except Exception as exc:  # noqa: BLE001 — handed to the caller through the future
+                if not outcome.done():
+                    outcome.set_exception(exc)
+            else:
+                if not outcome.done():
+                    outcome.set_result(result)
+
+        await self._put(_run, priority, outcome=outcome)
+        return await outcome
+
+    async def _put(self, work: Callable[[], Awaitable[None]], priority: Priority, **item_fields: Any) -> None:
+        self._seq += 1
+        await self._queue.put(_QueueItem(priority=int(priority), sequence=self._seq, work=work, **item_fields))
 
     async def enqueue_saga(
         self,
@@ -391,5 +444,6 @@ class DeviceCommandQueue:
                 # going: a dead processor silently stops every command for this device.
                 _logger.exception("DeviceCommandQueue[%s]: queue processor error", self._device_name)
             finally:
+                item.drop()
                 with contextlib.suppress(ValueError):
                     self._queue.task_done()

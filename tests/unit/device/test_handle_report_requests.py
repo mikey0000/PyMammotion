@@ -32,7 +32,7 @@ async def handle() -> AsyncIterator[DeviceHandle]:
 
 async def _drain(handle: DeviceHandle) -> None:
     handle.queue.start()
-    await asyncio.wait_for(handle.queue._queue.join(), _DRAIN_TIMEOUT)  # noqa: SLF001
+    await asyncio.wait_for(handle.queue.join(), _DRAIN_TIMEOUT)
 
 
 @pytest.mark.regression

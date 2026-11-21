@@ -56,7 +56,7 @@ async def test_skip_if_saga_active_true_drops_normal_command() -> None:
     await q.enqueue(normal_work, priority=Priority.NORMAL, skip_if_saga_active=True)
 
     # Item must have been dropped — queue still empty, work never scheduled
-    assert q._queue.empty()
+    assert q.pending_count == 0
     assert called == []
 
     # Cleanup

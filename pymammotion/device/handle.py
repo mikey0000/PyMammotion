@@ -1086,7 +1086,7 @@ class DeviceHandle:
 
     def has_queued_commands(self) -> bool:
         """Return True if the queue has pending work or a saga is active."""
-        return self.queue._queue.qsize() > 0 or self.queue.is_saga_active  # noqa: SLF001
+        return self.queue.pending_count > 0 or self.queue.is_saga_active
 
     def update_availability(
         self,

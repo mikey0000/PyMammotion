@@ -48,7 +48,7 @@ async def _runs(client: MammotionClient, handle: DeviceHandle, *starts: Start) -
         for start in starts:
             await start(client)
         handle.queue.start()
-        await asyncio.wait_for(handle.queue._queue.join(), _DRAIN_TIMEOUT)  # noqa: SLF001
+        await asyncio.wait_for(handle.queue.join(), _DRAIN_TIMEOUT)
     return [call.args[0].name for call in execute.call_args_list]
 
 

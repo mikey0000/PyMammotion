@@ -78,7 +78,7 @@ async def test_send_command_with_args_drops_a_rate_limit_refusal_on_a_queued_pri
     with caplog.at_level(logging.WARNING, logger="pymammotion.client"):
         await client.send_command_with_args(_NAME, "start_job", priority=Priority.NORMAL)
         # task_done() runs per item, so join() means the send was attempted and absorbed.
-        await asyncio.wait_for(handle.queue._queue.join(), _TIMEOUT)  # noqa: SLF001
+        await asyncio.wait_for(handle.queue.join(), _TIMEOUT)
 
     assert mqtt.is_send_blocked.called, "the queued send never reached the rate-limit gate"
     assert [r.name for r in caplog.records if r.levelno == logging.WARNING] == ["pymammotion.client"], (

@@ -127,7 +127,7 @@ async def test_a_running_saga_does_not_delay_a_user_command() -> None:
         handle.queue._exclusive_active.set()  # noqa: SLF001
 
     mqtt.send_user.assert_awaited_once()
-    assert handle.queue._queue.empty(), "a direct command must never touch the queue"  # noqa: SLF001
+    assert handle.queue.pending_count == 0, "a direct command must never touch the queue"
     await handle.stop()
 
 
@@ -331,7 +331,7 @@ async def test_a_queued_command_still_respects_the_offline_flag() -> None:
     handle.queue.start()
     await client.send_command_with_args("Luba-O2", "start_job")
     # Wait for the queue to drain, so "never sent" means processed-and-skipped, not not-yet-run.
-    await wait_until(lambda: handle.queue._queue.empty(), message="the queued command was never processed")  # noqa: SLF001
+    await wait_until(lambda: handle.queue.pending_count == 0, message="the queued command was never processed")
     await let_others_run()
 
     mqtt.send.assert_not_awaited()

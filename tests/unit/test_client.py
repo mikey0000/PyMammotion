@@ -337,7 +337,7 @@ def _make_connected_transport(transport_type: TransportType) -> MagicMock:
 async def _drain(handle: DeviceHandle) -> None:
     """Flush all pending queue items then stop the worker."""
     handle.queue.start()
-    await handle.queue._queue.join()  # noqa: SLF001
+    await handle.queue.join()
     await handle.queue.stop()
 
 
@@ -1343,7 +1343,7 @@ async def test_queue_logs_no_transport_at_debug_not_warning(caplog: pytest.LogCa
 
     caplog.set_level(logging.DEBUG, logger="pymammotion.messaging.command_queue")
     await handle.queue.enqueue(_raises)
-    await handle.queue._queue.join()  # noqa: SLF001
+    await handle.queue.join()
     await handle.queue.stop()
 
     relevant = [r for r in caplog.records if "test: no transport" in r.getMessage()]

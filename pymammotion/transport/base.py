@@ -49,6 +49,10 @@ class NoTransportAvailableError(TransportError):
     """No connected transport available to send the command."""
 
 
+class CommandDroppedError(TransportError):
+    """A queued command was dropped before it ran: it outlived the queue's TTL, or the queue stopped."""
+
+
 class ConcurrentRequestError(TransportError):
     """A concurrent request for the same response field is already pending."""
 

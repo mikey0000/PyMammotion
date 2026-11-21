@@ -13,6 +13,7 @@ from pymammotion.messaging import command_queue
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.messaging.command_queue import _COMMAND_TTL, DeviceCommandQueue, Priority
 from pymammotion.messaging.saga import Saga
+from pymammotion.transport.base import CommandDroppedError
 from tests._helpers import wait_until
 
 _DRAIN_TIMEOUT = 2.0
@@ -45,7 +46,7 @@ async def _hold_one_item(
     hold()
     q.start()
     await enqueue()
-    await wait_until(q._queue.empty, message="the processor never dequeued the item")
+    await wait_until(lambda: q.pending_count == 0, message="the processor never dequeued the item")
 
 
 async def test_is_saga_active_false_initially() -> None:
@@ -62,7 +63,7 @@ async def test_skip_if_saga_active_drops_item() -> None:
         called.append(1)
 
     await q.enqueue(work, priority=Priority.NORMAL, skip_if_saga_active=True)
-    assert q._queue.empty()
+    assert q.pending_count == 0
     assert called == []
     q._exclusive_active.set()
 
@@ -83,7 +84,7 @@ async def test_direct_priorities_are_refused_by_the_queue(priority: Priority) ->
     with pytest.raises(ValueError, match="direct-send priority"):
         await q.enqueue(work, priority=priority)
 
-    assert q._queue.empty()
+    assert q.pending_count == 0
 
 
 async def test_exclusive_active_set_after_saga() -> None:
@@ -239,7 +240,7 @@ async def test_saga_with_the_dedup_key_of_one_still_queued_is_dropped(queue: Dev
     await queue.enqueue_saga(first, DeviceMessageBroker(), dedup_key="plan_sync")
     await queue.enqueue_saga(second, DeviceMessageBroker(), dedup_key="plan_sync")
     queue.start()
-    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+    await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
 
     assert first.ran
     assert not second.ran, "a duplicate of a saga still waiting to start was queued behind it"
@@ -262,7 +263,7 @@ async def test_saga_with_the_dedup_key_of_a_running_one_is_queued(queue: DeviceC
     await asyncio.wait_for(started.wait(), _DRAIN_TIMEOUT)
     await queue.enqueue_saga(follow_up, DeviceMessageBroker(), dedup_key="map_sync")
     release.set()
-    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+    await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
 
     assert follow_up.ran
 
@@ -296,7 +297,7 @@ async def test_command_held_at_reconnect_gate_past_ttl_is_dropped(
     clock.offset = _COMMAND_TTL + 1
     with caplog.at_level(logging.DEBUG, logger=command_queue.__name__):
         queue.resume_after_reconnect()
-        await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+        await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
 
     work.assert_not_awaited()
     assert any("command expired" in r.getMessage() for r in caplog.records), "expiry was not logged"
@@ -310,7 +311,7 @@ async def test_command_held_at_reconnect_gate_within_ttl_runs(
     await _hold_one_item(queue, queue.pause_for_reconnect, lambda: queue.enqueue(work, priority=priority))
     clock.offset = _COMMAND_TTL - 1
     queue.resume_after_reconnect()
-    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+    await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
 
     work.assert_awaited_once()
 
@@ -325,7 +326,7 @@ async def test_command_stale_at_dequeue_is_dropped_without_parking_at_the_gate(
     clock.offset = _COMMAND_TTL + 1
     queue.start()
 
-    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+    await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
 
     work.assert_not_awaited()
     assert not queue._transport_gate.is_set(), "the queue drained only because the gate was opened"
@@ -337,7 +338,7 @@ async def test_saga_held_at_reconnect_gate_past_ttl_still_runs(queue: DeviceComm
     await _hold_one_item(queue, queue.pause_for_reconnect, lambda: queue.enqueue_saga(saga, DeviceMessageBroker()))
     clock.offset = _COMMAND_TTL + 1
     queue.resume_after_reconnect()
-    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+    await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
 
     assert saga.ran
 
@@ -355,6 +356,99 @@ async def test_command_held_behind_exclusive_slot_past_ttl_is_dropped(
     await _hold_one_item(queue, queue._exclusive_active.clear, lambda: queue.enqueue(work, priority=Priority.NORMAL))
     clock.offset = _COMMAND_TTL + 1
     queue._exclusive_active.set()
-    await asyncio.wait_for(queue._queue.join(), _DRAIN_TIMEOUT)
+    await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
 
     work.assert_not_awaited()
+
+
+async def test_enqueue_and_wait_returns_what_the_work_returned(queue: DeviceCommandQueue) -> None:
+    async def work() -> str:
+        return "reply"
+
+    queue.start()
+
+    assert await asyncio.wait_for(queue.enqueue_and_wait(work), _DRAIN_TIMEOUT) == "reply"
+
+
+async def test_enqueue_and_wait_raises_what_the_work_raised(queue: DeviceCommandQueue) -> None:
+    async def work() -> None:
+        raise LookupError("no reply")
+
+    queue.start()
+
+    with pytest.raises(LookupError, match="no reply"):
+        await asyncio.wait_for(queue.enqueue_and_wait(work), _DRAIN_TIMEOUT)
+
+
+async def test_enqueue_and_wait_runs_only_once_the_running_saga_has_finished(queue: DeviceCommandQueue) -> None:
+    """The point of the method: a read never interleaves with a saga's traffic."""
+    started, release = asyncio.Event(), asyncio.Event()
+    order: list[str] = []
+
+    class _BlockingSaga(Saga):
+        name = "blocking"
+
+        async def _run(self, b: DeviceMessageBroker) -> None:
+            started.set()
+            await release.wait()
+            order.append("saga")
+
+    async def read() -> None:
+        order.append("read")
+
+    queue.start()
+    await queue.enqueue_saga(_BlockingSaga(), DeviceMessageBroker())
+    await asyncio.wait_for(started.wait(), _DRAIN_TIMEOUT)
+    waiting = asyncio.create_task(queue.enqueue_and_wait(read, Priority.BACKGROUND))
+    await wait_until(lambda: queue.pending_count == 1, message="the read was never queued")
+    release.set()
+    await asyncio.wait_for(waiting, _DRAIN_TIMEOUT)
+
+    assert order == ["saga", "read"]
+
+
+async def test_enqueue_and_wait_raises_dropped_when_the_item_outlives_the_ttl(
+    queue: DeviceCommandQueue, clock: _OffsetClock
+) -> None:
+    """A dropped item never runs, so without the drop its caller would wait forever."""
+    work = _work_mock()
+    queue.pause_for_reconnect()
+    waiting = asyncio.create_task(queue.enqueue_and_wait(work))
+    await wait_until(lambda: queue.pending_count == 1, message="the item was never queued")
+    clock.offset = _COMMAND_TTL + 1
+    queue.start()
+
+    with pytest.raises(CommandDroppedError):
+        await asyncio.wait_for(waiting, _DRAIN_TIMEOUT)
+    work.assert_not_awaited()
+
+
+async def test_enqueue_and_wait_raises_dropped_when_the_queue_stops(queue: DeviceCommandQueue) -> None:
+    work = _work_mock()
+    waiting = asyncio.create_task(queue.enqueue_and_wait(work))
+    await wait_until(lambda: queue.pending_count == 1, message="the item was never queued")
+
+    await queue.stop()
+
+    with pytest.raises(CommandDroppedError):
+        await asyncio.wait_for(waiting, _DRAIN_TIMEOUT)
+    assert queue.pending_count == 0
+
+
+@pytest.mark.parametrize("priority", [Priority.EMERGENCY, Priority.USER])
+async def test_enqueue_and_wait_refuses_direct_priorities(priority: Priority, queue: DeviceCommandQueue) -> None:
+    with pytest.raises(ValueError, match="direct-send priority"):
+        await queue.enqueue_and_wait(_work_mock(), priority)
+
+    assert queue.pending_count == 0
+
+
+async def test_join_returns_once_every_queued_item_has_run(queue: DeviceCommandQueue) -> None:
+    work = _work_mock()
+    await queue.enqueue(work)
+    await queue.enqueue(work)
+    queue.start()
+
+    await asyncio.wait_for(queue.join(), _DRAIN_TIMEOUT)
+
+    assert work.await_count == 2
