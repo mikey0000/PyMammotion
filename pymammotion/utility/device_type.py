@@ -225,7 +225,7 @@ class DeviceType(Enum):
     YUKA_MN100 = (21, "Ezy-VT,Yuka-CV", "MN100")
     RTKNB = (22, "NB", "NB")
     LUBA_MB = (23, "Luba-MB", "HM434")
-    CM900 = (24, "Kumar-MK", "KM01")
+    CM900 = (24, "Kumar-MK,Maston-F", "KM01")
     YUKA_MN101 = (25, "Ezy-LD", "MN101")
     SWIMMINGPOOL_SP = (26, "Spino-SP,Spino-S1", "Spino-SP")
     SD_PX = (27, "SDPX", "SDPX")
@@ -234,7 +234,7 @@ class DeviceType(Enum):
     # App 2.3.20.30 renumbered its whole enum; members it added carry its new ids, which
     # clash with none of the ids above.
     LUBA_SP = (2008, "Luba-SP", "HM435")
-    LUBA_TR = (2012, "Luba-TR", "HM436")
+    LUBA_TR = (2012, "Luba-TR,Taru-MR", "HM436")
     LUBA_LS = (2013, "Luba-LS", "HM432SE")
     LUBA_MS = (2014, "Luba-MS", "HM434SE")
     CM901 = (3001, "Maston-R", "CM901")

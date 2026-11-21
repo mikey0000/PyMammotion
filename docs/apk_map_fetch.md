@@ -2,6 +2,8 @@
 
 Reverse-engineered from Mammotion 2.3.8.201 APK at `/home/michael/Downloads/mammotion-2-3-8-201/agilex/java_src/com/agilexrobotics/`, with cross-checks against 2.2.4.13 because 2.3.8.201's dispatcher method `MACarDataManager._parseReceivedDeviceData` failed JADX decompilation — its 23,844-instruction body throws `UnsupportedOperationException`.
 
+In app 2.3.28.31, X3/X5 models (`isX5DeviceTyp()`, LUBA_HM included) no longer use this flow: see `docs/apk_map_sync_newer_models.md`.
+
 ## TL;DR — the headline finding for Luba 3 / LUBA_HM
 
 `DeviceType.isSupportDynamicsLine()` returns **true** for `LUBA_HM` (`DeviceType.java:606-607`). This puts LUBA_HM on the YUKA-mini / Yuka-ML branch of `HashDataManager` for every `isSupportDynamicsLine` check (`HashDataManager.java:306, :368, :724, :731, :751, :1410, :1432, :1447`). That branch differs from the standard Luba 1/2 path: it triggers `sendHandler(12333, 0)` (immediate next-area request) instead of just emitting an `RxBus` event after each area completes; it sets `deleteState=2` (draft) on the persisted element; it skips the `LitePal.isExist` check and always re-saves; it uses 0 ms (not 300 ms) for the 12334 reconcile delay; and on exhaustion it issues `deleteMapElementDB(iotId, type=1)` to purge type-1 elements.

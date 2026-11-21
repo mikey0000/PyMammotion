@@ -266,7 +266,7 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             return DeviceType.LUBA_MB
         # Deliberate deviation: the original compared the 8-character "Kumar-MK" against
         # [:7], so it never matched; the APK slices [:8] and also accepts its product keys.
-        if DeviceType.CM900.get_name() in device_name[:8] or DeviceType.contain_cm900_product_key(product_key):
+        if _any_prefix(DeviceType.CM900, device_name[:8]) or DeviceType.contain_cm900_product_key(product_key):
             return DeviceType.CM900
         if DeviceType.CM901.get_name() in device_name[:8]:
             return DeviceType.CM901
@@ -276,7 +276,7 @@ def _reference_value_of_str(device_name: str, product_key: str = "") -> DeviceTy
             return DeviceType.LUBA_HM
         if DeviceType.LUBA_ME.get_name() in substring2 or DeviceType.contain_luba_me_product_key(product_key):
             return DeviceType.LUBA_ME
-        if DeviceType.LUBA_TR.get_name() in substring2 or DeviceType.contain_luba_tr_product_key(product_key):
+        if _any_prefix(DeviceType.LUBA_TR, substring2) or DeviceType.contain_luba_tr_product_key(product_key):
             return DeviceType.LUBA_TR
         if DeviceType.LUBA_LS.get_name() in substring2 or DeviceType.contain_luba_ls_product_key(product_key):
             return DeviceType.LUBA_LS
@@ -454,7 +454,7 @@ def test_no_name_rule_slices_shorter_than_its_prefix() -> None:
     ("member", "value", "name", "model"),
     [
         (DeviceType.LUBA_SP, 2008, "Luba-SP", "HM435"),
-        (DeviceType.LUBA_TR, 2012, "Luba-TR", "HM436"),
+        (DeviceType.LUBA_TR, 2012, "Luba-TR,Taru-MR", "HM436"),
         (DeviceType.LUBA_LS, 2013, "Luba-LS", "HM432SE"),
         (DeviceType.LUBA_MS, 2014, "Luba-MS", "HM434SE"),
         (DeviceType.CM901, 3001, "Maston-R", "CM901"),
@@ -519,3 +519,21 @@ def test_an_app_product_key_alone_resolves_to_its_type(product_key: str, expecte
     A device known only by its product key resolved to UNKNOWN.
     """
     assert DeviceType.value_of_str("", product_key) is expected
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("device_name", "expected"),
+    [
+        pytest.param("Taru-MRABC123", DeviceType.LUBA_TR, id="taru-mr"),
+        pytest.param("Maston-FABC12", DeviceType.CM900, id="maston-f"),
+    ],
+)
+def test_a_second_sales_prefix_resolves_by_name_alone(device_name: str, expected: DeviceType) -> None:
+    """The app's enum claims these prefixes too, but we resolved them to UNKNOWN.
+
+    App 2.3.20.30 lists CM900 as ``"Kumar-MK,Maston-F"``; the 2026-11-20 build adds
+    ``LUBA_TR("Luba-TR,Taru-MR")``.  Hosts gate features on the name alone, so such a
+    mower fell out of every gate even when its product key was known.
+    """
+    assert DeviceType.value_of_str(device_name) is expected
