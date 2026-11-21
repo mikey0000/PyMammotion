@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-from typing import Annotated, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
@@ -133,12 +133,17 @@ class DeviceRecord(DataClassORJSONMixin):
     product_key: Annotated[str, Alias("productKey")]
     device_name: Annotated[str, Alias("deviceName")]
     owned: int
-    bind_time: Annotated[int, Alias("bindTime")]
-    create_time: Annotated[str, Alias("createTime")]
+    bind_time: Annotated[int, Alias("bindTime")] = 0
+    create_time: Annotated[str, Alias("createTime")] = ""
     status: int = 0
 
     class Config(BaseConfig):
         allow_deserialization_not_by_alias = True
+
+    @classmethod
+    def __pre_deserialize__(cls, d: dict[Any, Any]) -> dict[Any, Any]:
+        """Drop nulls so they take the field's default; one odd record must not fail the whole page."""
+        return {key: value for key, value in d.items() if value is not None}
 
 
 @dataclass
