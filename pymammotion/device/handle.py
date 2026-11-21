@@ -1967,7 +1967,12 @@ class DeviceHandle:
         )
 
     async def request_reports(self, count: int = 1, timeout: int = 10_000) -> None:
-        """Enqueue a one-shot "request_iot_sys(count=count)" data refresh."""
+        """Enqueue a ``request_iot_sys(count=count)`` burst unless one is queued or the BLE stream is live.
+
+        A live stream is left alone for the reason :meth:`refresh_status` gives.
+        """
+        if self._ble_stream_active:
+            return
         cmd_bytes = self.commands.request_iot_sys(
             rpt_act=RptAct.RPT_START,
             rpt_info_type=_REPORT_CHANNELS,
@@ -1978,7 +1983,9 @@ class DeviceHandle:
         async def _send() -> None:
             await self._send_rpt_start_verified(cmd_bytes, self.send_raw)
 
-        await self.queue.enqueue(_send, priority=Priority.BACKGROUND, skip_if_saga_active=True)
+        await self.queue.enqueue(
+            _send, priority=Priority.BACKGROUND, skip_if_saga_active=True, dedup_key="report_burst"
+        )
 
     async def enqueue_ble_stream_command(self, act: RptAct, count: int) -> None:
         """Enqueue a BLE-pinned ``request_iot_sys`` config command.

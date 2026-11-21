@@ -378,7 +378,7 @@ class MammotionClient(CloudAuthMixin):
             await handle.request_report_snapshot()
 
     async def request_reports(self, device_name: str, *, count: int = 1, timeout: int = 1000) -> None:
-        """Fire a one-shot count=count report, skipped if the BLE stream is already active.
+        """Fire a one-shot count=count report, skipped if one is queued or the BLE stream is already active.
 
         ``timeout`` is the device-side ``request_iot_sys`` report window in ms — a wire
         field, not an asyncio deadline.

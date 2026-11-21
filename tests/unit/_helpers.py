@@ -24,6 +24,7 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import Device
+from pymammotion.device.handle import DeviceHandle
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import DeviceRecord, DeviceRecords, JWTTokenInfo
 from pymammotion.proto import LubaMsg, MctlSys, ReportInfoData, RptDevStatus
@@ -174,3 +175,12 @@ def make_sys_status_report(sys_status: WorkMode) -> bytes:
 def is_ready(device: Device) -> bool:
     """A ``wait_for`` predicate: the device reports ``MODE_READY``."""
     return device.report_data.dev.sys_status == WorkMode.MODE_READY  # type: ignore[attr-defined]
+
+
+def make_answering_send(handle: DeviceHandle) -> AsyncMock:
+    """A send verb whose device replies with a report frame, as a real one would."""
+
+    async def _send(*_args: object, **_kwargs: object) -> None:
+        await handle.on_raw_message(bytes(LubaMsg(sys=MctlSys(toapp_report_data=ReportInfoData()))))
+
+    return AsyncMock(side_effect=_send)

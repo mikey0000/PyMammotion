@@ -34,7 +34,7 @@ from tests._helpers import (
     make_mock_handle,
     make_mock_transport,
 )
-from tests.unit._helpers import is_ready, make_sys_status_report
+from tests.unit._helpers import is_ready, make_answering_send, make_sys_status_report
 
 _SEND_TIMEOUT = 1.0
 _REPORT_FRAME = bytes(LubaMsg(sys=MctlSys(toapp_report_data=ReportInfoData())))
@@ -44,15 +44,6 @@ async def _registered(handle: DeviceHandle) -> MammotionClient:
     client = make_bare_client()
     await client._device_registry.register(handle)  # noqa: SLF001
     return client
-
-
-def _device_answers(handle: DeviceHandle) -> AsyncMock:
-    """A send verb whose device replies with a report frame, as a real one would."""
-
-    async def _send_user(*_args: object, **_kwargs: object) -> None:
-        await handle.on_raw_message(_REPORT_FRAME)
-
-    return AsyncMock(side_effect=_send_user)
 
 
 def _report_cfg(payload: bytes) -> ReportInfoCfg:
@@ -66,7 +57,7 @@ async def _cloud_handle(name: str, *, reported_offline: bool) -> tuple[DeviceHan
     handle = make_mock_handle(device_name=name, device=MowingDevice())
     await handle.add_transport(mqtt)
     handle.update_availability(TransportType.CLOUD_ALIYUN, mqtt.availability, mqtt_reported_offline=reported_offline)
-    mqtt.send_user = _device_answers(handle)
+    mqtt.send_user = make_answering_send(handle)
     return handle, mqtt
 
 
@@ -167,7 +158,7 @@ async def test_refresh_status_goes_over_a_connected_ble_link() -> None:
     """BLE still wins transport selection; the cloud's offline flag says nothing about it."""
     handle, mqtt = await _cloud_handle("Luba-R7", reported_offline=True)
     ble = make_mock_transport(TransportType.BLE)
-    ble.send = _device_answers(handle)
+    ble.send = make_answering_send(handle)
     await handle.add_transport(ble)
     client = await _registered(handle)
 
