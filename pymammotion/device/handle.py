@@ -1076,9 +1076,10 @@ class DeviceHandle:
         self,
         saga: Saga,
         on_complete: Callable[[], Awaitable[None]] | None = None,
+        done: asyncio.Event | None = None,
     ) -> None:
-        """Enqueue a saga for exclusive execution."""
-        await self.queue.enqueue_saga(saga, self.broker, on_complete=on_complete)
+        """Enqueue a saga for exclusive execution; *done* is set once it has ended, however it ended."""
+        await self.queue.enqueue_saga(saga, self.broker, on_complete=on_complete, done=done)
 
     def has_queued_commands(self) -> bool:
         """Return True if the queue has pending work or a saga is active."""

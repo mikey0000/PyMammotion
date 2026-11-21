@@ -264,10 +264,21 @@ class DeviceCommandQueue:
         saga: Saga,
         broker: DeviceMessageBroker,
         on_complete: Callable[[], Awaitable[None]] | None = None,
+        done: asyncio.Event | None = None,
     ) -> None:
-        """Enqueue a saga as an exclusive blocking operation."""
+        """Enqueue a saga as an exclusive blocking operation.
+
+        *done* is set once the saga has ended, however it ended, after *on_complete*.
+        """
 
         async def _run() -> None:
+            try:
+                await _run_saga()
+            finally:
+                if done is not None:
+                    done.set()
+
+        async def _run_saga() -> None:
             self._exclusive_active.clear()
             saga_exception: BaseException | None = None
             try:

@@ -134,3 +134,45 @@ async def test_on_saga_start_cancellation_releases_exclusive_lock() -> None:
         assert q.is_saga_active is False, "exclusive lock not released after on_saga_start cancel"
     finally:
         await q.stop()
+
+
+async def test_done_is_set_when_the_saga_fails() -> None:
+    """A caller waiting on the saga must hear that it ended, not sit out its own timeout."""
+    q = DeviceCommandQueue(device_name="dev-crash")
+    done = asyncio.Event()
+    q.start()
+    try:
+        await q.enqueue_saga(_CrashingSaga(), DeviceMessageBroker(), done=done)
+
+        await asyncio.wait_for(done.wait(), 5)
+    finally:
+        await q.stop()
+
+
+class _EndingSaga(Saga):
+    """Ends at once without raising."""
+
+    name = "ending"
+
+    async def _run(self, broker: DeviceMessageBroker) -> None:
+        return
+
+
+async def test_done_is_set_only_after_on_complete_has_run() -> None:
+    """The waiter reads what on_complete builds; woken first, it would read the state before it."""
+    q = DeviceCommandQueue(device_name="dev-ok")
+    done = asyncio.Event()
+    done_when_completing: list[bool] = []
+
+    async def on_complete() -> None:
+        done_when_completing.append(done.is_set())
+
+    q.start()
+    try:
+        await q.enqueue_saga(_EndingSaga(), DeviceMessageBroker(), on_complete=on_complete, done=done)
+
+        await asyncio.wait_for(done.wait(), 5)
+    finally:
+        await q.stop()
+
+    assert done_when_completing == [False]

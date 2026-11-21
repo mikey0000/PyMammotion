@@ -76,7 +76,7 @@ async def test_the_planned_route_is_fetched_and_the_other_routes_lines_dropped()
     with patch.object(MammotionClient, "start_mow_path_saga", autospec=True, side_effect=_fetch) as start:
         fetched = await asyncio.wait_for(client.fetch_planned_mow_path(_NAME), 5)
 
-    assert fetched is True
+    assert fetched == _planned_hash()
     assert line_lists_at_fetch == [[]]
     assert start.call_args.kwargs["skip_planning"] is True
 
@@ -89,7 +89,7 @@ async def test_a_route_already_cached_for_the_plan_is_not_fetched_again() -> Non
     with patch.object(MammotionClient, "start_mow_path_saga", autospec=True, return_value=True) as start:
         fetched = await asyncio.wait_for(client.fetch_planned_mow_path(_NAME), 5)
 
-    assert fetched is True
+    assert fetched == _planned_hash()
     start.assert_not_called()
 
 
@@ -97,11 +97,12 @@ async def test_a_device_that_confirmed_no_route_has_nothing_to_fetch() -> None:
     """``path_hash`` 0 and 1 mean no route; fetching would return whatever was cached before."""
     client, device = await _client_with_planned_route()
     device.work.path_hash = 0
+    device.report_data.work.path_hash = 0
 
     with patch.object(MammotionClient, "start_mow_path_saga", autospec=True, return_value=True) as start:
         fetched = await asyncio.wait_for(client.fetch_planned_mow_path(_NAME), 5)
 
-    assert fetched is False
+    assert fetched == 0
     start.assert_not_called()
 
 
@@ -112,7 +113,7 @@ async def test_a_fetch_that_is_gated_off_reports_no_route() -> None:
     with patch.object(MammotionClient, "start_mow_path_saga", autospec=True, return_value=False):
         fetched = await asyncio.wait_for(client.fetch_planned_mow_path(_NAME), 5)
 
-    assert fetched is False
+    assert fetched == 0
 
 
 async def test_a_fetch_that_never_finishes_reports_no_route() -> None:
@@ -122,7 +123,7 @@ async def test_a_fetch_that_never_finishes_reports_no_route() -> None:
     with patch.object(MammotionClient, "start_mow_path_saga", autospec=True, return_value=True):
         fetched = await asyncio.wait_for(client.fetch_planned_mow_path(_NAME, timeout=0.01), 5)
 
-    assert fetched is False
+    assert fetched == 0
 
 
 async def test_a_fetch_that_ends_with_lines_missing_reports_no_route() -> None:
@@ -136,12 +137,12 @@ async def test_a_fetch_that_ends_with_lines_missing_reports_no_route() -> None:
     with patch.object(MammotionClient, "start_mow_path_saga", autospec=True, side_effect=_fetch):
         fetched = await asyncio.wait_for(client.fetch_planned_mow_path(_NAME), 5)
 
-    assert fetched is False
+    assert fetched == 0
     assert device.map.line_root_hashlist == []
 
 
-async def test_the_saga_ending_is_what_signals_the_fetch_is_complete() -> None:
-    """Without the signal the waiting fetch sits out its whole timeout and reports no route."""
+async def test_the_fetch_hands_its_signal_to_the_saga_queue() -> None:
+    """The queue sets it when the saga ends, failed or not; unset, the caller waits out its whole timeout."""
     client, _ = await _client_with_planned_route()
     completed = asyncio.Event()
 
@@ -150,8 +151,19 @@ async def test_the_saga_ending_is_what_signals_the_fetch_is_complete() -> None:
         patch.object(DeviceHandle, "enqueue_saga", autospec=True) as enqueue,
     ):
         started = await client.start_mow_path_saga(_NAME, zone_hashs=[], skip_planning=True, completed=completed)
-        assert started is True
-        assert not completed.is_set()
-        await asyncio.wait_for(enqueue.call_args.kwargs["on_complete"](), 5)
 
-    assert completed.is_set()
+    assert started is True
+    assert enqueue.call_args.kwargs["done"] is completed
+
+
+async def test_a_plan_cleared_by_an_idle_report_is_found_by_the_reports_hash() -> None:
+    """A mower that planned but did not start reports no job, which empties the plan reply's settings."""
+    client, device = await _client_with_planned_route()
+    device.work.path_hash = 0
+    device.report_data.work.path_hash = _planned_hash()
+    device.map.invalidate_mow_path(0)
+    _no_line_route(device)
+
+    fetched = await asyncio.wait_for(client.fetch_planned_mow_path(_NAME), 5)
+
+    assert fetched == _planned_hash()
