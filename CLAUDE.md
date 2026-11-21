@@ -216,7 +216,9 @@ Still true: a *sleeping* device is woken over HTTP via `wake_device`, never by f
 ### Commands and Device Types
 
 Commands: `pymammotion/mammotion/commands/mammotion_command.py` and `messages/`.
-HA-facing API: `pymammotion/homeassistant/mower_api.py`.
+Host surfaces: Home Assistant core's Mammotion integration uses the facade `pymammotion/homeassistant/mower_api.py`
+(`HomeAssistantMowerApi`, its contract pinned by `tests/unit/homeassistant/`); the custom integration (HA-Luba)
+calls `MammotionClient` / `DeviceHandle` directly.
 Device variants (25+): `pymammotion/utility/device_type.py` — `DeviceType.has_4g()`, `is_yuka()`, `is_rtk()`, etc.
 
 ## APK Reference Source

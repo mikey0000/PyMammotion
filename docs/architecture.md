@@ -28,9 +28,9 @@ every structural decision downstream follows from that one fact — see §4.2.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ HOST FACADE  (unused: the HA integration calls MammotionClient directly)  │
-│   homeassistant/mower_api.py   HomeAssistantMowerApi — call pacing,       │
-│                                plan locking, HA-shaped accessors          │
+│ HOST FACADE  (HA core's integration; HA-Luba calls the client directly)   │
+│   homeassistant/mower_api.py   HomeAssistantMowerApi — typed per-device   │
+│                                calls by name, refresh pacing              │
 ├───────────────────────────────────────────────────────────────────────────┤
 │ CLIENT  (one per process)                                                 │
 │   client.py          MammotionClient — device lifecycle, transport        │
@@ -276,6 +276,9 @@ phases and faults are in `docs/remote_drive.md`, and the reasoning is in D15.
 | Should this exception be treated as expected? | `messaging.command_queue.execute_command` — the queue and the direct path share it |
 | Does this command queue at all? | `Priority.is_direct` |
 | Is the same fetch already queued? | the `dedup_key` on `DeviceCommandQueue.enqueue` / `enqueue_saga` — `is_saga_active` sees only a *running* saga |
+| A background read whose reply the caller needs | `MammotionClient.queue_command_and_wait` (`DeviceCommandQueue.enqueue_and_wait`) — `send_command_and_wait` bypasses the queue and can collide with a saga |
+| Is this device registered? | `DeviceNotRegisteredError` (a `KeyError`), raised by `MammotionClient._registered_handle` |
+| Which HTTP session does a per-device call use? | `MammotionClient.http_for_device` — never `cloud_http`, which is the first account's |
 | What cadence does this device need? | `DeviceHandle.cadence_mode()` + the `_MQTT_POLL_INTERVAL` / `_BLE_POLL_INTERVAL` tables |
 | Is this exception expected by the queue? | the demotion buckets in `DeviceCommandQueue._process` |
 | What does this cloud error code mean? | `aliyun/exceptions.py` (`DEVICE_OFFLINE_CODES`, `DEVICE_UNBOUND_CODES`, `GATEWAY_TIMEOUT_CODES`) |

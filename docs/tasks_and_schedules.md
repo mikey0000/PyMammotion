@@ -142,7 +142,7 @@ APK builder: `MACommandHelper.singleSchedule(planId)` (`command/MACommandHelper.
 | `result`   | int32  | Device's response code — `1` == success, anything else fails  |
 
 pymammotion exposes this as `MammotionCommand.single_schedule(plan_id)`
-(`navigation.py`), the HA-facing helper `MammotionMowerApi.start_task(...)`
+(`navigation.py`), the HA core facade's `HomeAssistantMowerApi.start_task(...)`
 (`mower_api.py`), and the HA-Luba coordinator method
 `MammotionReportUpdateCoordinator.start_task(plan_id)`. The dynamic task-button
 press triggers this; the same call is also reachable as the
@@ -306,7 +306,7 @@ the default `nav` path. This matches the APK, which builds Spino plans under `Sp
 | Trigger                                          | Mower                                                                | Spino                              |
 |--------------------------------------------------|----------------------------------------------------------------------|------------------------------------|
 | First connection / setup                         | HA polling layer issues `read_plan` on the first `update()`          | `MammotionSpinoCoordinator._async_setup` calls `start_spino_plan_sync` |
-| Periodic re-poll                                 | `mower_api.py` — every 30 min (`read_plan` interval), or immediately while `plans_stale` is set or nothing has been fetched yet (`plans_fetched`) | Same condition adapted to `device.plans` |
+| Periodic re-poll                                 | `mower_api.py` — while `plans_stale` is set or nothing has been fetched yet (`plans_fetched`), at most every 30 min (`read_plan` pacing) | Same condition adapted to `device.plans` |
 | After area/zone delete (APK only)                | APK calls `readPlan(2, 0, 0)` (`AreaDBHelper.java:747`)              | n/a                                |
 | Device reports new IDs we don't have             | Mower-only: unsolicited `all_plan_task` (id+name pairs) flips `device.map.plans_stale = True` (`state_reducer.py`); the polling layer re-fetches on its next tick | n/a — Spino has no `all_plan_task` analogue |
 
