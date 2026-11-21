@@ -449,10 +449,7 @@ class MammotionClient(CloudAuthMixin):
             Exception: anything :meth:`refresh_status` raises.
 
         """
-        handle = self._device_registry.get_by_name(device_name, account_id)
-        if handle is None:
-            msg = f"Device '{device_name}' not registered"
-            raise KeyError(msg)
+        handle = self._registered_handle(device_name, account_id)
         return await handle.wait_for(
             predicate, timeout=timeout, refresh=partial(self.refresh_status, device_name, handle.account_id)
         )
@@ -476,10 +473,7 @@ class MammotionClient(CloudAuthMixin):
                 :meth:`send_command_with_args`).
 
         """
-        handle = self._device_registry.get_by_name(device_name, account_id)
-        if handle is None:
-            msg = f"Device '{device_name}' not registered"
-            raise KeyError(msg)
+        handle = self._registered_handle(device_name, account_id)
         handle.record_user_command()
         session = self._get_session_for_handle(handle)
 
@@ -2495,10 +2489,7 @@ class MammotionClient(CloudAuthMixin):
             CommandTimeoutError: The device did not answer; support is still unknown.
 
         """
-        handle = self._device_registry.get_by_name(device_name, account_id)
-        if handle is None:
-            msg = f"Device '{device_name}' not registered"
-            raise KeyError(msg)
+        handle = self._registered_handle(device_name, account_id)
         async with handle.broker.exclusive(_BATCH_CONFIG_EXCHANGE):
             await self.send_command_and_wait(
                 device_name,
@@ -2536,10 +2527,7 @@ class MammotionClient(CloudAuthMixin):
             ReLoginRequiredError: The account's login is dead.
 
         """
-        handle = self._device_registry.get_by_name(device_name, account_id)
-        if handle is None:
-            msg = f"Device '{device_name}' not registered"
-            raise KeyError(msg)
+        handle = self._registered_handle(device_name, account_id)
         mode = RainProtectionMode(mode)
         if delay_hours is None:
             delay_hours = cast("MowingDevice", handle.snapshot.raw).mower_state.rain_protection.delay_hours
@@ -2612,9 +2600,7 @@ class MammotionClient(CloudAuthMixin):
             KeyError: *device_name* is not registered.
 
         """
-        if (handle := self.mower(device_name, account_id)) is None:
-            msg = f"Device '{device_name}' not registered"
-            raise KeyError(msg)
+        handle = self._registered_handle(device_name, account_id)
         return handle.ensure_remote_drive(
             tokens=HttpTokenSource(partial(self._remote_drive_http, handle), handle.iot_id),
             send=partial(self._send_remote_drive_frame, handle),
@@ -2892,10 +2878,7 @@ class MammotionClient(CloudAuthMixin):
                 absorbs it.
 
         """
-        handle = self._device_registry.get_by_name(name, account_id)
-        if handle is None:
-            msg = f"Device '{name}' not registered"
-            raise KeyError(msg)
+        handle = self._registered_handle(name, account_id)
         if _record_cmd:
             handle.record_user_command()
         commands = handle.commands
@@ -2996,10 +2979,7 @@ class MammotionClient(CloudAuthMixin):
                 the refusal is logged and dropped, and surfaces as ``CommandTimeoutError``.
 
         """
-        handle = self._device_registry.get_by_name(name, account_id)
-        if handle is None:
-            msg = f"Device '{name}' not registered"
-            raise KeyError(msg)
+        handle = self._registered_handle(name, account_id)
         handle.record_user_command()
         commands = handle.commands
         command_bytes: bytes = getattr(commands, key)(**kwargs)
