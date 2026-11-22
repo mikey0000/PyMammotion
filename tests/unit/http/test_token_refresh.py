@@ -364,3 +364,41 @@ async def test_successful_login_v2_clears_terminal_flag() -> None:
 
     assert response.code == 0
     assert http.reauth_required is None
+
+
+def test_no_restore_or_renewal_path_can_reach_a_password_login() -> None:
+    """The restore and every automatic renewal run on cached or refreshed credentials only.
+
+    ``restore_credentials`` used to fall back to ``login_and_initiate_cloud`` when the
+    cache held no usable login or the server refused it — one silent password grant per
+    restart, and one per host retry, with a password the server might already reject.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from pymammotion.auth.token_manager import TokenManager
+    from pymammotion.client import MammotionClient
+
+    password_logins = {"login_v2", "login_by_email", "login", "login_and_initiate_cloud"}
+
+    def _calls(func: object) -> set[str]:
+        tree = ast.parse(textwrap.dedent(inspect.getsource(func)))  # type: ignore[arg-type]
+        return {
+            node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
+        }
+
+    guarded = {
+        name: getattr(MammotionClient, name)
+        for name in dir(MammotionClient)
+        if name == "restore_credentials" or name.startswith("_restore_") or name == "_setup_aliyun_transport"
+    }
+    guarded |= {
+        f"TokenManager.{name}": member
+        for name, member in vars(TokenManager).items()
+        if inspect.isfunction(member)
+    }
+    reached = {name: _calls(func) & password_logins for name, func in guarded.items()}
+    assert {name: calls for name, calls in reached.items() if calls} == {}

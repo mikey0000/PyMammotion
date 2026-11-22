@@ -358,6 +358,15 @@ class TokenManager:
         if (http_reason := self._http.reauth_required) is not None:
             raise self._mark_reauth_required(http_reason)
 
+    def reject_login(self, reason: str) -> ReLoginRequiredError:
+        """Record that the server refused this login and build the error to raise.
+
+        For a refusal found outside this manager — a restore whose cached login the
+        server no longer accepts.  Sets :attr:`reauth_required` and fires
+        :attr:`on_reauth_required` exactly as a rejected refresh token does.
+        """
+        return self._mark_reauth_required(reason)
+
     def _mark_reauth_required(self, reason: str) -> ReLoginRequiredError:
         """Mark the account terminally unauthenticated and build the error to raise.
 

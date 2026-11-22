@@ -14,9 +14,8 @@ The invariants this file owns (see CLAUDE.md):
 
 * One account is one login session is one TokenManager, and
   :meth:`CloudAuthMixin._ensure_token_manager` is the only place one is constructed.
-* Only :meth:`CloudAuthMixin.login_and_initiate_cloud` may reach a password grant.
-  :meth:`CloudAuthMixin.restore_credentials` falls back to it only when the cache
-  cannot produce a usable *login*.
+* Only :meth:`CloudAuthMixin.login_and_initiate_cloud` may reach a password grant;
+  :meth:`CloudAuthMixin.restore_credentials` never does.
 * Credential renewal is clock-driven: :meth:`CloudAuthMixin._start_token_refresh`
   is called from the two public entry points, and stopped in ``_sign_out_session``
   and ``MammotionClient.stop``.
@@ -33,7 +32,13 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import UnauthorizedExceptionError
-from pymammotion.transport.base import AuthError, LoginFailedError, ReLoginRequiredError, TransportType
+from pymammotion.transport.base import (
+    AuthError,
+    CachedLoginUnusableError,
+    LoginFailedError,
+    ReLoginRequiredError,
+    TransportType,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -386,18 +391,23 @@ class CloudAuthMixin:
         * **Mammotion MQTT** (post-2025 devices) — detected by the presence of
           ``mammotion_mqtt`` and ``mammotion_device_records`` in *cached_data*.
 
+        Never logs in with the password: a restore runs on the cached login or not at
+        all, and only a user-initiated :meth:`login_and_initiate_cloud` may mint one.
+
         Args:
             account:               Mammotion account e-mail or phone number.
-            password:              Account password (used only if the cached login
-                                   cannot be restored or is no longer accepted).
+            password:              Account password — stored on the session for callers,
+                                   never sent.
             cached_data:           Dict previously returned by :meth:`to_cache`.
             session:               Optional :class:`aiohttp.ClientSession` to reuse.
             check_for_new_devices: When True, run a lightweight discovery call after
                                    restoring known devices to register any new ones.
 
         Raises:
-            LoginFailedError: The cached login was unusable and the fallback login
-                was rejected.
+            CachedLoginUnusableError: The cache holds no usable login (missing or
+                undecodable); the user must log in.
+            ReLoginRequiredError: The server no longer accepts the cached login.
+                ``reauth_required`` is set and ``on_unrecoverable_auth_error`` fires.
             ClientError / TimeoutError / ConnectionError: The login could not be
                 validated because the network or server is unavailable.  The cached
                 credentials may well still be good, so the caller should back off and
@@ -415,21 +425,13 @@ class CloudAuthMixin:
         mammotion_http = MammotionHTTP.from_cache(
             cached_data, account, password, session=session, ha_version=self._ha_version
         )
-        # Two distinct outcomes, and which one happened decides what the user should do:
-        # a cache carrying no login at all is a first run or a wiped/rolled-back store,
-        # while a rejected one means the session was invalidated server-side.  Neither
-        # is recoverable from the cache, so both fall back to a full login — the one
-        # sanctioned password grant.
         if mammotion_http is None:
-            _logger.warning(
-                "restore_credentials: falling back to a full login for %s — no usable login session in the cached "
-                "data (mammotion_data %s; cached keys: %s)",
-                account,
-                "present but undecodable" if "mammotion_data" in cached_data else "missing",
-                sorted(cached_data),
+            reason = (
+                f"no usable login in the cached data (mammotion_data "
+                f"{'present but undecodable' if 'mammotion_data' in cached_data else 'missing'})"
             )
-            await self.login_and_initiate_cloud(account, password, session)
-            return
+            _logger.warning("restore_credentials: %s for %s — the user must log in", reason, account)
+            raise CachedLoginUnusableError(account, reason)
 
         # Attach the session and its TokenManager BEFORE validating.  Validation can
         # rotate the tokens (ensure_token_valid refreshes near expiry), and the server
@@ -441,16 +443,11 @@ class CloudAuthMixin:
         # to exist before the first refresh can happen.
         acct_session.mammotion_http = mammotion_http
         acct_session.user_account = self._extract_user_account(mammotion_http)
-        await self._ensure_token_manager(acct_session, mammotion_http)
+        token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
 
         if not await mammotion_http.validate_login():
-            _logger.warning(
-                "restore_credentials: falling back to a full login for %s — the server no longer accepts the "
-                "cached login",
-                account,
-            )
-            await self.login_and_initiate_cloud(account, password, session)
-            return
+            _logger.warning("restore_credentials: the server no longer accepts the cached login for %s", account)
+            raise token_manager.reject_login("the server no longer accepts the cached login")
 
         if "aep_data" in cached_data:
             await self._restore_aliyun(account, cached_data, acct_session, check_for_new_devices=check_for_new_devices)

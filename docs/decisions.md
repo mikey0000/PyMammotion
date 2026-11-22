@@ -262,3 +262,14 @@ and fetched like any element; sub_cmd=4 names only the temporary points of a dum
 session, which the app asks for from the drawing page alone and never fetches. Requesting
 it cost a send per run and offered hashes a mower may never serve. Saved state drops any
 sub_cmd=4 list on load, since nothing else would ever clear it.
+
+## D19. A restore never logs in with the password
+
+`restore_credentials` used to fall back to `login_and_initiate_cloud` when the
+cache held no usable login or the server refused it. That was one silent
+password grant per restart and per host retry, with a password the server might
+already reject, and it hid a dead session from the user. Now a cache with no
+usable login raises `CachedLoginUnusableError`, and a refused one sets
+`reauth_required` and raises `ReLoginRequiredError`, so the host prompts. A
+failed Aliyun rebuild is reported per transport, never cured with the password.
+Only the host calls `login_and_initiate_cloud`, on a user action.

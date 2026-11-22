@@ -98,6 +98,10 @@ class LoginFailedError(AuthError):
         super().__init__(f"Login failed for account '{account_id}': {reason}")
 
 
+class CachedLoginUnusableError(LoginFailedError):
+    """The credential cache holds no usable login; only a user-initiated login can make one."""
+
+
 #: aiohttp exception classes (or bases) that indicate the request never got a
 #: coherent answer — none of them is an auth verdict.
 _TRANSIENT_AIOHTTP_ERRORS = frozenset(
