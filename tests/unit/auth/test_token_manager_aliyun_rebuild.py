@@ -101,3 +101,25 @@ async def test_establish_aliyun_refuses_a_session_the_chain_left_incomplete() ->
         await tm.establish_aliyun(_chain_gateway(http, complete=False))
 
     assert tm.cloud_gateway is None
+
+
+async def test_connect_iot_rebuilds_the_attached_gateway_with_a_fresh_code() -> None:
+    http = make_http_mock(access_token="a", refresh_token="r")
+    gateway = _chain_gateway(http)
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http, cloud_gateway=gateway)
+
+    await tm.connect_iot()
+
+    http.refresh_authorization_token.assert_awaited_once()
+    assert "session_by_auth_code" in gateway.steps
+
+
+@pytest.mark.parametrize("session", [None, MagicMock(data=None)], ids=["no-session", "no-session-data"])
+def test_attaching_a_gateway_without_a_session_schedules_no_aliyun_renewal(session: MagicMock | None) -> None:
+    http = make_http_mock()
+    http.expires_in = 9_999_999_999
+    gateway = create_autospec(CloudIOTGateway, instance=True, session_by_authcode_response=session)
+
+    tm = TokenManager(account_id="user@example.com", mammotion_http=http, cloud_gateway=gateway)
+
+    assert tm.seconds_until_next_refresh == 3600.0  # only the hourly re-check

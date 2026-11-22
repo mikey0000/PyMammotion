@@ -172,3 +172,62 @@ async def test_a_new_login_reports_the_given_up_transport_recovered(
     await wait_until(lambda: len(events) == 2, message="the recovery was never reported")
     assert events[-1] == (scenario.account, _ALIYUN, True, False)
     assert client.unavailable_transports(scenario.account) == {}
+
+
+async def test_retry_transport_rebuilds_a_mammotion_transport_the_broker_gave_up_on(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """A broker that refuses every JWT gives the transport up; once it accepts again, a retry brings it back."""
+    scenario = fake_cloud.scenario
+    scenario.mammotion_connack_rc = 5
+    events = _record_availability(client)
+    await client.login_and_initiate_cloud(scenario.account, scenario.password)
+    mower = client.mower(scenario.device.device_name)
+    assert mower is not None
+    await wait_until(lambda: events, timeout=10, message="the give-up was never reported")
+    assert events == [(scenario.account, _MAMMOTION, False, True)]
+    scenario.mammotion_connack_rc = 0
+
+    await client.retry_transport(scenario.account, _MAMMOTION)
+
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    await wait_until(lambda: mower.has_usable_transport)
+    await wait_until(lambda: len(events) == 2, message="the recovery was never reported")
+    assert events[-1] == (scenario.account, _MAMMOTION, True, False)
+
+
+async def test_retry_transport_is_a_no_op_for_a_healthy_transport(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    scenario = fake_cloud.scenario
+    await log_in_aliyun_account(fake_cloud, client)
+    transport = aliyun_transport(client, scenario)
+
+    await client.retry_transport(scenario.account, _ALIYUN)
+
+    assert aliyun_transport(client, scenario) is transport
+    assert scenario.counters.get("auth_code_fetches", 0) == 0
+
+
+async def test_retry_transport_refuses_an_unknown_account(client: MammotionClient) -> None:
+    with pytest.raises(ValueError, match="no cloud session"):
+        await client.retry_transport("nobody@example.com", _ALIYUN)
+
+
+async def test_a_failing_host_callback_does_not_break_the_give_up(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    scenario = fake_cloud.scenario
+    await log_in_aliyun_account(fake_cloud, client, hybrid=True)
+    called: list[TransportType] = []
+
+    async def _broken(_account_id: str, transport_type: TransportType, _available: bool, _reason: str | None) -> None:
+        called.append(transport_type)
+        raise RuntimeError("host bug")
+
+    client.on_transport_availability_changed = _broken
+
+    await _give_up_aliyun_at_runtime(fake_cloud, client)
+
+    await wait_until(lambda: called == [_ALIYUN])
+    assert set(client.unavailable_transports(scenario.account)) == {_ALIYUN}

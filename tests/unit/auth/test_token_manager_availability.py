@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.transport.base import ReLoginRequiredError, TransportType
 from tests._helpers import let_others_run
@@ -53,3 +54,20 @@ async def test_a_failed_retry_keeps_the_give_up_and_reports_nothing() -> None:
 
     changed.assert_not_awaited()
     assert tm.unavailable_transports == {TransportType.CLOUD_MAMMOTION: "gone"}
+
+
+async def test_a_given_up_aliyun_session_is_reported_and_a_successful_reestablish_clears_it() -> None:
+    http = make_http_mock(login_info=MagicMock())
+    tm = TokenManager("user@example.com", http)
+    tm.mark_transport_unavailable(TransportType.CLOUD_ALIYUN, "refused")
+    changed = AsyncMock()
+    tm.on_transport_availability_changed = changed
+    gateway = create_autospec(CloudIOTGateway, instance=True, region_response=MagicMock(), aep_response=MagicMock())
+    gateway.session_by_authcode_response = MagicMock()
+    gateway._iot_token_issued_at = 0
+
+    assert await tm.reestablish_aliyun(gateway) is gateway
+    await let_others_run()
+
+    changed.assert_awaited_once_with(TransportType.CLOUD_ALIYUN, None)
+    assert tm.unavailable_transports == {}

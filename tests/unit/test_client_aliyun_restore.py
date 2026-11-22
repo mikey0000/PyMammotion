@@ -10,6 +10,7 @@ import pytest
 from pymammotion.account.registry import AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import CloudSetupError
+from pymammotion.aliyun.model.dev_by_account_response import Data, ListingDevAccountResponse
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import TransportType
@@ -104,3 +105,55 @@ async def test_an_unusable_cached_session_is_rebuilt_with_a_fresh_authorization_
         await client._restore_aliyun(ACCOUNT, {}, session, check_for_new_devices=True)  # noqa: SLF001
 
     assert codes_used == ["fresh"]
+
+
+async def _restore_without_a_session(client: MammotionClient, cached_data: dict, session: AccountSession) -> None:
+    """Run ``_restore_aliyun`` where neither the cached session nor a rebuild yields a gateway."""
+    session.mammotion_http = session.mammotion_http or make_mock_http()
+    token_manager = MagicMock(spec=TokenManager, reauth_required=None, aliyun_unavailable="refused")
+    token_manager.recover_aliyun.return_value = None
+    with (
+        patch.object(CloudIOTGateway, "from_cache", AsyncMock(return_value=None)),
+        patch.object(MammotionClient, "_ensure_token_manager", AsyncMock(return_value=token_manager)),
+    ):
+        await client._restore_aliyun(ACCOUNT, cached_data, session, check_for_new_devices=True)  # noqa: SLF001
+
+
+def _listing_cache(*devices: object) -> dict:
+    listing = ListingDevAccountResponse(
+        code=200, data=Data(total=len(devices), data=list(devices), pageNo=1, pageSize=20)
+    )
+    return {"device_data": listing.to_dict()}
+
+
+async def test_without_an_aliyun_session_the_cached_listing_keeps_its_devices_unavailable(
+    client: MammotionClient,
+) -> None:
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+    await client.account_registry.register(session)
+
+    await _restore_without_a_session(client, _listing_cache(make_listing_device("Luba-ALIYUN", "iot-1")), session)
+
+    handle = client.mower("Luba-ALIYUN")
+    assert handle is not None
+    assert not handle.has_usable_transport
+    assert [d.device_name for d in client.aliyun_device_list] == ["Luba-ALIYUN"]
+
+
+async def test_a_listed_device_already_on_mammotion_mqtt_gets_no_aliyun_handle(client: MammotionClient) -> None:
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+    session.mammotion_http = make_mock_http()
+    session.mammotion_http.device_records = MagicMock(records=[MagicMock(device_name="Luba-MOVED")])
+
+    await _restore_without_a_session(client, _listing_cache(make_listing_device("Luba-MOVED", "iot-1")), session)
+
+    assert client.mower("Luba-MOVED") is None
+
+
+@pytest.mark.parametrize("cached_data", [{}, {"device_data": {"code": "not-a-listing"}}], ids=["missing", "corrupt"])
+async def test_an_absent_or_corrupt_cached_listing_keeps_no_devices(client: MammotionClient, cached_data: dict) -> None:
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+
+    await _restore_without_a_session(client, cached_data, session)
+
+    assert _bound(client) == []

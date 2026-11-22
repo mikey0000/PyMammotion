@@ -20,9 +20,10 @@ from unittest.mock import AsyncMock, MagicMock, create_autospec
 import pytest
 
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+from pymammotion.auth import token_manager as token_manager_module
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 
-from tests._helpers import let_others_run
+from tests._helpers import let_others_run, wait_until
 from tests.unit.auth._helpers import make_http_mock, make_mqtt_creds
 
 
@@ -260,3 +261,57 @@ async def test_a_due_http_token_refreshed_by_someone_else_meanwhile_is_not_refre
     await asyncio.wait_for(scheduled, timeout=1.0)
 
     http.refresh_token_v2.assert_not_awaited()
+
+
+async def test_scheduler_backs_off_after_a_transient_failure_and_tries_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(token_manager_module, "_SCHEDULER_RETRY_DELAY", 0.0)
+    tm, http = _tm_scheduled(http_ttl=60.0)
+
+    def _renew_on_the_second_try(*_a: object, **_k: object) -> MagicMock:
+        if http.refresh_token_v2.await_count == 1:
+            raise ConnectionError("cloud unreachable")
+        http.expires_in = time.time() + 7200
+        return MagicMock(code=0, data=MagicMock(access_token="t2", refresh_token="r2", expires_in=7200.0))
+
+    http.refresh_token_v2.side_effect = _renew_on_the_second_try
+
+    tm.start_refresh_scheduler()
+    try:
+        await wait_until(lambda: http.refresh_token_v2.await_count == 2)
+    finally:
+        await tm.stop_refresh_scheduler()
+
+    assert tm.reauth_required is None
+
+
+async def test_scheduler_retries_a_deferred_aliyun_session_until_it_is_established(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A restore's transient failure is retried on the clock, and the client hears when it succeeds."""
+    monkeypatch.setattr(token_manager_module, "_SCHEDULER_RETRY_DELAY", 0.0)
+    tm, http = _tm_scheduled(http_ttl=86400.0)
+    http.login_info = MagicMock()
+    gateway = create_autospec(CloudIOTGateway, instance=True, region_response=None, aep_response=MagicMock())
+    gateway.session_by_authcode_response = MagicMock()
+    gateway._iot_token_issued_at = int(time.time())  # noqa: SLF001
+    failures = [ConnectionError("down"), ConnectionError("still down")]
+
+    async def _get_region(_country_code: str) -> None:
+        if failures:
+            raise failures.pop(0)
+        gateway.region_response = MagicMock()
+
+    gateway.get_region.side_effect = _get_region
+    established = AsyncMock()
+    tm.on_aliyun_established = established
+
+    assert await tm.recover_aliyun(gateway) is None
+    tm.start_refresh_scheduler()
+    try:
+        await wait_until(lambda: established.await_count == 1)
+    finally:
+        await tm.stop_refresh_scheduler()
+
+    established.assert_awaited_once_with(gateway)
+    assert tm.cloud_gateway is gateway
+    assert tm.aliyun_unavailable is None
