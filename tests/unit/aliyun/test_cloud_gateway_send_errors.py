@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import orjson
 import pytest
 
+from pymammotion.aliyun import cloud_gateway
 from pymammotion.aliyun.exceptions import AuthRefreshException, FailedRequestException, GatewayTimeoutException
 from pymammotion.transport.base import SessionExpiredError, TransportType
 from tests.unit.aliyun._helpers import make_gateway, make_session
@@ -33,7 +34,7 @@ async def test_a_rejected_session_asks_for_an_aliyun_refresh(code: int) -> None:
     gateway = make_gateway(make_session(iot_token_expire=999_999_999))
 
     with (
-        patch("pymammotion.aliyun.cloud_gateway.Client", return_value=_invoke_answering(code)),
+        patch.object(cloud_gateway, "Client", return_value=_invoke_answering(code)),
         pytest.raises(SessionExpiredError) as excinfo,
     ):
         await gateway.send_cloud_command(_IOT_ID, _COMMAND)
@@ -46,7 +47,7 @@ async def test_a_refused_invoke_names_why_it_failed(code: int, expected: type[Ex
     gateway = make_gateway(make_session(iot_token_expire=999_999_999))
 
     with (
-        patch("pymammotion.aliyun.cloud_gateway.Client", return_value=_invoke_answering(code)),
+        patch.object(cloud_gateway, "Client", return_value=_invoke_answering(code)),
         pytest.raises(expected),
     ):
         await gateway.send_cloud_command(_IOT_ID, _COMMAND)
@@ -59,7 +60,7 @@ async def test_a_session_past_its_refresh_token_is_not_sent() -> None:
     client = _invoke_answering(200)
 
     with (
-        patch("pymammotion.aliyun.cloud_gateway.Client", return_value=client),
+        patch.object(cloud_gateway, "Client", return_value=client),
         pytest.raises(AuthRefreshException),
     ):
         await gateway.send_cloud_command(_IOT_ID, _COMMAND)

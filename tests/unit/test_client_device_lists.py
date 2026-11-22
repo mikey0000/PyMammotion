@@ -381,28 +381,34 @@ async def test_a_login_survives_a_device_list_fetch_that_raises(failing: str) ->
         await client.stop()
 
 
-@pytest.mark.parametrize(
-    ("failure", "propagates"),
-    [
-        pytest.param(RuntimeError("malformed page"), False, id="fault-stepped-over"),
-        pytest.param(UnauthorizedExceptionError("login revoked"), True, id="rejection-raised"),
-    ],
-)
-async def test_a_failed_new_device_check_costs_only_the_new_devices(failure: Exception, propagates: bool) -> None:
-    """A fault finishes the restore on the cached devices; a rejected login must not look like a success."""
-    client = MammotionClient()
+async def _restore_with_failing_new_device_check(client: MammotionClient, failure: Exception) -> MammotionHTTP:
+    """Restore while the new-device check (``_bootstrap_mammotion_mqtt``) raises *failure*."""
     http, _ = make_http_posting(HTTPStatus.OK.value, _owned_list(STALE))
+    with (
+        patch.object(MammotionHTTP, "from_cache", return_value=http),
+        patch.object(http, "validate_login", autospec=True, return_value=True),
+        patch.object(client, "_bootstrap_mammotion_mqtt", autospec=True, side_effect=failure),
+    ):
+        await client.restore_credentials(ACCOUNT, "pw", {}, check_for_new_devices=True)
+    return http
+
+
+async def test_a_faulty_new_device_check_is_stepped_over() -> None:
+    """The restore still finishes on the cached devices."""
+    client = MammotionClient()
     try:
-        with (
-            patch.object(MammotionHTTP, "from_cache", return_value=http),
-            patch.object(http, "validate_login", autospec=True, return_value=True),
-            patch.object(client, "_bootstrap_mammotion_mqtt", autospec=True, side_effect=failure),
-        ):
-            if propagates:
-                with pytest.raises(UnauthorizedExceptionError):
-                    await client.restore_credentials(ACCOUNT, "pw", {}, check_for_new_devices=True)
-            else:
-                await client.restore_credentials(ACCOUNT, "pw", {}, check_for_new_devices=True)
-                assert client._account_registry.get(ACCOUNT).mammotion_http is http  # noqa: SLF001
+        http = await _restore_with_failing_new_device_check(client, RuntimeError("malformed page"))
+
+        assert client._account_registry.get(ACCOUNT).mammotion_http is http  # noqa: SLF001
+    finally:
+        await client.stop()
+
+
+async def test_a_new_device_check_that_finds_the_login_rejected_fails_the_restore() -> None:
+    """Swallowing it would report success on a login the server has already invalidated."""
+    client = MammotionClient()
+    try:
+        with pytest.raises(UnauthorizedExceptionError):
+            await _restore_with_failing_new_device_check(client, UnauthorizedExceptionError("login revoked"))
     finally:
         await client.stop()
