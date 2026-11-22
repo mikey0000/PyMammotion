@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from pymammotion.aliyun.exceptions import GatewayTimeoutException
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.messaging import transfers
-from pymammotion.transport.base import CommandTimeoutError, SagaFailedError, SagaInterruptedError
+from pymammotion.transport.base import CommandTimeoutError, FrameTimeoutError, SagaFailedError, SagaInterruptedError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -114,16 +114,18 @@ class Saga(ABC):
         with broker.subscribe_unsolicited(_collect):
             yield queue
 
-    async def _next_frame(self, queue: asyncio.Queue[Any], field: str, current_frame: int = 1) -> Any:
-        """Await the next queued frame, or raise ``CommandTimeoutError`` after ``step_timeout``.
+    async def _next_frame(
+        self, queue: asyncio.Queue[Any], field: str, frame_number: int | None = None, total: int = 0
+    ) -> Any:
+        """Await the next queued frame, or raise ``FrameTimeoutError`` after ``step_timeout``.
 
         Wraps the ``asyncio.wait_for(queue.get(), step_timeout)`` →
-        ``CommandTimeoutError`` pattern every ack-driven saga step shares.
+        ``FrameTimeoutError`` pattern every ack-driven saga step shares.
         """
         try:
             return await asyncio.wait_for(queue.get(), timeout=self.step_timeout)
         except TimeoutError:
-            raise CommandTimeoutError(field, current_frame) from None
+            raise FrameTimeoutError(field, frame_number, total) from None
 
     @staticmethod
     def _region_data(frame: Any) -> RegionData:

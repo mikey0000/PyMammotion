@@ -14,7 +14,7 @@ from pymammotion.http.model.http import CheckDeviceVersion
 from pymammotion.proto import SystemUpdateBufMsg
 from pymammotion.utility.constant.device_enums import WorkMode
 from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES
-from tests._helpers import make_mower_with_synced_map
+from tests._helpers import SYNCED_AREA_HASH, make_mower_with_synced_map
 
 
 def _make_hash_list_with_int_keys() -> HashList:
@@ -183,6 +183,32 @@ def test_a_stale_map_is_due_once_no_job_is_active() -> None:
 
 def test_a_synced_map_is_never_due() -> None:
     assert not make_mower_with_synced_map(sys_status=WorkMode.MODE_READY).map_sync_due
+
+
+def test_a_map_missing_only_hashes_the_device_would_not_serve_is_not_due() -> None:
+    """Re-syncing cannot fetch them, and HA-Luba asks every report interval while a sync is due."""
+    device = make_mower_with_synced_map(sys_status=WorkMode.MODE_READY)
+    device.map.area = {}
+    device.map.unserved_hashes = {SYNCED_AREA_HASH}
+
+    assert not device.map_sync_due
+    assert not device.map.is_map_synced(device.report_data.locations[0].bol_hash)
+
+
+def test_unserved_hashes_do_not_hold_off_a_sync_once_the_manifest_changes() -> None:
+    device = make_mower_with_synced_map(sys_status=WorkMode.MODE_READY)
+    device.map.area = {}
+    device.map.unserved_hashes = {SYNCED_AREA_HASH}
+    device.report_data.locations[0].bol_hash += 1
+
+    assert device.map_sync_due
+
+
+def test_unserved_hashes_are_not_persisted_so_a_restart_retries_them() -> None:
+    device = make_mower_with_synced_map()
+    device.map.unserved_hashes = {SYNCED_AREA_HASH}
+
+    assert MowerDevice.from_dict(device.to_dict()).map.unserved_hashes == set()
 
 
 def test_a_map_with_no_report_yet_is_due_while_idle() -> None:

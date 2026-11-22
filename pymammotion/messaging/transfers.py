@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 import betterproto2
 
 from pymammotion.proto import LubaMsg
-from pymammotion.transport.base import CommandTimeoutError
+from pymammotion.transport.base import CommandTimeoutError, FrameTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -116,18 +116,19 @@ async def _await_frame(
     field: str,
     envelope: str,
     timeout: float,
-    current_frame: int,
+    frame_number: int,
+    total: int = 0,
 ) -> Any:
-    """Await the next queued message and unwrap it, or raise ``CommandTimeoutError``."""
+    """Await the next queued message and unwrap it, or raise ``FrameTimeoutError`` naming *frame_number*."""
     try:
         msg = await asyncio.wait_for(queue.get(), timeout=timeout)
     except TimeoutError:
-        raise CommandTimeoutError(field, current_frame) from None
+        raise FrameTimeoutError(field, frame_number, total) from None
     frame = extract_frame(msg, field, envelope=envelope)
     if frame is None:
         # The collector already filtered on this field, so this means a malformed
         # frame slipped through — treat it as an interruption rather than crashing.
-        raise CommandTimeoutError(field, current_frame)
+        raise FrameTimeoutError(field, frame_number, total)
     return frame[1]
 
 
@@ -167,20 +168,18 @@ async def ack_stream(
         ``{current_frame: frame_value}``.
 
     Raises:
-        CommandTimeoutError: The device went quiet before the set was complete.
+        FrameTimeoutError: The device went quiet before the set was complete.
         ValueError: *field* is not a leaf of *envelope*.
 
     """
     require_leaf(field, envelope)
     frames: dict[int, Any] = {}
+    total = 0
     while True:
+        missing = next((n for n in range(1, total + 1) if n not in frames), len(frames) + 1)
         try:
             frame = await _await_frame(
-                queue,
-                field=field,
-                envelope=envelope,
-                timeout=timeout,
-                current_frame=len(frames) + 1,
+                queue, field=field, envelope=envelope, timeout=timeout, frame_number=missing, total=total
             )
         except CommandTimeoutError:
             if allow_empty and not frames:
@@ -221,13 +220,13 @@ async def indexed_fetch(
         envelope: ``LubaSubMsg`` member the frames arrive on.
 
     Raises:
-        CommandTimeoutError: The device didn't answer a request.
+        FrameTimeoutError: The device didn't answer a request.
         ValueError: *field* is not a leaf of *envelope*.
 
     """
     require_leaf(field, envelope)
     await request(0)
-    first = await _await_frame(queue, field=field, envelope=envelope, timeout=timeout, current_frame=1)
+    first = await _await_frame(queue, field=field, envelope=envelope, timeout=timeout, frame_number=1)
 
     total = total_of(first)
     if total == 0:
@@ -239,4 +238,6 @@ async def indexed_fetch(
     for index in range(1, total):
         _logger.debug("indexed_fetch(%s): requesting %d/%d", field, index + 1, total)
         await request(index)
-        yield await _await_frame(queue, field=field, envelope=envelope, timeout=timeout, current_frame=index + 1)
+        yield await _await_frame(
+            queue, field=field, envelope=envelope, timeout=timeout, frame_number=index + 1, total=total
+        )

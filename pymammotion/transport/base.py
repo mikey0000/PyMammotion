@@ -41,6 +41,18 @@ class CommandTimeoutError(TransportError):
         super().__init__(f"No response for '{expected_field}' after {attempts} attempt(s)")
 
 
+class FrameTimeoutError(CommandTimeoutError):
+    """A streamed transfer went quiet: *frame* (of *total*, when known) never arrived."""
+
+    def __init__(self, expected_field: str, frame: int | None = None, total: int = 0) -> None:
+        """Store the missing frame position, then format the message around it."""
+        super().__init__(expected_field, attempts=1)
+        self.frame = frame
+        self.total = total
+        position = "" if frame is None else f": frame {frame}{f' of {total}' if total else ''} never arrived"
+        self.args = (f"No response for '{expected_field}'{position}",)
+
+
 class CommandRejectedError(TransportError):
     """The device answered, but refused the command (e.g. a batch set acked with ``RES_FAILURE``)."""
 

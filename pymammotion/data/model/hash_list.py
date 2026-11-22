@@ -18,6 +18,8 @@ from pymammotion.utility.device_type import DeviceType
 from pymammotion.utility.mur_mur_hash import MurMurHashUtil
 
 if TYPE_CHECKING:
+    from collections.abc import Set as AbstractSet
+
     from pymammotion.data.model.location import LocationPoint
 
 #: ``todev_gethash`` sub_cmd whose list holds the current route's line hashes.
@@ -591,6 +593,10 @@ class HashList(DataClassORJSONMixin):
     #: was last built.  Used by ``geojson_needs_regeneration`` to short-circuit
     #: the expensive feature-walk when the hashlist hasn't changed.
     _geojson_hashlist_snapshot: frozenset[int] = field(default_factory=frozenset)
+
+    #: Hashes the last completed ``MapFetchSaga`` requested but the device never served.
+    #: Not persisted, so a restart gives them one more automatic attempt.
+    unserved_hashes: set[int] = field(default_factory=set, metadata=field_options(serialize="omit"))
 
     def __deepcopy__(self, memo: dict[int, Any]) -> HashList:
         """Deepcopy that shares the four ``generated_*_geojson`` dicts by reference.
@@ -1199,11 +1205,22 @@ class HashList(DataClassORJSONMixin):
         Returns False immediately when *bol_hash* is 0 (device has not yet
         reported a valid hash) or when ``root_hash_lists`` is empty.
         """
+        return self._is_synced_apart_from(bol_hash, frozenset())
+
+    def is_sync_settled(self, bol_hash: int) -> bool:
+        """Return True when synced, or when only hashes in ``unserved_hashes`` are missing.
+
+        Another automatic sync cannot fix a map in that state — the device already
+        declined those hashes against this same manifest — so it is not due one.
+        """
+        return self._is_synced_apart_from(bol_hash, self.unserved_hashes)
+
+    def _is_synced_apart_from(self, bol_hash: int, ignored: AbstractSet[int]) -> bool:
         if not bol_hash:
             return False
         if self.computed_bol_hash != bol_hash:
             return False
-        if self.find_incomplete_hashes(0):
+        if set(self.find_incomplete_hashes(0)) - ignored:
             return False
         area_name_hashes = {a.hash for a in self.area_name}
         return not area_name_hashes or area_name_hashes.issubset(set(self.area_root_hashlist))

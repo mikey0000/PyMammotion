@@ -287,12 +287,13 @@ class MowerDevice(Device):
         """Whether an automatic map sync should run: the map is stale, and no job is active or no map is held.
 
         A job re-hashes the map as it mows, so syncing waits for it to end (the app suspends its compare
-        while working too); a map never fetched is not left empty for the length of a job.  User-requested
-        syncs do not consult this.
+        while working too); a map never fetched is not left empty for the length of a job.  Hashes the last
+        sync could not get served keep the map unsynced but not due, until the manifest changes, so a
+        permanently silent hash cannot loop the sync.  User-requested syncs do not consult this.
         """
         locations = self.report_data.locations
         job_active = self.report_data.dev.sys_status in MOWING_ACTIVE_MODES
-        return (not job_active or not self.map.area) and not self.map.is_map_synced(
+        return (not job_active or not self.map.area) and not self.map.is_sync_settled(
             locations[0].bol_hash if locations else 0
         )
 

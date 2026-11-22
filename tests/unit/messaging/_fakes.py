@@ -18,7 +18,9 @@ class FakeHashListDevice:
     ``hash_lists`` maps each ``get_all_boundary_hash_list`` sub_cmd to its frames
     (one list of hash IDs per frame); a sub_cmd absent from it is answered with
     silence.  ``comm_types`` gives the ``type`` returned for each hash on
-    ``synchronize_hash_data``.  ``get_line_info_list`` is answered with one
+    ``synchronize_hash_data``; the first ``ignore_sync_requests[hash]`` requests for
+    a hash get silence, and ``sync_requests`` records every requested hash in order.
+    ``get_line_info_list`` is answered with one
     single-frame cover path per request, one packet per requested line, except the
     first ``ignore_line_requests`` requests, which get silence.  Every frame is
     applied to ``device_map`` before the broker sees it, standing in for the
@@ -38,6 +40,7 @@ class FakeHashListDevice:
         hash_lists: dict[int, list[list[int]]],
         *,
         comm_types: dict[int, int] | None = None,
+        ignore_sync_requests: dict[int, int] | None = None,
         ignore_line_requests: int = 0,
         route_path_hash: int = 1,
         hash_lists_after_route: dict[int, list[list[int]]] | None = None,
@@ -47,6 +50,8 @@ class FakeHashListDevice:
         self._map = device_map
         self._hash_lists = hash_lists
         self._comm_types = comm_types or {}
+        self._ignore_sync_requests = ignore_sync_requests or {}
+        self.sync_requests: list[int] = []
         self._streaming_sub_cmd: int | None = None
         self._route_path_hash = route_path_hash
         self._hash_lists_after_route = hash_lists_after_route
@@ -98,6 +103,9 @@ class FakeHashListDevice:
                 if current < total:
                     await self._emit_hash_frame(self._streaming_sub_cmd, current + 1)
             case ("sync_hash", hash_num):
+                self.sync_requests.append(hash_num)
+                if self.sync_requests.count(hash_num) <= self._ignore_sync_requests.get(hash_num, 0):
+                    return
                 await self._deliver(comm_data_frame(hash_num, type_code=self._comm_types[hash_num]))
             case ("line_info", hashes, transaction_id):
                 self.line_info_requests.append(hashes)

@@ -238,3 +238,19 @@ compare while working and re-checks the last reported hash once on resume.
 `invalidate_maps` no longer prunes geometry: while a route or dump list was held it
 wiped every cached area, so each sync re-fetched the whole map instead of the changed
 elements.
+
+## D17. A hash the device does not answer is deferred, not fatal to the sync
+
+`MapFetchSaga` re-sends `synchronize_hash_data` for an unanswered hash (3 sends in all,
+as the app re-sends rather than restarting), then moves on and completes with what
+arrived. Restarting the saga re-fetched the root list for one lost reply, and failing it
+hid every area that did arrive, because the map is only published on completion.
+
+- **The map stays unsynced:** deferred hashes are recorded in `HashList.unserved_hashes`
+  and `is_map_synced` stays False.
+- **Not due again until the manifest changes:** `map_sync_due` ignores unserved hashes,
+  because HA-Luba re-syncs every report interval while a sync is due and a hash the
+  device never serves would otherwise burn the send quota. A user's sync, a `bol_hash`
+  change or a restart (the field is not persisted) retries them.
+- **Silence is still a failure:** two hashes deferred in a row, or deferrals leaving no
+  areas, fail the run, so an absent device does not publish an empty map.

@@ -325,3 +325,33 @@ async def test_indexed_fetch_rejects_a_field_before_sending_any_request() -> Non
         ):
             pass
     assert requested == [], "a request was sent for a transfer that could never be read"
+
+
+@pytest.mark.parametrize(
+    ("received", "total", "expected"),
+    [
+        ([], 7, "frame 1 never arrived"),
+        ([1, 2, 3], 7, "frame 4 of 7 never arrived"),
+        ([1, 3], 3, "frame 2 of 3 never arrived"),
+    ],
+    ids=["before_the_first_frame", "mid_stream", "hole_behind_a_later_frame"],
+)
+async def test_ack_stream_timeout_names_the_frame_that_never_arrived(
+    received: list[int], total: int, expected: str
+) -> None:
+    """It used to pass the frame number as a retry count: "after 4 attempt(s)"."""
+    queue: asyncio.Queue = asyncio.Queue()
+    for current in received:
+        queue.put_nowait(_frame(current, total))
+
+    async def ack(_frame: Any) -> None:
+        return None
+
+    with pytest.raises(CommandTimeoutError) as exc_info:
+        await ack_stream(queue, field="toapp_get_commondata_ack", ack=ack, timeout=0.01)
+
+    assert str(exc_info.value) == f"No response for 'toapp_get_commondata_ack': {expected}"
+
+
+def test_a_retry_timeout_keeps_its_attempt_count_wording() -> None:
+    assert str(CommandTimeoutError("toapp_gethash_ack", 3)) == "No response for 'toapp_gethash_ack' after 3 attempt(s)"
