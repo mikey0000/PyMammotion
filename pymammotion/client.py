@@ -1133,18 +1133,7 @@ class MammotionClient(CloudAuthMixin):
         token_manager = acct_session.token_manager
 
         async def _on_aliyun_auth_failure() -> bool:
-            """Handle a 2043/460 bind rejection by refreshing the Aliyun session once.
-
-            ``refresh_aliyun_credentials`` covers both recoverable cases: an expired
-            iotToken, and a 2401 rejection of the IoT refreshToken (which it rebuilds
-            from the existing HTTP login's authCode chain — no password involved).
-
-            If that fails, the Aliyun session is unrenewable.  We do NOT escalate to
-            an email/password re-login: it hammers Aliyun while the account is very
-            likely already blocked, and it would tear down a perfectly good HTTP
-            login and Mammotion MQTT transport to fix a problem confined to Aliyun.
-            Returning False gives up on this transport alone.
-            """
+            """Refresh the Aliyun session once after a 2043/460 bind rejection; False gives this transport up."""
             if token_manager is None:
                 return False
             _logger.warning("Aliyun bind rejected — attempting targeted credential refresh")
@@ -1163,17 +1152,7 @@ class MammotionClient(CloudAuthMixin):
         transport.on_auth_failure = _on_aliyun_auth_failure
 
         async def _on_aliyun_fatal_auth(exc: Exception) -> None:
-            """Give up on the Aliyun transport; leave the rest of the account alone.
-
-            The refresh above already exhausted every recovery that does not require
-            the user.  Retrying on a timer cannot help — a rejected IoT refreshToken
-            does not become valid by waiting — which is why the previous
-            re-login-and-circuit-break cycle is gone.
-
-            Scope matters here: only this transport's mowers are signalled.  The HTTP
-            session, its cached credentials, and any Mammotion MQTT transport on the
-            same account stay up.
-            """
+            """Give up on the Aliyun transport alone; the login and any Mammotion MQTT transport stay up."""
             _logger.error("Aliyun transport auth unrecoverable for account %s: %s", acct_session.account_id, exc)
             transport.mark_unrecoverable_auth_failure()
             await self._signal_transport_unrecoverable(acct_session, TransportType.CLOUD_ALIYUN, exc)
@@ -1186,8 +1165,7 @@ class MammotionClient(CloudAuthMixin):
 
         transport.on_account_in_use_changed = _on_aliyun_account_in_use
 
-        # Keep the transport's bind token current on every proactive refresh so that
-        # reconnects after a network blip don't carry a stale iotToken.
+        # A reconnect must bind with the latest iotToken, not the one it was built with.
         if token_manager is not None:
             token_manager.on_aliyun_token_refreshed = transport.update_iot_token
         return transport
@@ -1211,23 +1189,13 @@ class MammotionClient(CloudAuthMixin):
             use_ssl=use_ssl,
         )
 
-        # Build a creds_refresher that uses the TokenManager to get a fresh
-        # credential set (host/client_id/username/jwt — not just the JWT, since a
-        # re-login can rotate client_id/username the broker binds the JWT to).
-        #   force=False → routine pre-connect check (refresh only if near expiry).
-        #   force=True  → full refresh after a broker auth rejection, refresh-token
-        #                 based and STRICTLY no login_v2 (Mammotion never re-logins).
-        # Both hold the TokenManager lock so concurrent refresh paths serialize.
-
+        # The whole credential set, not just the JWT: the broker binds it to client_id/username.
         async def _refresh_creds(force: bool) -> MQTTCredentials:
             if force:
                 return await token_manager.refresh_mqtt_credentials()
             return await token_manager.get_mammotion_mqtt_credentials()
 
-        # Invariant: the transport and its TokenManager MUST share one MammotionHTTP.
-        # If they diverge, a 401-driven token refresh updates a different login
-        # session than mqtt_invoke reads, producing a permanent 401 loop that ends in
-        # "Mammotion MQTT auth unrecoverable".  Warn loudly rather than fail silently.
+        # Diverging logins mean a 401 refresh never reaches mqtt_invoke: a permanent 401 loop.
         if token_manager.http is not mammotion_http:
             _logger.error(
                 "Mammotion transport for %s wired with a MammotionHTTP that differs from its "
@@ -1238,12 +1206,7 @@ class MammotionClient(CloudAuthMixin):
         transport = MQTTTransport(config, mammotion_http, token_manager, creds_refresher=_refresh_creds)
         self._wire_transport_callbacks(transport, acct_session.account_id)
 
-        # Mammotion MQTT never re-logins.  The transport already refreshed
-        # credentials in full and retried; if the broker still rejects, we give up:
-        # mark this account's Mammotion transport unrecoverable (which gates exactly
-        # the account's mowers-on-this-transport via active_transport()/is_usable)
-        # and signal them so the host can prompt re-auth.  Recovery is a fresh
-        # login by the user (HA reconfigure), not an automatic retry.
+        # The transport already refreshed in full and retried; give up on it, never re-login.
         async def _on_fatal_auth(exc: Exception) -> None:
             _logger.error(
                 "Mammotion MQTT auth unrecoverable for account %s — giving up on %s for its mowers: %s",
@@ -1559,14 +1522,11 @@ class MammotionClient(CloudAuthMixin):
         *,
         check_for_new_devices: bool,
     ) -> None:
-        """Restore an Aliyun cloud session and register all known devices.
+        """Add the Aliyun gateway and transport to the account's validated login, binding the listed devices.
 
-        The account's login session and TokenManager are already established by
-        ``restore_credentials``; this adds the Aliyun gateway and transport to them.
-        An Aliyun failure costs this transport only and never raises past here, short
-        of an account-level rejection: the listed mowers keep their handles, shown
-        unavailable, while the TokenManager retries a transient failure or marks a
-        refusal ``aliyun_unavailable``.
+        An Aliyun failure costs this transport only and raises nothing short of an
+        account-level rejection: the listed mowers keep handles, shown unavailable,
+        while the TokenManager retries a transient failure or gives up on a refusal.
         """
         mammotion_http = acct_session.mammotion_http
         if mammotion_http is None:
@@ -1582,26 +1542,16 @@ class MammotionClient(CloudAuthMixin):
             return
         acct_session.cloud_client = cloud_client
 
-        # Fetch the authoritative iot_id map from Mammotion's device-list API so that
-        # stale Aliyun binding iot_ids (e.g. for RTK base stations) are corrected.
-        owned_iot_id_map: dict[str, str] = {}
-        try:
-            owned_resp = await mammotion_http.get_user_device_list()
-            owned_iot_id_map = {d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id}
-        except _AUTH_REJECTED:
-            raise
-        except Exception:
-            _logger.warning("restore_credentials: failed to fetch device iot_id map (Aliyun restore)", exc_info=True)
+        # The owned list's iot_ids correct stale Aliyun binding ones (e.g. RTK base stations).
+        owned_iot_id_map = _owned_iot_id_map(await _fetch_owned_devices(mammotion_http))
 
         discovery_failed = False
         # A rebuilt session and its listing are seconds old; only a cached one needs checking.
         if check_for_new_devices and not rebuilt:
             try:
-                # A cold restore cannot trust the cached iotToken even inside its lifetime:
-                # another client signing in rotates it, and the listing would 401.
+                # Another client signing in rotates the cached iotToken, even inside its lifetime.
                 await token_manager.refresh_aliyun_credentials()
-                # Replaces the cached listing: a device unbound from Aliyun since the
-                # cache was written must not be bound again from the stale copy.
+                # A device unbound since the cache was written must not be bound from the stale listing.
                 await cloud_client.list_binding_by_account()
             except Exception:
                 if token_manager.reauth_required is not None:
@@ -1721,50 +1671,57 @@ class MammotionClient(CloudAuthMixin):
         return list(listing.data.data) if listing.data is not None else []
 
     async def _restore_mammotion_mqtt(self, account: str, acct_session: AccountSession) -> list[DeviceInfo] | None:
-        """Restore a Mammotion MQTT session and register all known devices.
+        """Connect the Mammotion MQTT transport from the validated login's cached credentials and records.
 
         Returns the account's owned devices, or ``None`` when they could not be
         fetched, so the bootstrap that follows does not fetch them again.
-
-        Reads the login session, MQTT credentials and device records off the account's
-        :class:`MammotionHTTP` — ``restore_credentials`` has already hydrated it from
-        the same cache and validated it, so there is nothing to decode here and no
-        second login session to keep in step.
         """
         mammotion_http = acct_session.mammotion_http
         if mammotion_http is None:
             _logger.error(
                 "_restore_mammotion_mqtt: no login session for %s — skipping the Mammotion transport", account
             )
-            return
+            return None
+        if not (mqtt_creds := mammotion_http.mqtt_credentials):
+            return None
 
         cached_records = mammotion_http.device_records
+        token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
+        transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http, acct_session, token_manager)
+        await transport.connect()
+        acct_session.mammotion_transport = transport
 
-        if mqtt_creds := mammotion_http.mqtt_credentials:
-            token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
-            transport = self._setup_mammotion_transport(mqtt_creds, mammotion_http, acct_session, token_manager)
-            await transport.connect()
-            acct_session.mammotion_transport = transport
-
-            # The authoritative iot_id map corrects stale cached iot_ids.
-            owned_devices = await _fetch_owned_devices(mammotion_http)
-            owned_iot_id_map = _owned_iot_id_map(owned_devices)
-            if cached_records is None:
-                return owned_devices
-            if owned_devices is not None:
-                await self._drop_unowned_cached_records(
-                    cached_records, {d.device_name for d in owned_devices if d.device_name}
-                )
-
-            ua = acct_session.user_account
-            for record in cached_records.records:
-                if record.device_name:
-                    iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                    await self._register_mammotion_device(
-                        record, transport, ua, iot_id_override, acct_session=acct_session
-                    )
+        owned_devices = await _fetch_owned_devices(mammotion_http)
+        if cached_records is None:
             return owned_devices
-        return None
+        if owned_devices is not None:
+            await self._drop_unowned_cached_records(
+                cached_records, {d.device_name for d in owned_devices if d.device_name}
+            )
+        await self._register_mammotion_records(
+            acct_session, transport, cached_records.records, _owned_iot_id_map(owned_devices)
+        )
+        return owned_devices
+
+    async def _register_mammotion_records(
+        self,
+        acct_session: AccountSession,
+        transport: MQTTTransport,
+        records: list[DeviceRecord],
+        owned_iot_id_map: dict[str, str],
+        *,
+        skip_ids: set[str] | None = None,
+    ) -> None:
+        """Register each named record on *transport* unless in *skip_ids*, preferring the owned list's iot_id."""
+        for record in records:
+            if record.device_name and record.device_name not in (skip_ids or ()):
+                await self._register_mammotion_device(
+                    record,
+                    transport,
+                    acct_session.user_account,
+                    owned_iot_id_map.get(record.device_name, ""),
+                    acct_session=acct_session,
+                )
 
     async def _drop_unowned_cached_records(self, cached_records: DeviceRecords, owned_names: set[str]) -> None:
         """Drop cached owned records the account's fresh owned list no longer has.
@@ -1849,12 +1806,9 @@ class MammotionClient(CloudAuthMixin):
                     )
             return
 
-        ua = acct_session.user_account
-        already_known = skip_ids or set()
-        for record in mammotion_records:
-            if record.device_name and record.device_name not in already_known:
-                iot_id_override = owned_iot_id_map.get(record.device_name, "")
-                await self._register_mammotion_device(record, transport, ua, iot_id_override, acct_session=acct_session)
+        await self._register_mammotion_records(
+            acct_session, transport, mammotion_records, owned_iot_id_map, skip_ids=skip_ids
+        )
 
     async def _rebuild_mammotion_transport(self, acct_session: AccountSession) -> None:
         """Replace the account's given-up Mammotion MQTT transport and re-attach its devices."""
@@ -1866,16 +1820,9 @@ class MammotionClient(CloudAuthMixin):
         transport = await self._ensure_mammotion_transport(acct_session.account_id, mammotion_http, acct_session)
         if transport is None or (records := mammotion_http.device_records) is None:
             return
-        owned_iot_id_map = _owned_iot_id_map(mammotion_http.device_info)
-        for record in records.records:
-            if record.device_name:
-                await self._register_mammotion_device(
-                    record,
-                    transport,
-                    acct_session.user_account,
-                    owned_iot_id_map.get(record.device_name, ""),
-                    acct_session=acct_session,
-                )
+        await self._register_mammotion_records(
+            acct_session, transport, records.records, _owned_iot_id_map(mammotion_http.device_info)
+        )
 
     async def _drop_unlisted_mammotion_devices(self, acct_session: AccountSession, listed: set[str]) -> None:
         """Drop Mammotion MQTT devices the account's fresh device page no longer lists.
