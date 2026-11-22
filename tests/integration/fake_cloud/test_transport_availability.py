@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from pymammotion.aliyun.exceptions import CloudSetupError
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import ReLoginRequiredError, TransportType
 from tests._helpers import wait_until
@@ -107,7 +108,7 @@ async def test_a_refused_retry_raises_and_leaves_the_transport_given_up(
     await _give_up_aliyun_at_runtime(fake_cloud, client)
     await wait_until(lambda: events)
 
-    with pytest.raises(Exception):  # noqa: PT011 — any refusal; the state below is the assertion
+    with pytest.raises(CloudSetupError):
         await client.retry_transport(scenario.account, _ALIYUN)
 
     assert set(client.unavailable_transports(scenario.account)) == {_ALIYUN}

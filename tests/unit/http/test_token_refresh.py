@@ -17,14 +17,19 @@ password on its own.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 from contextlib import asynccontextmanager
+import inspect
+import textwrap
 import time
 from unittest.mock import AsyncMock, MagicMock
 
 from aiohttp import ClientError, ContentTypeError
 import pytest
 
+from pymammotion.auth.token_manager import TokenManager
+from pymammotion.client import MammotionClient
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.transport.base import ReLoginRequiredError
 from tests._helpers import encode_jwt
@@ -288,9 +293,6 @@ def test_no_refresh_helper_can_reach_login_v2() -> None:
     Checked against the AST rather than the source text so that prose explaining
     the policy does not count as a violation of it.
     """
-    import ast
-    import inspect
-    import textwrap
 
     def _calls(func: object) -> set[str]:
         tree = ast.parse(textwrap.dedent(inspect.getsource(func)))  # type: ignore[arg-type]
@@ -373,12 +375,7 @@ def test_no_restore_or_renewal_path_can_reach_a_password_login() -> None:
     cache held no usable login or the server refused it — one silent password grant per
     restart, and one per host retry, with a password the server might already reject.
     """
-    import ast
-    import inspect
-    import textwrap
 
-    from pymammotion.auth.token_manager import TokenManager
-    from pymammotion.client import MammotionClient
 
     password_logins = {"login_v2", "login_by_email", "login", "login_and_initiate_cloud"}
 

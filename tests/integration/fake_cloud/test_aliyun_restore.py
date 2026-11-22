@@ -238,6 +238,7 @@ async def test_a_transient_fault_restoring_the_cached_aliyun_session_does_not_ab
     try:
         await client.restore_credentials(scenario.account, scenario.password, cached)
 
+        assert scenario.counters.get("aliyun_check_session", 0) >= 1, "the fault was never hit"
         await wait_until(lambda: aliyun_transport(client, scenario).is_connected)
         mammotion_mower = client.mower(scenario.device.device_name)
         assert mammotion_mower is not None
