@@ -284,6 +284,10 @@ class MammotionHTTP:
         #: leaves the cached refresh token dead, forcing a password re-login on
         #: the next restart.
         self.on_login_refreshed: Callable[[], Awaitable[None]] | None = None
+        #: Called with the reason the first time this login is marked dead, from
+        #: whichever endpoint found out.  TokenManager wires it so the account is
+        #: quiesced and the host prompted at once, not at the next scheduled refresh.
+        self.on_reauth_required: Callable[[str], object] | None = None
 
         # Add this method to generate a 10-digit random number
         def get_10_random() -> str:
@@ -521,6 +525,8 @@ class MammotionHTTP:
         """
         if self._reauth_required is None:
             self._reauth_required = reason
+            if self.on_reauth_required is not None:
+                self.on_reauth_required(reason)
 
     async def ensure_token_valid(self, caller: str = "") -> None:
         """Refresh the OAuth access token if it expires within the next 5 minutes.

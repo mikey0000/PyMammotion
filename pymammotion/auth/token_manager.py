@@ -236,6 +236,7 @@ class TokenManager:
         # refreshes that never pass through this manager) into our snapshot and
         # persist them — see _on_http_login_refreshed.
         mammotion_http.on_login_refreshed = self._on_http_login_refreshed
+        mammotion_http.on_reauth_required = self._mark_reauth_required
         if cloud_gateway is not None:
             self.attach_cloud_gateway(cloud_gateway)
 

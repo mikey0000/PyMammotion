@@ -8,14 +8,15 @@ no invoke calls, decorated endpoints failing fast — and the host is told once.
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import AsyncMock
 
 import pytest
 
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import NoTransportAvailableError, ReLoginRequiredError, TransportType
-from tests.fakeserver.cloud import FakeMammotionCloud
 from tests._helpers import advance_real_time, wait_until
+from tests.fakeserver.cloud import FakeMammotionCloud
 
 from ._helpers import counts, log_in_aliyun_account
 
@@ -132,3 +133,28 @@ async def test_session_death_on_a_hybrid_account_silences_the_aliyun_side_too(
     await advance_real_time(0.8)
     assert counts(scenario, *_ALIYUN_TRAFFIC) == after_death, "cloud traffic after account death"
     assert client.to_cache() == {}
+
+
+@pytest.mark.regression
+async def test_a_refresh_rejected_inside_a_decorated_endpoint_tells_the_host_at_once(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """Only MammotionHTTP remembered the rejection; the host heard nothing until the manager next refreshed.
+
+    The scheduler sleeps until the next credential falls due, so that could be hours,
+    with every cloud call failing in the meantime and no re-auth prompt shown.
+    """
+    scenario = fake_cloud.scenario
+    await client.login_and_initiate_cloud(scenario.account, scenario.password)
+    on_dead = AsyncMock()
+    client.on_unrecoverable_auth_error = on_dead
+    http = client.mammotion_http
+    assert http is not None
+    scenario.revoke_refresh_token()
+    http.expires_in = time.time() + 60  # inside the refresh lead, so the decorator refreshes first
+
+    with pytest.raises(ReLoginRequiredError):
+        await http.get_user_device_list()
+
+    assert client.reauth_required is not None
+    await wait_until(lambda: on_dead.await_count == 1, message="the host was never told")
