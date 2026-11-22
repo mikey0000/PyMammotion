@@ -272,9 +272,7 @@ class CloudAuthMixin:
 
         """
         given_up = self.unavailable_transports(account)
-        # Tear the old session down locally but do NOT revoke it: login_v2 below
-        # supersedes it server-side regardless, and revoking first would kill the
-        # credentials the host still has cached before their replacement exists.
+        # Not revoked: login_v2 supersedes it, and revoking would kill the host's cached credentials first.
         await self._sign_out_existing_session(account, revoke=False)
         mammotion_http = MammotionHTTP(session=session, ha_version=self._ha_version)
         login_resp = await mammotion_http.login_v2(account, password)
@@ -287,10 +285,7 @@ class CloudAuthMixin:
         device_page = await _fetch_mammotion_device_page(mammotion_http)
         mammotion_records = (device_page.records if device_page else []) or []
 
-        # Build an authoritative device_name→iot_id map from /device-server/v1/device/list.
-        # This endpoint returns the canonical Mammotion iot_id for every owned device and
-        # is used to correct stale or wrong iot_ids that may appear in the Aliyun binding
-        # list or the Mammotion device-page records (particularly for RTK base stations).
+        # The owned list's iot_ids are canonical; Aliyun bindings and device-page records can be stale.
         owned_iot_id_map = _owned_iot_id_map(owned_devices)
 
         acct_session = AccountSession(
@@ -302,33 +297,9 @@ class CloudAuthMixin:
         acct_session.user_account = self._extract_user_account(mammotion_http)
         token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
 
-        aliyun_error: Exception | None = None
-        cloud_client: CloudIOTGateway | None = None
-        # The app starts its Aliyun login from this code alone (IOTConnectViewModel.iotLogin).
-        if (login_info := mammotion_http.login_info) is not None and login_info.authorization_code:
-            try:
-                cloud_client = await self._connect_aliyun_for_login(token_manager)
-            except _AUTH_REJECTED:
-                raise
-            except Exception as exc:
-                # A blip is raised so the host retries the login; only a refusal may leave a partial one.
-                if is_transient_network_error(exc):
-                    raise
-                _logger.warning("login: Aliyun setup failed for %s", account, exc_info=True)
-                aliyun_error = exc
-
+        cloud_client, aliyun_error = await self._login_aliyun(account, token_manager)
         if cloud_client is not None:
-            acct_session.cloud_client = cloud_client
-            al_transport = self._setup_aliyun_transport(cloud_client, acct_session)
-            acct_session.aliyun_transport = al_transport
-            ua = acct_session.user_account
-            for device in cloud_client.devices_by_account_response.data.data:  # type: ignore
-                if device.device_name:
-                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                    await self._register_aliyun_device(
-                        device.device_name, iot_id, al_transport, ua, device.product_key, acct_session=acct_session
-                    )
-            await al_transport.connect()
+            await self._connect_login_aliyun_transport(acct_session, cloud_client, owned_iot_id_map)
 
         if mammotion_records:
             if aliyun_error is not None:
@@ -345,6 +316,46 @@ class CloudAuthMixin:
         # The old session's give-ups went with it; tell the host which this login cured.
         for transport_type in given_up.keys() - token_manager.unavailable_transports.keys():
             await self._relay_transport_availability(acct_session, transport_type, None)
+
+    async def _login_aliyun(
+        self, account: str, token_manager: TokenManager
+    ) -> tuple[CloudIOTGateway | None, Exception | None]:
+        """Establish the login's Aliyun session: the gateway, or the refusal that leaves the login partial.
+
+        A transient failure is raised so the host retries the whole login.
+        """
+        # The app starts its Aliyun login from this code alone (IOTConnectViewModel.iotLogin).
+        if (login_info := token_manager.http.login_info) is None or not login_info.authorization_code:
+            return None, None
+        try:
+            return await self._connect_aliyun_for_login(token_manager), None
+        except _AUTH_REJECTED:
+            raise
+        except Exception as exc:
+            if is_transient_network_error(exc):
+                raise
+            _logger.warning("login: Aliyun setup failed for %s", account, exc_info=True)
+            return None, exc
+
+    async def _connect_login_aliyun_transport(
+        self, acct_session: AccountSession, cloud_client: CloudIOTGateway, owned_iot_id_map: dict[str, str]
+    ) -> None:
+        """Bind the login's Aliyun devices to a new transport and connect it, even with none bound."""
+        acct_session.cloud_client = cloud_client
+        transport = self._setup_aliyun_transport(cloud_client, acct_session)
+        acct_session.aliyun_transport = transport
+        for device in cloud_client.devices_by_account_response.data.data:  # type: ignore
+            if device.device_name:
+                iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                await self._register_aliyun_device(
+                    device.device_name,
+                    iot_id,
+                    transport,
+                    acct_session.user_account,
+                    device.product_key,
+                    acct_session=acct_session,
+                )
+        await transport.connect()
 
     @staticmethod
     async def _connect_aliyun_for_login(token_manager: TokenManager) -> CloudIOTGateway:
@@ -442,33 +453,11 @@ class CloudAuthMixin:
                 retry rather than treat this as an auth failure.
 
         """
-        # Get or create the session for this account
-        acct_session = self._account_registry.get(account)
-        if acct_session is None:
-            acct_session = AccountSession(account_id=account, email=account, password=password)
-            await self._account_registry.register(acct_session)
-        else:
-            acct_session.password = password
+        acct_session = await self._restore_account_session(account, password)
+        mammotion_http = self._restore_cached_login(account, password, cached_data, session)
 
-        mammotion_http = MammotionHTTP.from_cache(
-            cached_data, account, password, session=session, ha_version=self._ha_version
-        )
-        if mammotion_http is None:
-            reason = (
-                f"no usable login in the cached data (mammotion_data "
-                f"{'present but undecodable' if 'mammotion_data' in cached_data else 'missing'})"
-            )
-            _logger.warning("restore_credentials: %s for %s — the user must log in", reason, account)
-            raise CachedLoginUnusableError(account, reason)
-
-        # Attach the session and its TokenManager BEFORE validating.  Validation can
-        # rotate the tokens (ensure_token_valid refreshes near expiry), and the server
-        # invalidates the old refresh token the moment a rotation succeeds — so a
-        # rotation that isn't persisted strands the account: the cache keeps replaying a
-        # spent refresh token and every later attempt comes back 40102 "Refresh token
-        # has expired" on credentials that look perfectly fresh.  Only TokenManager wires
-        # MammotionHTTP.on_login_refreshed to the host's persistence callback, so it has
-        # to exist before the first refresh can happen.
+        # Wired before validating: validation may rotate the refresh token, and only the
+        # TokenManager persists a rotation — an unpersisted one strands the account.
         acct_session.mammotion_http = mammotion_http
         acct_session.user_account = self._extract_user_account(mammotion_http)
         token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
@@ -484,27 +473,56 @@ class CloudAuthMixin:
         if "mammotion_mqtt" in cached_data and "mammotion_device_records" in cached_data:
             owned_devices = await self._restore_mammotion_mqtt(account, acct_session)
 
-        # Accept pending shares, check for new post-2025 devices, and bootstrap/extend the
-        # Mammotion MQTT transport as needed.  _bootstrap_mammotion_mqtt handles both
-        # "no transport yet" (fresh credential fetch + connect) and "transport already
-        # connected" (register only devices not in skip_ids) transparently.
-        if check_for_new_devices and acct_session.mammotion_http is not None:
-            try:
-                if owned_devices is None:
-                    owned_devices = await _fetch_owned_devices(acct_session.mammotion_http)
-                await self._bootstrap_mammotion_mqtt(
-                    account,
-                    acct_session.mammotion_http,
-                    acct_session,
-                    _owned_iot_id_map(owned_devices),
-                    skip_ids=set(acct_session.device_ids),
-                )
-            except _AUTH_REJECTED:
-                raise
-            except Exception:
-                _logger.warning("restore_credentials: Mammotion MQTT bootstrap failed", exc_info=True)
+        if check_for_new_devices:
+            await self._restore_new_mammotion_devices(account, acct_session, owned_devices)
 
         self._start_token_refresh(acct_session)
+
+    async def _restore_account_session(self, account: str, password: str) -> AccountSession:
+        """Return the account's registered session, registering a new one if it has none."""
+        if (acct_session := self._account_registry.get(account)) is not None:
+            acct_session.password = password
+            return acct_session
+        acct_session = AccountSession(account_id=account, email=account, password=password)
+        await self._account_registry.register(acct_session)
+        return acct_session
+
+    def _restore_cached_login(
+        self, account: str, password: str, cached_data: dict[str, Any], session: ClientSession | None
+    ) -> MammotionHTTP:
+        """Rebuild the cached HTTP login, or raise :class:`CachedLoginUnusableError` when the cache has none."""
+        mammotion_http = MammotionHTTP.from_cache(
+            cached_data, account, password, session=session, ha_version=self._ha_version
+        )
+        if mammotion_http is None:
+            reason = (
+                f"no usable login in the cached data (mammotion_data "
+                f"{'present but undecodable' if 'mammotion_data' in cached_data else 'missing'})"
+            )
+            _logger.warning("restore_credentials: %s for %s — the user must log in", reason, account)
+            raise CachedLoginUnusableError(account, reason)
+        return mammotion_http
+
+    async def _restore_new_mammotion_devices(
+        self, account: str, acct_session: AccountSession, owned_devices: list[DeviceInfo] | None
+    ) -> None:
+        """Register Mammotion MQTT devices added since the cache was written, building the transport if needed."""
+        if (mammotion_http := acct_session.mammotion_http) is None:
+            return
+        try:
+            if owned_devices is None:
+                owned_devices = await _fetch_owned_devices(mammotion_http)
+            await self._bootstrap_mammotion_mqtt(
+                account,
+                mammotion_http,
+                acct_session,
+                _owned_iot_id_map(owned_devices),
+                skip_ids=set(acct_session.device_ids),
+            )
+        except _AUTH_REJECTED:
+            raise
+        except Exception:
+            _logger.warning("restore_credentials: Mammotion MQTT bootstrap failed", exc_info=True)
 
     @staticmethod
     def _start_token_refresh(session: AccountSession) -> None:
