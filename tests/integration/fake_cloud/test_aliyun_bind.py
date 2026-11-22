@@ -1,4 +1,4 @@
-"""Aliyun MQTT bind flow against the live fake broker.
+"""Aliyun MQTT bind flow against the live fake broker, for the transport alone and through the client.
 
 The transport hard-requires TLS against the bundled Aliyun CA, so these tests
 patch ``get_ssl_context`` to None — the fake broker listens in plaintext.
@@ -11,12 +11,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pymammotion.client import MammotionClient
 from pymammotion.transport import aliyun_mqtt
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import ReLoginRequiredError
 from tests.fakeserver.cloud import FakeMammotionCloud
 from tests._helpers import advance_real_time
 
+from ._helpers import aliyun_transport, counts, make_aliyun_account
 from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -132,3 +134,36 @@ async def test_bind_2152_account_in_use_retries_until_the_lock_is_released(
         assert fatal.await_count == 0
     finally:
         await transport.disconnect()
+
+
+async def test_account_lock_at_login_is_reported_to_the_host_and_waited_out_without_auth_traffic(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The full client flow for a held lock: the host hears both edges and no credential is touched."""
+    monkeypatch.setattr(aliyun_mqtt, "ACCOUNT_IN_USE_RETRY_SEC", 0.1)
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario)
+    scenario.bind_reply_code = 2152
+    changes: list[tuple[str, bool]] = []
+
+    async def _on_change(account_id: str, held: bool) -> None:
+        changes.append((account_id, held))
+
+    client.on_account_in_use_changed = _on_change
+    await client.login_and_initiate_cloud(scenario.account, scenario.password)
+    await wait_for(lambda: changes == [(scenario.account, True)])
+    await fake_cloud.baseline_counters()
+    await wait_for(lambda: scenario.counters.get("aliyun_binds", 0) >= 2)  # it keeps retrying while held
+
+    scenario.bind_reply_code = 200
+    await wait_for(lambda: changes == [(scenario.account, True), (scenario.account, False)])
+    await wait_for(lambda: aliyun_transport(client, scenario).is_connected)
+    assert counts(scenario, "password_grants", "refresh_grants", "auth_code_fetches", "aliyun_check_session", "aliyun_oauth") == {
+        "password_grants": 0,
+        "refresh_grants": 0,
+        "auth_code_fetches": 0,
+        "aliyun_check_session": 0,
+        "aliyun_oauth": 0,
+    }
+    assert client.token_manager is not None
+    assert client.token_manager.aliyun_unavailable is None

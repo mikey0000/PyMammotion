@@ -13,10 +13,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pymammotion.client import MammotionClient
-from pymammotion.transport.base import NoTransportAvailableError, ReLoginRequiredError
+from pymammotion.transport.base import NoTransportAvailableError, ReLoginRequiredError, TransportType
 from tests.fakeserver.cloud import FakeMammotionCloud
 from tests._helpers import advance_real_time
 
+from ._helpers import counts, log_in_aliyun_account
 from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -88,3 +89,46 @@ async def test_exactly_one_refresh_attempt_for_a_burst_of_dead_sends(
     # One rejection is terminal; the stale-token dedup and the terminal flags
     # must keep the total refresh spend at exactly one for the whole burst.
     assert scenario.counters.get("refresh_grants", 0) == refresh_before + 1
+
+
+_ALIYUN_TRAFFIC = (
+    "password_grants",
+    "refresh_grants",
+    "auth_code_fetches",
+    "aliyun_check_session",
+    "aliyun_oauth",
+    "aliyun_invokes",
+    "aliyun_binds",
+    "aliyun_mqtt_connects",
+)
+
+
+async def test_session_death_on_a_hybrid_account_silences_the_aliyun_side_too(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """A dead HTTP login takes the Aliyun session it minted down with it, without a password grant."""
+    scenario = fake_cloud.scenario
+    await log_in_aliyun_account(fake_cloud, client, hybrid=True)
+    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    told: list[str] = []
+
+    async def _on_dead(account_id: str, *_: object) -> None:
+        told.append(account_id)
+
+    client.on_unrecoverable_auth_error = _on_dead
+    mammotion = client.mower(scenario.device.device_name)
+    assert mammotion is not None
+    transport = mammotion.get_transport(TransportType.CLOUD_MAMMOTION)
+    assert transport is not None
+
+    scenario.expire_session()
+    with pytest.raises(NoTransportAvailableError):
+        await transport.send(b"\x08\x01", iot_id=scenario.device.iot_id)
+
+    await wait_for(lambda: told == [scenario.account])
+    await wait_for(lambda: len(fake_cloud.aliyun_broker.sessions) == 0)
+    after_death = counts(scenario, *_ALIYUN_TRAFFIC)
+    assert after_death["password_grants"] == 0
+    await advance_real_time(0.8)
+    assert counts(scenario, *_ALIYUN_TRAFFIC) == after_death, "cloud traffic after account death"
+    assert client.to_cache() == {}
