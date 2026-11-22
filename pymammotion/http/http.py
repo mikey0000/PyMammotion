@@ -1046,17 +1046,22 @@ class MammotionHTTP:
         login_info = self._require_login_info
         login_info.authorization_code = data["data"].get("code", login_info.authorization_code)
         if (access_token := data["data"].get("accessToken")) and access_token != login_info.access_token:
-            _LOGGER.debug(
-                "fetch_authorization_token: access token rotated %s -> %s",
-                _token_fingerprint(login_info.access_token),
-                _token_fingerprint(access_token),
-            )
-            login_info.access_token = access_token
-            self._headers["Authorization"] = f"Bearer {access_token}"
-            if self._response is not None:
-                self.response = self._response  # re-derives expires_in and jwt_info from the new token
-            await self._fire_login_refreshed()
+            await self._adopt_rotated_access_token(access_token)
         return Response.from_dict(data)
+
+    async def _adopt_rotated_access_token(self, access_token: str) -> None:
+        """Switch to an access token the server rotated in a reply, with its own expiry, and persist it."""
+        login_info = self._require_login_info
+        _LOGGER.debug(
+            "fetch_authorization_token: access token rotated %s -> %s",
+            _token_fingerprint(login_info.access_token),
+            _token_fingerprint(access_token),
+        )
+        login_info.access_token = access_token
+        self._headers["Authorization"] = f"Bearer {access_token}"
+        if self._response is not None:
+            self.response = self._response  # re-derives expires_in and jwt_info from the new token
+        await self._fire_login_refreshed()
 
     @refresh_token_decorator
     async def pair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:
