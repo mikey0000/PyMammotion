@@ -225,7 +225,10 @@ restore_credentials ──────┤─> MammotionHTTP  ──> validate_lo
 
 An Aliyun session is minted from the HTTP login by the authCode chain, which runs
 in one place: `TokenManager.establish_aliyun` (login, restore rebuild and the
-runtime 2401 rebuild all call it).
+runtime 2401 rebuild all call it). The manager owns the session it attaches: it
+adopts it at once (so the scheduler renews it), and `CloudIOTGateway.on_session_refreshed`
+tells it of every renewal, the gateway's in-band ones included, so a new iotToken
+reaches the transport's next bind and the host's cache.
 
 Three renewal mechanisms, all clock-driven, one task per account that *sleeps
 until* the earliest credential enters its lead window — it does not poll:

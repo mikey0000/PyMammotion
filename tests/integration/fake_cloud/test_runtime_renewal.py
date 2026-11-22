@@ -138,3 +138,32 @@ async def test_expiring_iot_token_is_renewed_in_band_by_the_next_command(
         "aliyun_oauth": 0,
         "aliyun_check_session": 1,
     }
+
+
+@pytest.mark.regression
+async def test_an_in_band_iot_token_renewal_reaches_the_transport_and_the_cache(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """The gateway renewed its own session inside a send, out of the TokenManager's sight.
+
+    Nothing was persisted, so a restart restored the token it replaced, and the transport
+    kept binding with the old one on every reconnect.
+    """
+    scenario = fake_cloud.scenario
+    scenario.access_token_ttl = 4 * 86400
+    await log_in_aliyun_account(fake_cloud, client)
+    persisted = record_persisted(client)
+    transport = aliyun_transport(client, scenario)
+    old_token = client.to_cache()["session_data"].data.iotToken
+
+    with time_machine.travel(time.time() + scenario.iot_token_ttl - 1800, tick=False):
+        await transport.send(b"\x08\x01", iot_id=scenario.aliyun_device.iot_id)
+
+    renewed = client.to_cache()["session_data"].data.iotToken
+    assert renewed != old_token
+    assert persisted, "the renewed session was never handed to the host to persist"
+    assert persisted[-1]["session_data"].data.iotToken == renewed
+    binds = len(fake_cloud.bind_requests)
+    fake_cloud.aliyun_broker.drop_all_clients()
+    await wait_until(lambda: len(fake_cloud.bind_requests) > binds and transport.is_connected)
+    assert fake_cloud.bind_requests[-1]["params"]["iotToken"] == renewed

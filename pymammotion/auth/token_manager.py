@@ -178,7 +178,7 @@ class TokenManager:
         """
         self._account_id = account_id
         self._http: MammotionHTTP = mammotion_http
-        self._cloud_gateway: CloudIOTGateway | None = cloud_gateway
+        self._cloud_gateway: CloudIOTGateway | None = None
         self._http_creds: HTTPCredentials | None = None
         self._aliyun_creds: AliyunCredentials | None = None
         self._mqtt_creds: MQTTCredentials | None = None
@@ -221,6 +221,8 @@ class TokenManager:
         # refreshes that never pass through this manager) into our snapshot and
         # persist them — see _on_http_login_refreshed.
         mammotion_http.on_login_refreshed = self._on_http_login_refreshed
+        if cloud_gateway is not None:
+            self.attach_cloud_gateway(cloud_gateway)
 
     @property
     def http(self) -> MammotionHTTP:
@@ -246,8 +248,14 @@ class TokenManager:
         single manager (and its running refresh scheduler, terminal flags, and the
         transports holding a reference to it) rather than replacing it with a second
         one built around the gateway.
+
+        The manager owns the gateway's session from here on: it adopts the session now
+        so the scheduler renews it, and hears of every later renewal — the gateway's
+        in-band ones included — to hand the new iotToken to the transport and persist it.
         """
         self._cloud_gateway = cloud_gateway
+        cloud_gateway.on_session_refreshed = self._sync_aliyun_session
+        self._adopt_aliyun_session()
 
     async def initialize(
         self,
@@ -805,19 +813,9 @@ class TokenManager:
                         f"Aliyun session rebuild failed after refreshToken rejection: {rebuild_exc}"
                     ) from session_exc
 
-            session = self._cloud_gateway.session_by_authcode_response
-            session_data = session.data  # type: ignore
-            if session_data is None:
+            if (session := self._cloud_gateway.session_by_authcode_response) is None or session.data is None:
                 raise ReLoginRequiredError(self._account_id, "Aliyun session data is None after refresh")
-            issued_at = self._cloud_gateway._iot_token_issued_at  # noqa: SLF001
-            self._aliyun_creds = AliyunCredentials(
-                iot_token=session_data.iotToken,
-                iot_token_expires_at=issued_at + session_data.iotTokenExpire,
-                refresh_token=session_data.refreshToken,
-                refresh_token_expires_at=issued_at + session_data.refreshTokenExpire,
-            )
-            if self.on_aliyun_token_refreshed is not None:
-                self.on_aliyun_token_refreshed(session_data.iotToken)
+            await self._sync_aliyun_session()
         except ReLoginRequiredError:
             self._adopt_http_reauth()
             raise
@@ -829,6 +827,35 @@ class TokenManager:
             if is_transient_network_error(exc):
                 raise
             raise self._mark_aliyun_unavailable(str(exc)) from exc
+
+    def _adopt_aliyun_session(self) -> AliyunCredentials | None:
+        """Snapshot the attached gateway's current session as this manager's Aliyun credentials."""
+        if self._cloud_gateway is None or (session := self._cloud_gateway.session_by_authcode_response) is None:
+            return None
+        if (data := session.data) is None:
+            return None
+        issued_at = self._cloud_gateway._iot_token_issued_at  # noqa: SLF001
+        self._aliyun_creds = AliyunCredentials(
+            iot_token=data.iotToken,
+            iot_token_expires_at=issued_at + data.iotTokenExpire,
+            refresh_token=data.refreshToken,
+            refresh_token_expires_at=issued_at + data.refreshTokenExpire,
+        )
+        return self._aliyun_creds
+
+    async def _sync_aliyun_session(self) -> None:
+        """Adopt the gateway's session; a new iotToken goes to the transport's next bind and is persisted.
+
+        Lock-free and idempotent: it runs both as the gateway's renewal hook (inside
+        refreshes that already hold ``self._lock``) and after a refresh made here.
+        """
+        previous = self._aliyun_creds
+        if (creds := self._adopt_aliyun_session()) is None:
+            return
+        if previous is not None and previous.iot_token == creds.iot_token:
+            return
+        if self.on_aliyun_token_refreshed is not None:
+            self.on_aliyun_token_refreshed(creds.iot_token)
         await self._fire_credentials_updated()
 
     async def establish_aliyun(
@@ -873,7 +900,8 @@ class TokenManager:
         ):
             msg = "Aliyun setup incomplete — no AEP, region or session response"
             raise CloudSetupError(msg)
-        self._cloud_gateway = gateway
+        if gateway is not self._cloud_gateway:
+            self.attach_cloud_gateway(gateway)
         return gateway
 
     async def _mint_authorization_code(self) -> None:

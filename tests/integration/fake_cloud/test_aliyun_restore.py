@@ -46,6 +46,31 @@ async def test_restore_with_a_healthy_cache_runs_no_login_and_no_chain(
         await client.stop()
 
 
+@pytest.mark.regression
+async def test_restore_binds_with_the_iot_token_its_forced_refresh_minted(fake_cloud: FakeMammotionCloud) -> None:
+    """The transport was built before the restore's forced session refresh and bound with the token it replaced.
+
+    The refresh went straight to the gateway, so neither the transport nor the host's cache heard of the new token.
+    """
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario)
+    cached = await make_cached_login(fake_cloud)
+    client = MammotionClient()
+    persisted = record_persisted(client)
+    try:
+        await client.restore_credentials(scenario.account, scenario.password, cached)
+
+        transport = aliyun_transport(client, scenario)
+        await wait_until(lambda: transport.is_connected)
+        refreshed = client.to_cache()["session_data"].data.iotToken
+        assert refreshed != cached["session_data"].data.iotToken
+        assert fake_cloud.bind_requests[-1]["params"]["iotToken"] == refreshed
+        assert persisted, "the refreshed session was never handed to the host to persist"
+        assert persisted[-1]["session_data"].data.iotToken == refreshed
+    finally:
+        await client.stop()
+
+
 async def test_restore_with_an_expiring_access_token_refreshes_it_once_and_persists_the_rotation(
     fake_cloud: FakeMammotionCloud,
 ) -> None:

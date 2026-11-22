@@ -49,6 +49,8 @@ from pymammotion.transport.base import SessionExpiredError, TransportType
 from pymammotion.utility.datatype_converter import DatatypeConverter
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from Tea.response import TeaResponse
 
     # The gateway no longer builds a login session — it is handed one — so this is
@@ -144,6 +146,9 @@ class CloudIOTGateway:
         # expired token.  The second waiter re-checks freshness under the
         # lock and returns early if the first caller already refreshed.
         self._refresh_lock: asyncio.Lock = asyncio.Lock()
+        #: Fired after check_or_refresh_session renews the session, so the session's owner
+        #: (TokenManager) adopts and persists it even when the renewal happened in-band.
+        self.on_session_refreshed: Callable[[], Awaitable[None]] | None = None
         # Salt the identity with the account so every account on one host gets a
         # distinct Aliyun app-device.  Without the salt the value is derived from
         # the host NIC alone, so all accounts on one machine share the same
@@ -674,6 +679,8 @@ class CloudIOTGateway:
 
             self._session_by_authcode_response = session
             self._iot_token_issued_at = int(time.time())
+        if self.on_session_refreshed is not None:
+            await self.on_session_refreshed()
 
     async def list_binding_by_account(self) -> ListingDevAccountResponse:
         """List bindings by account."""

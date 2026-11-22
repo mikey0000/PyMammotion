@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
+import pytest
 
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 
-from tests.unit.auth._helpers import make_aliyun_creds, make_http_mock, make_mqtt_creds
+from tests.unit.auth._helpers import make_http_mock, make_mqtt_creds
 
 
 def _tm_scheduled(
@@ -38,17 +40,28 @@ def _tm_scheduled(
         login_info=MagicMock(access_token="tok", refresh_token="ref"),
     )
     http.expires_in = time.time() + http_ttl
-    gateway = MagicMock()
-    gateway.check_or_refresh_session = AsyncMock()
-    tm = TokenManager("user@example.com", http, cloud_gateway=gateway if aliyun_ttl is not None else None)
+    tm = TokenManager("user@example.com", http)
     if mqtt_ttl is not None:
         tm._mqtt_creds = MQTTCredentials("h", "c", "u", "j", time.time() + mqtt_ttl)  # noqa: SLF001
     if aliyun_ttl is not None:
-        tm._aliyun_creds = make_aliyun_creds(aliyun_ttl, refresh_expires_in_seconds=864000)  # noqa: SLF001
-        session_data = MagicMock(iotToken="iot-new", iotTokenExpire=7200, refreshToken="r", refreshTokenExpire=86400)
-        gateway.session_by_authcode_response = MagicMock(data=session_data)
-        gateway._iot_token_issued_at = int(time.time())  # noqa: SLF001
+        tm.attach_cloud_gateway(_gateway_expiring_in(aliyun_ttl))
     return tm, http
+
+
+def _gateway_expiring_in(ttl: float, iot_token_expire: int = 7200) -> MagicMock:
+    """A gateway whose current iotToken expires in *ttl* seconds; a refresh issues a new one now."""
+    gateway = create_autospec(CloudIOTGateway, instance=True)
+    gateway.session_by_authcode_response = MagicMock(
+        data=MagicMock(iotToken="iot-old", iotTokenExpire=iot_token_expire, refreshToken="r", refreshTokenExpire=864000)
+    )
+    gateway._iot_token_issued_at = int(time.time() + ttl) - iot_token_expire  # noqa: SLF001
+
+    async def _refresh(*, force: bool = False) -> None:
+        gateway.session_by_authcode_response.data.iotToken = "iot-new"
+        gateway._iot_token_issued_at = int(time.time())  # noqa: SLF001
+
+    gateway.check_or_refresh_session.side_effect = _refresh
+    return gateway
 
 
 # ── when the next refresh is due ────────────────────────────────────────────
@@ -64,6 +77,28 @@ def test_next_refresh_picks_the_earliest_credential() -> None:
     """Whichever expires soonest sets the wake-up, not the first one checked."""
     tm, _ = _tm_scheduled(http_ttl=86400.0, mqtt_ttl=3600.0)  # mqtt lead is 1800
     assert 3600 - 1800 - 2 < tm.seconds_until_next_refresh <= 3600 - 1800
+
+
+@pytest.mark.regression
+def test_an_attached_aliyun_session_is_scheduled_for_renewal() -> None:
+    """The gateway's session was never adopted, so the scheduler skipped Aliyun and idle accounts aged out (2460)."""
+    tm, _ = _tm_scheduled(http_ttl=86400.0, aliyun_ttl=5400.0)  # aliyun lead is 3600
+    assert 5400 - 3600 - 2 < tm.seconds_until_next_refresh <= 5400 - 3600
+
+
+@pytest.mark.regression
+async def test_a_due_aliyun_session_is_renewed_and_handed_to_the_transport() -> None:
+    """Renewed on the clock, the new iotToken reaches the transport's next bind and the host's cache."""
+    tm, _ = _tm_scheduled(http_ttl=86400.0, aliyun_ttl=60.0)
+    bound: list[str] = []
+    tm.on_aliyun_token_refreshed = bound.append
+    persisted = AsyncMock()
+    tm.on_credentials_updated = persisted
+
+    assert await tm._refresh_due_credentials() is True  # noqa: SLF001
+
+    assert bound == ["iot-new"]
+    persisted.assert_awaited_once()
 
 
 def test_next_refresh_is_zero_when_already_due() -> None:

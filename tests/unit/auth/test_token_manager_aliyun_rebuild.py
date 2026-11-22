@@ -60,6 +60,7 @@ def _chain_gateway(http: AsyncMock, *, complete: bool = True) -> MagicMock:
     gateway.list_binding_by_account.side_effect = lambda: steps.append("list_binding_by_account")
     gateway.aep_response = MagicMock() if complete else None
     gateway.session_by_authcode_response = MagicMock(data=MagicMock()) if complete else None
+    gateway._iot_token_issued_at = 0
     gateway.steps = steps
     return gateway
 
