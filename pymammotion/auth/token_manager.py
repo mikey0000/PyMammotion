@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import jwt
 
 from pymammotion.aliyun.exceptions import CloudSetupError, LoginException
-from pymammotion.http.model.http import MQTTConnection, UnauthorizedExceptionError
+from pymammotion.http.model.http import AuthorizationCodeError, MQTTConnection, UnauthorizedExceptionError
 from pymammotion.transport.base import (
     ReLoginRequiredError,
     SessionExpiredError,
@@ -799,7 +799,7 @@ class TokenManager:
                 try:
                     await self.establish_aliyun()
                 except Exception as rebuild_exc:
-                    if is_transient_network_error(rebuild_exc):
+                    if is_transient_network_error(rebuild_exc) or self._reauth_required is not None:
                         raise
                     raise self._mark_aliyun_unavailable(
                         f"Aliyun session rebuild failed after refreshToken rejection: {rebuild_exc}"
@@ -857,7 +857,7 @@ class TokenManager:
             raise ReLoginRequiredError(self._account_id, "no HTTP login to mint an Aliyun session from")
         country_code = login_info.userInformation.domainAbbreviation
         if fresh_code:
-            await self._http.fetch_authorization_token()
+            await self._mint_authorization_code()
         if gateway.region_response is None:
             await gateway.get_region(country_code)
         await gateway.connect()
@@ -875,6 +875,25 @@ class TokenManager:
             raise CloudSetupError(msg)
         self._cloud_gateway = gateway
         return gateway
+
+    async def _mint_authorization_code(self) -> None:
+        """Fetch a fresh single-use authorization code with a bearer the server accepts.
+
+        The expiry check comes first; a 401 means the bearer was revoked server-side,
+        which earns one forced refresh and one retry.  A second 401 is the login itself.
+        """
+        try:
+            await self._http.refresh_authorization_token()
+        except UnauthorizedExceptionError:
+            await self.refresh_http()
+            await self._fetch_code_with_fresh_bearer()
+
+    async def _fetch_code_with_fresh_bearer(self) -> None:
+        """Fetch a code right after :meth:`refresh_http`; a 401 now means the login is dead."""
+        try:
+            await self._http.fetch_authorization_token()
+        except UnauthorizedExceptionError as exc:
+            raise self._mark_reauth_required(f"authorization code refused a freshly refreshed bearer: {exc}") from exc
 
     async def connect_iot(self) -> None:
         """Rebuild the attached gateway's Aliyun session; kept for callers of the old name."""
@@ -907,13 +926,12 @@ class TokenManager:
         touching the network.
 
         Raises:
-            ReLoginRequiredError: The refresh token was rejected — the user must
-                re-authenticate.
+            ReLoginRequiredError: The refresh token was rejected, or the refreshed
+                bearer was refused — the user must re-authenticate.
 
-        Any other failure (network outage, a 5xx from the authorization-code
-        endpoint) propagates as-is: it is a server or connectivity fault, not an
-        auth verdict, and wrapping it in AuthError previously let a benign blip
-        permanently kill the transport.
+        A transient failure (network outage, a 5xx) propagates as-is: it is not an
+        auth verdict.  A refusal to mint the code is ignored — the retry needs the
+        bearer, not the code.
 
         """
         async with self._lock:
@@ -922,13 +940,10 @@ class TokenManager:
                 current = login_info.access_token if login_info is not None else None
                 if current is not None and current != stale_token:
                     return
-            try:
-                await self.refresh_http()
-                await self._http.fetch_authorization_token()
-            except ReLoginRequiredError:
-                raise
-            except UnauthorizedExceptionError as exc:
-                raise self._mark_reauth_required(str(exc)) from exc
+            await self.refresh_http()
+            # The invoke bearer is what the retry needs; the code is kept fresh but optional.
+            with contextlib.suppress(AuthorizationCodeError):
+                await self._fetch_code_with_fresh_bearer()
 
     def _set_mqtt_creds(self, data: MQTTConnection) -> MQTTCredentials:
         """Store MQTTConnection data into self._mqtt_creds and return it.
@@ -977,7 +992,8 @@ class TokenManager:
                 # then retry once.  Reading self._http.mqtt_credentials here would
                 # yield the prior (now-rejected) JWT.
                 await self.refresh_http()
-                await self._http.fetch_authorization_token()
+                with contextlib.suppress(AuthorizationCodeError):
+                    await self._fetch_code_with_fresh_bearer()
                 response = await self._http.get_mqtt_credentials()
                 if response.data is None:
                     # Do NOT fall through to the old snapshot — returning stale creds

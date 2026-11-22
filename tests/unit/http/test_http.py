@@ -16,7 +16,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import JWTTokenInfo, MQTTConnection, UnauthorizedExceptionError
+from pymammotion.http.model.http import (
+    AuthorizationCodeError,
+    JWTTokenInfo,
+    MQTTConnection,
+    Response,
+    UnauthorizedExceptionError,
+)
+from pymammotion.transport.base import is_transient_network_error
+from tests._helpers import encode_jwt
 from tests.unit._helpers import make_http_posting
 
 
@@ -144,3 +152,82 @@ async def test_get_mqtt_credentials_raises_connection_error_on_server_fault(stat
     http = _make_http_posting(status, {})
     with pytest.raises(ConnectionError):
         await http.get_mqtt_credentials()
+
+
+def _fetching_code(status: int, body: dict, content_type: str = "application/json") -> MammotionHTTP:
+    http, _session = make_http_posting(status, body, content_type)
+    http.login_info = MagicMock(access_token="tok", authorization_code="spent")  # type: ignore[assignment]
+    return http
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [(401, {"code": 401, "msg": "unauthorized"}), (200, {"code": 401, "msg": "unauthorized"})],
+    ids=["status", "body"],
+)
+async def test_fetch_authorization_token_raises_unauthorized_on_401(status: int, body: dict) -> None:
+    """A refused bearer came back as a Response nobody read, so the chain ran on with the spent code."""
+    http = _fetching_code(status, body)
+
+    with pytest.raises(UnauthorizedExceptionError):
+        await http.fetch_authorization_token()
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("status", "body", "content_type"),
+    [(500, {}, "application/json"), (503, {}, "application/json"), (200, {}, "text/html")],
+    ids=["500", "503", "non-json"],
+)
+async def test_fetch_authorization_token_raises_a_transient_error_on_a_server_fault(
+    status: int, body: dict, content_type: str
+) -> None:
+    """A 5xx or HTML error page answered ``Response(200)``, and the spent code made the rebuild terminal."""
+    http = _fetching_code(status, body, content_type)
+
+    with pytest.raises(ConnectionError) as excinfo:
+        await http.fetch_authorization_token()
+
+    assert is_transient_network_error(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [(200, {"code": 20001, "msg": "refused"}), (429, {"code": 429, "msg": "too many requests"})],
+    ids=["refused", "rate-limited"],
+)
+async def test_fetch_authorization_token_raises_a_terminal_error_on_any_other_refusal(status: int, body: dict) -> None:
+    http = _fetching_code(status, body)
+
+    with pytest.raises(AuthorizationCodeError) as excinfo:
+        await http.fetch_authorization_token()
+
+    assert not is_transient_network_error(excinfo.value)
+
+
+async def test_fetch_authorization_token_keeps_the_new_code() -> None:
+    http = _fetching_code(200, {"code": 0, "msg": "ok", "data": {"code": "fresh"}})
+
+    await http.fetch_authorization_token()
+
+    assert http.login_info.authorization_code == "fresh"
+    assert http.login_info.access_token == "tok"
+
+
+@pytest.mark.regression
+async def test_fetch_authorization_token_adopts_and_persists_a_returned_access_token() -> None:
+    """A rotated bearer replaced the token but kept the old expiry and was never persisted."""
+    exp = int(time.time()) + 7200
+    rotated = encode_jwt(exp=exp)
+    http = _fetching_code(200, {"code": 0, "msg": "ok", "data": {"code": "fresh", "accessToken": rotated}})
+    http.login_info.access_token = encode_jwt(exp=exp - 3600)
+    http.response = Response(code=0, msg="ok", data=http.login_info)  # type: ignore[arg-type]
+    persisted = AsyncMock()
+    http.on_login_refreshed = persisted
+
+    await http.fetch_authorization_token()
+
+    assert http.login_info.access_token == rotated
+    assert http.expires_in == exp
+    persisted.assert_awaited_once()

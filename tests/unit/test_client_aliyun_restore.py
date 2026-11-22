@@ -86,7 +86,7 @@ async def test_an_unusable_cached_session_is_rebuilt_with_a_fresh_authorization_
     async def issue_code() -> None:
         http.login_info.authorization_code = "fresh"
 
-    http.fetch_authorization_token = AsyncMock(side_effect=issue_code)
+    http.refresh_authorization_token = AsyncMock(side_effect=issue_code)
     codes_used: list[str] = []
 
     async def get_region(_country_code: str) -> None:

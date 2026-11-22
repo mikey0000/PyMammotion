@@ -34,6 +34,7 @@ from pymammotion.http.encryption import EncryptionUtils
 from pymammotion.http.model.camera_stream import StreamSubscriptionResponse, VideoResourceResponse
 from pymammotion.http.model.fpv_control import FpvControl
 from pymammotion.http.model.http import (
+    AuthorizationCodeError,
     CheckDeviceVersion,
     DeviceInfo,
     DeviceRecords,
@@ -1000,12 +1001,17 @@ class MammotionHTTP:
         return await self.fetch_authorization_token()
 
     async def fetch_authorization_token(self) -> Response:
-        """Call POST /authorization/code with the current access token.
+        """Mint a fresh single-use authorization code via POST /authorization/code.
 
-        Does **not** check token expiry first — the caller is responsible for
-        ensuring login_info.access_token is valid before calling this.  This is
-        the shared implementation used by both the proactive decorated path and
-        the reactive force-refresh path in TokenManager.
+        Does **not** check token expiry first — use :meth:`refresh_authorization_token`
+        unless the access token was renewed just before.  The reply sometimes carries
+        a rotated ``accessToken``; it is adopted with its own expiry and persisted.
+
+        Raises:
+            UnauthorizedExceptionError: The bearer was refused (HTTP or in-body 401).
+            ConnectionError: 408 / 5xx or a non-JSON body — the server is unavailable.
+            AuthorizationCodeError: Any other refusal, including a 429; not transient.
+
         """
         async with self._client_session() as session:
             resp = await session.post(
@@ -1017,30 +1023,34 @@ class MammotionHTTP:
                 },
                 json={"clientId": MAMMOTION_CLIENT_ID},
             )
-            if (resp.headers.get("Content-Type") or "").startswith("application/json"):
-                data = await resp.json()
-                # The /authorization/code response carries data.code (a fresh
-                # authorization *code*), and only SOMETIMES data.accessToken.  When
-                # accessToken is absent (the common case — see logs) the access token
-                # is left UNCHANGED, so this call alone does not recover an expired
-                # bearer; the access token must come from refresh_token_v2().  Logged
-                # explicitly so a "still 401 after token refresh" can be traced to a
-                # no-op authz fetch.
-                had_access_token = "accessToken" in (data.get("data") or {})
-                _LOGGER.debug(
-                    "fetch_authorization_token: code=%s, carries_accessToken=%s (access_token left fp=%s)",
-                    data.get("code"),
-                    had_access_token,
-                    _token_fingerprint(self._login_info.access_token if self._login_info else None),
-                )
-                if data.get("code") != 0:
-                    return Response(code=data.get("code"), msg="Failed to refresh token")
-                login_info = self._require_login_info
-                login_info.access_token = data["data"].get("accessToken", login_info.access_token)
-                login_info.authorization_code = data["data"].get("code", login_info.authorization_code)
-                return Response.from_dict(data)
-
-        return Response(code=200, msg="success")
+            if resp.status == 408 or resp.status >= 500:
+                msg = f"authorization/code returned HTTP {resp.status}"
+                raise ConnectionError(msg)
+            if not (resp.headers.get("Content-Type") or "").startswith("application/json"):
+                msg = f"authorization/code returned a non-JSON body (status={resp.status})"
+                raise ConnectionError(msg)
+            data = await resp.json()
+        code = data.get("code")
+        if resp.status == 401 or code == 401:
+            msg = "authorization/code refused the access token"
+            raise UnauthorizedExceptionError(msg)
+        if resp.status != 200 or code != 0:
+            msg = f"authorization/code refused (status={resp.status}, code={code}, msg={data.get('msg')})"
+            raise AuthorizationCodeError(msg)
+        login_info = self._require_login_info
+        login_info.authorization_code = data["data"].get("code", login_info.authorization_code)
+        if (access_token := data["data"].get("accessToken")) and access_token != login_info.access_token:
+            _LOGGER.debug(
+                "fetch_authorization_token: access token rotated %s -> %s",
+                _token_fingerprint(login_info.access_token),
+                _token_fingerprint(access_token),
+            )
+            login_info.access_token = access_token
+            self._headers["Authorization"] = f"Bearer {access_token}"
+            if self._response is not None:
+                self.response = self._response  # re-derives expires_in and jwt_info from the new token
+            await self._fire_login_refreshed()
+        return Response.from_dict(data)
 
     @refresh_token_decorator
     async def pair_devices_mqtt(self, mower_name: str, rtk_name: str) -> Response:

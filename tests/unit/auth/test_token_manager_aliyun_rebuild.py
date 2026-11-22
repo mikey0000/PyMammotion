@@ -31,7 +31,7 @@ async def test_aliyun_2401_rebuild_uses_a_fresh_authorization_code() -> None:
     async def issue_code() -> None:
         http.login_info.authorization_code = "fresh"
 
-    http.fetch_authorization_token = AsyncMock(side_effect=issue_code)
+    http.refresh_authorization_token = AsyncMock(side_effect=issue_code)
     codes_used: list[str] = []
 
     async def login_by_oauth(_country_code: str) -> None:
@@ -71,7 +71,7 @@ async def test_establish_aliyun_mints_a_code_runs_the_chain_and_attaches_the_gat
 
     assert await tm.establish_aliyun(gateway) is gateway
 
-    http.fetch_authorization_token.assert_awaited_once()
+    http.refresh_authorization_token.assert_awaited_once()
     assert gateway.steps == [
         "get_region",
         "connect",
@@ -89,7 +89,7 @@ async def test_establish_aliyun_for_a_fresh_login_spends_the_logins_own_code() -
 
     await tm.establish_aliyun(_chain_gateway(http), fresh_code=False)
 
-    http.fetch_authorization_token.assert_not_awaited()
+    http.refresh_authorization_token.assert_not_awaited()
 
 
 async def test_establish_aliyun_refuses_a_session_the_chain_left_incomplete() -> None:

@@ -12,6 +12,10 @@ class UnauthorizedExceptionError(Exception):
     """Raised when the Mammotion API returns a 401 Unauthorized response."""
 
 
+class AuthorizationCodeError(Exception):
+    """POST /authorization/code refused to mint a code for a reason other than the bearer (e.g. a 429)."""
+
+
 DataT = TypeVar("DataT")
 
 
