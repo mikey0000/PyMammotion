@@ -19,7 +19,14 @@ from pymammotion.account.registry import AccountSession
 from pymammotion.client import MammotionClient
 from pymammotion.device.handle import DeviceHandle
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.http import DeviceInfo, DeviceRecord, DeviceRecords, MQTTConnection, Response
+from pymammotion.http.model.http import (
+    DeviceInfo,
+    DeviceRecord,
+    DeviceRecords,
+    MQTTConnection,
+    Response,
+    UnauthorizedExceptionError,
+)
 from pymammotion.transport.base import TransportAvailability, TransportType
 from tests._helpers import make_bare_client, make_mock_handle, make_mock_transport
 from tests.unit._helpers import (
@@ -370,5 +377,32 @@ async def test_a_login_survives_a_device_list_fetch_that_raises(failing: str) ->
         session = client._account_registry.get(ACCOUNT)  # noqa: SLF001
         assert session is not None
         assert session.mammotion_http is not None
+    finally:
+        await client.stop()
+
+
+@pytest.mark.parametrize(
+    ("failure", "propagates"),
+    [
+        pytest.param(RuntimeError("malformed page"), False, id="fault-stepped-over"),
+        pytest.param(UnauthorizedExceptionError("login revoked"), True, id="rejection-raised"),
+    ],
+)
+async def test_a_failed_new_device_check_costs_only_the_new_devices(failure: Exception, propagates: bool) -> None:
+    """A fault finishes the restore on the cached devices; a rejected login must not look like a success."""
+    client = MammotionClient()
+    http, _ = make_http_posting(HTTPStatus.OK.value, _owned_list(STALE))
+    try:
+        with (
+            patch.object(MammotionHTTP, "from_cache", return_value=http),
+            patch.object(http, "validate_login", autospec=True, return_value=True),
+            patch.object(client, "_bootstrap_mammotion_mqtt", autospec=True, side_effect=failure),
+        ):
+            if propagates:
+                with pytest.raises(UnauthorizedExceptionError):
+                    await client.restore_credentials(ACCOUNT, "pw", {}, check_for_new_devices=True)
+            else:
+                await client.restore_credentials(ACCOUNT, "pw", {}, check_for_new_devices=True)
+                assert client._account_registry.get(ACCOUNT).mammotion_http is http  # noqa: SLF001
     finally:
         await client.stop()

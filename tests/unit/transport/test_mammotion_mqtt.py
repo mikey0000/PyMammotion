@@ -9,15 +9,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pymammotion.aliyun.exceptions import DeviceRemovedFromAccountError
+from pymammotion.auth.token_manager import MQTTCredentials
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
-from pymammotion.transport.base import TransportError, TransportType
+from pymammotion.transport.base import ReLoginRequiredError, TransportError, TransportType
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from tests._helpers import wait_until
 from tests.unit.transport._fakes import (
+    AuthFailMQTTClient,
     FakeMessage as _FakeMessage,
     FakeMQTTClient as _FakeMQTTClient,
     NetworkErrorClient as _NetworkErrorClient,
 )
+
+
+_RUN_TIMEOUT = 5.0
 
 
 @pytest.fixture
@@ -474,6 +479,27 @@ async def test_run_never_gives_up_while_forced_refresh_fails_transiently(
     assert len(forced_refreshes) == 5
     assert fatal_calls == []
     assert transport.is_usable is True
+
+
+async def test_run_gives_up_when_the_forced_refresh_is_refused(
+    config: MQTTTransportConfig, mammotion_http: MagicMock
+) -> None:
+    """A refused refresh after a broker rejection is terminal for this transport: no retry loop."""
+    refusal = ReLoginRequiredError("user@example.com", "refresh token rejected")
+
+    async def _refresher(force: bool) -> MQTTCredentials:
+        if force:
+            raise refusal
+        return MQTTCredentials(host="mqtt.example.com", client_id="c", username="u", jwt="j", expires_at=0.0)
+
+    transport = MQTTTransport(config, mammotion_http, AsyncMock(), creds_refresher=_refresher)
+    transport.on_fatal_auth_error = AsyncMock()
+
+    with patch("aiomqtt.Client", return_value=AuthFailMQTTClient()):
+        await asyncio.wait_for(transport._run(), timeout=_RUN_TIMEOUT)
+
+    transport.on_fatal_auth_error.assert_awaited_once_with(refusal)
+    assert not transport.is_usable
 
 
 def test_apply_credentials_does_not_clear_stop_event(transport: MQTTTransport) -> None:

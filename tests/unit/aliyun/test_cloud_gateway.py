@@ -75,6 +75,20 @@ def test_cache_round_trip_preserves_token_issued_at() -> None:
     assert restored._iot_token_issued_at == issued  # noqa: SLF001 — NOT int(time.time())
 
 
+async def test_from_cache_with_an_undecodable_section_leaves_the_session_to_a_rebuild() -> None:
+    """Every other section is already a model, so only the corrupt region can fail the decode."""
+    cache = {
+        "connect_data": MagicMock(),
+        "auth_data": MagicMock(),
+        "region_data": {"data": "not-a-region"},
+        "aep_data": MagicMock(),
+        "session_data": make_session(),
+        "device_data": MagicMock(),
+    }
+
+    assert await CloudIOTGateway.from_cache(cache, MagicMock(spec=MammotionHTTP)) is None
+
+
 async def test_check_or_refresh_session_refreshes_expired_cached_token() -> None:
     """A restored gateway whose iotToken has expired must hit the refresh endpoint."""
     # Issued long ago with a 1-day lifetime → expired now (and within the 1h skew window).
