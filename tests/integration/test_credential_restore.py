@@ -142,13 +142,11 @@ async def test_unusable_aliyun_cache_is_rebuilt_from_the_http_login() -> None:
 
     def _new_gateway(mammotion_http: object) -> MagicMock:
         """Stand in for CloudIOTGateway(http) — the chain fills in the responses."""
-        gateway = MagicMock()
-        gateway.mammotion_http = mammotion_http
-        gateway.devices_by_account_response = None
-        return gateway
+        return MagicMock(mammotion_http=mammotion_http, devices_by_account_response=None)
 
-    async def _establish(_tm: TokenManager, cloud_client: MagicMock, **_: object) -> MagicMock:
+    async def _establish(tm: TokenManager, cloud_client: MagicMock, **_: object) -> MagicMock:
         rebuilt.append(cloud_client)
+        tm.attach_cloud_gateway(cloud_client)
         return cloud_client
 
     mock_gateway_cls = MagicMock(side_effect=_new_gateway)

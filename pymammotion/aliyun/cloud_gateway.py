@@ -26,6 +26,7 @@ from pymammotion.aliyun.exceptions import (
     DEVICE_OFFLINE_CODES,
     DEVICE_UNBOUND_CODES,
     GATEWAY_TIMEOUT_CODES,
+    SESSION_REJECTED_CODES,
     AuthRefreshException,
     CloudSetupError,
     DeviceOfflineException,
@@ -648,21 +649,19 @@ class CloudIOTGateway:
             response_body_str = response.body.decode("utf-8")
             response_body_dict = self.parse_json_response(response_body_str)
 
-            if response_body_dict.get("code") == 2401:
-                # Do NOT sign out here.  TokenManager recovers from a 2401 by
-                # rebuilding the IoT session from the still-valid HTTP login
-                # (establish_aliyun); invalidating the session first only removes state
-                # that recovery might have reused, and destroys a possibly-working
-                # session before we know the replacement can be established.
+            code = int(response_body_dict.get("code") or 0)
+            if code in SESSION_REJECTED_CODES:
+                # Do NOT sign out here: TokenManager rebuilds the session from the HTTP
+                # login, and the old one may still be needed until the new one exists.
                 raise SessionExpiredError(
                     TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + _redacted(response_body_dict)
                 )
-
-            if int(response_body_dict.get("code") or 0) != 200:
+            if code != 200:
                 logger.error("check_or_refresh_session failed: %s", _redacted(response_body_dict))
-                raise SessionExpiredError(
-                    TransportType.CLOUD_ALIYUN, "Error check or refresh token: " + _redacted(response_body_dict)
-                )
+                msg = f"Error check or refresh token: {_redacted(response_body_dict)}"
+                if 500 <= code < 600:  # the gateway's own server fault, not a verdict on the session
+                    raise ConnectionError(msg)
+                raise CloudSetupError(msg)
 
             session = SessionByAuthCodeResponse.from_dict(response_body_dict)
             session_data = session.data

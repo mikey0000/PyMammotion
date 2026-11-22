@@ -22,7 +22,6 @@ from pymammotion.aliyun.exceptions import CloudSetupError, FailedRequestExceptio
 from pymammotion.aliyun.model.connect_response import ConnectResponse
 from pymammotion.aliyun.model.login_by_oauth_response import LoginByOAuthResponse
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.transport.base import SessionExpiredError
 from tests.unit.aliyun._helpers import make_region, make_session
 
 pytestmark = pytest.mark.regression
@@ -255,11 +254,11 @@ async def test_check_or_refresh_session_failure_omits_the_tokens_from_log_and_er
     """A rejected refresh logged its body at ERROR and put its dict repr into the raised message."""
     caplog.set_level(logging.DEBUG)
     gateway = _gateway()
-    body = {**_session_payload(), "code": 500}
+    body = {**_session_payload(), "code": 2064}
 
     with (
         patch.object(cloud_gateway, "Client", return_value=_FakeGatewayClient(body)),
-        pytest.raises(SessionExpiredError) as excinfo,
+        pytest.raises(CloudSetupError) as excinfo,
     ):
         await gateway.check_or_refresh_session(force=True)
 

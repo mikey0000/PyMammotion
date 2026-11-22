@@ -53,7 +53,7 @@ from urllib.parse import urlparse
 from pymammotion.account.registry import BLE_ONLY_ACCOUNT, AccountRegistry, AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import DeviceRemovedFromAccountError, DeviceUnboundException
-from pymammotion.aliyun.model.dev_by_account_response import Device
+from pymammotion.aliyun.model.dev_by_account_response import Device, ListingDevAccountResponse
 from pymammotion.client_auth import (
     _AUTH_REJECTED,
     CloudAuthMixin,
@@ -1236,6 +1236,15 @@ class MammotionClient(CloudAuthMixin):
         transport.on_fatal_auth_error = _on_fatal_auth
         return transport
 
+    @staticmethod
+    def _is_on_mammotion_mqtt(acct_session: AccountSession, device_name: str) -> bool:
+        """Report whether the account's Mammotion device page owns *device_name*."""
+        return (
+            acct_session.mammotion_http is not None
+            and (records := acct_session.mammotion_http.device_records) is not None
+            and any(r.device_name == device_name for r in records.records)
+        )
+
     async def _register_aliyun_device(
         self,
         device_name: str,
@@ -1251,11 +1260,7 @@ class MammotionClient(CloudAuthMixin):
         Aliyun's binding listing keeps a device after it migrates to Mammotion MQTT, so
         one the Mammotion device page owns is never bound here — it would only 29004.
         """
-        if (
-            acct_session.mammotion_http is not None
-            and (records := acct_session.mammotion_http.device_records) is not None
-            and any(r.device_name == device_name for r in records.records)
-        ):
+        if self._is_on_mammotion_mqtt(acct_session, device_name):
             _logger.debug("Aliyun device %s is on Mammotion MQTT — not binding it to Aliyun", device_name)
             return False
         await self._register_device_on_transport(
@@ -1537,8 +1542,10 @@ class MammotionClient(CloudAuthMixin):
 
         The account's login session and TokenManager are already established by
         ``restore_credentials``; this adds the Aliyun gateway and transport to them.
-        An Aliyun session that cannot be restored is rebuilt from that login, and a
-        rebuild that fails costs this transport only.
+        An Aliyun failure costs this transport only and never raises past here, short
+        of an account-level rejection: the listed mowers keep their handles, shown
+        unavailable, while the TokenManager retries a transient failure or marks a
+        refusal ``aliyun_unavailable``.
         """
         mammotion_http = acct_session.mammotion_http
         if mammotion_http is None:
@@ -1546,37 +1553,19 @@ class MammotionClient(CloudAuthMixin):
             return
 
         token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
-        cloud_client = await CloudIOTGateway.from_cache(cached_data, mammotion_http)
+        if rebuilt := (cloud_client := await self._cached_aliyun_gateway(account, cached_data, token_manager)) is None:
+            _logger.warning("restore_credentials: rebuilding the Aliyun session for %s from the HTTP login", account)
+            cloud_client = await token_manager.recover_aliyun(CloudIOTGateway(mammotion_http))
         if cloud_client is None:
-            # The cached Aliyun data is unusable, but an Aliyun session is minted from
-            # the HTTP login and nothing else — and that login has just been validated.
-            # Rebuild the gateway from it via the authCode chain rather than throwing
-            # away a healthy login to re-derive the same thing from a password.
-            _logger.warning(
-                "restore_credentials: cached Aliyun session for %s is unusable — rebuilding it from the HTTP login",
-                account,
-            )
-            try:
-                cloud_client = await token_manager.establish_aliyun(CloudIOTGateway(mammotion_http))
-            except Exception:
-                _logger.warning(
-                    "restore_credentials: could not rebuild the Aliyun session for %s — "
-                    "skipping the Aliyun transport this cycle (the HTTP login is unaffected)",
-                    account,
-                    exc_info=True,
-                )
-                return
-
+            await self._keep_aliyun_devices_unavailable(acct_session, self._cached_aliyun_listing(cached_data))
+            return
         acct_session.cloud_client = cloud_client
-        token_manager.attach_cloud_gateway(cloud_client)
-        transport = self._setup_aliyun_transport(cloud_client, acct_session)
-        acct_session.aliyun_transport = transport
 
         # Fetch the authoritative iot_id map from Mammotion's device-list API so that
         # stale Aliyun binding iot_ids (e.g. for RTK base stations) are corrected.
         owned_iot_id_map: dict[str, str] = {}
         try:
-            owned_resp = await cloud_client.mammotion_http.get_user_device_list()
+            owned_resp = await mammotion_http.get_user_device_list()
             owned_iot_id_map = {d.device_name: d.iot_id for d in (owned_resp.data or []) if d.device_name and d.iot_id}
         except _AUTH_REJECTED:
             raise
@@ -1584,32 +1573,21 @@ class MammotionClient(CloudAuthMixin):
             _logger.warning("restore_credentials: failed to fetch device iot_id map (Aliyun restore)", exc_info=True)
 
         discovery_failed = False
-        if check_for_new_devices:
+        # A rebuilt session and its listing are seconds old; only a cached one needs checking.
+        if check_for_new_devices and not rebuilt:
             try:
-                # Force-refresh the restored Aliyun session before the device-list call.
-                # On a cold restore the cached iotToken cannot be trusted: HA may have been
-                # offline for hours, and Aliyun's single-session-per-identity model means the
-                # phone app (or another client) logging in rotates/invalidates our token well
-                # before its nominal 20 h expiry.  The freshness-gated check would see the
-                # token as still valid and skip the refresh, so list_binding_by_account would
-                # send the stale token and get a 401 "request auth error".  force=True always
-                # mints a fresh token via the (longer-lived) refreshToken.
-                await cloud_client.check_or_refresh_session(force=True)
-                session_data = (
-                    cloud_client.session_by_authcode_response.data
-                    if cloud_client.session_by_authcode_response is not None
-                    else None
-                )
-                if session_data is None or not session_data.iotToken:
-                    _logger.warning(
-                        "restore_credentials: skipping list_binding_by_account — iotToken not available"
-                        " (credentials not fully restored)"
-                    )
-                else:
-                    # Replaces the cached listing: a device unbound from Aliyun since the
-                    # cache was written must not be bound again from the stale copy.
-                    await cloud_client.list_binding_by_account()
+                # A cold restore cannot trust the cached iotToken even inside its lifetime:
+                # another client signing in rotates it, and the listing would 401.
+                await token_manager.refresh_aliyun_credentials()
+                # Replaces the cached listing: a device unbound from Aliyun since the
+                # cache was written must not be bound again from the stale copy.
+                await cloud_client.list_binding_by_account()
             except Exception:
+                if token_manager.reauth_required is not None:
+                    raise
+                if token_manager.aliyun_unavailable is not None:
+                    await self._keep_aliyun_devices_unavailable(acct_session, self._listed_aliyun_devices(cloud_client))
+                    return
                 discovery_failed = True
                 _logger.warning(
                     "restore_credentials: Aliyun device discovery failed for account %s — using the cached listing",
@@ -1617,33 +1595,106 @@ class MammotionClient(CloudAuthMixin):
                     exc_info=True,
                 )
 
+        await self._start_aliyun_transport(
+            acct_session, cloud_client, owned_iot_id_map, discovery_failed=discovery_failed
+        )
+
+    @staticmethod
+    async def _cached_aliyun_gateway(
+        account: str, cached_data: dict[str, Any], token_manager: TokenManager
+    ) -> CloudIOTGateway | None:
+        """Return the cached Aliyun gateway, attached, or ``None`` when its session cannot be restored."""
+        try:
+            cached = await CloudIOTGateway.from_cache(cached_data, token_manager.http)
+        except Exception as exc:  # noqa: BLE001 - any failure of the cached session leaves the rebuild
+            _logger.warning("restore_credentials: cached Aliyun session for %s could not be restored: %s", account, exc)
+            return None
+        if cached is not None:
+            token_manager.attach_cloud_gateway(cached)
+        return cached
+
+    async def _on_aliyun_established(self, acct_session: AccountSession, cloud_client: CloudIOTGateway) -> None:
+        """Attach a deferred Aliyun session, once the TokenManager has established it, and persist it."""
+        mammotion_http = acct_session.mammotion_http
+        owned_iot_id_map = _owned_iot_id_map(mammotion_http.device_info if mammotion_http is not None else None)
+        await self._start_aliyun_transport(acct_session, cloud_client, owned_iot_id_map)
+        await self._persist_credentials()
+
+    async def _start_aliyun_transport(
+        self,
+        acct_session: AccountSession,
+        cloud_client: CloudIOTGateway,
+        owned_iot_id_map: dict[str, str],
+        *,
+        discovery_failed: bool = False,
+    ) -> None:
+        """Build the Aliyun transport for an established gateway, bind its listed devices and connect."""
+        acct_session.cloud_client = cloud_client
+        acct_session.aliyun_devices = []
+        transport = self._setup_aliyun_transport(cloud_client, acct_session)
+        acct_session.aliyun_transport = transport
+
         known_ids: set[str] = set()
         ua = acct_session.user_account
-        if cloud_client.devices_by_account_response is not None and cloud_client.devices_by_account_response.data:
-            for device in cloud_client.devices_by_account_response.data.data:
-                if device.device_name:
-                    iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
-                    if await self._register_aliyun_device(
-                        device.device_name, iot_id, transport, ua, device.product_key, acct_session=acct_session
-                    ):
-                        known_ids.add(device.device_name)
+        for device in self._listed_aliyun_devices(cloud_client):
+            if device.device_name:
+                iot_id = owned_iot_id_map.get(device.device_name) or device.iot_id
+                if await self._register_aliyun_device(
+                    device.device_name, iot_id, transport, ua, device.product_key, acct_session=acct_session
+                ):
+                    known_ids.add(device.device_name)
 
         if not known_ids:
             if discovery_failed:
                 # The device-list call errored (e.g. 401 iotToken rejected) — we
                 # could NOT confirm the device list, so "no devices" is unproven.
-                # Skip the MQTT connection this cycle; the next refresh retries.
                 _logger.warning(
                     "Aliyun device discovery failed for account %s — device list unconfirmed; "
-                    "skipping Aliyun MQTT connection this cycle (will retry next refresh)",
-                    account,
+                    "skipping Aliyun MQTT connection this cycle",
+                    acct_session.account_id,
                 )
             else:
-                _logger.info("No Aliyun devices found for account %s — skipping Aliyun MQTT connection", account)
+                _logger.info(
+                    "No Aliyun devices found for account %s — skipping Aliyun MQTT connection", acct_session.account_id
+                )
             acct_session.aliyun_transport = None
             return
 
         await transport.connect()
+
+    async def _keep_aliyun_devices_unavailable(self, acct_session: AccountSession, devices: list[Device]) -> None:
+        """Keep a handle for each listed Aliyun device while the account has no Aliyun session.
+
+        A host then shows those mowers unavailable rather than missing; the transport
+        attaches to the same handles once a session is established.
+        """
+        acct_session.aliyun_devices = devices
+        for device in devices:
+            if device.device_name and not self._is_on_mammotion_mqtt(acct_session, device.device_name):
+                await self._ensure_device_handle(
+                    acct_session=acct_session,
+                    device_id=device.device_name,
+                    device_name=device.device_name,
+                    initial_device=create_device(device.device_name, device.product_key),
+                )
+
+    @staticmethod
+    def _listed_aliyun_devices(cloud_client: CloudIOTGateway) -> list[Device]:
+        """Return the devices in the gateway's current Aliyun binding listing."""
+        listing = cloud_client.devices_by_account_response
+        return list(listing.data.data) if listing is not None and listing.data is not None else []
+
+    @staticmethod
+    def _cached_aliyun_listing(cached_data: dict[str, Any]) -> list[Device]:
+        """Return the Aliyun binding listing saved in *cached_data*, or ``[]`` when absent or undecodable."""
+        if (raw := cached_data.get("device_data")) is None:
+            return []
+        try:
+            listing = raw if isinstance(raw, ListingDevAccountResponse) else ListingDevAccountResponse.from_dict(raw)
+        except Exception:  # noqa: BLE001 - a corrupt listing is no listing
+            _logger.warning("restore_credentials: the cached Aliyun device listing could not be decoded")
+            return []
+        return list(listing.data.data) if listing.data is not None else []
 
     async def _restore_mammotion_mqtt(self, account: str, acct_session: AccountSession) -> list[DeviceInfo] | None:
         """Restore a Mammotion MQTT session and register all known devices.
@@ -2692,8 +2743,10 @@ class MammotionClient(CloudAuthMixin):
     def aliyun_device_list(self) -> list[Any]:
         """Return the list of Device objects from the Aliyun cloud registry."""
         session = self._get_default_session()
-        if session is None or session.cloud_client is None:
+        if session is None:
             return []
+        if session.cloud_client is None:
+            return session.aliyun_devices
         try:
             return session.cloud_client.devices_by_account_response.data.data  # type: ignore
         except (AttributeError, TypeError):

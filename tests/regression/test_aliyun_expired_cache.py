@@ -89,7 +89,7 @@ def cloud_boundaries(client: MammotionClient) -> Iterator[SimpleNamespace]:
         yield SimpleNamespace(refresh=refresh, rebuild=rebuild, setup=setup, mqtt=mqtt, login=login)
 
 
-def _complete_rebuild(_tm: TokenManager, gateway: CloudIOTGateway, **_: object) -> CloudIOTGateway:
+def _complete_rebuild(tm: TokenManager, gateway: CloudIOTGateway, **_: object) -> CloudIOTGateway:
     """Supply the responses that the mocked IoT API chain would install.
 
     These responses have read-only properties; the real gateway has no public
@@ -98,6 +98,7 @@ def _complete_rebuild(_tm: TokenManager, gateway: CloudIOTGateway, **_: object) 
     gateway._aep_response = AepResponse(code=200, data=DeviceData("synthetic", "pk", "device"))
     gateway._region_response = make_region()
     gateway._session_by_authcode_response = make_session()
+    tm.attach_cloud_gateway(gateway)
     return gateway
 
 

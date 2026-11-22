@@ -29,6 +29,10 @@ DEVICE_REMOVED_CODES = frozenset({50101})
 #: The cloud reached the device but it did not answer in time.
 GATEWAY_TIMEOUT_CODES = frozenset({20056})
 
+#: checkOrRefreshSession refused the IoT refresh token: the session must be rebuilt
+#: from the HTTP login (2401 "refreshToken invalid", 2460 "refreshToken expired").
+SESSION_REJECTED_CODES = frozenset({2401, 2460})
+
 #: Pairing attempted outside the device's bind window, or with a dead QR code
 #: (APK: BindCode.NOT_IN_BIND_WINDOW = 6618, MA_NOT_IN_BIND_WINDOW = 50105,
 #: QR_NOT_EXIT = 2067).  Recorded for completeness: this library discovers

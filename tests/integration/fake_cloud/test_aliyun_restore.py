@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 import pytest
 
+from pymammotion.auth import token_manager as token_manager_module
 from pymammotion.client import MammotionClient
 from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
@@ -145,5 +146,101 @@ async def test_restore_rebuilds_a_rejected_aliyun_session_with_a_fresh_code(
         assert session.refreshToken in scenario.valid_aliyun_refresh_tokens, (
             "the cache holds a session the server no longer knows"
         )
+    finally:
+        await client.stop()
+
+
+def _aliyun_mower_is_kept_unavailable(client: MammotionClient, scenario: Scenario) -> None:
+    handle = client.mower(scenario.aliyun_device.device_name)
+    assert handle is not None, "the account's Aliyun mower vanished instead of showing as unavailable"
+    assert not handle.has_usable_transport
+    assert scenario.aliyun_device.device_name in [d.device_name for d in client.aliyun_device_list]
+
+
+@pytest.mark.regression
+async def test_restore_with_a_refused_rebuild_keeps_the_aliyun_mower_and_restores_the_rest(
+    fake_cloud: FakeMammotionCloud,
+) -> None:
+    """A refused rebuild was logged and dropped: no flag, no retry, and the Aliyun mower silently disappeared.
+
+    The restore reported success, so the host showed the cloud as healthy with the mower missing.
+    """
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario, hybrid=True)
+    cached = await make_cached_login(fake_cloud)
+    scenario.age_cached_aliyun_session(cached)
+    scenario.revoke_aliyun_session()
+    scenario.faults["aliyun_session"] = 2064
+
+    client = MammotionClient()
+    try:
+        await client.restore_credentials(scenario.account, scenario.password, cached)
+
+        token_manager = client.token_manager
+        assert token_manager is not None
+        assert token_manager.aliyun_unavailable is not None
+        assert token_manager.reauth_required is None
+        _aliyun_mower_is_kept_unavailable(client, scenario)
+        mammotion_mower = client.mower(scenario.device.device_name)
+        assert mammotion_mower is not None
+        await wait_until(lambda: mammotion_mower.has_usable_transport)
+        assert scenario.counters.get("password_grants", 0) == 0
+    finally:
+        await client.stop()
+
+
+@pytest.mark.regression
+async def test_restore_with_a_transient_rebuild_failure_retries_it_from_the_scheduler(
+    fake_cloud: FakeMammotionCloud, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rebuild that hit a network fault was skipped and never retried: the mower stayed gone until a restart."""
+    monkeypatch.setattr(token_manager_module, "_SCHEDULER_RETRY_DELAY", 0.05)
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario)
+    cached = await make_cached_login(fake_cloud)
+    scenario.age_cached_aliyun_session(cached)
+    scenario.revoke_aliyun_session()
+    scenario.faults["auth_code_fetches"] = "http_500"
+
+    client = MammotionClient()
+    try:
+        await client.restore_credentials(scenario.account, scenario.password, cached)
+
+        _aliyun_mower_is_kept_unavailable(client, scenario)
+        assert client.token_manager is not None
+        assert client.token_manager.aliyun_unavailable is None
+        del scenario.faults["auth_code_fetches"]
+
+        handle = client.mower(scenario.aliyun_device.device_name)
+        assert handle is not None
+        await wait_until(lambda: handle.has_usable_transport, message="the deferred session never attached")
+        await wait_until(lambda: aliyun_transport(client, scenario).is_connected)
+        assert scenario.counters.get("password_grants", 0) == 0
+    finally:
+        await client.stop()
+
+
+@pytest.mark.regression
+async def test_a_transient_fault_restoring_the_cached_aliyun_session_does_not_abort_the_mammotion_restore(
+    fake_cloud: FakeMammotionCloud,
+) -> None:
+    """The cached session's refresh hit a network fault and the error escaped, aborting the whole restore.
+
+    The session is rebuilt from the HTTP login instead, which does not touch the faulted endpoint.
+    """
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario, hybrid=True)
+    cached = await make_cached_login(fake_cloud)
+    scenario.age_cached_aliyun_session(cached)
+    scenario.faults["aliyun_check_session"] = "disconnect"
+
+    client = MammotionClient()
+    try:
+        await client.restore_credentials(scenario.account, scenario.password, cached)
+
+        await wait_until(lambda: aliyun_transport(client, scenario).is_connected)
+        mammotion_mower = client.mower(scenario.device.device_name)
+        assert mammotion_mower is not None
+        await wait_until(lambda: mammotion_mower.has_usable_transport)
     finally:
         await client.stop()

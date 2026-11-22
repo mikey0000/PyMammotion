@@ -129,6 +129,7 @@ class CloudAuthMixin:
         def _get_default_session(self) -> AccountSession | None: ...
         async def _detach_cloud_from_account(self, session: AccountSession, *, rekey: bool) -> None: ...
         async def _quiesce_account(self, session: AccountSession, reason: str, exc: Exception) -> None: ...
+        async def _on_aliyun_established(self, acct_session: AccountSession, cloud_client: CloudIOTGateway) -> None: ...
         async def _refresh_for_transport(
             self, transport_type: TransportType, session: AccountSession | None
         ) -> None: ...
@@ -520,6 +521,7 @@ class CloudAuthMixin:
             if existing.http is mammotion_http:
                 existing.on_credentials_updated = self._on_credentials_updated
                 existing.on_reauth_required = partial(self._quiesce_account, acct_session)
+                existing.on_aliyun_established = partial(self._on_aliyun_established, acct_session)
                 existing.seed_from_http()
                 return existing
             # The account's login session was replaced (a full re-login).  The old
@@ -534,6 +536,7 @@ class CloudAuthMixin:
             await existing.stop_refresh_scheduler()
             existing.on_reauth_required = None
             existing.on_credentials_updated = None
+            existing.on_aliyun_established = None
             if acct_session.aliyun_transport is not None:
                 await acct_session.aliyun_transport.disconnect()
                 acct_session.aliyun_transport = None
@@ -544,6 +547,7 @@ class CloudAuthMixin:
         token_manager = TokenManager(acct_session.account_id, mammotion_http)
         token_manager.on_credentials_updated = self._on_credentials_updated
         token_manager.on_reauth_required = partial(self._quiesce_account, acct_session)
+        token_manager.on_aliyun_established = partial(self._on_aliyun_established, acct_session)
         token_manager.seed_from_http()
         acct_session.token_manager = token_manager
         return token_manager

@@ -230,6 +230,13 @@ adopts it at once (so the scheduler renews it), and `CloudIOTGateway.on_session_
 tells it of every renewal, the gateway's in-band ones included, so a new iotToken
 reaches the transport's next bind and the host's cache.
 
+A restore never lets an Aliyun failure abort the rest of the account. The cached
+session is used if it holds, else rebuilt (`TokenManager.recover_aliyun`); if that
+fails the listed Aliyun mowers keep handles with no transport, so a host shows them
+unavailable rather than missing. A transient failure is retried by the scheduler
+(doubling from 5 min to 4 h) and attaches the transport when it succeeds; a refusal
+sets `aliyun_unavailable`.
+
 Three renewal mechanisms, all clock-driven, one task per account that *sleeps
 until* the earliest credential enters its lead window — it does not poll:
 

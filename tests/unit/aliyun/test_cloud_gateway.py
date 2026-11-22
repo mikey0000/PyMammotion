@@ -566,3 +566,4 @@ async def test_second_waiter_skips_after_first_refreshes() -> None:
         await gw.check_or_refresh_session()  # second: token is now fresh → skip
 
     assert len(http_calls) == 1
+

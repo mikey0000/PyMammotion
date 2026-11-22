@@ -36,7 +36,11 @@ async def _restore(client: MammotionClient, gateway: CloudIOTGateway) -> None:
         patch.object(
             MammotionClient, "_setup_aliyun_transport", return_value=make_mock_transport(TransportType.CLOUD_ALIYUN)
         ),
-        patch.object(MammotionClient, "_ensure_token_manager", AsyncMock(return_value=MagicMock(spec=TokenManager))),
+        patch.object(
+            MammotionClient,
+            "_ensure_token_manager",
+            AsyncMock(return_value=MagicMock(spec=TokenManager, reauth_required=None, aliyun_unavailable=None)),
+        ),
         patch.object(CloudIOTGateway, "check_or_refresh_session", AsyncMock()),
     ):
         await client._restore_aliyun(ACCOUNT, {}, session, check_for_new_devices=True)  # noqa: SLF001

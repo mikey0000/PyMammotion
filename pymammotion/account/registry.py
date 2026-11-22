@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
+    from pymammotion.aliyun.model.dev_by_account_response import Device
     from pymammotion.auth.token_manager import TokenManager
     from pymammotion.http.http import MammotionHTTP
     from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
@@ -37,6 +38,8 @@ class AccountSession:
     aliyun_transport: AliyunMQTTTransport | None = None
     mammotion_transport: MQTTTransport | None = None
     device_ids: set[str] = field(default_factory=set)
+    #: The account's last known Aliyun listing, kept while no Aliyun session is established.
+    aliyun_devices: list[Device] = field(default_factory=list)
 
 
 class AccountRegistry:

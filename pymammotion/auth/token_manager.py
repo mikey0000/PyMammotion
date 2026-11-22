@@ -50,6 +50,9 @@ _MAX_SCHEDULER_SLEEP = 3600.0
 #: Stops an unrenewable credential from becoming a hot loop.
 _SCHEDULER_RETRY_DELAY = 300.0
 
+#: Ceiling for the doubling delay between attempts to establish a deferred Aliyun session.
+_MAX_ALIYUN_RETRY_DELAY = 4 * 3600.0
+
 
 @dataclass(frozen=True)
 class HTTPCredentials:
@@ -214,6 +217,14 @@ class TokenManager:
         # Background task that renews credentials shortly before they expire — see
         # start_refresh_scheduler().
         self._scheduler_task: asyncio.Task[None] | None = None
+        # A gateway whose session could not be established for a transient reason; the
+        # scheduler retries it at _aliyun_retry_at, doubling the delay each time.
+        self._aliyun_pending: CloudIOTGateway | None = None
+        self._aliyun_retry_at: float = 0.0
+        self._aliyun_retries: int = 0
+        #: Fired with the gateway once a deferred Aliyun session is established, so the
+        #: client can build its transport and attach the account's Aliyun devices.
+        self.on_aliyun_established: Callable[[CloudIOTGateway], Awaitable[None]] | None = None
         # RAII subscriptions to device handle error buses — kept alive here so they
         # are never garbage-collected while this token manager is active.
         self._handle_subscriptions: dict[str, _HandleSubscription] = {}
@@ -576,6 +587,8 @@ class TokenManager:
             and (exp := self._expiry(self._aliyun_creds.iot_token_expires_at)) is not None
         ):
             due_at.append(exp - _ALIYUN_REFRESH_LEAD)
+        if self._aliyun_pending is not None:
+            due_at.append(self._aliyun_retry_at)
         if not due_at:
             return _MAX_SCHEDULER_SLEEP
         return max(0.0, min(min(due_at) - now, _MAX_SCHEDULER_SLEEP))
@@ -622,6 +635,14 @@ class TokenManager:
             except ReLoginRequiredError:
                 _LOGGER.warning("token scheduler [%s]: Aliyun session unrenewable", self._account_id)
                 ok = False
+
+        if (pending := self._aliyun_pending) is not None and self._aliyun_retry_at <= now:
+            _LOGGER.debug("token scheduler [%s]: retrying the deferred Aliyun session", self._account_id)
+            self._aliyun_pending = None
+            if (gateway := await self.recover_aliyun(pending)) is None:
+                ok = False
+            elif self.on_aliyun_established is not None:
+                await self.on_aliyun_established(gateway)
 
         return ok
 
@@ -902,6 +923,34 @@ class TokenManager:
             raise CloudSetupError(msg)
         if gateway is not self._cloud_gateway:
             self.attach_cloud_gateway(gateway)
+        return gateway
+
+    async def recover_aliyun(self, cloud_gateway: CloudIOTGateway) -> CloudIOTGateway | None:
+        """Establish an Aliyun session for a restore, without letting its failure escape.
+
+        Returns the gateway once established.  A transient failure defers it: the
+        scheduler retries with a doubling delay and fires :attr:`on_aliyun_established`
+        on success.  A refusal gives the Aliyun transport up (:attr:`aliyun_unavailable`).
+        Only an account-level rejection raises.
+        """
+        try:
+            async with self._lock:
+                gateway = await self.establish_aliyun(cloud_gateway)
+        except Exception as exc:
+            if self._reauth_required is not None:
+                raise
+            if is_transient_network_error(exc):
+                delay = min(_SCHEDULER_RETRY_DELAY * 2**self._aliyun_retries, _MAX_ALIYUN_RETRY_DELAY)
+                _LOGGER.warning(
+                    "Aliyun session for %s unavailable (%s) — retrying in %.0fs", self._account_id, exc, delay
+                )
+                self._aliyun_pending = cloud_gateway
+                self._aliyun_retry_at = time.time() + delay
+                self._aliyun_retries += 1
+            else:
+                self._mark_aliyun_unavailable(f"Aliyun session could not be established: {exc}")
+            return None
+        self._aliyun_retries = 0
         return gateway
 
     async def _mint_authorization_code(self) -> None:
