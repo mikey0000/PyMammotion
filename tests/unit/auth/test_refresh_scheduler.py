@@ -22,6 +22,7 @@ import pytest
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 
+from tests._helpers import let_others_run
 from tests.unit.auth._helpers import make_http_mock, make_mqtt_creds
 
 
@@ -243,3 +244,19 @@ async def test_scheduler_sleep_skips_credentials_behind_terminal_flags() -> None
     assert tm.seconds_until_next_refresh == 0.0
     tm._mark_mqtt_unavailable("mqtt dead")
     assert tm.seconds_until_next_refresh > 0.0
+
+
+@pytest.mark.regression
+async def test_a_due_http_token_refreshed_by_someone_else_meanwhile_is_not_refreshed_again() -> None:
+    """The due check ran before queuing for the lock, so a refresh that landed while waiting was repeated.
+
+    Each repeat rotates the refresh token server-side for nothing.
+    """
+    tm, http = _tm_scheduled(http_ttl=60.0)
+    async with tm._lock:  # noqa: SLF001 — another refresh path holds the lock
+        scheduled = asyncio.ensure_future(tm._refresh_due_credentials())  # noqa: SLF001
+        await let_others_run()
+        http.expires_in = time.time() + 7200  # ...and renews the token before releasing it
+    await asyncio.wait_for(scheduled, timeout=1.0)
+
+    http.refresh_token_v2.assert_not_awaited()

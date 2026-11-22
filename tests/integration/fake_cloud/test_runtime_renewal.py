@@ -167,3 +167,20 @@ async def test_an_in_band_iot_token_renewal_reaches_the_transport_and_the_cache(
     fake_cloud.aliyun_broker.drop_all_clients()
     await wait_until(lambda: len(fake_cloud.bind_requests) > binds and transport.is_connected)
     assert fake_cloud.bind_requests[-1]["params"]["iotToken"] == renewed
+
+
+@pytest.mark.regression
+async def test_a_forced_access_token_refresh_is_persisted_once(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """refresh_http persisted the rotation itself and again through the login-refreshed hook: two writes per refresh."""
+    scenario = fake_cloud.scenario
+    await client.login_and_initiate_cloud(scenario.account, scenario.password)
+    await fake_cloud.baseline_counters()
+    persisted = record_persisted(client)
+    assert client.token_manager is not None
+
+    await client.token_manager.refresh_invoke_token()
+
+    assert scenario.counters.get("refresh_grants") == 1
+    assert len(persisted) == 1, f"persisted {len(persisted)} times for one refresh"

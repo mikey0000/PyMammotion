@@ -663,6 +663,11 @@ class TokenManager:
             return _MAX_SCHEDULER_SLEEP
         return max(0.0, min(min(due_at) - now, _MAX_SCHEDULER_SLEEP))
 
+    def _http_refresh_due(self, now: float) -> bool:
+        """Report whether the HTTP access token is inside its refresh lead at *now*."""
+        http_exp = self._expiry(self._http.expires_in)
+        return http_exp is not None and http_exp - _HTTP_REFRESH_LEAD <= now
+
     async def _refresh_due_credentials(self) -> bool:
         """Renew every credential currently within its lead window.
 
@@ -673,11 +678,12 @@ class TokenManager:
         now = time.time()
         ok = True
 
-        http_exp = self._expiry(self._http.expires_in)
-        if http_exp is not None and http_exp - _HTTP_REFRESH_LEAD <= now:
+        if self._http_refresh_due(now):
             _LOGGER.debug("token scheduler [%s]: HTTP access token due — refreshing", self._account_id)
             async with self._lock:
-                await self.refresh_http()
+                # Another path may have refreshed while this one queued for the lock.
+                if self._http_refresh_due(time.time()):
+                    await self.refresh_http()
 
         if (
             self._mqtt_unavailable is None
@@ -861,7 +867,7 @@ class TokenManager:
             if is_transient_network_error(exc):
                 raise
             raise self._mark_reauth_required(str(exc)) from exc
-        await self._fire_credentials_updated()
+        # The rotation fired _on_http_login_refreshed, which persists it.
 
     async def _refresh_aliyun(self) -> None:
         """Refresh the Aliyun IoT session via check_or_refresh_session().
