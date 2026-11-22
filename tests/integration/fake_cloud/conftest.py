@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 
 import pytest
 
@@ -75,12 +74,3 @@ async def client(fake_cloud: FakeMammotionCloud) -> MammotionClient:
     yield mammotion
     await asyncio.wait_for(mammotion.stop(), timeout=_TEARDOWN_TIMEOUT)
 
-
-async def wait_for(predicate, timeout: float = 5.0, interval: float = 0.05) -> None:
-    """Poll *predicate* until truthy or fail the test after *timeout* seconds."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        await asyncio.sleep(interval)
-    raise AssertionError(f"condition not met within {timeout}s: {predicate}")

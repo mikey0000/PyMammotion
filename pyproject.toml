@@ -413,6 +413,10 @@ markers = [
     "live: tests that hit a real Mammotion device (skipped by default; requires MAMMOTION_EMAIL/PASSWORD env vars)",
     "regression: pins a specific defect; see docs/testing.md section 7 for the contract",
 ]
+filterwarnings = [
+    # Third-party: the Aliyun Tea client signs requests with datetime.utcnow().
+    "ignore:datetime.datetime.utcnow\\(\\) is deprecated:DeprecationWarning:alibabacloud_tea_util.client",
+]
 
 [tool.ruff]
 required-version = ">=0.4.3"

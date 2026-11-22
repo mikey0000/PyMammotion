@@ -44,6 +44,25 @@ class FakeAliyunDevice:
     identity_id: str = "50f6fake0000000000000001"
 
 
+#: Counter names a fault can be set on: the endpoints that consult ``Scenario.faults``.
+FAULTABLE_ENDPOINTS = frozenset(
+    {
+        "auth_code_fetches",
+        "aliyun_region",
+        "aliyun_connect",
+        "aliyun_oauth",
+        "aliyun_aep",
+        "aliyun_session",
+        "aliyun_check_session",
+        "aliyun_list_binding",
+        "aliyun_share_notices",
+        "aliyun_confirm_share",
+        "aliyun_sign_out",
+        "aliyun_invokes",
+    }
+)
+
+
 @dataclass
 class Scenario:
     """All injectable state, with sane 'everything healthy' defaults."""

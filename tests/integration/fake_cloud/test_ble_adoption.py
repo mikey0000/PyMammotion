@@ -10,9 +10,9 @@ from pymammotion.account.registry import BLE_ONLY_ACCOUNT
 from pymammotion.client import MammotionClient
 from pymammotion.data.model.device import MowingDevice
 from pymammotion.transport.base import TransportType
+from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -43,7 +43,7 @@ async def test_ble_first_then_login_adopts_the_same_handle(fake_cloud: FakeMammo
     assert len(client._device_registry.all_devices) == 1
     session = client._account_registry.get(scenario.account)
     assert session is not None and session.device_ids == {name}
-    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
     assert handle.has_usable_transport
 
 

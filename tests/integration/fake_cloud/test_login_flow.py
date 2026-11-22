@@ -8,10 +8,10 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.aliyun.exceptions import CloudSetupError
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import LoginFailedError
+from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 from tests.fakeserver.scenario import DEACTIVATED_MSG
 
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -31,7 +31,7 @@ async def test_login_connects_mqtt_and_registers_device(
     assert handle.iot_id == scenario.device.iot_id
 
     # The transport should establish a real broker session.
-    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
     assert handle.has_usable_transport
 
 
@@ -115,7 +115,7 @@ async def test_aliyun_failure_leaves_mammotion_devices_working(
     assert attempts == ["EU"]
     handle = client.mower(scenario.device.device_name)
     assert handle is not None
-    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
     assert handle.has_usable_transport
     assert client.token_manager is not None
     assert client.token_manager.reauth_required is None

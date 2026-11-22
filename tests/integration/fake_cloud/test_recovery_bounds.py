@@ -10,9 +10,8 @@ from pymammotion.http.http import MammotionHTTP
 from pymammotion.transport.base import NoTransportAvailableError
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from tests.fakeserver.cloud import FakeMammotionCloud
-from tests._helpers import advance_real_time
+from tests._helpers import advance_real_time, wait_until
 
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -88,7 +87,7 @@ async def test_broker_auth_rejection_is_bounded(
     transport = session.mammotion_transport
     assert transport is not None
 
-    await wait_for(lambda: not transport.is_usable, timeout=10)
+    await wait_until(lambda: not transport.is_usable, timeout=10)
     # Attempt 1 (rejected) + one refresh + attempt 2 (rejected) → give up.
     assert scenario.counters.get("mammotion_mqtt_connects") == 2
     assert client.reauth_required is None  # transport-scoped, account alive

@@ -12,11 +12,11 @@ from collections.abc import Callable
 import pytest
 
 from pymammotion.client import MammotionClient
+from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 from tests.fakeserver.scenario import Scenario
 
 from ._helpers import aliyun_transport, counts, make_aliyun_account, make_cached_login, record_persisted
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -36,9 +36,10 @@ async def test_restore_with_a_healthy_cache_runs_no_login_and_no_chain(
         await client.restore_credentials(scenario.account, scenario.password, cached)
 
         transport = aliyun_transport(client, scenario)
-        await wait_for(lambda: transport.is_connected)
+        await wait_until(lambda: transport.is_connected)
         assert counts(scenario, *_CHAIN) == dict.fromkeys(_CHAIN, 0)
-        assert scenario.counters.get("aliyun_check_session", 0) <= 1
+        # One forced refresh: a cold restore cannot trust the cached iotToken (another client may have rotated it).
+        assert scenario.counters.get("aliyun_check_session", 0) == 1
         if hybrid:
             assert client.mower(scenario.device.device_name) is not None
     finally:
@@ -105,7 +106,7 @@ async def test_restore_rebuilds_a_rejected_aliyun_session_with_a_fresh_code(
         await client.restore_credentials(scenario.account, scenario.password, cached)
 
         transport = aliyun_transport(client, scenario)
-        await wait_for(lambda: transport.is_connected)
+        await wait_until(lambda: transport.is_connected)
         assert counts(scenario, *_CHAIN, "aliyun_session") == {
             "password_grants": 0,
             "refresh_grants": 0,

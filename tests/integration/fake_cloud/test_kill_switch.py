@@ -15,10 +15,9 @@ import pytest
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import NoTransportAvailableError, ReLoginRequiredError, TransportType
 from tests.fakeserver.cloud import FakeMammotionCloud
-from tests._helpers import advance_real_time
+from tests._helpers import advance_real_time, wait_until
 
 from ._helpers import counts, log_in_aliyun_account
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -30,7 +29,7 @@ async def test_server_side_session_death_quiesces_everything(
 ) -> None:
     scenario = fake_cloud.scenario
     await client.login_and_initiate_cloud(scenario.account, scenario.password)
-    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
 
     on_dead = AsyncMock()
     client.on_unrecoverable_auth_error = on_dead
@@ -45,10 +44,10 @@ async def test_server_side_session_death_quiesces_everything(
         await transport.send(b"\x08\x01", iot_id=scenario.device.iot_id)
 
     # The kill switch runs as a detached task — wait for its effects.
-    await wait_for(lambda: client.reauth_required is not None)
-    await wait_for(lambda: not transport.is_usable)
-    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 0)
-    await wait_for(lambda: on_dead.await_count == 1)
+    await wait_until(lambda: client.reauth_required is not None)
+    await wait_until(lambda: not transport.is_usable)
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 0)
+    await wait_until(lambda: on_dead.await_count == 1)
     assert on_dead.await_args.args[0] == scenario.account
 
     # From here on: total silence.  Whatever poll loops or queues still exist,
@@ -85,7 +84,7 @@ async def test_exactly_one_refresh_attempt_for_a_burst_of_dead_sends(
     )
     assert all(isinstance(r, Exception) for r in results)
 
-    await wait_for(lambda: client.reauth_required is not None)
+    await wait_until(lambda: client.reauth_required is not None)
     # One rejection is terminal; the stale-token dedup and the terminal flags
     # must keep the total refresh spend at exactly one for the whole burst.
     assert scenario.counters.get("refresh_grants", 0) == refresh_before + 1
@@ -109,7 +108,7 @@ async def test_session_death_on_a_hybrid_account_silences_the_aliyun_side_too(
     """A dead HTTP login takes the Aliyun session it minted down with it, without a password grant."""
     scenario = fake_cloud.scenario
     await log_in_aliyun_account(fake_cloud, client, hybrid=True)
-    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
     told: list[str] = []
 
     async def _on_dead(account_id: str, *_: object) -> None:
@@ -125,10 +124,11 @@ async def test_session_death_on_a_hybrid_account_silences_the_aliyun_side_too(
     with pytest.raises(NoTransportAvailableError):
         await transport.send(b"\x08\x01", iot_id=scenario.device.iot_id)
 
-    await wait_for(lambda: told == [scenario.account])
-    await wait_for(lambda: len(fake_cloud.aliyun_broker.sessions) == 0)
+    await wait_until(lambda: told == [scenario.account])
+    await wait_until(lambda: len(fake_cloud.aliyun_broker.sessions) == 0)
+    assert scenario.counters.get("password_grants", 0) == 0
+    await fake_cloud.baseline_counters()
     after_death = counts(scenario, *_ALIYUN_TRAFFIC)
-    assert after_death["password_grants"] == 0
     await advance_real_time(0.8)
     assert counts(scenario, *_ALIYUN_TRAFFIC) == after_death, "cloud traffic after account death"
     assert client.to_cache() == {}

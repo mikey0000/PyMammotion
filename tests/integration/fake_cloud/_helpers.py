@@ -7,10 +7,10 @@ from typing import Any
 from pymammotion.client import MammotionClient
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTTransport
 from pymammotion.transport.base import TransportType
+from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 from tests.fakeserver.scenario import Scenario
 
-from .conftest import wait_for
 
 
 def make_aliyun_account(scenario: Scenario, *, hybrid: bool = False) -> None:
@@ -49,7 +49,7 @@ async def log_in_aliyun_account(cloud: FakeMammotionCloud, client: MammotionClie
     """Log *client* in to an Aliyun account, wait for the bind, and zero the counters once the cloud is idle."""
     make_aliyun_account(cloud.scenario, hybrid=hybrid)
     await client.login_and_initiate_cloud(cloud.scenario.account, cloud.scenario.password)
-    await wait_for(lambda: aliyun_transport(client, cloud.scenario).is_connected)
+    await wait_until(lambda: aliyun_transport(client, cloud.scenario).is_connected)
     await cloud.baseline_counters()
 
 

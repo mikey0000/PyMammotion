@@ -18,36 +18,59 @@ from ._helpers import log_in_aliyun_account
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
-async def _set_fault(cloud: FakeMammotionCloud, endpoint: str, fault: int | str | None) -> None:
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{cloud.base_url}/control/set-fault", json={"endpoint": endpoint, "fault": fault}
-        ) as resp:
-            assert resp.status == 200
+async def _set_fault(cloud: FakeMammotionCloud, endpoint: str, fault: int | str | None) -> int:
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(f"{cloud.base_url}/control/set-fault", json={"endpoint": endpoint, "fault": fault}) as resp,
+    ):
+        return resp.status
+
+
+async def _fetch_auth_code(cloud: FakeMammotionCloud) -> tuple[int, str, int | None]:
+    """POST /authorization/code with a live bearer; (status, content type, in-body code or None)."""
+    access_token = cloud.scenario.mint_login_data(cloud.base_url)["access_token"]
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(
+            f"{cloud.base_url}/authorization/code", headers={"Authorization": f"Bearer {access_token}"}
+        ) as resp,
+    ):
+        code = (await resp.json())["code"] if resp.content_type == "application/json" else None
+        return resp.status, resp.content_type, code
+
+
+async def test_an_unfaulted_endpoint_answers_success(fake_cloud: FakeMammotionCloud) -> None:
+    assert await _fetch_auth_code(fake_cloud) == (200, "application/json", 0)
 
 
 @pytest.mark.parametrize(
-    ("fault", "status", "content_type"),
+    ("fault", "reply"),
     [
-        ("http_500", 500, "application/json"),
-        ("http_401", 401, "application/json"),
-        ("body_401", 200, "application/json"),
-        ("non_json", 200, "text/html"),
-        (2401, 200, "application/json"),
+        ("http_500", (500, "application/json", 500)),
+        ("http_401", (401, "application/json", 401)),
+        ("body_401", (200, "application/json", 401)),
+        ("non_json", (200, "text/html", None)),
+        (2401, (200, "application/json", 2401)),
     ],
 )
 async def test_control_fault_shapes_the_endpoint_reply(
-    fake_cloud: FakeMammotionCloud, fault: int | str, status: int, content_type: str
+    fake_cloud: FakeMammotionCloud, fault: int | str, reply: tuple[int, str, int | None]
 ) -> None:
-    await _set_fault(fake_cloud, "auth_code_fetches", fault)
+    assert await _set_fault(fake_cloud, "auth_code_fetches", fault) == 200
 
-    async with aiohttp.ClientSession() as session, session.post(f"{fake_cloud.base_url}/authorization/code") as resp:
-        assert (resp.status, resp.content_type) == (status, content_type)
+    assert await _fetch_auth_code(fake_cloud) == reply
 
 
 async def test_clearing_a_fault_restores_the_endpoint(fake_cloud: FakeMammotionCloud) -> None:
     await _set_fault(fake_cloud, "auth_code_fetches", "http_500")
     await _set_fault(fake_cloud, "auth_code_fetches", None)
+
+    assert await _fetch_auth_code(fake_cloud) == (200, "application/json", 0)
+
+
+async def test_a_fault_on_an_unknown_endpoint_is_refused(fake_cloud: FakeMammotionCloud) -> None:
+    """A misspelt endpoint would otherwise be stored and never fire, and the test using it would pass vacuously."""
+    assert await _set_fault(fake_cloud, "auth_code_fetch", "http_500") == 400
 
     assert fake_cloud.scenario.faults == {}
 

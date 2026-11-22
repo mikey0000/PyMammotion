@@ -16,7 +16,7 @@ from aiohttp import web
 
 from pymammotion.http.model.http import ErrorInfo
 
-from .scenario import BAD_CREDENTIALS_MSG, Scenario
+from .scenario import BAD_CREDENTIALS_MSG, FAULTABLE_ENDPOINTS, Scenario
 
 
 def _json(payload: dict, status: int = 200) -> web.Response:
@@ -323,6 +323,8 @@ def build_app(
         elif action == "set-bind-reply":
             scenario.bind_reply_code = int(params["code"])
         elif action == "set-fault":
+            if params["endpoint"] not in FAULTABLE_ENDPOINTS:
+                return _json({"code": 400, "msg": f"no faultable endpoint {params['endpoint']!r}"}, status=400)
             if params.get("fault") is None:
                 scenario.faults.pop(params["endpoint"], None)
             else:

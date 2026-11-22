@@ -14,11 +14,10 @@ import pytest
 import time_machine
 
 from pymammotion.client import MammotionClient
-from tests._helpers import advance_real_time
+from tests._helpers import advance_real_time, wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 
 from ._helpers import aliyun_transport, counts, log_in_aliyun_account, record_persisted
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -69,7 +68,7 @@ async def test_rejected_refresh_token_is_rebuilt_with_a_fresh_code_and_persisted
 
     _aliyun_forgets_the_session(fake_cloud)
 
-    await wait_for(
+    await wait_until(
         lambda: scenario.counters.get("aliyun_binds", 0) >= 2 and aliyun_transport(client, scenario).is_connected
     )
     assert fake_cloud.bind_requests[-1]["params"]["iotToken"] in scenario.iot_tokens, "rebound with a dead iotToken"
@@ -98,7 +97,7 @@ async def test_refused_rebuild_gives_up_on_aliyun_alone(
 
     _aliyun_forgets_the_session(fake_cloud)
 
-    await wait_for(lambda: not transport.is_usable)
+    await wait_until(lambda: not transport.is_usable)
     assert client.token_manager is not None
     assert client.token_manager.aliyun_unavailable is not None
     assert client.token_manager.reauth_required is None

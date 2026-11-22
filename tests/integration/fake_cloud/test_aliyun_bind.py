@@ -1,7 +1,7 @@
 """Aliyun MQTT bind flow against the live fake broker, for the transport alone and through the client.
 
-The transport hard-requires TLS against the bundled Aliyun CA, so these tests
-patch ``get_ssl_context`` to None — the fake broker listens in plaintext.
+The transport hard-requires TLS against the bundled Aliyun CA; the ``fake_cloud``
+fixture patches ``get_ssl_context`` to None because the fake broker listens in plaintext.
 """
 
 from __future__ import annotations
@@ -11,24 +11,20 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.client import MammotionClient
 from pymammotion.transport import aliyun_mqtt
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from pymammotion.transport.base import ReLoginRequiredError
+from tests._helpers import advance_real_time, wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
-from tests._helpers import advance_real_time
 
 from ._helpers import aliyun_transport, counts, make_aliyun_account
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
-def _make_aliyun_transport(cloud: FakeMammotionCloud, monkeypatch: pytest.MonkeyPatch) -> AliyunMQTTTransport:
-    async def _no_tls() -> None:
-        return None
-
-    monkeypatch.setattr(AliyunMQTTTransport, "get_ssl_context", staticmethod(_no_tls))
+def _make_aliyun_transport(cloud: FakeMammotionCloud) -> AliyunMQTTTransport:
     config = AliyunMQTTConfig(
         host="127.0.0.1",
         port=cloud.aliyun_broker.port,
@@ -39,17 +35,17 @@ def _make_aliyun_transport(cloud: FakeMammotionCloud, monkeypatch: pytest.Monkey
         device_secret="fake-secret",
         iot_token="fake-iot-token",
     )
-    gateway = AsyncMock()
+    gateway = AsyncMock(spec=CloudIOTGateway)
     return AliyunMQTTTransport(config, gateway)
 
 
 async def test_bind_accepted_stays_connected(
-    fake_cloud: FakeMammotionCloud, monkeypatch: pytest.MonkeyPatch
+    fake_cloud: FakeMammotionCloud
 ) -> None:
-    transport = _make_aliyun_transport(fake_cloud, monkeypatch)
+    transport = _make_aliyun_transport(fake_cloud)
     await transport.connect()
     try:
-        await wait_for(lambda: fake_cloud.scenario.counters.get("aliyun_binds", 0) == 1)
+        await wait_until(lambda: fake_cloud.scenario.counters.get("aliyun_binds", 0) == 1)
         assert fake_cloud.bind_requests[0]["params"]["iotToken"] == "fake-iot-token"
         await advance_real_time(0.3)  # an accepted bind must not trigger reconnects
         assert fake_cloud.scenario.counters.get("aliyun_mqtt_connects") == 1
@@ -59,14 +55,14 @@ async def test_bind_accepted_stays_connected(
 
 
 async def test_bind_2043_replay_is_bounded_to_three_refreshes(
-    fake_cloud: FakeMammotionCloud, monkeypatch: pytest.MonkeyPatch
+    fake_cloud: FakeMammotionCloud
 ) -> None:
     """The historical account-blocking hammer, against a real broker: the broker
     rejects every bind with 2043 while credential refreshes keep 'succeeding' —
     the transport must stop after 3 refresh cycles, not loop at ~1 Hz forever."""
     scenario = fake_cloud.scenario
     scenario.bind_reply_code = 2043
-    transport = _make_aliyun_transport(fake_cloud, monkeypatch)
+    transport = _make_aliyun_transport(fake_cloud)
     refreshes = AsyncMock(return_value=True)
     transport.on_auth_failure = refreshes
     fatal = AsyncMock()
@@ -103,7 +99,7 @@ async def test_bind_2152_account_in_use_retries_until_the_lock_is_released(
     monkeypatch.setattr(aliyun_mqtt, "ACCOUNT_IN_USE_RETRY_SEC", 0.1)
     scenario = fake_cloud.scenario
     scenario.bind_reply_code = 2152
-    transport = _make_aliyun_transport(fake_cloud, monkeypatch)
+    transport = _make_aliyun_transport(fake_cloud)
     refreshes = AsyncMock(return_value=True)
     transport.on_auth_failure = refreshes
     fatal = AsyncMock()
@@ -117,8 +113,8 @@ async def test_bind_2152_account_in_use_retries_until_the_lock_is_released(
 
     await transport.connect()
     try:
-        await wait_for(lambda: changes == [True])
-        await wait_for(lambda: scenario.counters.get("aliyun_binds", 0) >= 2)  # it retried
+        await wait_until(lambda: changes == [True])
+        await wait_until(lambda: scenario.counters.get("aliyun_binds", 0) >= 2)  # it retried
         assert transport.account_in_use is True
         assert not transport.is_connected
         assert not transport.is_usable
@@ -127,8 +123,8 @@ async def test_bind_2152_account_in_use_retries_until_the_lock_is_released(
         assert fatal.await_count == 0
 
         scenario.bind_reply_code = 200
-        await wait_for(lambda: changes == [True, False])
-        await wait_for(lambda: transport.is_connected)
+        await wait_until(lambda: changes == [True, False])
+        await wait_until(lambda: transport.is_connected)
         assert transport.account_in_use is False
         assert transport.is_usable
         assert fatal.await_count == 0
@@ -151,19 +147,14 @@ async def test_account_lock_at_login_is_reported_to_the_host_and_waited_out_with
 
     client.on_account_in_use_changed = _on_change
     await client.login_and_initiate_cloud(scenario.account, scenario.password)
-    await wait_for(lambda: changes == [(scenario.account, True)])
+    await wait_until(lambda: changes == [(scenario.account, True)])
     await fake_cloud.baseline_counters()
-    await wait_for(lambda: scenario.counters.get("aliyun_binds", 0) >= 2)  # it keeps retrying while held
+    await wait_until(lambda: scenario.counters.get("aliyun_binds", 0) >= 2)  # it keeps retrying while held
 
     scenario.bind_reply_code = 200
-    await wait_for(lambda: changes == [(scenario.account, True), (scenario.account, False)])
-    await wait_for(lambda: aliyun_transport(client, scenario).is_connected)
-    assert counts(scenario, "password_grants", "refresh_grants", "auth_code_fetches", "aliyun_check_session", "aliyun_oauth") == {
-        "password_grants": 0,
-        "refresh_grants": 0,
-        "auth_code_fetches": 0,
-        "aliyun_check_session": 0,
-        "aliyun_oauth": 0,
-    }
+    await wait_until(lambda: changes == [(scenario.account, True), (scenario.account, False)])
+    await wait_until(lambda: aliyun_transport(client, scenario).is_connected)
+    auth_traffic = ("password_grants", "refresh_grants", "auth_code_fetches", "aliyun_check_session", "aliyun_oauth")
+    assert counts(scenario, *auth_traffic) == dict.fromkeys(auth_traffic, 0)
     assert client.token_manager is not None
     assert client.token_manager.aliyun_unavailable is None

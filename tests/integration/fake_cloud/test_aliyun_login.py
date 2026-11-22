@@ -9,10 +9,10 @@ from __future__ import annotations
 import pytest
 
 from pymammotion.client import MammotionClient
+from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 
 from ._helpers import aliyun_transport, counts, make_aliyun_account
-from .conftest import wait_for
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -28,7 +28,7 @@ async def test_aliyun_only_login_binds_the_mower_with_one_chain_run(
     await client.login_and_initiate_cloud(scenario.account, scenario.password)
 
     transport = aliyun_transport(client, scenario)
-    await wait_for(lambda: transport.is_connected)
+    await wait_until(lambda: transport.is_connected)
     assert counts(scenario, *_CHAIN, "aliyun_binds", "mammotion_mqtt_connects") == {
         "password_grants": 1,
         "refresh_grants": 0,
@@ -49,8 +49,8 @@ async def test_hybrid_login_brings_up_both_transports(fake_cloud: FakeMammotionC
     await client.login_and_initiate_cloud(scenario.account, scenario.password)
 
     transport = aliyun_transport(client, scenario)
-    await wait_for(lambda: transport.is_connected)
-    await wait_for(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
+    await wait_until(lambda: transport.is_connected)
+    await wait_until(lambda: len(fake_cloud.mammotion_broker.sessions) == 1)
     mammotion_mower = client.mower(scenario.device.device_name)
     assert mammotion_mower is not None
     assert mammotion_mower.has_usable_transport
@@ -83,15 +83,18 @@ async def test_second_login_replaces_the_aliyun_session_without_leaking_the_firs
     scenario = fake_cloud.scenario
     make_aliyun_account(scenario, hybrid=True)
     await client.login_and_initiate_cloud(scenario.account, scenario.password)
-    await wait_for(lambda: aliyun_transport(client, scenario).is_connected)
+    first = aliyun_transport(client, scenario)
+    await wait_until(lambda: first.is_connected)
     await fake_cloud.baseline_counters()
 
     await client.login_and_initiate_cloud(scenario.account, scenario.password)
 
-    transport = aliyun_transport(client, scenario)
-    await wait_for(lambda: transport.is_connected)
+    second = aliyun_transport(client, scenario)
+    assert second is not first, "the second login kept the first login's transport"
+    await wait_until(lambda: second.is_connected)
+    assert not first.is_connected
     # A leaked first transport keeps its broker session, so this times out rather than settling.
-    await wait_for(lambda: len(fake_cloud.aliyun_broker.sessions) == 1)
+    await wait_until(lambda: len(fake_cloud.aliyun_broker.sessions) == 1)
     assert counts(scenario, *_CHAIN) == {
         "password_grants": 1,
         "refresh_grants": 0,
