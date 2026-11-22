@@ -134,12 +134,15 @@ def build_app(
         scenario.count("device_list_calls")
         if not scenario.bearer_ok(request.headers.get("Authorization")):
             return _json({"code": 401, "msg": "unauthorized"}, status=401)
-        d = scenario.device
+        owned = [(scenario.device.iot_id, scenario.device.device_name, "dev-1")]
+        # The owned list spans both platforms: an Aliyun-bound mower is listed here too.
+        if scenario.issue_authorization_code and scenario.aliyun_device_bound:
+            owned.append((scenario.aliyun_device.iot_id, scenario.aliyun_device.device_name, "dev-2"))
         return _ok([
             {
-                "iotId": d.iot_id,
-                "deviceId": "dev-1",
-                "deviceName": d.device_name,
+                "iotId": iot_id,
+                "deviceId": device_id,
+                "deviceName": device_name,
                 "deviceType": "LUBA",
                 "generation": 2,
                 "status": 1,
@@ -147,6 +150,7 @@ def build_app(
                 "activeTime": "2026-06-03T14:48:26",
                 "activeTimestamp": 1780498106000,
             }
+            for iot_id, device_name, device_id in owned
         ])
 
     async def share_device_page(request: web.Request) -> web.Response:

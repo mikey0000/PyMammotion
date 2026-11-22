@@ -9,10 +9,11 @@ from __future__ import annotations
 import pytest
 
 from pymammotion.client import MammotionClient
+from pymammotion.transport.base import TransportType, is_transient_network_error
 from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 
-from ._helpers import aliyun_transport, counts, make_aliyun_account
+from ._helpers import aliyun_transport, counts, make_aliyun_account, make_cached_login
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -103,3 +104,58 @@ async def test_second_login_replaces_the_aliyun_session_without_leaking_the_firs
         "aliyun_oauth": 1,
         "aliyun_session": 1,
     }
+
+
+@pytest.mark.regression
+async def test_a_hybrid_login_whose_aliyun_side_is_refused_reports_it(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """The refusal was logged and dropped: the login looked complete, so the host saved a cache with no Aliyun half.
+
+    Every later restore then skipped Aliyun for want of ``aep_data``, and the mowers stayed gone.
+    """
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario, hybrid=True)
+    scenario.faults["aliyun_session"] = 2064
+
+    await client.login_and_initiate_cloud(scenario.account, scenario.password)
+
+    assert set(client.unavailable_transports(scenario.account)) == {TransportType.CLOUD_ALIYUN}
+    assert client.mower(scenario.device.device_name) is not None
+
+
+@pytest.mark.regression
+async def test_a_hybrid_login_whose_aliyun_side_hits_a_network_fault_raises_it(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """A transient fault was swallowed like a refusal, so a login that a retry would complete was saved half-built."""
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario, hybrid=True)
+    scenario.faults["aliyun_oauth"] = "disconnect"
+
+    with pytest.raises(Exception) as excinfo:  # noqa: PT011 — the classification below is the assertion
+        await client.login_and_initiate_cloud(scenario.account, scenario.password)
+
+    assert is_transient_network_error(excinfo.value), f"{excinfo.value!r} would read as a verdict"
+
+
+@pytest.mark.regression
+async def test_restore_establishes_aliyun_for_a_cache_saved_without_it(fake_cloud: FakeMammotionCloud) -> None:
+    """The restore tried Aliyun only when ``aep_data`` was cached, so a half-saved cache lost its Aliyun mowers for good.
+
+    The healthy login is enough to mint the session: the account owns a device the
+    Mammotion device page does not list, so Aliyun is expected.
+    """
+    scenario = fake_cloud.scenario
+    make_aliyun_account(scenario, hybrid=True)
+    cached = await make_cached_login(fake_cloud)
+    for key in ("connect_data", "auth_data", "region_data", "aep_data", "session_data", "device_data"):
+        cached.pop(key, None)
+    restored = MammotionClient()
+    try:
+        await restored.restore_credentials(scenario.account, scenario.password, cached)
+
+        await wait_until(lambda: aliyun_transport(restored, scenario).is_connected)
+        assert scenario.counters.get("password_grants", 0) == 0
+    finally:
+        await restored.stop()

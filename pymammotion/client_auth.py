@@ -38,6 +38,7 @@ from pymammotion.transport.base import (
     LoginFailedError,
     ReLoginRequiredError,
     TransportType,
+    is_transient_network_error,
 )
 
 if TYPE_CHECKING:
@@ -250,12 +251,24 @@ class CloudAuthMixin:
 
         Creates an :class:`AliyunMQTTTransport` for pre-2025 devices and/or a
         :class:`MQTTTransport` for post-2025 devices as required by the discovered
-        device set.
+        device set.  The only password grant in the library: call it on a user action.
+
+        A login can be partial: when one platform refuses while the other binds
+        devices, the refused transport is in :meth:`unavailable_transports` (and
+        ``on_transport_availability_changed`` fires), so a host can decline to save
+        a half-built cache.
 
         Args:
             account:  Mammotion account (email or phone number).
             password: Account password.
             session:  Optional :class:`aiohttp.ClientSession` to reuse.
+
+        Raises:
+            LoginFailedError: The password grant was refused.
+            CloudSetupError / LoginException: The Aliyun chain was refused and no
+                Mammotion device was bound either.
+            ClientError / TimeoutError / ConnectionError: A network fault, on either
+                platform; nothing is half-registered, and a retry may succeed.
 
         """
         given_up = self.unavailable_transports(account)
@@ -298,11 +311,10 @@ class CloudAuthMixin:
             except _AUTH_REJECTED:
                 raise
             except Exception as exc:
-                _logger.warning(
-                    "login: Aliyun setup failed for %s — continuing without the Aliyun transport",
-                    account,
-                    exc_info=True,
-                )
+                # A blip is raised so the host retries the login; only a refusal may leave a partial one.
+                if is_transient_network_error(exc):
+                    raise
+                _logger.warning("login: Aliyun setup failed for %s", account, exc_info=True)
                 aliyun_error = exc
 
         if cloud_client is not None:
@@ -319,6 +331,11 @@ class CloudAuthMixin:
             await al_transport.connect()
 
         if mammotion_records:
+            if aliyun_error is not None:
+                # A partial login: the host sees it in unavailable_transports and need not save it.
+                token_manager.mark_transport_unavailable(
+                    TransportType.CLOUD_ALIYUN, f"Aliyun login failed: {aliyun_error}"
+                )
             await self._bootstrap_mammotion_mqtt(account, mammotion_http, acct_session, owned_iot_id_map)
         elif aliyun_error is not None:
             raise aliyun_error
@@ -396,9 +413,9 @@ class CloudAuthMixin:
 
         Handles both credential types transparently:
 
-        * **Aliyun** (pre-2025 devices) — detected by the presence of ``aep_data``
-          in *cached_data*.  Uses :meth:`CloudIOTGateway.from_cache` which also
-          refreshes the IoT session token if it has expired.
+        * **Aliyun** (pre-2025 devices) — when ``aep_data`` is cached, or the account
+          owns a device its Mammotion device page does not list.  The cached session
+          is used if it holds, else one is minted from the login.
         * **Mammotion MQTT** (post-2025 devices) — detected by the presence of
           ``mammotion_mqtt`` and ``mammotion_device_records`` in *cached_data*.
 
@@ -460,7 +477,7 @@ class CloudAuthMixin:
             _logger.warning("restore_credentials: the server no longer accepts the cached login for %s", account)
             raise token_manager.reject_login("the server no longer accepts the cached login")
 
-        if "aep_data" in cached_data:
+        if "aep_data" in cached_data or self._expects_aliyun(mammotion_http):
             await self._restore_aliyun(account, cached_data, acct_session, check_for_new_devices=check_for_new_devices)
 
         owned_devices: list[DeviceInfo] | None = None
@@ -702,6 +719,17 @@ class CloudAuthMixin:
     # ------------------------------------------------------------------
     # Cloud — private helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _expects_aliyun(mammotion_http: MammotionHTTP) -> bool:
+        """Report whether the account owns a device its Mammotion device page does not list, i.e. an Aliyun one.
+
+        Lets a restore establish Aliyun from the healthy login when the cache was saved
+        without it (a login whose Aliyun half failed).
+        """
+        owned = {d.device_name for d in mammotion_http.device_info if d.device_name}
+        records = mammotion_http.device_records
+        return bool(owned - {r.device_name for r in records.records} if records is not None else owned)
 
     @staticmethod
     def _extract_user_account(mammotion_http: MammotionHTTP) -> int:
