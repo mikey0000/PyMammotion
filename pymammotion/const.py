@@ -21,9 +21,10 @@ if not MAMMOTION_OAUTH2_CLIENT_ID:
     MAMMOTION_OAUTH2_CLIENT_SECRET = os.environ.get("MAMMOTION_OAUTH2_CLIENT_SECRET", "")
 
 APP_VERSION = os.environ.get("APP_VERSION", "2.3.20.30")
-ALIYUN_DOMAIN = "api.link.aliyun.com"
 # Overridable so a test harness (tests/fakeserver) can stand in for the real
 # cloud — e.g. a Home Assistant dev install pointed at the fake API.
+ALIYUN_DOMAIN = os.environ.get("ALIYUN_DOMAIN", "api.link.aliyun.com")
+ALIYUN_OPENACCOUNT_DOMAIN = os.environ.get("ALIYUN_OPENACCOUNT_DOMAIN", "sdk.openaccount.aliyun.com")
 MAMMOTION_DOMAIN = os.environ.get("MAMMOTION_DOMAIN", "https://id.mammotion.com")
 MAMMOTION_API_DOMAIN = os.environ.get("MAMMOTION_API_DOMAIN", "https://domestic.mammotion.com")
 MAMMOTION_CLIENT_ID = "MADKALUBAS"
