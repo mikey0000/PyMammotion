@@ -79,7 +79,7 @@ four layers, every one of them there to slow an automatic password re-login that
 `oauth2/token` hammering Mammotion reported. `login_v2` is now reachable only
 from `MammotionClient.login_and_initiate_cloud`; every automatic renewal uses a
 refresh token or, for Aliyun, the existing login's authCode chain
-(`connect_iot`). With nothing to throttle, the throttles were deleted.
+(`TokenManager.establish_aliyun`). With nothing to throttle, the throttles were deleted.
 `tests/unit/http/test_token_refresh.py` asserts the constraint against the AST.
 
 ## D8. `/user/oauth/check` must not come back

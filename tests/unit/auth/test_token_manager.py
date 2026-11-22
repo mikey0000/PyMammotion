@@ -533,11 +533,11 @@ async def test_aliyun_2401_rebuilds_session_without_password() -> None:
     session_data = MagicMock(iotToken="iot-new", iotTokenExpire=7200, refreshToken="r", refreshTokenExpire=86400)
     gateway.session_by_authcode_response = MagicMock(data=session_data)
     gateway._iot_token_issued_at = int(time.time())
-    tm.connect_iot = AsyncMock()  # type: ignore[method-assign]
+    tm.establish_aliyun = AsyncMock()  # type: ignore[method-assign]
 
     await tm.refresh_aliyun_credentials()
 
-    tm.connect_iot.assert_awaited_once()
+    tm.establish_aliyun.assert_awaited_once()
     http.login_v2.assert_not_called()
     assert tm.aliyun_unavailable is None
 

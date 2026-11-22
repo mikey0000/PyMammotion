@@ -223,6 +223,10 @@ restore_credentials ──────┤─> MammotionHTTP  ──> validate_lo
                           └─> TokenManager.start_refresh_scheduler()
 ```
 
+An Aliyun session is minted from the HTTP login by the authCode chain, which runs
+in one place: `TokenManager.establish_aliyun` (login, restore rebuild and the
+runtime 2401 rebuild all call it).
+
 Three renewal mechanisms, all clock-driven, one task per account that *sleeps
 until* the earliest credential enters its lead window — it does not poll:
 

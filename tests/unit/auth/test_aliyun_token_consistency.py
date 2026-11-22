@@ -300,7 +300,7 @@ async def test_session_expired_relogin_uses_new_gateway_token() -> None:
         gw._session_by_authcode_response = _session("post-relogin-token")  # noqa: SLF001
         gw._iot_token_issued_at = int(time.time())  # noqa: SLF001
 
-    with patch.object(TokenManager, "connect_iot", AsyncMock(side_effect=_relogin)):
+    with patch.object(TokenManager, "establish_aliyun", AsyncMock(side_effect=_relogin)):
         await tm.refresh_aliyun_credentials()
 
     _assert_consistent(tm, gw, expected="post-relogin-token")
@@ -320,7 +320,7 @@ async def test_session_expired_beyond_limit_raises_relogin_required() -> None:
     async def _relogin_fail() -> None:
         raise SessionExpiredError(TransportType.CLOUD_ALIYUN, "2401 again")
 
-    with patch.object(TokenManager, "connect_iot", AsyncMock(side_effect=_relogin_fail)):
+    with patch.object(TokenManager, "establish_aliyun", AsyncMock(side_effect=_relogin_fail)):
         # First call: 1 failure, attempts connect_iot (which raises SessionExpiredError →
         # propagates), so wrap each call.
         with pytest.raises((ReLoginRequiredError, SessionExpiredError)):

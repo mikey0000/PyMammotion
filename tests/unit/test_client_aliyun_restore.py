@@ -89,13 +89,13 @@ async def test_an_unusable_cached_session_is_rebuilt_with_a_fresh_authorization_
     http.fetch_authorization_token = AsyncMock(side_effect=issue_code)
     codes_used: list[str] = []
 
-    async def connect_iot(gateway: CloudIOTGateway) -> None:
-        codes_used.append(gateway.mammotion_http.login_info.authorization_code)
+    async def get_region(_country_code: str) -> None:
+        codes_used.append(http.login_info.authorization_code)
         raise CloudSetupError("stop after the code is read")
 
     with (
         patch.object(CloudIOTGateway, "from_cache", AsyncMock(return_value=None)),
-        patch.object(MammotionClient, "_connect_iot", autospec=True, side_effect=connect_iot),
+        patch.object(CloudIOTGateway, "get_region", side_effect=get_region),
     ):
         await client._restore_aliyun(ACCOUNT, {}, session, check_for_new_devices=True)  # noqa: SLF001
 

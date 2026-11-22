@@ -33,7 +33,7 @@ def _relogin_session() -> tuple[MammotionClient, AccountSession, MagicMock, Magi
     tm = MagicMock()
     tm.refresh_aliyun_credentials = AsyncMock()
     tm.refresh_mqtt_credentials = AsyncMock()
-    tm.connect_iot = AsyncMock()
+    tm.establish_aliyun = AsyncMock()
     tm.refresh_http = AsyncMock()
 
     session = AccountSession(account_id="a@b.com", email="a@b.com", password="pw")

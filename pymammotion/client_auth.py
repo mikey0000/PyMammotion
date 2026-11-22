@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING, Any
 
 from pymammotion.account.registry import AccountSession
 from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
-from pymammotion.aliyun.exceptions import CloudSetupError
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import UnauthorizedExceptionError
@@ -166,8 +165,6 @@ class CloudAuthMixin:
             *,
             skip_ids: set[str] | None = None,
         ) -> None: ...
-        @staticmethod
-        async def _connect_iot(cloud_client: CloudIOTGateway) -> None: ...
 
     async def _sign_out_session(self, session: AccountSession, *, revoke: bool = True) -> None:
         """Disconnect transports and drop a single account session.
@@ -276,13 +273,14 @@ class CloudAuthMixin:
             mammotion_http=mammotion_http,
         )
         acct_session.user_account = self._extract_user_account(mammotion_http)
+        token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
 
         aliyun_error: Exception | None = None
         cloud_client: CloudIOTGateway | None = None
         # The app starts its Aliyun login from this code alone (IOTConnectViewModel.iotLogin).
         if (login_info := mammotion_http.login_info) is not None and login_info.authorization_code:
             try:
-                cloud_client = await self._connect_aliyun_for_login(mammotion_http)
+                cloud_client = await self._connect_aliyun_for_login(token_manager)
             except _AUTH_REJECTED:
                 raise
             except Exception as exc:
@@ -295,8 +293,6 @@ class CloudAuthMixin:
 
         if cloud_client is not None:
             acct_session.cloud_client = cloud_client
-            token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
-            token_manager.attach_cloud_gateway(cloud_client)
             al_transport = self._setup_aliyun_transport(cloud_client, acct_session)
             acct_session.aliyun_transport = al_transport
             ua = acct_session.user_account
@@ -316,18 +312,10 @@ class CloudAuthMixin:
         await self._account_registry.register(acct_session)
         self._start_token_refresh(acct_session)
 
-    async def _connect_aliyun_for_login(self, mammotion_http: MammotionHTTP) -> CloudIOTGateway:
-        """Run the Aliyun chain for a fresh login and accept any pending Aliyun shares."""
-        cloud_client = CloudIOTGateway(mammotion_http)
-        await self._connect_iot(cloud_client)
-        if (
-            cloud_client.aep_response is None
-            or cloud_client.region_response is None
-            or cloud_client.session_by_authcode_response is None
-            or cloud_client.session_by_authcode_response.data is None
-        ):
-            msg = "Aliyun setup incomplete — no AEP, region or session response"
-            raise CloudSetupError(msg)
+    @staticmethod
+    async def _connect_aliyun_for_login(token_manager: TokenManager) -> CloudIOTGateway:
+        """Run the Aliyun chain on the login's own code and accept any pending Aliyun shares."""
+        cloud_client = await token_manager.establish_aliyun(CloudIOTGateway(token_manager.http), fresh_code=False)
         shared_notice = await cloud_client.get_shared_notice_list()
         if shared_notice.data and shared_notice.data.data:
             pending = [d.record_id for d in shared_notice.data.data if d.status == -1]

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import jwt
 
-from pymammotion.aliyun.exceptions import LoginException
+from pymammotion.aliyun.exceptions import CloudSetupError, LoginException
 from pymammotion.http.model.http import MQTTConnection, UnauthorizedExceptionError
 from pymammotion.transport.base import (
     ReLoginRequiredError,
@@ -768,7 +768,7 @@ class TokenManager:
         """Refresh the Aliyun IoT session via check_or_refresh_session().
 
         On a 2401 ("refreshToken invalid") the session is rebuilt once from the
-        existing HTTP login's authCode chain (:meth:`connect_iot`).  That path uses
+        existing HTTP login's authCode chain (:meth:`establish_aliyun`).  That path uses
         no password, so it is legitimate automatic recovery rather than a re-login.
 
         If the rebuild also fails, the *Aliyun transport* is terminally
@@ -797,7 +797,7 @@ class TokenManager:
                 # Returning early was the bug that handed the caller a stale
                 # iotToken and caused an infinite bind-failure loop.
                 try:
-                    await self.connect_iot()
+                    await self.establish_aliyun()
                 except Exception as rebuild_exc:
                     if is_transient_network_error(rebuild_exc):
                         raise
@@ -831,27 +831,54 @@ class TokenManager:
             raise self._mark_aliyun_unavailable(str(exc)) from exc
         await self._fire_credentials_updated()
 
-    async def connect_iot(self) -> None:
-        """Run the Aliyun IoT gateway setup sequence (region, AEP, session, devices)."""
+    async def establish_aliyun(
+        self, cloud_gateway: CloudIOTGateway | None = None, *, fresh_code: bool = True
+    ) -> CloudIOTGateway:
+        """Mint an Aliyun IoT session from the HTTP login via the authCode chain, and attach its gateway.
 
-        if self._cloud_gateway is None:
+        The one place the chain runs: a fresh login, a restore whose cached session is
+        unusable, and a runtime rebuild after a 2401 all come here.  No password is
+        involved.  The gateway defaults to the attached one, rebuilt in place so the
+        transport holding it sees the new session.
+
+        Args:
+            cloud_gateway: The gateway to establish; defaults to the attached one.
+            fresh_code: Mint a new authorization code first.  Only a login that has just
+                returned one may pass False — a code is spent by its first loginbyoauth.
+
+        Raises:
+            CloudSetupError: A step answered without the region, AEP or session it should have.
+
+        """
+        gateway = cloud_gateway or self._cloud_gateway
+        if gateway is None:
             raise ReLoginRequiredError(self._account_id, "No Aliyun cloud gateway configured")
-        cloud_client = self._cloud_gateway
-        mammotion_http = cloud_client.mammotion_http
-        login_info = mammotion_http.login_info
-        if login_info is None:
-            msg = "login_info is None — call login_v2() before _connect_iot()"
-            raise ReLoginRequiredError(mammotion_http.account or "", msg)
+        if (login_info := self._http.login_info) is None:
+            raise ReLoginRequiredError(self._account_id, "no HTTP login to mint an Aliyun session from")
         country_code = login_info.userInformation.domainAbbreviation
-        # The login's saved authorization code is single-use and already spent.
-        await mammotion_http.fetch_authorization_token()
-        if cloud_client.region_response is None:
-            await cloud_client.get_region(country_code)
-        await cloud_client.connect()
-        await cloud_client.login_by_oauth(country_code)
-        await cloud_client.aep_handle()
-        await cloud_client.session_by_auth_code()
-        await cloud_client.list_binding_by_account()
+        if fresh_code:
+            await self._http.fetch_authorization_token()
+        if gateway.region_response is None:
+            await gateway.get_region(country_code)
+        await gateway.connect()
+        await gateway.login_by_oauth(country_code)
+        await gateway.aep_handle()
+        await gateway.session_by_auth_code()
+        await gateway.list_binding_by_account()
+        if (
+            gateway.aep_response is None
+            or gateway.region_response is None
+            or gateway.session_by_authcode_response is None
+            or gateway.session_by_authcode_response.data is None
+        ):
+            msg = "Aliyun setup incomplete — no AEP, region or session response"
+            raise CloudSetupError(msg)
+        self._cloud_gateway = gateway
+        return gateway
+
+    async def connect_iot(self) -> None:
+        """Rebuild the attached gateway's Aliyun session; kept for callers of the old name."""
+        await self.establish_aliyun()
 
     async def refresh_invoke_token(self, stale_token: str | None = None) -> None:
         """Renew the HTTP bearer token used for ``mqtt_invoke`` after a 401.

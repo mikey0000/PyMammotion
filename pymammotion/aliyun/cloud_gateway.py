@@ -646,7 +646,7 @@ class CloudIOTGateway:
             if response_body_dict.get("code") == 2401:
                 # Do NOT sign out here.  TokenManager recovers from a 2401 by
                 # rebuilding the IoT session from the still-valid HTTP login
-                # (connect_iot); invalidating the session first only removes state
+                # (establish_aliyun); invalidating the session first only removes state
                 # that recovery might have reused, and destroys a possibly-working
                 # session before we know the replacement can be established.
                 raise SessionExpiredError(

@@ -1542,6 +1542,7 @@ class MammotionClient(CloudAuthMixin):
             _logger.error("_restore_aliyun: no login session for %s — skipping the Aliyun transport", account)
             return
 
+        token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
         cloud_client = await CloudIOTGateway.from_cache(cached_data, mammotion_http)
         if cloud_client is None:
             # The cached Aliyun data is unusable, but an Aliyun session is minted from
@@ -1552,11 +1553,8 @@ class MammotionClient(CloudAuthMixin):
                 "restore_credentials: cached Aliyun session for %s is unusable — rebuilding it from the HTTP login",
                 account,
             )
-            cloud_client = CloudIOTGateway(mammotion_http)
             try:
-                # The login's saved authorization code is single-use and already spent.
-                await mammotion_http.fetch_authorization_token()
-                await self._connect_iot(cloud_client)
+                cloud_client = await token_manager.establish_aliyun(CloudIOTGateway(mammotion_http))
             except Exception:
                 _logger.warning(
                     "restore_credentials: could not rebuild the Aliyun session for %s — "
@@ -1565,19 +1563,8 @@ class MammotionClient(CloudAuthMixin):
                     exc_info=True,
                 )
                 return
-            if (
-                cloud_client.aep_response is None
-                or cloud_client.region_response is None
-                or cloud_client.session_by_authcode_response is None
-                or cloud_client.session_by_authcode_response.data is None
-            ):
-                _logger.warning(
-                    "restore_credentials: rebuilt Aliyun session for %s is incomplete — skipping its transport", account
-                )
-                return
 
         acct_session.cloud_client = cloud_client
-        token_manager = await self._ensure_token_manager(acct_session, mammotion_http)
         token_manager.attach_cloud_gateway(cloud_client)
         transport = self._setup_aliyun_transport(cloud_client, acct_session)
         acct_session.aliyun_transport = transport
@@ -1799,23 +1786,6 @@ class MammotionClient(CloudAuthMixin):
                 await self._release_to_ble_only(handle, acct_session)
             else:
                 await self._remove_unbound_device(handle, acct_session)
-
-    @staticmethod
-    async def _connect_iot(cloud_client: CloudIOTGateway) -> None:
-        """Run the Aliyun IoT gateway setup sequence (region, AEP, session, devices)."""
-        mammotion_http = cloud_client.mammotion_http
-        login_info = mammotion_http.login_info
-        if login_info is None:
-            msg = "login_info is None — call login_v2() before _connect_iot()"
-            raise RuntimeError(msg)
-        country_code = login_info.userInformation.domainAbbreviation
-        if cloud_client.region_response is None:
-            await cloud_client.get_region(country_code)
-        await cloud_client.connect()
-        await cloud_client.login_by_oauth(country_code)
-        await cloud_client.aep_handle()
-        await cloud_client.session_by_auth_code()
-        await cloud_client.list_binding_by_account()
 
     # ------------------------------------------------------------------
     # Map sync

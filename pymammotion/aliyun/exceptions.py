@@ -41,7 +41,7 @@ class AuthRefreshException(SessionExpiredError):
     """The Aliyun refresh token itself has expired; the session must be re-minted.
 
     Subclasses :class:`SessionExpiredError` so the standard recovery path applies:
-    ``refresh_aliyun_credentials`` → ``connect_iot`` rebuilds the session from the
+    ``refresh_aliyun_credentials`` → ``establish_aliyun`` rebuilds the session from the
     healthy HTTP login's authCode chain.
     """
 

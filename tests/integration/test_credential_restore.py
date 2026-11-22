@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 from pymammotion.account.registry import AccountSession
+from pymammotion.auth.token_manager import TokenManager
 from pymammotion.client import MammotionClient
 from pymammotion.http.http import MammotionHTTP
 from pymammotion.http.model.http import (
@@ -140,21 +141,22 @@ async def test_unusable_aliyun_cache_is_rebuilt_from_the_http_login() -> None:
     rebuilt: list[object] = []
 
     def _new_gateway(mammotion_http: object) -> MagicMock:
-        """Stand in for CloudIOTGateway(http) — _connect_iot fills in the responses."""
+        """Stand in for CloudIOTGateway(http) — the chain fills in the responses."""
         gateway = MagicMock()
         gateway.mammotion_http = mammotion_http
         gateway.devices_by_account_response = None
         return gateway
 
-    async def _connect_iot(cloud_client: object) -> None:
+    async def _establish(_tm: TokenManager, cloud_client: MagicMock, **_: object) -> MagicMock:
         rebuilt.append(cloud_client)
+        return cloud_client
 
     mock_gateway_cls = MagicMock(side_effect=_new_gateway)
     mock_gateway_cls.from_cache = AsyncMock(return_value=None)
 
     with (
         patch("pymammotion.client.CloudIOTGateway", mock_gateway_cls),
-        patch.object(client, "_connect_iot", _connect_iot),
+        patch.object(TokenManager, "establish_aliyun", autospec=True, side_effect=_establish),
         patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
         patch.object(client, "_setup_aliyun_transport", return_value=MagicMock()),
         patch("pymammotion.http.http.MammotionHTTP.login_v2", new_callable=AsyncMock) as mock_login_v2,
@@ -179,33 +181,13 @@ async def test_failed_aliyun_rebuild_costs_only_that_transport() -> None:
 
     with (
         patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=None)),
-        patch.object(client, "_connect_iot", AsyncMock(side_effect=ConnectionError("aliyun down"))),
+        patch.object(TokenManager, "establish_aliyun", AsyncMock(side_effect=ConnectionError("aliyun down"))),
         patch.object(client, "login_and_initiate_cloud", AsyncMock()) as mock_login,
     ):
         await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=False)
 
     mock_login.assert_not_awaited()
     assert acct_session.mammotion_http is http
-    assert acct_session.aliyun_transport is None
-
-async def test_incomplete_aliyun_rebuild_skips_the_transport() -> None:
-    """A rebuild that returns without a usable session must not be wired up.
-
-    _setup_aliyun_transport dereferences aep/region/session data directly, so a
-    half-built gateway would surface as an AttributeError mid-restore.
-    """
-    client = MammotionClient()
-    acct_session = AccountSession(account_id="user@test.com", email="user@test.com", password="pass")
-    acct_session.mammotion_http = _populated_mammotion_http()
-
-    with (
-        patch("pymammotion.client.CloudIOTGateway.from_cache", AsyncMock(return_value=None)),
-        patch.object(client, "_connect_iot", AsyncMock()),  # leaves every response None
-        patch.object(client, "_setup_aliyun_transport") as mock_setup,
-    ):
-        await client._restore_aliyun("user@test.com", {}, acct_session, check_for_new_devices=False)
-
-    mock_setup.assert_not_called()
     assert acct_session.aliyun_transport is None
 
 async def test_restore_aliyun_refreshes_session_before_device_list() -> None:
@@ -477,7 +459,7 @@ async def test_token_manager_set_after_login_and_initiate_cloud() -> None:
         patch("pymammotion.client_auth.MammotionHTTP", return_value=mock_http),
         # login_and_initiate_cloud lives in client_auth, so that is where the name resolves.
             patch("pymammotion.client_auth.CloudIOTGateway", return_value=mock_cloud),
-        patch("pymammotion.client.MammotionClient._connect_iot", AsyncMock()),
+        patch.object(TokenManager, "establish_aliyun", AsyncMock(return_value=mock_cloud)),
         patch.object(client, "_setup_aliyun_transport", return_value=mock_transport),
         patch.object(client, "_register_aliyun_device", AsyncMock()),
     ):

@@ -77,7 +77,7 @@ def cloud_boundaries(client: MammotionClient) -> Iterator[SimpleNamespace]:
     transport = create_autospec(AliyunMQTTTransport, instance=True)
     with (
         patch.object(CloudIOTGateway, "check_or_refresh_session", autospec=True, side_effect=expired) as refresh,
-        patch.object(client, "_connect_iot", autospec=True) as rebuild,
+        patch.object(TokenManager, "establish_aliyun", autospec=True) as rebuild,
         patch.object(client, "_setup_aliyun_transport", autospec=True, return_value=transport) as setup,
         patch.object(client, "_restore_mammotion_mqtt", autospec=True, return_value=[]) as mqtt,
         patch.object(client, "login_and_initiate_cloud", autospec=True) as login,
@@ -89,7 +89,7 @@ def cloud_boundaries(client: MammotionClient) -> Iterator[SimpleNamespace]:
         yield SimpleNamespace(refresh=refresh, rebuild=rebuild, setup=setup, mqtt=mqtt, login=login)
 
 
-def _complete_rebuild(gateway: CloudIOTGateway) -> None:
+def _complete_rebuild(_tm: TokenManager, gateway: CloudIOTGateway, **_: object) -> CloudIOTGateway:
     """Supply the responses that the mocked IoT API chain would install.
 
     These responses have read-only properties; the real gateway has no public
@@ -98,6 +98,7 @@ def _complete_rebuild(gateway: CloudIOTGateway) -> None:
     gateway._aep_response = AepResponse(code=200, data=DeviceData("synthetic", "pk", "device"))
     gateway._region_response = make_region()
     gateway._session_by_authcode_response = make_session()
+    return gateway
 
 
 @pytest.mark.regression
@@ -115,7 +116,7 @@ async def test_expired_aliyun_cache_rebuilds_without_password_login(
     cloud_boundaries.mqtt.assert_awaited_once()
     cloud_boundaries.login.assert_not_awaited()
     assert client.token_manager is not None
-    assert client.token_manager.cloud_gateway is cloud_boundaries.rebuild.call_args.args[0]
+    assert client.token_manager.cloud_gateway is cloud_boundaries.rebuild.call_args.args[1]
     assert client.reauth_required is None
 
 

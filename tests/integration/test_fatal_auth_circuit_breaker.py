@@ -35,7 +35,7 @@ def _make_breaker_session() -> AccountSession:
     tm.account_id = "acc"
     tm.reauth_required = None  # the account's HTTP login is healthy unless a test says otherwise
     tm.refresh_aliyun_credentials = AsyncMock()  # Aliyun targeted refresh
-    tm.connect_iot = AsyncMock()  # Aliyun-triggered re-login re-establishes via the full IoT flow
+    tm.establish_aliyun = AsyncMock()  # Aliyun-triggered re-login re-establishes via the full IoT flow
     _creds = MQTTCredentials(
         host="tcp://mqtt.example:1883", client_id="cid", username="u", jwt="fresh-jwt", expires_at=0.0
     )
