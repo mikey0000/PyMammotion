@@ -108,6 +108,12 @@ def _new_tls_context() -> ssl.SSLContext:
     return context
 
 
+def _is_auth_rejection(exc: aiomqtt.MqttCodeError) -> bool:
+    """Report whether the broker refused the credentials: rc 4/134 bad login, 5/135 not authorised."""
+    text = str(exc).lower()
+    return exc.rc in (4, 5, 134, 135) or "bad user name" in text or "not authorized" in text
+
+
 @dataclass(frozen=True)
 class MQTTTransportConfig:
     """Frozen configuration for an MQTTTransport instance."""
@@ -442,45 +448,21 @@ class MQTTTransport(CloudTransport):
     async def _run(self) -> None:
         """Run the main connection loop.
 
-        Auth recovery is deliberately minimal: on a broker auth rejection we force
-        ONE full credential refresh (refresh-token based — never ``login_v2``) and
-        retry; if the broker still rejects, we give up (``_give_up`` marks this
-        transport unrecoverable and signals the affected mowers).  Non-auth
-        disconnects reconnect with exponential backoff as usual.
+        A broker auth rejection earns ONE forced credential refresh (refresh-token
+        based, never ``login_v2``) and an immediate retry; a second rejection gives
+        the transport up.  Other disconnects reconnect with exponential backoff.
         """
         backoff = MQTT_RECONNECT_MIN_SEC
         auth_force_refreshed = False
 
         while not self._stop_event.is_set():
             await self._notify_availability(TransportAvailability.CONNECTING)
-
-            # Routine pre-connect credential check (Mammotion MQTT only): refresh
-            # only if near expiry — usually returns cached creds, no network call.
-            try:
-                await self._refresh_credentials(force=False)
-            except ReLoginRequiredError as rle:
-                _logger.error("Pre-connect credential refresh requires re-login — giving up: %s", rle)
-                await self._give_up(rle)
+            if not await self._refresh_credentials_before_connect():
                 await self._notify_availability(TransportAvailability.DISCONNECTED)
                 return
-            except Exception:
-                _logger.warning("Pre-connect credential refresh failed (transient?)", exc_info=True)
 
             try:
-                async with self._connected_client(
-                    aiomqtt.Client(
-                        hostname=self._config.host,
-                        port=self._config.port,
-                        username=self._config.username,
-                        password=self._config.password,
-                        identifier=self._config.client_id,
-                        keepalive=self._config.keepalive,
-                        tls_context=self._tls_context,
-                        protocol=aiomqtt.ProtocolVersion.V311,
-                        clean_session=True,
-                        timeout=60,
-                    )
-                ) as client:
+                async with self._connected_client(self._new_client()) as client:
                     self._client = client
                     backoff = MQTT_RECONNECT_MIN_SEC
                     auth_force_refreshed = False
@@ -495,54 +477,11 @@ class MQTTTransport(CloudTransport):
                         await self._dispatch(str(message.topic), bytes(message.payload))
 
             except aiomqtt.MqttCodeError as exc:
-                rc = exc.rc
-                exc_str = str(exc).lower()
-                # rc=4/134 = Bad User Name or Password (MQTT 3.1.1 / 5.0)
-                # rc=5/135 = Not Authorized (MQTT 3.1.1 / 5.0)
-                is_auth_failure = rc in (4, 5, 134, 135) or "bad user name" in exc_str or "not authorized" in exc_str
-                if is_auth_failure:
-                    if not auth_force_refreshed and self._creds_refresher is not None:
-                        _logger.warning(
-                            "MQTT broker rejected auth (rc=%s) — forcing full credential refresh [%s]",
-                            rc,
-                            _broker_identity_summary(self._config),
-                        )
-                        try:
-                            await self._refresh_credentials(force=True)
-                        except ReLoginRequiredError as rle:
-                            _logger.error(
-                                "MQTT credential refresh requires re-login — giving up on %s: %s",
-                                self.transport_type.value,
-                                rle,
-                            )
-                            await self._give_up(rle)
-                            return
-                        except Exception:
-                            # Transient refresh failure (network) — back off and retry.
-                            # Never terminal: the broker rejecting an expired JWT while
-                            # the HTTP API is down says nothing about the login.
-                            _logger.warning("Forced credential refresh failed (transient?)", exc_info=True)
-                        else:
-                            # Retry once, immediately, with the refreshed credentials.
-                            auth_force_refreshed = True
-                            continue
-                    else:
-                        # Already force-refreshed this cycle and the broker still
-                        # rejects — the credentials are genuinely bad; give up.
-                        _logger.error(
-                            "MQTT auth still rejected after full credential refresh (rc=%s) — giving up on %s [%s]",
-                            rc,
-                            self.transport_type.value,
-                            _broker_identity_summary(self._config),
-                        )
-                        auth_exc = ReLoginRequiredError(
-                            self._token_manager.account_id,
-                            f"MQTT auth rejected after full credential refresh (rc={rc})",
-                        )
-                        await self._give_up(auth_exc)
-                        return
-                else:
-                    _logger.warning("MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
+                if not _is_auth_rejection(exc):
+                    _logger.warning("MQTT error (rc=%s): %s — retry in %ds", exc.rc, exc, backoff)
+                elif await self._recover_from_auth_rejection(exc, already_refreshed=auth_force_refreshed):
+                    auth_force_refreshed = True
+                    continue
             except ReLoginRequiredError as exc:
                 _logger.error("Re-login required during MQTT connection loop — giving up: %s", exc)
                 await self._give_up(exc)
@@ -570,6 +509,71 @@ class MQTTTransport(CloudTransport):
                 except asyncio.CancelledError:
                     break
                 backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_MAMMOTION)
+
+    def _new_client(self) -> aiomqtt.Client:
+        """Build the broker client for one connection attempt."""
+        return aiomqtt.Client(
+            hostname=self._config.host,
+            port=self._config.port,
+            username=self._config.username,
+            password=self._config.password,
+            identifier=self._config.client_id,
+            keepalive=self._config.keepalive,
+            tls_context=self._tls_context,
+            protocol=aiomqtt.ProtocolVersion.V311,
+            clean_session=True,
+            timeout=60,
+        )
+
+    async def _refresh_credentials_before_connect(self) -> bool:
+        """Refresh the credentials if near expiry; False once a refusal has given the transport up."""
+        try:
+            await self._refresh_credentials(force=False)
+        except ReLoginRequiredError as rle:
+            _logger.error("Pre-connect credential refresh requires re-login — giving up: %s", rle)
+            await self._give_up(rle)
+            return False
+        except Exception:
+            _logger.warning("Pre-connect credential refresh failed (transient?)", exc_info=True)
+        return True
+
+    async def _recover_from_auth_rejection(self, exc: aiomqtt.MqttCodeError, *, already_refreshed: bool) -> bool:
+        """Force one full credential refresh after a broker auth rejection; True means retry now.
+
+        False means back off after a transient refresh failure, or a give-up, which stops the loop.
+        """
+        rc = exc.rc
+        if already_refreshed or self._creds_refresher is None:
+            _logger.error(
+                "MQTT auth still rejected after full credential refresh (rc=%s) — giving up on %s [%s]",
+                rc,
+                self.transport_type.value,
+                _broker_identity_summary(self._config),
+            )
+            await self._give_up(
+                ReLoginRequiredError(
+                    self._token_manager.account_id, f"MQTT auth rejected after full credential refresh (rc={rc})"
+                )
+            )
+            return False
+        _logger.warning(
+            "MQTT broker rejected auth (rc=%s) — forcing full credential refresh [%s]",
+            rc,
+            _broker_identity_summary(self._config),
+        )
+        try:
+            await self._refresh_credentials(force=True)
+        except ReLoginRequiredError as rle:
+            _logger.error(
+                "MQTT credential refresh requires re-login — giving up on %s: %s", self.transport_type.value, rle
+            )
+            await self._give_up(rle)
+            return False
+        except Exception:
+            # Never terminal: an expired JWT refused while the HTTP API is down says nothing about the login.
+            _logger.warning("Forced credential refresh failed (transient?)", exc_info=True)
+            return False
+        return True
 
     async def _dispatch(self, topic: str, raw: bytes) -> None:
         """Route an incoming message to the appropriate callback.
