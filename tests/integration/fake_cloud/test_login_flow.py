@@ -133,3 +133,19 @@ async def test_aliyun_failure_is_raised_when_nothing_else_is_bound(
 
     with pytest.raises(CloudSetupError, match="API gateway refused"):
         await client.login_and_initiate_cloud(scenario.account, scenario.password)
+
+
+@pytest.mark.regression
+async def test_stopping_while_mqtt_is_still_connecting_leaves_no_broker_connection(
+    fake_cloud: FakeMammotionCloud,
+) -> None:
+    """Cancelling the connect mid-handshake abandoned the socket: the broker session stayed open for good."""
+    scenario = fake_cloud.scenario
+    broker = fake_cloud.mammotion_broker
+    client = MammotionClient()
+    await client.login_and_initiate_cloud(scenario.account, scenario.password)
+
+    await client.stop()
+
+    await wait_until(lambda: broker.connect_attempts)
+    await wait_until(lambda: not broker.sessions)

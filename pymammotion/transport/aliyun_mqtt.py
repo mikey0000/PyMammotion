@@ -266,6 +266,7 @@ class AliyunMQTTTransport(CloudTransport):
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._task
+        await self._settle_abandoned_connects()
         self._availability = TransportAvailability.DISCONNECTED
         self._client = None
         # Nothing reports a transition once the loop is gone, so a held lock ends here.
@@ -450,18 +451,20 @@ class AliyunMQTTTransport(CloudTransport):
             await self._notify_availability(TransportAvailability.CONNECTING)
             client_id, password = self._build_credentials()
             try:
-                async with aiomqtt.Client(
-                    hostname=self._config.host,
-                    port=self._config.port,
-                    username=self._config.username,
-                    password=password,
-                    identifier=client_id,
-                    keepalive=self._config.keepalive,
-                    tls_context=_tls_context,
-                    protocol=aiomqtt.ProtocolVersion.V311,
-                    timeout=60,
-                    max_inflight_messages=_MQTT_MAX_INFLIGHT,
-                    max_queued_incoming_messages=_MQTT_MAX_QUEUED,
+                async with self._connected_client(
+                    aiomqtt.Client(
+                        hostname=self._config.host,
+                        port=self._config.port,
+                        username=self._config.username,
+                        password=password,
+                        identifier=client_id,
+                        keepalive=self._config.keepalive,
+                        tls_context=_tls_context,
+                        protocol=aiomqtt.ProtocolVersion.V311,
+                        timeout=60,
+                        max_inflight_messages=_MQTT_MAX_INFLIGHT,
+                        max_queued_incoming_messages=_MQTT_MAX_QUEUED,
+                    )
                 ) as client:
                     self._client = client
                     # Only the reconnect backoff resets on a handshake; the auth

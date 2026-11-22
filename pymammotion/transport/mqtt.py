@@ -323,6 +323,7 @@ class MQTTTransport(CloudTransport):
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._task
+        await self._settle_abandoned_connects()
         self._client = None
         if self._availability is not TransportAvailability.DISCONNECTED:
             await self._notify_availability(TransportAvailability.DISCONNECTED)
@@ -466,17 +467,19 @@ class MQTTTransport(CloudTransport):
                 _logger.warning("Pre-connect credential refresh failed (transient?)", exc_info=True)
 
             try:
-                async with aiomqtt.Client(
-                    hostname=self._config.host,
-                    port=self._config.port,
-                    username=self._config.username,
-                    password=self._config.password,
-                    identifier=self._config.client_id,
-                    keepalive=self._config.keepalive,
-                    tls_context=self._tls_context,
-                    protocol=aiomqtt.ProtocolVersion.V311,
-                    clean_session=True,
-                    timeout=60,
+                async with self._connected_client(
+                    aiomqtt.Client(
+                        hostname=self._config.host,
+                        port=self._config.port,
+                        username=self._config.username,
+                        password=self._config.password,
+                        identifier=self._config.client_id,
+                        keepalive=self._config.keepalive,
+                        tls_context=self._tls_context,
+                        protocol=aiomqtt.ProtocolVersion.V311,
+                        clean_session=True,
+                        timeout=60,
+                    )
                 ) as client:
                     self._client = client
                     backoff = MQTT_RECONNECT_MIN_SEC

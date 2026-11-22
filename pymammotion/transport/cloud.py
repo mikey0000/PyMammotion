@@ -18,17 +18,21 @@ the earlier version of that mistake.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import asyncio
 import collections
+import contextlib
 import logging
+import sys
 import time
 from typing import TYPE_CHECKING
 
+import aiomqtt
 from packaging.version import InvalidVersion, Version
 
 from pymammotion.transport.base import Transport, TransportRateLimitedError
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from pymammotion.data.mqtt.event import ThingEventMessage
     from pymammotion.data.mqtt.properties import MammotionPropertiesMessage, ThingPropertiesMessage
@@ -62,6 +66,9 @@ MQTT_RECONNECT_MAX_SEC_MAMMOTION = 120
 #: Fixed Aliyun retry while another session holds the account lock (bind_reply 2152).
 #: Retrying cannot evict that session, so one handshake per interval only polls for its release.
 ACCOUNT_IN_USE_RETRY_SEC = 300
+
+#: How long disconnect() waits for a handshake cancelled mid-connect to finish and close its socket.
+_ABANDONED_CONNECT_GRACE_SEC = 5.0
 
 
 class CloudTransport(Transport, ABC):
@@ -120,6 +127,37 @@ class CloudTransport(Transport, ABC):
         #: is_usable stays False until something explicitly clears it.  The
         #: integration host (HA) is expected to initiate a reauth flow.
         self._unrecoverable_auth_failure: bool = False
+        self._abandoned_connects: set[asyncio.Future[None]] = set()
+
+    @contextlib.asynccontextmanager
+    async def _connected_client(self, client: aiomqtt.Client) -> AsyncIterator[aiomqtt.Client]:
+        """Enter *client*, letting a cancelled handshake finish in the background so its socket is closed.
+
+        aiomqtt does not clean up after a cancelled ``__aenter__``: the socket stays open with its loop reader.
+        """
+        entering = asyncio.ensure_future(client.__aenter__())
+        try:
+            await asyncio.shield(entering)
+        except asyncio.CancelledError:
+            closer = asyncio.ensure_future(self._close_abandoned(client, entering))
+            self._abandoned_connects.add(closer)
+            closer.add_done_callback(self._abandoned_connects.discard)
+            raise
+        try:
+            yield client
+        finally:
+            await client.__aexit__(*sys.exc_info())
+
+    @staticmethod
+    async def _close_abandoned(client: aiomqtt.Client, entering: asyncio.Future[aiomqtt.Client]) -> None:
+        with contextlib.suppress(aiomqtt.MqttError):
+            await entering
+            await client.__aexit__(None, None, None)
+
+    async def _settle_abandoned_connects(self) -> None:
+        """Give handshakes cancelled mid-connect a bounded chance to close before disconnect() returns."""
+        if self._abandoned_connects:
+            await asyncio.wait(self._abandoned_connects, timeout=_ABANDONED_CONNECT_GRACE_SEC)
 
     @abstractmethod
     async def _invoke(self, payload: bytes, iot_id: str) -> None:

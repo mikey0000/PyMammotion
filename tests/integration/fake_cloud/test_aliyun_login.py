@@ -159,3 +159,20 @@ async def test_restore_establishes_aliyun_for_a_cache_saved_without_it(fake_clou
         assert scenario.counters.get("password_grants", 0) == 0
     finally:
         await restored.stop()
+
+
+@pytest.mark.regression
+async def test_stopping_while_aliyun_mqtt_is_still_connecting_leaves_no_broker_connection(
+    fake_cloud: FakeMammotionCloud,
+) -> None:
+    """Cancelling the connect mid-handshake abandoned the socket: the broker session stayed open for good."""
+    scenario = fake_cloud.scenario
+    broker = fake_cloud.aliyun_broker
+    make_aliyun_account(scenario)
+    client = MammotionClient()
+    await client.login_and_initiate_cloud(scenario.account, scenario.password)
+
+    await client.stop()
+
+    await wait_until(lambda: broker.connect_attempts)
+    await wait_until(lambda: not broker.sessions)
