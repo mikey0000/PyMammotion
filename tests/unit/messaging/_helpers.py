@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import betterproto2
@@ -31,6 +32,9 @@ from pymammotion.proto import (
     PlanJobSet,
     SpinoCtrl,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 def make_command_builder() -> MagicMock:
@@ -154,3 +158,24 @@ async def run_saga_with_messages(
         injector.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await injector
+
+
+def make_fast_map_saga(
+    command_builder: Any, send_command: Callable[[Any], Awaitable[None]], device_map: HashList
+) -> MapFetchSaga:
+    """MapFetchSaga with no area-name step, for a device that answers inside the send.
+
+    Such a device never answers late, so every wait that expires is one it would never
+    answer: a step timeout of a few milliseconds and no retry backoff lose nothing.
+    """
+    saga = MapFetchSaga(
+        device_id="dev-map",
+        device_name="Luba-Test",
+        is_luba1=True,
+        command_builder=command_builder,
+        send_command=send_command,
+        get_map=lambda: device_map,
+    )
+    saga.step_timeout = 0.005
+    saga.retry_backoff = 0.0
+    return saga

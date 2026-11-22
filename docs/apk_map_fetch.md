@@ -132,10 +132,17 @@ sendOrderMsg_Nav(MctrlNav.MctlNav.newBuilder().setTodevGethash(
 Field: `nav.todev_gethash`. Sub-commands:
 - `0` → fetch root list of zone/area hashes
 - `3` → fetch root list of line-data hashes
-- `4` → fetch dump-point hashes
+- `4` → fetch dump-point hashes (temporary points only — see below)
 - `5` → fetch no-vision (vision-safe-zone) hashes
 
 The second arg is metadata only (log-tag).
+
+#### Dump points
+
+- **Saved dump points are in the sub_cmd 0 manifest** and fetched with `action=8` like any element; their frames carry `type=12` (`command/app/HashDataManager.java:720-728`, `:1408-1416`). The fetch queue (`noHashList`) is built from the sub_cmd 0 `hashList` alone (`:740-761`).
+- **sub_cmd 4 lists only the temporary points of an in-progress dump-setup session** (mode 38, `MODE_BOUNDARY_JUMP`). It is requested only from the drawing page (`map/fragment/PlanMapLandFragment.java:3402-3405`), alongside `recoverDumping` (`action=12, type=12`, `command/MACommandHelper.java:1132`). The app never fetches sub_cmd 4 hashes individually.
+- pymammotion follows this: `MapFetchSaga` requests sub_cmd 0 only, and saved state drops any sub_cmd 4 list on load (`HashList.__post_deserialize__`).
+- **Unverified:** no real dump capture exists yet — in particular what a Yuka with a collector answers to sub_cmd 4 outside mode 38.
 
 **Called from:**
 - `updateTotalHash :1811` — subCmd=0 logType=2, start of area fetch

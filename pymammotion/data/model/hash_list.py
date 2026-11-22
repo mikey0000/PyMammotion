@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 #: ``todev_gethash`` sub_cmd whose list holds the current route's line hashes.
 LINE_HASH_SUB_CMD = 3
+#: ``todev_gethash`` sub_cmd listing the temporary points of a dump-setup session; map sync never requests it.
+_DUMP_HASH_SUB_CMD = 4
 
 
 class PathType(IntEnum):
@@ -597,6 +599,12 @@ class HashList(DataClassORJSONMixin):
     #: Hashes the last completed ``MapFetchSaga`` requested but the device never served.
     #: Not persisted, so a restart gives them one more automatic attempt.
     unserved_hashes: set[int] = field(default_factory=set, metadata=field_options(serialize="omit"))
+
+    @classmethod
+    def __post_deserialize__(cls, obj: HashList) -> HashList:
+        """Drop a sub_cmd=4 dump list saved by versions that requested it; nothing else would clear it."""
+        obj.root_hash_lists = [rl for rl in obj.root_hash_lists if rl.sub_cmd != _DUMP_HASH_SUB_CMD]
+        return obj
 
     def __deepcopy__(self, memo: dict[int, Any]) -> HashList:
         """Deepcopy that shares the four ``generated_*_geojson`` dicts by reference.

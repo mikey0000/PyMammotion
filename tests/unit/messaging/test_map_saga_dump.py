@@ -1,7 +1,8 @@
-"""MapFetchSaga and the sub_cmd=4 dump (grass-collection point) hash list.
+"""MapFetchSaga and dump (grass-collection point, type 12) elements.
 
-A second root list the saga must request and fetch alongside sub_cmd=0,
-tolerating silence when the device has no dumping spots configured.
+Saved dump points are listed in the ordinary sub_cmd=0 manifest and fetched like any
+other element; the sub_cmd=4 list names only the temporary points of an in-progress
+dump-setup session, so a map sync never requests it.
 """
 from __future__ import annotations
 
@@ -9,138 +10,50 @@ import asyncio
 
 import pytest
 
-from pymammotion.data.model.hash_list import HashList
+from pymammotion.data.model.hash_list import HashList, NavGetHashListData
 from pymammotion.messaging.broker import DeviceMessageBroker
-from pymammotion.messaging.map_saga import MapFetchSaga
 from tests.unit.messaging._fakes import FakeHashListDevice
-from tests.unit.messaging._helpers import (
-    comm_data_frame as _comm_data_msg,
-    hash_list_msg as _hash_list_msg,
-    make_command_builder as _make_command_builder,
-    run_saga_with_messages as _run_saga_with_messages,
-)
+from tests.unit.messaging._helpers import make_fast_map_saga
 
 _SAGA_TIMEOUT = 5.0
+_AREA, _DUMP, _TEMPORARY_DUMP = 4000000000000000001, 4000000000000000002, 4000000000000000003
 
 
-async def test_saga_fetches_dump_hash_list_and_stores_type_12() -> None:
-    """A sub_cmd=4 hash list entry is requested, fetched via step 4 like any
-    other hash, and its type=12 (DUMP) comm-data frame lands in ``.dump``."""
-    broker = DeviceMessageBroker()
-
-    async def send_command(_cmd: bytes) -> None:
-        pass
-
-    _map = HashList()
-    saga = MapFetchSaga(
-        device_id="dev-dump",
-        device_name="Luba-Test",
-        is_luba1=True,  # skip area names
-        command_builder=_make_command_builder(),
-        send_command=send_command,
-        get_map=lambda: _map,
-    )
-
-    area_hash = 4000000000000000001
-    dump_hash = 4000000000000000002
-
-    await asyncio.wait_for(
-        _run_saga_with_messages(
-            broker,
-            saga,
-            messages=[
-                _hash_list_msg([area_hash], sub_cmd=0),
-                _hash_list_msg([dump_hash], sub_cmd=4),
-                _comm_data_msg(area_hash, type_code=0),  # PathType.AREA
-                _comm_data_msg(dump_hash, type_code=12),  # PathType.DUMP
-            ],
-            map_update=_map,
-        ),
-        timeout=5.0,
-    )
-
-    assert saga.result is not None
-    assert area_hash in saga.result.area
-    assert dump_hash in saga.result.dump
-    assert dump_hash not in saga.result.area
-
-    names = [c[0] for c in saga._command_builder.mock_calls if c[0]]  # noqa: SLF001
-    sub_cmd_kwargs = [c.kwargs.get("sub_cmd") for c in saga._command_builder.mock_calls if c[0] == "get_all_boundary_hash_list"]  # noqa: SLF001
-    assert 0 in sub_cmd_kwargs
-    assert 4 in sub_cmd_kwargs
-    assert names.index("get_all_boundary_hash_list") < names.index("synchronize_hash_data")
-
-
-async def test_saga_completes_when_device_has_no_dumping_spots() -> None:
-    """A device with no grass-collection points configured answers the sub_cmd=4
-    request with nothing at all — the saga must not hang or fail waiting for it,
-    and must still complete the sub_cmd=0 fetch normally."""
-    broker = DeviceMessageBroker()
-
-    async def send_command(_cmd: bytes) -> None:
-        pass
-
-    _map = HashList()
-    saga = MapFetchSaga(
-        device_id="dev-no-dump",
-        device_name="Luba-Test",
-        is_luba1=True,
-        command_builder=_make_command_builder(),
-        send_command=send_command,
-        get_map=lambda: _map,
-    )
-
-    area_hash = 4000000000000000003
-
-    # No sub_cmd=4 message is injected at all — silence, not an empty frame.
-    await asyncio.wait_for(
-        _run_saga_with_messages(
-            broker,
-            saga,
-            messages=[
-                _hash_list_msg([area_hash], sub_cmd=0),
-                _comm_data_msg(area_hash, type_code=0),
-            ],
-            map_update=_map,
-        ),
-        timeout=5.0,  # would hang/timeout-fail without allow_empty=True on the sub_cmd=4 step
-    )
-
-    assert saga.result is not None
-    assert area_hash in saga.result.area
-    assert saga.result.dump == {}
-
-
-@pytest.mark.regression
-async def test_saga_acks_every_dump_hash_list_frame_and_fetches_every_dump_spot() -> None:
-    """The sub_cmd=4 stream must be acked frame by frame, like the sub_cmd=0 one.
-
-    ``ack_stream`` was handed ``field="toapp_gethash_ack(sub_cmd=4)"``, which is no
-    protobuf leaf, so every frame the collector queued failed to unwrap.  With
-    ``allow_empty=True`` that read as "device has no dumping spots": frame 1 was
-    never acked, the device never sent frame 2, and any dump hash past the first
-    frame was silently never fetched.
-    """
-    broker = DeviceMessageBroker()
-    _map = HashList()
-    area_hash, dump_a, dump_b = 4000000000000000011, 4000000000000000012, 4000000000000000013
-    device = FakeHashListDevice(
-        broker,
-        _map,
-        hash_lists={0: [[area_hash]], 4: [[dump_a], [dump_b]]},
-        comm_types={area_hash: 0, dump_a: 12, dump_b: 12},
-    )
-    saga = MapFetchSaga(
-        device_id="dev-dump-multi",
-        device_name="Luba-Test",
-        is_luba1=True,
-        command_builder=device.command_builder,
-        send_command=device.send,
-        get_map=lambda: _map,
-    )
+async def test_a_dump_point_listed_in_the_area_manifest_lands_in_dump() -> None:
+    broker, device_map = DeviceMessageBroker(), HashList()
+    device = FakeHashListDevice(broker, device_map, hash_lists={0: [[_AREA, _DUMP]]}, comm_types={_AREA: 0, _DUMP: 12})
+    saga = make_fast_map_saga(device.command_builder, device.send, device_map)
 
     await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
 
-    assert [a for a in device.hash_list_acks if a[0] == 4] == [(4, 1, 2), (4, 2, 2)]
     assert saga.result is not None
-    assert set(saga.result.dump) == {dump_a, dump_b}
+    assert set(saga.result.area) == {_AREA}
+    assert set(saga.result.dump) == {_DUMP}
+
+
+@pytest.mark.regression
+async def test_a_stored_temporary_dump_list_does_not_hold_up_the_sync() -> None:
+    """The saga requested the sub_cmd=4 dump list on every run and fetched its hashes.
+
+    That list names only uncommitted points of a dump-setup session, which the app
+    requests from the drawing page alone and never fetches; a mower may never answer
+    them, so a sync stalled on them (and before deferral, failed outright).
+    """
+    broker, device_map = DeviceMessageBroker(), HashList()
+    device_map.update_root_hash_list(
+        NavGetHashListData(pver=1, sub_cmd=4, total_frame=1, current_frame=1, data_couple=[_TEMPORARY_DUMP])
+    )
+    device = FakeHashListDevice(
+        broker,
+        device_map,
+        hash_lists={0: [[_AREA]], 4: [[_TEMPORARY_DUMP]]},
+        comm_types={_AREA: 0},
+        ignore_sync_requests={_TEMPORARY_DUMP: 1_000},
+    )
+    saga = make_fast_map_saga(device.command_builder, device.send, device_map)
+
+    await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
+
+    assert "hash_list:4" not in device.events, f"dump list requested: {device.events}"
+    assert _TEMPORARY_DUMP not in device.sync_requests
+    assert device_map.unserved_hashes == set()

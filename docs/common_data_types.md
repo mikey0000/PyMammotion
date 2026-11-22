@@ -119,7 +119,8 @@ catcher or dedicated drop zone).
 
 **Keyed by hash:** Yes — `HashList.dump`.
 
-**Also associated with sub_cmd=4** in some request variants.
+**Listed in the sub_cmd=0 root list** once saved. sub_cmd=4 lists only the temporary
+points of a dump-setup session and is not requested by `MapFetchSaga`.
 
 ---
 
@@ -231,7 +232,7 @@ Action 8 is the most commonly used fetch action.  It appears in:
 | 1 | Fetch data (used in get_common_data) |
 | 2 | Re-request a specific missing frame (get_regional_data) |
 | 3 | Line hash list (post route-planning; used by MowPathSaga) |
-| 4 | Dump/clippings zone variant |
+| 4 | Temporary dump points of a dump-setup session (not requested by map sync) |
 
 ---
 

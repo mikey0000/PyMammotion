@@ -12,27 +12,13 @@ import pytest
 
 from pymammotion.data.model.hash_list import HashList
 from pymammotion.messaging.broker import DeviceMessageBroker
-from pymammotion.messaging.map_saga import MapFetchSaga
 from pymammotion.transport.base import SagaFailedError
 from tests.unit.messaging._fakes import FakeHashListDevice
+from tests.unit.messaging._helpers import make_fast_map_saga
 
 _SAGA_TIMEOUT = 5.0
 _SILENT_FOREVER = 1_000
 _AREA_A, _AREA_B, _AREA_C = 5000000000000000001, 5000000000000000002, 5000000000000000003
-
-
-def _make_saga(device: FakeHashListDevice, device_map: HashList) -> MapFetchSaga:
-    saga = MapFetchSaga(
-        device_id="dev-silent-hash",
-        device_name="Luba-Test",
-        is_luba1=True,  # no area-name step
-        command_builder=device.command_builder,
-        send_command=device.send,
-        get_map=lambda: device_map,
-    )
-    saga.step_timeout = 0.005
-    saga.retry_backoff = 0.0
-    return saga
 
 
 def _make_device(
@@ -41,11 +27,10 @@ def _make_device(
     hashes: list[int],
     ignore_sync_requests: dict[int, int] | None = None,
 ) -> FakeHashListDevice:
-    # An empty sub_cmd=4 frame answers the dump-list request instead of leaving it to time out.
     return FakeHashListDevice(
         broker,
         device_map,
-        hash_lists={0: [hashes], 4: [[]]},
+        hash_lists={0: [hashes]},
         comm_types=dict.fromkeys(hashes, 0),
         ignore_sync_requests=ignore_sync_requests,
     )
@@ -61,7 +46,7 @@ async def test_an_ignored_hash_request_is_resent_without_refetching_the_root_lis
     """
     broker, device_map = DeviceMessageBroker(), HashList()
     device = _make_device(broker, device_map, [_AREA_A, _AREA_B], ignore_sync_requests={_AREA_B: 1})
-    saga = _make_saga(device, device_map)
+    saga = make_fast_map_saga(device.command_builder, device.send, device_map)
 
     await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
 
@@ -84,7 +69,7 @@ async def test_a_hash_the_device_never_serves_is_deferred_and_the_rest_of_the_ma
     device = _make_device(
         broker, device_map, [_AREA_A, _AREA_B, _AREA_C], ignore_sync_requests={_AREA_B: _SILENT_FOREVER}
     )
-    saga = _make_saga(device, device_map)
+    saga = make_fast_map_saga(device.command_builder, device.send, device_map)
 
     await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
 
@@ -98,7 +83,7 @@ async def test_a_deferred_hash_is_recorded_as_unserved() -> None:
     broker, device_map = DeviceMessageBroker(), HashList()
     device = _make_device(broker, device_map, [_AREA_A, _AREA_B], ignore_sync_requests={_AREA_B: _SILENT_FOREVER})
 
-    await asyncio.wait_for(_make_saga(device, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
+    await asyncio.wait_for(make_fast_map_saga(device.command_builder, device.send, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
 
     assert device_map.unserved_hashes == {_AREA_B}
 
@@ -108,7 +93,7 @@ async def test_a_sync_that_serves_every_hash_clears_the_unserved_record() -> Non
     device_map.unserved_hashes = {_AREA_B}
     device = _make_device(broker, device_map, [_AREA_A, _AREA_B])
 
-    await asyncio.wait_for(_make_saga(device, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
+    await asyncio.wait_for(make_fast_map_saga(device.command_builder, device.send, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
 
     assert device_map.unserved_hashes == set()
 
@@ -117,10 +102,10 @@ async def test_a_resumed_sync_defers_a_silent_hash_when_the_map_already_holds_ar
     """Steps 1-3 answered, so the device is up; one silent hash is that hash's problem."""
     broker, device_map = DeviceMessageBroker(), HashList()
     device = _make_device(broker, device_map, [_AREA_A, _AREA_B])
-    await asyncio.wait_for(_make_saga(device, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
+    await asyncio.wait_for(make_fast_map_saga(device.command_builder, device.send, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
     device_map.area.pop(_AREA_B)
     silent = _make_device(broker, device_map, [_AREA_A, _AREA_B], ignore_sync_requests={_AREA_B: _SILENT_FOREVER})
-    saga = _make_saga(silent, device_map)
+    saga = make_fast_map_saga(silent.command_builder, silent.send, device_map)
 
     await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
 
@@ -140,7 +125,7 @@ async def test_a_device_that_stops_answering_hash_requests_fails_the_sync(hashes
     """Total silence is the device going away, not one bad hash: fail rather than publish an empty or gutted map."""
     broker, device_map = DeviceMessageBroker(), HashList()
     device = _make_device(broker, device_map, hashes, ignore_sync_requests=dict.fromkeys(silent, _SILENT_FOREVER))
-    saga = _make_saga(device, device_map)
+    saga = make_fast_map_saga(device.command_builder, device.send, device_map)
 
     with pytest.raises(SagaFailedError):
         await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)

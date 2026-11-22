@@ -242,6 +242,10 @@ with a grass catcher).
 
 **How they are stored:** `HashList.dump: dict[int, FrameList]`
 
+**Fetched by:** `MapFetchSaga` step 4 — saved dump points are listed in the sub_cmd=0
+root list. The sub_cmd=4 list names only temporary points of a dump-setup session and
+is not requested (`docs/apk_map_fetch.md`, "Dump points").
+
 ---
 
 ## SVG hashes (type 13)

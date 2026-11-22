@@ -254,3 +254,11 @@ hid every area that did arrive, because the map is only published on completion.
   change or a restart (the field is not persisted) retries them.
 - **Silence is still a failure:** two hashes deferred in a row, or deferrals leaving no
   areas, fail the run, so an absent device does not publish an empty map.
+
+## D18. Map sync does not request the dump hash list
+
+`MapFetchSaga` requests the sub_cmd=0 root list only. Saved dump points are listed there
+and fetched like any element; sub_cmd=4 names only the temporary points of a dump-setup
+session, which the app asks for from the drawing page alone and never fetches. Requesting
+it cost a send per run and offered hashes a mower may never serve. Saved state drops any
+sub_cmd=4 list on load, since nothing else would ever clear it.
