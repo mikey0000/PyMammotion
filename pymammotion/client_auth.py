@@ -135,6 +135,13 @@ class CloudAuthMixin:
         async def _detach_cloud_from_account(self, session: AccountSession, *, rekey: bool) -> None: ...
         async def _quiesce_account(self, session: AccountSession, reason: str, exc: Exception) -> None: ...
         async def _on_aliyun_established(self, acct_session: AccountSession, cloud_client: CloudIOTGateway) -> None: ...
+        async def _rebuild_mammotion_transport(self, acct_session: AccountSession) -> None: ...
+        async def _relay_transport_availability(
+            self, session: AccountSession, transport_type: TransportType, reason: str | None
+        ) -> None: ...
+
+        on_transport_availability_changed: Callable[[str, TransportType, bool, str | None], Awaitable[None]] | None
+
         async def _refresh_for_transport(
             self, transport_type: TransportType, session: AccountSession | None
         ) -> None: ...
@@ -251,6 +258,7 @@ class CloudAuthMixin:
             session:  Optional :class:`aiohttp.ClientSession` to reuse.
 
         """
+        given_up = self.unavailable_transports(account)
         # Tear the old session down locally but do NOT revoke it: login_v2 below
         # supersedes it server-side regardless, and revoking first would kill the
         # credentials the host still has cached before their replacement exists.
@@ -317,6 +325,9 @@ class CloudAuthMixin:
 
         await self._account_registry.register(acct_session)
         self._start_token_refresh(acct_session)
+        # The old session's give-ups went with it; tell the host which this login cured.
+        for transport_type in given_up.keys() - token_manager.unavailable_transports.keys():
+            await self._relay_transport_availability(acct_session, transport_type, None)
 
     @staticmethod
     async def _connect_aliyun_for_login(token_manager: TokenManager) -> CloudIOTGateway:
@@ -519,6 +530,7 @@ class CloudAuthMixin:
                 existing.on_credentials_updated = self._on_credentials_updated
                 existing.on_reauth_required = partial(self._quiesce_account, acct_session)
                 existing.on_aliyun_established = partial(self._on_aliyun_established, acct_session)
+                existing.on_transport_availability_changed = partial(self._relay_transport_availability, acct_session)
                 existing.seed_from_http()
                 return existing
             # The account's login session was replaced (a full re-login).  The old
@@ -534,6 +546,7 @@ class CloudAuthMixin:
             existing.on_reauth_required = None
             existing.on_credentials_updated = None
             existing.on_aliyun_established = None
+            existing.on_transport_availability_changed = None
             if acct_session.aliyun_transport is not None:
                 await acct_session.aliyun_transport.disconnect()
                 acct_session.aliyun_transport = None
@@ -545,6 +558,7 @@ class CloudAuthMixin:
         token_manager.on_credentials_updated = self._on_credentials_updated
         token_manager.on_reauth_required = partial(self._quiesce_account, acct_session)
         token_manager.on_aliyun_established = partial(self._on_aliyun_established, acct_session)
+        token_manager.on_transport_availability_changed = partial(self._relay_transport_availability, acct_session)
         token_manager.seed_from_http()
         acct_session.token_manager = token_manager
         return token_manager
@@ -565,6 +579,48 @@ class CloudAuthMixin:
         """
         token_manager = self.token_manager
         return token_manager.reauth_required if token_manager is not None else None
+
+    def unavailable_transports(self, account_id: str) -> dict[TransportType, str]:
+        """Return the cloud transports given up for *account_id*, with the reason for each.
+
+        The query behind ``on_transport_availability_changed``: a host reconciles with it
+        after a login or restore returns.  Empty while every transport is healthy, and
+        for an account with no session.
+        """
+        session = self._account_registry.get(account_id)
+        if session is None or session.token_manager is None:
+            return {}
+        return session.token_manager.unavailable_transports
+
+    async def retry_transport(self, account_id: str, transport_type: TransportType) -> None:
+        """Make one bounded, password-free attempt to bring a given-up cloud transport back.
+
+        Aliyun is re-minted from the HTTP login's authCode chain; Mammotion MQTT fetches
+        a new JWT.  On success the transport is rebuilt, its mowers re-attached, and
+        ``on_transport_availability_changed`` fires with ``available`` True.  A no-op
+        when the transport is not given up.
+
+        Raises:
+            ValueError: *account_id* has no cloud session.
+            ReLoginRequiredError: The attempt was refused (the transport stays given up),
+                or the account itself needs re-authentication (``reauth_required``).
+            CloudSetupError / AuthorizationCodeError: The Aliyun chain refused a step.
+            ClientError / TimeoutError / ConnectionError: The cloud could not be reached.
+
+        """
+        session = self._account_registry.get(account_id)
+        if session is None or session.token_manager is None or session.mammotion_http is None:
+            msg = f"account {account_id!r} has no cloud session"
+            raise ValueError(msg)
+        token_manager = session.token_manager
+        if transport_type not in token_manager.unavailable_transports:
+            return
+        if transport_type is TransportType.CLOUD_ALIYUN:
+            gateway = await token_manager.reestablish_aliyun(CloudIOTGateway(session.mammotion_http))
+            await self._on_aliyun_established(session, gateway)
+        else:
+            await token_manager.retry_mqtt_credentials()
+            await self._rebuild_mammotion_transport(session)
 
     async def refresh_transport_credentials(self, transport_type: TransportType, account: str | None = None) -> None:
         """Refresh the credentials for one cloud transport of *account* (default session if omitted).

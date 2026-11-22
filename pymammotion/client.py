@@ -224,6 +224,14 @@ class MammotionClient(CloudAuthMixin):
         #: releases the account's Aliyun lock (bind_reply 2152).  Transport-scoped and not an
         #: auth failure: the login is healthy and the transport retries until the lock is free.
         self.on_account_in_use_changed: Callable[[str, bool], Awaitable[None]] | None = None
+        #: Fired with ``(account_id, transport_type, available, reason)`` on each edge of a
+        #: transport-scoped give-up: ``available`` False with the reason when Aliyun or
+        #: Mammotion MQTT can no longer be renewed (at runtime or during a restore), True
+        #: with ``None`` once it recovers.  The login is healthy throughout; a host shows
+        #: the transport's mowers unavailable and offers ``retry_transport``.
+        self.on_transport_availability_changed: (
+            Callable[[str, TransportType, bool, str | None], Awaitable[None]] | None
+        ) = None
         #: Fired (async) with ``(device_name, iot_id)`` when a device is unbound from
         #: the cloud (Aliyun 29004) and is no longer present on EITHER cloud after
         #: re-discovery — i.e. genuinely removed from the account.  HA-Luba wires this
@@ -605,6 +613,8 @@ class MammotionClient(CloudAuthMixin):
         account's other transport must survive.  Account-wide death is signalled
         exclusively by ``_quiesce_account`` on the ``reauth_required`` transition.
         """
+        if session.token_manager is not None:
+            session.token_manager.mark_transport_unavailable(transport_type, str(exc))
         affected = [
             handle
             for handle in self._device_registry.for_account(session.account_id)
@@ -619,6 +629,17 @@ class MammotionClient(CloudAuthMixin):
         for handle in affected:
             with contextlib.suppress(Exception):
                 await handle.notify_critical_error(exc)
+
+    async def _relay_transport_availability(
+        self, session: AccountSession, transport_type: TransportType, reason: str | None
+    ) -> None:
+        """Pass one TokenManager availability edge to the host; a host failure is logged, not raised."""
+        if self.on_transport_availability_changed is None:
+            return
+        try:
+            await self.on_transport_availability_changed(session.account_id, transport_type, reason is None, reason)
+        except Exception:
+            _logger.exception("on_transport_availability_changed callback failed")
 
     async def _send_with_auth_retry(
         self,
@@ -1614,7 +1635,10 @@ class MammotionClient(CloudAuthMixin):
         return cached
 
     async def _on_aliyun_established(self, acct_session: AccountSession, cloud_client: CloudIOTGateway) -> None:
-        """Attach a deferred Aliyun session, once the TokenManager has established it, and persist it."""
+        """Attach a newly established Aliyun session in place of any old transport, and persist it."""
+        if (old := acct_session.aliyun_transport) is not None:
+            acct_session.aliyun_transport = None
+            await old.disconnect()
         mammotion_http = acct_session.mammotion_http
         owned_iot_id_map = _owned_iot_id_map(mammotion_http.device_info if mammotion_http is not None else None)
         await self._start_aliyun_transport(acct_session, cloud_client, owned_iot_id_map)
@@ -1814,7 +1838,15 @@ class MammotionClient(CloudAuthMixin):
 
         transport = await self._ensure_mammotion_transport(account, mammotion_http, acct_session)
         if transport is None:
-            _logger.error("_bootstrap_mammotion_mqtt: no MQTT transport — skipping post-2025 devices")
+            _logger.error("_bootstrap_mammotion_mqtt: no MQTT transport — keeping post-2025 devices unavailable")
+            for record in mammotion_records:
+                if record.device_name:
+                    await self._ensure_device_handle(
+                        acct_session=acct_session,
+                        device_id=record.device_name,
+                        device_name=record.device_name,
+                        initial_device=create_device(record.device_name, record.product_key),
+                    )
             return
 
         ua = acct_session.user_account
@@ -1823,6 +1855,27 @@ class MammotionClient(CloudAuthMixin):
             if record.device_name and record.device_name not in already_known:
                 iot_id_override = owned_iot_id_map.get(record.device_name, "")
                 await self._register_mammotion_device(record, transport, ua, iot_id_override, acct_session=acct_session)
+
+    async def _rebuild_mammotion_transport(self, acct_session: AccountSession) -> None:
+        """Replace the account's given-up Mammotion MQTT transport and re-attach its devices."""
+        if (mammotion_http := acct_session.mammotion_http) is None:
+            return
+        if (old := acct_session.mammotion_transport) is not None:
+            acct_session.mammotion_transport = None
+            await old.disconnect()
+        transport = await self._ensure_mammotion_transport(acct_session.account_id, mammotion_http, acct_session)
+        if transport is None or (records := mammotion_http.device_records) is None:
+            return
+        owned_iot_id_map = _owned_iot_id_map(mammotion_http.device_info)
+        for record in records.records:
+            if record.device_name:
+                await self._register_mammotion_device(
+                    record,
+                    transport,
+                    acct_session.user_account,
+                    owned_iot_id_map.get(record.device_name, ""),
+                    acct_session=acct_session,
+                )
 
     async def _drop_unlisted_mammotion_devices(self, acct_session: AccountSession, listed: set[str]) -> None:
         """Drop Mammotion MQTT devices the account's fresh device page no longer lists.

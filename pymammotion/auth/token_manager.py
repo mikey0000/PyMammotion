@@ -225,6 +225,10 @@ class TokenManager:
         #: Fired with the gateway once a deferred Aliyun session is established, so the
         #: client can build its transport and attach the account's Aliyun devices.
         self.on_aliyun_established: Callable[[CloudIOTGateway], Awaitable[None]] | None = None
+        #: Fired (async, detached) on each edge of a transport-scoped flag: with the
+        #: reason when Aliyun or Mammotion MQTT is given up, with None when it recovers.
+        self.on_transport_availability_changed: Callable[[TransportType, str | None], Awaitable[None]] | None = None
+        self._availability_tasks: set[asyncio.Task[None]] = set()
         # RAII subscriptions to device handle error buses — kept alive here so they
         # are never garbage-collected while this token manager is active.
         self._handle_subscriptions: dict[str, _HandleSubscription] = {}
@@ -394,6 +398,8 @@ class TokenManager:
         """
         if self._aliyun_unavailable is None:
             self._aliyun_unavailable = reason
+            self._aliyun_pending = None
+            self._notify_availability(TransportType.CLOUD_ALIYUN, reason)
         return ReLoginRequiredError(self._account_id, reason)
 
     def _mark_mqtt_unavailable(self, reason: str) -> ReLoginRequiredError:
@@ -405,7 +411,61 @@ class TokenManager:
         """
         if self._mqtt_unavailable is None:
             self._mqtt_unavailable = reason
+            self._notify_availability(TransportType.CLOUD_MAMMOTION, reason)
         return ReLoginRequiredError(self._account_id, reason)
+
+    def mark_transport_unavailable(self, transport_type: TransportType, reason: str) -> ReLoginRequiredError:
+        """Give one cloud transport up after its own recovery was exhausted; the login is untouched.
+
+        For a give-up found outside this manager — a broker that keeps refusing the
+        bind after every refresh.  Idempotent; the first reason wins.
+        """
+        if transport_type is TransportType.CLOUD_ALIYUN:
+            return self._mark_aliyun_unavailable(reason)
+        return self._mark_mqtt_unavailable(reason)
+
+    @property
+    def unavailable_transports(self) -> dict[TransportType, str]:
+        """Cloud transports given up for this account, with the reason for each."""
+        flags = {
+            TransportType.CLOUD_ALIYUN: self._aliyun_unavailable,
+            TransportType.CLOUD_MAMMOTION: self._mqtt_unavailable,
+        }
+        return {transport_type: reason for transport_type, reason in flags.items() if reason is not None}
+
+    def _notify_availability(self, transport_type: TransportType, reason: str | None) -> None:
+        """Fire :attr:`on_transport_availability_changed` detached: callers may hold ``self._lock``."""
+        if self.on_transport_availability_changed is None:
+            return
+        task = asyncio.ensure_future(self.on_transport_availability_changed(transport_type, reason))
+        self._availability_tasks.add(task)
+        task.add_done_callback(self._availability_tasks.discard)
+
+    async def reestablish_aliyun(self, cloud_gateway: CloudIOTGateway) -> CloudIOTGateway:
+        """Make one password-free attempt to mint a new Aliyun session; clear the give-up only on success.
+
+        Raises whatever the attempt raised, leaving :attr:`aliyun_unavailable` as it was.
+        """
+        async with self._lock:
+            gateway = await self.establish_aliyun(cloud_gateway)
+        self._aliyun_pending = None
+        self._aliyun_retries = 0
+        if self._aliyun_unavailable is not None:
+            self._aliyun_unavailable = None
+            self._notify_availability(TransportType.CLOUD_ALIYUN, None)
+        return gateway
+
+    async def retry_mqtt_credentials(self) -> MQTTCredentials:
+        """Make one attempt to fetch a Mammotion MQTT JWT after a give-up; clear it only on success.
+
+        Raises whatever the attempt raised, leaving :attr:`mqtt_unavailable` as it was.
+        """
+        async with self._lock:
+            creds = await self._refresh_mqtt(retrying=True)
+        if self._mqtt_unavailable is not None:
+            self._mqtt_unavailable = None
+            self._notify_availability(TransportType.CLOUD_MAMMOTION, None)
+        return creds
 
     # ------------------------------------------------------------------
     # Public credential getters — both follow the same pattern:
@@ -1047,7 +1107,7 @@ class TokenManager:
         )
         return self._mqtt_creds
 
-    async def _refresh_mqtt(self) -> MQTTCredentials:
+    async def _refresh_mqtt(self, *, retrying: bool = False) -> MQTTCredentials:
         """Fetch a fresh Mammotion MQTT JWT.  Callers hold ``self._lock``.
 
         ``get_mqtt_credentials`` carries ``@refresh_token_decorator``, so the
@@ -1069,7 +1129,7 @@ class TokenManager:
 
         """
         self._raise_if_reauth_required()
-        if self._mqtt_unavailable is not None:
+        if self._mqtt_unavailable is not None and not retrying:
             raise ReLoginRequiredError(self._account_id, self._mqtt_unavailable)
         try:
             response = await self._http.get_mqtt_credentials()

@@ -273,3 +273,15 @@ usable login raises `CachedLoginUnusableError`, and a refused one sets
 `reauth_required` and raises `ReLoginRequiredError`, so the host prompts. A
 failed Aliyun rebuild is reported per transport, never cured with the password.
 Only the host calls `login_and_initiate_cloud`, on a user action.
+
+## D20. A given-up transport is reported to the host and retried only on request
+
+A transport-scoped give-up used to reach only the per-device error bus, which
+no host subscribes to, and the flags never cleared without a reload. The client
+now relays each edge of `aliyun_unavailable` / `mqtt_unavailable` through
+`on_transport_availability_changed` (give-up and recovery, including give-ups
+found by a transport or during a restore), answers `unavailable_transports`,
+and offers `retry_transport`: one password-free attempt (the Aliyun authCode
+chain, or a JWT fetch) that rebuilds the transport and clears the flag only on
+success. A new login reports the transports it cured. There is no automatic
+retry of a refusal; the host decides when to ask.

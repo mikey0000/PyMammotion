@@ -251,13 +251,14 @@ HTTP access token. The scheduler exists because every *other* refresh path is
 lazy — when all of an account's devices are offline nothing asks for a
 credential, and the tokens would rot until the refresh tokens themselves expire.
 
-**Failure is scoped, and a rejection is terminal.** There are no retry timers:
-a rejected refresh token does not become valid by waiting.
+**Failure is scoped, and a rejection is terminal.** A refusal is never retried
+on a timer: a rejected token does not become valid by waiting. Only a transient
+failure to establish an Aliyun session at restore is retried, by the scheduler.
 
 | scope     | trigger                          | flag                     | effect |
 |-----------|----------------------------------|--------------------------|--------|
 | account   | `refresh_token_v2` rejected      | `reauth_required`        | `ReLoginRequiredError`, `on_unrecoverable_auth_error` fires, host prompts |
-| transport | Aliyun/JWT unrenewable, login OK | `aliyun_unavailable` / `mqtt_unavailable` | that transport only; per-device bus signalled, global callback does **not** fire |
+| transport | Aliyun/JWT unrenewable, login OK (runtime or restore) | `aliyun_unavailable` / `mqtt_unavailable` | that transport only; mowers kept unavailable; `on_transport_availability_changed` fires on give-up and recovery, `unavailable_transports` / `retry_transport` for the host; `on_unrecoverable_auth_error` does **not** fire |
 | neither   | transient network error          | none                     | propagates by type (`is_transient_network_error`) so callers back off |
 | neither   | Aliyun bind_reply 2152 (account lock held by the app) | `AliyunMQTTTransport.account_in_use` | Aliyun unusable (a user send gets `AccountInUseError`); retried every `ACCOUNT_IN_USE_RETRY_SEC`; `on_account_in_use_changed` fires per transition and `False` on `disconnect()`, no auth callback |
 
