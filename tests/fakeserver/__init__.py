@@ -6,6 +6,9 @@ Emulates the three services the library talks to, with runtime fault injection:
   credentials, mqtt_invoke, …) as an aiohttp app, plus a ``/control`` API to
   flip failure states (expired tokens, 40102 refresh rejection, deactivated
   account, invoke 401/460, …).
+- ``aliyun_api`` — the Aliyun OpenAccount login and IoT gateway (getRegion,
+  loginbyoauth, session, checkOrRefreshSession, listBinding, invoke), with
+  single-use authorization codes and per-endpoint fault injection.
 - ``broker``    — a minimal MQTT 3.1.1 broker that aiomqtt clients accept,
   with hooks for CONNACK auth rejection and message injection.
 - ``scenario``  — the shared mutable state both servers consult, so a test

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 from dataclasses import fields as dataclass_fields
-import time
 from typing import Awaitable, Callable
 
 from aiohttp import web
@@ -30,6 +29,23 @@ def _ok(data: object | None = None, **extra: object) -> web.Response:
         body["data"] = data
     body.update(extra)
     return _json(body)
+
+
+def fault_response(request: web.Request, fault: int | str) -> web.Response:
+    """The reply for an injected fault — see ``Scenario.faults`` for the vocabulary."""
+    if fault == "http_500":
+        return _json({"code": 500, "msg": "internal server error"}, status=500)
+    if fault == "http_401":
+        return _json({"code": 401, "msg": "unauthorized"}, status=401)
+    if fault == "body_401":
+        return _json({"code": 401, "msg": "unauthorized"})
+    if fault == "non_json":
+        return web.Response(text="<html>502 Bad Gateway</html>", content_type="text/html")
+    if fault == "disconnect":
+        assert request.transport is not None
+        request.transport.close()
+        return web.Response()
+    return _json({"code": int(fault), "msg": "fault injected", "message": "fault injected"})
 
 
 def _error_codes_csv() -> str:
@@ -106,9 +122,11 @@ def build_app(
 
     async def authorization_code(request: web.Request) -> web.Response:
         scenario.count("auth_code_fetches")
+        if (fault := scenario.faults.get("auth_code_fetches")) is not None:
+            return fault_response(request, fault)
         if not scenario.bearer_ok(request.headers.get("Authorization")):
             return _json({"code": 401, "msg": "unauthorized"})
-        return _ok({"code": f"authcode-{int(time.time() * 1000)}"})
+        return _ok({"code": scenario.mint_auth_code()})
 
     # Device / account endpoints (MAMMOTION_API_DOMAIN)
 
@@ -277,6 +295,7 @@ def build_app(
                 "mammotion_connack_rc": scenario.mammotion_connack_rc,
                 "aliyun_connack_rc": scenario.aliyun_connack_rc,
                 "bind_reply_code": scenario.bind_reply_code,
+                "faults": scenario.faults,
                 "live_access_tokens": len(scenario.valid_access_tokens),
                 "account": scenario.account,
             }
@@ -291,6 +310,7 @@ def build_app(
             "revoke-access-tokens": scenario.revoke_access_tokens,
             "deactivate-account": scenario.deactivate_account,
             "expire-session": scenario.expire_session,
+            "revoke-aliyun-session": scenario.revoke_aliyun_session,
         }
         if action in handlers:
             handlers[action]()
@@ -302,6 +322,11 @@ def build_app(
             scenario.aliyun_connack_rc = int(params["rc"])
         elif action == "set-bind-reply":
             scenario.bind_reply_code = int(params["code"])
+        elif action == "set-fault":
+            if params.get("fault") is None:
+                scenario.faults.pop(params["endpoint"], None)
+            else:
+                scenario.faults[params["endpoint"]] = params["fault"]
         elif action == "set-oauth-status":
             scenario.oauth_http_status = params.get("status")
         elif action == "set-login-reject":

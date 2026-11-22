@@ -9,6 +9,8 @@ environment variables — pymammotion.const reads these at import time::
 
     MAMMOTION_DOMAIN=http://<host>:8787
     MAMMOTION_API_DOMAIN=http://<host>:8787
+    ALIYUN_DOMAIN=http://<host>:8787              # Aliyun HTTP chain; its MQTT host is not overridable
+    ALIYUN_OPENACCOUNT_DOMAIN=http://<host>:8787
 
 and log the integration in with the printed account/password.  Drive failure
 states at runtime with the /control API, e.g.::
@@ -20,6 +22,9 @@ states at runtime with the /control API, e.g.::
     curl -X POST -d '{"mode":"body_460"}' http://127.0.0.1:8787/control/set-invoke-mode
     curl -X POST -d '{"rc":5}'            http://127.0.0.1:8787/control/set-connack-rc
     curl -X POST -d '{"code":2043}'       http://127.0.0.1:8787/control/set-bind-reply
+    curl -X POST http://127.0.0.1:8787/control/revoke-aliyun-session    # 2401 on refresh, 2043 on bind
+    curl -X POST -d '{"endpoint":"aliyun_check_session","fault":2460}' http://127.0.0.1:8787/control/set-fault
+    curl -X POST -d '{"endpoint":"auth_code_fetches","fault":"http_500"}' http://127.0.0.1:8787/control/set-fault
     curl -X POST http://127.0.0.1:8787/control/restore-login            # heal auth rejections
     curl -X POST http://127.0.0.1:8787/control/reset                    # everything healthy again
     curl http://127.0.0.1:8787/control/state                            # counters + current faults
@@ -59,6 +64,8 @@ async def main() -> None:
     print("Point pymammotion at it with:")
     print(f"  MAMMOTION_DOMAIN={cloud.base_url}")
     print(f"  MAMMOTION_API_DOMAIN={cloud.base_url}")
+    print(f"  ALIYUN_DOMAIN={cloud.base_url}")
+    print(f"  ALIYUN_OPENACCOUNT_DOMAIN={cloud.base_url}")
     print()
     print(f"Fault injection: see `curl {cloud.base_url}/control/state` and module docstring.")
     print("Ctrl+C to stop.")

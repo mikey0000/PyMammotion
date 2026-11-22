@@ -8,13 +8,14 @@ import time
 
 from aiohttp import web
 
+from .aliyun_api import add_aliyun_routes
 from .broker import FakeMQTTBroker, Session
 from .http_api import build_app
 from .scenario import Scenario
 
 
 class FakeMammotionCloud:
-    """The whole fake cloud: HTTP API + Mammotion broker + Aliyun broker.
+    """The whole fake cloud: Mammotion + Aliyun HTTP APIs, Mammotion broker, Aliyun broker.
 
     Usage::
 
@@ -22,6 +23,8 @@ class FakeMammotionCloud:
         await cloud.start()
         monkeypatch.setattr("pymammotion.http.http.MAMMOTION_DOMAIN", cloud.base_url)
         monkeypatch.setattr("pymammotion.http.http.MAMMOTION_API_DOMAIN", cloud.base_url)
+        monkeypatch.setattr("pymammotion.aliyun.cloud_gateway.ALIYUN_DOMAIN", cloud.base_url)
+        monkeypatch.setattr("pymammotion.aliyun.cloud_gateway.ALIYUN_OPENACCOUNT_DOMAIN", cloud.base_url)
         ...
         await cloud.stop()
     """
@@ -68,6 +71,8 @@ class FakeMammotionCloud:
         self.invocations: list[tuple[str, bytes]] = []
         #: Aliyun bind attempts observed (the raw JSON payloads).
         self.bind_requests: list[dict] = []
+        #: (iot_id, protobuf_bytes) for every accepted Aliyun thing/service/invoke.
+        self.aliyun_invocations: list[tuple[str, bytes]] = []
 
     @property
     def base_url(self) -> str:
@@ -91,6 +96,7 @@ class FakeMammotionCloud:
             mqtt_host_getter=lambda: self.mqtt_host,
             on_invoke=self._on_invoke,
         )
+        add_aliyun_routes(app, self.scenario, base_url_getter=lambda: self.base_url, on_invoke=self._on_aliyun_invoke)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, "127.0.0.1", self._http_port)
@@ -118,13 +124,16 @@ class FakeMammotionCloud:
             return
         self.scenario.count("aliyun_binds")
         try:
-            self.bind_requests.append(json.loads(payload))
+            request = json.loads(payload)
         except Exception:  # noqa: BLE001
-            self.bind_requests.append({"raw": payload.decode(errors="replace")})
+            request = {"raw": payload.decode(errors="replace")}
+        self.bind_requests.append(request)
         # topic: /sys/{pk}/{dn}/app/up/account/bind
         parts = topic.split("/")
         pk, dn = parts[2], parts[3]
         code = self.scenario.bind_reply_code
+        if code == 200 and request.get("params", {}).get("iotToken") in self.scenario.revoked_iot_tokens:
+            code = 2043
         reply = {"code": code, "id": "msgid1", "message": "success" if code == 200 else "check iotToken failed"}
         self.aliyun_broker.publish(
             f"/sys/{pk}/{dn}/app/down/account/bind_reply", json.dumps(reply).encode()
@@ -132,6 +141,9 @@ class FakeMammotionCloud:
 
     async def _on_invoke(self, iot_id: str, payload: bytes) -> None:
         self.invocations.append((iot_id, payload))
+
+    async def _on_aliyun_invoke(self, iot_id: str, payload: bytes) -> None:
+        self.aliyun_invocations.append((iot_id, payload))
 
     # Injection helpers (fake mower behaviour)
 

@@ -20,6 +20,8 @@ JWT_KEY = "x" * 32
 
 DEACTIVATED_MSG = "Your account activity is abnormal and has been deactivated"
 BAD_CREDENTIALS_MSG = "The user name or password is incorrect"
+#: What the Aliyun chain answers for an authorization code that was spent or never issued.
+OPENID_EMPTY = {"code": 500, "message": "openId isEmpty,result_code=100002"}
 
 
 @dataclass
@@ -33,6 +35,16 @@ class FakeDevice:
 
 
 @dataclass
+class FakeAliyunDevice:
+    """The pre-2025 mower the account has bound on Aliyun."""
+
+    product_key: str = "FAKEALIPK"
+    device_name: str = "Luba-ALIYUN1"
+    iot_id: str = "iot-fake-aliyun-000001"
+    identity_id: str = "50f6fake0000000000000001"
+
+
+@dataclass
 class Scenario:
     """All injectable state, with sane 'everything healthy' defaults."""
 
@@ -40,6 +52,7 @@ class Scenario:
     password: str = "test-password"
     user_account: str = "8190001"
     device: FakeDevice = field(default_factory=FakeDevice)
+    aliyun_device: FakeAliyunDevice = field(default_factory=FakeAliyunDevice)
 
     # --- HTTP OAuth ---------------------------------------------------
     #: (code, msg) returned by the password grant instead of a login, or None.
@@ -73,13 +86,38 @@ class Scenario:
     # --- Aliyun MQTT -----------------------------------------------------
     bind_reply_code: int = 200
     aliyun_connack_rc: int = 0
-    #: The login's ``authorization_code`` seeds the Aliyun chain, which this fake does
-    #: not serve — so by default it issues none, modelling a Mammotion-only account.
+    #: The login's ``authorization_code`` is what starts the Aliyun chain, so by default
+    #: it issues none, modelling a Mammotion-only account.
     issue_authorization_code: bool = False
     #: The real cloud always answers the shared-device page with a ``data`` object.
     share_page_returns_data: bool = False
     #: False empties the Mammotion device page, modelling an Aliyun-only account.
     mammotion_device_bound: bool = True
+
+    # --- Aliyun HTTP chain -------------------------------------------------
+    #: False empties listBindingByAccount: the Aliyun login works but binds no mower.
+    aliyun_device_bound: bool = True
+    #: A share invitation awaiting acceptance appears in getShareNoticeList.
+    aliyun_pending_share: bool = False
+    iot_token_ttl: int = 72000
+    aliyun_refresh_token_ttl: int = 2592000
+    #: Per-endpoint fault, keyed by the endpoint's counter name (``auth_code_fetches``,
+    #: ``aliyun_check_session``, …).  An int answers that in-body code; ``http_500``,
+    #: ``http_401``, ``body_401`` and ``non_json`` shape the reply; ``disconnect`` drops
+    #: the connection without one.  A fault holds until cleared.
+    faults: dict[str, int | str] = field(default_factory=dict)
+    #: Single-use authorization codes: minted by a login and by /authorization/code,
+    #: checked by getRegion, consumed by loginbyoauth.
+    live_auth_codes: set[str] = field(default_factory=set)
+    #: OpenAccount sids from loginbyoauth, each consumed by createSessionByAuthCode.
+    live_sids: set[str] = field(default_factory=set)
+    valid_aliyun_refresh_tokens: set[str] = field(default_factory=set)
+    #: Live iotToken → expiry (epoch seconds).
+    iot_tokens: dict[str, float] = field(default_factory=dict)
+    #: iotTokens the server has revoked; a bind carrying one is refused with 2043.
+    revoked_iot_tokens: set[str] = field(default_factory=set)
+    #: recordIdList of every confirmShare call.
+    confirmed_shares: list[list[str]] = field(default_factory=list)
 
     # --- Counters ---------------------------------------------------------
     counters: dict[str, int] = field(default_factory=dict)
@@ -131,7 +169,7 @@ class Scenario:
             "token_type": "bearer",
             "refresh_token": self.current_refresh_token,
             "expires_in": int(self.access_token_ttl),
-            "authorization_code": f"authcode-{secrets.token_hex(6)}" if self.issue_authorization_code else "",
+            "authorization_code": self.mint_auth_code() if self.issue_authorization_code else "",
             "userInformation": {
                 "areaCode": "44",
                 "domainAbbreviation": "EU",
@@ -156,6 +194,37 @@ class Scenario:
             JWT_KEY,
             algorithm="HS256",
         )
+
+    def mint_auth_code(self) -> str:
+        code = f"authcode-{secrets.token_hex(6)}"
+        self.live_auth_codes.add(code)
+        return code
+
+    def mint_aliyun_session(self, refresh_token: str | None = None) -> dict:
+        """Issue an iotToken (and a refresh token unless *refresh_token* is kept) as session ``data``."""
+        iot_token = f"iot-{secrets.token_hex(8)}"
+        self.iot_tokens[iot_token] = time.time() + self.iot_token_ttl
+        if refresh_token is None:
+            refresh_token = f"art-{secrets.token_hex(8)}"
+            self.valid_aliyun_refresh_tokens.add(refresh_token)
+        return {
+            "identityId": self.aliyun_device.identity_id,
+            "iotToken": iot_token,
+            "iotTokenExpire": self.iot_token_ttl,
+            "refreshToken": refresh_token,
+            "refreshTokenExpire": self.aliyun_refresh_token_ttl,
+        }
+
+    def iot_token_ok(self, token: str | None) -> bool:
+        return token is not None and self.iot_tokens.get(token, 0) > time.time()
+
+    def age_cached_aliyun_session(self, cache: dict) -> None:
+        """Mark *cache*'s Aliyun session as issued a full iotToken lifetime ago.
+
+        A restore then has to call checkOrRefreshSession before it can trust the
+        session, which is the only way a restore reaches the server's verdict on it.
+        """
+        cache["session_data"].token_issued_at = int(time.time()) - self.iot_token_ttl
 
     def bearer_ok(self, authorization: str | None) -> bool:
         """Is the Authorization header a live, unexpired access token?"""
@@ -187,6 +256,12 @@ class Scenario:
         self.refresh_rejected = True
         self.valid_access_tokens.clear()
 
+    def revoke_aliyun_session(self) -> None:
+        """Aliyun forgets the session: refresh tokens answer 2401 and binds 2043."""
+        self.revoked_iot_tokens.update(self.iot_tokens)
+        self.iot_tokens.clear()
+        self.valid_aliyun_refresh_tokens.clear()
+
     def expire_session(self) -> None:
         """Full server-side session death: bearers dead AND refresh dead."""
         self.revoke_access_tokens()
@@ -207,6 +282,17 @@ class Scenario:
         self.issue_authorization_code = False
         self.share_page_returns_data = False
         self.mammotion_device_bound = True
+        self.aliyun_device_bound = True
+        self.aliyun_pending_share = False
+        self.iot_token_ttl = 72000
+        self.aliyun_refresh_token_ttl = 2592000
+        self.faults.clear()
+        self.live_auth_codes.clear()
+        self.live_sids.clear()
+        self.valid_aliyun_refresh_tokens.clear()
+        self.iot_tokens.clear()
+        self.revoked_iot_tokens.clear()
+        self.confirmed_shares.clear()
         self.valid_access_tokens.clear()
         self.current_refresh_token = None
         self.counters.clear()

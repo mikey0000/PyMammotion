@@ -7,7 +7,11 @@ import time
 
 import pytest
 
+from pymammotion import client as client_module
+from pymammotion.aliyun import cloud_gateway
 from pymammotion.client import MammotionClient
+from pymammotion.http import http
+from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
 from tests.fakeserver.cloud import FakeMammotionCloud
 
 # Async fixtures run in the session-scoped loop (asyncio_default_fixture_loop_scope
@@ -36,12 +40,28 @@ def fast_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 async def fake_cloud(monkeypatch: pytest.MonkeyPatch) -> FakeMammotionCloud:
+    """The fake cloud, with every Mammotion and Aliyun endpoint the library uses pointed at it.
+
+    The Aliyun MQTT host is derived from the AEP product key and region, so the
+    transport is redirected at its config instead; the fake broker is plaintext,
+    so the pinned-CA TLS context is dropped too.
+    """
     cloud = FakeMammotionCloud()
     await cloud.start()
-    # http.py imports the constants by value at module import, so patch the
-    # names inside pymammotion.http.http, not pymammotion.const.
-    monkeypatch.setattr("pymammotion.http.http.MAMMOTION_DOMAIN", cloud.base_url)
-    monkeypatch.setattr("pymammotion.http.http.MAMMOTION_API_DOMAIN", cloud.base_url)
+    # The modules import the constants by value, so patch the names where they are read.
+    monkeypatch.setattr(http, "MAMMOTION_DOMAIN", cloud.base_url)
+    monkeypatch.setattr(http, "MAMMOTION_API_DOMAIN", cloud.base_url)
+    monkeypatch.setattr(cloud_gateway, "ALIYUN_DOMAIN", cloud.base_url)
+    monkeypatch.setattr(cloud_gateway, "ALIYUN_OPENACCOUNT_DOMAIN", cloud.base_url)
+
+    def _loopback_aliyun_config(**kwargs: object) -> AliyunMQTTConfig:
+        return AliyunMQTTConfig(**{**kwargs, "host": "127.0.0.1", "port": cloud.aliyun_broker.port})
+
+    async def _no_tls() -> None:
+        return None
+
+    monkeypatch.setattr(client_module, "AliyunMQTTConfig", _loopback_aliyun_config)
+    monkeypatch.setattr(AliyunMQTTTransport, "get_ssl_context", staticmethod(_no_tls))
     yield cloud
     # A shutdown that cannot finish is a bug either way; surface it as a failed test
     # with a traceback instead of wedging the whole run (pre-commit once blocked on
