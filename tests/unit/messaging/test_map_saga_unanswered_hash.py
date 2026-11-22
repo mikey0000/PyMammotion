@@ -7,6 +7,7 @@ a wait the device was never going to answer.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -14,7 +15,7 @@ from pymammotion.data.model.hash_list import HashList
 from pymammotion.messaging.broker import DeviceMessageBroker
 from pymammotion.transport.base import SagaFailedError
 from tests.unit.messaging._fakes import FakeHashListDevice
-from tests.unit.messaging._helpers import make_fast_map_saga
+from tests.unit.messaging._helpers import apply_msg_to_map, comm_data_frame, make_fast_map_saga
 
 _SAGA_TIMEOUT = 5.0
 _SILENT_FOREVER = 1_000
@@ -33,6 +34,12 @@ def _make_device(
         hash_lists={0: [hashes]},
         comm_types=dict.fromkeys(hashes, 0),
         ignore_sync_requests=ignore_sync_requests,
+    )
+
+
+async def _sync(device: FakeHashListDevice, device_map: HashList, broker: DeviceMessageBroker) -> None:
+    await asyncio.wait_for(
+        make_fast_map_saga(device.command_builder, device.send, device_map).execute(broker), timeout=_SAGA_TIMEOUT
     )
 
 
@@ -83,7 +90,7 @@ async def test_a_deferred_hash_is_recorded_as_unserved() -> None:
     broker, device_map = DeviceMessageBroker(), HashList()
     device = _make_device(broker, device_map, [_AREA_A, _AREA_B], ignore_sync_requests={_AREA_B: _SILENT_FOREVER})
 
-    await asyncio.wait_for(make_fast_map_saga(device.command_builder, device.send, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
+    await _sync(device, device_map, broker)
 
     assert device_map.unserved_hashes == {_AREA_B}
 
@@ -93,7 +100,7 @@ async def test_a_sync_that_serves_every_hash_clears_the_unserved_record() -> Non
     device_map.unserved_hashes = {_AREA_B}
     device = _make_device(broker, device_map, [_AREA_A, _AREA_B])
 
-    await asyncio.wait_for(make_fast_map_saga(device.command_builder, device.send, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
+    await _sync(device, device_map, broker)
 
     assert device_map.unserved_hashes == set()
 
@@ -102,7 +109,7 @@ async def test_a_resumed_sync_defers_a_silent_hash_when_the_map_already_holds_ar
     """Steps 1-3 answered, so the device is up; one silent hash is that hash's problem."""
     broker, device_map = DeviceMessageBroker(), HashList()
     device = _make_device(broker, device_map, [_AREA_A, _AREA_B])
-    await asyncio.wait_for(make_fast_map_saga(device.command_builder, device.send, device_map).execute(broker), timeout=_SAGA_TIMEOUT)
+    await _sync(device, device_map, broker)
     device_map.area.pop(_AREA_B)
     silent = _make_device(broker, device_map, [_AREA_A, _AREA_B], ignore_sync_requests={_AREA_B: _SILENT_FOREVER})
     saga = make_fast_map_saga(silent.command_builder, silent.send, device_map)
@@ -113,22 +120,61 @@ async def test_a_resumed_sync_defers_a_silent_hash_when_the_map_already_holds_ar
     assert device_map.unserved_hashes == {_AREA_B}
 
 
-@pytest.mark.parametrize(
-    ("hashes", "silent"),
-    [
-        ([_AREA_A], [_AREA_A]),
-        ([_AREA_A, _AREA_B, _AREA_C], [_AREA_B, _AREA_C]),
-    ],
-    ids=["the_only_hash_of_an_empty_map", "two_hashes_in_a_row"],
-)
-async def test_a_device_that_stops_answering_hash_requests_fails_the_sync(hashes: list[int], silent: list[int]) -> None:
-    """Total silence is the device going away, not one bad hash: fail rather than publish an empty or gutted map."""
+async def test_the_only_hash_of_an_empty_map_going_unanswered_fails_the_sync() -> None:
+    """Deferring it would publish an empty map; an absent device must fail like any other silence."""
     broker, device_map = DeviceMessageBroker(), HashList()
-    device = _make_device(broker, device_map, hashes, ignore_sync_requests=dict.fromkeys(silent, _SILENT_FOREVER))
-    saga = make_fast_map_saga(device.command_builder, device.send, device_map)
+    device = _make_device(broker, device_map, [_AREA_A], ignore_sync_requests={_AREA_A: _SILENT_FOREVER})
 
     with pytest.raises(SagaFailedError):
-        await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
+        await _sync(device, device_map, broker)
 
-    assert saga.result is None
+    assert device_map.unserved_hashes == set()
+
+
+async def test_two_hashes_in_a_row_going_unanswered_fails_the_sync() -> None:
+    """The map holds a served area, so only the consecutive-deferral cap can fail this run."""
+    broker, device_map = DeviceMessageBroker(), HashList()
+    device = _make_device(
+        broker,
+        device_map,
+        [_AREA_A, _AREA_B, _AREA_C],
+        ignore_sync_requests={_AREA_B: _SILENT_FOREVER, _AREA_C: _SILENT_FOREVER},
+    )
+
+    with pytest.raises(SagaFailedError):
+        await _sync(device, device_map, broker)
+
+    assert set(device_map.area) == {_AREA_A}
+    assert device_map.unserved_hashes == set()
+
+
+async def test_a_served_hash_between_two_silent_ones_resets_the_consecutive_deferral_count() -> None:
+    broker, device_map = DeviceMessageBroker(), HashList()
+    device = _make_device(
+        broker,
+        device_map,
+        [_AREA_A, _AREA_B, _AREA_C],
+        ignore_sync_requests={_AREA_A: _SILENT_FOREVER, _AREA_C: _SILENT_FOREVER},
+    )
+
+    await _sync(device, device_map, broker)
+
+    assert device_map.unserved_hashes == {_AREA_A, _AREA_C}
+
+
+async def test_a_deferred_hash_whose_data_arrives_later_in_the_run_is_not_recorded_as_unserved() -> None:
+    broker, device_map = DeviceMessageBroker(), HashList()
+    device = _make_device(broker, device_map, [_AREA_A, _AREA_B], ignore_sync_requests={_AREA_A: _SILENT_FOREVER})
+    late_frame = comm_data_frame(_AREA_A, type_code=0)
+
+    async def send_with_late_reply(cmd: Any) -> None:
+        if cmd == ("sync_hash", _AREA_B):
+            apply_msg_to_map(late_frame, device_map)
+            await broker.on_message(late_frame)
+        await device.send(cmd)
+
+    saga = make_fast_map_saga(device.command_builder, send_with_late_reply, device_map)
+    await asyncio.wait_for(saga.execute(broker), timeout=_SAGA_TIMEOUT)
+
+    assert set(device_map.area) == {_AREA_A, _AREA_B}
     assert device_map.unserved_hashes == set()

@@ -19,7 +19,7 @@ import pytest
 
 from pymammotion.messaging.transfers import ack_stream, indexed_fetch, require_leaf
 from pymammotion.proto import LubaMsg
-from pymammotion.transport.base import CommandTimeoutError
+from pymammotion.transport.base import CommandTimeoutError, FrameTimeoutError
 from tests.unit.messaging._helpers import comm_data_frame, ctrl_plan_msg, hash_list_msg
 
 
@@ -347,7 +347,7 @@ async def test_ack_stream_timeout_names_the_frame_that_never_arrived(
     async def ack(_frame: Any) -> None:
         return None
 
-    with pytest.raises(CommandTimeoutError) as exc_info:
+    with pytest.raises(FrameTimeoutError) as exc_info:
         await ack_stream(queue, field="toapp_get_commondata_ack", ack=ack, timeout=0.01)
 
     assert str(exc_info.value) == f"No response for 'toapp_get_commondata_ack': {expected}"
