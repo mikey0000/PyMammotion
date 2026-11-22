@@ -475,9 +475,7 @@ def test_update_iot_token_stores_new_value(config: AliyunMQTTConfig, cloud_gatew
 # bind_reply 2043 — SessionExpiredError cascade (transport level)
 
 
-async def test_bind_reply_2043_no_callback_gives_up(
-    config: AliyunMQTTConfig, cloud_gateway: MagicMock
-) -> None:
+async def test_bind_reply_2043_no_callback_gives_up(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """bind_reply 2043 with no on_auth_failure gives the transport up and ends _run()."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
     fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
@@ -486,11 +484,10 @@ async def test_bind_reply_2043_no_callback_gives_up(
         await transport._run()
 
     assert transport._stop_event.is_set()
+    assert not transport.is_usable
 
 
-async def test_bind_reply_2043_callback_returns_false_gives_up(
-    config: AliyunMQTTConfig, cloud_gateway: MagicMock
-) -> None:
+async def test_bind_reply_2043_callback_returns_false_gives_up(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
     """bind_reply 2043 → on_auth_failure returns False → the transport is given up."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_auth_failure = AsyncMock(return_value=False)
@@ -501,6 +498,7 @@ async def test_bind_reply_2043_callback_returns_false_gives_up(
 
     transport.on_auth_failure.assert_awaited_once()
     assert transport._stop_event.is_set()
+    assert not transport.is_usable
 
 
 async def test_bind_reply_2043_callback_raises_a_refusal_gives_up(
@@ -515,6 +513,8 @@ async def test_bind_reply_2043_callback_raises_a_refusal_gives_up(
         await transport._run()
 
     transport.on_auth_failure.assert_awaited_once()
+    assert transport._stop_event.is_set()
+    assert not transport.is_usable
 
 
 async def test_bind_reply_2043_callback_returns_true_reconnects(

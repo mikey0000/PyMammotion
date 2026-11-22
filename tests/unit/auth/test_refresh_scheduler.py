@@ -15,16 +15,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, create_autospec
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth import token_manager as token_manager_module
 from pymammotion.auth.token_manager import MQTTCredentials, TokenManager
 
 from tests._helpers import let_others_run, wait_until
-from tests.unit.auth._helpers import make_http_mock, make_mqtt_creds
+from tests.unit.auth._helpers import make_aliyun_gateway, make_http_mock, make_mqtt_creds
 
 
 def _tm_scheduled(
@@ -52,11 +51,9 @@ def _tm_scheduled(
 
 def _gateway_expiring_in(ttl: float, iot_token_expire: int = 7200) -> MagicMock:
     """A gateway whose current iotToken expires in *ttl* seconds; a refresh issues a new one now."""
-    gateway = create_autospec(CloudIOTGateway, instance=True)
-    gateway.session_by_authcode_response = MagicMock(
-        data=MagicMock(iotToken="iot-old", iotTokenExpire=iot_token_expire, refreshToken="r", refreshTokenExpire=864000)
+    gateway = make_aliyun_gateway(
+        issued_at=int(time.time() + ttl) - iot_token_expire, iot_token="iot-old", iot_token_expire=iot_token_expire
     )
-    gateway._iot_token_issued_at = int(time.time() + ttl) - iot_token_expire  # noqa: SLF001
 
     async def _refresh(*, force: bool = False) -> None:
         gateway.session_by_authcode_response.data.iotToken = "iot-new"
@@ -291,9 +288,7 @@ async def test_scheduler_retries_a_deferred_aliyun_session_until_it_is_establish
     monkeypatch.setattr(token_manager_module, "_SCHEDULER_RETRY_DELAY", 0.0)
     tm, http = _tm_scheduled(http_ttl=86400.0)
     http.login_info = MagicMock()
-    gateway = create_autospec(CloudIOTGateway, instance=True, region_response=None, aep_response=MagicMock())
-    gateway.session_by_authcode_response = MagicMock()
-    gateway._iot_token_issued_at = int(time.time())  # noqa: SLF001
+    gateway = make_aliyun_gateway(issued_at=int(time.time()))
     failures = [ConnectionError("down"), ConnectionError("still down")]
 
     async def _get_region(_country_code: str) -> None:

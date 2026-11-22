@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, create_autospec
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import TokenManager
 from pymammotion.transport.base import ReLoginRequiredError, TransportType
 from tests._helpers import let_others_run
-from tests.unit.auth._helpers import encode_jwt, make_http_mock
+from tests.unit.auth._helpers import encode_jwt, make_aliyun_gateway, make_http_mock
 
 
 async def test_a_transport_given_up_twice_is_reported_once() -> None:
@@ -62,9 +61,7 @@ async def test_a_given_up_aliyun_session_is_reported_and_a_successful_reestablis
     tm.mark_transport_unavailable(TransportType.CLOUD_ALIYUN, "refused")
     changed = AsyncMock()
     tm.on_transport_availability_changed = changed
-    gateway = create_autospec(CloudIOTGateway, instance=True, region_response=MagicMock(), aep_response=MagicMock())
-    gateway.session_by_authcode_response = MagicMock()
-    gateway._iot_token_issued_at = 0
+    gateway = make_aliyun_gateway(region_response=MagicMock())
 
     assert await tm.reestablish_aliyun(gateway) is gateway
     await let_others_run()

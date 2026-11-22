@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
+from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.auth.token_manager import AliyunCredentials, HTTPCredentials, MQTTCredentials
 
 from tests._helpers import encode_jwt
@@ -18,6 +19,7 @@ from tests._helpers import encode_jwt
 __all__ = [
     "encode_jwt",
     "make_aliyun_creds",
+    "make_aliyun_gateway",
     "make_http_creds",
     "make_http_mock",
     "make_mqtt_creds",
@@ -113,3 +115,36 @@ def make_http_mock(
     if login_info is not _UNSET:
         http.login_info = login_info
     return http
+
+
+def make_aliyun_gateway(
+    *,
+    http: Any = None,
+    issued_at: float = 0,
+    iot_token: str = "iot",
+    iot_token_expire: int = 7200,
+    with_session: bool = True,
+    region_response: Any = None,
+    aep_response: Any = _UNSET,
+) -> MagicMock:
+    """Return an autospecced CloudIOTGateway whose Aliyun session was issued at *issued_at*.
+
+    ``region_response`` defaults to ``None``: a gateway that has not run ``get_region``
+    yet.  ``with_session=False`` leaves it with no session (an incomplete chain).
+    """
+    attrs: dict[str, Any] = {"region_response": region_response}
+    if http is not None:
+        attrs["mammotion_http"] = http
+    gateway = create_autospec(CloudIOTGateway, instance=True, **attrs)
+    gateway.aep_response = MagicMock() if aep_response is _UNSET else aep_response
+    gateway.session_by_authcode_response = (
+        MagicMock(
+            data=MagicMock(
+                iotToken=iot_token, iotTokenExpire=iot_token_expire, refreshToken="r", refreshTokenExpire=864000
+            )
+        )
+        if with_session
+        else None
+    )
+    gateway._iot_token_issued_at = issued_at  # noqa: SLF001
+    return gateway
