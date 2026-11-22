@@ -42,7 +42,7 @@ OVERSIZED = {
     "unit/data/model/test_hash_list.py": 739,
     "unit/device/test_handle.py": 1580,
     "unit/test_client.py": 1910,
-    "unit/transport/test_aliyun_mqtt.py": 1103,
+    "unit/transport/test_aliyun_mqtt.py": 1097,
 }
 
 #: Builders defined in more than one test module instead of the package ``_helpers.py``.

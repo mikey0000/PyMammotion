@@ -15,7 +15,6 @@ from pymammotion.aliyun.cloud_gateway import CloudIOTGateway
 from pymammotion.client import MammotionClient
 from pymammotion.transport import aliyun_mqtt
 from pymammotion.transport.aliyun_mqtt import AliyunMQTTConfig, AliyunMQTTTransport
-from pymammotion.transport.base import ReLoginRequiredError
 from tests._helpers import advance_real_time, wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 
@@ -68,8 +67,9 @@ async def test_bind_2043_replay_is_bounded_to_three_refreshes(
     fatal = AsyncMock()
     transport.on_fatal_auth_error = fatal
 
-    with pytest.raises(ReLoginRequiredError):
-        await asyncio.wait_for(transport._run(), timeout=30)
+    # Returns rather than raising: the loop runs as a task nobody awaits, so a raise was only ever
+    # logged as "Task exception was never retrieved" after the give-up had already been handled.
+    await asyncio.wait_for(transport._run(), timeout=30)
 
     assert refreshes.await_count == 3  # _MAX_AUTH_REFRESH_CYCLES
     assert scenario.counters.get("aliyun_binds") == 4  # initial + one per refresh
@@ -81,6 +81,36 @@ async def test_bind_2043_replay_is_bounded_to_three_refreshes(
     connects = scenario.counters.get("aliyun_mqtt_connects")
     await advance_real_time(0.4)
     assert scenario.counters.get("aliyun_mqtt_connects") == connects
+
+
+@pytest.mark.regression
+async def test_a_transient_auth_refresh_failure_backs_off_instead_of_giving_up(
+    fake_cloud: FakeMammotionCloud,
+) -> None:
+    """A network error from the bind-refresh callback was treated as a verdict and the transport given up for good."""
+    scenario = fake_cloud.scenario
+    scenario.bind_reply_code = 2043
+    transport = _make_aliyun_transport(fake_cloud)
+
+    async def _refresh() -> bool:
+        if refreshes.await_count == 1:
+            raise ConnectionError("cloud unreachable")
+        scenario.bind_reply_code = 200
+        return True
+
+    refreshes = AsyncMock(side_effect=_refresh)
+    transport.on_auth_failure = refreshes
+    fatal = AsyncMock()
+    transport.on_fatal_auth_error = fatal
+
+    await transport.connect()
+    try:
+        await wait_until(lambda: transport.is_connected)
+        assert refreshes.await_count == 2
+        fatal.assert_not_awaited()
+        assert transport.is_usable
+    finally:
+        await transport.disconnect()
 
 
 @pytest.mark.regression

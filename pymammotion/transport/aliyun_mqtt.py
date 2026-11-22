@@ -36,6 +36,7 @@ from pymammotion.transport.base import (
     TransportAvailability,
     TransportError,
     TransportType,
+    is_transient_network_error,
 )
 from pymammotion.transport.cloud import (
     ACCOUNT_IN_USE_RETRY_SEC,
@@ -101,7 +102,7 @@ class AliyunMQTTConfig:
     keepalive: int = _MQTT_KEEPALIVE
 
     @classmethod
-    def from_aliyun_credentials(
+    def from_aliyun_credentials(  # noqa: PLR0917 — preserve the existing positional API
         cls,
         region_id: str,
         product_key: str,
@@ -398,6 +399,28 @@ class AliyunMQTTTransport(CloudTransport):
             except Exception:
                 _logger.exception("on_account_in_use_changed callback failed")
 
+    async def _refresh_after_rejection(self, cycles: int, give_up_reason: str) -> bool:
+        """Ask the host to refresh the bind credentials after the broker refused them.
+
+        True means reconnect now with the refreshed token.  False means either a
+        transient failure — the loop backs off without spending the refresh budget —
+        or a give-up, which this handles and which stops the loop.
+        """
+        fatal = ReLoginRequiredError("", give_up_reason)
+        if self.on_auth_failure is not None and cycles < _MAX_AUTH_REFRESH_CYCLES:
+            try:
+                if await self.on_auth_failure():
+                    return True
+            except ReLoginRequiredError as exc:
+                fatal = exc
+            except Exception as exc:
+                if is_transient_network_error(exc):
+                    _logger.warning("Aliyun credential refresh failed transiently — backing off: %s", exc)
+                    return False
+                _logger.warning("on_auth_failure callback failed", exc_info=True)
+        await self._handle_fatal_auth_error(fatal)
+        return False
+
     @staticmethod
     async def get_ssl_context() -> ssl.SSLContext:
         """Build the TLS context for the Aliyun broker with the pinned CA bundle loaded."""
@@ -523,23 +546,16 @@ class AliyunMQTTTransport(CloudTransport):
                 rc = exc.rc
                 if rc in (4, 5):
                     _logger.error("Aliyun MQTT auth refused (rc=%s): %s — attempting credential refresh", rc, exc)
-                    if self.on_auth_failure is not None and auth_refresh_cycles < _MAX_AUTH_REFRESH_CYCLES:
-                        try:
-                            if await self.on_auth_failure():
-                                auth_refresh_cycles += 1
-                                _logger.info("Aliyun credentials refreshed after auth failure — retrying")
-                                await asyncio.sleep(backoff)
-                                backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_ALIYUN)
-                                continue
-                        except ReLoginRequiredError as relogin_exc:
-                            await self._handle_fatal_auth_error(relogin_exc)
-                            raise
-                        except Exception:
-                            _logger.warning("on_auth_failure callback failed", exc_info=True)
-                    fatal = ReLoginRequiredError("", f"Aliyun MQTT auth exhausted (rc={rc})")
-                    await self._handle_fatal_auth_error(fatal)
-                    raise fatal from exc
-                _logger.warning("Aliyun MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
+                    if await self._refresh_after_rejection(
+                        auth_refresh_cycles, f"Aliyun MQTT auth exhausted (rc={rc})"
+                    ):
+                        auth_refresh_cycles += 1
+                        _logger.info("Aliyun credentials refreshed after auth failure — retrying")
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_ALIYUN)
+                        continue
+                else:
+                    _logger.warning("Aliyun MQTT error (rc=%s): %s — retry in %ds", rc, exc, backoff)
             except AccountInUseError:
                 account_locked = True
                 self._client = None
@@ -551,22 +567,12 @@ class AliyunMQTTTransport(CloudTransport):
                 await self._set_account_in_use(True)
             except SessionExpiredError as exc:
                 _logger.warning("Aliyun bind token expired — attempting credential refresh: %s", exc)
-                if self.on_auth_failure is not None and auth_refresh_cycles < _MAX_AUTH_REFRESH_CYCLES:
-                    try:
-                        if await self.on_auth_failure():
-                            auth_refresh_cycles += 1
-                            _logger.info("Aliyun credentials refreshed after bind token expiry — reconnecting")
-                            await asyncio.sleep(backoff)
-                            backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_ALIYUN)
-                            continue
-                    except ReLoginRequiredError as relogin_exc:
-                        await self._handle_fatal_auth_error(relogin_exc)
-                        raise
-                    except Exception:
-                        _logger.warning("on_auth_failure callback failed", exc_info=True)
-                fatal = ReLoginRequiredError("", f"Aliyun bind token unrecoverable: {exc}")
-                await self._handle_fatal_auth_error(fatal)
-                raise fatal from exc
+                if await self._refresh_after_rejection(auth_refresh_cycles, f"Aliyun bind token unrecoverable: {exc}"):
+                    auth_refresh_cycles += 1
+                    _logger.info("Aliyun credentials refreshed after bind token expiry — reconnecting")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, MQTT_RECONNECT_MAX_SEC_ALIYUN)
+                    continue
             except aiomqtt.MqttError as exc:
                 _logger.debug("Aliyun MQTT disconnected: %s — retry in %ds", exc, backoff)
             except asyncio.CancelledError:

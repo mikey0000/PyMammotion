@@ -101,6 +101,7 @@ from pymammotion.transport.base import (
     Subscription,
     TransportError,
     TransportType,
+    is_transient_network_error,
 )
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from pymammotion.utility.constant.poll_policy import MOWING_ACTIVE_MODES
@@ -1129,7 +1130,9 @@ class MammotionClient(CloudAuthMixin):
             try:
                 await token_manager.refresh_aliyun_credentials()
                 creds = await token_manager.get_aliyun_credentials()
-            except Exception:
+            except Exception as exc:
+                if is_transient_network_error(exc):
+                    raise
                 _logger.exception("Aliyun credential refresh failed — giving up on the Aliyun transport")
                 return False
             transport.update_iot_token(creds.iot_token)

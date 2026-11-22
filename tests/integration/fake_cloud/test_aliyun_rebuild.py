@@ -12,9 +12,10 @@ import pytest
 
 from pymammotion.client import MammotionClient
 from pymammotion.transport.base import is_transient_network_error
+from tests._helpers import wait_until
 from tests.fakeserver.cloud import FakeMammotionCloud
 
-from ._helpers import counts, log_in_aliyun_account
+from ._helpers import aliyun_transport, counts, log_in_aliyun_account
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -71,3 +72,29 @@ async def test_a_server_fault_on_the_code_fetch_is_transient_and_runs_no_chain(
         "aliyun_region": 0,
         "aliyun_oauth": 0,
     }
+
+
+@pytest.mark.regression
+async def test_a_transient_rebuild_failure_on_reconnect_backs_off_and_recovers(
+    fake_cloud: FakeMammotionCloud, client: MammotionClient
+) -> None:
+    """A network fault while the transport rebuilt its session killed the transport until a restart.
+
+    The auth-failure callback swallowed the transient error and answered "give up", so the
+    transport was marked auth-failed and refused to reconnect once the cloud was back.
+    """
+    scenario = fake_cloud.scenario
+    await log_in_aliyun_account(fake_cloud, client)
+    transport = aliyun_transport(client, scenario)
+    scenario.faults["auth_code_fetches"] = "http_500"
+    scenario.revoke_aliyun_session()
+    fake_cloud.aliyun_broker.drop_all_clients()
+
+    await wait_until(lambda: scenario.counters.get("auth_code_fetches", 0) >= 2, message="it never retried")
+    assert transport.is_usable, "a transient fault gave the transport up"
+    del scenario.faults["auth_code_fetches"]
+
+    await wait_until(lambda: transport.is_connected)
+    assert client.token_manager is not None
+    assert client.token_manager.aliyun_unavailable is None
+    assert scenario.counters.get("password_grants", 0) == 0

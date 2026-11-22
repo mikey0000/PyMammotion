@@ -343,17 +343,18 @@ async def test_thing_status_offline_routes_to_on_device_status(
 # Auth error (rc=4/5) raises AuthError and stops reconnect
 
 
-async def test_auth_error_raises_and_stops_reconnect(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
-    """rc=4/5 from the broker should raise ReLoginRequiredError and stop the connection loop."""
+async def test_auth_error_gives_up_and_stops_reconnect(config: AliyunMQTTConfig, cloud_gateway: MagicMock) -> None:
+    """rc=4/5 from the broker with no refresh available gives up and stops the connection loop."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
 
     with patch("aiomqtt.Client", return_value=_AuthFailMQTTClient()):
-        with pytest.raises(ReLoginRequiredError):
-            await transport.connect()
-            if transport._task is not None:
-                await transport._task
+        await transport.connect()
+        assert transport._task is not None
+        await transport._task
 
+    assert transport._task.exception() is None, "the give-up escaped a task nobody awaits"
     assert transport._stop_event.is_set()
+    assert not transport.is_usable
 
 
 # Network errors (OSError / DNS / ENETUNREACHABLE) — retry with backoff, no auth count
@@ -474,47 +475,44 @@ def test_update_iot_token_stores_new_value(config: AliyunMQTTConfig, cloud_gatew
 # bind_reply 2043 — SessionExpiredError cascade (transport level)
 
 
-async def test_bind_reply_2043_no_callback_raises_relogin_required(
+async def test_bind_reply_2043_no_callback_gives_up(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
-    """bind_reply 2043 with no on_auth_failure → ReLoginRequiredError propagates out of _run()."""
+    """bind_reply 2043 with no on_auth_failure gives the transport up and ends _run()."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
     fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     assert transport._stop_event.is_set()
 
 
-async def test_bind_reply_2043_callback_returns_false_raises_relogin_required(
+async def test_bind_reply_2043_callback_returns_false_gives_up(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
-    """bind_reply 2043 → on_auth_failure returns False → ReLoginRequiredError propagates."""
+    """bind_reply 2043 → on_auth_failure returns False → the transport is given up."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_auth_failure = AsyncMock(return_value=False)
 
     fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
     with patch("aiomqtt.Client", return_value=fake_client):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     transport.on_auth_failure.assert_awaited_once()
     assert transport._stop_event.is_set()
 
 
-async def test_bind_reply_2043_callback_raises_nonfatal_exception_raises_relogin_required(
+async def test_bind_reply_2043_callback_raises_a_refusal_gives_up(
     config: AliyunMQTTConfig, cloud_gateway: MagicMock
 ) -> None:
-    """Non-ReLoginRequiredError from on_auth_failure is swallowed; ReLoginRequiredError propagates."""
+    """A non-transient error from on_auth_failure is a refusal: the transport is given up."""
     transport = AliyunMQTTTransport(config, cloud_gateway)
     transport.on_auth_failure = AsyncMock(side_effect=RuntimeError("refresh exploded"))
 
     fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
     with patch("aiomqtt.Client", return_value=fake_client):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     transport.on_auth_failure.assert_awaited_once()
 
@@ -716,11 +714,11 @@ async def test_on_aliyun_auth_failure_no_token_manager_returns_false() -> None:
 # End-to-end: bind_reply 2043 → full relogin failure → AuthError → HA must re-login
 
 
-async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_end() -> None:
+async def test_bind_reply_2043_relogin_failure_gives_up_end_to_end() -> None:
     """Full cascade: bind_reply 2043 → targeted refresh fails → give up on the transport.
 
     The targeted refresh is the only automatic recovery.  When it fails, _run()
-    raises ReLoginRequiredError and stops — without ever reaching for the stored
+    gives the transport up and stops — without ever reaching for the stored
     password, no matter how many times the broker rejects the bind.
     """
     client, session, transport = make_aliyun_session("stale-tok")
@@ -734,8 +732,7 @@ async def test_bind_reply_2043_relogin_failure_raises_relogin_required_end_to_en
     fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     assert transport._stop_event.is_set()
     session.token_manager.refresh_aliyun_credentials.assert_awaited()
@@ -767,8 +764,7 @@ async def test_bind_reply_2043_relogin_success_fires_on_fatal_auth_and_reconnect
     fake_client = _FakeMQTTClient(messages=[make_bind_reply(2043)])
 
     with patch("aiomqtt.Client", return_value=fake_client):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     assert transport._stop_event.is_set()
     assert len(fatal_calls) == 1
@@ -835,8 +831,7 @@ async def test_bind_reply_2043_replay_is_bounded(config: AliyunMQTTConfig, cloud
         await real_sleep(0)
 
     with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     assert transport.on_auth_failure.await_count == 3  # _MAX_AUTH_REFRESH_CYCLES
     assert len(fatal_calls) == 1
@@ -869,8 +864,7 @@ async def test_accepted_bind_reply_resets_refresh_budget(config: AliyunMQTTConfi
         await real_sleep(0)
 
     with patch("asyncio.sleep", _instant_sleep), patch("aiomqtt.Client", side_effect=clients):
-        with pytest.raises(ReLoginRequiredError):
-            await transport._run()
+        await transport._run()
 
     # 5 refreshes total: the accepted bind_reply in the middle restarted the count.
     assert transport.on_auth_failure.await_count == 5
