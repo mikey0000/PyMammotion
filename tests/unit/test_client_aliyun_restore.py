@@ -95,7 +95,7 @@ async def test_an_unusable_cached_session_is_rebuilt_with_a_fresh_authorization_
 
     with (
         patch.object(CloudIOTGateway, "from_cache", AsyncMock(return_value=None)),
-        patch.object(MammotionClient, "_connect_iot", side_effect=connect_iot),
+        patch.object(MammotionClient, "_connect_iot", autospec=True, side_effect=connect_iot),
     ):
         await client._restore_aliyun(ACCOUNT, {}, session, check_for_new_devices=True)  # noqa: SLF001
 
