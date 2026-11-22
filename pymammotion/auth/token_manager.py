@@ -843,6 +843,8 @@ class TokenManager:
             msg = "login_info is None — call login_v2() before _connect_iot()"
             raise ReLoginRequiredError(mammotion_http.account or "", msg)
         country_code = login_info.userInformation.domainAbbreviation
+        # The login's saved authorization code is single-use and already spent.
+        await mammotion_http.fetch_authorization_token()
         if cloud_client.region_response is None:
             await cloud_client.get_region(country_code)
         await cloud_client.connect()

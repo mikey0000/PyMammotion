@@ -74,3 +74,29 @@ async def test_the_cached_listing_is_used_when_the_live_one_cannot_be_fetched(cl
         await _restore(client, gateway)
 
     assert _bound(client) == ["RTK-KEEP"]
+
+
+@pytest.mark.regression
+async def test_an_unusable_cached_session_is_rebuilt_with_a_fresh_authorization_code(client: MammotionClient) -> None:
+    """The rebuild reused the login's saved code, which is single-use and already spent, so Aliyun refused it."""
+    session = AccountSession(account_id=ACCOUNT, email=ACCOUNT, password="pw")
+    http = session.mammotion_http = make_mock_http()
+    http.login_info.authorization_code = "spent"
+
+    async def issue_code() -> None:
+        http.login_info.authorization_code = "fresh"
+
+    http.fetch_authorization_token = AsyncMock(side_effect=issue_code)
+    codes_used: list[str] = []
+
+    async def connect_iot(gateway: CloudIOTGateway) -> None:
+        codes_used.append(gateway.mammotion_http.login_info.authorization_code)
+        raise CloudSetupError("stop after the code is read")
+
+    with (
+        patch.object(CloudIOTGateway, "from_cache", AsyncMock(return_value=None)),
+        patch.object(MammotionClient, "_connect_iot", side_effect=connect_iot),
+    ):
+        await client._restore_aliyun(ACCOUNT, {}, session, check_for_new_devices=True)  # noqa: SLF001
+
+    assert codes_used == ["fresh"]

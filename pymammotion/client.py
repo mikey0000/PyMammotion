@@ -1554,6 +1554,8 @@ class MammotionClient(CloudAuthMixin):
             )
             cloud_client = CloudIOTGateway(mammotion_http)
             try:
+                # The login's saved authorization code is single-use and already spent.
+                await mammotion_http.fetch_authorization_token()
                 await self._connect_iot(cloud_client)
             except Exception:
                 _logger.warning(
