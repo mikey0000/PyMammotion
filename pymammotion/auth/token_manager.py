@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING
 import jwt
 
 from pymammotion.aliyun.exceptions import CloudSetupError, LoginException
-from pymammotion.http.model.http import AuthorizationCodeError, MQTTConnection, UnauthorizedExceptionError
+from pymammotion.http.model.http import (
+    AuthorizationCodeError,
+    MQTTConnection,
+    RateLimitedError,
+    UnauthorizedExceptionError,
+)
 from pymammotion.transport.base import (
     ReLoginRequiredError,
     SessionExpiredError,
@@ -731,6 +736,9 @@ class TokenManager:
             except ReLoginRequiredError:
                 _LOGGER.warning("token scheduler [%s]: re-authentication required — stopping", self._account_id)
                 return
+            except RateLimitedError as exc:
+                _LOGGER.warning("token scheduler [%s]: %s — pausing renewals", self._account_id, exc)
+                await asyncio.sleep(exc.retry_after)
             except Exception:
                 # Transient, never terminal: the credentials are probably still fine.
                 _LOGGER.debug(
@@ -813,6 +821,8 @@ class TokenManager:
                 re-authenticate.  Transient network failures instead propagate as
                 their own type so the caller backs off, and never mark the account
                 terminal.
+            RateLimitedError: oauth2/token answered 429, or its cooldown is running.
+                Marks nothing; every refresh path passes it through unchanged.
 
         """
         self._raise_if_reauth_required()
@@ -829,6 +839,8 @@ class TokenManager:
             )
         except ReLoginRequiredError:
             self._mark_reauth_required("HTTP refresh token rejected")
+            raise
+        except RateLimitedError:
             raise
         except Exception as exc:
             if is_transient_network_error(exc):
@@ -859,6 +871,8 @@ class TokenManager:
         except ReLoginRequiredError:
             self._adopt_http_reauth()
             raise
+        except RateLimitedError:
+            raise
         except LoginException as exc:
             raise self._mark_aliyun_unavailable(str(exc)) from exc
         except Exception as exc:
@@ -874,7 +888,11 @@ class TokenManager:
             try:
                 await self.establish_aliyun()
             except Exception as rebuild_exc:
-                if is_transient_network_error(rebuild_exc) or self._reauth_required is not None:
+                if (
+                    is_transient_network_error(rebuild_exc)
+                    or isinstance(rebuild_exc, RateLimitedError)
+                    or self._reauth_required is not None
+                ):
                     raise
                 raise self._mark_aliyun_unavailable(
                     f"Aliyun session rebuild failed after refreshToken rejection: {rebuild_exc}"
@@ -961,12 +979,18 @@ class TokenManager:
 
         Returns the gateway once established.  A transient failure defers it: the
         scheduler retries with a doubling delay and fires :attr:`on_aliyun_established`
-        on success.  A refusal gives the Aliyun transport up (:attr:`aliyun_unavailable`).
-        Only an account-level rejection raises.
+        on success.  A throttle defers it to the end of its cooldown.  A refusal gives
+        the Aliyun transport up (:attr:`aliyun_unavailable`).  Only an account-level
+        rejection raises.
         """
         try:
             async with self._lock:
                 gateway = await self.establish_aliyun(cloud_gateway)
+        except RateLimitedError as exc:
+            _LOGGER.warning("Aliyun session for %s deferred: %s", self._account_id, exc)
+            self._aliyun_pending = cloud_gateway
+            self._aliyun_retry_at = time.time() + exc.retry_after
+            return None
         except Exception as exc:
             if self._reauth_required is not None:
                 raise
@@ -1004,9 +1028,9 @@ class TokenManager:
             raise self._mark_reauth_required(f"authorization code refused a freshly refreshed bearer: {exc}") from exc
 
     async def _force_refresh_bearer(self) -> None:
-        """Renew the access token regardless of its expiry, then a code; a refused code is ignored."""
+        """Renew the access token regardless of its expiry, then a code; a refused or throttled code is ignored."""
         await self.refresh_http()
-        with contextlib.suppress(AuthorizationCodeError):
+        with contextlib.suppress(AuthorizationCodeError, RateLimitedError):
             await self._fetch_code_with_fresh_bearer()
 
     async def connect_iot(self) -> None:
@@ -1076,6 +1100,8 @@ class TokenManager:
             creds = self._set_mqtt_creds(response.data)
         except ReLoginRequiredError:
             self._adopt_http_reauth()
+            raise
+        except RateLimitedError:
             raise
         except Exception as exc:
             if is_transient_network_error(exc):

@@ -1,5 +1,13 @@
-"""Tests for EventBus and Subscription."""
-from pymammotion.transport.base import EventBus, Subscription, Transport, TransportAvailability, TransportType
+"""Tests for EventBus, Subscription, the Transport base and the transient-error classifier."""
+from pymammotion.http.model.http import RateLimitedError
+from pymammotion.transport.base import (
+    EventBus,
+    Subscription,
+    Transport,
+    TransportAvailability,
+    TransportType,
+    is_transient_network_error,
+)
 
 
 async def test_subscribe_and_emit() -> None:
@@ -199,3 +207,8 @@ def test_error_window_counts_recent_errors() -> None:
     t.record_error()
     t.record_error()
     assert t.errors_in_window() == 2
+
+
+def test_an_auth_endpoint_rate_limit_is_not_transient() -> None:
+    """A throttle is shown to the user once; counting it as transient would retry it on a backoff."""
+    assert not is_transient_network_error(RateLimitedError("oauth2/token", 3600.0))

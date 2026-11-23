@@ -29,6 +29,7 @@ from pymammotion.aliyun.exceptions import DeviceUnboundException
 from pymammotion.data.mqtt.event import ThingEventMessage
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
 from pymammotion.data.mqtt.status import ThingStatusMessage
+from pymammotion.http.model.http import RateLimitedError
 from pymammotion.transport.base import (
     AccountInUseError,
     ReLoginRequiredError,
@@ -415,7 +416,7 @@ class AliyunMQTTTransport(CloudTransport):
             except ReLoginRequiredError as exc:
                 fatal = exc
             except Exception as exc:
-                if is_transient_network_error(exc):
+                if is_transient_network_error(exc) or isinstance(exc, RateLimitedError):
                     _logger.warning("Aliyun credential refresh failed transiently — backing off: %s", exc)
                     return False
                 _logger.warning("on_auth_failure callback failed", exc_info=True)

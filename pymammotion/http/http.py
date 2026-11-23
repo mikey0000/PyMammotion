@@ -45,6 +45,7 @@ from pymammotion.http.model.http import (
     LoginResponseData,
     MQTTConnection,
     Product,
+    RateLimitedError,
     Response,
     ShareRecords,
     UnauthorizedExceptionError,
@@ -89,6 +90,9 @@ _DEAD_TOKEN_CODES = frozenset({401, 460})
 #: assume is bounded.  Applied at the refresh call site so the bound holds
 #: regardless of whose session we are using.
 _REFRESH_TIMEOUT_SEC = 30.0
+
+#: How long the auth endpoints are left alone after one of them answers HTTP 429.
+_AUTH_RATE_LIMIT_COOLDOWN_SEC = 3600.0
 
 #: Exceptions a malformed credential cache can raise while being decoded.  The cache
 #: is untrusted input: it was written by a previous (possibly older) version of the
@@ -288,6 +292,8 @@ class MammotionHTTP:
         #: whichever endpoint found out.  TokenManager wires it so the account is
         #: quiesced and the host prompted at once, not at the next scheduled refresh.
         self.on_reauth_required: Callable[[str], object] | None = None
+        # Epoch seconds until which the auth endpoints are not asked again after a 429.
+        self._rate_limited_until: float = 0.0
 
         # Add this method to generate a 10-digit random number
         def get_10_random() -> str:
@@ -516,6 +522,17 @@ class MammotionHTTP:
         """Reason this login is terminally dead, or ``None`` while healthy."""
         return self._reauth_required
 
+    def _raise_if_rate_limited(self, endpoint: str) -> None:
+        """Fail fast, with no request, while an auth endpoint's 429 cooldown runs."""
+        if (remaining := self._rate_limited_until - time.time()) > 0:
+            raise RateLimitedError(endpoint, remaining)
+
+    def _arm_rate_limit(self, endpoint: str) -> RateLimitedError:
+        """Start the cooldown after *endpoint* answered 429 and build the error to raise."""
+        self._rate_limited_until = time.time() + _AUTH_RATE_LIMIT_COOLDOWN_SEC
+        _LOGGER.warning("%s answered HTTP 429 — not asking again for %.0fs", endpoint, _AUTH_RATE_LIMIT_COOLDOWN_SEC)
+        return RateLimitedError(endpoint, _AUTH_RATE_LIMIT_COOLDOWN_SEC)
+
     def mark_reauth_required(self, reason: str) -> None:
         """Remember that the refresh token was rejected so every later call fails fast.
 
@@ -550,6 +567,7 @@ class MammotionHTTP:
                 unavailable.  Propagated as-is — the token may well still be
                 good, so callers must back off and retry rather than treat this
                 as an auth failure.
+            RateLimitedError: oauth2/token answered 429, or its cooldown is running.
 
         """
         if self._reauth_required is not None:
@@ -1016,9 +1034,11 @@ class MammotionHTTP:
         Raises:
             UnauthorizedExceptionError: The bearer was refused (HTTP or in-body 401).
             ConnectionError: 408 / 5xx or a non-JSON body — the server is unavailable.
-            AuthorizationCodeError: Any other refusal, including a 429; not transient.
+            RateLimitedError: A 429 now or within the cooldown; not transient.
+            AuthorizationCodeError: Any other refusal; not transient.
 
         """
+        self._raise_if_rate_limited("authorization/code")
         async with self._client_session() as session:
             resp = await session.post(
                 f"{MAMMOTION_DOMAIN}/authorization/code",
@@ -1029,6 +1049,8 @@ class MammotionHTTP:
                 },
                 json={"clientId": MAMMOTION_CLIENT_ID},
             )
+            if resp.status == HTTPStatus.TOO_MANY_REQUESTS:
+                raise self._arm_rate_limit("authorization/code")
             if resp.status == 408 or resp.status >= 500:
                 msg = f"authorization/code returned HTTP {resp.status}"
                 raise ConnectionError(msg)
@@ -1442,7 +1464,8 @@ class MammotionHTTP:
     @retry_on_network_error
     @refresh_token_decorator
     async def get_mqtt_credentials(self) -> Response[MQTTConnection]:
-        """Get mammotion mqtt credentials."""
+        """Get mammotion mqtt credentials; raises ``RateLimitedError`` on a 429 or within its cooldown."""
+        self._raise_if_rate_limited("mqtt/auth/jwt")
         async with self._client_session() as session:
             resp = await session.post(
                 f"{self.jwt_info.iot}/v1/mqtt/auth/jwt",
@@ -1453,7 +1476,9 @@ class MammotionHTTP:
                     "User-Agent": "okhttp/4.9.3",
                 },
             )
-            if resp.status in (408, 429) or resp.status >= 500:
+            if resp.status == HTTPStatus.TOO_MANY_REQUESTS:
+                raise self._arm_rate_limit("mqtt/auth/jwt")
+            if resp.status == 408 or resp.status >= 500:
                 raise ConnectionError(f"mqtt/auth/jwt returned HTTP {resp.status}")
             if resp.status != 200:
                 return Response.from_dict({"code": resp.status, "msg": "get mqtt failed"})
@@ -1591,8 +1616,9 @@ class MammotionHTTP:
         fallback.
 
         Raises:
-            ConnectionError: On 408/429/5xx or a non-JSON body — the server is
-                unavailable or throttling, not rejecting the refresh token.
+            ConnectionError: On 408/5xx or a non-JSON body — the server is
+                unavailable, not rejecting the refresh token.
+            RateLimitedError: On a 429, or within the cooldown one started.
 
         """
         async with self._refresh_lock, asyncio.timeout(_REFRESH_TIMEOUT_SEC):
@@ -1600,7 +1626,7 @@ class MammotionHTTP:
 
     async def _refresh_token_v2_locked(self) -> Response[LoginResponseData]:
         """Body of :meth:`refresh_token_v2`; caller holds ``_refresh_lock``."""
-
+        self._raise_if_rate_limited("oauth2/token")
         timestamp = int(time.time() * 1000)
 
         refresh_request = {
@@ -1643,10 +1669,11 @@ class MammotionHTTP:
                     **refresh_request,
                 },
             )
-            if resp.status in (408, 429) or resp.status >= 500:
-                # Server unavailable or throttling — this is NOT a refresh-token
-                # rejection; raise a transient error so callers back off instead
-                # of falling back to a password login (login_v2).
+            if resp.status == HTTPStatus.TOO_MANY_REQUESTS:
+                raise self._arm_rate_limit("oauth2/token")
+            if resp.status == 408 or resp.status >= 500:
+                # Server unavailable — NOT a refresh-token rejection; raise a transient
+                # error so callers back off instead of falling back to login_v2.
                 msg = f"oauth2/token refresh returned HTTP {resp.status}"
                 raise ConnectionError(msg)
             try:
@@ -1740,10 +1767,11 @@ class MammotionHTTP:
                     **login_request,
                 },
             )
-            if resp.status in (408, 429) or resp.status >= 500:
-                # Server unavailable or throttling — not a credential rejection;
-                # raise a transient error so callers back off and retry rather
-                # than treating the outage as an auth failure.
+            if resp.status == HTTPStatus.TOO_MANY_REQUESTS:
+                raise self._arm_rate_limit("oauth2/token")
+            if resp.status == 408 or resp.status >= 500:
+                # Server unavailable — not a credential rejection; raise a transient
+                # error so callers back off and retry rather than treat it as an auth failure.
                 msg = f"oauth2/token login returned HTTP {resp.status}"
                 raise ConnectionError(msg)
             if resp.status != 200:

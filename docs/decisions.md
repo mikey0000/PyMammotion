@@ -285,3 +285,11 @@ and offers `retry_transport`: one password-free attempt (the Aliyun authCode
 chain, or a JWT fetch) that rebuilds the transport and clears the flag only on
 success. A new login reports the transports it cured. There is no automatic
 retry of a refusal; the host decides when to ask.
+
+## D21. An auth-endpoint 429 is shown once, not retried and not a re-auth
+
+A 429 from oauth2/token, mqtt/auth/jwt or authorization/code used to be a
+`ConnectionError`, so the scheduler and the host retried a throttle on their
+transient backoff. It is now `RateLimitedError`: it sets no terminal flag (the
+login is fine) and arms a one-hour cooldown on `MammotionHTTP`, the one layer
+every caller of those endpoints passes through, during which they fail fast.

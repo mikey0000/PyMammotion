@@ -146,9 +146,9 @@ async def test_mqtt_invoke_raises_on_every_dead_token_shape(status: int, body: d
         await http.mqtt_invoke("payload", "", "iot-1")
 
 
-@pytest.mark.parametrize("status", [408, 429, 500, 503])
+@pytest.mark.parametrize("status", [408, 500, 503])
 async def test_get_mqtt_credentials_raises_connection_error_on_server_fault(status: int) -> None:
-    """5xx/throttling is a server fault, not a token verdict — it must not read as ``data is None``."""
+    """5xx is a server fault, not a token verdict — it must not read as ``data is None``."""
     http = _make_http_posting(status, {})
     with pytest.raises(ConnectionError):
         await http.get_mqtt_credentials()
@@ -192,13 +192,8 @@ async def test_fetch_authorization_token_raises_a_transient_error_on_a_server_fa
     assert is_transient_network_error(excinfo.value)
 
 
-@pytest.mark.parametrize(
-    ("status", "body"),
-    [(200, {"code": 20001, "msg": "refused"}), (429, {"code": 429, "msg": "too many requests"})],
-    ids=["refused", "rate-limited"],
-)
-async def test_fetch_authorization_token_raises_a_terminal_error_on_any_other_refusal(status: int, body: dict) -> None:
-    http = _fetching_code(status, body)
+async def test_fetch_authorization_token_raises_a_terminal_error_on_any_other_refusal() -> None:
+    http = _fetching_code(200, {"code": 20001, "msg": "refused"})
 
     with pytest.raises(AuthorizationCodeError) as excinfo:
         await http.fetch_authorization_token()

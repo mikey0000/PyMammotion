@@ -80,7 +80,13 @@ from pymammotion.device.inbound_router import InboundRouter
 from pymammotion.device.readiness import get_readiness_checker
 from pymammotion.device.remote_drive import HttpTokenSource
 from pymammotion.device.state_reducer import apply_rtk_coordinate
-from pymammotion.http.model.http import CheckDeviceVersion, DeviceRecord, MQTTConnection, UnauthorizedExceptionError
+from pymammotion.http.model.http import (
+    CheckDeviceVersion,
+    DeviceRecord,
+    MQTTConnection,
+    RateLimitedError,
+    UnauthorizedExceptionError,
+)
 from pymammotion.http.model.rain_protection import WeatherServerSync
 from pymammotion.messaging.command_queue import Priority, execute_command
 from pymammotion.messaging.edge_saga import EdgeMappingSaga
@@ -1141,7 +1147,7 @@ class MammotionClient(CloudAuthMixin):
                 await token_manager.refresh_aliyun_credentials()
                 creds = await token_manager.get_aliyun_credentials()
             except Exception as exc:
-                if is_transient_network_error(exc):
+                if is_transient_network_error(exc) or isinstance(exc, RateLimitedError):
                     raise
                 _logger.exception("Aliyun credential refresh failed — giving up on the Aliyun transport")
                 return False

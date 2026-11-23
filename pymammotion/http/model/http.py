@@ -13,7 +13,15 @@ class UnauthorizedExceptionError(Exception):
 
 
 class AuthorizationCodeError(Exception):
-    """POST /authorization/code refused to mint a code for a reason other than the bearer (e.g. a 429)."""
+    """POST /authorization/code refused to mint a code for a reason other than the bearer or a throttle."""
+
+
+class RateLimitedError(Exception):
+    """A Mammotion auth endpoint answered HTTP 429: neither transient nor a rejected login, so never retried."""
+
+    def __init__(self, endpoint: str, retry_after: float) -> None:
+        super().__init__(f"{endpoint} is rate limited — try again in {retry_after:.0f}s")
+        self.retry_after = retry_after
 
 
 DataT = TypeVar("DataT")

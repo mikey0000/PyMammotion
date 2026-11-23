@@ -11,6 +11,7 @@ import pytest
 from pymammotion.aliyun.exceptions import DeviceRemovedFromAccountError
 from pymammotion.auth.token_manager import MQTTCredentials
 from pymammotion.data.mqtt.properties import ThingPropertiesMessage
+from pymammotion.http.model.http import RateLimitedError
 from pymammotion.transport.base import ReLoginRequiredError, TransportError, TransportType
 from pymammotion.transport.mqtt import MQTTTransport, MQTTTransportConfig
 from tests._helpers import wait_until
@@ -440,14 +441,19 @@ async def test_properties_dispatch_propagates_callback_exceptions(
 # _run — broker auth rejections are bounded even with transient refresh failures
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("network down"), RateLimitedError("mqtt/auth/jwt", 3600.0)],
+    ids=["network", "rate-limited"],
+)
 async def test_run_never_gives_up_while_forced_refresh_fails_transiently(
-    config: MQTTTransportConfig, mammotion_http: MagicMock
+    config: MQTTTransportConfig, mammotion_http: MagicMock, failure: Exception
 ) -> None:
-    """Broker rejections whose forced refresh keeps failing transiently must not become terminal.
+    """Broker rejections whose forced refresh keeps failing without a refusal must not become terminal.
 
-    An expired JWT while the HTTP API is unreachable says nothing about the login:
-    the transport backs off and retries, and only an explicit refresh rejection or
-    a post-refresh broker rejection gives up.
+    An expired JWT while the HTTP API is unreachable or throttled says nothing about
+    the login: the transport backs off and retries, and only an explicit refresh
+    rejection or a post-refresh broker rejection gives up.
     """
     from tests.unit.transport._fakes import AuthFailMQTTClient
 
@@ -458,7 +464,7 @@ async def test_run_never_gives_up_while_forced_refresh_fails_transiently(
             forced_refreshes.append(force)
         if len(forced_refreshes) >= 5:
             transport._stop_event.set()
-        raise OSError("network down")
+        raise failure
 
     transport = MQTTTransport(config, mammotion_http, AsyncMock(), creds_refresher=_refresher)
     fatal_calls: list[Exception] = []

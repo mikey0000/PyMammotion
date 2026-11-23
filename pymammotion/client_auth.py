@@ -269,6 +269,7 @@ class CloudAuthMixin:
                 Mammotion device was bound either.
             ClientError / TimeoutError / ConnectionError: A network fault, on either
                 platform; nothing is half-registered, and a retry may succeed.
+            RateLimitedError: An auth endpoint answered 429; show it, do not retry it.
 
         """
         given_up = self.unavailable_transports(account)
@@ -451,6 +452,8 @@ class CloudAuthMixin:
                 validated because the network or server is unavailable.  The cached
                 credentials may well still be good, so the caller should back off and
                 retry rather than treat this as an auth failure.
+            RateLimitedError: An auth endpoint answered 429.  Neither transient nor a
+                rejection: show it to the user, do not retry it or prompt for a password.
 
         """
         acct_session = await self._restore_account_session(account, password)

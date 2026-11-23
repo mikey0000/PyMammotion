@@ -35,6 +35,8 @@ def fault_response(request: web.Request, fault: int | str) -> web.Response:
     """The reply for an injected fault — see ``Scenario.faults`` for the vocabulary."""
     if fault == "http_500":
         return _json({"code": 500, "msg": "internal server error"}, status=500)
+    if fault == "http_429":
+        return _json({"code": 429, "msg": "too many requests"}, status=429)
     if fault == "http_401":
         return _json({"code": 401, "msg": "unauthorized"}, status=401)
     if fault == "body_401":
@@ -243,6 +245,8 @@ def build_app(
 
     async def mqtt_auth_jwt(request: web.Request) -> web.Response:
         scenario.count("mqtt_jwt_fetches")
+        if (fault := scenario.faults.get("mqtt_jwt_fetches")) is not None:
+            return fault_response(request, fault)
         if not scenario.bearer_ok(request.headers.get("Authorization")):
             return _json({"code": 401, "msg": "unauthorized"}, status=401)
         if scenario.mqtt_jwt_returns_no_data:

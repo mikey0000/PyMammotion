@@ -48,6 +48,7 @@ class FakeAliyunDevice:
 FAULTABLE_ENDPOINTS = frozenset(
     {
         "auth_code_fetches",
+        "mqtt_jwt_fetches",
         "aliyun_region",
         "aliyun_connect",
         "aliyun_oauth",
@@ -78,7 +79,7 @@ class Scenario:
     login_reject: tuple[int, str] | None = None
     #: True → every refresh grant answers 40102 "Refresh token has expired".
     refresh_rejected: bool = False
-    #: Force this HTTP status on /oauth2/token (e.g. 429, 500) — transient path.
+    #: Force this HTTP status on /oauth2/token (429 throttles; 500 is the transient path).
     oauth_http_status: int | None = None
     #: Lifetime of minted access tokens (exp claim). Short values force the
     #: client's proactive refresh; default keeps it quiet.
@@ -122,7 +123,7 @@ class Scenario:
     aliyun_refresh_token_ttl: int = 2592000
     #: Per-endpoint fault, keyed by the endpoint's counter name (``auth_code_fetches``,
     #: ``aliyun_check_session``, …).  An int answers that in-body code; ``http_500``,
-    #: ``http_401``, ``body_401`` and ``non_json`` shape the reply; ``disconnect`` drops
+    #: ``http_429``, ``http_401``, ``body_401`` and ``non_json`` shape the reply; ``disconnect`` drops
     #: the connection without one.  A fault holds until cleared.
     faults: dict[str, int | str] = field(default_factory=dict)
     #: Single-use authorization codes: minted by a login and by /authorization/code,

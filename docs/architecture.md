@@ -260,6 +260,7 @@ failure to establish an Aliyun session at restore is retried, by the scheduler.
 | account   | `refresh_token_v2` rejected      | `reauth_required`        | `ReLoginRequiredError`, `on_unrecoverable_auth_error` fires, host prompts |
 | transport | Aliyun/JWT unrenewable, login OK (runtime or restore) | `aliyun_unavailable` / `mqtt_unavailable` | that transport only; mowers kept unavailable; `on_transport_availability_changed` fires on give-up and recovery, `unavailable_transports` / `retry_transport` for the host; `on_unrecoverable_auth_error` does **not** fire |
 | neither   | transient network error          | none                     | propagates by type (`is_transient_network_error`) so callers back off |
+| neither   | auth endpoint answers 429 (oauth2/token, mqtt/auth/jwt, authorization/code) | `MammotionHTTP` cooldown (`_AUTH_RATE_LIMIT_COOLDOWN_SEC`, 1 h) | `RateLimitedError` (not transient) reaches the host to show once; the auth endpoints fail fast until it ends; the scheduler sleeps through it; transports back off |
 | neither   | Aliyun bind_reply 2152 (account lock held by the app) | `AliyunMQTTTransport.account_in_use` | Aliyun unusable (a user send gets `AccountInUseError`); retried every `ACCOUNT_IN_USE_RETRY_SEC`; `on_account_in_use_changed` fires per transition and `False` on `disconnect()`, no auth callback |
 
 ---

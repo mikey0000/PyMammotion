@@ -8,7 +8,7 @@ password on its own.
 - A *rejected* refresh token is terminal: ReLoginRequiredError propagates to the
   host so it can prompt for re-authentication.  It is NOT retried on a timer and
   it never falls back to login_v2.
-- A *transient* server failure (408/429/5xx, non-JSON body, connection error)
+- A *transient* server failure (408/5xx, non-JSON body, connection error)
   raises its own exception type so callers back off.  It must never be
   reclassified as an auth failure, and never escalate to a password login.
 - Successful oauth2/token exchanges fire on_login_refreshed so rotations get
@@ -221,7 +221,7 @@ async def test_transient_refresh_error_is_not_relogin_required() -> None:
 # refresh_token_v2 / login_v2 — transient server failures raise ConnectionError
 
 
-@pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
+@pytest.mark.parametrize("status", [408, 500, 502, 503])
 async def test_refresh_token_v2_raises_connection_error_on_server_failure(status: int) -> None:
     http = _make_http(status=status)
     http.login_info = MagicMock(refresh_token="ref")  # type: ignore[assignment]
@@ -238,9 +238,8 @@ async def test_refresh_token_v2_raises_connection_error_on_non_json_body() -> No
         await http.refresh_token_v2()
 
 
-@pytest.mark.parametrize("status", [429, 503])
-async def test_login_v2_raises_connection_error_on_server_failure(status: int) -> None:
-    http = _make_http(status=status)
+async def test_login_v2_raises_connection_error_on_server_failure() -> None:
+    http = _make_http(status=503)
 
     with pytest.raises(ConnectionError):
         await http.login_v2("a@b.c", "pw")
