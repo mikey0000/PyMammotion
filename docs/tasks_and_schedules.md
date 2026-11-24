@@ -98,7 +98,7 @@ produces match the app's bytes for an equivalent plan definition.
 
 | `trigger_type` | Meaning  | Other fields consulted                                      |
 |---------------:|----------|-------------------------------------------------------------|
-| 0              | WEEK     | `weeks` (repeated int32 bitmask, 0=Sun … 6=Sat)             |
+| 0              | WEEK     | `weeks` (repeated int32, 1=Sun … 7=Sat)                      |
 | 1              | DAY      | `day` (interval in days)                                    |
 | 2              | DATE     | `start_date`, `end_date` (ISO `YYYY-MM-DD`)                 |
 | 3              | RUN      | one-off, immediate                                          |
