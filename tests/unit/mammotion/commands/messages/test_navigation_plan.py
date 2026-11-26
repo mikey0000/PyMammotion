@@ -366,3 +366,26 @@ def test_resending_a_read_back_plan_leaves_task_settings_mode_unset(resend: _Res
     payload = resend(MammotionCommand(device, 1), _read_back_auto_change_direction(11, device))
 
     assert _plan_job(payload).task_settings_mode == 0
+
+
+@_WRITES
+@_EVERY_MODEL
+@pytest.mark.parametrize(("setting", "byte_2"), [(True, 0), (False, 1), (None, 0)], ids=["on", "off", "unset"])
+def test_plan_writes_send_use_trimmer_inverted_in_byte_2_of_reserved2(
+    build: str, device: str, setting: bool | None, byte_2: int
+) -> None:
+    """``getReserved2`` writes ``use_trimmer`` raw (0 = use it, the app default) beside auto-reverse in byte 0."""
+    payload = getattr(MammotionCommand(device, 1), build)(_plan(auto_change_direction=True, use_trimmer=setting))
+
+    assert _reserved2_on_wire(payload) == bytes([1, 0, byte_2] + [0] * 29), payload.hex()
+
+
+@_RESENDS
+@pytest.mark.parametrize(("stored", "byte_2"), [(11, 1), (10, 0)], ids=["off", "on"])
+def test_resending_a_read_back_plan_keeps_its_use_trimmer(resend: _Resend, stored: int, byte_2: int) -> None:
+    """The stored byte 2 comes back +10 and is re-sent with the echo removed, as byte 0 is."""
+    plan = Plan.from_wire(make_stored_plan_frame(reserved2=[11, 10, stored] + [10] * 29), _SUPPORTED)
+
+    payload = resend(MammotionCommand(_SUPPORTED, 1), plan)
+
+    assert _reserved2_on_wire(payload) == bytes([1, 0, byte_2] + [0] * 29), payload.hex()

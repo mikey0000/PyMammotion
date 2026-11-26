@@ -109,6 +109,7 @@ __all__ = (
     "DrvWificonnectRsp",
     "DrvWifiscanReq",
     "DrvWifiscanRsp",
+    "EdgeCutterStatusT",
     "FileTransferRequest",
     "FileTransferResponse",
     "FileTransferResult",
@@ -2570,6 +2571,14 @@ class DrvWifiUpload(betterproto2.Message):
 
 
 default_message_pool.register_message("", "DrvWifiUpload", DrvWifiUpload)
+
+
+@dataclass(eq=False, repr=False)
+class EdgeCutterStatusT(betterproto2.Message):
+    edge_cutter_installation_status: "int" = betterproto2.field(1, betterproto2.TYPE_INT32)
+
+
+default_message_pool.register_message("", "edge_cutter_status_t", EdgeCutterStatusT)
 
 
 @dataclass(eq=False, repr=False)
@@ -5500,6 +5509,8 @@ class RptDevStatus(betterproto2.Message):
     battery_heat_flag: "int" = betterproto2.field(14, betterproto2.TYPE_INT32)
 
     headlamp_status: "int" = betterproto2.field(15, betterproto2.TYPE_INT32)
+
+    edge_cutter_status: "EdgeCutterStatusT | None" = betterproto2.field(16, betterproto2.TYPE_MESSAGE, optional=True)
 
 
 default_message_pool.register_message("", "rpt_dev_status", RptDevStatus)

@@ -7,7 +7,7 @@ import time
 from pymammotion.data.model import GenerateRouteInformation
 from pymammotion.data.model.device_info import RECHARGE_LEVEL_RANGE, RESUME_LEVEL_RANGE, SMART_CHARGE_LEVEL
 from pymammotion.data.model.generate_route_information import ADVANCED_TASK_SETTINGS
-from pymammotion.data.model.hash_list import Plan, SvgMessage, encode_auto_change_direction
+from pymammotion.data.model.hash_list import Plan, SvgMessage, encode_reserved2
 from pymammotion.data.model.region_data import RegionData
 from pymammotion.mammotion.commands.abstract_message import AbstractMessage
 from pymammotion.proto import (
@@ -246,7 +246,7 @@ class MessageNavigation(AbstractMessage, ABC):
             ride_boundary_distance=DeviceType.ride_boundary_distance_to_send(
                 device_name, plan_bean.edge_mode, plan_bean.ride_boundary_distance, product_key
             ),
-            auto_change_direction=encode_auto_change_direction(plan_bean.auto_change_direction),
+            auto_change_direction=encode_reserved2(plan_bean.auto_change_direction, plan_bean.use_trimmer),
         )
 
     def single_schedule(self, plan_id: str) -> bytes:
@@ -567,7 +567,9 @@ class MessageNavigation(AbstractMessage, ABC):
             toward_mode=int(generate_route_information.toward_mode),  # luba 2 yuka only
             reserved=generate_route_information.path_order,
             task_settings_mode=ADVANCED_TASK_SETTINGS,
-            auto_change_direction=encode_auto_change_direction(generate_route_information.auto_change_direction),
+            auto_change_direction=encode_reserved2(
+                generate_route_information.auto_change_direction, generate_route_information.use_trimmer
+            ),
             ride_boundary_distance=float(generate_route_information.ride_boundary_distance),
         )
         logger.debug(f"{self.get_device_name()}Generate route====={build}")
@@ -592,7 +594,9 @@ class MessageNavigation(AbstractMessage, ABC):
             toward=int(generate_route_information.toward) if generate_route_information.toward_mode != 0 else 0,
             reserved=generate_route_information.path_order,
             task_settings_mode=ADVANCED_TASK_SETTINGS,
-            auto_change_direction=encode_auto_change_direction(generate_route_information.auto_change_direction),
+            auto_change_direction=encode_reserved2(
+                generate_route_information.auto_change_direction, generate_route_information.use_trimmer
+            ),
             ride_boundary_distance=float(generate_route_information.ride_boundary_distance),
         )
         logger.debug(f"{self.get_device_name()} Generate route ===== {build}")

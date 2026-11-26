@@ -73,6 +73,13 @@ class CollectorStatus(DataClassORJSONMixin):
 
 
 @dataclass
+class EdgeCutterStatus(DataClassORJSONMixin):
+    """Installation status of the edge cutter (trimmer) module."""
+
+    edge_cutter_installation_status: int = 0
+
+
+@dataclass
 class CellularInetStatus(DataClassORJSONMixin):
     """Internet connectivity state of the cellular module (proto mnet_inet_status)."""
 
@@ -164,6 +171,7 @@ class DeviceData(DataClassORJSONMixin):
     mnet_info: MnetInfo = field(default_factory=MnetInfo)
     vio_survival_info: VioSurvivalInfo = field(default_factory=VioSurvivalInfo)
     collector_status: CollectorStatus = field(default_factory=CollectorStatus)
+    edge_cutter_status: EdgeCutterStatus = field(default_factory=EdgeCutterStatus)
     fpv_info: FpvInfo | None = None
     lock_state: LockStateT = field(default_factory=LockStateT)
     # rpt_dev_status.self_check_status: one code (not a bitmask) naming what stops the
@@ -234,6 +242,14 @@ class DeviceData(DataClassORJSONMixin):
         (MapManualActivityNew.java lambda$initCarWorkState$7).
         """
         return self.collector_status.collector_installation_status != 0
+
+    @property
+    def edge_cutter_installed(self) -> bool:
+        """Whether the mower reports an edge cutter fitted (exactly 1, unlike the collector).
+
+        The app offers "use trimmer" only with this and the schema row ``WorkSettingCode.auto_hit_line`` shown.
+        """
+        return self.edge_cutter_status.edge_cutter_installation_status == 1
 
     # ------------------------------------------------------------------
     # vslam_status bit-field accessors

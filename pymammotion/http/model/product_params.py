@@ -15,11 +15,44 @@ already approximates one of these rows.
 """
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 from mashumaro import field_options
 from mashumaro.config import BaseConfig
 from mashumaro.mixins.orjson import DataClassORJSONMixin
+
+
+class WorkSettingCode(StrEnum):
+    """The ``code`` of each schema row, from the app's ``MAWorkSettingDetailCode`` (RN bundle, APK 2.3.28.31)."""
+
+    collect = "1"
+    collect_frequency = "2"
+    knife_height = "3"
+    work_speed = "4"
+    route_spacing = "5"
+    route_angle = "6"
+    route_mode = "7"
+    toward_mode = "8"
+    toward_angle = "9"
+    #: Perimeter laps (``BorderPatrolMode``).
+    edge_mode = "10"
+    #: No-go zone laps (``ObstacleLapsMode``).
+    obstacle_edge_mode = "11"
+    ultrasonic_barrier = "12"
+    gong_style = "13"
+    trigger = "14"
+    ride_distance = "15"
+    lawn_pattern = "16"
+    collect_and_mow = "17"
+    work_efficiency = "18"
+    work_progress = "20"
+    #: Start progress; read by the native ``WorkingSettingManage``, absent from the RN enum.
+    start_progress = "21"
+    knife_yuka = "22"
+    auto_change_direction = "23"
+    #: "Use trimmer"; the app also needs an edge cutter fitted (``DeviceData.edge_cutter_installed``).
+    auto_hit_line = "40"
 
 
 def _sort_key(param: "ProductParam") -> tuple[int, int, str]:
@@ -68,6 +101,10 @@ class ProductParam(DataClassORJSONMixin):
     def shown(self) -> bool:
         """Whether the app would show this parameter for the queried model."""
         return self.is_show == 1
+
+    def offers(self, value: int) -> bool:
+        """Return True when *value* is in ``range``, as the app tests for the ``auto`` laps (``hasBoundaryAuto``)."""
+        return str(int(value)) in self.range
 
 
 @dataclass

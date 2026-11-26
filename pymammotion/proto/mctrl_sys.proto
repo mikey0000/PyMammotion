@@ -439,6 +439,10 @@ message collector_status_t {
   int32 collector_installation_status = 1;
 }
 
+message edge_cutter_status_t {
+  int32 edge_cutter_installation_status = 1;
+}
+
 message lock_state_t {
   uint32 lock_state = 1;
 }
@@ -459,6 +463,7 @@ message rpt_dev_status {
   fpv_to_app_info_t fpv_info = 13;
   int32 battery_heat_flag = 14;
   int32 headlamp_status = 15;
+  edge_cutter_status_t edge_cutter_status = 16;
 }
 
 message net_speed {

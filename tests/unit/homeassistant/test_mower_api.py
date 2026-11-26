@@ -300,6 +300,24 @@ async def test_modifying_a_job_that_reports_no_auto_reverse_keeps_the_callers_ch
     assert route.auto_change_direction == 1
 
 
+@pytest.mark.parametrize(
+    ("reported", "chosen", "expected"),
+    [(False, True, False), (True, False, True), (None, False, False)],
+    ids=["job-off", "job-on", "not-reported-keeps-choice"],
+)
+async def test_modifying_a_running_job_keeps_its_use_trimmer(
+    reported: bool | None, chosen: bool, expected: bool
+) -> None:
+    """A modify re-sends ``reserved2`` whole, so the running job's trimmer setting is copied like auto-reverse."""
+
+    def _work(device: MowerDevice) -> None:
+        device.work.use_trimmer = reported
+
+    route = await _modified_route(_work, OperationSettings(use_trimmer=chosen))
+
+    assert route.use_trimmer is expected
+
+
 async def test_async_wake_up_passes_the_clients_answer_through() -> None:
     """The wake lives on MammotionClient: it owns both the handle and the account's session."""
     api, _ = await make_api()

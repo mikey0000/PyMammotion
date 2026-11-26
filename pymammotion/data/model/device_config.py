@@ -31,6 +31,7 @@ class OperationSettings(DataClassORJSONMixin):
     mowing_laps: int = 1  # border laps
     start_progress: int = 0
     auto_change_direction: int = 0  # flip mowing direction between tasks (anti-matting)
+    use_trimmer: bool = True  # edge cutter along the perimeter; see GenerateRouteInformation.use_trimmer
     ride_boundary_distance: float = 0.0  # "Edge Coverage" distance; 0.0 is off, any value passes through
     areas: list[int] = field(default_factory=list)
 
@@ -92,6 +93,7 @@ def build_route_information(
         path_order=create_path_order(operation_settings, device_name),
         obstacle_laps=operation_settings.obstacle_laps,
         auto_change_direction=operation_settings.auto_change_direction,
+        use_trimmer=operation_settings.use_trimmer,
         ride_boundary_distance=operation_settings.ride_boundary_distance,
     )
 

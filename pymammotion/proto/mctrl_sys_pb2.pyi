@@ -896,6 +896,12 @@ class device_product_type_info_t(_message.Message):
     sub_product_type: str
     def __init__(self, result: _Optional[int] = ..., main_product_type: _Optional[str] = ..., sub_product_type: _Optional[str] = ...) -> None: ...
 
+class edge_cutter_status_t(_message.Message):
+    __slots__ = ["edge_cutter_installation_status"]
+    EDGE_CUTTER_INSTALLATION_STATUS_FIELD_NUMBER: _ClassVar[int]
+    edge_cutter_installation_status: int
+    def __init__(self, edge_cutter_installation_status: _Optional[int] = ...) -> None: ...
+
 class fpv_to_app_info_t(_message.Message):
     __slots__ = ["fpv_flag", "mobile_net_available", "wifi_available"]
     FPV_FLAG_FIELD_NUMBER: _ClassVar[int]
@@ -1246,11 +1252,12 @@ class rpt_dev_location(_message.Message):
     def __init__(self, real_pos_x: _Optional[int] = ..., real_pos_y: _Optional[int] = ..., real_toward: _Optional[int] = ..., pos_type: _Optional[int] = ..., zone_hash: _Optional[int] = ..., bol_hash: _Optional[int] = ...) -> None: ...
 
 class rpt_dev_status(_message.Message):
-    __slots__ = ["battery_heat_flag", "battery_val", "charge_state", "collector_status", "fpv_info", "headlamp_status", "last_status", "lock_state", "mnet_info", "self_check_status", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
+    __slots__ = ["battery_heat_flag", "battery_val", "charge_state", "collector_status", "edge_cutter_status", "fpv_info", "headlamp_status", "last_status", "lock_state", "mnet_info", "self_check_status", "sensor_status", "sys_status", "sys_time_stamp", "vio_survival_info", "vslam_status"]
     BATTERY_HEAT_FLAG_FIELD_NUMBER: _ClassVar[int]
     BATTERY_VAL_FIELD_NUMBER: _ClassVar[int]
     CHARGE_STATE_FIELD_NUMBER: _ClassVar[int]
     COLLECTOR_STATUS_FIELD_NUMBER: _ClassVar[int]
+    EDGE_CUTTER_STATUS_FIELD_NUMBER: _ClassVar[int]
     FPV_INFO_FIELD_NUMBER: _ClassVar[int]
     HEADLAMP_STATUS_FIELD_NUMBER: _ClassVar[int]
     LAST_STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -1266,6 +1273,7 @@ class rpt_dev_status(_message.Message):
     battery_val: int
     charge_state: int
     collector_status: collector_status_t
+    edge_cutter_status: edge_cutter_status_t
     fpv_info: fpv_to_app_info_t
     headlamp_status: int
     last_status: int
@@ -1277,7 +1285,7 @@ class rpt_dev_status(_message.Message):
     sys_time_stamp: int
     vio_survival_info: vio_survival_info_t
     vslam_status: int
-    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ..., self_check_status: _Optional[int] = ..., fpv_info: _Optional[_Union[fpv_to_app_info_t, _Mapping]] = ..., battery_heat_flag: _Optional[int] = ..., headlamp_status: _Optional[int] = ...) -> None: ...
+    def __init__(self, sys_status: _Optional[int] = ..., charge_state: _Optional[int] = ..., battery_val: _Optional[int] = ..., sensor_status: _Optional[int] = ..., last_status: _Optional[int] = ..., sys_time_stamp: _Optional[int] = ..., vslam_status: _Optional[int] = ..., mnet_info: _Optional[_Union[_dev_net_pb2.MnetInfo, _Mapping]] = ..., vio_survival_info: _Optional[_Union[vio_survival_info_t, _Mapping]] = ..., collector_status: _Optional[_Union[collector_status_t, _Mapping]] = ..., lock_state: _Optional[_Union[lock_state_t, _Mapping]] = ..., self_check_status: _Optional[int] = ..., fpv_info: _Optional[_Union[fpv_to_app_info_t, _Mapping]] = ..., battery_heat_flag: _Optional[int] = ..., headlamp_status: _Optional[int] = ..., edge_cutter_status: _Optional[_Union[edge_cutter_status_t, _Mapping]] = ...) -> None: ...
 
 class rpt_lora(_message.Message):
     __slots__ = ["lora_connection_status", "pair_code_channel", "pair_code_locid", "pair_code_netid", "pair_code_scan"]

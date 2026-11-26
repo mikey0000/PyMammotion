@@ -16,7 +16,7 @@ import pytest
 
 from pymammotion.data.model.generate_route_information import GenerateRouteInformation
 from pymammotion.data.model.hash_list import Plan
-from pymammotion.data.model.mowing_modes import MowOrder
+from pymammotion.data.model.mowing_modes import MowOrder, ObstacleLapsMode
 from pymammotion.proto import NavPlanJobSet
 from pymammotion.utility.device_type import DeviceType
 from tests._helpers import (
@@ -252,6 +252,16 @@ def test_with_path_order_survives_the_device_echo() -> None:
         plan = Plan(reserved=_device_echo(plan.reserved_for_send())).with_enabled(True)
 
     assert _sent(plan)[:2] == [1, 2]
+
+
+def test_with_path_order_keeps_auto_no_go_laps_through_the_device_echo() -> None:
+    """Auto (100) is sent as is, and reads back as auto once the device has stored it (+10)."""
+    plan = Plan().with_path_order(obstacle_laps=ObstacleLapsMode.auto)
+
+    echoed = _device_echo(plan.reserved_for_send())
+
+    assert _sent(plan)[1] == 100
+    assert GenerateRouteInformation.decode_path_order(echoed).obstacle_laps == ObstacleLapsMode.auto
 
 
 @pytest.mark.parametrize(

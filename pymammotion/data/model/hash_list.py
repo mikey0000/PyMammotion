@@ -288,6 +288,18 @@ _RESERVED_UNUSED_BYTE = 7
 _RESERVED_TOWARD_MODE_BYTE = 4
 #: Length of ``reserved2`` (route field 21 / plan field 41), as the app builds it.
 _RESERVED2_LENGTH = 32
+#: "Auto-reverse mowing direction": 1 is on.
+_RESERVED2_AUTO_CHANGE_DIRECTION_BYTE = 0
+#: "Use trimmer" (``use_trimmer`` / RN ``autoHitLine``): inverted, 0 is on and the app's default.
+_RESERVED2_USE_TRIMMER_BYTE = 2
+
+
+def _reserved2_byte(value: list[int], index: int) -> int | None:
+    """Return byte *index* of a reported ``reserved2``, less the echo offset when it carries one."""
+    if len(value) <= index:
+        return None
+    raw = value[index]
+    return raw - RESERVED_ECHO_OFFSET if raw >= RESERVED_ECHO_OFFSET else raw
 
 
 def decode_auto_change_direction(value: bool | int | list[int] | None) -> bool | None:
@@ -299,10 +311,9 @@ def decode_auto_change_direction(value: bool | int | list[int] | None) -> bool |
     """
     if value is None or isinstance(value, bool):
         return value
-    if isinstance(value, int) or not value:
+    if isinstance(value, int):
         return None
-    first = value[0]
-    match first - RESERVED_ECHO_OFFSET if first >= RESERVED_ECHO_OFFSET else first:
+    match _reserved2_byte(value, _RESERVED2_AUTO_CHANGE_DIRECTION_BYTE):
         case 1:
             return True
         case 0:
@@ -311,9 +322,35 @@ def decode_auto_change_direction(value: bool | int | list[int] | None) -> bool |
             return None
 
 
-def encode_auto_change_direction(enabled: bool | int | None) -> list[int]:
-    """Return ``reserved2`` as the app sends it (``getReserved2``): the setting in byte 0, sent even when off."""
-    return [int(bool(enabled))] + [0] * (_RESERVED2_LENGTH - 1)
+def decode_use_trimmer(value: bool | list[int] | None) -> bool | None:
+    """Decode "use trimmer" from ``reserved2`` byte 2 (0 is on); None when absent or not 0/1.
+
+    Already-decoded values pass through so a serialised model reloads as itself.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    match _reserved2_byte(value, _RESERVED2_USE_TRIMMER_BYTE):
+        case 0:
+            return True
+        case 1:
+            return False
+        case _:
+            return None
+
+
+def with_use_trimmer(d: dict[Any, Any]) -> dict[Any, Any]:
+    """Add ``use_trimmer`` to a wire dict from the ``reserved2`` list, which the proto calls ``auto_change_direction``."""
+    if "use_trimmer" in d or not isinstance(raw := d.get("auto_change_direction"), list):
+        return d
+    return {**d, "use_trimmer": decode_use_trimmer(raw)}
+
+
+def encode_reserved2(auto_change_direction: bool | int | None, use_trimmer: bool | None) -> list[int]:
+    """Return ``reserved2`` as the app sends it, every setting included; an unreported ``use_trimmer`` sends on."""
+    raw = [0] * _RESERVED2_LENGTH
+    raw[_RESERVED2_AUTO_CHANGE_DIRECTION_BYTE] = int(bool(auto_change_direction))
+    raw[_RESERVED2_USE_TRIMMER_BYTE] = int(use_trimmer is False)
+    return raw
 
 
 @dataclass
@@ -364,6 +401,13 @@ class Plan(DataClassORJSONMixin):
     auto_change_direction: bool | None = field(
         default=None, metadata=field_options(deserialize=decode_auto_change_direction)
     )
+    #: "Use trimmer" (field 41, ``reserved2`` byte 2); None when the device reported none, which sends as on.
+    use_trimmer: bool | None = None
+
+    @classmethod
+    def __pre_deserialize__(cls, d: dict[Any, Any]) -> dict[Any, Any]:
+        """Read ``use_trimmer`` out of ``reserved2`` before it is decoded to ``auto_change_direction``."""
+        return with_use_trimmer(d)
 
     # --- enable / rename helpers -----------------------------------------
     # ``reserved`` is an 8-byte buffer the device stores alongside the plan:

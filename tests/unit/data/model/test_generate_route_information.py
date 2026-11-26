@@ -73,6 +73,27 @@ def test_route_commands_send_32_zero_bytes_when_auto_change_direction_is_off(bui
     assert cover_path.auto_change_direction == [0] * 32
 
 
+@pytest.mark.parametrize("build", ["generate_route_information", "modify_route_information"])
+@pytest.mark.parametrize(("use_trimmer", "byte_2"), [(True, 0), (False, 1)], ids=["on", "off"])
+def test_route_commands_send_use_trimmer_inverted_in_byte_2_of_field_21(
+    build: str, use_trimmer: bool, byte_2: int
+) -> None:
+    """The app writes ``use_trimmer`` raw into ``reserved2[2]`` (``getReserved2``), where 0 means use it."""
+    command = MammotionCommand("Luba-VA6ABCDE", 1)
+    route = GenerateRouteInformation(one_hashs=[1], auto_change_direction=1, use_trimmer=use_trimmer)
+    cover_path = _cover_path(getattr(command, build)(route))
+    assert _field_21_on_wire(cover_path) == bytes([1, 0, byte_2] + [0] * 29), bytes(cover_path).hex()
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected"), [(True, True), (False, False), (None, True)], ids=["on", "off", "not-reported"]
+)
+def test_from_current_task_settings_keeps_the_reported_use_trimmer(reported: bool | None, expected: bool) -> None:
+    """A task re-sent from what the device reported keeps its trimmer setting; unreported sends the app default."""
+    settings = CurrentTaskSettings(use_trimmer=reported)
+    assert GenerateRouteInformation.from_current_task_settings(settings).use_trimmer is expected
+
+
 @pytest.mark.parametrize(("reported", "expected"), [(True, 1), (False, 0), (None, 0)], ids=["on", "off", "not-reported"])
 def test_from_current_task_settings_keeps_the_reported_auto_change_direction(
     reported: bool | None, expected: int

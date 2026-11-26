@@ -7,7 +7,10 @@ aliases, and the mismatch produced an empty list rather than an error.
 
 from __future__ import annotations
 
-from pymammotion.http.model.product_params import ProductParam, ProductParamData
+import pytest
+
+from pymammotion.data.model.mowing_modes import BorderPatrolMode
+from pymammotion.http.model.product_params import ProductParam, ProductParamData, WorkSettingCode
 
 # One row as the endpoint actually sends it.
 _WIRE = {
@@ -90,3 +93,23 @@ def test_an_empty_answer_is_still_valid() -> None:
 def test_a_row_defaults_to_hidden() -> None:
     """Absent isShow must not read as shown."""
     assert ProductParam(code="99").shown is False
+
+
+@pytest.mark.parametrize(
+    ("laps_range", "expected"),
+    [
+        pytest.param(["0", "1", "2", "3", "4", "100"], True, id="listed"),
+        pytest.param(["0", "1", "2", "3", "4"], False, id="not-listed"),
+        pytest.param([], False, id="no-range"),
+    ],
+)
+def test_auto_laps_are_offered_only_when_the_range_lists_them(laps_range: list[str], expected: bool) -> None:
+    """The app's ``hasBoundaryAuto``: Auto shows only where the schema's range carries 100."""
+    row = ProductParam(code=WorkSettingCode.edge_mode, range=laps_range)
+
+    assert row.offers(BorderPatrolMode.auto) is expected
+
+
+def test_rows_are_looked_up_by_their_named_code() -> None:
+    """A StrEnum code keys the same row as the wire string it stands for."""
+    assert ProductParamData.from_dict(_WIRE).by_code()[WorkSettingCode.knife_height].min == "25"

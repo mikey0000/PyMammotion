@@ -1,11 +1,12 @@
 """bidire_reqconver_path as a model."""
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from mashumaro import field_options
 from mashumaro.mixins.orjson import DataClassORJSONMixin
 
-from pymammotion.data.model.hash_list import decode_auto_change_direction
+from pymammotion.data.model.hash_list import decode_auto_change_direction, with_use_trimmer
 
 
 @dataclass
@@ -36,3 +37,10 @@ class CurrentTaskSettings(DataClassORJSONMixin):
     auto_change_direction: bool | None = field(
         default=None, metadata=field_options(deserialize=decode_auto_change_direction)
     )
+    #: "Use trimmer" (field 21, ``reserved2`` byte 2); None when the device reported none.
+    use_trimmer: bool | None = None
+
+    @classmethod
+    def __pre_deserialize__(cls, d: dict[Any, Any]) -> dict[Any, Any]:
+        """Read ``use_trimmer`` out of ``reserved2`` before it is decoded to ``auto_change_direction``."""
+        return with_use_trimmer(d)

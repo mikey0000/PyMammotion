@@ -25,23 +25,33 @@ class CuttingSpeedMode(IntEnum):
 
 
 class BorderPatrolMode(IntEnum):
-    """Number of border/perimeter patrol laps to ride before starting the mowing grid (none through four)."""
+    """Border/perimeter laps to ride before the mowing grid (``NavReqCoverPath.edge_mode``).
+
+    ``auto`` lets the mower choose the count. The app offers it only where the model's work-setting schema lists
+    it in the range of ``WorkSettingCode.edge_mode`` (``hasBoundaryAuto``); see ``ProductParam.offers``.
+    """
 
     none = 0
     one = 1
     two = 2
     three = 3
     four = 4
+    auto = 100
 
 
 class ObstacleLapsMode(IntEnum):
-    """Number of obstacle-avoidance mowing laps (protobuf mowingLaps field)."""
+    """Laps around no-go zones (byte 1 of the route's ``reserved`` buffer).
+
+    ``auto`` lets the mower choose the count, offered where the schema lists it for
+    ``WorkSettingCode.obstacle_edge_mode``; see :class:`BorderPatrolMode`.
+    """
 
     none = 0
     one = 1
     two = 2
     three = 3
     four = 4
+    auto = 100
 
 
 class MowOrder(IntEnum):

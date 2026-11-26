@@ -432,6 +432,8 @@ class HomeAssistantMowerApi:
             operation_settings.ride_boundary_distance = work.ride_boundary_distance
             if work.auto_change_direction is not None:
                 operation_settings.auto_change_direction = int(work.auto_change_direction)
+            if work.use_trimmer is not None:
+                operation_settings.use_trimmer = work.use_trimmer
             operation_settings.job_mode = work.job_mode
             operation_settings.job_id = work.job_id
             operation_settings.job_version = work.job_ver

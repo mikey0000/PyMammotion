@@ -16,6 +16,7 @@ import pytest
 
 from pymammotion.data.model.device import MowerDevice
 from pymammotion.data.model.device_config import OperationSettings, build_route_information, create_path_order
+from pymammotion.data.model.mowing_modes import BorderPatrolMode, ObstacleLapsMode
 from pymammotion.mammotion.commands.mammotion_command import MammotionCommand
 from pymammotion.proto import LubaMsg
 from tests._helpers import LUBA1_NAME as _LUBA1
@@ -47,6 +48,7 @@ def test_builds_the_route_from_the_operation_settings() -> None:
         blade_height=55,
         toward_included_angle=60,
         speed=0.5,
+        use_trimmer=False,
     )
 
     route = build_route_information(_LUBA2_VA, _mower(), settings)
@@ -63,6 +65,7 @@ def test_builds_the_route_from_the_operation_settings() -> None:
     assert route.blade_height == 55
     assert route.toward_included_angle == 60
     assert route.speed == 0.5
+    assert route.use_trimmer is False
     assert route.path_order == create_path_order(settings, _LUBA2_VA)
 
 
@@ -137,6 +140,23 @@ def test_ride_boundary_distance_is_gated_by_model_and_edge_laps() -> None:
     assert build_route_information(_LUBA2_VA, _mower(), with_edge_laps).ride_boundary_distance == 0.5
     assert build_route_information(_LUBA2_VS, _mower(), with_edge_laps).ride_boundary_distance == 0.0
     assert build_route_information(_LUBA2_VA, _mower(), no_edge_laps).ride_boundary_distance == 0.0
+
+
+def test_auto_laps_reach_the_wire_as_the_apps_sentinel() -> None:
+    """The app sends "Auto" as 100 in ``edge_mode`` and in path-order byte 1 (``EDGE_AUTO_MODE_VALUE``)."""
+    settings = OperationSettings(mowing_laps=BorderPatrolMode.auto, obstacle_laps=ObstacleLapsMode.auto)
+
+    route = build_route_information(_LUBA2_VA, _mower(), settings)
+
+    assert route.edge_mode == 100
+    assert route.path_order.encode("latin-1")[1] == 100
+
+
+def test_auto_perimeter_laps_keep_the_edge_coverage_distance() -> None:
+    """Auto rides the perimeter, so the distance is not dropped as it is for no laps."""
+    settings = OperationSettings(mowing_laps=BorderPatrolMode.auto, ride_boundary_distance=0.5)
+
+    assert build_route_information(_LUBA2_VA, _mower(), settings).ride_boundary_distance == 0.5
 
 
 @pytest.mark.parametrize("device", [None, object()], ids=["none", "not-a-mower"])

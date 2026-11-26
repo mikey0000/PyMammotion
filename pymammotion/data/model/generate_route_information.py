@@ -67,6 +67,9 @@ class GenerateRouteInformation:
     #: "Auto-reverse Mowing Direction", sent as byte 0 of the 32-byte ``NavReqCoverPath.auto_change_direction``
     #: (``reserved2``). Gate on ``DeviceType.supports_auto_change_direction``.
     auto_change_direction: int = 0
+    #: "Use trimmer", byte 2 of ``reserved2``. Gate on ``DeviceData.edge_cutter_installed`` and schema code 40; the app
+    #: sends it regardless, on by default.
+    use_trimmer: bool = True
     #: The app's "Edge Coverage": its switch writes only 0.0 or 0.5 (app default 0.5), no unit; any float passes.
     #: A modify re-sends it, so leaving it 0.0 turns it off. Gate on ``DeviceType.supports_ride_boundary_distance``.
     ride_boundary_distance: float = 0.0
@@ -86,6 +89,7 @@ class GenerateRouteInformation:
           ``ultra_wave``, ``channel_mode``, ``toward``, ``speed``,
           ``toward_mode``, ``toward_included_angle`` — direct copy.
         - ``auto_change_direction`` — 1 when reported on, else 0
+        - ``use_trimmer`` — on unless reported off
         - ``ride_boundary_distance`` — direct copy
         - ``job_ver`` → ``job_version``
         - ``knife_height`` → ``blade_height``
@@ -112,6 +116,7 @@ class GenerateRouteInformation:
             edge_mode=settings.edge_mode,
             obstacle_laps=decoded.obstacle_laps,
             auto_change_direction=int(bool(settings.auto_change_direction)),
+            use_trimmer=settings.use_trimmer is not False,
             ride_boundary_distance=settings.ride_boundary_distance,
         )
 

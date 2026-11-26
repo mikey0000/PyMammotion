@@ -35,23 +35,15 @@ from typing import Any
 from aiohttp import ClientSession
 
 from pymammotion.http.http import MammotionHTTP
-from pymammotion.http.model.product_params import ProductParamData
+from pymammotion.http.model.product_params import ProductParamData, WorkSettingCode
 
 _log = logging.getLogger("dump_product_params")
-
-# The codes WorkingSettingManage switches on, for a readable dump.  Anything not
-# listed still appears, by its bare code.
-KNOWN_CODES = {
-    "3": "channel_width (path spacing)",
-    "4": "blade_height",
-    "15": "ride_boundary_distance",
-    "21": "start_progress",
-}
 
 
 def _annotate(summary: dict[str, Any]) -> dict[str, Any]:
     """Label the codes we have identified, leaving the rest as they came."""
-    return {f"{code} ({KNOWN_CODES[code]})" if code in KNOWN_CODES else code: value for code, value in summary.items()}
+    known = {code.value: code.name for code in WorkSettingCode}
+    return {f"{code} ({known[code]})" if code in known else code: value for code, value in summary.items()}
 
 
 async def _dump_one(
